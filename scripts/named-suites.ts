@@ -14,7 +14,8 @@
 // trusted is refused with the file named, rather than read in part: a suite
 // dropped from the manifest is a suite no required check runs.
 //
-// Usage: node scripts/named-suites.ts split [--check]
+// Usage: node scripts/named-suites.ts split [--check] | kept <base-sha>
+//   kept     fails on a suite the base kept that the head drops (keptSuites).
 //   split    writes the folder from the single file, proves the folder reads
 //            back as the same manifest, then removes the single file.
 //   --check  the same round trip in a temp folder; writes nothing here.
@@ -34,8 +35,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { areaOf } from './ci-areas.ts';
 import {
+  FOLDER,
   ISOLATION,
+  keptSuites,
+  message,
   readSuiteFiles,
+  refuse,
+  SINGLE,
   SUITES,
   SUITES_HISTORY,
   writeSuiteFiles,
@@ -52,8 +58,6 @@ export interface SplitSuites {
   areas: Record<string, { invariant: string[]; conformance: string[] }>;
 }
 
-export const SINGLE = 'tests/db/named-suites.json';
-export const FOLDER = 'tests/db/named-suites';
 const HISTORY = '_history.json';
 const KINDS = ['comment', 'invariant', 'conformance'] as const;
 type Kind = (typeof KINDS)[number];
@@ -94,13 +98,6 @@ export function readNamedSuites(root: string): NamedSuites {
     conformance: listOf(manifest['conformance']),
   };
 }
-
-function refuse(file: string, why: string): never {
-  throw new Error(`${file} ${why}`);
-}
-
-const message = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 /** One folder file's lists, refused unless it is a .json object of string arrays under known keys. */
 function readFile(root: string, file: string): Record<Kind, string[]> {
@@ -261,12 +258,13 @@ export function suitesToFiles(root: string): void {
 }
 
 async function main(argv: readonly string[]): Promise<void> {
-  if (argv[0] === 'kept') {
-    console.log('named-suites: kept: not checked yet.');
+  if (argv[0] === 'kept' && argv.length <= 2) {
+    const readers = { readNamedSuites, readIsolationSuites };
+    console.log(`named-suites: ${keptSuites(argv[1], process.env['GITHUB_EVENT_NAME'], readers)}`);
     return;
   }
   if (argv[0] !== 'split' || argv.length > 2 || (argv.length === 2 && argv[1] !== '--check')) {
-    throw new Error('usage: node scripts/named-suites.ts split [--check]');
+    throw new Error('usage: node scripts/named-suites.ts split [--check] | kept <base-sha>');
   }
   let root = repoRoot;
   if (argv[1] === '--check') {

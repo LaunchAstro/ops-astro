@@ -162,7 +162,9 @@ describe('a suite named at the base stays named at the head', () => {
     });
     expect(kept(renamed.repo, renamed.base).status).toBe(0);
   });
+});
 
+describe('the base, in every layout it has had and wherever it is', () => {
   it('reads a base in the per-area layout with its isolation list', () => {
     const same = repoWith(PER_AREA);
     head(same.repo, TO_PER_SUITE);
@@ -199,7 +201,7 @@ describe('a suite named at the base stays named at the head', () => {
     git(dir, 'init', '-q', '--bare', remote);
     git(repo, 'push', '-q', remote, 'main');
     const shallow = join(mkdtempSync(join(dir, 'shallow-')), 'work');
-    git(dir, 'clone', '-q', '--depth', '1', `file://${remote}`, shallow);
+    git(dir, 'clone', '-q', '--depth', '1', '--branch', 'main', `file://${remote}`, shallow);
     expect(
       spawnSync('git', ['cat-file', '-e', base], { cwd: shallow, env: GIT_ENV }).status,
     ).not.toBe(0);
