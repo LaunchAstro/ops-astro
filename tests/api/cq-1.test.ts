@@ -20,7 +20,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { DELEGATION_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { consoleLine } from '../support/console-text.ts';
+import { consoleLine, streamText } from '../support/console-text.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const file = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -200,9 +200,12 @@ function cq1SignCases3() {
     const lines: string[] = [];
     const levels = ['log', 'info', 'warn', 'error', 'debug', 'trace'] as const;
     const push = (...parts: unknown[]) => lines.push(consoleLine(...parts)) > 0;
+    const write = (chunk: unknown) => lines.push(streamText(chunk)) > 0;
     const spies = [
       ...levels.map((level) => vi.spyOn(console, level).mockImplementation(push)),
-      ...[process.stdout, process.stderr].map((s) => vi.spyOn(s, 'write').mockImplementation(push)),
+      ...[process.stdout, process.stderr].map((s) =>
+        vi.spyOn(s, 'write').mockImplementation(write),
+      ),
     ];
     const faulty = composeApi({ ...FAULTY, database: fixture.db.app, admin: fixture.db.admin });
     const secretish = JSON.stringify({ secretish: `SUPABASE_JWT_SECRET=${canary}` });

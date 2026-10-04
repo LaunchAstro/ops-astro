@@ -5,7 +5,7 @@
 // no-secret check unseen.
 
 import { expect, it } from 'vitest';
-import { consoleLine } from './console-text.ts';
+import { consoleLine, streamText } from './console-text.ts';
 
 const planted = 'console-text-planted-value';
 
@@ -34,4 +34,10 @@ it('writes plain strings as the console does, unquoted and space-joined', () => 
 it('writes an error with its stack', () => {
   const error = new Error(planted);
   expect(consoleLine(error)).toContain(String(error.stack));
+});
+
+it('reads a stream write as the terminal shows it, bytes decoded as text', () => {
+  expect(streamText(planted)).toBe(planted);
+  expect(streamText(Buffer.from(planted))).toBe(planted);
+  expect(streamText(new TextEncoder().encode(planted))).toBe(planted);
 });

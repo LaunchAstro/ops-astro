@@ -21,7 +21,7 @@ import { parseCredentialKeys } from '../../packages/core-records/src/authority/c
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { consoleLine } from '../support/console-text.ts';
+import { consoleLine, streamText } from '../support/console-text.ts';
 
 const [CREATE, READ, UPDATE] = [pathOf('task.create'), pathOf('task.read'), pathOf('task.update')];
 const [BOARD, QUEUE, PEOPLE] = [pathOf('task.board'), pathOf('task.queue'), pathOf('person.list')];
@@ -42,10 +42,11 @@ const ids = (text: string) => [
 async function logged<T>(run: () => Promise<T>): Promise<[T, string]> {
   const lines: string[] = [];
   const push = (...parts: unknown[]) => lines.push(consoleLine(...parts)) > 0;
+  const write = (chunk: unknown) => lines.push(streamText(chunk)) > 0;
   const levels = ['log', 'info', 'warn', 'error', 'debug', 'trace'] as const;
   const spies = [
     ...levels.map((level) => vi.spyOn(console, level).mockImplementation(push)),
-    ...[process.stdout, process.stderr].map((s) => vi.spyOn(s, 'write').mockImplementation(push)),
+    ...[process.stdout, process.stderr].map((s) => vi.spyOn(s, 'write').mockImplementation(write)),
   ];
   const result = await run().finally(() => spies.forEach((spy) => spy.mockRestore()));
   return [result, lines.join('\n')];
