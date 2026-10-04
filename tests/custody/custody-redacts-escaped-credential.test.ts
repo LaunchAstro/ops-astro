@@ -18,6 +18,26 @@ const request: OutboundRequest = {
   maxResponseBytes: 4_096,
 };
 
+/** The one synthetic credential, written owner-only into `folder`. */
+function credentialsIn(folder: string): string {
+  const credentialsFile = join(folder, 'credentials.json');
+  writeFileSync(
+    credentialsFile,
+    JSON.stringify([
+      {
+        ref: 'auth_key',
+        kind: 'api_key',
+        account: 'synthetic-auth-account',
+        destination: 'auth_target',
+        header: 'authorization',
+        value: KEY,
+      },
+    ]),
+    { mode: 0o600 },
+  );
+  return credentialsFile;
+}
+
 async function withCustody(
   extra: Record<string, unknown>,
   answer: string,
@@ -37,24 +57,12 @@ async function withCustody(
   });
   let custody: Awaited<ReturnType<typeof startCustody>> | undefined;
   try {
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', resolve);
+    });
     const address = server.address();
     if (address === null || typeof address === 'string') throw new Error('server has no port');
-    const credentialsFile = join(folder, 'credentials.json');
-    writeFileSync(
-      credentialsFile,
-      JSON.stringify([
-        {
-          ref: 'auth_key',
-          kind: 'api_key',
-          account: 'synthetic-auth-account',
-          destination: 'auth_target',
-          header: 'authorization',
-          value: KEY,
-        },
-      ]),
-      { mode: 0o600 },
-    );
+    const credentialsFile = credentialsIn(folder);
     const parsed = parseDestinations([
       {
         key: 'auth_target',
@@ -71,12 +79,14 @@ async function withCustody(
   } finally {
     await custody?.stop();
     server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
     rmSync(folder, { recursive: true, force: true });
   }
 }
 
-it('Sol proof, criterion 3: lowercase percent escapes cannot carry a credential in the decoded answer', async () => {
+it('lowercase percent escapes cannot carry a credential in the decoded answer', async () => {
   const escaped = encodeURIComponent(KEY).replaceAll('%2F', '%2f');
   await withCustody({}, JSON.stringify({ text: escaped }), async (custody) => {
     const outcome = await custody.dispatch('auth_key', request);
@@ -94,5 +104,23 @@ it('Sol proof, criterion 3: lowercase percent escapes cannot carry a credential 
       decodeURIComponent(decoded.text).includes(KEY),
       'decoded answer must not hold the key',
     ).toBe(false);
+  });
+});
+
+it('every character percent-escaped, in mixed hex case, is redacted from the answer', async () => {
+  const escaped = [...Buffer.from(KEY, 'utf8')]
+    .map((byte, at) => {
+      const hex = byte.toString(16).padStart(2, '0');
+      return `%${at % 2 === 0 ? hex : hex.toUpperCase()}`;
+    })
+    .join('');
+  await withCustody({}, JSON.stringify({ text: escaped }), async (custody) => {
+    const outcome = await custody.dispatch('auth_key', request);
+    if (outcome.kind !== 'answered' || !outcome.outbound.ok) throw new Error('not answered');
+    expect(
+      decodeURIComponent(outcome.outbound.body).includes(KEY),
+      'decoded answer must not hold the key',
+    ).toBe(false);
+    expect(outcome.outbound.body).toContain('[redacted]');
   });
 });
