@@ -110,7 +110,12 @@ export async function emailAtOnce(
   return emailResult(sent);
 }
 
-/** The person's items for today's email: open, owed, not told at once, chosen for the batch. */
+/**
+ * The person's items for today's email: open, owed, not told at once, chosen for the batch.
+ * `checkItem` locks each in item id order, the order the provider's hook locks a batch's items
+ * in (`broker-email-hook.ts`), so a batch and a hook for an earlier one never wait on each other
+ * in a cycle.
+ */
 async function batchable(
   tx: TenantQuery,
   personId: string,
@@ -119,7 +124,7 @@ async function batchable(
   const rows = await tx.query<{ readonly id: string; readonly reason: InboxReason }>(
     `select id, reason from public.inbox_items
       where business_id = $1 and recipient_person_id = $2 and work_state = 'open' and owed
-      order by raised_at, id`,
+      order by id`,
     [tx.businessId, personId],
   );
   const kept: CheckedItem[] = [];
