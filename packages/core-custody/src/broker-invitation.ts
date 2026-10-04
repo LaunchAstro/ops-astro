@@ -28,7 +28,10 @@
 // a new one is. When the provider's Send Email hook asks for an invitation
 // (`broker-auth-email.ts`), the send is this same one, its tokens unread, and
 // the hook message's id is the `asked` evidence, so a replayed message is
-// refused under the invitation's lock.
+// refused under the invitation's lock. Once every check has passed, the send
+// also claims the message id installation-wide, before its token: a second
+// send of one message, from any business or hook process, finds the claim
+// and is refused, writing nothing.
 
 import { createHash, randomBytes } from 'node:crypto';
 import {
@@ -112,7 +115,21 @@ async function pendingAct(
   return { address: invitation.address, expires: invitation.expires_at };
 }
 
-/** Step 1: every check, the minted token's hash and the `asked` observation. */
+/**
+ * The hook message's one claim, installation-wide (20261004103712): false when
+ * any business's send already holds it. A claim another transaction has not
+ * committed yet is waited on, then refused.
+ */
+async function claimHookMessage(tx: TenantQuery, hookId: string): Promise<boolean> {
+  const claimed = await tx.query(
+    `insert into ops.auth_hook_messages (message_digest) values ($1)
+     on conflict (message_digest) do nothing returning 1`,
+    [createHash('sha256').update(hookId).digest('hex')],
+  );
+  return claimed.length === 1;
+}
+
+/** Step 1: every check, the hook message's claim, the minted token's hash and the `asked` observation. */
 async function ask(
   tx: TenantQuery,
   invitationId: string,
@@ -122,6 +139,7 @@ async function ask(
   const act = await pendingAct(tx, invitationId, hookId);
   if (typeof act === 'string') return act;
   if (!(await roomFor(tx, operation)())) return 'EMAIL_AT_CEILING';
+  if (hookId !== undefined && !(await claimHookMessage(tx, hookId))) return 'REPLAYED';
   const token = randomBytes(32).toString('base64url');
   const [minted] = await tx.query<{ id: string }>(
     `insert into enrolment_tokens (business_id, id, invitation_id, token_hash, expires_at)
