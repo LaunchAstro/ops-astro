@@ -89,7 +89,8 @@ jobs:
       # check itself, as ci.yml's gate does: a pull request whose head is a
       # merge-queue commit fails here before anything is judged. git lists the
       # checkout's origin, the public repository, with no credential; a merge
-      # group passes without listing (scripts/queue-head-check.mjs).
+      # group passes without listing (scripts/queue-head-check.mjs). The listing
+      # needs the repository public: made private, it would fail every pull request.
       - name: A pull request never runs its checks on a merge-queue commit
         run: node scripts/queue-head-check.mjs
       - run: pnpm install --frozen-lockfile
