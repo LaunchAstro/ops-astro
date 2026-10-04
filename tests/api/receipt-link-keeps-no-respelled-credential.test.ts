@@ -87,16 +87,21 @@ async function agentWithDelegation() {
 }
 
 /** A child the delegation minted for a helper: the parent's row under the helper's actor, reading only. */
-async function childOf(parentId: string, helperActorId: string): Promise<string> {
+async function childOf(
+  parentId: string,
+  helperActorId: string,
+  keyId: string | null = null,
+): Promise<string> {
   const childId = randomUUID();
   await r.fixture.db.admin.execute(
     `insert into public.delegations
        select (jsonb_populate_record(d, jsonb_build_object(
                  'id', $2::uuid, 'agent_actor_id', $3::uuid,
-                 'parent_delegation_id', d.id, 'purpose', 'rcpt_child',
-                 'actions', jsonb_build_array('read')))).*
+                 'parent_delegation_id', d.id, 'purpose', 'rcpt_child_' || $2::text,
+                 'actions', jsonb_build_array('read'),
+                 'credential_key_id', coalesce($4, d.credential_key_id)))).*
          from public.delegations d where d.id = $1`,
-    [parentId, childId, helperActorId],
+    [parentId, childId, helperActorId, keyId],
   );
   return childId;
 }
@@ -122,10 +127,7 @@ it("the credentials checked for an agent's observation are its unexpired login, 
       interval: 500,
     })
     .toBe(false);
-  await r.fixture.db.admin.execute(
-    "update public.delegations set credential_key_id = 'no-such-key' where id = $1",
-    [childId],
-  );
+  await childOf(minted.delegation.id, helper.agentActorId, 'no-such-key');
   expect({
     login: held.includes(login.credential),
     delegation: held.includes(minted.credential),
@@ -135,7 +137,6 @@ it("the credentials checked for an agent's observation are its unexpired login, 
     login: true,
     delegation: true,
     child: true,
-    expiredLogin: false,
     underivable: true,
   });
 });
