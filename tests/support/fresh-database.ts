@@ -25,6 +25,7 @@ import {
   type StatementLog,
 } from '../../packages/core-records/src/tenancy/statements.ts';
 import { migrate, type MigrationOutcome } from '../../packages/core-records/src/tenancy/migrate.ts';
+import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
 
 /** The group role the migrations grant to. Members are per-installation logins. */
 export const APPLICATION_ROLE = 'ops_astro_app';
@@ -111,6 +112,19 @@ export function databaseUrlFromEnvironment(): string | undefined {
 export async function createEmptyDatabase(
   options: FreshDatabaseOptions = {},
 ): Promise<EmptyDatabase> {
+  return await createDatabase(options);
+}
+
+/**
+ * A new database, empty or a copy of `template`. A copy starts with the
+ * default database privileges, PUBLIC's TEMP among them, whatever the
+ * template's were (0031 revokes it), so it is given the template's own, entry
+ * for entry, before anything else here is granted.
+ */
+async function createDatabase(
+  options: FreshDatabaseOptions,
+  template?: string,
+): Promise<EmptyDatabase> {
   const serverUrl = options.serverUrl ?? databaseUrlFromEnvironment();
   if (serverUrl === undefined) {
     throw new Error('createEmptyDatabase: no DATABASE_URL and no serverUrl given');
@@ -147,7 +161,12 @@ export async function createEmptyDatabase(
          end if;
        end $$`,
     );
-    await server.execute(`create database ${identifier(name)}`);
+    if (template === undefined) {
+      await server.execute(`create database ${identifier(name)}`);
+    } else {
+      await server.execute(`create database ${identifier(name)} template ${identifier(template)}`);
+      await copyPrivileges(server, template, name);
+    }
     // PostgreSQL grants TEMPORARY on a new database to PUBLIC. A temporary
     // table is created in `pg_temp`, outside every schema the application is
     // refused CREATE in, and on a pooled backend it outlives the transaction
@@ -218,9 +237,41 @@ export async function createEmptyDatabase(
   };
 }
 
+async function copyPrivileges(server: AdminConnection, from: string, to: string): Promise<void> {
+  await server.execute(`revoke all on database ${identifier(to)} from public`);
+  const entries = await server.execute<{ grantee: string | null; privilege: string }>(
+    `select case when a.grantee = 0 then null else pg_get_userbyid(a.grantee) end grantee,
+            a.privilege_type privilege
+       from pg_database d, aclexplode(coalesce(d.datacl, acldefault('d', d.datdba))) a
+      where d.datname = $1`,
+    [from],
+  );
+  for (const { grantee, privilege } of entries) {
+    if (!/^[A-Z]+$/u.test(privilege)) throw new Error(`unexpected privilege ${privilege}`);
+    const who = grantee === null ? 'public' : `"${grantee.replaceAll('"', '""')}"`;
+    // eslint-disable-next-line no-await-in-loop -- in order
+    await server.execute(`grant ${privilege} on database ${identifier(to)} to ${who}`);
+  }
+}
+
+/**
+ * A database holding every migration. A clone of the migrated template
+ * (migrated-template.ts) unless the caller names its own migrations, asks for
+ * `fromEmpty`, or OPS_ASTRO_DB_TEMPLATE=off; then migrated from empty here.
+ */
 export async function createFreshDatabase(
   options: FreshDatabaseOptions = {},
 ): Promise<FreshDatabase> {
+  const serverUrl = options.serverUrl ?? databaseUrlFromEnvironment();
+  if (
+    serverUrl !== undefined &&
+    options.migrationsDirectory === undefined &&
+    options.fromEmpty !== true &&
+    templateEnabled()
+  ) {
+    const template = await ensureMigratedTemplate(serverUrl);
+    return { ...(await createDatabase(options, template.name)), migration: template.migration };
+  }
   const empty = await createEmptyDatabase(options);
   try {
     const migration = await migrate(empty.admin, options.migrationsDirectory ?? 'migrations');

@@ -28,7 +28,9 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance: the wrapper', () 
   const beta = randomUUID();
 
   beforeAll(async () => {
-    db = await createFreshDatabase({ part: 'a' });
+    // From empty, not a clone of the migrated template: the log's own migration DDL is the
+    // control that shows the no-runtime-DDL assertion below can see a schema change at all.
+    db = await createFreshDatabase({ part: 'a', fromEmpty: true });
     const add = (id: string, key: string): Promise<void> =>
       db.app.withBusiness(id, async (tx) => {
         await tx.query('insert into businesses (business_id, id, key, name) values ($1,$1,$2,$3)', [
