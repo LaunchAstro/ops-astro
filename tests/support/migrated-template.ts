@@ -19,12 +19,15 @@
 // The template is finished when it carries its migration result as its
 // comment and takes no connections. Anything else under its name, a builder
 // that stopped half way, is dropped and built again. Builders take an
-// advisory lock, so two runs on one server build it once between them.
+// advisory lock, so two runs on one server build it once between them. An
+// advisory lock is held within one database, so every builder takes it in
+// `postgres`, whichever database it is configured for.
 //
 // It works through the database beside the configured one (`besideUrl`):
 // scripts/db-conformance.mjs reads the configured database's transaction
 // counter either side of each named suite, and the template is not the suite's
-// work. `OPS_ASTRO_DB_TEMPLATE=off` turns it all off, and every fresh database
+// work. Only a build configured for `postgres` itself takes its lock there.
+// `OPS_ASTRO_DB_TEMPLATE=off` turns it all off, and every fresh database
 // migrates from empty as before.
 
 import { createHash } from 'node:crypto';
@@ -108,6 +111,13 @@ export function templateName(migrationsDirectory = 'migrations', root = '.'): st
 const LOCK = "select pg_advisory_lock(hashtext('ops-astro migrated template'))";
 const UNLOCK = "select pg_advisory_unlock(hashtext('ops-astro migrated template'))";
 
+/** The database every builder on the server takes its lock in. */
+function lockUrl(serverUrl: string): string {
+  const url = new URL(serverUrl);
+  url.pathname = '/postgres';
+  return url.toString();
+}
+
 function quoted(name: string): string {
   if (!/^[a-z][a-z0-9_]{0,62}$/u.test(name)) throw new Error(`unsafe identifier: ${name}`);
   return `"${name}"`;
@@ -164,14 +174,19 @@ async function build(serverUrl: string, name: string): Promise<MigratedTemplate>
   try {
     const ready = await read();
     if (ready !== undefined) return { name, migration: ready };
-    await server.execute(LOCK);
+    const lock = connectAsAdmin(lockUrl(serverUrl), { source: 'harness' });
     try {
-      // Another builder may have finished while this one waited.
-      const now = await read();
-      if (now !== undefined) return { name, migration: now };
-      return { name, migration: await buildFromEmpty(server, serverUrl, name) };
+      await lock.execute(LOCK);
+      try {
+        // Another builder may have finished while this one waited.
+        const now = await read();
+        if (now !== undefined) return { name, migration: now };
+        return { name, migration: await buildFromEmpty(server, serverUrl, name) };
+      } finally {
+        await lock.execute(UNLOCK);
+      }
     } finally {
-      await server.execute(UNLOCK);
+      await lock.close();
     }
   } finally {
     await server.close();
