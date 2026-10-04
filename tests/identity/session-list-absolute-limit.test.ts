@@ -92,4 +92,19 @@ describe.skipIf(serverUrl === undefined)('the live-session list and the absolute
     );
     expect(listed.map((row) => row.sessionId)).toEqual([current]);
   });
+
+  it('leaves out a session signed in 13 hours ago that this business first served a moment ago', async () => {
+    // The login's first call here can come long after its sign-in (another
+    // business served it first), so the earliest attempt cannot stand in for
+    // the sign-in: only the recorded first sign-in time decides.
+    const [elsewhere, current] = [randomUUID(), randomUUID()];
+    await db.app.withBusiness(business, async (tx) => {
+      await served(tx, elsewhere, nowSeconds() - 13 * HOUR);
+      await served(tx, current, nowSeconds() - 60);
+    });
+    const listed = await db.app.withBusiness(business, (tx) =>
+      listSeenSessions(tx, person, current),
+    );
+    expect(listed.map((row) => row.sessionId)).toEqual([current]);
+  });
 });
