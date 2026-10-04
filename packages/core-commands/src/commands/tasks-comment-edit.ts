@@ -20,7 +20,7 @@ import { lockComment, removeComment, rewriteComment } from '../../../core-record
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
-import { refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnstorable, storableText } from './values.ts';
 import { NO_COMMENT_TYPE_FIXES, representedPerson } from './tasks-comment.ts';
@@ -40,6 +40,12 @@ export interface CommentChange {
   readonly actorId: string;
   /** The person the caller acts for as an agent (delegation or credential); `null` for a person. */
   readonly onBehalfOfPersonId: string | null;
+  /**
+   * The agent entry's authority asked again once the comment is locked, so a
+   * delegation or covering grant revoked while the change waited on a lock
+   * refuses it (OW-036.1 criterion 5); absent on the person entry.
+   */
+  readonly stillAuthorised?: () => Promise<CommandRefusal | undefined>;
 }
 
 /** The person entry's change, from its command context. */
@@ -82,6 +88,8 @@ async function ownComment(
       ? await lockComment(tx, typeId, on.target.id, commentId)
       : undefined;
   if (comment === undefined) return refused(refuseNotFound());
+  const lapsed = await on.stillAuthorised?.();
+  if (lapsed !== undefined) return refused(lapsed);
   if (
     comment.authorActorId !== on.actorId ||
     comment.onBehalfOfPersonId !== on.onBehalfOfPersonId

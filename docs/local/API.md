@@ -1792,7 +1792,9 @@ their own messages and replies through `task.edit_comment` and
 `task.delete_comment`; a deleted comment leaves every read and its replies
 stay. An internal reader's comments also carry `own`, true where the
 reader's own actor wrote it, so the page draws the edit and delete controls
-on those rows only; the two commands check the author again. An @ in a comment notifies nobody yet: there is no notification model.
+on those rows only; the two commands check the author again, and an agent's
+change asks its delegation and covering grant again once the comment is
+locked. An @ in a comment notifies nobody yet: there is no notification model.
 
 For the agent bundles, `readConversation` (`reads/task-conversation.ts`) reads a
 task's thread at three detail levels in one statement each: `brief` (the

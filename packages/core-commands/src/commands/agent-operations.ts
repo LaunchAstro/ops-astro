@@ -6,7 +6,7 @@
 // (`agent-envelope.ts`) runs every row through the same pipeline, so adding an
 // operation is adding a row here rather than a branch in each step of it.
 
-import { checkDelegatedAuthority } from '../../../core-records/src/index.ts';
+import { checkDelegatedAuthority, resolveDelegation } from '../../../core-records/src/index.ts';
 import type { TenantQuery, AgentSession, Delegation } from '../../../core-records/src/index.ts';
 import { readQueue } from '../reads/queue.ts';
 import { READ_CATALOGUE } from '../reads/catalogue.ts';
@@ -439,7 +439,10 @@ async function servePropose(
  * An agent's edit or delete of its own comment on its own task (MP-4-5,
  * CS-4.34). The task is locked as `serveComment` locks it; the comment is
  * read through it and must be the agent's own actor's, written for the person
- * this delegation acts for (`tasks-comment-edit.ts`, OW-036.1).
+ * this delegation acts for (`tasks-comment-edit.ts`, OW-036.1). Once the
+ * comment is locked, the delegation and the delegating person's covering
+ * grant are asked again, as `authorise` asked them: a revocation that
+ * committed while the change waited on either lock refuses it.
  */
 const serveCommentChange =
   (
@@ -455,11 +458,21 @@ const serveCommentChange =
     delegation: Delegation,
     taskId: string | undefined,
   ) => ReturnType<typeof editTaskComment>) =>
-  async (tx, { session, request, declaration }, _operands, delegation, taskId) => {
+  async (tx, { session, request, declaration, credential }, _operands, delegation, taskId) => {
     if (taskId === undefined) return NOT_FOUND();
     const spine = await readTaskSpine(tx);
     const task = await lockTask(tx, spine.taskTypeId, taskId);
     if (task === undefined) return NOT_FOUND();
+    const stillAuthorised = async (): Promise<CommandRefusal | undefined> => {
+      const again = await resolveDelegation(tx, session.actorId, credential ?? '');
+      if (!again.ok) return again.refusal;
+      const decision = await checkDelegatedAuthority(tx, again.value, {
+        collection: declaration.collection,
+        action: declaration.action,
+        scope: { kind: 'record', id: taskId },
+      });
+      return decision.ok ? undefined : decision.refusal;
+    };
     return await change(
       tx,
       {
@@ -468,6 +481,7 @@ const serveCommentChange =
         target: task,
         actorId: session.actorId,
         onBehalfOfPersonId: delegation.delegatePersonId,
+        stillAuthorised,
       },
       request,
     );
