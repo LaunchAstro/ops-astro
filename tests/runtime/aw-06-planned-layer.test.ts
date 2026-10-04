@@ -106,7 +106,8 @@ interface Forged {
 const INSERT_FORGED = `insert into public.plan_records (business_id, id, gate_id, decision_id,
    run_id, plan_text, text_digest, record, record_digest, bound_by_actor_id, bound_at)
  values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-         (select decided_at from public.gate_decisions where business_id = $1 and id = $4))`;
+         (select decided_at from public.gate_decisions where business_id = $1 and id = $4))
+ returning bound_at = (select decided_at from public.gate_decisions where id = $4) as placed`;
 
 /** A plan record forged on the task, asking for its decision's instant. */
 async function forge(row: Forged): Promise<void> {
@@ -125,7 +126,8 @@ async function forge(row: Forged): Promise<void> {
   if (row.withDecision) {
     await w.s.db.admin.transaction(async (execute) => {
       await execute('set local session_replication_role = replica');
-      await execute(INSERT_FORGED, values);
+      const [written] = await execute<{ placed: boolean }>(INSERT_FORGED, values);
+      expect(written?.placed, 'the owner places the record at its decision').toBe(true);
     });
     return;
   }
@@ -140,8 +142,7 @@ it('projection_refuses_unbound_record: a record not written with its decision, o
   expectProjects(await graphAs(w.s.decider, taskId), plan, 'the accepted plan');
 
   // Each forged record is newer than the bound one and structurally valid, so
-  // neither recency nor shape is what refuses it. The first has matching
-  // digests, so only the server's clock refuses it (#436).
+  // neither recency nor shape refuses it. The first, digests matching, only the clock (#436).
   const late = await decidedWithoutRecord(taskId);
   await forge({
     ...late,
