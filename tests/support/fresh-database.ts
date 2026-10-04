@@ -71,6 +71,8 @@ export interface FreshDatabaseOptions {
   /** The part this run belongs to, so a database name says who left it behind. */
   readonly part?: string;
   readonly migrationsDirectory?: string;
+  /** Migrate this database from empty itself rather than clone the migrated template. */
+  readonly fromEmpty?: boolean;
 }
 
 function identifier(name: string): string {

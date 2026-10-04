@@ -57,6 +57,18 @@ it('the matrix numbers its shards 1 to n, and the runner is told which of n it i
   expect(shardJob).toContain('FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}');
 });
 
+it('CI-SPEED (NATHAN-CF-RECORD item 1): the run is split 16 ways, each shard near its share', () => {
+  expect(shardCount).toBe(16);
+  const weight = (item: string) => timings[item] ?? 0;
+  const loads = assignShards(items, timings, shardCount).map((shard) =>
+    shard.reduce((sum, item) => sum + weight(item), 0),
+  );
+  const total = items.reduce((sum, item) => sum + weight(item), 0);
+  const longest = Math.max(...items.map((item) => weight(item)));
+  // No shard carries more than a tenth over its share, or the one item too long to share.
+  expect(Math.max(...loads)).toBeLessThanOrEqual(Math.max(longest, (total / shardCount) * 1.1));
+});
+
 it('every run item runs in exactly one shard, and the shards together are the manifest', () => {
   const shards = assignShards(items, timings, shardCount);
   expect(shards).toHaveLength(shardCount);

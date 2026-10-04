@@ -1,4 +1,7 @@
 {
   "invariant": [],
-  "conformance": ["tests/support/fresh-database-leak.test.ts"]
+  "conformance": [
+    "tests/support/fresh-database-leak.test.ts",
+    "tests/support/migrated-template.test.ts"
+  ]
 }
