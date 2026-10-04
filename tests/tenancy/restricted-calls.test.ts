@@ -43,6 +43,7 @@ import {
   APPLICATION_CALLERS,
   OPERATIONS,
   callFor,
+  copyRowFinding,
   copyStatement,
   expectedOutcome,
   fingerprint,
@@ -477,6 +478,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_forwarder' then 'forwarder'
                  when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
                  when r.rolname = 'ops_astro_upkeep' then 'upkeep'
+                 when r.rolname = 'ops_astro_lease_path' then 'lease path'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -502,6 +504,7 @@ const DEFINERS: readonly string[] = [
   'model_route_room(text,integer)',
   'ops.expire_second_factor_codes()',
   'ops.record_tested_restore()',
+  'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
 ];
 
 describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full schema', () => {
@@ -585,6 +588,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // 20261002105957: the daily upkeep deletes second-factor codes past their horizon through
     // ops.expire_second_factor_codes(), proved in tests/db/second-factor-codes-retention.test.ts.
     expect(classes['upkeep']).toStrictEqual(['ops_astro_upkeep']);
+    // 20261004040200: the pickup path's role owns public.take_lease and inserts leases under row security,
+    // proved in tests/db/take-lease-path.test.ts.
+    expect(classes['lease path']).toStrictEqual(['ops_astro_lease_path']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -629,6 +635,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       // oxlint-disable-next-line no-await-in-loop
       const row = await ownRowJson(world.db.admin, table, world.alpha);
       if (row === undefined) continue;
+      const finding = copyRowFinding(table, row);
+      if (finding !== undefined) {
+        wrong.push(`${table.qualified}\tinsert copy\t${finding}`);
+        continue;
+      }
       copied += 1;
       for (const caller of TABLE_CALLERS.slice(1)) {
         // oxlint-disable-next-line no-await-in-loop
@@ -637,7 +648,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
         const outcome = await callers.call(caller, copyStatement(table), [row]);
         // oxlint-disable-next-line no-await-in-loop
         const after = await fingerprint(world.db.admin, table.qualified);
-        const expected = expectedOutcome(caller, table, 'insert', 0);
+        const expected = expectedOutcome(caller, table, 'insert', 0, undefined, true);
         const line = `${table.qualified}\tinsert copy\t${caller}\t${describeOutcome(outcome)}`;
         executed.push(line);
         if (!meets(expected, outcome)) wrong.push(`${line}\texpected ${expected}`);
@@ -724,7 +735,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted three run', async () => {
+  it('calls every function as every caller, and only the granted four run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -745,8 +756,8 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Eight, each for a named reason. The map read models' four (WF-1) are
-  // pinned in their own block below. The append-only trigger refuses
+  // Nine, each for a named reason. The map read models' four (WF-1) and the
+  // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
   // the installation's, which a tenant transaction cannot count under row
@@ -754,13 +765,14 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
-  // upkeep identity runs it.
+  // upkeep identity runs it. The pickup path (SL11-30, 20261004040200) is the one way a lease is
+  // written, in the caller's own business (tests/db/take-lease-path.test.ts).
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly eight, each with its search path pinned', () => {
+    it('are exactly nine, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -814,6 +826,19 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       const fn = definer(signature);
       expect(fn?.trigger).toBe(trigger);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
+    });
+  });
+
+  describe('the fifth security definer function', () => {
+    it('is the pickup path, fired by nothing and under row security', () => {
+      const fn = functions.find(
+        (each) =>
+          each.definer &&
+          each.signature === 'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
+      );
+      expect(fn?.trigger).toBe(false);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, pg_temp']);
+      expect(fn?.firedBy).toStrictEqual([]);
     });
   });
 

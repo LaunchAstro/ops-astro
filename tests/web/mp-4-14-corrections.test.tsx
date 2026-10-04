@@ -17,6 +17,7 @@ import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { mount, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
 import { KEY, panel, serving } from './panel-fields-support.tsx';
+import { drawnStyle } from './app-cascade.ts';
 
 afterEach(unmountAll);
 
@@ -56,8 +57,13 @@ describe('MP-4-14 ids print as typed', () => {
     const rules = [...css.matchAll(/\.sbact__meta\s*\{([^}]*)\}/gu)].map((match) => match[1]);
     expect(rules.length).toBeGreaterThan(0);
     for (const rule of rules) expect(rule).not.toMatch(/text-transform/u);
+    // Drawn: under the app's whole cascade, the key keeps its stored case.
+    const drawn = await drawnStyle(view.host.innerHTML, 'text-transform', {
+      key: '[data-crumb="key"]',
+    });
+    expect(drawn).toEqual({ key: 'none' });
     await view.unmount();
-  });
+  }, 30_000);
 });
 
 describe('MP-4-14 no roll back that does nothing', () => {
