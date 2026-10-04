@@ -70,7 +70,8 @@ jobs:
 
   report:
     # One standing issue holds every failed night: opened on the first, added
-    # to after. The only job here that may write anything, and only issues.
+    # to after, and only one this workflow opened. The only job here that may
+    # write anything, and only issues.
     name: look-ahead failure reported
     needs: [lookahead]
     # Any outcome but success: a run that hits its timeout is cancelled, not failed.
@@ -89,7 +90,7 @@ jobs:
         run: |
           set -euo pipefail
           body="The nightly Postgres 18 look-ahead failed: $RUN_URL"
-          number="$(gh issue list --state open --search "in:title $TITLE" --json number,title \
+          number="$(gh issue list --state open --author app/github-actions --search "in:title $TITLE" --json number,title \
             --jq '[.[] | select(.title == env.TITLE)][0].number // empty')"
           if [ -n "$number" ]; then
             gh issue comment "$number" --body "$body"
