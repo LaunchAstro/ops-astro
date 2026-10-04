@@ -64,8 +64,8 @@ export function dmarcPolicy(records: readonly string[]): DmarcPolicy {
   if (dmarc.length > 1) return 'invalid';
   // A tag is split at its first '=' only, so `p=reject=invalid` is not reject.
   const tags = (dmarc[0] ?? '').split(';').map((tag) => {
-    const at = tag.indexOf('=');
-    return at < 0 ? [tag] : [tag.slice(0, at), tag.slice(at + 1)];
+    const [name = '', ...rest] = tag.split('=');
+    return rest.length === 0 ? [name] : [name, rest.join('=')];
   });
   const policy = tags
     .find(([name]) => name?.trim() === 'p')?.[1]
