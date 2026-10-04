@@ -5,6 +5,7 @@
 // person (MP-6-1), as the wire carries them, with AW-04's attribution and
 // planning allowance. Split from `views.ts` to keep that file under the
 // 1,000-line cap; it re-exports the first group, the index exports AW-04's.
+// A reservation's attempt view (OW-108.1) moved here for the same cap.
 // Types only, like `views.ts`.
 
 export interface TaskLedgerView {
@@ -204,4 +205,20 @@ export interface PlanningAllowanceView {
 export interface AllowanceResult {
   readonly ok: true;
   readonly allowance: PlanningAllowanceView;
+}
+
+/** The attempt a reservation produced, on the proposal read (`ReservationView.attempt`). */
+export interface AttemptView {
+  readonly id: string;
+  readonly state: string;
+  readonly dispatchMarker: boolean;
+  readonly observed: boolean;
+  /** Why the work dropped under it (T3e1), or null: never a person's cancellation. */
+  readonly dropCause: string | null;
+  /**
+   * What the attempt recorded, or null before it records one: `completed`,
+   * `failed`, `abandoned` or `unknown`. A failed hand-back releases its hold as
+   * a completed one does, so only this tells them apart (OW-108.1).
+   */
+  readonly outcome: string | null;
 }

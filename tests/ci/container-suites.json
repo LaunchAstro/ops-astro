@@ -15,6 +15,7 @@
     "tests/fixture/snapshot/snapshot-container-identity-proof.test.ts",
     "tests/operations/s0-5-client-lock.test.ts",
     "tests/operations/s0-5-lock-order.test.ts",
+    "tests/review/staging-logins-group-race-proof.test.ts",
     "tests/runtime/aw-13-local-target.test.ts",
     "tests/runtime/aw-13-pinned-profile.test.ts"
   ]
