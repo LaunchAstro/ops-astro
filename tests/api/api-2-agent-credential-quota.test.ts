@@ -16,7 +16,14 @@ import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { bearer, serverUrl, type Answer } from '../acceptance/world.ts';
 import { harness, openWorld } from './api-2-agent-credential-world.ts';
 import { comment, issued, latch, wordsOf, type Api } from './api-2-agent-credential-use-world.ts';
-import { codesOf, limited, readWith, WIDE } from './api-2-agent-credential-quota-world.ts';
+import {
+  bravoReader,
+  codesOf,
+  limited,
+  readInBravo,
+  readWith,
+  WIDE,
+} from './api-2-agent-credential-quota-world.ts';
 
 openWorld();
 
@@ -87,6 +94,30 @@ needsServer(
 const widePool = () => connect(harness.world.db.appUrl, { source: 'runtime', max: 3 });
 
 /**
+ * Resolves once a backend waits on the lock `holder` holds: the comment was
+ * let in by the quota and reached the row, so it is in flight. Bounded, and
+ * ended early if the comment answers first. Recursion, as the lint forbids
+ * awaiting in a loop.
+ */
+async function blockedBehind(
+  holder: number,
+  answered: () => boolean,
+  deadline: number,
+): Promise<void> {
+  const [row] = await harness.world.db.admin.execute<{ readonly n: string }>(
+    'select count(*)::text as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))',
+    [holder],
+  );
+  if (Number(row?.n) > 0) return;
+  if (answered()) throw new Error('the held comment answered before it reached the lock');
+  if (Date.now() > deadline) throw new Error('the held comment never reached the lock');
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 25);
+  });
+  await blockedBehind(holder, answered, deadline);
+}
+
+/**
  * `probe`'s answer, taken while a comment by `secret` is held in flight on the
  * task's row lock, and the comment's own answer once it is let go. The lock is
  * taken on a connection of its own, so the calls keep the pool, and it is let
@@ -100,10 +131,13 @@ async function whileHeld<T>(
   const hold = latch();
   const locked = latch();
   const own = connect(harness.world.db.appUrl, { source: 'runtime', max: 1 });
+  let holder = 0;
   const holding = own.withBusiness(harness.world.alpha, async (tx) => {
     await tx.query('select id from public.records where id = $1 for update', [
       harness.alphaTask.id,
     ]);
+    const [me] = await tx.query<{ readonly pid: number }>('select pg_backend_pid() as pid');
+    holder = me?.pid ?? 0;
     locked.open();
     await hold.promise;
   });
@@ -112,13 +146,14 @@ async function whileHeld<T>(
   try {
     // A failed lock query ends the wait here, not at the test's timeout.
     await Promise.race([locked.promise, holding]);
+    let answered = false;
     done = comment(bearer(secret), api);
     // Read below; this only keeps an early failure from being reported unhandled.
-    done.catch(() => {});
-    // Long enough for the comment to be let in and reach the lock.
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 300);
-    });
+    done.then(
+      () => (answered = true),
+      () => (answered = true),
+    );
+    await blockedBehind(holder, () => answered, Date.now() + 10_000);
     probed = await probe();
   } finally {
     hold.open();
@@ -178,12 +213,13 @@ needsServer(
       const { api } = limited({ concurrent: { ...WIDE, business: 1 } }, pool);
       const adas = await issued();
       const noahs = await issued(READ_ONLY, harness.world.noah.token);
-      const { probed, held } = await whileHeld(
-        api,
-        adas.secret,
-        async () => await readWith(api, noahs.secret),
-      );
-      expectClearRefusal(probed, noahs.secret);
+      const beas = await bravoReader();
+      const { probed, held } = await whileHeld(api, adas.secret, async () => [
+        await readWith(api, noahs.secret),
+        await readInBravo(api, beas),
+      ]);
+      expectClearRefusal(probed[0], noahs.secret);
+      expect(probed[1]?.code, 'another business is outside it').toBe('ok');
       expect(held.code, 'the held comment').toBe('ok');
       expect((await readWith(api, noahs.secret)).code, 'its slot is back').toBe('ok');
     } finally {
@@ -225,5 +261,7 @@ needsServer(
     expect((await readWith(api, adas.secret)).code).toBe('ok');
     expect((await readWith(api, noahs.secret)).code).toBe('ok');
     expectClearRefusal(await readWith(api, adas.secret), adas.secret);
+    const beas = await bravoReader();
+    expect((await readInBravo(api, beas)).code, 'another business is outside it').toBe('ok');
   },
 );
