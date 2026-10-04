@@ -110,7 +110,8 @@ function useOutsideClose(
 /**
  * The field's keys: the arrows move the mark, Enter takes the marked
  * suggestion or commits the draft, Escape closes, and Backspace on an empty
- * field drops the last filter.
+ * field drops the last filter. None of them acts while an input method is
+ * composing.
  */
 function keysOf<Row>(at: {
   readonly props: BoardSearchProps<Row>;
@@ -128,6 +129,8 @@ function keysOf<Row>(at: {
       readonly setActive: (next: (current: number) => number) => void;
     },
   ): void => {
+    // A key that confirms or moves an input method's candidate is the method's.
+    if (event.nativeEvent.isComposing) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       if (items.length === 0) return;
       event.preventDefault();

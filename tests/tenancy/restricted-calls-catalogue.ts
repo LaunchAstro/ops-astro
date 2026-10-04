@@ -30,6 +30,7 @@ const COLUMN_UPDATES: Readonly<
       'version_id',
     ],
   },
+  'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
   'public.clients': {
     from: '20261003000423',

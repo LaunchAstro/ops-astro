@@ -5,8 +5,9 @@
 // Pickup, heartbeat and handback each decide, under their locks, whether the
 // caller holds the lease it names, at the fence it presents, with authority
 // that is still live. The reading of the lease row, the holder and fence
-// rungs, the person's current write and the next fence are here, once, so the
-// three cannot drift into three answers to one question.
+// rungs and the person's current write are here, once, so the three cannot
+// drift into three answers to one question. The next fence is the pickup
+// path's (`take_lease`, migration 20261004040200).
 //
 // **One wording rule.** A lease refusal's reason is fixed text chosen by its
 // cause and nothing else. It names no lease, fence, task, version or state
@@ -232,18 +233,4 @@ export async function personWriteLive(
     lockedAt,
   );
   return held.ok;
-}
-
-/**
- * The next fence on a task: monotonic per task, computed under the task lock.
- * A sequence would be shared across tenants; this is per task and unique by
- * index.
- */
-export async function nextFence(tx: TenantQuery, taskId: string): Promise<number> {
-  const fences = await tx.query<{ readonly next: string }>(
-    `select coalesce(max(fence), 0) + 1 as next from public.leases
-      where business_id = $1 and task_id = $2`,
-    [tx.businessId, taskId],
-  );
-  return Number(fences[0]?.next ?? 1);
 }
