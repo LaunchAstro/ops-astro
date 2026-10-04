@@ -127,17 +127,26 @@ docker exec "${PG_CONTAINER}" psql -U postgres -d "${PG_DATABASE}" -v ON_ERROR_S
 # every session already issued. It is owner-only and never in auth.env, which
 # the API reads: the API fetches the public half from GoTrue instead (LF-4).
 KEY_FILE="${LOCAL}/auth-signing-key.json"
-# Two first runs at once each write their own new file, and a link never
-# replaces a key another run kept first, so both go on with one key.
+# A missing or empty key is made by one run at a time, under a lock directory
+# only one mkdir can make: a run that waited finds the first run's key and keeps it.
+KEY_LOCK="${KEY_FILE}.lock"
 if [ ! -s "${KEY_FILE}" ]; then
-  KEY_NEW="$(mktemp "${KEY_FILE}.XXXXXX")"
-  (umask 077 && node "${ROOT}/scripts/local/signing-key.mjs" > "${KEY_NEW}")
-  [ -s "${KEY_NEW}" ] || { rm -f "${KEY_NEW}"; echo "BLOCKER: no signing key was generated" >&2; exit 1; }
-  # An empty key file is replaced, as a missing one is made.
-  if ln "${KEY_NEW}" "${KEY_FILE}" 2>/dev/null || { [ ! -s "${KEY_FILE}" ] && mv "${KEY_NEW}" "${KEY_FILE}"; }; then
+  waits=0
+  until mkdir "${KEY_LOCK}" 2>/dev/null; do
+    [ $((waits += 1)) -le 300 ] ||
+      { echo "BLOCKER: ${KEY_LOCK} is held; remove it if no auth-up is running" >&2; exit 1; }
+    sleep 0.1
+  done
+  trap 'rmdir "${KEY_LOCK}"' EXIT
+  if [ ! -s "${KEY_FILE}" ]; then
+    KEY_NEW="$(mktemp "${KEY_FILE}.XXXXXX")"
+    (umask 077 && node "${ROOT}/scripts/local/signing-key.mjs" > "${KEY_NEW}")
+    [ -s "${KEY_NEW}" ] || { rm -f "${KEY_NEW}"; echo "BLOCKER: no signing key was generated" >&2; exit 1; }
+    mv "${KEY_NEW}" "${KEY_FILE}"
     echo "auth-up: wrote ${KEY_FILE}"
   fi
-  rm -f "${KEY_NEW}"
+  rmdir "${KEY_LOCK}"
+  trap - EXIT
 fi
 GOTRUE_JWT_KEYS="$(cat "${KEY_FILE}")"
 KEY_LABEL="$(shasum -a 256 "${KEY_FILE}" | cut -c1-16)"
