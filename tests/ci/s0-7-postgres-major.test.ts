@@ -193,7 +193,8 @@ function ciOnTheCases3() {
     const [runId] = lookahead(workflow);
     const [reportId, report] =
       Object.entries(workflow.jobs).find(([, each]) => each.permissions !== undefined) ?? [];
-    expect(report?.if).toBe('failure()');
+    // Any outcome but success: a run that hits its timeout is cancelled, not failed.
+    expect(report?.if).toBe(`always() && needs.${runId ?? ''}.result != 'success'`);
     expect(report?.needs).toStrictEqual([runId]);
     expect(report?.permissions).toStrictEqual({ issues: 'write' });
     const script = report?.steps.map((step) => step.run ?? '').join('\n') ?? '';
