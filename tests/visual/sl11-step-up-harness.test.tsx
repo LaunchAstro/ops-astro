@@ -22,7 +22,9 @@ import { report, type PageShot } from './report.ts';
 const ask = (over: Partial<StepUpAsk>): StepUpAsk => ({
   checking: false,
   because: null,
+  way: 'code',
   submit: () => {},
+  submitPassword: () => {},
   cancel: () => {},
   ...over,
 });

@@ -1,0 +1,22 @@
+{
+  "invariant": [
+    "tests/authority/c32-clients-and-grants-isolation.test.ts",
+    "tests/authority/c32-clients-and-grants-refusals.test.ts",
+    "tests/authority/c32-clients-and-grants.test.ts",
+    "tests/authority/c32-grant-ids.test.ts",
+    "tests/authority/c58-end-access-credentials.test.ts",
+    "tests/authority/c58-end-access-isolation.test.ts",
+    "tests/authority/c58-end-access-race.test.ts",
+    "tests/authority/c58-end-access.test.ts",
+    "tests/authority/c58-endings-loop.test.ts",
+    "tests/authority/c58-shared-login.test.ts",
+    "tests/authority/c60-client-privacy-refusals.test.ts",
+    "tests/authority/c60-client-privacy.test.ts",
+    "tests/authority/grant-chain.test.ts",
+    "tests/authority/non-member-grants.test.ts"
+  ],
+  "conformance": [
+    "tests/authority/party-capability-reads.test.ts",
+    "tests/authority/share-revoke-on-trashed-task.test.ts"
+  ]
+}

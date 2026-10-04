@@ -366,9 +366,9 @@ At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
 (the header of `restricted-calls-prefixes.test.ts`, and its
 `answers every caller as the contract says after <version>`). At the full
-schema, the suite seeds `person_identifiers`, `person_merges`, `record_links` and
-the three `inbox_` tables itself. The suite counts the own-tenant insert positive control (TC:108) per
-table: one insert through the production wrapper on each tenant table the
+schema, the suite seeds `person_identifiers`, `person_merges`, `record_links`
+and the three `inbox_` tables itself. The suite counts the own-tenant insert
+positive control (TC:108) per table: one insert through the production wrapper on each tenant table the
 application may insert into, each `rows 1`, and each rolled back
 (`restricted-calls.test.ts`,
 `admits an own-business insert on every table the application inserts into`).
@@ -676,8 +676,18 @@ and who made it and when. It is the party a party-scoped grant names in
 `grants.scope_id` and a task names in its `client` link (`records.uuid_7`).
 Neither carries a foreign key to it, so `access.grant` and `task.set_party`
 check a client is of this business before writing its id. The application may
-select and insert; nothing updates or deletes a row. Tenancy-keyed with the
-restrictive policy.
+select and insert; nothing deletes a row. Tenancy-keyed with the restrictive
+policy.
+
+C60 (20261003000423) adds the client's privacy settings, each off for a new
+client: `model_egress` with `model_providers` (on only with a provider named,
+`clients_egress_names_providers`), `handles_health` (which keeps model egress
+off, `clients_health_keeps_egress_off`) and `no_agent_edits`. The application
+may update those four columns alone, by `client.set_privacy`.
+`client_model_requests` keeps each written request for model use: who asked,
+when, the link to the request, the providers and the outcome (`applied` or the
+refusal's code), with who recorded it. Select and insert only; written once.
+Tenancy-keyed with the restrictive policy.
 
 ## Access endings (0056, C58)
 

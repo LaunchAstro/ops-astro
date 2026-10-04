@@ -186,6 +186,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.set': writing(client('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
   'client.create': writing(client('clients')),
+  'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
   // content once scoped to it, so its rows count as client-scoped.
   'gate.pending': READ,

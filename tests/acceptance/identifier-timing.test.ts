@@ -341,6 +341,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       action: 'read',
     }));
     byAda('access.end', 'holderId', f.admin.personId as string, (holderId) => ({ holderId }));
+    // C60: bravo's client named in an alpha privacy change.
+    byAda('client.set_privacy', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      modelEgress: false,
+      providers: [],
+      handlesHealth: false,
+      noAgentEdits: true,
+    }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
     }));

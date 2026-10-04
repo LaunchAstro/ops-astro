@@ -16,6 +16,7 @@ import {
   asksMoneyStepUp,
   heldPermissions,
   listAllClients,
+  listClientPrivacy,
   standsOnShares,
 } from '../../../core-records/src/index.ts';
 import type { HeldPermission, TenantQuery } from '../../../core-records/src/index.ts';
@@ -167,6 +168,7 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
     clients: clients.map((row) => withPreview({ personId: row.id, name: row.display_name })),
     agents: delegations.map((row) => agentOf(row, held)),
     clientRecords: await listAllClients(tx),
+    clientPrivacy: await listClientPrivacy(tx),
   };
 }
 

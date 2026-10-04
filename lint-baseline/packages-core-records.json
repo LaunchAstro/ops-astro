@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "eslint(max-classes-per-file)": 1,
+    "eslint(max-lines-per-function)": 13,
+    "eslint(max-lines)": 10,
+    "eslint(no-negated-condition)": 2,
+    "unicorn(no-array-callback-reference)": 1,
+    "unicorn(no-immediate-mutation)": 1,
+    "unicorn(no-negated-condition)": 2,
+    "unicorn(no-useless-undefined)": 1,
+    "unicorn(prefer-import-meta-properties)": 1,
+    "unicorn(prefer-single-call)": 1
+  }
+}

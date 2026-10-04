@@ -602,6 +602,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['holderId'],
   }),
+  // C60: the tracked action `client privacy setting changed (model egress,
+  // providers, health, no agent edits)`, under `privacy:manage` on the named
+  // client (party scope), never an agent's.
+  declare('client.set_privacy', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['clientId'],
+  }),
 
   // Custody (C31). `custody:manage` for all three, never an agent (the key
   // catalogue: owner and administrators). The list is asked per row by the
