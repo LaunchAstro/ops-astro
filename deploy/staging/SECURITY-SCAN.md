@@ -15,7 +15,9 @@ only, 45 minutes at most), and removes the login whatever happened, unless anoth
 business maps the same sign-in to a person of its own: then nothing is removed.
 The login's record names the sign-in before the provider is asked to make it,
 so a second make is refused and a make cut short, or whose reply was lost, is
-still removed. A removal waits for a make still under way, then holds the access
+still removed. A removal told the sign-in is not there asks again until a minute after
+the record was written, since a make killed part way can leave the provider still making
+it. A removal waits for a make still under way, then holds the access
 lock and the login subject lock until the provider has deleted the sign-in: a
 mapping any business writes meanwhile is refused. The API scan
 sends attack values to real commands; staging keeps what it made until the

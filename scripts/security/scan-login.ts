@@ -7,6 +7,8 @@
 // Removal checks first that the sign-in and the person are the scan login's,
 // and that no other business maps the sign-in to a person of its own.
 
+import { statSync } from 'node:fs';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { databaseProject, Refusal } from '../ops/staging-reset.ts';
 
 export const SCAN_BUSINESS = 'alpha';
@@ -122,6 +124,29 @@ export function loginRecord(text: string): LoginRecord {
   if (typeof userId !== 'string' || !UUID.test(userId))
     throw new Refusal('the login file names no sign-in');
   return { email, userId };
+}
+
+/** How long after its claim a sign-in the provider says is missing may still be being made. */
+export const CREATION_WINDOW_MS = 60_000;
+
+/**
+ * The provider's answer for the claimed sign-in. A `make` killed part way can
+ * leave its creation under way at the provider, which finishes it with no one
+ * waiting, so "not there" is asked again every half second until a minute
+ * after the claim file was written; only then is it believed, and `remove`
+ * keeps the claim until it is.
+ */
+export async function askAfterClaim<T extends { readonly status: number }>(
+  ask: () => Promise<T>,
+  claim: string,
+): Promise<T> {
+  const until = statSync(claim).mtimeMs + CREATION_WINDOW_MS;
+  let answer = await ask();
+  while (answer.status === 404 && Date.now() < until) {
+    // eslint-disable-next-line no-await-in-loop -- one ask at a time until the window ends
+    answer = await sleep(500).then(ask);
+  }
+  return answer;
 }
 
 /** Check first: the provider's sign-in and the person must be the scan login's own. */

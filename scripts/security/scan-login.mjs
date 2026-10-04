@@ -1,18 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The security pass's scan login, the command (ticket S0-5 item 7). The
-// decisions are in `scan-login.ts`; this file runs them.
+// The security pass's scan login command (S0-5 item 7); its decisions are in `scan-login.ts`.
 //
 //   node scripts/security/scan-login.mjs make|remove
 //
-// Settings: deploy/staging/SECURITY-SCAN.md, plus SCAN_LOGIN_PLACE (staging or
-// local), SCAN_LOGIN_FILE and SCAN_TOKEN_FILE (written owner-only). `make` claims
-// SCAN_LOGIN_FILE, naming the sign-in's address and the id it asks the provider
-// to give it, before it asks: a second `make` finds it claimed, and `remove`
-// finds the sign-in even when `make` stopped part way or its reply was lost. Both
-// hold the scan-login lock throughout, so a `remove` waits out a pending `make`.
-// Exit 0 when done, 1 when refused or stopped. Nothing
-// printed carries an address, a key, a password or the token.
+// Settings: deploy/staging/SECURITY-SCAN.md, plus SCAN_LOGIN_PLACE (staging or local),
+// SCAN_LOGIN_FILE and SCAN_TOKEN_FILE (written owner-only). `make` claims SCAN_LOGIN_FILE, naming
+// the sign-in's address and the id it asks the provider to give it, before it asks: a second `make`
+// finds it claimed, and `remove` finds the sign-in even when `make` stopped part way or its reply
+// was lost. Both hold the scan-login lock, so `remove` waits out a pending `make`, and the creation
+// a killed `make` left under way (`askAfterClaim`). Exit 0 when done, 1 when refused or stopped.
+// Nothing printed carries an address, a key, a password or the token.
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
@@ -29,6 +27,7 @@ import { lockAccess } from '../../packages/core-records/src/authority/access.ts'
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import {
+  askAfterClaim,
   loginRecord,
   removalRefusal,
   SCAN_BUSINESS,
@@ -274,7 +273,8 @@ async function remove() {
       return;
     }
     const record = loginRecord(readFileSync(env.SCAN_LOGIN_FILE, 'utf8'));
-    const found = await provider(`/admin/users/${record.userId}`, 'GET');
+    const user = `/admin/users/${record.userId}`;
+    const found = await askAfterClaim(() => provider(user, 'GET'), env.SCAN_LOGIN_FILE);
     if (found.status !== 200 && found.status !== 404)
       stop(`the admin API did not read the sign-in (${found.status})`);
     const providerEmail = found.status === 404 ? undefined : found.body?.email;
