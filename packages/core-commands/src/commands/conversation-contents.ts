@@ -6,8 +6,13 @@
 // first message as a marked quotation. `conversation-lifecycle.ts` writes
 // them at quiet and reads the work again before a purge.
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { ConversationPointerView, WrapUpItemView } from '../../../core-wire/src/index.ts';
+import { readableScope, subjectsOf } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import type {
+  ConversationPointerView,
+  WrapUpItemView,
+  WrapUpView,
+} from '../../../core-wire/src/index.ts';
 import { conversationAddress } from './conversations.ts';
 
 const QUOTATION_LIMIT = 1_000;
@@ -134,22 +139,33 @@ export const COUNTED_FACTS = {
 
 const TASK_ADDRESS = /^\/task\/([^/]+)$/u;
 
+/** Whether an address names no task, or one this reader may read. */
+export type ReadsAddress = (address: string) => boolean;
+
 /**
- * A stored wrap-up's contents as one reader may see them: a pointer naming a
- * task the reader may not read (a task, or a run or gate on one) is left out,
- * and a counted fact counts what is left, so no id, address or count of such
- * a task reaches them (catalogue #412).
+ * The reader's `task:read` reach, as a check on an address: one naming a task
+ * passes only when a business grant or a grant on that task covers it, as
+ * `task.read` admits it; any other address passes.
  */
-export function contentsForReader<
-  T extends {
-    readonly items: readonly WrapUpItemView[];
-    readonly left_open: readonly ConversationPointerView[];
-  },
->(stored: T, readsTask: (taskId: string) => boolean): T {
-  const shown = (pointer: ConversationPointerView): boolean => {
-    const task = TASK_ADDRESS.exec(pointer.address)?.[1];
-    return task === undefined || readsTask(task);
+export async function addressReader(tx: TenantQuery, session: Session): Promise<ReadsAddress> {
+  const tasks = await readableScope(tx, subjectsOf(session), 'task', 'read');
+  return (address) => {
+    const task = TASK_ADDRESS.exec(address)?.[1];
+    return task === undefined || tasks.business || tasks.records.includes(task);
   };
+}
+
+/**
+ * A stored wrap-up's contents as one reader may see them: a pointer to a
+ * task, run or gate is kept only when its address names a task the reader may
+ * read (anything else of those kinds is left out, failing closed), and a
+ * counted fact counts what is left, so no id, address or count of such a task
+ * reaches them (catalogue #412).
+ */
+function contentsForReader(stored: WrapUpRow, reads: ReadsAddress): WrapUpRow {
+  const shown = (pointer: ConversationPointerView): boolean =>
+    pointer.kind === 'conversation' ||
+    (TASK_ADDRESS.test(pointer.address) && reads(pointer.address));
   return {
     ...stored,
     items: stored.items.map((item) => {
@@ -160,6 +176,40 @@ export function contentsForReader<
       return { ...item, pointers, fact: count === undefined ? item.fact : count(pointers.length) };
     }),
     left_open: stored.left_open.filter(shown),
+  };
+}
+
+/** A stored wrap-up version, as `conversation_wrap_ups` holds it. */
+export interface WrapUpRow {
+  readonly version: number;
+  readonly created_at: Date;
+  readonly written_by_operation: string;
+  readonly code_revision: string;
+  readonly definition_version: string | null;
+  readonly request_quotation: string;
+  readonly items: WrapUpView['items'];
+  readonly left_open: WrapUpView['leftOpen'];
+}
+
+export const NOTHING_LEFT_OPEN = 'nothing left open';
+
+export function leftOpenText(leftOpen: WrapUpView['leftOpen']): string {
+  if (leftOpen.length === 0) return NOTHING_LEFT_OPEN;
+  return `${String(leftOpen.length)} left open: ${leftOpen.map((pointer) => `${pointer.kind} ${pointer.id}`).join(', ')}`;
+}
+
+/** A stored wrap-up as this reader may see it (`contentsForReader`). */
+export function wrapUpView(stored: WrapUpRow, reads: ReadsAddress): WrapUpView {
+  const row = contentsForReader(stored, reads);
+  return {
+    version: stored.version,
+    writtenAt: stored.created_at.toISOString(),
+    writtenBy: { operation: stored.written_by_operation, codeRevision: stored.code_revision },
+    definitionVersion: stored.definition_version,
+    request: { quotation: stored.request_quotation },
+    items: row.items,
+    leftOpen: row.left_open,
+    leftOpenText: leftOpenText(row.left_open),
   };
 }
 

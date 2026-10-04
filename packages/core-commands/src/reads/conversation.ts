@@ -24,7 +24,6 @@ import {
   checkAuthority,
   coveredScopes,
   isUuid,
-  readableScope,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
@@ -32,11 +31,15 @@ import type {
   ConversationListResult,
   ConversationMessageView,
   ConversationReadResult,
-  WrapUpView,
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { conversationAddress } from '../commands/conversations.ts';
-import { contentsForReader } from '../commands/conversation-contents.ts';
+import {
+  addressReader,
+  wrapUpView,
+  type ReadsAddress,
+  type WrapUpRow,
+} from '../commands/conversation-contents.ts';
 
 const COLLECTION = 'conversation';
 
@@ -92,47 +95,6 @@ interface ConversationRow {
   readonly body_purged_at: Date | null;
 }
 
-interface WrapUpRow {
-  readonly version: number;
-  readonly created_at: Date;
-  readonly written_by_operation: string;
-  readonly code_revision: string;
-  readonly definition_version: string | null;
-  readonly request_quotation: string;
-  readonly items: WrapUpView['items'];
-  readonly left_open: WrapUpView['leftOpen'];
-}
-
-export const NOTHING_LEFT_OPEN = 'nothing left open';
-
-export function leftOpenText(leftOpen: WrapUpView['leftOpen']): string {
-  if (leftOpen.length === 0) return NOTHING_LEFT_OPEN;
-  return `${String(leftOpen.length)} left open: ${leftOpen.map((pointer) => `${pointer.kind} ${pointer.id}`).join(', ')}`;
-}
-
-/** A stored wrap-up as this reader may see it (`contentsForReader`). */
-async function wrapUpView(
-  tx: TenantQuery,
-  session: Session,
-  stored: WrapUpRow,
-): Promise<WrapUpView> {
-  const tasks = await readableScope(tx, subjectsOf(session), 'task', 'read');
-  const row = contentsForReader(
-    stored,
-    (taskId) => tasks.business || tasks.records.includes(taskId),
-  );
-  return {
-    version: stored.version,
-    writtenAt: stored.created_at.toISOString(),
-    writtenBy: { operation: stored.written_by_operation, codeRevision: stored.code_revision },
-    definitionVersion: stored.definition_version,
-    request: { quotation: stored.request_quotation },
-    items: row.items,
-    leftOpen: row.left_open,
-    leftOpenText: leftOpenText(row.left_open),
-  };
-}
-
 /** The body, oldest first. */
 async function messagesOf(
   tx: TenantQuery,
@@ -155,6 +117,32 @@ async function messagesOf(
     body: message.body,
     createdAt: message.created_at.toISOString(),
   }));
+}
+
+/** The conversation's own fields; its scope and page name a task only to a reader who may read it. */
+function conversationView(
+  row: ConversationRow,
+  reads: ReadsAddress,
+): ConversationReadResult['conversation'] {
+  return {
+    id: row.id,
+    address: conversationAddress(row.id),
+    title: row.title,
+    subject: row.subject,
+    scope:
+      row.scope_kind === null ||
+      row.scope_record_id === null ||
+      !reads(`/task/${row.scope_record_id}`)
+        ? null
+        : { kind: row.scope_kind, id: row.scope_record_id },
+    page:
+      row.page_address === null || row.page_shows === null || !reads(row.page_address)
+        ? null
+        : { address: row.page_address, shows: row.page_shows },
+    createdAt: row.created_at.toISOString(),
+    lastActivityAt: row.last_activity_at.toISOString(),
+    bodyPurgedAt: row.body_purged_at?.toISOString() ?? null,
+  };
 }
 
 async function served(
@@ -180,27 +168,12 @@ async function served(
     [tx.businessId, conversationId],
   );
   const current = wrapUps[0];
+  const reads = await addressReader(tx, session);
   return {
     ok: true,
-    conversation: {
-      id: row.id,
-      address: conversationAddress(row.id),
-      title: row.title,
-      subject: row.subject,
-      scope:
-        row.scope_kind === null || row.scope_record_id === null
-          ? null
-          : { kind: row.scope_kind, id: row.scope_record_id },
-      page:
-        row.page_address === null || row.page_shows === null
-          ? null
-          : { address: row.page_address, shows: row.page_shows },
-      createdAt: row.created_at.toISOString(),
-      lastActivityAt: row.last_activity_at.toISOString(),
-      bodyPurgedAt: row.body_purged_at?.toISOString() ?? null,
-    },
+    conversation: conversationView(row, reads),
     messages,
-    wrapUp: current === undefined ? null : await wrapUpView(tx, session, current),
+    wrapUp: current === undefined ? null : wrapUpView(current, reads),
     wrapUpHistory: wrapUps.map((wrapUp) => ({
       version: wrapUp.version,
       writtenAt: wrapUp.created_at.toISOString(),
