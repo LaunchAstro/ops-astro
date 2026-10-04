@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 20261002235500 a provider lookup in flight holds a slot on its route (AW-10, AW-01).
+-- 20261004040000 a provider lookup in flight holds a slot on its route (AW-10, AW-01).
 --
 -- The reconciliation pass asks a provider about a call held as unknown
 -- liability (`reconcileProviderCalls`, core-custody/src/broker-reconcile.ts).

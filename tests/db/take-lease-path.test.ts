@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The pickup path's own checks (`20261002235700_lease_pickup_path`). The application
+// The pickup path's own checks (`20261004040200_lease_pickup_path`). The application
 // role inserts no lease; `public.take_lease` does, as its definer, and only
 // for the caller's own business, a claimable reservation, and a claimant the
 // authority model covers: a person under their own live write on the task, an

@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 20261002235600 a hold settled at its spend records why it stopped (SL11-30). Since
+-- 20261004040100 a hold settled at its spend records why it stopped (SL11-30). Since
 -- SL11-29 the classifier settles a stopped hold `actual` at its calls' spend
 -- (the sweep, a lineage cancel, lost authority, a hand-back, a drop) rather
 -- than abandoning it at no cost. 0013's check tied a cause to `abandoned`

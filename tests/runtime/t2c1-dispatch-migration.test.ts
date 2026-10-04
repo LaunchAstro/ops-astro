@@ -52,13 +52,13 @@ const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032'
 // And AW-06's 0105 plan step key: that runtime's proposal writes its step with it.
 // And AW-01's 0085 model calls with AW-05's 0087 and 0088 budget asks and
 // answers: its classifier reads a hold's model calls when it hands back.
-// And 20261002235700's pickup path: that runtime takes its lease through `take_lease`.
+// And 20261004040200's pickup path: that runtime takes its lease through `take_lease`.
 // None reads anything 0033 to 0035 add, and the runner applies whatever is
 // pending, so the upgrade below still applies 0033 onto these rows.
 const SEEDED = (version: string): boolean =>
   THROUGH_0032(version) ||
   ['0036', '0085', '0087', '0088', '0100', '0105'].includes(version.slice(0, 4)) ||
-  version.startsWith('20261002235700');
+  version.startsWith('20261004040200');
 
 /** Proposes work on the task and approves it, answering the reservation the approval made. */
 async function approvedReservation(

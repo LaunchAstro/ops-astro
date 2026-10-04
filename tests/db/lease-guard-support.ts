@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What the lease guard's two suites share (`20261002235700_lease_pickup_path`): a
+// What the lease guard's two suites share (`20261004040200_lease_pickup_path`): a
 // statement written straight as the application role in a transaction that
 // always rolls back, approved work nobody has picked up, and a person's own
 // pickup through the production command entry. Not a suite.

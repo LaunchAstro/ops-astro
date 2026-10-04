@@ -7,7 +7,7 @@
 // that is still live. The reading of the lease row, the holder and fence
 // rungs and the person's current write are here, once, so the three cannot
 // drift into three answers to one question. The next fence is the pickup
-// path's (`take_lease`, migration 20261002235700).
+// path's (`take_lease`, migration 20261004040200).
 //
 // **One wording rule.** A lease refusal's reason is fixed text chosen by its
 // cause and nothing else. It names no lease, fence, task, version or state

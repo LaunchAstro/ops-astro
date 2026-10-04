@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// SL11-30 MONEY in the schema (`20261002235600_reservation_stop_cause`): a hold the
+// SL11-30 MONEY in the schema (`20261004040100_reservation_stop_cause`): a hold the
 // classifier settles `actual` at its calls' spend records the cause that
 // stopped it, as an abandoned hold does (T5, cause recorded). The check that
 // kept every cause off an `actual` row now admits one there, and nowhere else

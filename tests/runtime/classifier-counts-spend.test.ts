@@ -5,7 +5,7 @@
 // the reservation's calls (`modelCallsOn`, AW-01): with none still open it
 // settles the hold at what the settled ones cost, so the envelope and the cap
 // count it once, and at zero it abandons as before. Either way the row records
-// the cause that stopped it (20261002235600). A call still open may have cost up to its
+// the cause that stopped it (20261004040100). A call still open may have cost up to its
 // maximum, so the whole hold is kept for a person (SL11-32, ORCH62: 3a-r2's
 // runtime). Each path that reaches the step is driven through the real process:
 // the sweep the API runs, a person's cancel, and a dropped hand-back.

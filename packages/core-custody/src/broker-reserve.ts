@@ -214,7 +214,7 @@ function routeFor(
 
 /**
  * The durable ceilings, counting a call from its hold until it ends and a
- * lookup's unexpired slot as one (AW-10, 20261002235500): first the business's own per
+ * lookup's unexpired slot as one (AW-10, 20261004040000): first the business's own per
  * operation (`hasRoom`), then the route's, the installation's, locked per route.
  */
 export async function atCeiling(

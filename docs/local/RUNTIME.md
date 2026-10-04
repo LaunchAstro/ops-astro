@@ -977,7 +977,7 @@ topped-up hold counts only the spend the top-up did not move: the ask's
 ceiling and the top-up less the hold now. Below zero, a call counted at its
 maximum came to less, and the envelope gets the difference back. Settled or
 abandoned, the stopped hold records its cause and the cause's identity
-(`20261002235600_reservation_stop_cause`).
+(`20261004040100_reservation_stop_cause`).
 
 A call open when its hold's spend was counted, by this settle, a top-up or the
 end at a budget stop (`budget_stop_ended`), was counted at its maximum. When
@@ -1576,7 +1576,7 @@ both tenancy-scoped with row security forced, and the fair share's count
   ceiling for the business, then the route's ceiling and the business's fair
   share). A lookup with no room is not sent and writes nothing; the next pass
   asks again. With room, the same transaction, under the gate's locks, takes
-  the lookup's slot on the asked call (`lookup_until`, `20261002235500_lookup_slot`)
+  the lookup's slot on the asked call (`lookup_until`, `20261004040000_lookup_slot`)
   before anything is sent. The route's ceiling, the fair share and the
   business's own ceiling for the operation all count an unexpired slot as a
   call in flight: the lookup uses the provider's capacity as a call does, so

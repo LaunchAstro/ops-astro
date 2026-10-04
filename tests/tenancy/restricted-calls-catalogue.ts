@@ -16,7 +16,7 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
-  'public.leases': { from: '20261002235700', columns: ['expires_at', 'released_at', 'state'] },
+  'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
   'public.clients': {
     from: '20261003000423',

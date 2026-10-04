@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 20261002235700 a lease is taken only through the pickup path (SL11-30). 0111 refuses
+-- 20261004040200 a lease is taken only through the pickup path (SL11-30). 0111 refuses
 -- a reviewed output its lease's holder did not propose, and that check is only
 -- as strong as `leases.holder_actor_id`. 0013 granted the application role
 -- insert and update on the whole table, so a direct statement could rewrite a

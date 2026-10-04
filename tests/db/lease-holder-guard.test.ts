@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A lease's holder is written once, by the pickup path (`20261002235700_lease_pickup_path`).
+// A lease's holder is written once, by the pickup path (`20261004040200_lease_pickup_path`).
 // 0111 refuses a reviewed output its lease's holder did not propose, which is
 // only as strong as the holder column: while the application role could
 // update `leases.holder_actor_id` or insert a lease of its own, it could name

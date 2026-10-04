@@ -341,7 +341,7 @@ the second, and the one read across businesses: a route's ceiling is the
 installation's, which a tenant transaction cannot count under row security.
 It answers one whole number, 1 when the transaction's own business may hold
 one more call on the route and 0 when it may not, with no id and no count; a
-provider lookup's unexpired slot counts as a call (migration 20261002235500 replaces it,
+provider lookup's unexpired slot counts as a call (migration 20261004040000 replaces it,
 keeping its grants and rights);
 the business is `app_business_id()`, never an argument, and none is 0. It
 runs with `row_security = off`, so an owner that does not bypass row security
@@ -351,7 +351,7 @@ application group may not execute it. Only `ops_astro_broker` may, a
 not inherit it, so the broker takes it for the one statement with
 `set_config('role', ..., true)` and gives it back. The suites sort that role
 into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
-proves the separation and the grants. `take_lease` (migration 20261002235700, SL11-30) is
+proves the separation and the grants. `take_lease` (migration 20261004040200, SL11-30) is
 the third, and the one way a lease is written. The application group holds no
 insert on `leases` and updates only `expires_at`, `state` and `released_at`, so
 it can neither rewrite a lease's holder nor forge a lease, and 0111's check
