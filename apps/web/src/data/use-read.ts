@@ -78,6 +78,8 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const isEmpty = options.isEmpty;
 
   const liveRef = useRef(false);
+  /** The grant and dependencies the projection in `readRef` was built for. */
+  const built = useRef<readonly unknown[]>([]);
   const reread = useCallback(
     (live: boolean) => {
       const projection = readRef.current;
@@ -99,6 +101,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
         : { grantKey, onState: setState, isEmpty },
     );
     readRef.current = projection;
+    built.current = [grantKey, ...options.deps];
     liveRef.current = false;
     setState(projection.state);
     const generation = projection.begin();
@@ -121,7 +124,15 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const { rollup } = options;
   useEffect(() => rollup?.follow(reload), [rollup, reload]);
 
-  return { state, reload, live: liveRef.current && state.outcome === 'loading' };
+  // A changed grant or dependency renders once before the effect above resets
+  // the read, still holding the old read's state: that read is not live here.
+  const own = same(built.current, [grantKey, ...options.deps]);
+  return { state, reload, live: own && liveRef.current && state.outcome === 'loading' };
+}
+
+/** Whether two dependency lists match, compared the way React compares them. */
+function same(built: readonly unknown[], deps: readonly unknown[]): boolean {
+  return built.length === deps.length && deps.every((each, at) => Object.is(each, built[at]));
 }
 
 /**
