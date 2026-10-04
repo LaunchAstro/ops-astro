@@ -3,13 +3,15 @@
 // C80's `receipt written`: the observed publish or revert result and its
 // receipt, in one transaction under a live worker lease on the correction's
 // task that the caller holds, inside a live delegation where the lease has
-// one. If the receipt cannot be written, the state does not move.
+// one, whose delegating person still holds the write it draws on. If the
+// receipt cannot be written, the state does not move.
 //
 // The runner's read of the correction it is about to act on is here too, under
 // the same lease check, so the read and the write ask one question.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { checkDelegatedAuthority, resolveLiveById } from '../authority/delegations.ts';
 import {
   lockCorrectionForSystem,
   type CorrectionState,
@@ -66,7 +68,8 @@ function nextState(result: ObservedResult, correction: LiveCorrection): Correcti
   return 'live';
 }
 
-export type ObservedRefusal = 'LEASE_NOT_OWNED' | 'NOT_FOUND' | 'GATE_NOT_APPROVED';
+export type ObservedRefusal =
+  'LEASE_NOT_OWNED' | 'DELEGATION_NARROWED' | 'NOT_FOUND' | 'GATE_NOT_APPROVED';
 
 type Held = { readonly ok: true; readonly correction: LiveCorrection } | Refused;
 type Refused = { readonly ok: false; readonly code: ObservedRefusal };
@@ -82,6 +85,7 @@ type Refused = { readonly ok: false; readonly code: ObservedRefusal };
  * write that waited on the correction past an expiry sees it expired. The lease
  * is the caller's own, and its delegation, where it has one, is not revoked,
  * settled or expired: the check `core-runtime/src/lease-ownership.ts` makes.
+ * A delegated lease then stands on its person's grants (`delegatedWriteStands`).
  */
 async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
   // The lease the caller holds names the one task it may reach, asked before any correction:
@@ -108,9 +112,9 @@ async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
       [tx.businessId, lease.delegation_id],
     );
   }
-  const live = await tx.query<{ readonly id: string }>(
+  const live = await tx.query<{ readonly at: string }>(
     `with instant as materialized (select clock_timestamp() as at)
-     select l.id from public.leases l, instant
+     select instant.at::text as at from public.leases l, instant
       where l.business_id = $1 and l.id = $2 and l.state = 'live' and l.expires_at > instant.at
         and (l.delegation_id is null or exists (
               select 1 from public.delegations d
@@ -118,8 +122,53 @@ async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
                  and d.revoked_at is null and d.settled_at is null and d.expires_at > instant.at))`,
     [tx.businessId, at.leaseId],
   );
-  if (live.length === 0) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  const [instant] = live;
+  if (instant === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  if (lease.delegation_id !== null) {
+    const stands = await delegatedWriteStands(tx, at.actorId, lease.delegation_id, instant.at);
+    if (!stands.ok) return stands;
+  }
   return { ok: true, correction };
+}
+
+/**
+ * A delegation's expiry is the lease's, not its person's earliest grant's, so
+ * between the two the worker is narrowed (`docs/local/AUTHORITY.md`): a grant
+ * revoked or past its own expiry refuses the worker's next read or write, as
+ * it refuses the agent's next call. Asked through `checkDelegatedAuthority`,
+ * the check a call makes, for write on every collection the delegation
+ * carries on its purpose record; any one gone is `DELEGATION_NARROWED`. The
+ * grants it answers are judged again at `at`, the instant read after the
+ * locks, so a grant that lapsed while the caller waited no longer counts
+ * (`core-runtime/src/recovery/classifier.ts`, `checkAuthorityAt`).
+ */
+async function delegatedWriteStands(
+  tx: TenantQuery,
+  actorId: string,
+  delegationId: string,
+  at: string,
+): Promise<{ readonly ok: true } | Refused> {
+  const delegation = await resolveLiveById(tx, actorId, delegationId);
+  if (delegation === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  for (const collection of delegation.collections) {
+    // Sequential: one transaction, one connection.
+    // oxlint-disable-next-line no-await-in-loop
+    const reach = await checkDelegatedAuthority(tx, delegation, {
+      collection,
+      action: 'write',
+      scope: delegation.purposeScope,
+    });
+    if (!reach.ok) return { ok: false, code: 'DELEGATION_NARROWED' };
+    // oxlint-disable-next-line no-await-in-loop
+    const held = await tx.query<{ readonly id: string }>(
+      `select id from public.grants
+        where business_id = $1 and id = any($2::uuid[])
+          and (expires_at is null or expires_at > $3::timestamptz)`,
+      [tx.businessId, reach.value, at],
+    );
+    if (held.length === 0) return { ok: false, code: 'DELEGATION_NARROWED' };
+  }
+  return { ok: true };
 }
 
 export interface HeldForRun {
