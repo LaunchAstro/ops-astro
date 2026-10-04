@@ -23,7 +23,8 @@
 //
 // AW-08: the provider's receipt link rides with the first observation of an
 // applied effect and is kept only when `receiptLinkOf` keeps it, checked
-// against the observing agent's live credentials; otherwise it is recorded absent. A later observation never changes it.
+// against every live credential the observing agent holds; otherwise it is
+// recorded absent. A later observation never changes it.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';

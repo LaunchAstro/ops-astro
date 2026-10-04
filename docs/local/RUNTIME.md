@@ -2117,9 +2117,10 @@ launch of the reviewed output is the only decision an effect waits on.
   512 characters, the parsed form byte for byte the text sent, and no run of
   43 base64url characters, a delegation credential's length, as sent or once
   its percent escapes decode (`CREDENTIAL_RUN`), and, for an agent's
-  observation, not the letters and digits of any of the agent's live
-  delegation credentials in order (derived again from each delegation,
-  `agentCredentials`; one that cannot be derived keeps no link). Anything else is stored as null, which a reader shows as "no link", never as a link.
+  observation, not the letters and digits of any live credential the agent
+  holds in order: its delegations, the child delegations they minted, and its
+  logins (each derived again from its row, `agentCredentials`; one that
+  cannot be derived keeps no link). Anything else is stored as null, which a reader shows as "no link", never as a link.
   0109's check repeats the shape and allows a link only on an observed
   attempt; its trigger fixes the link once the attempt is observed, so a link
   resolved later is not a receipt. `task.receipt` names it as `link` beside
