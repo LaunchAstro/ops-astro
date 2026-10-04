@@ -10,7 +10,7 @@ import type { FakeEmailMode } from '../../packages/core-connectors/src/index.ts'
 import { emailAdapter } from '../../packages/core-connectors/src/index.ts';
 import { sendInboxEmail } from '../../packages/core-custody/src/index.ts';
 import { attemptsOf, itemFor, MAIL, noDatabase, useEmailWorld, w } from './email-world.ts';
-import { consoleLine } from '../support/console-text.ts';
+import { consoleLine, streamText } from '../support/console-text.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -71,7 +71,7 @@ it('AW-07b hostile provider: oversized, redirected, malformed and slow answers a
 it('AW-07b canary: a planted recipient address and item link never reach logs, errors or traces', async () => {
   const written: string[] = [];
   const capture = (chunk: unknown): boolean => {
-    written.push(String(chunk));
+    written.push(streamText(chunk));
     return true;
   };
   const spies = [
