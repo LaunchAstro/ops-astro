@@ -216,9 +216,21 @@ interface Pending {
 }
 
 /**
+ * Whether the invitation is live now, on the clock: an act that waited for a lock is judged when
+ * it got it, not when its transaction or the lock statement began.
+ */
+async function liveNow(tx: TenantQuery, id: string): Promise<boolean> {
+  const [now] = await tx.query<{ live: boolean }>(
+    `select expires_at > clock_timestamp() as live from invitations
+      where business_id = $1 and id = $2`,
+    [tx.businessId, id],
+  );
+  return now?.live === true;
+}
+
+/**
  * The invitation, locked; another business's and an unissued id are one answer. Whether it is
- * live is read by a second statement once the lock is held, on the clock: an act that waited for
- * the lock is judged when it got it, not when its transaction or the lock statement began.
+ * live is read by a second statement once the lock is held.
  */
 async function locked(tx: TenantQuery, id: string): Promise<Pending | undefined> {
   if (!isUuid(id)) return undefined;
@@ -228,12 +240,7 @@ async function locked(tx: TenantQuery, id: string): Promise<Pending | undefined>
     [tx.businessId, id],
   );
   if (row === undefined) return undefined;
-  const [now] = await tx.query<{ live: boolean }>(
-    `select expires_at > clock_timestamp() as live from invitations
-      where business_id = $1 and id = $2`,
-    [tx.businessId, id],
-  );
-  return { ...row, live: now?.live === true };
+  return { ...row, live: await liveNow(tx, id) };
 }
 
 async function move(
@@ -251,6 +258,8 @@ async function move(
     if (unmanaged !== undefined) return unmanaged;
     const limit = await overLimit(tx, found.address, context.session.actorId);
     if (limit !== undefined) return limit;
+    // The limit locks may have been waited on: judged again with every lock held.
+    if (!(await liveNow(tx, found.id))) return notPending();
   }
   const [moved] = resend
     ? await tx.query<{ revision: number; state: string }>(

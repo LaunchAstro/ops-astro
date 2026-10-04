@@ -8,7 +8,8 @@
     "SL12-19-P2FIX names c39-t-review-proofs-p2 (C39-T token canary and C39-T isolation: the enrolment token kept at rest cannot be rebuilt from the invitation address, and an address holding a login in another business is still invited) as an invariant, and re-reads c39-t-auth-link: the invite link is our own token, the login provider is never asked at send, nothing derived from a provider value is kept, and an address enrolled elsewhere is invited and answered like a new one.",
     "SL12-31 names c39-t-auth-hook-replay (one signed Send Email hook message sends at most one email and mints at most one token across every business and every hook process, and an invitation that expires while the hook waits for its lock sends no link) as an invariant.",
     "SL12-31 names c39-t-invitation-fence (an invitation send paused past the in-flight fence, on either host clock, calls no provider and records failed, expired; one inside it still sends; an invitation expiring while its send waits on the email limit lock sends nothing and mints no token) as an invariant.",
-    "SL12-32 names c39-t-auth-hook-claim-wait-expiry (a hook send that waited on another transaction's claim of its message, and got it when that transaction rolled back after the invitation expired, sends no link, mints no token, records no attempt and keeps no claim) as an invariant."
+    "SL12-32 names c39-t-auth-hook-claim-wait-expiry (a hook send that waited on another transaction's claim of its message, and got it when that transaction rolled back after the invitation expired, sends no link, mints no token, records no attempt and keeps no claim) as an invariant.",
+    "SL12-32 names c39-t-invitation-resend-limit-lock (a resend that waited on the address or the account limit lock past the invitation's expiry is refused as not pending and writes nothing) as an invariant."
   ],
   "invariant": [
     "tests/access/c39-t-auth-hook-claim-wait-expiry.test.ts",
@@ -21,6 +22,7 @@
     "tests/access/c39-t-invitation-fence.test.ts",
     "tests/access/c39-t-invitation-lock-timing.test.ts",
     "tests/access/c39-t-invitation-refusals.test.ts",
+    "tests/access/c39-t-invitation-resend-limit-lock.test.ts",
     "tests/access/c39-t-invitation-send.test.ts",
     "tests/access/c39-t-invitations.test.ts",
     "tests/access/c39-t-review-proofs-p2.test.ts",
