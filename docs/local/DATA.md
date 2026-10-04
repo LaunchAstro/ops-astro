@@ -547,7 +547,7 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
   Team panel; a client of the business is answered `NOT_FOUND`
 - `chat.conversations {}` → the reader's own team conversations (C71-D), each
   with its members and its unread, derived from the reader's own marker
-  (`team_conversation_members.last_read_at`, 20261003000558, set only by that person);
+  (`team_conversation_members.last_read_at`, 20261004091439, set only by that person);
   the reader's member row is the query's filter, so nobody else's is listed
 - `chat.messages { conversationId }` → one of the reader's conversations'
   messages: `task_comment` records with audience `direct`, anchored by their
