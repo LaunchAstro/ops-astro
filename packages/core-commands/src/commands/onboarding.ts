@@ -153,6 +153,10 @@ const STEP_FIXES: Readonly<Record<string, string>> = {
   stopped: 'This step stopped the onboarding; a person restarts it.',
 };
 
+const NOT_RUNNING = 'This onboarding is not running; a person restarts it.';
+const AGENT_FIX = 'An agent records agent steps; a person records this step’s result.';
+const AGENT_ONLY = refuseCommand('DELEGATION_EXCLUDES_OPERATION', ['kind'], [AGENT_FIX]);
+
 const STOPPED_REPORT =
   'Onboarding stopped after two failed attempts at this step. Nothing further runs until a person restarts it.';
 
@@ -184,9 +188,9 @@ function parseResult(
 }
 
 /**
- * A step's result, onto its own task. The caller's `task:write` on the task
- * was checked before this runs: by the envelope for a person, by the
- * delegation for an agent.
+ * A step's result, onto its own task, after the caller's `task:write` on it
+ * (the envelope's for a person, the delegation's for an agent). An agent
+ * records agent steps only; the rest are a person's checkpoint (ORCH79).
  */
 export async function writeStepResult(
   tx: TenantQuery,
@@ -203,12 +207,8 @@ export async function writeStepResult(
   const { outcome, text, commentTypeId } = parsed;
   const found = await lockStepOfTask(tx, request.recordId.toLowerCase());
   if (found === undefined) return refused(refuseNotFound());
-  if (found.onboardingState !== 'running') {
-    return notPermitted(
-      found.onboardingState,
-      'This onboarding is not running; a person restarts it.',
-    );
-  }
+  if (author.actorKind === 'agent' && found.step.kind !== 'agent') return refused(AGENT_ONLY);
+  if (found.onboardingState !== 'running') return notPermitted(found.onboardingState, NOT_RUNNING);
   if (found.step.state !== 'ready') {
     return notPermitted(found.step.state, STEP_FIXES[found.step.state] ?? '');
   }
