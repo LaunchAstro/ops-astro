@@ -107,8 +107,10 @@ export async function readSecret(tx: TenantQuery, id: string): Promise<SecretRow
  *
  * Two setters of one name serialise on the row lock, or on the unique index
  * when neither row exists yet: the loser of that insert race waits, then
- * updates the winner's row. Setting again leaves `last_used_at` where it was:
- * a new value has not been used.
+ * updates the winner's row. `expectedRevision` is compared in the upsert
+ * itself, against the row it would replace under that lock, so a stale caller
+ * changes nothing whichever way the race went. Setting again leaves
+ * `last_used_at` where it was: a new value has not been used.
  */
 export async function setSecret(
   tx: TenantQuery,
@@ -122,14 +124,6 @@ export async function setSecret(
   },
 ): Promise<SecretWritten | SecretStale> {
   const sealed = seal(write.value, write.key);
-  const existing = await lockByName(tx, write.name, write.scope);
-  if (
-    existing !== undefined &&
-    write.expectedRevision !== undefined &&
-    Number(existing.revision) !== write.expectedRevision
-  ) {
-    return { stale: true, revision: Number(existing.revision) };
-  }
   const rows = await tx.query<{ readonly id: string; readonly revision: string }>(
     `insert into public.custody_secrets
        (business_id, id, name, scope_kind, scope_id, sealed, ephemeral_public, nonce, key_id,
@@ -143,6 +137,7 @@ export async function setSecret(
            cleared_at = null,
            cleared_by_actor_id = null,
            revision = public.custody_secrets.revision + 1
+       where $10::bigint is null or public.custody_secrets.revision = $10::bigint
      returning id, revision`,
     [
       randomUUID(),
@@ -154,11 +149,15 @@ export async function setSecret(
       sealed.nonce,
       sealed.keyId,
       write.actorId,
+      write.expectedRevision ?? null,
     ],
   );
   const row = rows[0];
-  if (row === undefined) throw new Error('setSecret: the upsert returned no row');
-  return { id: row.id, revision: Number(row.revision) };
+  if (row !== undefined) return { id: row.id, revision: Number(row.revision) };
+  // The row is past expectedRevision: the upsert locked it and changed nothing.
+  const current = await lockByName(tx, write.name, write.scope);
+  if (current === undefined) throw new Error('setSecret: the upsert returned no row');
+  return { stale: true, revision: Number(current.revision) };
 }
 
 /**
