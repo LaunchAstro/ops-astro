@@ -331,6 +331,16 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     name: `restricted calls seed ${randomUUID()}`,
     created_by_actor_id: randomUUID(),
   },
+  // C60: no journey records a client's written request.
+  'public.client_model_requests': {
+    client_id: randomUUID(),
+    requested_by: 'restricted calls seed',
+    requested_on: '2026-10-01',
+    request_link: 'https://files.example.test/seed.pdf',
+    providers: ['replay'],
+    outcome: 'applied',
+    recorded_by_actor: randomUUID(),
+  },
   // 0056 (C58): no journey ends a person's access.
   'public.access_endings': {
     person_id: randomUUID(),

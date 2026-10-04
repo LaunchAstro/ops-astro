@@ -34,7 +34,11 @@
 // name these settings predate the column, so a caller that has not learnt to
 // send one still writes and is still handed the revision the row is now at.
 
-import { isSettingRevisionStale, writeBusinessSetting } from '../../../core-records/src/index.ts';
+import {
+  INBOX_REASONS,
+  isSettingRevisionStale,
+  writeBusinessSetting,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
@@ -192,10 +196,10 @@ function fixesFor(command: string): readonly string[] {
 
 // The caller's notification setting (INB-1e, CS-2.17). Per channel and never
 // per item: the body names no item, and `prepare.ts` refuses one that does.
-// In-app is always on, so the one mode it takes is `on`, and it is the state
-// already: nothing is stored. The email channel and its per-category choice
-// (instant, daily batch, off) arrive with AW-07b, which stores the row under
-// the same self-scoped key; until then email is declared and not landed.
+// In-app is always on, so its one mode is `on` and nothing is stored. The
+// email channel and its per-category choice (instant, daily batch, off) arrive
+// with AW-07b, which stores the row under the same self-scoped key. Until
+// then email is declared and not landed.
 // Nobody switches off or batches a decision or an incident on any channel,
 // and that rule is checked before the channel's own, so it holds the day
 // email lands. No setting reaches an item, a gate or an approval.
@@ -205,28 +209,22 @@ const CHANNEL_MODES: Readonly<Record<string, readonly string[]>> = {
   email: ['instant', 'daily_batch', 'off'],
 };
 
-const CATEGORIES: ReadonlySet<string> = new Set([
-  'decision',
-  'waiting_run',
-  'run_finished',
-  'assignment',
-  'mention',
-  'incident',
-  'client_comment',
-]);
+const CATEGORIES: ReadonlySet<string> = new Set(INBOX_REASONS);
 
 /** Told at once on every channel it reaches (owner answer 10). */
 const NEVER_QUIETED: ReadonlySet<string> = new Set(['decision', 'incident']);
 
 const CHANNEL_FIXES: readonly string[] = ['Send channel as in_app or email.'];
-const IN_APP_FIXES: readonly string[] = ['In-app is always on; the one mode it takes is on.'];
+const IN_APP_FIXES: readonly string[] = ['In-app is always on. Send mode as on.'];
 const CATEGORY_FIXES: readonly string[] = [
   'Send category as one of the inbox reasons, or leave it out for the whole channel.',
 ];
 const NEVER_QUIETED_FIXES: readonly string[] = [
   'Nobody can switch off or batch notifications about a decision or an incident.',
 ];
-const EMAIL_FIXES: readonly string[] = ['The email channel arrives with AW-07b.'];
+const EMAIL_FIXES: readonly string[] = [
+  'The email channel is not available yet. Send channel as in_app.',
+];
 const EMAIL_MODE_FIXES: readonly string[] = ['Send mode as instant, daily_batch or off.'];
 
 /**

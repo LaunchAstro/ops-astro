@@ -59,13 +59,17 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import pg from 'pg';
 import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
+import { manifestPathIn, readNamedSuites } from './named-suites.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 
 const argv = process.argv.slice(2);
 const manifestFlag = argv.indexOf('--manifest');
+// Without --manifest the runner reads the repository's own manifest, the
+// per-area folder or the single file (scripts/named-suites.ts); with it, that
+// one file, as given.
 const manifestPath = resolve(
-  manifestFlag === -1 ? join(repoRoot, 'tests/db/named-suites.json') : argv[manifestFlag + 1],
+  manifestFlag === -1 ? manifestPathIn(repoRoot) : argv[manifestFlag + 1],
 );
 
 const shardFlag = argv.indexOf('--shard');
@@ -92,7 +96,10 @@ if (!existsSync(manifestPath)) {
 
 let manifest;
 try {
-  manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest =
+    manifestFlag === -1
+      ? readNamedSuites(repoRoot)
+      : JSON.parse(readFileSync(manifestPath, 'utf8'));
 } catch (error) {
   console.error(`db-conformance: cannot read ${manifestPath}: ${String(error)}`);
   process.exit(2);

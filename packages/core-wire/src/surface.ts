@@ -210,7 +210,6 @@ const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
 const CUSTODY_COLLECTION = 'custody';
-const CONNECTION_COLLECTION = 'connection';
 const CONVERSATION_COLLECTION = 'conversation';
 const TIME_COLLECTION = 'time';
 const TAG_COLLECTION = 'tag';
@@ -603,6 +602,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['holderId'],
   }),
+  // C60: the tracked action `client privacy setting changed (model egress,
+  // providers, health, no agent edits)`, under `privacy:manage` on the named
+  // client (party scope), never an agent's.
+  declare('client.set_privacy', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['clientId'],
+  }),
 
   // Custody (C31). `custody:manage` for all three, never an agent (the key
   // catalogue: owner and administrators). The list is asked per row by the
@@ -620,12 +628,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['secretId'],
   }),
 
-  // The connector fleet (MP-14-7a). The fleet is `connection:read`, asked per
-  // row by the scopes the caller holds it at, so a client-scoped reader sees
-  // the connections serving that client only. Starting a repair touches the
-  // credential's custody, so it is `custody:manage` business-wide, never an
-  // agent (the ticket's permissions table).
-  read('connection.fleet', CONNECTION_COLLECTION),
+  // The connector fleet (MP-14-7a): `connection:read`, asked per row of the caller's scopes. A
+  // repair touches the credential's custody, so `custody:manage` business-wide, never an agent.
+  read('connection.fleet', 'connection'),
   declare('connector.repair', 'manage', {
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,
