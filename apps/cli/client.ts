@@ -64,13 +64,11 @@ export function shownAddress(api: string): string {
  * delegation in its own header when there is one. The command line and the
  * worker both post through this one (T2b, RN-04), so there is one client.
  * A redirect is never followed: fetch would resend the delegation header to
- * whatever origin it names (#780). It comes back as a non-success answer
- * with its status only: a redirect page names its destination, which can
- * repeat the request path and so the secret in the API address.
+ * whatever origin it names (#780). It comes back as a non-success answer.
  */
 export function httpTransport(api: string): Transport {
-  return async (path, sent, bearer, held) => {
-    const response = await fetch(`${api}${path}`, {
+  return async (path, sent, bearer, held) =>
+    await fetch(`${api}${path}`, {
       method: 'POST',
       redirect: 'manual',
       headers: {
@@ -79,11 +77,18 @@ export function httpTransport(api: string): Transport {
         ...(held === undefined ? {} : { [DELEGATION_HEADER]: held }),
       },
       body: sent,
-    });
-    if (response.status < 300 || response.status >= 400) return response;
-    await response.body?.cancel();
-    return new Response(null, { status: response.status });
-  };
+    }).then(statusOnlyRedirect);
+}
+
+/**
+ * A redirect answer with its status only. A redirect page or message names
+ * its destination, which can repeat the request path and so a secret in the
+ * configured address; the command line would print it.
+ */
+export async function statusOnlyRedirect(response: Response): Promise<Response> {
+  if (response.status < 300 || response.status >= 400) return response;
+  await response.body?.cancel();
+  return new Response(null, { status: response.status });
 }
 
 export interface CliOptions {

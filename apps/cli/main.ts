@@ -37,6 +37,7 @@ import {
   isRefusal,
   isWrite,
   shownAddress,
+  statusOnlyRedirect,
   unknownVerb,
   usage,
   type CliAnswer,
@@ -220,9 +221,12 @@ interface Io {
   readonly stdin: () => Promise<string>;
 }
 
-/** Fetch that never follows a redirect: a followed 307 resends the password (#780). */
+/**
+ * Fetch that never follows a redirect: a followed 307 resends the password
+ * (#780). The redirect answers by its status alone.
+ */
 const unredirected: typeof globalThis.fetch = async (input, init) =>
-  await globalThis.fetch(input, { ...init, redirect: 'manual' });
+  await statusOnlyRedirect(await globalThis.fetch(input, { ...init, redirect: 'manual' }));
 
 async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string) {
   const email = text(parsed.flags, 'email') ?? env['OPS_ASTRO_EMAIL'];
