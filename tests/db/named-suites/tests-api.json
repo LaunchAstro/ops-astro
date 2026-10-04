@@ -98,6 +98,7 @@
     "tests/api/aw-03-sweep.test.ts",
     "tests/api/c36-address.test.ts",
     "tests/api/c54-money.test.ts",
+    "tests/api/c54-recent-sign-in.test.ts",
     "tests/api/cancelled-unknown-hold-story.test.ts",
     "tests/api/fix-2b1-rs-rollup-issued-and-revoked.test.ts",
     "tests/api/fix-2b1-rs2-left-at-door-real-routes.test.ts",
