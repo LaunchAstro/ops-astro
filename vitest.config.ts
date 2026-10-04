@@ -50,13 +50,19 @@ export default defineConfig({
     ],
     // The browser proofs build `apps/web/dist`, which other suites rebuild (an
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
-    // BROWSER_PROOFS=1. Sol's leaked-client proof, kept byte for byte, opens its
-    // world with no skip; without a database it is left out here, and the
-    // manifests run it where there is one.
+    // BROWSER_PROOFS=1. Sol's leaked-client proof and C31's two Sol proof files,
+    // kept as Sol wrote them, open their world with no skip; without a database
+    // they are left out here, and the manifests run them where there is one.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
-      ...(database ? [] : ['tests/api/leaked-client-read-isolation-assertion.test.ts']),
+      ...(database
+        ? []
+        : [
+            'tests/api/leaked-client-read-isolation-assertion.test.ts',
+            'tests/custody/c31-secret-set-guards.test.ts',
+            'tests/custody/c31-two-setters-overlap.test.ts',
+          ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
       ...(process.env['CONTAINER_SUITES'] === 'apart' ? containerSuites : []),
