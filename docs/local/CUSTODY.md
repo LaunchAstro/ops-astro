@@ -55,8 +55,8 @@ means the name must not exist yet (rows start at revision 1): a first set from
 a list that did not show the name sends it, so a key another administrator
 created since is refused `VERSION_STALE` naming its revision, not replaced. The
 tests are `tests/custody/c31-credentials.test.ts`, `c31-secret-set-absent.test.ts`,
-`c31-secret-set-guards.test.ts`, `c31-two-setters-overlap.test.ts` and
-`tests/surfaces/c31-keys-panel.test.tsx`.
+`c31-secret-set-guards.test.ts`, `c31-two-setters-overlap.test.ts`,
+`tests/surfaces/c31-keys-panel.test.tsx` and `c31-keys-panel-first-set-refused.test.tsx`.
 
 `markSecretUsed` moves a row's last-used time. The broker calls it when it
 injects the secret into a dispatch; setting a value again leaves it alone.

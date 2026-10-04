@@ -290,8 +290,8 @@ export function KeysPanel(props: { readonly client: OperationsClient }): ReactEl
         <KeyForm
           set={(name, value) => {
             const listed = listing.secrets.find((s) => s.name === name && s.clientId === null);
-            const expected = listed === undefined ? {} : { expectedRevision: listed.revision };
-            void act(async () => await client.mutate('secret.set', { name, value, ...expected }));
+            const sent = { name, value, expectedRevision: listed?.revision ?? 0 };
+            void act(async () => await client.mutate('secret.set', sent));
           }}
         />
       ) : null}
