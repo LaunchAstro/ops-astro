@@ -210,9 +210,9 @@ it.each([
   ['objects', (depth: number) => `${'{"a":'.repeat(depth)}0${'}'.repeat(depth)}`],
   ['arrays', (depth: number) => `${'['.repeat(depth)}0${']'.repeat(depth)}`],
 ] as const)(
-  'an answer whose metadata nests 5,000 %s is kept whole, as the parse and write-back keep it',
+  'an answer whose metadata nests 3,000 %s is kept whole, as the parse and write-back keep it',
   async (_shape, nest) => {
-    const answer = `{"text":"ok","model":"replay-1","usage":{"input":1,"output":1},"metadata":${nest(5_000)}}`;
+    const answer = `{"text":"ok","model":"replay-1","usage":{"input":1,"output":1},"metadata":${nest(3_000)}}`;
     const body = await returnedAnswer(answer, 'synthetic-canary-key');
     expect({ length: body.length, same: body === answer }).toEqual({
       length: answer.length,
@@ -220,3 +220,42 @@ it.each([
     });
   },
 );
+
+// Sol's PRV-oa-750-R3 proofs, by behaviour. 3,000 levels: deep enough to
+// overflow the earlier callback-based recursive walk, within what
+// JSON.stringify writes back on the Node 24 floor (.nvmrc), which a
+// 5,000-level body exceeds.
+it.each([
+  ['objects', (leaf: string) => `${'{"a":'.repeat(3_000)}${leaf}${'}'.repeat(3_000)}`],
+  ['arrays', (leaf: string) => `${'['.repeat(3_000)}${leaf}${']'.repeat(3_000)}`],
+] as const)(
+  'a credential nested 3,000 %s deep is removed and the answer kept',
+  async (_shape, nest) => {
+    const key = 'synthetic-canary-key';
+    const leaf = JSON.stringify({ [encodeURIComponent(key).replace('s', '%73')]: key });
+    const body = await returnedAnswer(nest(leaf), key);
+    expect(body.includes(key)).toBe(false);
+    expect(body).toBe(nest('{"[redacted]":"[redacted]"}'));
+  },
+);
+
+it('own prototype keys survive and colliding redacted keys keep the later value', async () => {
+  const key = 'synthetic-canary-key';
+  const input =
+    '{"__proto__":{"own":"kept"},"constructor":"kept","toJSON":"kept",' +
+    '"synthetic-canary-key":{"earlier":["synthetic-canary-key"]},"%73ynthetic-canary-key":{"later":[1,null,false]}}';
+  const body = await returnedAnswer(input, key);
+  expect(body.includes(key)).toBe(false);
+  expect(body).toBe(
+    '{"__proto__":{"own":"kept"},"constructor":"kept","toJSON":"kept","[redacted]":{"later":[1,null,false]}}',
+  );
+});
+
+it('numeric secret leaves and strings are removed together in an array', async () => {
+  const body = await returnedAnswer(
+    '[12345678,"12345678",null,false,0,{"12345678":12345678}]',
+    '12345678',
+  );
+  expect(body.includes('12345678')).toBe(false);
+  expect(body).toBe('["[redacted]","[redacted]",null,false,0,{"[redacted]":"[redacted]"}]');
+});
