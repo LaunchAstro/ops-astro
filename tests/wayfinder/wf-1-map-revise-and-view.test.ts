@@ -22,6 +22,25 @@ describe('WF-1 map revise and view, under review proofs', () => {
       expectedRevision: await w.revisionOf(id),
       ...change,
     });
+  const complete = async (id: string) =>
+    must(
+      await w.as(owner, {
+        command: 'task.complete',
+        recordId: id,
+        expectedRevision: await w.revisionOf(id),
+      }),
+      'complete ticket',
+    );
+  const linkOutOfScope = async (mapId: string, ticketId: string) =>
+    must(
+      await w.as(owner, {
+        command: 'map.revise',
+        recordId: mapId,
+        expectedRevision: await w.revisionOf(mapId),
+        addOutOfScope: [{ text: 'Excluded work', ticketId }],
+      }),
+      'link closed ticket',
+    );
 
   it('WF-1 person to person separation hides a nested map linked from out of scope', async () => {
     const parent = await map('parent map');
@@ -192,5 +211,80 @@ describe('WF-1 map revise and view, under review proofs', () => {
       retired_version: 2,
     });
     expect(rows).toContainEqual({ id: retired, body: 'first fog', retired_version: 2 });
+  });
+
+  it('WF-1 person to person separation hides an out-of-scope ticket after it becomes a nested map', async () => {
+    const parent = await map('parent');
+    const ticket = await w.create(owner, { title: 'later private map' }, { parentId: parent.id });
+    await complete(ticket.id);
+    await linkOutOfScope(parent.id, ticket.id);
+    const reader = await w.member('parent-only', ['read'], { kind: 'record', id: parent.id });
+    must(
+      await w.as(owner, {
+        command: 'task.set_type',
+        recordId: ticket.id,
+        expectedRevision: await w.revisionOf(ticket.id),
+        taskType: 'map',
+      }),
+      'retype linked ticket to map',
+    );
+    expect(codeOf(await w.read(reader, { read: 'map.view', recordId: ticket.id }))).toBe(
+      'SCOPE_NOT_GRANTED',
+    );
+    const answer = await w.read(reader, { read: 'map.view', recordId: parent.id });
+    expect(codeOf(answer)).toBe('applied');
+    expect(JSON.stringify(answer)).not.toContain(ticket.id);
+  });
+
+  it('WF-1 person to person separation hides an out-of-scope ticket moved to an inaccessible map', async () => {
+    const a = await map('map A');
+    const b = await map('private map B');
+    const ticket = await w.create(owner, { title: 'closed work' }, { parentId: a.id });
+    await complete(ticket.id);
+    await linkOutOfScope(a.id, ticket.id);
+    must(
+      await w.as(owner, {
+        command: 'task.reparent',
+        recordId: ticket.id,
+        expectedRevision: await w.revisionOf(ticket.id),
+        parentId: b.id,
+      }),
+      'move linked ticket to private map',
+    );
+    const reader = await w.member('only-A', ['read'], { kind: 'record', id: a.id });
+    expect(codeOf(await w.read(reader, { read: 'task.read', recordId: ticket.id }))).toBe(
+      'SCOPE_NOT_GRANTED',
+    );
+    const answer = await w.read(reader, { read: 'map.view', recordId: a.id });
+    expect(codeOf(answer)).toBe('applied');
+    expect(JSON.stringify(answer)).not.toContain(ticket.id);
+  });
+
+  it('WF-1 person to person separation hides a nested map used as a ticket blocker', async () => {
+    const parent = await map('blocker parent');
+    const nested = await w.create(
+      owner,
+      { title: 'private nested blocker' },
+      { parentId: parent.id, taskType: 'map' },
+    );
+    const ticket = await w.create(owner, { title: 'blocked ticket' }, { parentId: parent.id });
+    await w.db.app.withBusiness(w.business, async (tx) => {
+      await tx.query(
+        `insert into public.record_links
+        (business_id, id, link_type, from_record_id, to_record_id)
+        values ($1, $2, 'blocks', $3, $4)`,
+        [w.business, randomUUID(), nested.id, ticket.id],
+      );
+    });
+    const reader = await w.member('blocker-parent-only', ['read'], {
+      kind: 'record',
+      id: parent.id,
+    });
+    expect(codeOf(await w.read(reader, { read: 'task.read', recordId: nested.id }))).toBe(
+      'SCOPE_NOT_GRANTED',
+    );
+    const answer = await w.read(reader, { read: 'map.view', recordId: parent.id });
+    expect(codeOf(answer)).toBe('applied');
+    expect(JSON.stringify(answer)).not.toContain(nested.id);
   });
 });
