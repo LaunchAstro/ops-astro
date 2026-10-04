@@ -81,6 +81,20 @@ async function recordAttempt(
   return row?.id ?? '';
 }
 
+/**
+ * Whether the invitation's lifetime is still running, judged by a statement of its own once its
+ * lock is held: a send that waited for the lock is judged when it got it, never when its
+ * transaction began, and never by a lock statement's own reading taken before the wait.
+ */
+async function liveNow(tx: TenantQuery, invitationId: string): Promise<boolean> {
+  const [row] = await tx.query<{ live: boolean }>(
+    `select expires_at > clock_timestamp() as live from invitations
+      where business_id = $1 and id = $2`,
+    [tx.businessId, invitationId],
+  );
+  return row?.live === true;
+}
+
 /** Step 1: every check, the token's hash and the `asked` observation. */
 async function ask(
   tx: TenantQuery,
@@ -90,11 +104,12 @@ async function ask(
   if (!isUuid(invitationId)) return 'INVITATION_NOT_PENDING';
   const [invitation] = await tx.query<{ address: string; expires_at: Date }>(
     `select address, expires_at from invitations
-      where business_id = $1 and id = $2 and state = 'pending' and expires_at > now()
-      for update`,
+      where business_id = $1 and id = $2 and state = 'pending' for update`,
     [tx.businessId, invitationId],
   );
-  if (invitation === undefined) return 'INVITATION_NOT_PENDING';
+  if (invitation === undefined || !(await liveNow(tx, invitationId))) {
+    return 'INVITATION_NOT_PENDING';
+  }
   const [tally] = await tx.query<{ acts: number; sends: number }>(
     `select (select count(*) from audit_events
               where business_id = $1 and subject_record_id = $2 and outcome = 'applied'
