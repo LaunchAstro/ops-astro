@@ -21,6 +21,8 @@ const repo = resolve(import.meta.dirname, '../..');
 const trees = [
   'packages',
   'apps/api',
+  // composeApi reaches apps/worker (alerts/sink.ts), so the mount's own test loads in the copy.
+  'apps/worker',
   'tests',
   'scripts',
   'migrations',
