@@ -2,7 +2,8 @@
 //
 // The grants a worker's receipt holds are exactly the ones its check reads:
 // a grant issued after the hold does not carry the receipt, and a grant the
-// check never reads (another record's) is not held.
+// check never reads (another record's) is not held, and none is held while
+// the worker still waits on the correction, as on the covered path.
 import { expect, it } from 'vitest';
 import postgres from 'postgres';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
@@ -16,7 +17,7 @@ import {
   type ObservedResult,
 } from '../../packages/core-records/src/site/index.ts';
 import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
-import { racer } from '../runtime/schedules-harness.ts';
+import { awaitParked, barrier, racer } from '../runtime/schedules-harness.ts';
 import {
   describeWorld,
   filed,
@@ -108,7 +109,7 @@ describeWorld('a worker receipt and a grant issued after its hold', 'workerheld'
         expect(await revokeElsewhere(revoker, grantId)).toBe(true);
       }
       const result = await recordLive(id, async (sql) => {
-        if (issued === undefined && /live_corrections/u.test(sql)) {
+        if (issued === undefined && /for share of l/u.test(sql)) {
           issued = await revoker.withBusiness(
             s.business,
             async (other) => await grantTo(other, s.decider, 'write', WHOLE_BUSINESS, false, 'run'),
@@ -153,6 +154,46 @@ describeWorld('a worker receipt and a grant on another record', 'workerscope', (
       }).toStrictEqual({ revoked: true, writeOk: true, state: 'live', receipts: 1 });
     } finally {
       await revoker.close();
+    }
+  });
+});
+
+describeWorld('a worker receipt waiting on the correction', 'workerwaits', () => {
+  it('a revocation is not held up by a worker still waiting on the correction', async () => {
+    const { s } = lows();
+    const { id } = await filed('approved');
+    const standing = await personRunWrites();
+    const [holder, revoker] = [racer(s), racer(s)];
+    const [locked, release] = [barrier(), barrier()];
+    const revoked: boolean[] = [];
+    try {
+      const holding = holder.withBusiness(s.business, async (tx) => {
+        await tx.query(
+          'select 1 from public.live_corrections where business_id = $1 and id = $2 for update',
+          [s.business, id],
+        );
+        locked.release();
+        await release.held;
+      });
+      await locked.held;
+      const writing = recordLive(id, async () => {});
+      await awaitParked(s, 'live_corrections', 1);
+      for (const grantId of standing) {
+        // Sequential: one connection.
+        // oxlint-disable-next-line no-await-in-loop
+        revoked.push(await revokeElsewhere(revoker, grantId));
+      }
+      release.release();
+      await holding;
+      const result = await writing;
+      expect({ revoked, writeOk: result.ok, receipts: await countOf(RECEIPTS, id) }).toStrictEqual({
+        revoked: standing.map(() => true),
+        writeOk: false,
+        receipts: 0,
+      });
+    } finally {
+      release.release();
+      await Promise.all([holder.close(), revoker.close()]);
     }
   });
 });
