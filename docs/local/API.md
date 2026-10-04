@@ -2761,7 +2761,11 @@ A command whose declared key is in the money set (every `billing` key,
 `offer:decide`, `mandate:manage`, `spend:decide`) is judged once, in
 `prepare.ts`, straight after its grant check: a team member needs a second
 factor verified in the last 60 minutes, a client a sign-in in the last 60
-minutes, or it is refused `STEP_UP_REQUIRED` 403. While the business setting
+minutes, or it is refused `STEP_UP_REQUIRED` 403. A client's refusal names
+`sign_in` and its first fix is "Sign in again with your password, then
+retry."; a team member's names nothing and asks for the code from the
+authenticator app. The web app asks the client for their password and signs
+in again (`WEB.md`). While the business setting
 `money_step_up_required` is `false` a live session is enough; only
 `settings:manage` switches it, through `settings.set_money_step_up`, which is
 judged the same way when switching it off, whatever the setting holds, so a
@@ -2782,7 +2786,9 @@ bearer). Each writes one audit event, applied or refused, named by the act.
 factor through any business it reaches (0064), not only this one, and so is
 `verify` on an enrolment here not yet completed, without asking the provider.
 `remove` works where the factor was verified: another business holds no verified
-factor of its own and answers `FACTOR_NOT_ENROLLED`.
+factor of its own and answers `FACTOR_NOT_ENROLLED`. Replacing the app is a
+`remove` with a code from the old one, then a new `enrol`; the web app opens
+the removal when `enrol` answers `FACTOR_ALREADY_ENROLLED` (`WEB.md`).
 
 | Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                                                      |
 | ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
