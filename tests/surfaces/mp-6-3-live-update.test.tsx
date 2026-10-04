@@ -21,7 +21,12 @@ const graphAt = (condition: string, outcome: string | null) => ({
 
 type Graph = Parameters<typeof RunMap>[0]['graph'];
 const map = (graph: unknown, loading: boolean, scope = 'alpha:ada T-1') => (
-  <RunMap graph={graph as Graph} loading={loading} proposals={[]} scope={scope} />
+  <RunMap
+    graph={graph as Graph}
+    proposals={[]}
+    read={{ outcome: loading ? 'loading' : 'ready' }}
+    scope={scope}
+  />
 );
 
 describe('MP-6-3 live update', () => {

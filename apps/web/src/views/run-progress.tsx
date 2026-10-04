@@ -62,8 +62,8 @@ export function RunProgress(props: RunProgressProps): ReactElement {
     <>
       <RunMap
         graph={graph}
-        loading={state.outcome === 'loading'}
         proposals={props.proposals ?? []}
+        read={state}
         scope={`${props.grantKey} ${taskKey}`}
       />
       <section className="sb__sect" data-outcome={outcome} data-run-progress="">
