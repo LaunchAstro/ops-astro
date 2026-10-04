@@ -87,22 +87,41 @@ async function agentWithDelegation() {
   });
 }
 
-/** A child the delegation minted for a helper: the parent's row under the helper's actor, reading only. */
+/**
+ * A child the delegation minted for a helper: the parent's row under the
+ * helper's actor, reading only, holding the digest of its own credential so
+ * that credential authenticates. Under a key not held, none derives and the
+ * parent's digest stands in.
+ */
 async function childOf(
   parentId: string,
   helperActorId: string,
   keyId: string | null = null,
 ): Promise<string> {
+  const keys = configuredCredentialKeys();
+  if (!keys.ok) throw new Error('no delegation credential keyring');
   const childId = randomUUID();
+  const credential = keys.keys.derive(keyId ?? keys.keys.activeKeyId, {
+    businessId: r.fixture.business,
+    agentActorId: helperActorId,
+    delegationId: childId,
+  });
   await r.fixture.db.admin.execute(
     `insert into public.delegations
        select (jsonb_populate_record(d, jsonb_build_object(
                  'id', $2::uuid, 'agent_actor_id', $3::uuid,
                  'parent_delegation_id', d.id, 'purpose', 'rcpt_child_' || left(replace($2::text, '-', ''), 8),
                  'actions', jsonb_build_array('read'),
+                 'credential_hash', coalesce($5::text, d.credential_hash),
                  'credential_key_id', coalesce($4, d.credential_key_id)))).*
          from public.delegations d where d.id = $1`,
-    [parentId, childId, helperActorId, keyId],
+    [
+      parentId,
+      childId,
+      helperActorId,
+      keyId,
+      credential === undefined ? null : digestOf(credential),
+    ],
   );
   return childId;
 }

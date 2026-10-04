@@ -78,13 +78,19 @@ it('the committed child fixture authenticates with the child credential its test
   const sql = /`(insert into public\.delegations[\s\S]*?)`,/u.exec(source)?.[1];
   if (sql === undefined) throw new Error('the committed child fixture SQL is absent');
   const childId = randomUUID();
-  await r.fixture.db.admin.execute(sql, [parentId, childId, helper.agentActorId, null]);
   const child = configured.keys.derive(configured.keys.activeKeyId, {
     businessId: r.fixture.business,
     agentActorId: helper.agentActorId,
     delegationId: childId,
   });
   if (child === undefined) throw new Error('the fixture child cannot be derived');
+  await r.fixture.db.admin.execute(sql, [
+    parentId,
+    childId,
+    helper.agentActorId,
+    null,
+    digestOf(child),
+  ]);
   const resolved = await r.fixture.db.app.withBusiness(
     r.fixture.business,
     async (tx) => await resolveDelegation(tx, helper.agentActorId, child),
