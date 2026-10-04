@@ -27,6 +27,20 @@ const staging = JSON.parse(
 const PRODUCTION_MAJOR = staging['x-ops-astro'].productionDatabaseMajor;
 
 /**
+ * How many application tables with a business column show the reading role a
+ * row of a business other than `business`: run as that role under `business`,
+ * each table it may read (the drill grants it every one) read as it is, so its
+ * row security decides what it shows.
+ */
+const leaking = (business) =>
+  `(select count(*) from pg_class t join pg_namespace n on n.oid = t.relnamespace
+     join pg_attribute a on a.attrelid = t.oid and a.attname = 'business_id'
+     where n.nspname = 'public' and t.relkind = 'r' and not a.attisdropped
+       and has_table_privilege(t.oid, 'select') and (xpath('/row/n/text()', query_to_xml(format(
+         'select exists (select from %I.%I where business_id <> %L) as n',
+         n.nspname, t.relname, '${business}'), false, true, '')))[1]::text = 'true')`;
+
+/**
  * Restores the archive `fetchArchive(file)` writes into `file` (or answers as
  * `body`) into a container of `image` and checks it. Returns the drill's record; never throws. `image` defaults to
  * staging's pinned Postgres, the major production gets.
@@ -126,7 +140,8 @@ export async function restoreDrill({
       // business is not there to find. One table shows nothing of the others,
       // so every application table's barrier is checked as well: row security
       // enabled and forced, as the tenancy law has it (tenancy/conformance.ts),
-      // or the copy fails. Within it, the named person must be a
+      // and holding: no table with a business column shows the role a row of
+      // another business, or the copy fails. Within it, the named person must be a
       // current member holding a live grant to read the named client, as the
       // product's own read asks it (collection `person`, action `read`, at party
       // or business scope), or the business's people manager (Sol's reviews of
@@ -138,7 +153,7 @@ export async function restoreDrill({
         `grant execute on function public.app_business_id() to ${APP_ROLE}`,
       );
       const [p, c] = [scope.person, scope.client];
-      const [tables = '', unbarred, granted, businesses, people] = (
+      const [tables = '', unbarred, leaks, granted, businesses, people] = (
         await psql(
           `set role ${APP_ROLE}`,
           `set app.business_id = '${scope.business}'`,
@@ -147,6 +162,7 @@ export async function restoreDrill({
              (select count(*) from pg_class t join pg_namespace n on n.oid = t.relnamespace
                where n.nspname = 'public' and t.relkind = 'r'
                  and not (t.relrowsecurity and t.relforcerowsecurity)),
+             ${leaking(scope.business)},
              (exists (select from public.memberships where person_id = '${p}' and active)
              and exists (select from effective where subject_kind = 'person' and subject_id = '${p}'
                and collection = 'person' and (action = 'read' and (scope_kind = 'business'
@@ -157,7 +173,8 @@ export async function restoreDrill({
       ).split('|');
       const present = new Set(tables.split(','));
       const whole = expected.length > 0 && expected.every((t) => present.has(t));
-      if (!whole || granted !== '1' || businesses !== '1' || people !== '2' || unbarred !== '0')
+      const barred = unbarred === '0' && leaks === '0';
+      if (!whole || !barred || granted !== '1' || businesses !== '1' || people !== '2')
         throw new Error('check failed');
       record.tables = expected.length;
       record.readAs = APP_ROLE;
