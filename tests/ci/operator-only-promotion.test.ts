@@ -6,7 +6,7 @@
 // operator-only.fixture.ts; the refused callers are in operator-only.test.ts.
 
 import { readFileSync, readlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   serverUrl,
@@ -27,6 +27,7 @@ import {
   COMMANDS,
 } from './operator-only-commands.fixture.ts';
 import type { FreshDatabase } from '../support/fresh-database.ts';
+import { outputDigest } from '../../scripts/ops/build-output.ts';
 import { markMadeUp } from '../../scripts/ops/made-up-only.ts';
 
 let db: FreshDatabase;
@@ -126,9 +127,14 @@ function operatorOnlyCases7() {
       environment(at, fake.path, { OPS_ASTRO_TOKEN: signIn }),
     );
     expect(result.status, result.out).toBe(0);
-    expect(readlinkSync(at.current)).toBe(
-      join(artefacts, definition['x-ops-astro'].artefact.replace('{version}', STAGED)),
-    );
+    // Production serves its own checked copy of the staged artefact: the same bytes.
+    const staged = definition['x-ops-astro'].artefact.replace('{version}', STAGED);
+    const served = readlinkSync(at.current);
+    expect(relative(artefacts, served).split('/')).toStrictEqual([
+      expect.stringMatching(/^\.promoted-/u),
+      staged,
+    ]);
+    expect(outputDigest(served)).toBe(outputDigest(join(artefacts, staged)));
     const records = readFileSync(join(at.records, 'deployments.jsonl'), 'utf8').trim().split('\n');
     expect(records).toHaveLength(1);
     expect(JSON.parse(records[0]!)).toMatchObject({
