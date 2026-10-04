@@ -119,11 +119,12 @@ const STOP_AWAITING =
 
 /** The pane's controls on the real commands, each ending in a reread. */
 function useAgentControls(props: AgentSectionProps): AgentControls {
-  const { busy, run, stepUp } = useMoneyCommand(props.client);
+  const money = useMoneyCommand(props.client);
+  const { busy, run, stepUp } = money;
   const [refusal, setRefusal] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState<string | null>(null);
   const [stopAwaiting, setStopAwaiting] = useState<string | null>(null);
-  const hold = useStepUpHold(props, stepUp);
+  const hold = useStepUpHold(props, money);
   const settle = (settlement: Settlement, decision = false): void => {
     hold(settlement, decision);
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);

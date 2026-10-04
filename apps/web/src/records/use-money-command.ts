@@ -52,6 +52,8 @@ export type MoneyCommand = Omit<Command, 'run'> & {
   ) => void;
   /** The step-up prompt, or null when nothing waits on a code. */
   readonly stepUp: StepUpAsk | null;
+  /** Drops the held write: the prompt closes, and a code that passed sends nothing. */
+  readonly withdraw: () => void;
 };
 
 type Send = (client: OperationsClient) => void;
@@ -74,6 +76,7 @@ interface Prompt {
   /** Hold a refused write for a code or a password; null where nothing can step up. */
   readonly hold: ((send: Send, names: readonly string[]) => void) | null;
   readonly ask: StepUpAsk | null;
+  readonly withdraw: () => void;
 }
 
 interface Asked {
@@ -133,6 +136,10 @@ function usePrompt(client: OperationsClient): Prompt {
     setBecause(null);
     setAsked(next);
   };
+  const drop = (): void => {
+    withdraw();
+    open(null);
+  };
   const by = (way: StepUpAsk['way'], attempt: () => Promise<StepUpResult>): void => {
     if (asked?.way === way) check(asked.send, attempt, () => open(null));
   };
@@ -146,17 +153,14 @@ function usePrompt(client: OperationsClient): Prompt {
     submitPassword: (password) => {
       if (signInAgain !== null) by('password', async () => await signInAgain(password));
     },
-    cancel: () => {
-      withdraw();
-      open(null);
-    },
+    cancel: drop,
   };
   const hold = (send: Send, names: readonly string[]): void => {
     const way = names.includes('sign_in') && signInAgain !== null ? 'password' : 'code';
     if (way === 'password' || stepUp !== null) open({ send, way });
   };
   const none = stepUp === null && signInAgain === null;
-  return { hold: none ? null : hold, ask: asked === null ? null : ask };
+  return { hold: none ? null : hold, ask: asked === null ? null : ask, withdraw: drop };
 }
 
 export function useMoneyCommand(client: OperationsClient): MoneyCommand {
@@ -179,5 +183,5 @@ export function useMoneyCommand(client: OperationsClient): MoneyCommand {
     );
   };
   const { run: _plain, ...rest } = command;
-  return { ...rest, run, stepUp: prompt.ask };
+  return { ...rest, run, stepUp: prompt.ask, withdraw: prompt.withdraw };
 }
