@@ -10,10 +10,8 @@
 // Every read goes through the production read entry; the plan is accepted by
 // the production accept and the runs proposed through the production command
 // entry. The forged plan records are written by the product's own database
-// role, as any code holding it could; the server stamps each with its own
-// transaction's clock. A record placed at its decision's instant, as only the
-// decision's own transaction could write one, is written by the owner with
-// triggers off, so the digests are what refuse it.
+// role, as any code holding it could, or at their decision's instant by the
+// owner with triggers off, as only the decision's own transaction could.
 
 import { createHash, randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -101,11 +99,7 @@ interface Forged {
   readonly recordDigest: string;
   /** The words' digest as written; the words' own when absent. */
   readonly textDigest?: string;
-  /**
-   * Placed at its decision's instant, as the decision's own transaction would
-   * write it (the owner, triggers off); otherwise written by the product's
-   * role asking for that instant, which the server overrides.
-   */
+  /** Placed at its decision's instant by the owner, or asked for by the product's role. */
   readonly withDecision: boolean;
 }
 
@@ -146,9 +140,8 @@ it('projection_refuses_unbound_record: a record not written with its decision, o
   expectProjects(await graphAs(w.s.decider, taskId), plan, 'the accepted plan');
 
   // Each forged record is newer than the bound one and structurally valid, so
-  // neither recency nor shape is what refuses it. The first carries its own
-  // words' and record's digests and asks for its decision's instant, so only
-  // the server's clock refuses it.
+  // neither recency nor shape is what refuses it. The first has matching
+  // digests, so only the server's clock refuses it (#436).
   const late = await decidedWithoutRecord(taskId);
   await forge({
     ...late,
@@ -156,11 +149,7 @@ it('projection_refuses_unbound_record: a record not written with its decision, o
     recordDigest: payloadDigest(FORGED),
     withDecision: false,
   });
-  expectProjects(
-    await graphAs(w.s.decider, taskId),
-    plan,
-    'written after its decision, with matching digests and its instant asked for',
-  );
+  expectProjects(await graphAs(w.s.decider, taskId), plan, 'written after, digests matching');
 
   const digest = await decidedWithoutRecord(taskId);
   await forge({ ...digest, record: FORGED, recordDigest: payloadDigest(PLAN), withDecision: true });
