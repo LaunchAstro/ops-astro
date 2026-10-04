@@ -48,8 +48,10 @@ type ChatCommand =
  */
 type Listed = readonly ChatConversationView[] | 'none' | null;
 
+/** A conversation's messages, and whether they were asked while the list showed it departed. */
+type Kept = ChatMessagesResult & { readonly departed: boolean };
 /** Each conversation's messages; null when its read answered with none to draw. */
-type Held = Readonly<Record<string, ChatMessagesResult | null>>;
+type Held = Readonly<Record<string, Kept | null>>;
 type SetHeld = (update: (was: Held) => Held) => void;
 
 export interface ChatModel {
@@ -62,7 +64,7 @@ export interface ChatModel {
 
 interface Reads {
   readonly list: () => void;
-  readonly messages: (conversationId: string) => void;
+  readonly messages: (conversationId: string, left: boolean) => void;
 }
 
 const timeOf = (iso: string | null | undefined): number | null =>
@@ -123,7 +125,7 @@ function useReads(
     let current = true;
     const asked = new Map<string, number>();
     const list = newestList(client, setList, () => current);
-    const messages = (id: string): void => {
+    const messages = (id: string, left: boolean): void => {
       const generation = (asked.get(id) ?? 0) + 1;
       asked.set(id, generation);
       void client
@@ -133,7 +135,8 @@ function useReads(
           const read = 'value' in answer ? answer.value : undefined;
           // An unavailable read keeps what was held and answers for nothing.
           if (read === undefined && !isRefusal(answer)) return answer;
-          const kept = read !== undefined && Array.isArray(read.messages) ? read : null;
+          const kept =
+            read !== undefined && Array.isArray(read.messages) ? { ...read, departed: left } : null;
           setHeld((was) => ({ ...was, [id]: kept }));
           return answer;
         });
@@ -160,7 +163,7 @@ function useTopics(client: OperationsClient, reads: Reads | null, topics: string
     const stops = topics.split(' ').map((id) =>
       hub.follow(`conversation:${id}`, (change) => {
         if (change === 'closed') reads.list();
-        else reads.messages(id);
+        else reads.messages(id, false);
       }),
     );
     return () => {
@@ -169,23 +172,18 @@ function useTopics(client: OperationsClient, reads: Reads | null, topics: string
   }, [client, reads, topics]);
 }
 
-/** Reads what the list shows newer; a departed group (no joinedAt) draws only reads asked since. */
-function useMessageReads(reads: Reads | null, list: Listed, held: Held, setHeld: SetHeld): void {
+/** Reads what the list shows newer, and a departed group's archive once the list shows it departed. */
+function useMessageReads(reads: Reads | null, list: Listed, held: Held): void {
   const heldRef = useRef(held);
   heldRef.current = held;
-  const left = useRef(new Set<string>());
   useEffect(() => {
     if (reads === null || list === null || list === 'none') return;
     for (const view of list) {
-      const id = view.conversationId;
-      const leaving = departed(view) && !left.current.has(id);
-      if (departed(view)) left.current.add(id);
-      else left.current.delete(id);
-      if (leaving)
-        setHeld((was) => (was[id] ? { ...was, [id]: { ...was[id], messages: [] } } : was));
-      if (leaving || stale(view, heldRef.current[id])) reads.messages(id);
+      const was = heldRef.current[view.conversationId];
+      if (stale(view, was) || (departed(view) && was?.departed !== true))
+        reads.messages(view.conversationId, departed(view));
     }
-  }, [reads, list, setHeld]);
+  }, [reads, list]);
 }
 
 /** The reader's conversations as the panel's host holds them; `say` hears a failed command's words. */
@@ -197,7 +195,7 @@ export function useChat(
   const [list, setList] = useState<Listed>(null);
   const [held, setHeld] = useState<Held>({});
   const reads = useReads(client, grantKey, setList, setHeld);
-  useMessageReads(reads, list, held, setHeld);
+  useMessageReads(reads, list, held);
 
   useTopics(client, reads, topicsOf(list));
 
@@ -265,10 +263,15 @@ export function talkOf(chat: ChatModel, me: string): TeamConversations | null {
   for (const view of list) {
     const held = chat.held[view.conversationId];
     if (held === null || held === undefined) continue;
-    // A rejoin is a new membership window, whichever list or read saw it: the
-    // server serves nothing from before the reader's current join, so neither does this.
+    // The server serves nothing from before the reader's current join (a rejoin is a
+    // new window), so neither does this. A departed view has no join to bound it: it
+    // draws a read asked since the list showed it departed, while that read agrees with it.
     const since = timeOf(view.joinedAt) ?? -Infinity;
-    const messages = held.messages.filter((message) => Date.parse(message.at) >= since);
+    const messages = departed(view)
+      ? held.departed && !stale(view, held)
+        ? held.messages
+        : []
+      : held.messages.filter((message) => Date.parse(message.at) >= since);
     const readable = { lastRead: held.lastRead, messages };
     const other = view.members.find((id) => id !== me);
     if (view.kind === 'direct' && other !== undefined) threads.push({ with: other, ...readable });
