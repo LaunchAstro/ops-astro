@@ -2490,7 +2490,8 @@ an id never issued; an open stream of a member who leaves or is removed is
 change record (`subject_kind` `conversation`, migration 20261003003849) and notified at
 commit by a message, a change to the conversation's record and a member joining
 or leaving, never by a read marker. The board stream hears it too and asks
-`hearsConversation` whether its person is a current member; to a member alone
+`hearsConversation` whether its person is a current member, before the join
+and again after it, so one removed meanwhile is told nothing; to a member alone
 it says `conversation`, labelled `board` and naming no conversation, so the Team
 tab's unread chip re-reads `chat.conversations`. _Changes since_ lists tasks
 alone.
