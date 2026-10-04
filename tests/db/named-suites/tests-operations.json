@@ -27,5 +27,8 @@
     "tests/operations/s0-5-step-up-sweep.test.ts",
     "tests/operations/scan-login-token-and-shared-login.proof.test.ts"
   ],
-  "conformance": ["tests/operations/find-copies-values-only.proof.test.ts"]
+  "conformance": [
+    "tests/operations/find-copies-values-only.proof.test.ts",
+    "tests/operations/scan-login-cleanup-mapping-race.test.ts"
+  ]
 }

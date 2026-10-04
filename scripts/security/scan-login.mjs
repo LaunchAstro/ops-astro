@@ -172,8 +172,7 @@ async function make() {
 // row and never from the file: a lost reply is found, a tampered file names no one.
 // A sign-in another business still maps to a person is that person's too, so
 // nothing is ended and the provider keeps it.
-async function endRows(record, providerEmail) {
-  const all = await businesses();
+async function endRows(record, providerEmail, all) {
   const scan = businessId(all);
   const db = connect(env.DATABASE_URL, { source: 'scan-login' });
   try {
@@ -249,12 +248,24 @@ async function remove() {
   if (found.status === 200 && typeof providerEmail !== 'string')
     stop('the admin API answered for the sign-in with no address; nothing was removed');
 
-  await endRows(record, providerEmail);
-
-  if (providerEmail !== undefined) {
-    const gone = await provider(`/admin/users/${record.userId}`, 'DELETE');
-    if (gone.status >= 300 && gone.status !== 404)
-      stop(`the admin API did not delete the sign-in (${gone.status})`);
+  // The login subject lock (migrations/20261004005736_login_subject_lock.sql),
+  // held from the check through the provider delete: a mapping already being
+  // written commits first and the check finds it; one begun after is refused.
+  const all = await businesses();
+  const held = connect(env.DATABASE_URL, { source: 'scan-login' });
+  try {
+    await held.withBusiness(businessId(all), async (tx) => {
+      await tx.query(`select pg_advisory_xact_lock(hashtextextended('supabase:' || $1, 0))`, [
+        record.userId,
+      ]);
+      await endRows(record, providerEmail, all);
+      if (providerEmail === undefined) return;
+      const gone = await provider(`/admin/users/${record.userId}`, 'DELETE');
+      if (gone.status >= 300 && gone.status !== 404)
+        stop(`the admin API did not delete the sign-in (${gone.status})`);
+    });
+  } finally {
+    await held.close();
   }
   rmSync(env.SCAN_TOKEN_FILE, { force: true });
   rmSync(env.SCAN_LOGIN_FILE, { force: true });

@@ -25,7 +25,16 @@ do $$ begin
 exception when duplicate_object or unique_violation then null;
 end $$;
 
+-- Two databases repairing it at once would both judge the old row, and the
+-- second ALTER would fail on the first's uncommitted change ("tuple
+-- concurrently updated"). An advisory lock is per database, so the comment
+-- comes first: COMMENT ON ROLE holds a lock on the role itself, across the
+-- cluster, until commit. A second database waits there, then judges the role
+-- as the first left it (OW-007.3).
 do $$ begin
+  comment on role ops_astro_lookup is
+    'Business lookup identity. Reads id and key of public.businesses past row security; '
+    'nothing else, no write, no function, no login of its own.';
   if exists (select 1 from pg_roles where rolname = 'ops_astro_lookup' and (rolcanlogin
       or rolsuper or rolcreatedb or rolcreaterole or rolreplication or not rolbypassrls)) then
     alter role ops_astro_lookup nologin nosuperuser nocreatedb nocreaterole noreplication bypassrls;
@@ -34,7 +43,3 @@ end $$;
 
 grant usage on schema public to ops_astro_lookup;
 grant select (id, key) on public.businesses to ops_astro_lookup;
-
-comment on role ops_astro_lookup is
-  'Business lookup identity. Reads id and key of public.businesses past row security; '
-  'nothing else, no write, no function, no login of its own.';
