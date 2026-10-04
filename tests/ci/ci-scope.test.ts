@@ -38,6 +38,7 @@ const fixtureMap: ScopeMap = {
   scopable: ['tests/', 'apps/web/'],
   runsEverything: ['tests/support/'],
   visualDrift: ['apps/web/', 'tests/visual/'],
+  queueOnly: [],
 };
 const fixtureDependents = (path: string): string[] =>
   path.startsWith('apps/web/')
@@ -283,8 +284,7 @@ describe('the workflow', () => {
     for (const { context } of required) expect(reported, context).toContain(context);
   });
 
-  // CI-SPEED: local checks defers through it too; the shards skip pull requests, never a group.
-  it('scopes only the heavy checks, each deciding in its own step, the shards alone skipping pull requests', () => {
+  it('scopes only the heavy checks (CI-SPEED: local checks too), each in its own step, the shards alone skipping pull requests', () => {
     for (const key of ['check', 'database-shard', 'isolation', 'visual-drift']) {
       const block = job(key);
       const conds = [...block.matchAll(/^ {4}if: (.+)$/gmu)].map((m) => m[1]);

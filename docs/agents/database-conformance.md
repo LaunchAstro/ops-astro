@@ -63,6 +63,18 @@ job is a matrix of shards (`database conformance shard <i>`), each running
 `db:conformance --shard <i>/<n>` against a Postgres of its own. The required
 check is the aggregate job named `database conformance`: it needs every shard
 and fails unless all of them succeeded, a skipped or cancelled shard included.
+
+The shards run in the merge queue and on a push to `main`, never on a pull
+request (CI-SPEED, light pull requests). A pull request's checks are the light
+set and flag issues; the full set runs in the merge queue, which is the only
+way into `main`. So on a pull request the shards skip and the aggregate passes
+on that skip, and nowhere else: on a merge group or a push a skipped shard
+fails it, and a failed or cancelled shard fails it everywhere.
+`isolation tests` defers its suites to the queue the same way, still reporting
+under its name. A green `database conformance` on a pull request therefore
+proves nothing about the suites; builders run the full `pnpm check` locally,
+and `pnpm db:conformance` against a local database for a change that reaches
+the database, before declaring ready.
 `scripts/db-shards.ts` splits the run items by the seconds in
 `tests/db/shard-plan.json`; an item with no timing weighs the median, so a
 newly named suite is assigned without editing that file, which only keeps the
@@ -134,7 +146,9 @@ run this locally**. In the hosted job one URL is enough, because the service
 container's URL is already the owner's.
 
 A green here means what the last line the runner prints says it means: the
-named suites ran against a real database and none of them skipped. It does not
+named suites ran against a real database and none of them skipped. That holds
+for the merge queue's run and a push to `main`; on a pull request the runner
+does not run, and the green says only that the shards skipped there. It does not
 mean the product is correct, and it does not mean anything is accepted. It is
 the floor the other refusals stand on, not a verdict.
 
