@@ -65,7 +65,8 @@ function filesBelow(root: string, prefix = ''): string[] {
 /** One suite file, refused unless it names a test file and holds a known kind, isolation and why. */
 function readSuiteFile(root: string, rel: string): SuiteFile {
   const file = `${SUITES}/${rel}`;
-  if (!/\.test\.tsx?\.json$/u.test(rel)) refuse(file, 'is not <a test file below tests/>.json');
+  if (!/(?:^|\/)[^/]+\.test\.tsx?\.json$/u.test(rel))
+    refuse(file, 'is not <a test file below tests/>.json');
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(join(root, file), 'utf8'));

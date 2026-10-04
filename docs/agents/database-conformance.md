@@ -72,7 +72,9 @@ one file per suite), and fails naming each suite the base named, or marked
 isolation, that the head does not, unless the change deleted its test file.
 A renamed test file (git's rename detection, a change of case included) takes
 its suite with it: the new path must be named with the same kind, and marked
-isolation when the old one was, or the step fails naming both paths. A base
+isolation when the old one was, or the step fails naming both paths. A rename
+git does not detect (a file moved and much rewritten) counts as a deletion, so
+it shows in the change as a deleted test file. A base
 it cannot read, an id that is not 40 or 64 hex, an all-zero base or a failed
 git command fails the step.
 
