@@ -166,16 +166,20 @@ function redacterOf(secrets: readonly string[]): (text: string) => string {
   };
 }
 
+/** An own field, as the parse sets it: a `__proto__` key is a field like any other. */
+const FIELD = { writable: true, enumerable: true, configurable: true } as const;
+const put = (into: object, slot: string | number, value: unknown): void => {
+  Object.defineProperty(into, slot, { ...FIELD, value });
+};
+
 /**
- * A parsed JSON value with each key and string redacted, and a number or
- * literal that spells a secret as `[redacted]`. It walks with its own list,
- * not the call stack, so any depth the parse accepted is walked whole.
+ * A parsed JSON value with each key and string redacted, and a number or literal spelling a
+ * secret as `[redacted]`. It walks its own list, not the call stack, into plain objects, which
+ * keep JSON.stringify on its fast writer: any depth the parse and write-back accepted still is.
  */
 function redactedValue(decoded: unknown, redactText: (text: string) => string): unknown {
   const root: unknown[] = [undefined];
-  const pending: [unknown, Record<string, unknown> | unknown[], string | number][] = [
-    [decoded, root, 0],
-  ];
+  const pending: [unknown, object, string | number][] = [[decoded, root, 0]];
   for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
     const [value, into, slot] = next;
     let out: unknown;
@@ -186,24 +190,21 @@ function redactedValue(decoded: unknown, redactText: (text: string) => string): 
       for (const [at, item] of value.entries()) pending.push([item, list, at]);
       out = list;
     } else if (typeof value === 'object' && value !== null) {
-      // No prototype, so a `__proto__` key is a field like any other.
-      const record = Object.create(null) as Record<string, unknown>;
-      const fields = Object.entries(value).map(
-        ([key, field]): [unknown, Record<string, unknown>, string] => {
-          const name = redactText(key);
-          record[name] = undefined;
-          return [field, record, name];
-        },
-      );
-      // Last in, first written: reversed, a later field that redacts to an
-      // earlier one's name still wins, as it does in the parse.
+      const record = {};
+      const fields: [unknown, object, string][] = [];
+      for (const [key, field] of Object.entries(value)) {
+        const name = redactText(key);
+        put(record, name, null);
+        fields.push([field, record, name]);
+      }
+      // Reversed, so a later field whose redacted name repeats wins, as in the parse.
       for (const field of fields.toReversed()) pending.push(field);
       out = record;
     } else {
       const written = JSON.stringify(value);
       out = redactText(written) === written ? value : '[redacted]';
     }
-    (into as Record<string | number, unknown>)[slot] = out;
+    put(into, slot, out);
   }
   return root[0];
 }
