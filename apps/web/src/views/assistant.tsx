@@ -28,8 +28,9 @@
 // A started tab links to the conversation's own address (C36), where it stays
 // after it is taken out of the tab row.
 //
-// The planning allowance line (AW-04) sits above the transcript, from before
-// the first message (`allowance-line.tsx`).
+// AW-04: the allowance line sits above the transcript from the start (`allowance-line.tsx`); a
+// reply's plan is a card whose one click is `task.accept_plan` (`assistant/plans.ts`); the Agent
+// pane's new attempt opens the drawer through `useAsks`, drafted, unsent, its session's alone.
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { AssistantPanel, type AssistantMessage, type AssistantPage } from '@launchastro/ui';
@@ -48,7 +49,11 @@ import {
   type Chat,
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
+import { acceptPlanCard } from '../assistant/accept.ts';
+import { useAsks } from '../assistant/asks.ts';
+import { usePlanCards } from '../assistant/plans.ts';
 import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
+import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import type {
   CallResult,
   CommandOutcome,
@@ -73,6 +78,8 @@ export interface AssistantViewProps {
   readonly entry: EntryPoint | null;
   /** Its own close and title; the dock leaves it out, as its panel head closes and names it. */
   readonly onClose?: () => void;
+  /** The session it serves: it takes a page's ask (`asks.ts`) only from this one, none without it. */
+  readonly grantKey?: string;
 }
 
 type Move = (state: AssistantState) => AssistantState;
@@ -84,6 +91,9 @@ interface Store {
   readonly now: () => AssistantState;
   readonly chat: (key: string) => Chat | undefined;
   readonly line: (key: string, role: AssistantMessage['role'], body: string) => void;
+  /** A reply's plan as the tab's newest card, and the offer kept for its click. */
+  readonly plan: (key: string, body: string, offer: PlanOffer) => void;
+  readonly offer: (id: string) => PlanOffer | undefined;
 }
 
 function useStore(): Store {
@@ -94,6 +104,7 @@ function useStore(): Store {
     latest.current = move(latest.current);
     setState(latest.current);
   };
+  const cards = usePlanCards(update, count);
   return {
     state,
     update,
@@ -104,6 +115,7 @@ function useStore(): Store {
       const id = `${role}-${String(count.current)}`;
       update((current) => said(current, key, { id, role, body, cites: [] }));
     },
+    ...cards,
   };
 }
 
@@ -119,6 +131,7 @@ interface Opening {
 /** The agent's answer to a kept question, why there is none, or that none comes here. */
 function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
   if (reply === undefined) store.line(key, 'note', KEPT);
+  else if (reply.answered && reply.plan !== undefined) store.plan(key, reply.body, reply.plan);
   else if (reply.answered) store.line(key, 'ai', reply.body);
   else store.line(key, 'failed', reply.words);
 }
@@ -247,6 +260,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
     // the ask reads; only a new entry is a new ask.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [props.entry]);
+  useAsks(props.grantKey, (asked) => update((current) => ask(current, asked)));
   const subject = subjectFor({ route: props.route, ...state.scope });
   const sender = useSender(props, store, subject);
   const writes = useWrites(props, store, sender.report);
@@ -279,6 +293,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
       }}
       onAddPage={writes.addPage}
       onSend={sender.send}
+      onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}
       onClose={props.onClose}
     />
   );

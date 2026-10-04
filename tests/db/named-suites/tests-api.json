@@ -1,4 +1,7 @@
 {
+  "comment": [
+    "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read)."
+  ],
   "invariant": [
     "tests/api/agent-bare-handback-replay.test.ts",
     "tests/api/agent-read-targets.test.ts",
@@ -102,6 +105,7 @@
     "tests/api/c36-address.test.ts",
     "tests/api/c54-money.test.ts",
     "tests/api/c54-recent-sign-in.test.ts",
+    "tests/api/cancelled-unknown-hold-story.test.ts",
     "tests/api/fix-2b1-rs-rollup-issued-and-revoked.test.ts",
     "tests/api/fix-2b1-rs2-left-at-door-real-routes.test.ts",
     "tests/api/hosted-expired-lease-recovery.test.ts",

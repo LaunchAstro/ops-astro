@@ -6,7 +6,7 @@
 // origin conversation, binds the exact words and the record by digest, and
 // pins the entry file read from the server's own instruction root. A refusal
 // writes nothing; a repeat of the operation id replays; a stale version is
-// refused.
+// refused, and so is a ceiling other than the one the version holds.
 
 import { createHash, randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -203,6 +203,41 @@ it('accept_carries_displayed_version: an accept of a version a newer reply repla
     'task.accept_plan',
   );
   expect(await planRecordsOf(w.alpha, newer['gateId'])).toHaveLength(1);
+});
+
+it('AW-04 accept names the ceiling it showed: another ceiling or currency is refused, nothing approved or held', async () => {
+  const plan = await proposed(w.alpha, 'aw04 cmd ceiling');
+  const shown = [
+    { ceilingMinor: 900, currency: 'AUD' },
+    { ceilingMinor: 1_000, currency: 'NZD' },
+  ];
+  for (const ceiling of shown) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await asPerson(w.alpha, acceptBody(plan, ceiling));
+    expect(codeOf(result), JSON.stringify(ceiling)).toBe('VERSION_STALE');
+  }
+  // Half a ceiling, or a fraction of a cent, names no ceiling at all.
+  for (const half of [
+    { ceilingMinor: 1_000 },
+    { currency: 'AUD' },
+    { ceilingMinor: 999.5, currency: 'AUD' },
+  ]) {
+    // eslint-disable-next-line no-await-in-loop
+    expect(codeOf(await asPerson(w.alpha, acceptBody(plan, half)))).toBe('FIELD_VALUE_INVALID');
+  }
+  await untouched(plan);
+  const held = await w.alpha.db.admin.execute<{ n: string }>(
+    'select count(*)::text as n from public.reservations where business_id = $1 and version_id = $2',
+    [w.alpha.business, plan.proposal['versionId']],
+  );
+  expect(held).toEqual([{ n: '0' }]);
+  // Control: the ceiling the version holds is accepted.
+  const ceiling = { ceilingMinor: 1_000, currency: 'AUD' };
+  const detail = appliedDetail(
+    await asPerson(w.alpha, acceptBody(plan, ceiling)),
+    'task.accept_plan',
+  );
+  expect(detail['heldMinor']).toBe(1_000);
 });
 
 it('AW-04 bound plan refuses edits: the application may neither change nor remove the bound words or record', async () => {
