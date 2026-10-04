@@ -38,6 +38,7 @@ it('Sol proof, criterion 7: every approval control stays closed after a refused 
     await tick();
     expect(page.text()).toContain('The server refused your decision on this gate');
     expect(writes).toHaveBeenCalledTimes(1);
+    expect(page.find('[data-agent="gate-actions"] [data-gate="closed"]')).not.toBeNull();
     const other = page.find('[data-gate-action="approve"]');
     if (other !== null && !other.hasAttribute('disabled')) {
       await page.click('[data-gate-action="approve"]');
