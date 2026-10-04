@@ -36,6 +36,7 @@ import {
   httpTransport,
   isRefusal,
   isWrite,
+  shownAddress,
   unknownVerb,
   usage,
   type CliAnswer,
@@ -346,7 +347,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     } catch {
       // Never the failure's own text: it can carry the request, and the
       // request carries the bearer and the delegation (T2 canary token).
-      io.err(`cli: no answer from ${api}`);
+      io.err(`cli: no answer from ${shownAddress(api)}`);
       replayHint();
       return EXIT.transport;
     }

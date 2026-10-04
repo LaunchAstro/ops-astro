@@ -46,6 +46,16 @@ export type Transport = (
 ) => Promise<Response>;
 
 /**
+ * The API address as a failure line may show it: scheme and host. Its user
+ * part, path and query can carry a secret, so they never print; an address
+ * that does not parse is not shown at all.
+ */
+export function shownAddress(api: string): string {
+  const url = URL.parse(api);
+  return url === null ? 'the configured API address' : `${url.protocol}//${url.host}`;
+}
+
+/**
  * The transport over HTTP to the API at `api`: the bearer as a bearer, the
  * delegation in its own header when there is one. The command line and the
  * worker both post through this one (T2b, RN-04), so there is one client.
