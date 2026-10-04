@@ -82,27 +82,36 @@ async function heldAttempt(database: Database, fixture: RuntimeFixture): Promise
   });
 }
 
+let db: EmptyDatabase;
+let fixture: RuntimeFixture;
+
+/** Dispatches the attempt and records the link as observed, as the application role. */
+const observe = (attemptId: string, link: string): Promise<void> =>
+  db.app.withBusiness(fixture.businessId, async (tx) => {
+    await tx.query(
+      `update public.attempts
+          set state = 'dispatched', dispatch_marker = true, observed = true, receipt_link = $2
+        where id = $1`,
+      [attemptId, link],
+    );
+  });
+
+const stored = async (): Promise<unknown> =>
+  await db.admin.execute('select id, observed, receipt_link from public.attempts order by id');
+
+const storedLink = async (attemptId: string): Promise<string | null | undefined> => {
+  const [row] = await db.admin.execute<{ readonly receipt_link: string | null }>(
+    'select receipt_link from public.attempts where id = $1',
+    [attemptId],
+  );
+  return row?.receipt_link;
+};
+
 describe.skipIf(serverUrl === undefined)(
   'the receipt link column and a credential-length run',
   () => {
-    let db: EmptyDatabase;
-    let fixture: RuntimeFixture;
     let storedBefore: unknown;
     let storedAfter: unknown;
-
-    /** Dispatches the attempt and records the link as observed, as the application role. */
-    const observe = (attemptId: string, link: string): Promise<void> =>
-      db.app.withBusiness(fixture.businessId, async (tx) => {
-        await tx.query(
-          `update public.attempts
-              set state = 'dispatched', dispatch_marker = true, observed = true, receipt_link = $2
-            where id = $1`,
-          [attemptId, link],
-        );
-      });
-
-    const stored = async (): Promise<unknown> =>
-      await db.admin.execute('select id, observed, receipt_link from public.attempts order by id');
 
     beforeAll(async () => {
       db = await createEmptyDatabase({ part: 'rlrun' });
@@ -134,21 +143,13 @@ describe.skipIf(serverUrl === undefined)(
         code: '23514',
         constraint_name: 'attempts_receipt_link_shape',
       });
-      const [row] = await db.admin.execute<{ readonly receipt_link: string | null }>(
-        'select receipt_link from public.attempts where id = $1',
-        [attemptId],
-      );
-      expect(row?.receipt_link).toBeNull();
+      expect(await storedLink(attemptId)).toBeNull();
     });
 
     it('still stores an observed link whose longest run is 42 characters', async () => {
       const attemptId = await heldAttempt(db.app, fixture);
       await observe(attemptId, linkWithRun(42));
-      const [row] = await db.admin.execute<{ readonly receipt_link: string | null }>(
-        'select receipt_link from public.attempts where id = $1',
-        [attemptId],
-      );
-      expect(row?.receipt_link).toBe(linkWithRun(42));
+      expect(await storedLink(attemptId)).toBe(linkWithRun(42));
     });
   },
 );
