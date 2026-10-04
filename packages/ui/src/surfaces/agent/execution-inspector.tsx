@@ -60,7 +60,7 @@ export function MapInspector(props: { readonly step: MapStep | null }): ReactEle
       </div>
       <p className="tg__insp__t">{step.title}</p>
       {step.gate === null ? null : (
-        <div className={step.gate.state === 'pending' ? 'gate gate--armed' : 'gate'}>
+        <div className={step.armed ? 'gate gate--armed' : 'gate'}>
           <span className="gate__mark" aria-hidden="true" />
           <div>
             <div className="gate__word">Human approval gate · {words(step.gate.state)}</div>

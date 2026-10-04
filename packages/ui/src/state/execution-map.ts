@@ -79,6 +79,12 @@ export interface MapStep {
   readonly sentence: string;
   readonly runs: readonly MapNode[];
   readonly gate: MapGate | null;
+  /**
+   * The gate still asks: it is pending and the step still reads as waiting at
+   * it. A run observed since (in progress, settled, superseded) is newer than
+   * the gate snapshot from `task.read`, and the newer observation wins.
+   */
+  readonly armed: boolean;
   readonly out: { readonly k: 'NEEDS' | 'WAIT' | 'STOP' | 'OUT'; readonly v: string };
 }
 
@@ -146,10 +152,7 @@ function depths(steps: NonNullable<MapGraph['steps']>): Map<string, number> {
 
 function outLine(step: Omit<MapStep, 'out' | 'sentence' | 'x' | 'y'>): MapStep['out'] {
   const waiting = step.after.find((one) => !one.satisfied);
-  // A pending gate asks only while the step still reads as waiting at it: a
-  // run observed since (in progress, settled, superseded) is newer than the
-  // gate snapshot from `task.read`, and the newer observation wins.
-  if (step.gate?.state === 'pending' && step.state.tone === 'gate')
+  if (step.armed && step.gate !== null)
     return { k: 'NEEDS', v: `A person's approval of v${String(step.gate.version)}` };
   if (waiting !== undefined) return { k: 'WAIT', v: waiting.key };
   const newest = step.runs.at(-1);
@@ -179,6 +182,7 @@ function readSteps(graph: MapGraph, steps: Steps, gates: readonly MapGate[]) {
     const runs = step.runIds.flatMap((id) => graph.nodes.filter((node) => node.nodeId === id));
     const newest = runs.at(-1);
     const gate = gates.find((one) => one.runId === newest?.nodeId) ?? null;
+    const state = stateOf(newest, gate);
     return {
       key: step.key,
       title: step.title,
@@ -188,7 +192,8 @@ function readSteps(graph: MapGraph, steps: Steps, gates: readonly MapGate[]) {
       gate,
       after: step.after,
       terminal: !steps.some((other) => other.after.includes(step.key)),
-      state: stateOf(newest, gate),
+      state,
+      armed: gate?.state === 'pending' && state.tone === 'gate',
       satisfied: satisfiedBy(newest, gate),
     };
   });
