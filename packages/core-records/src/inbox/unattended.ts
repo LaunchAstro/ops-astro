@@ -131,17 +131,19 @@ async function reaches(tx: TenantQuery, row: OpenRow): Promise<boolean> {
   if (!row.loginAndActor) return false;
   if (row.internal === null && !(await standsOnShares(tx, row.recipientPersonId))) return false;
   if (row.wayfinder && row.internal !== true) return false;
-  if (!(await holds(tx, row, 'read'))) return false;
+  const task = { id: row.subjectRecordId, clientId: row.clientId };
+  if (!(await holdsOnTask(tx, row.recipientPersonId, task, 'read')) && !(await readsMap(tx, row))) {
+    return false;
+  }
   if (row.reason !== 'decision') return true;
+  // task.decide is authorised on the task itself (GATE_TASK), so its map's decide grant is no path.
   return row.escalated
     ? await holdsAcrossBusiness(tx, row.recipientPersonId, 'decide')
-    : await holds(tx, row, 'decide');
+    : await holdsOnTask(tx, row.recipientPersonId, task, 'decide');
 }
 
-/** A grant on the task, or on its map when it is a map's ticket (W12). */
-async function holds(tx: TenantQuery, row: OpenRow, action: 'read' | 'decide'): Promise<boolean> {
-  const task = { id: row.subjectRecordId, clientId: row.clientId };
-  if (await holdsOnTask(tx, row.recipientPersonId, task, action)) return true;
+/** A read grant on its map, when the task is a map's ticket (W12). */
+async function readsMap(tx: TenantQuery, row: OpenRow): Promise<boolean> {
   if (row.mapId === null) return false;
-  return await holdsOnTask(tx, row.recipientPersonId, { id: row.mapId, clientId: null }, action);
+  return await holdsOnTask(tx, row.recipientPersonId, { id: row.mapId, clientId: null }, 'read');
 }
