@@ -53,6 +53,6 @@
   "conformance": [
     "tests/reads/decision-evidence-binding.test.ts",
     "tests/reads/decision-signature-read.test.ts",
-    "tests/reads/sol-ow044-isolation.test.ts"
+    "tests/reads/steps-child-text-stays-in-database.test.ts"
   ]
 }

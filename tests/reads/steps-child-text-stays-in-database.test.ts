@@ -37,7 +37,7 @@ async function observedRead() {
   return { answer, received: received.join('\n') };
 }
 
-it('Sol proof, criterion 2: client to client child text never leaves Postgres for a restricted reader', async () => {
+it('client to client child text never leaves Postgres for a restricted reader', async () => {
   const control = await executeRead(seeded().app, alpha, owner.presented, {
     read: 'task.read',
     recordId: ids['stray'] ?? '',
@@ -50,7 +50,7 @@ it('Sol proof, criterion 2: client to client child text never leaves Postgres fo
   );
 });
 
-it('Sol proof, criterion 2: person to person a parent grant never reads an ungranted child title', async () => {
+it('person to person a parent grant never reads an ungranted child title', async () => {
   const control = await executeRead(seeded().app, alpha, owner.presented, {
     read: 'task.read',
     recordId: ids['second'] ?? '',

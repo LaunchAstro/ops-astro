@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Catalogue #412, OW-031 criterion 2: Sol's proof, unchanged
+// Catalogue #412, OW-031 criterion 2: Sol's proof (titles named by behaviour, bodies unchanged)
 // (R/sol/proofs/OW-031-4126931d1.patch), with the setup and helpers it uses;
 // the file's other criteria are not this issue's.
 import { randomUUID } from 'node:crypto';
@@ -67,7 +67,7 @@ async function scopeBlindReader(): Promise<void> {
   expect(JSON.stringify(own.body)).toContain(scoped);
 }
 
-describe('Sol OW-031 proofs, real isolated Postgres and local replay provider', () => {
+describe('wrap-up pointers on a real database', () => {
   beforeAll(async () => {
     c = await createControls('solow031');
     w = await conversationWorld(c);
@@ -79,7 +79,7 @@ describe('Sol OW-031 proofs, real isolated Postgres and local replay provider', 
   afterAll(async () => {
     await w?.drop();
   });
-  it('Sol proof, criterion 2: client-to-client wrap-up pointers respect the reader task boundary', async () => {
+  it('client-to-client wrap-up pointers respect the reader task boundary', async () => {
     const [one, two] = [randomUUID(), randomUUID()];
     await addClient(w.fixture.db.app, w.fixture.business, one, w.owner);
     await addClient(w.fixture.db.app, w.fixture.business, two, w.owner);
