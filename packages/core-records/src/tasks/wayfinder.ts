@@ -90,3 +90,15 @@ export async function isWayfinderRecord(
   if (hold) await wayfinderFacts(tx, recordId, true);
   return (await wayfinderFacts(tx, recordId))?.wayfinder ?? false;
 }
+
+/**
+ * `isWayfinderRecord` as a condition on the task row `alias`, for a query that
+ * filters inside itself: a typed task, or a task filed under a map.
+ */
+export function wayfinderCondition(alias: string): string {
+  const typed = TASK_TYPES.filter((type) => type !== 'task').map((type) => `'${type}'`);
+  return `(coalesce(${alias}.data ->> 'type', 'task') in (${typed.join(', ')})
+    or exists (select 1 from public.records wp
+                where wp.business_id = ${alias}.business_id and wp.id = ${alias}.uuid_4
+                  and wp.record_type_id = ${alias}.record_type_id and wp.data ->> 'type' = 'map'))`;
+}

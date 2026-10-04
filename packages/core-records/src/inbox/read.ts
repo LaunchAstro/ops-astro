@@ -9,6 +9,7 @@
 // recording are `items.ts`.
 
 import { REACH, type InboxAccess } from './access.ts';
+import { wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { Disclosed, InboxAlert, InboxItem, InboxItemAxes } from './items.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
@@ -33,12 +34,15 @@ type ItemRow = InboxItemAxes &
     readonly alertAt: Date | null;
   };
 
+/** A recipient shown the client view reads no map or map ticket (WF-1), as `taskAccess`. */
+const CLIENT_SAFE = `((select internal from reach) or not ${wayfinderCondition('r')})`;
+
 /**
  * Whether the recipient reads the row's task now, from the statement's own
  * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every row.
  */
-const HELD = `((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
-         or r.uuid_7 = any((select parties from reach)::uuid[]))`;
+const HELD = `(((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
+         or r.uuid_7 = any((select parties from reach)::uuid[])) and ${CLIENT_SAFE})`;
 
 /** An item's own columns, as `shown` carries them before trashed and held. */
 const COLUMNS = `i.id, i.business_id, i.recipient_person_id, i.subject_record_id, i.reason,
@@ -64,7 +68,7 @@ const PAGE = `select * from (
             from public.inbox_items i
             join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
            where (select business from reach) and i.business_id = $1 and i.recipient_person_id = $2
-             and i.work_state <> 'open'
+             and i.work_state <> 'open' and ${CLIENT_SAFE}
            order by i.closed_at desc, i.id desc
            limit $3)
          union all
@@ -79,6 +83,7 @@ const PAGE = `select * from (
                limit $3) h
            where not (select business from reach) and r.business_id = $1
              and (r.id = any((select records from reach)::uuid[]) or r.uuid_7 = any((select parties from reach)::uuid[]))
+             and ${CLIENT_SAFE}
            order by h.closed_at desc, h.id desc
            limit $3)
        ) page`;
