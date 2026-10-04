@@ -71,11 +71,21 @@ function answered(before: Held, of: string, read: Preferences, newer: (key: stri
   return { of, value: { ...read, ...Object.fromEntries(kept) } };
 }
 
-/**
- * A refused save's reread puts the refused value back (the page's theme, for
- * Appearance), told the answer and which keys a newer save has moved on since.
- */
+/** A refused save's reread puts the stored value back unless a later save moved that key on. */
 type Restore = (read: Preferences, newer: (key: string) => boolean) => void;
+
+/** The reader now: it ends when the business or person changes, and its reads go unheard. */
+function useReader(client: OperationsClient, grantKey: string) {
+  const reader = useRef({ live: false });
+  useEffect(() => {
+    const now = { live: true };
+    reader.current = now;
+    return () => {
+      now.live = false;
+    };
+  }, [client, grantKey]);
+  return reader;
+}
 
 /** The person's own preferences: read once per reader, changed at once, then saved. */
 function usePreferences(client: OperationsClient, grantKey: string) {
@@ -83,11 +93,10 @@ function usePreferences(client: OperationsClient, grantKey: string) {
   // A refusal is said to one reader, as `held` is held for one.
   const [said, setSaid] = useState<{ readonly of: string; readonly text: string } | null>(null);
 
-  const reread = (restore?: Restore) => {
-    let current = true;
-    const mark = savesSoFar(client);
+  const reader = useReader(client, grantKey);
+  const reread = (of: { readonly live: boolean }, mark: number, restore?: Restore) => {
     void client.read<{ readonly preferences?: unknown }>('preference.read', {}).then((answer) => {
-      if (!current) return answer;
+      if (!of.live) return answer;
       const preferences = 'value' in answer ? answer.value.preferences : undefined;
       const newer = (key: string): boolean => savedSince(client, key, mark);
       if (typeof preferences === 'object' && preferences !== null) {
@@ -97,14 +106,12 @@ function usePreferences(client: OperationsClient, grantKey: string) {
       else setSaid({ of: grantKey, text: 'Your preferences could not be read.' });
       return answer;
     });
-    return () => {
-      current = false;
-    };
   };
 
-  useEffect(() => reread(), [client, grantKey]);
+  useEffect(() => reread(reader.current, savesSoFar(client)), [client, grantKey]);
 
   const save = (preference: string, value: unknown, back?: (stored: unknown) => void): void => {
+    const now = reader.current;
     // Only this reader's own preferences take the change: another reader's,
     // still held while this one's read is pending, are not carried over.
     setHeld((before) => {
@@ -112,11 +119,13 @@ function usePreferences(client: OperationsClient, grantKey: string) {
       return { of: grantKey, value: { ...own, [preference]: value } };
     });
     setSaid(null);
+    // Marked at this save, so a save made after it, queued or landed, outranks the reread.
+    const mark = savesSoFar(client) + 1;
     void savePreference(client, preference, value).then((result) => {
       const failed = describeFailure(result);
       if (failed !== null) {
         setSaid({ of: grantKey, text: failed });
-        reread((read, newer) => {
+        reread(now, mark, (read, newer) => {
           if (!newer(preference)) back?.(read[preference]);
         });
       }
@@ -261,14 +270,6 @@ export function YouGroups(props: {
 }): ReactElement {
   const { preferences, because, save } = usePreferences(props.client, props.grantKey);
   const stored = preferences?.['appearance'];
-  // The reader on the page now; none once it has gone, as at sign-out.
-  const reader = useRef<string | null>(props.grantKey);
-  useEffect(() => {
-    reader.current = props.grantKey;
-    return () => {
-      reader.current = null;
-    };
-  }, [props.grantKey]);
   return (
     <>
       <Group
@@ -287,7 +288,6 @@ export function YouGroups(props: {
             applyAppearance(value, props.storage, true);
             // Refused, the page and the tab's copy go back to what is stored.
             save('appearance', value, (back) => {
-              if (reader.current !== props.grantKey) return;
               applyAppearance(isAppearance(back) ? back : 'system', props.storage);
             });
           }}
