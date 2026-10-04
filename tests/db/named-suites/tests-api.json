@@ -80,6 +80,7 @@
     "tests/api/operand-refusals.test.ts",
     "tests/api/preference-write-client-user.test.ts",
     "tests/api/preferences.test.ts",
+    "tests/api/receipt-link-held-credentials-crossings.test.ts",
     "tests/api/receipt-link-keeps-no-credential.test.ts",
     "tests/api/receipt-link-keeps-no-respelled-credential.test.ts",
     "tests/api/receipt-link-literal-percent-and-held-digests.test.ts",

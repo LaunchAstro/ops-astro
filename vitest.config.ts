@@ -70,6 +70,7 @@ export default defineConfig({
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
             'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
+            'tests/api/receipt-link-held-credentials-crossings.test.ts',
             'tests/api/receipt-link-keeps-no-credential.test.ts',
             'tests/api/receipt-link-literal-percent-and-held-digests.test.ts',
             'tests/web/authenticator-cancelled-enrol-lands-late.test.tsx',
