@@ -73,7 +73,8 @@ jobs:
     # to after. The only job here that may write anything, and only issues.
     name: look-ahead failure reported
     needs: [lookahead]
-    if: failure()
+    # Any outcome but success: a run that hits its timeout is cancelled, not failed.
+    if: always() && needs.lookahead.result != 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
