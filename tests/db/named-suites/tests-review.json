@@ -1,6 +1,7 @@
 {
   "invariant": [],
   "conformance": [
+    "tests/review/child-assign-refuses-parent-expired-in-lock-wait.test.ts",
     "tests/review/column-grants-name-batch-1.test.ts",
     "tests/review/ended-parent-child-not-live-on-tasks.test.ts",
     "tests/review/ow-042-access-sol-proof.test.ts",
