@@ -142,7 +142,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
   ['si', 'tags'],
   ['sid', 'task_tags'],
-  // 20261004175107 (C33): a definition, a released version and an occurrence
+  // C80: a live correction takes updates (a decision is one); its receipts
+  // are append only.
+  ['siu', 'live_corrections'],
+  ['si', 'live_correction_receipts'],
+  // 20261004201434 (C33): a definition, a released version and an occurrence
   // are written once and never changed; an activation's setting moves by the
   // column grant in COLUMN_UPDATES.
   ['si', 'activation_occurrences activations automation_definitions definition_versions'],

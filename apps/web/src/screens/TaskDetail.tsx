@@ -175,11 +175,23 @@ interface SaveAttempt {
   readonly generation: number;
 }
 
+/**
+ * The page, mounted afresh for each task under each grant. Every answer below
+ * belongs to the task and grant it was read for, so a route to another task
+ * (another client, person or business) starts with nothing drawn: React would
+ * otherwise render the new route once over the old read before the read
+ * resets, and commit the preceding task's run map, receipts and inspector
+ * under it. The key is the route's identity, never anything from an answer.
+ */
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
+  return <TaskPage key={`${props.grantKey}\u0000${props.taskKey}`} {...props} />;
+}
+
+function TaskPage(props: TaskDetailProps): ReactElement {
   const client = props.client;
   const hub = hubOf(client);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const { state, reload } = useRead<TaskReadResult>({
+  const { state, reload, live } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
     deps: [props.taskKey, props.changes ?? 0],
@@ -190,13 +202,13 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   });
   useFreshOnPage(state, hub);
 
-  // **The draft lives above the read.** A re-read under a draft keeps `Loaded`
-  // mounted (C4 live-sync 4: the rest of the page stays live and the edit is
-  // never read over), and any other re-read unmounts it, so the draft has to
-  // outlive that to be settled at all. It is still dropped exactly where it
-  // always was: a different task, a different grant, or a read the server
-  // denied. A draft that outlived its authority would be stale authorised data
-  // left on the screen, which is the thing that must not happen.
+  // **The draft lives above the read.** A re-read under a draft or from the live
+  // channel keeps `Loaded` mounted (C4 live-sync 4: the edit is never read over;
+  // MP-6-3: the map keeps its graph and selected card), and any other re-read
+  // unmounts it, so the draft has to outlive that to be settled at all. It is
+  // still dropped where it always was: a different task, a different grant, or a
+  // read the server denied. A draft that outlived its authority would be stale
+  // authorised data left on the screen, which must not happen.
   const identity = `${props.grantKey}\u0000${props.taskKey}`;
   const denied = state.outcome === 'denied';
   if (draft !== null && (draft.identity !== identity || denied)) setDraft(null);
@@ -232,7 +244,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
       {state.outcome === 'denied' && state.refusal.code === 'NOT_FOUND' ? (
         <TaskUnknown typed={props.taskKey} refusal={state.refusal} />
       ) : (
-        <RecordState state={state} subject="task" onRetry={reload} keep={keep}>
+        <RecordState state={state} subject="task" onRetry={reload} keep={keep || live}>
           {(value) =>
             'sharedTask' in value ? (
               <SharedTaskDetail task={value.sharedTask} />
@@ -918,7 +930,13 @@ function AgentSide({
       <div className="tpg">
         <div className="tpg__main">
           <BriefSection brief={task.agentBrief} />
-          <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
+          <RunProgress
+            client={client}
+            grantKey={props.grantKey}
+            proposals={task.proposals}
+            readOf={task}
+            taskKey={task.key}
+          />
           <Proposals
             capCurrency={task.capCurrency}
             client={client}
