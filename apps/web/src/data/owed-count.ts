@@ -24,9 +24,15 @@ export function useOwedCount(
   useEffect(() => {
     if (session === null || !shown) return;
     let current = true;
+    // Reads overlap; an answer older than the one drawn is dropped.
+    let asked = 0;
+    let drawn = 0;
     const read = (): void => {
+      const ask = ++asked;
       void client.read<InboxCountResult>('inbox.count', {}).then((answer) => {
-        if (current) setOwed('value' in answer ? { of: session, owed: answer.value.owed } : null);
+        if (!current || ask < drawn) return answer;
+        drawn = ask;
+        setOwed('value' in answer ? { of: session, owed: answer.value.owed } : null);
         return answer;
       });
     };
