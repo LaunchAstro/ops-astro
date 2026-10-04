@@ -62,6 +62,8 @@ async function scopeBlindReader(): Promise<void> {
   expect(answer.status).toBe(200);
   expect(JSON.stringify(answer.body)).not.toContain(scoped);
   expect((answer.body['conversation'] as { scope: unknown }).scope).toBeNull();
+  const items = (answer.body['wrapUp'] as { items: { key: string; fact: string }[] }).items;
+  expect(items.find((item) => item.key === 'scope')?.fact).toBe('Opened with no scope');
   // The owner, who may read the task, still sees it.
   const own = await w.as(w.owner, 'conversation.read', { conversationId });
   expect(JSON.stringify(own.body)).toContain(scoped);
