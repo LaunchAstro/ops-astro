@@ -5,8 +5,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { wayfinderWorld, must, codeOf, type WayfinderWorld, type Decider } from './world.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
-describe('WF-1 map revise and view, under review proofs', () => {
+/** Every case here needs a database: without one the file is skipped, not failed. */
+const withDatabase = describe.skipIf(databaseUrlFromEnvironment() === undefined);
+
+withDatabase('WF-1 map revise and view, under review proofs', () => {
   let w: WayfinderWorld;
   let owner: Decider;
   beforeAll(async () => {
