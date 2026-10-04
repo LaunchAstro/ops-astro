@@ -176,7 +176,7 @@ C40('C40 password reset, link use: secrets', () => {
 
 C40('C40 password reset, link use: isolation', () => {
   it('C40 isolation: a reset reaches only the person’s own login, in each business', async () => {
-    const bravoActor = await inBravoToo(clientA.presented.subject, 'client-a-in-bravo');
+    await inBravoToo(clientA.presented.subject, 'client-a-in-bravo');
     const subjectA = clientA.presented.subject;
     const oldA = await oldSession(subjectA);
     const oldB = await oldSession(clientB.presented.subject);
@@ -197,8 +197,9 @@ C40('C40 password reset, link use: isolation', () => {
     expect(await doorAnswer(bea, 'bravo')).toBe('served');
     const alpha = (await auditOf(world.alpha, CHANGED)).slice(before.alpha);
     const bravo = (await auditOf(world.bravo, CHANGED)).slice(before.bravo);
+    // One audit row, in the token's business; bravo keeps its ended sessions alone.
     expect(alpha.map((row) => [row.actor_id, row.outcome])).toEqual([[clientA.actorId, 'applied']]);
-    expect(bravo.map((row) => [row.actor_id, row.outcome])).toEqual([[bravoActor, 'applied']]);
+    expect(bravo).toEqual([]);
     for (const row of [...alpha, ...bravo]) expect(row.row).not.toContain(NEW_PASSWORD);
     // Client B's own token is still live.
     expect((await setPassword(tokenB, NEW_PASSWORD)).status).toBe(200);

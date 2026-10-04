@@ -75,16 +75,17 @@ export function routeDatabase(app: Database, faultIn: () => BusinessId | undefin
     run: (tx: TransactionQuery) => Promise<T>,
   ): Promise<T> {
     return await app.withBusiness(business, async (tx) => {
-      let auditing = false;
+      // The reset's change in a business: its sessions' ending, or its audit row.
+      let changing = false;
       const watched: TransactionQuery = {
         ...tx,
         query: async <Row>(text: string, parameters?: readonly unknown[]) => {
-          auditing ||= text.includes('insert into audit_events');
+          changing ||= /insert into (?:audit_events|ops\.ended_subject_sessions)/u.test(text);
           return await tx.query<Row>(text, parameters);
         },
       };
       const done = await run(watched);
-      if (auditing && business === faultIn())
+      if (changing && business === faultIn())
         throw new Error('an injected fault, after the change');
       return done;
     });
