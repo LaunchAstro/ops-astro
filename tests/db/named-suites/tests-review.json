@@ -1,0 +1,10 @@
+{
+  "invariant": [
+    "tests/review/sl12-18-hook-batch-proof.test.ts",
+    "tests/review/sl12-18-mention-timing-proof.test.ts"
+  ],
+  "conformance": [
+    "tests/review/column-grants-name-batch-1.test.ts",
+    "tests/review/sl01-rel-g2-health-proof.test.ts"
+  ]
+}

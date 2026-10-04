@@ -184,12 +184,12 @@ export {
   INBOX_HISTORY_SCAN,
 } from './inbox/read.ts';
 export {
+  INBOX_REASONS,
   owes,
   toldAtOnce,
   raiseInboxItem,
   stampSeen,
   recordDeliveryAttempt,
-  type DeliveryChannel,
   type DeliveryState,
   type InboxAccess,
   type InboxFactKind,
@@ -197,7 +197,6 @@ export {
   type InboxAlert,
   type InboxReason,
   type InboxWorkState,
-  type RaiseInboxItem,
 } from './inbox/items.ts';
 export { readScopes, taskAccess } from './inbox/access.ts';
 export {
