@@ -62,6 +62,19 @@ it('keeps the rest of a call that also logs a revoked proxy', () => {
   revocable.revoke();
   expect(consoleLine('token %s', planted, revocable.proxy)).toContain(planted);
   expect(consoleLine(revocable.proxy, planted)).toContain(planted);
+  const bytes = Buffer.from('bytes');
+  const throwing = new Proxy(Buffer.prototype, {
+    getPrototypeOf: () => {
+      throw new Error('trap');
+    },
+  });
+  Object.setPrototypeOf(bytes, throwing);
+  expect(consoleLine('a %s b %s', bytes, planted)).toContain(planted);
+  const deep = { a: { b: { c: { d: { e: { bytes } } } } } };
+  expect(consoleLine('%o %s', deep, planted)).toContain(planted);
+  expect(consoleLine('%O %s', deep, planted)).toContain(planted);
+  expect(consoleLine(deep, planted)).toContain(planted);
+  expect(consoleLine('%s', planted, deep)).toContain(planted);
 });
 
 it('writes an error with its stack', () => {

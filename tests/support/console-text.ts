@@ -6,11 +6,13 @@
 // whatever the object held. This writes the call as the console prints it,
 // with no depth, array or string limit, so every nested value is in the text.
 // Node cuts an object a `%s` or `%o` reads to depth 0 or 4 whatever options it
-// is given, so those are written out here first (an object `%s` writes by its
-// own toString keeps that text); a Buffer is written as the text its bytes
-// carry, as `String(part)` did, not as hex.
+// is given, so every inspected value is written out here first (an object `%s`
+// writes by its own toString keeps that text); a Buffer is written as the text
+// its bytes carry, as `String(part)` did, not as hex. Where a proxy's trap
+// throws deeper than the console reads, the console's own writing stands, so
+// the rest of the call is never lost.
 
-import { formatWithOptions, inspect, types } from 'node:util';
+import { formatWithOptions, inspect } from 'node:util';
 
 const whole = {
   depth: Infinity,
@@ -22,39 +24,72 @@ const whole = {
 /** What `%o` shows beyond `%O`, at the same unlimited depth. */
 const hidden = { ...whole, showHidden: true, showProxy: true } as const;
 
+/** How the console's `%o` writes, depth 4 whatever it is given. */
+const consoleHidden = { showHidden: true, showProxy: true, depth: 4 } as const;
+
 /** How `%s` writes an object it inspects, rather than one with its own toString. */
 const shallow = { ...whole, depth: 0, colors: false, compact: 3 } as const;
 
-/** A Buffer, asked without a prototype walk, which a revoked proxy would throw on. */
-const isBuffer = (part: unknown): part is Buffer =>
-  types.isUint8Array(part) && Buffer.isBuffer(part);
+/** A Buffer; a value whose prototype walk throws, as a revoked proxy's does, is not one. */
+function isBuffer(part: unknown): part is Buffer {
+  try {
+    return Buffer.isBuffer(part);
+  } catch {
+    return false;
+  }
+}
 
-const bytesAsText = (part: unknown): unknown => (isBuffer(part) ? part.toString('utf8') : part);
+/** The deeper writing, or the console's own when a trap makes the deeper one throw. */
+function deeperOr(deeper: () => string, nodeText: () => string): string {
+  try {
+    return deeper();
+  } catch {
+    return nodeText();
+  }
+}
+
+const inspected = (value: unknown, deep: object, shown: object = {}): string =>
+  deeperOr(
+    () => inspect(value, deep),
+    () => inspect(value, shown),
+  );
+
+/** An argument outside the format: text as is, a Buffer as its text, the rest inspected whole. */
+function written(part: unknown): string {
+  if (typeof part === 'string') return part;
+  return isBuffer(part) ? part.toString('utf8') : inspected(part, whole);
+}
 
 /** One console call's arguments as the console would print them, nothing cut short. */
 export function consoleLine(...parts: readonly unknown[]): string {
   const [first, ...rest] = parts;
-  if (typeof first !== 'string') {
-    return parts.map((part) => formatWithOptions(whole, bytesAsText(part))).join(' ');
-  }
-  const args = rest.map((part) => bytesAsText(part));
+  if (typeof first !== 'string') return parts.map((part) => written(part)).join(' ');
+  const args = [...rest];
   let next = 0;
   const format = first.replaceAll(/%([sjdOoifc%])/gu, (spec, letter: string) => {
     if (letter === '%' || next >= rest.length) return spec;
     const index = next++;
     const value = rest[index];
-    if (isBuffer(value)) return '%s';
-    if (letter === 'o') {
-      args[index] = inspect(value, hidden);
+    if (isBuffer(value)) {
+      args[index] = value.toString('utf8');
+      return '%s';
+    }
+    if (letter === 'o' || letter === 'O') {
+      args[index] =
+        letter === 'o' ? inspected(value, hidden, consoleHidden) : inspected(value, whole);
       return '%s';
     }
     if (letter === 's' && typeof value === 'object' && value !== null) {
       const shown = formatWithOptions(whole, '%s', value);
-      args[index] = shown === inspect(value, shallow) ? inspect(value, whole) : shown;
+      args[index] = deeperOr(
+        () => (shown === inspect(value, shallow) ? inspect(value, whole) : shown),
+        () => shown,
+      );
       return '%s';
     }
     return spec;
   });
+  for (let index = next; index < rest.length; index++) args[index] = written(rest[index]);
   return formatWithOptions(whole, format, ...args);
 }
 
