@@ -4,6 +4,8 @@
 // parse5's adoption agency moves a furthest block's children one first child at a time; each
 // move searched and shifted every sibling after it, so a shallow page of 1,950,010 bytes took
 // 32.7 s. The parser-bound rows in c80-capture.test.ts answer within the same five seconds.
+// The twelfth re-bind, L1: rebuilt formatting elements share their tag's 255 attributes, and the
+// capture read every one, so a 2 MiB page of them answered in about four seconds.
 
 import { describe, expect, it } from 'vitest';
 import { capturePage, type TransportAnswer } from '../../packages/core-connectors/src/index.ts';
@@ -25,5 +27,16 @@ describe('C80 the fenced capture, Sol R1', () => {
     const elapsed = performance.now() - started;
     expect(elapsed).toBeLessThan(5000);
     expect(result.ok ? 'ok' : result.code).toBe('CAPTURE_OVERSIZED');
+  }, 600_000);
+
+  it('refuses rebuilt elements that carry 255 attributes each well inside a second', async () => {
+    const names = Array.from({ length: 254 }, (_, at) => ` a${at}`).join('');
+    const head = `<div>${Array.from({ length: 10 }, (_, at) => `<b z=${at}${names}>`).join('')}</div>`;
+    const body = head + '<div>X</div>'.repeat(Math.floor((2 * 1024 * 1024 - head.length) / 12));
+    const started = performance.now();
+    const result = await captured(body);
+    const elapsed = performance.now() - started;
+    expect(result.ok ? 'ok' : result.code).toBe('CAPTURE_OVERSIZED');
+    expect(elapsed).toBeLessThan(1000);
   }, 600_000);
 });
