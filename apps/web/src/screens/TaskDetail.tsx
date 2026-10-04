@@ -414,8 +414,10 @@ function useHeld<T>(
   }
   const value = held.identity === identity ? held.value : null;
   const set = (next: T | null): void => {
+    // Writing what is already held keeps the same slot, so no render follows.
     setHeld((current) =>
       current.identity !== identity ||
+      current.value === next ||
       (current.value !== null && keeps?.(current.value, next) === true)
         ? current
         : { identity, value: next },
