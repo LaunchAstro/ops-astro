@@ -57,6 +57,10 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/api/function.ts': "the hosted function hands each request to the API's own handler",
   'apps/web/build-stamp.ts': 'runs the local git once at build time to stamp the build; no network',
   'apps/web/src/held-address.tsx': "threads the page's fetch to the product's own API",
+  // C80: not a model call, so not through custody's broker. Whether its
+  // provider calls should leave through custody instead is open for Sol.
+  'packages/core-connectors/src/capture/transport.ts':
+    "C80's pinned HTTPS transport: only to an address already checked, no redirect",
   // Main's, taken at the a352c11 join (reviewed in batch 2):
   'apps/api/auth/factors.ts':
     "the sign-in provider's second-factor calls at its one fixed address (C59)",
