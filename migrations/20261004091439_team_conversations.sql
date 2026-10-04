@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 20261003000558 team conversations (C71-D, CS-7.25, CS-7.26; C71-G builds on it).
+-- 20261004091439 team conversations (C71-D, CS-7.25, CS-7.26; C71-G builds on it).
 --
 -- A conversation is a record of its own type, `team_conversation`, and its
 -- messages are comments on the one comment record (`task_comment`) anchored to
