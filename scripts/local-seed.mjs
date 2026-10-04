@@ -689,16 +689,23 @@ async function seedAgentUser(auth, agent) {
     apikey: auth.token,
     'content-type': 'application/json',
   };
+  // fetch follows a redirect with every header, the key included, wherever it
+  // points, plaintext HTTP too: a redirect is refused, never followed.
+  const redirect = 'error';
   const created = await fetch(`${auth.url}/admin/users`, {
     method: 'POST',
     headers,
+    redirect,
     body: JSON.stringify({ email: agent.email, password: agent.password, email_confirm: true }),
   });
   const body = await created.json().catch(() => {});
   if (typeof body?.id === 'string') return { subject: body.id, reachable: true };
   // Already there: find it, keep the subject GoTrue already issued, and set its
   // password to the file's, so the credential written for it signs in.
-  const listed = await fetch(`${auth.url}/admin/users?page=1&per_page=200`, { headers });
+  const listed = await fetch(`${auth.url}/admin/users?page=1&per_page=200`, {
+    headers,
+    redirect,
+  });
   const listedUsers = (await listed.json().catch(() => ({})))?.users ?? [];
   const found = Array.isArray(listedUsers)
     ? listedUsers.find((user) => user.email === agent.email)
@@ -708,6 +715,7 @@ async function seedAgentUser(auth, agent) {
   const reset = await fetch(`${auth.url}/admin/users/${found.id}`, {
     method: 'PUT',
     headers,
+    redirect,
     body: JSON.stringify({ password: agent.password }),
   });
   return { subject: found.id, reachable: reset.ok };
