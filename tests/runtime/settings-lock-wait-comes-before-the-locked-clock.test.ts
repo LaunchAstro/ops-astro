@@ -17,6 +17,7 @@ import {
 
 useAw06World('settings_clock');
 
+// eslint-disable-next-line max-lines-per-function -- one schedule: install held, the command parked, the expiry passed, then released
 it('dispatch refuses a lease and delegation expired during the settings install lock wait', async () => {
   const owner = w.s;
   const work = await leased(owner, 'launch', 'Sol settings wait expiry');
@@ -84,6 +85,7 @@ it('dispatch refuses a lease and delegation expired during the settings install 
   }
 }, 30_000);
 
+// eslint-disable-next-line max-lines-per-function -- one schedule: install held, the command parked, the expiry passed, then released
 it('a top-up cannot raise money after its billing grant expires during the first settings install wait', async () => {
   const owner = w.s;
   // Fixture-only deletion restores the pre-install state on this disposable database.

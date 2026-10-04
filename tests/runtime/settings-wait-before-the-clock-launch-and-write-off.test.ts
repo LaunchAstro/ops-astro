@@ -29,6 +29,7 @@ import { openBilling, t3d1Harness } from './t3d1-harness.ts';
 
 const url = databaseUrlFromEnvironment();
 
+// eslint-disable-next-line max-lines-per-function -- one fresh database, its two cases
 describe.skipIf(url === undefined)('a settings install wait before the locked clock', () => {
   let s: Schedules;
   const h = t3d1Harness(() => s);
