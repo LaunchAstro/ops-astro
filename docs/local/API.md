@@ -3275,3 +3275,5 @@ has the table, the sealing and the compromise runbook.
 
 No answer carries a value, and a refusal names the field, never what was sent.
 No audit row holds a set's value either, a refusal's attempted values included.
+A set's `expectedRevision` is the revision `secret.list` showed, or `0` for a
+name the list did not hold: `0` is refused `VERSION_STALE` when the name exists.
