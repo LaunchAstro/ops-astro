@@ -21,11 +21,16 @@
 //
 // Not here yet, waiting for staging: the hook made for the preview branch on
 // Vercel's side, and the Viewer token's read-back of the built preview (its
-// commit, its target), refused on every other project. Requests in one process
-// take turns on the branch (`requestPreview`); two commands run at once are
-// told apart only by that read-back.
+// commit, its target), refused on every other project. Requests take turns on
+// the branch through the preview lock (`requestPreview`), so commands run at
+// once on one machine and sign-in each build the commit they record; commands
+// from two machines or accounts are told apart only by that read-back.
 
 import { spawnSync } from 'node:child_process';
+import { mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -104,22 +109,26 @@ async function jobOf(asked: Promise<Response>): Promise<string | undefined> {
 }
 
 /**
- * The request in hand: the branch holds one commit at a time, so a second
- * request pushes only once the first one's hook has answered, and each job is
- * asked while the branch holds the commit its record names.
+ * The preview lock: the branch holds one commit at a time, so a request, in
+ * this process or another, pushes only once the one before has its hook's
+ * answer, and each job is asked while the branch holds the commit its record
+ * names. A directory, made and removed whole; waited on for a minute at most.
  */
-let inHand: Promise<unknown> = Promise.resolve();
+export const PREVIEW_LOCK: string = join(tmpdir(), 'ops-astro-preview-request.lock');
+const LOCK_WAIT_MS = 60_000;
 
-export function requestPreview(
-  request: { version: string },
-  deps: PreviewDeps,
-): Promise<PreviewOutcome> {
-  const turn = inHand.then(() => pushThenAsk(request, deps));
-  inHand = turn.catch(() => null);
-  return turn;
+async function lockPreview(until: number): Promise<boolean> {
+  try {
+    mkdirSync(PREVIEW_LOCK);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || Date.now() > until) return false;
+  }
+  await sleep(100);
+  return lockPreview(until);
 }
 
-async function pushThenAsk(
+export async function requestPreview(
   request: { version: string },
   deps: PreviewDeps,
 ): Promise<PreviewOutcome> {
@@ -127,6 +136,22 @@ async function pushThenAsk(
   if (!VERSION.test(request.version)) problems.push('the version is not one full commit id');
   if (problems.length > 0)
     return { kind: 'refused', reason: `${problems.join('; ')}. Nothing was pushed or built.` };
+  if (!(await lockPreview(Date.now() + LOCK_WAIT_MS)))
+    return {
+      kind: 'refused',
+      reason: `another preview request holds ${PREVIEW_LOCK}; if none is running, remove it. Nothing was pushed or built.`,
+    };
+  try {
+    return await pushThenAsk(request, deps);
+  } finally {
+    rmSync(PREVIEW_LOCK, { recursive: true, force: true });
+  }
+}
+
+async function pushThenAsk(
+  request: { version: string },
+  deps: PreviewDeps,
+): Promise<PreviewOutcome> {
   if (!deps.push(request.version, PREVIEW_BRANCH))
     return {
       kind: 'failed',

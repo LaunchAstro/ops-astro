@@ -19,15 +19,17 @@
 // With both stopped it migrates, points production at the artefact and starts
 // the auth server, then the API. A migration that fails promotes nothing and
 // starts nothing, so the old build never runs against a half-moved schema.
-// The store is writable while the migration runs, so the artefact's bytes are
-// digested again before production is pointed at them; bytes that changed
-// fail the promotion the same way.
+// The store stays writable, so after the migration production gets a copy of
+// the artefact of its own, in a new folder in the store, and the copy's bytes
+// are digested again before production is pointed at it: bytes that changed
+// fail the promotion the same way, and a later write to the store changes
+// nothing production serves.
 //
 // Every act on the machine goes through `PromotionEffects`, so the decisions
 // here are tested with the effects watched and the command stays thin.
 
-import { readFileSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { cpSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { outputDigest, recordedStamp } from './build-output.ts';
 
 /** A service as the service manager names it. */
@@ -149,6 +151,21 @@ export function storedArtefact(version: string, store: string): StoredArtefact |
   return { path, name, digest };
 }
 
+/**
+ * Production's own copy of the artefact, in a new folder beside it in the
+ * store, once the copy holds the bytes its digest records; a failure if not.
+ */
+function checkedCopy(selected: StoredArtefact): string | PromotionOutcome {
+  const copy = join(mkdtempSync(join(dirname(selected.path), '.promoted-')), selected.name);
+  cpSync(selected.path, copy, { recursive: true, dereference: true });
+  if (outputDigest(copy) === selected.digest) return copy;
+  rmSync(dirname(copy), { recursive: true, force: true });
+  return {
+    kind: 'failed',
+    reason: `${selected.name} changed in the store while the migration ran; the migration completed, nothing was promoted and the API and the auth server are left stopped`,
+  };
+}
+
 export function promote(request: PromotionRequest, effects: PromotionEffects): PromotionOutcome {
   const selected = select(request);
   if (typeof selected === 'string') return { kind: 'refused', reason: selected };
@@ -188,14 +205,10 @@ export function promote(request: PromotionRequest, effects: PromotionEffects): P
       reason: `the migration did not complete; nothing was promoted and the API and the auth server are left stopped`,
     };
   }
-  if (outputDigest(selected.path) !== selected.digest) {
-    return {
-      kind: 'failed',
-      reason: `${selected.name} changed in the store while the migration ran; the migration completed, nothing was promoted and the API and the auth server are left stopped`,
-    };
-  }
-  effects.point(current, selected.path);
+  const promoted = checkedCopy(selected);
+  if (typeof promoted !== 'string') return promoted;
+  effects.point(current, promoted);
   effects.start(auth);
   effects.start(api);
-  return { kind: 'promoted', record, artefactPath: selected.path };
+  return { kind: 'promoted', record, artefactPath: promoted };
 }

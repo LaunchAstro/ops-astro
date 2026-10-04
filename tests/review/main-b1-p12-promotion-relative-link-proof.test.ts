@@ -11,18 +11,11 @@
 // The step's decisions are watched through `promote`, and the link is made
 // exactly as promote.mjs's `point` makes it.
 
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  symlinkSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterAll, expect, it } from 'vitest';
+import { outputDigest } from '../../scripts/ops/build-output.ts';
 import { promote, type PromotionEffects } from '../../scripts/ops/promotion.ts';
 import { LINE, named, STAGED, store } from '../ci/promotion.fixture.ts';
 
@@ -69,5 +62,6 @@ it('p12-2 a promotion run with a relative --artefacts leaves production linked t
     existsSync(current),
     `DEFECT p12-2: after migrating, the promotion pointed production's link at the relative ${join(given, named(STAGED))}, which resolves from the link's own folder and dangles`,
   ).toBe(true);
-  expect(realpathSync(current)).toBe(realpathSync(join(absolute, named(STAGED))));
+  // Production serves its own copy of the staged artefact: the same bytes, its stamp included.
+  expect(outputDigest(current)).toBe(outputDigest(join(absolute, named(STAGED))));
 });

@@ -152,6 +152,8 @@ tests/review/release-digest-framing-proof.test.ts
 tests/review/seed-admission-one-at-a-time-proof.test.mjs
 tests/ci/concurrent-preview-requests.proof.test.ts
 tests/ci/promotion-serves-validated-bytes.proof.test.ts
+tests/review/carried-stamp-after-killed-retry-proof.test.ts
+tests/ci/preview-and-promotion-cross-process.proof.test.ts
 
 # Sol's proofs on the local signing key, kept as the review patch held them
 # apart from each title, which names what it proves.
