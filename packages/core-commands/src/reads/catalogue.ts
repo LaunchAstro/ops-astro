@@ -349,8 +349,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         },
         // The rank's pool is every open task this reader's grants reach.
         { kind: 'grants', subjects: subjectsOf(session) },
-        // A member reads their own time on the task (RS-VAULT-9).
-        session.personId,
+        // A member reads their own time on the task (RS-VAULT-9); an agent
+        // credential's call, though it stands as its person, is an agent's
+        // and is sent none (API.md: an agent is sent `time: null`).
+        session.credentialScope === undefined ? session.personId : null,
       );
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
