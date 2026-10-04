@@ -17,8 +17,8 @@
       "files": [
         "tests/surfaces/c31-keys-panel-latest-read-and-settings-harness.test.tsx",
         "tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx",
-        "tests/surfaces/sol-pr374-fix1-stale-set.test.tsx",
-        "tests/surfaces/sol-pr374-fix1-write-denial.test.tsx"
+        "tests/surfaces/c31-keys-panel-stale-set-refused.test.tsx",
+        "tests/surfaces/c31-keys-panel-write-denial-drops-the-list.test.tsx"
       ],
       "rules": {
         "require-await": "off",

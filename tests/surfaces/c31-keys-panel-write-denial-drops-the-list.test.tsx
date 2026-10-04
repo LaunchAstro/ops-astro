@@ -8,7 +8,7 @@ import { mount, settle } from './mount.tsx';
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-it('Sol proof, criterion 5: a newer custody write denial drops the authorised list while its reread is pending', async () => {
+it('a newer custody write denial drops the authorised list while its reread is pending', async () => {
   let reads = 0;
   const held = new Promise<Response>(() => {});
   const fetcher: typeof fetch = (url) => {

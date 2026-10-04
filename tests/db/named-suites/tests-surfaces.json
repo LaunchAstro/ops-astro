@@ -5,5 +5,8 @@
     "tests/surfaces/mp-7-3-inbox-isolation.test.tsx",
     "tests/surfaces/proposal-snapshot.test.tsx"
   ],
-  "conformance": ["tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx"]
+  "conformance": [
+    "tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx",
+    "tests/surfaces/c31-keys-panel-stale-set-refused.test.tsx"
+  ]
 }

@@ -15,7 +15,7 @@ const tick = async () => {
   });
 };
 
-it('Sol proof, criterion 5: stale Set does not overwrite a key replaced by another administrator', async () => {
+it('stale Set does not overwrite a key replaced by another administrator', async () => {
   const controls = await createControls('sol374', { custody: generateSealingPair('sol374').key });
   let page: Awaited<ReturnType<typeof mount>> | undefined;
   try {
