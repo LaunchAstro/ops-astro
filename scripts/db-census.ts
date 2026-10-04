@@ -8,7 +8,9 @@
 // placed once, none twice, none that is not an item, and the number of tests
 // the placed items hold. The test counts are vitest's own: `vitest list` over
 // every named suite, and over each part of a split suite with its SUITE_PART,
-// without running anything.
+// without running a test. The files are collected by running them, not parsed:
+// a static parse finds no test behind `const withDatabase = it.skipIf(...)`
+// and cannot know which cases a SUITE_PART registers.
 //
 // Usage: node scripts/db-census.ts [8 16 ...]
 //   Prints one line per split and exits 1 unless every split holds every item
@@ -64,7 +66,13 @@ function listed(files: readonly string[], part = ''): Map<string, number> {
     const out = join(dir, 'list.json');
     const run = spawnSync(
       process.execPath,
-      [join(root, 'node_modules/vitest/vitest.mjs'), 'list', `--json=${out}`, ...files],
+      [
+        join(root, 'node_modules/vitest/vitest.mjs'),
+        'list',
+        '--no-staticParse',
+        `--json=${out}`,
+        ...files,
+      ],
       {
         cwd: root,
         encoding: 'utf8',
