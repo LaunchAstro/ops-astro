@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function -- Sol's proof body, committed unchanged */
 import { expect, it } from 'vitest';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';

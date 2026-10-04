@@ -217,6 +217,7 @@ export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
 export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
 export {
   isSettingRevisionStale,
+  lockSettingsInstall,
   readBusinessSetting,
   readBusinessSettings,
   writeBusinessSetting,

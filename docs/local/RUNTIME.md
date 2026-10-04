@@ -2127,7 +2127,11 @@ launch of the reviewed output is the only decision an effect waits on.
   and writes nothing), and the dispatch recheck refuses every lease of the
   business with the same code, whatever approved it. The setting's row is held
   `for share` before it is read, so a change in flight is waited for and then
-  seen. The client's own sign-off is MP-11-5's (phase 8); until the portal
+  seen. A missing row locks nothing, so the business's settings install lock
+  (`lockSettingsInstall`, advisory key `<business id>:business_settings`) is
+  held shared first; the install takes it exclusive before adding rows, so a
+  first row cannot commit between the check and the dispatch marker
+  (catalogue #463). The client's own sign-off is MP-11-5's (phase 8); until the portal
   exists the work stays held, visibly, under that code.
 - **The receipt link.** The worker reads the provider's answer
   (`readProviderAnswer`, `apps/worker/usage.ts`): a status outside 2xx (a
