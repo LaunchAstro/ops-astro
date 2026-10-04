@@ -294,7 +294,6 @@ export function createPositiveBody(
         // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
         return await conversationBody(declaration.name, context);
       default:
-        // Wayfinder (WF-1) keeps its recipes beside this table; it throws for a name with none.
         return { body: await wayfinderBody(declaration.name, context, target) };
     }
   };
