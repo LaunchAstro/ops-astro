@@ -36,6 +36,7 @@ import {
   deliver,
   emailResult,
   recordAsked,
+  stillReadable,
   type Asked,
   type CheckedItem,
   type EmailResult,
@@ -110,7 +111,12 @@ export async function emailAtOnce(
   return emailResult(sent);
 }
 
-/** The person's items for today's email: open, owed, not told at once, chosen for the batch. */
+/**
+ * The person's items for today's email: open, owed, not told at once, chosen for the batch.
+ * `checkItem` locks each in item id order, the order the provider's hook locks a batch's items
+ * in (`broker-email-hook.ts`), so a batch and a hook for an earlier one never wait on each other
+ * in a cycle.
+ */
 async function batchable(
   tx: TenantQuery,
   personId: string,
@@ -119,7 +125,7 @@ async function batchable(
   const rows = await tx.query<{ readonly id: string; readonly reason: InboxReason }>(
     `select id, reason from public.inbox_items
       where business_id = $1 and recipient_person_id = $2 and work_state = 'open' and owed
-      order by raised_at, id`,
+      order by id`,
     [tx.businessId, personId],
   );
   const kept: CheckedItem[] = [];
@@ -170,15 +176,18 @@ export async function emailDailyBatch(
     if (await windowSpent(tx, { person: personId }, timing.dayMs ?? DAY_MS)) {
       return 'BATCH_ALREADY_SENT';
     }
-    const items = await withinCap(tx, await batchable(tx, personId, timing.preferences));
+    const prepared = await withinCap(tx, await batchable(tx, personId, timing.preferences));
+    if (prepared.length === 0) return 'NOTHING_WAITING';
+    if (!(await room())) return 'EMAIL_AT_CEILING';
+    const items = await stillReadable(tx, prepared);
     const [first] = items;
     if (first === undefined) return 'NOTHING_WAITING';
-    if (!(await room())) return 'EMAIL_AT_CEILING';
-    await recordAsked(tx, items, true);
+    const reserved = await recordAsked(tx, items, true);
     return {
       itemIds: items.map((item) => item.itemId),
       to: first.to,
       link: items.length === 1 ? first.itemId : null,
+      reserved,
     };
   };
   const sent = await deliver(database, businessId, timing.broker, timing.mail, ask);
