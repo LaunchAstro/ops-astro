@@ -253,8 +253,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     [{ provider: 'identity', forClient: false }],
   ),
   // C59: a member's factor cleared here and at the identity provider; the
-  // factor's state and the sessions' ending are also kept by subject, for
-  // every business the login reaches (0063, 0064).
+  // factor's state and the sessions' ending are also kept by subject, and
+  // each session seen here by its id, for every business the login reaches
+  // (0061, 0063, 0064).
   'access.reset_factor': writing(
     business(
       'factor_resets',
@@ -263,6 +264,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
       'ended_sessions',
       'ops.second_factor_subjects',
       'ops.ended_subject_sessions',
+      'ops.ended_provider_sessions',
     ),
     [{ provider: 'identity', forClient: false }],
   ),

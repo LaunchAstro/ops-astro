@@ -7,6 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import {
+  recordAuthenticationAttempt,
   recordFactorEnrolled,
   recordFactorVerified,
 } from '../../packages/core-records/src/index.ts';
@@ -24,7 +25,8 @@ type AccessCommand =
 
 /**
  * C59: a new member of `businessId` with one sign-in login and a verified
- * factor, recorded as the member's own enrolment records one: what a reset needs.
+ * factor, recorded as the member's own enrolment records one, and one session
+ * this business has served: what a reset needs, and every table it writes.
  */
 export async function factorMember(database: Database, businessId: string): Promise<string> {
   const member = await enrol(database, businessId, `reset-${randomUUID().slice(0, 8)}`);
@@ -34,8 +36,20 @@ export async function factorMember(database: Database, businessId: string): Prom
       provider: 'supabase',
       providerFactorId: randomUUID(),
     });
-    const { personId, presented } = member;
+    const { personId, actorId, presented } = member;
     await recordFactorVerified(tx, { personId, factorId: factor.id, subject: presented.subject });
+    const [login] = await tx.query<{ readonly login_id: string }>(
+      'select login_id from public.person_logins where business_id = $1 and person_id = $2',
+      [tx.businessId, personId],
+    );
+    await recordAuthenticationAttempt(tx, {
+      owner: 'person_login',
+      presented: { ...presented, sessionId: randomUUID() },
+      outcome: 'resolved',
+      loginId: login?.login_id ?? '',
+      actorId,
+      personId,
+    });
   });
   return member.personId;
 }
