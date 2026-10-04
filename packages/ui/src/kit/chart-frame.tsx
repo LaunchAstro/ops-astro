@@ -64,7 +64,7 @@ const focusIn = (drawn: readonly (Element | null)[]): Element | null =>
  * The point a chart shows, read from its drawn nodes after each render: the
  * hovered node while it is still drawn, else the node that holds focus, else
  * none. So a render that removes, reorders or stops drawing points never shows
- * another point's tip, whatever their labels.
+ * another point's tip, whatever their order.
  */
 function useShownPoint(
   count: number,
@@ -95,7 +95,8 @@ function useShownPoint(
  * is over it; focus shows it too, and the arrow keys, Home and End move focus
  * along the points. Hovering never moves the tab stop, and the pointer leaving
  * hands the tip back to the point that holds focus. A point past `count` is
- * never shown.
+ * never shown. The charts key their points by label, so labels must be unique;
+ * a data-driven caller passes a unique id per point.
  */
 export function usePoints(count: number): {
   readonly shown: number | null;
