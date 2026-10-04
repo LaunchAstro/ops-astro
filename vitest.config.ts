@@ -57,8 +57,9 @@ export default defineConfig({
     // PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
     // c59-factor-routes-world (byte for byte but for one cookie-jar split CQ-11
     // asks for) and Sol's six F2 lost-answer retry proofs open their worlds with
-    // no skip; without a database they are left out here, and the manifests run
-    // them where there is one.
+    // no skip, as do Sol's three template lock and clone catalogue proofs and
+    // the cases written beside them; without a database they are left out here,
+    // and the manifests run them where there is one.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
@@ -81,6 +82,7 @@ export default defineConfig({
             'tests/web/operations-incident-retry-after-lost-answer-records-once.test.tsx',
             'tests/web/time-log-retry-after-lost-answer-stores-once.test.tsx',
             'tests/web/authenticator-other-tab-enrol-lands-late.test.tsx',
+            'tests/support/template-lock-and-clone-catalogue.test.ts',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
