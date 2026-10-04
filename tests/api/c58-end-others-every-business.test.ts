@@ -34,6 +34,7 @@ import {
   clientB,
   EXPIRED,
   endingsBehind,
+  listOf,
   now,
   OK,
   served,
@@ -143,13 +144,14 @@ describe.skipIf(serverUrl === undefined)('C58 end other sessions in every busine
     expect(await served(await tokenFor(world.mia.subject, other), 'alpha')).toEqual(OK);
     expect((await sessions('end-others', keptToken)).status).toBe(200);
     // Two seconds on, a fresh sign-in: its first-factor time is after the ending.
+    const freshId = randomUUID();
     const fresh = await signBearer({
       sub: world.mia.subject,
       aud: 'authenticated',
       iss: ACCEPTANCE_ISSUER,
       exp: now() + 600,
       aal: 'aal1',
-      session_id: randomUUID(),
+      session_id: freshId,
       amr: [{ method: 'password', timestamp: now() + 2 }],
     });
     // Inside the minute the provider's clock may run ahead, it cannot be told
@@ -158,6 +160,8 @@ describe.skipIf(serverUrl === undefined)('C58 end other sessions in every busine
     // The ending a little over that minute back: the same sign-in is after it.
     await endingsBehind();
     expect(await served(fresh, 'alpha')).toEqual(OK);
+    // Served after the ending, so the live list names it too.
+    expect((await listOf(fresh, 'alpha')).map((row) => row.sessionId)).toContain(freshId);
     expect((await served(fresh, 'bravo')).status).toBe(403);
     expect(await served(keptToken, 'alpha')).toEqual(OK);
   });
