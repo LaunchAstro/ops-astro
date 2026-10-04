@@ -101,3 +101,30 @@ create index subject_resets_subject on ops.subject_resets (subject_digest);
 revoke all on ops.subject_resets from public;
 grant select (id, subject_digest, open_until, settled_at), insert (id, subject_digest),
   update (settled_at) on ops.subject_resets to ops_astro_app;
+
+-- A window settles once, at the database's own moment: whatever time an
+-- update sends, `settled_at` is `clock_timestamp()`, and a row already
+-- settled, or a change to any other column, is refused.
+create function ops.subject_resets_settle_once()
+  returns trigger
+  language plpgsql
+  set search_path = pg_catalog
+as $$
+begin
+  if old.settled_at is not null then
+    raise exception 'subject_resets: reset % is already settled', old.id;
+  end if;
+  if (new.id, new.subject_digest, new.open_until)
+       is distinct from (old.id, old.subject_digest, old.open_until) then
+    raise exception 'subject_resets: reset % changes only by settling', old.id;
+  end if;
+  new.settled_at := clock_timestamp();
+  return new;
+end;
+$$;
+
+revoke all on function ops.subject_resets_settle_once() from public;
+
+create trigger subject_resets_settle_once
+  before update on ops.subject_resets
+  for each row execute function ops.subject_resets_settle_once();

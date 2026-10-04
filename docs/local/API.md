@@ -2879,7 +2879,9 @@ business is 403 `RESET_NEEDS_SUPPORT` (ORCH77-C40MFA), whatever code the body
 carries: refused before anything is spent, so the token stays live and the
 password and every session stay as they were; support resets it. A fault
 reading where the login stands is 503 `RESET_UNAVAILABLE`, never a set, and a
-login the token's own business no longer admits is 401 `RESET_LINK_INVALID`. Then,
+login the token's own business no longer admits is 401 `RESET_LINK_INVALID`
+(read before the locks and not again, a decided risk: a person deactivated
+there in that moment still resets). Then,
 under C59's login lock (the one a factor's verification takes) and the token's
 row lock, the token is read again at that moment: spent or past its life is
 401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403

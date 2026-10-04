@@ -19,6 +19,9 @@
 //    sessions stay as they were, and nothing is written. Support resets it.
 //    A fault reading where the login stands is `RESET_UNAVAILABLE`, never a set.
 //    A login the token's own business no longer admits is `RESET_LINK_INVALID`.
+//    That admission is read here, before the locks, and not again: a person
+//    deactivated there between this read and the spend still resets, a
+//    decided risk (deactivation takes no lock the reset could share).
 // 4. Spend it, in one transaction: under C59's login lock, which a factor's
 //    verification takes too, then the token row's lock, the token is read
 //    again (spent or past its life is `RESET_LINK_INVALID`) and so is the
