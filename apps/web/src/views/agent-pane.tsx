@@ -123,9 +123,9 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState<string | null>(null);
   const [stopAwaiting, setStopAwaiting] = useState<string | null>(null);
-  const hold = useStepUpHold(props, stepUp !== null);
-  const settle = (settlement: Settlement): void => {
-    hold(settlement);
+  const hold = useStepUpHold(props, stepUp);
+  const settle = (settlement: Settlement, decision = false): void => {
+    hold(settlement, decision);
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);
     const state = settlement.kind === 'ok' ? stateOf(settlement.value) : undefined;
     setAwaiting(state === 'awaiting_second_approver' ? AWAITING : null);
@@ -147,7 +147,7 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
         if (settlement.kind === 'closed') {
           props.onDecided(closedNote(props.proposals, gate.gateId, settlement.because));
         }
-        settle(settlement);
+        settle(settlement, true);
       },
     );
   };
