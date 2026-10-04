@@ -21,10 +21,16 @@ import type {
   TaskExecution,
 } from '../../../../packages/core-wire/src/index.ts';
 
+/**
+ * The gates the map may draw. A superseded version's gate, and any gate of a
+ * lineage that is no longer live, is history: it neither asks nor authorises
+ * (pickup's approvalCurrent), and the task read can say so before the run's
+ * own re-read does, so its gate is left out here.
+ */
 export function gatesOf(proposals: readonly ProposalView[]): readonly MapGate[] {
   return proposals.flatMap((lineage) =>
-    lineage.versions.flatMap((version) =>
-      version.runId === null || version.gate === null
+    (lineage.state === 'live' ? lineage.versions : []).flatMap((version) =>
+      version.runId === null || version.gate === null || version.supersededAt !== null
         ? []
         : [
             {
