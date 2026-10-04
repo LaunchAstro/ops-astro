@@ -1944,11 +1944,15 @@ and codes, never a sentence, to a trace target an operator reads.
   is due again next pass. A run can take a new event after the due check and
   an export can send it before the delete, so the batch row's transaction
   rechecks first: when a run asked has an event after the cursor the check
-  read, the cursor steps back to the earlier of the two under its row lock,
-  the lock the export's advance takes, and its version changes. Those events
-  are sent again after the delete, and an export that read before the step
-  never advances. Two passes at once are harmless: deletion by derived id is
-  idempotent. The server runs it hourly beside the export.
+  read, the cursor steps back to just before the earliest such event (or
+  stays, if already behind it) under its row lock, the lock the export's
+  advance takes, and its version changes. Those events are sent again after
+  the delete, an export that read before the step never advances, and the
+  batch does not confirm those runs (`expiry_unconfirmed`): each is due again
+  once its fresh event is past the window. Two passes at once are harmless: deletion by derived id
+  is idempotent, and a step back re-sends only fresh events onward, never a
+  run the other pass just confirmed (its events sort earlier unless a
+  transaction stayed open longer than the window). The server runs it hourly beside the export.
 - Readers: `trace.read` serves a task's runs' spans from `run_events`
   (`readTaskTrace`), held to the same allowlist without the ids
   (`traceCells`), behind `operations:read` and the task's own read
