@@ -5,7 +5,8 @@
 // the pull request's concurrency group cancels the run still in flight or
 // queued, and this step, the gate's first check, fails the new one, so every
 // job that waits on the gate is skipped and takes no runner. The gate's red
-// keeps the pull request out of the merge queue.
+// keeps the pull request from entering the merge queue; one already queued is
+// tested and merged on its group's own run, so take it out of the queue too.
 //
 // Only that one event holds. The fix push (`synchronize`) runs every check in
 // full whatever labels the pull request carries; removing the label runs

@@ -11,7 +11,9 @@ name: review evidence
 # It holds one job, under the required check's exact name, with no condition
 # and nothing it waits on, so an edit makes no new, skipped or cancelled run
 # of any other check on the head (CQ-16). ci.yml runs every other check on a
-# push, a label change and a reopen, and never on an edit. Its concurrency
+# push, a label change and a reopen, and never on an edit; adding the
+# `sent-back` label instead fails ci.yml's gate on that head
+# (scripts/sent-back-hold.mjs). Its concurrency
 # group is its own, so it cannot cancel a code run, and a newer run of this
 # one cancels an older one still in flight.
 #

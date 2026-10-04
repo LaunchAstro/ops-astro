@@ -8,11 +8,10 @@ on:
   pull_request:
     # `labeled` and `unlabeled` were added in round four for the size
     # waivers. The waivers are retired (FU-400, 29 September 2026): the size
-    # is reported, not limited, and no check reads a label for its verdict.
-    # The triggers stay as they were, so no required check changes when it
-    # runs. CI-SPEED: `labeled` also carries the `sent-back` hold, which
-    # cancels the run on a head sent back for fixes and fails the gate there
-    # (scripts/sent-back-hold.mjs).
+    # is reported, not limited. The triggers stay as they were. One label
+    # event changes a result (CI-SPEED): adding `sent-back` cancels the run on
+    # a head sent back for fixes and fails the gate there
+    # (scripts/sent-back-hold.mjs). No other label changes any check.
     # `edited` is not here. The review-evidence check reads the pull request
     # body, so an edit must refresh that result (round five), but only that
     # one: review-evidence.yml holds that check alone and runs it on code
@@ -33,10 +32,12 @@ on:
 permissions:
   contents: read
 
-# A newer run on a pull request cancels its older run still in flight or
-# queued; the ref is the pull request's own, so one pull request never cancels
-# another's. A merge group is never cancelled (CI-SPEED): it may hold several
-# pull requests, and the queue drops a group whose checks were cancelled.
+# A newer run on a pull request (a push, a label change, a reopen) cancels its
+# older run still in flight or queued; the ref is the pull request's own, so
+# one pull request never cancels another's. A merge group's run is not
+# cancelled by a newer run (CI-SPEED): it may hold several pull requests, and
+# the queue drops a group whose checks were cancelled. Each group's ref is
+# its own anyway, so this guards the rule rather than changing a run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
