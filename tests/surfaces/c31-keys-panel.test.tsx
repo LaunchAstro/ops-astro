@@ -33,7 +33,7 @@ interface Stub {
   /** What `secret.set` answers instead of applying; undefined applies it. */
   readonly refuseSet?: () => Response;
   /** The list's `canChange`: the key held business-wide. */
-  readonly canChange?: boolean;
+  canChange?: boolean;
 }
 
 function server(stub: Stub = {}): {
@@ -203,7 +203,8 @@ describe('C31 Keys panel field', () => {
 
 describe('C31 Keys panel offers changes only where allowed', () => {
   it('C31 a holder who may not change keys sees them listed, with no Set form and no Clear', async () => {
-    const stub = server();
+    const options: Stub = {};
+    const stub = server(options);
     const page = await mount(<KeysPanel client={clientOf(stub.fetch)} />);
     await tick();
     await page.type('#key-name', 'xero.key');
@@ -211,10 +212,11 @@ describe('C31 Keys panel offers changes only where allowed', () => {
     await page.click('[data-settings="keys"] button[type="submit"]');
     await tick();
     await page.unmount();
-    const listed = server({ canChange: false });
-    // The same row, now read by a client-scoped holder.
-    const row = await mount(<KeysPanel client={clientOf(listed.fetch)} />);
+    // The same set row, now read by a client-scoped holder.
+    options.canChange = false;
+    const row = await mount(<KeysPanel client={clientOf(stub.fetch)} />);
     await tick();
+    expect(row.find('[data-secret="xero.key"]')?.getAttribute('data-state')).toBe('set');
     expect(row.find('form[aria-label="Set a key"]')).toBeNull();
     expect(row.find('[data-settings="keys"] button')).toBeNull();
     await row.unmount();

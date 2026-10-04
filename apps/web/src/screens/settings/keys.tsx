@@ -46,9 +46,14 @@ function useKeys(client: OperationsClient): {
 } {
   const [listing, setListing] = useState<Listing>({ state: 'loading' });
   const [because, setBecause] = useState<string | null>(null);
+  // Only the latest read draws: an older answer, authorised or not, is dropped.
+  const latest = useRef(0);
 
   const load = useCallback(async (): Promise<void> => {
+    latest.current += 1;
+    const mine = latest.current;
     const answer = await client.read<SecretListResult>('secret.list', {});
+    if (mine !== latest.current) return;
     if (isUnavailable(answer)) setListing({ state: 'unavailable', because: answer.because });
     else if (isRefusal(answer))
       setListing({ state: 'refused', because: answer.fixes[0] ?? answer.code });
@@ -264,7 +269,11 @@ export function KeysPanel(props: { readonly client: OperationsClient }): ReactEl
             ? {
                 clear: (secret: SecretView) => {
                   void act(
-                    async () => await client.mutate('secret.clear', { secretId: secret.id }),
+                    async () =>
+                      await client.mutate('secret.clear', {
+                        secretId: secret.id,
+                        expectedRevision: secret.revision,
+                      }),
                   );
                 },
               }
