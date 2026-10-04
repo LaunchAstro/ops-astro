@@ -16,11 +16,13 @@
 // **The lock.** The delegation row is read `for share` after the envelope's
 // task lock, so a revoke (an update of that row) either commits first and is
 // seen here as not live, or waits for this assignment and then clears it.
+// Liveness is read at this statement's clock, so a delegation or parent that
+// expired while the assignment waited on the task lock holds no task.
 //
 // **Assignment starts nothing.** It records who holds the task; a run still
 // needs its own commands.
 
-import { DELEGATION_STANDS, type TenantQuery } from '../../../core-records/src/index.ts';
+import { DELEGATION_STANDS_AT_CHECK, type TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
@@ -78,7 +80,7 @@ async function refuseAgent(
     readonly purpose_scope_id: string;
     readonly live: boolean;
   }>(
-    `select d.delegate_person_id, d.purpose_scope_id, ${DELEGATION_STANDS} as live
+    `select d.delegate_person_id, d.purpose_scope_id, ${DELEGATION_STANDS_AT_CHECK} as live
        from public.delegations d
       where d.business_id = $1 and d.id = $2
       for share of d`,
