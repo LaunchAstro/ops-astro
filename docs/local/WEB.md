@@ -725,8 +725,9 @@ has answered (`data/preference-saves.ts`), so the last change is the one the
 store keeps: the appearance, a task fold, the rail and the dock alike. A read
 started before a save never overwrites what that save changed; the screen keeps
 the newer choice. A refused save's reread counts from that save, so a later
-save, queued or landed, keeps its choice, and the reread ends with its reader,
-so its answer never reaches another business or person (`settings/you.tsx`).
+save, queued or landed, keeps its choice, and the refusal and its reread end
+with their reader, so neither reaches another business or person
+(`settings/you.tsx`).
 
 This business draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through

@@ -123,7 +123,7 @@ function usePreferences(client: OperationsClient, grantKey: string) {
     const mark = savesSoFar(client) + 1;
     void savePreference(client, preference, value).then((result) => {
       const failed = describeFailure(result);
-      if (failed !== null) {
+      if (failed !== null && now.live) {
         setSaid({ of: grantKey, text: failed });
         reread(now, mark, (read, newer) => {
           if (!newer(preference)) back?.(read[preference]);
