@@ -167,6 +167,48 @@ function redacterOf(secrets: readonly string[]): (text: string) => string {
 }
 
 /**
+ * A parsed JSON value with each key and string redacted, and a number or
+ * literal that spells a secret as `[redacted]`. It walks with its own list,
+ * not the call stack, so any depth the parse accepted is walked whole.
+ */
+function redactedValue(decoded: unknown, redactText: (text: string) => string): unknown {
+  const root: unknown[] = [undefined];
+  const pending: [unknown, Record<string, unknown> | unknown[], string | number][] = [
+    [decoded, root, 0],
+  ];
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    const [value, into, slot] = next;
+    let out: unknown;
+    if (typeof value === 'string') {
+      out = redactText(value);
+    } else if (Array.isArray(value)) {
+      const list: unknown[] = Array.from({ length: value.length });
+      for (const [at, item] of value.entries()) pending.push([item, list, at]);
+      out = list;
+    } else if (typeof value === 'object' && value !== null) {
+      // No prototype, so a `__proto__` key is a field like any other.
+      const record = Object.create(null) as Record<string, unknown>;
+      const fields = Object.entries(value).map(
+        ([key, field]): [unknown, Record<string, unknown>, string] => {
+          const name = redactText(key);
+          record[name] = undefined;
+          return [field, record, name];
+        },
+      );
+      // Last in, first written: reversed, a later field that redacts to an
+      // earlier one's name still wins, as it does in the parse.
+      for (const field of fields.toReversed()) pending.push(field);
+      out = record;
+    } else {
+      const written = JSON.stringify(value);
+      out = redactText(written) === written ? value : '[redacted]';
+    }
+    (into as Record<string | number, unknown>)[slot] = out;
+  }
+  return root[0];
+}
+
+/**
  * Remove every spelling of the credential a provider might echo back: the
  * value, and a Basic pair's secret half alone, each as itself, as JSON text
  * spells it, percent-escaped in either case, or in base64 or base64url,
@@ -181,17 +223,6 @@ function redact(text: string, credential: StoredCredential): string {
   const redactText = redacterOf(
     credential.scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value],
   );
-  const inside = (decoded: unknown): unknown => {
-    if (typeof decoded === 'string') return redactText(decoded);
-    if (Array.isArray(decoded)) return decoded.map((item) => inside(item));
-    if (typeof decoded === 'object' && decoded !== null) {
-      return Object.fromEntries(
-        Object.entries(decoded).map(([key, field]) => [redactText(key), inside(field)]),
-      );
-    }
-    const written = JSON.stringify(decoded);
-    return redactText(written) === written ? decoded : '[redacted]';
-  };
   let decoded: unknown;
   try {
     decoded = JSON.parse(text);
@@ -199,9 +230,9 @@ function redact(text: string, credential: StoredCredential): string {
     return redactText(text);
   }
   try {
-    return JSON.stringify(inside(decoded));
+    return JSON.stringify(redactedValue(decoded, redactText));
   } catch {
-    // Too deep to walk or write back: no body, which the broker reads as no answer.
+    // Too deep to write back: no body, which the broker reads as no answer.
     return '';
   }
 }
