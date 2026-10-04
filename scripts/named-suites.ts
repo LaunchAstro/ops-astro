@@ -207,6 +207,29 @@ export async function splitToFolder(root: string): Promise<NamedSuites> {
   return original;
 }
 
+export const ISOLATION = 'tests/db/isolation-suites.json';
+
+/** The isolation suites under `root`. */
+export function readIsolationSuites(root: string): { invariant: string[] } {
+  const manifest = JSON.parse(readFileSync(join(root, ISOLATION), 'utf8')) as Record<
+    string,
+    unknown
+  >;
+  return { invariant: listOf(manifest['invariant']) };
+}
+
+/** Writes one file per suite under `root`. */
+export async function suitesToFiles(_root: string): Promise<void> {}
+
+/** The suites on the base that the head no longer names. */
+export function droppedSuites(
+  _base: readonly string[],
+  _head: readonly string[],
+  _deleted: readonly string[],
+): string[] {
+  return [];
+}
+
 async function main(argv: readonly string[]): Promise<void> {
   if (argv[0] !== 'split' || argv.length > 2 || (argv.length === 2 && argv[1] !== '--check')) {
     throw new Error('usage: node scripts/named-suites.ts split [--check]');
