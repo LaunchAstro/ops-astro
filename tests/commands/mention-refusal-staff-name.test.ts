@@ -3,7 +3,9 @@
 // Catalogue #419: a refused mention names a staff member only to an author
 // who is staff here too. The first case is the review's proof (OW-037.1),
 // renamed for what it proves and otherwise as written; the second holds the
-// other side, so hiding every name could not pass for the fix.
+// other side, so hiding every name could not pass for the fix; the third is
+// the security review's: a staff member's client-scoped read does not make
+// them one of that client's people.
 
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -12,6 +14,7 @@ import { isCommandRefusal } from '../../packages/core-commands/src/commands/refu
 import { grantTo, shareWithClient } from './fixture.ts';
 import {
   alpha,
+  clientB,
   as,
   clientA,
   db,
@@ -96,4 +99,30 @@ it('a staff author is still told which staff member cannot read the comment', as
   });
   expect(outcomeOf(answer)).toMatchObject({ code: 'MENTION_NOT_READABLE' });
   expect(JSON.stringify(answer)).toContain(canary);
+});
+
+it("a client's person is not told a staff member's name through their read on that client", async () => {
+  const canary = `party-staff-${randomUUID()}`;
+  const staff = await person(canary);
+  await db.app.withBusiness(alpha, async (tx) => {
+    await grantTo(tx, staff, 'read', { kind: 'party', id: clientA });
+  });
+  const task = await taskFor(alpha, owner, 'other client task', clientB);
+  const client = await shareWithClient(db.app, alpha, owner, task);
+  await db.app.withBusiness(alpha, async (tx) => {
+    await grantTo(tx, client, 'comment', { kind: 'record', id: task });
+    await grantTo(tx, client, 'read', { kind: 'party', id: clientA });
+  });
+  const sentId = staff.personId.toUpperCase();
+  const answer = await as(alpha, client, {
+    command: 'task.comment',
+    recordId: task,
+    expectedRevision: await revisionOf(task),
+    body: 'message',
+    audience: 'client',
+    mentions: [sentId],
+  });
+  expect(outcomeOf(answer)).toMatchObject({ code: 'MENTION_NOT_READABLE' });
+  expect(JSON.stringify(answer)).not.toContain(canary);
+  expect(JSON.stringify(answer)).toContain(sentId);
 });
