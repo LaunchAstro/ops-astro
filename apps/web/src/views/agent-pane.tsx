@@ -163,9 +163,7 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
       settle,
     );
   };
-  const send = (call: Call): void => {
-    run(call, settle);
-  };
+  const send = (call: Call): void => run(call, settle);
   const acts = { ...unknownControls(props, busy, send), ...stopControls(props, busy, send) };
   return { busy, refusal, decide, cancel, awaiting, stopAwaiting, stepUp, ...acts };
 }
