@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The text a console capture reads must hold every value the call carried, at
+// any depth (catalogue #720), or a secret logged inside an object passes the
+// no-secret check unseen.
+
+import { expect, it } from 'vitest';
+import { consoleLine } from './console-text.ts';
+
+const planted = 'console-text-planted-value';
+
+it('keeps a value logged inside an object, however deep', () => {
+  const deep = { a: { b: { c: { d: { e: { credential: planted } } } } } };
+  expect(consoleLine({ credential: planted })).toContain(planted);
+  expect(consoleLine('fault', deep)).toContain(planted);
+});
+
+it('keeps a value inside an array, a map, a set and an error cause', () => {
+  const many = Array.from({ length: 200 }, (_, index) => `n${String(index)}`);
+  expect(consoleLine([...many, planted])).toContain(planted);
+  expect(consoleLine(new Map([['k', { planted }]]))).toContain(planted);
+  expect(consoleLine(new Set([planted]))).toContain(planted);
+  expect(consoleLine(new Error('outer', { cause: { planted } }))).toContain(planted);
+});
+
+it('keeps a long string whole', () => {
+  expect(consoleLine({ text: `${'x'.repeat(20_000)}${planted}` })).toContain(planted);
+});
+
+it('writes plain strings as the console does, unquoted and space-joined', () => {
+  expect(consoleLine('one', 'two', 3)).toBe('one two 3');
+});
+
+it('writes an error with its stack', () => {
+  const error = new Error(planted);
+  expect(consoleLine(error)).toContain(String(error.stack));
+});
