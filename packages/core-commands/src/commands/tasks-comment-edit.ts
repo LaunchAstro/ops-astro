@@ -13,7 +13,8 @@
 // agent reaches here inside its delegation on its own task and edits only
 // what its own actor wrote for the person that delegation acts for: one agent
 // actor speaks for many people, so a comment it wrote for P is P's to correct,
-// not Q's (OW-036.1). A person's own comment carries no such person.
+// not Q's (OW-036.1). An agent credential's comment records its person the
+// same way. A person's own comment carries no such person.
 
 import { lockComment, removeComment, rewriteComment } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -22,7 +23,7 @@ import type { CommandContext, TaskRow } from './context.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnstorable, storableText } from './values.ts';
-import { NO_COMMENT_TYPE_FIXES } from './tasks-comment.ts';
+import { NO_COMMENT_TYPE_FIXES, representedPerson } from './tasks-comment.ts';
 
 const BODY_FIXES: readonly string[] = [
   'Send a body with something in it. To take the words back, delete the message.',
@@ -37,7 +38,7 @@ export interface CommentChange {
   /** The task, as its envelope locked it. */
   readonly target: TaskRow;
   readonly actorId: string;
-  /** The person the caller's delegation acts for; `null` for a person. */
+  /** The person the caller acts for as an agent (delegation or credential); `null` for a person. */
   readonly onBehalfOfPersonId: string | null;
 }
 
@@ -52,7 +53,7 @@ export function changeFrom(context: CommandContext): CommentChange {
     declaration: context.declaration,
     target,
     actorId: context.session.actorId,
-    onBehalfOfPersonId: null,
+    onBehalfOfPersonId: representedPerson(context.session),
   };
 }
 

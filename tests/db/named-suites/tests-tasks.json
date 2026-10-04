@@ -7,6 +7,7 @@
     "tests/tasks/time-entries.test.ts"
   ],
   "conformance": [
+    "tests/tasks/comment-on-behalf-of-backfill.test.ts",
     "tests/tasks/task-model.test.ts",
     "tests/tasks/task-spine.test.ts",
     "tests/tasks/task-trash.test.ts"

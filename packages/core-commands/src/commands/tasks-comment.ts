@@ -92,6 +92,16 @@ const MENTIONS_FIXES: readonly string[] = [
   'Send mentions as a list of person ids, or leave it out.',
 ];
 
+/**
+ * The person a person-entry caller's comment is written for: none for a
+ * person writing their own, and for an agent credential (API-2), whose actor
+ * is the agent, the person it acts for (`session.personId`), as a delegation
+ * records its own (OW-036.1).
+ */
+export function representedPerson(session: CommandContext['session']): string | null {
+  return session.credentialScope === undefined ? null : session.personId;
+}
+
 export async function commentOnTask(
   tx: TenantQuery,
   context: CommandContext,
@@ -117,7 +127,7 @@ export async function commentOnTask(
       audiences: context.session.roleKey === null ? EXTERNAL_AUDIENCES : AUDIENCES,
       operationId,
       delegationId: null,
-      onBehalfOfPersonId: null,
+      onBehalfOfPersonId: representedPerson(context.session),
     },
     body,
     audience,
@@ -147,7 +157,7 @@ export interface CommentTarget {
   readonly operationId: string;
   /** The delegation the author acts under, or `null` for a person. */
   readonly delegationId: string | null;
-  /** The person that delegation acts for, stored on the comment; `null` for a person. */
+  /** The person an agent acts for (its delegation's, or its credential's), stored on the comment; `null` for a person. */
   readonly onBehalfOfPersonId: string | null;
 }
 

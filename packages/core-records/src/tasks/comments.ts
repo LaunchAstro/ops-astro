@@ -164,7 +164,8 @@ export const COMMENT_SPINE: readonly SpineField[] = [
     // In `data` only: nothing filters on it.
     slot: null,
     // The person an agent's delegation acted for when it wrote the comment,
-    // from that delegation and never the payload; absent on a person's own.
+    // from that delegation (or an agent credential's person) and never the
+    // payload; absent on a person's own.
     // One agent actor writes for many people, so its actor alone does not say
     // whose words these are (OW-036.1).
     writeMode: 'system',
@@ -204,7 +205,7 @@ export interface NewComment {
   readonly source: string;
   /** The top-level message a reply sits under; absent or null for a message. */
   readonly parentId?: string | null;
-  /** The person an agent's delegation writes it for; absent or null for a person. */
+  /** The person an agent writes it for; absent or null for a person. */
   readonly onBehalfOfPersonId?: string | null;
 }
 

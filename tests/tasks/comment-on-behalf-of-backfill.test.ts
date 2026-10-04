@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Catalogue #414: migration 20261004091400 gives a comment type installed
+// before `on_behalf_of` was declared the same field row `installTaskSpine`
+// writes now (system-written, internal, no slot), and leaves a type that has
+// it alone, as 0075 did for `parent`.
+
+import { readFileSync } from 'node:fs';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
+import {
+  createFreshDatabase,
+  databaseUrlFromEnvironment,
+  type FreshDatabase,
+} from '../support/fresh-database.ts';
+import { insertBusiness } from '../identity/fixture.ts';
+
+const MIGRATION = readFileSync('migrations/20261004091400_comment_on_behalf_of.sql', 'utf8');
+
+describe.skipIf(databaseUrlFromEnvironment() === undefined)('the on_behalf_of backfill', () => {
+  let db: FreshDatabase;
+  let business: string;
+  let commentTypeId: string;
+
+  beforeAll(async () => {
+    db = await createFreshDatabase({ part: 'obo' });
+    business = await insertBusiness(db.app, 'installed-before');
+    commentTypeId = await db.app.withBusiness(business, async (tx) => {
+      const spine = await installTaskSpine(tx);
+      return spine.taskCommentTypeId;
+    });
+  }, 60_000);
+
+  afterAll(async () => {
+    await db?.drop();
+  });
+
+  const rows = async () =>
+    await db.admin.execute<Record<string, unknown>>(
+      `select slot, write_mode, owning_operation, visibility_class, origin, value_type
+         from public.field_defs where record_type_id = $1 and key = 'on_behalf_of'`,
+      [commentTypeId],
+    );
+
+  it('adds the field row an older comment type lacks, once', async () => {
+    const installed = await rows();
+    await db.admin.execute(
+      `delete from public.field_defs where record_type_id = $1 and key = 'on_behalf_of'`,
+      [commentTypeId],
+    );
+    await db.admin.execute(MIGRATION);
+    await db.admin.execute(MIGRATION);
+    expect({ installed, backfilled: await rows() }).toEqual({
+      installed: [
+        {
+          slot: null,
+          write_mode: 'system',
+          owning_operation: null,
+          visibility_class: 'internal',
+          origin: 'core',
+          value_type: 'uuid',
+        },
+      ],
+      backfilled: installed,
+    });
+  });
+});
