@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function -- the review proof, kept as written */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { runSuite } from './api-2-quota-mutant-suite.mjs';
