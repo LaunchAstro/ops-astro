@@ -30,6 +30,7 @@ export {
   type PurposeScope,
 } from './authority/delegations.ts';
 export {
+  askedFor,
   checkAuthority,
   EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
@@ -204,7 +205,7 @@ export {
   type InboxReason,
   type InboxWorkState,
 } from './inbox/items.ts';
-export { readScopes, taskAccess } from './inbox/access.ts';
+export { INTERNAL_ROLE_KEYS, readScopes, taskAccess } from './inbox/access.ts';
 export {
   raiseAssignment,
   raiseDecision,
@@ -265,6 +266,15 @@ export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.t
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';
 export { purgeTrashedRecords, restoreBatch, trashSubtree } from './tasks/trash.ts';
 export {
+  isTaskType,
+  isWayfinderRecord,
+  OWNER_TYPES,
+  TASK_TYPES,
+  wayfinderFacts,
+  type TaskType,
+  type WayfinderFacts,
+} from './tasks/wayfinder.ts';
+export {
   advisoryLock,
   connect,
   connectAsAdmin,
@@ -281,3 +291,4 @@ export { isUuid } from './tenancy/ids.ts';
 export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
 export { loginLiveElsewhere } from './identity/shared-login.ts';
+export * from './site/index.ts';

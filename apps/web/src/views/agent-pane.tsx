@@ -38,6 +38,7 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import type { Settlement } from '../records/use-command.ts';
+import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
 import { closedNote, type DecisionNote } from './gate-controls.tsx';
 import { StepUpPrompt } from './step-up-prompt.tsx';
@@ -74,6 +75,7 @@ export interface AgentSectionProps {
   /** The task page's held decision refusal: closed in either view, closed in both. */
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
+  readonly onStepUp?: (open: true | null) => void;
 }
 
 interface AgentControls {
@@ -121,7 +123,9 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState<string | null>(null);
   const [stopAwaiting, setStopAwaiting] = useState<string | null>(null);
+  const hold = useStepUpHold(props, stepUp !== null);
   const settle = (settlement: Settlement): void => {
+    hold(settlement);
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);
     const state = settlement.kind === 'ok' ? stateOf(settlement.value) : undefined;
     setAwaiting(state === 'awaiting_second_approver' ? AWAITING : null);

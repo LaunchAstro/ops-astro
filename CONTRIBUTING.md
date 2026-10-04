@@ -113,6 +113,21 @@ goes on the following lines, which the check does not read. So
 by design: write `2 findings, 2 closed` or `no findings`, and put the rest on
 the next line.
 
+### Pull requests and the merge queue
+
+A pull request's checks are the light set, and they flag issues early. Every
+required check still reports on a pull request under its own name, but there
+`local checks` runs every step of `pnpm check` except the build, with the
+tests the change reaches in place of the full test run; the full test run,
+the build and the heavy steps after it,
+`isolation tests` and the database conformance shards run in the merge queue,
+and `database conformance` passes on the shards' skip when the contamination
+gate passed (a failed gate fails it). The full set runs in the
+merge queue, which tests each pull request on top of `main` and is the only
+way into it, so nothing reaches `main` untested; a push to `main` runs it too.
+A green pull request is therefore not a full run: builders run the full
+`pnpm check` locally before declaring a change ready.
+
 GitHub's _update branch_ button writes a merge commit carrying no trailers,
 which fails `commit messages and provenance`. A branch need not be up to date
 with its base to merge: `strict_required_status_checks_policy` is off and the
@@ -123,12 +138,21 @@ A newer push, label change or reopen on a pull request cancels its older
 checks still running; a newer run does not cancel a merge group's checks. When
 review sends a pull request back for fixes, add the `sent-back` label: it
 cancels the ci checks on that head and fails `contamination gate` there, so no
-runner is spent on code about to change. The fix push runs every check in
-full. To run them on the same head instead, remove the label; any other label
+runner is spent on code about to change. The fix push runs every check
+again. To run them on the same head instead, remove the label; any other label
 change or a reopen runs them too, so the hold lasts until the next such event.
 To send back a later head, remove the label and add it again. A held head
 cannot enter the merge queue, but one already queued is not stopped: remove it
 from the queue as well.
+
+A pull request whose head commit is a merge-queue commit, the tip of a
+`gh-readonly-queue/` branch, fails `contamination gate` whatever its branch is
+called, so no light pass lands beside the group's own (#724): every ci check
+that waits on the gate is skipped, and `database conformance`, which runs
+always(), fails. `review evidence for this revision` waits on no gate, so it
+runs the same check and fails too. Each lists the queue branches on every
+pull request run; when it cannot, or cannot read the head commit, it fails,
+and a re-run tries again.
 
 A conformance proof is a separate condition. For changes to the domain
 model, tenancy wrapper, queue and delivery contracts, gate engine, credential

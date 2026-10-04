@@ -1458,7 +1458,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:821-832`). With neither setting present, the
+  rewrites it (`local-seed.mjs:855-866`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -2138,8 +2138,16 @@ launch of the reviewed output is the only decision an effect waits on.
   it on the attempt (`attempts.receipt_link`, 0109) only when `receiptLinkOf`
   does: `https:`, exactly the step kind's declared host
   (`EFFECT_RECEIPT_HOSTS`), no user, password, port, query or fragment, at most
-  512 characters, and the parsed form byte for byte the text sent. Anything
-  else is stored as null, which a reader shows as "no link", never as a link.
+  512 characters, the parsed form byte for byte the text sent, and no run of
+  43 base64url characters, a delegation credential's length, as sent or once
+  its percent escapes decode (`CREDENTIAL_RUN`), and, for an agent's
+  observation, not the letters and digits of any live credential the agent
+  holds in order: its delegations, the child delegations they minted, and its
+  logins, unexpired (each derived again from its row, `agentCredentials`; one
+  that cannot be derived keeps no link), nor those letters reversed or the
+  credential's bytes in hex. The check is best effort against re-spellings: an
+  agent set on leaking a credential has other ways out, and its short-lived
+  sign-in token is not among them. Anything else is stored as null, which a reader shows as "no link", never as a link.
   0109's check repeats the shape and allows a link only on an observed
   attempt; its trigger fixes the link once the attempt is observed, so a link
   resolved later is not a receipt. `task.receipt` names it as `link` beside
@@ -2147,7 +2155,8 @@ launch of the reviewed output is the only decision an effect waits on.
 
 Tests: `aw-08-approval-gate`, `aw-08-client-sign-off`, `aw-08-isolation` and
 `aw-08-receipt-provider` (`AW-08 receipt link`, `AW-08 hostile provider`,
-`AW-08 canary`).
+`AW-08 canary`), `receipt-link-keeps-no-credential`,
+`receipt-link-keeps-no-respelled-credential` and `receipt-link-credential-run`.
 
 ## What is not here
 
