@@ -51,17 +51,35 @@ export const CREDENTIAL_RUN: RegExp = /[A-Za-z0-9_-]{43}/u;
 const alphanumerics = (text: string): string => text.replaceAll(/[^A-Za-z0-9]/gu, '');
 
 /**
+ * A held credential's letters and digits, forwards and reversed, and its bytes
+ * in lowercase hex. Best effort: an agent set on leaking its credential has
+ * other ways out; this catches the re-spellings a provider or a careless
+ * worker would make.
+ */
+const spellingsOf = (credential: string): readonly string[] => {
+  const letters = alphanumerics(credential);
+  return [
+    letters,
+    [...letters].toReversed().join(''),
+    Buffer.from(credential, 'base64url').toString('hex'),
+  ];
+};
+
+/**
  * Whether the link, as sent or decoded, holds a credential-length run or one
  * of the observing agent's credentials. Each decode that changes the text
  * shortens it, so the loop ends; an escape that does not decode is refused.
  */
 function carriesCredential(link: string, held: readonly string[]): boolean {
-  const own = held.map((credential) => alphanumerics(credential));
+  const own = held.flatMap((credential) => spellingsOf(credential));
   let text = link;
   for (;;) {
     if (CREDENTIAL_RUN.test(text)) return true;
     const letters = alphanumerics(text);
-    if (own.some((credential) => letters.includes(credential))) return true;
+    const lower = letters.toLowerCase();
+    if (own.some((spelling) => letters.includes(spelling) || lower.includes(spelling))) {
+      return true;
+    }
     let decoded: string;
     try {
       decoded = decodeURIComponent(text);
@@ -111,7 +129,7 @@ interface HeldRow {
   readonly login: boolean;
 }
 
-/** The observer's live delegations, the live children they minted, and its live logins. */
+/** The observer's live delegations, the live children they minted, and its live logins; expired ones are no working token. */
 async function heldRows(tx: TenantQuery, delegationId: string): Promise<readonly HeldRow[]> {
   return await tx.query<HeldRow>(
     `with observer as (
@@ -120,17 +138,18 @@ async function heldRows(tx: TenantQuery, delegationId: string): Promise<readonly
        select d.id, d.agent_actor_id, d.credential_key_id, d.credential_scheme
          from public.delegations d join observer o on o.agent_actor_id = d.agent_actor_id
         where d.business_id = $1 and d.revoked_at is null and d.settled_at is null
+          and d.expires_at > now()
      )
      select id, agent_actor_id, credential_key_id, credential_scheme, false as login from own
      union all
      select c.id, c.agent_actor_id, c.credential_key_id, c.credential_scheme, false
        from public.delegations c
       where c.business_id = $1 and c.parent_delegation_id in (select id from own)
-        and c.revoked_at is null and c.settled_at is null
+        and c.revoked_at is null and c.settled_at is null and c.expires_at > now()
      union all
      select a.id, a.agent_actor_id, a.credential_key_id, a.credential_scheme, true
        from public.agent_credentials a join observer o on o.agent_actor_id = a.agent_actor_id
-      where a.business_id = $1 and a.revoked_at is null`,
+      where a.business_id = $1 and a.revoked_at is null and a.expires_at > now()`,
     [tx.businessId, delegationId],
   );
 }

@@ -57,6 +57,24 @@ it.each([
   },
 );
 
+it.each([
+  ['reversed', [...credential.replaceAll(/[^A-Za-z0-9]/gu, '')].toReversed().join('')],
+  [
+    'in hex across two segments',
+    ((hex: string) => `${hex.slice(0, 32)}/${hex.slice(32)}`)(
+      Buffer.from(credential, 'base64url').toString('hex'),
+    ),
+  ],
+  ['in uppercase hex', Buffer.from(credential, 'base64url').toString('hex').toUpperCase()],
+] as const)(
+  "a receipt link carrying the observer's own credential %s is recorded absent",
+  (_case, path) => {
+    expect(
+      receiptLinkOf(`https://${HOST}/effects/${path}`, 'synthetic_comment', [credential]),
+    ).toBeNull();
+  },
+);
+
 it("a receipt link without the observer's credential is kept when it is checked against it", () => {
   const link = `https://${HOST}/effects/0b6f3c9e-2f4a-4c1e-9d7b-5a8e2c1f0a3d`;
   expect(receiptLinkOf(link, 'synthetic_comment', [credential])).toBe(link);

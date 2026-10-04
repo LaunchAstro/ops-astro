@@ -50,7 +50,8 @@ it("a provider receipt re-spelling the agent's purpose delegation credential is 
   }).toEqual({ status: 200, settled: true, shown: true, observed: [true] });
 });
 
-it("the credentials checked for an agent's observation include its login credential", async () => {
+/** An agent with a login credential, a delegation under it, and a second agent to help. */
+async function agentWithDelegation() {
   const { fixture } = r;
   const keys = configuredCredentialKeys();
   if (!keys.ok) throw new Error('no delegation credential keyring');
@@ -59,14 +60,16 @@ it("the credentials checked for an agent's observation include its login credent
     fields: { title: `receipt login ${randomUUID()}` },
   });
   const expiresAt = new Date(Date.now() + 3_600_000);
-  await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-    const login = await issueAgentCredential(tx, keys.keys, {
-      personId: fixture.member.personId,
-      actorId: fixture.member.actorId,
-      purpose: `rcpt_${randomUUID().slice(0, 8)}`,
-      scope: [{ collection: 'task', action: 'read' }],
-      expiresAt,
-    });
+  return await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+    const issue = async () =>
+      await issueAgentCredential(tx, keys.keys, {
+        personId: fixture.member.personId,
+        actorId: fixture.member.actorId,
+        purpose: `rcpt_${randomUUID().slice(0, 8)}`,
+        scope: [{ collection: 'task', action: 'read' }],
+        expiresAt,
+      });
+    const login = await issue();
     const minted = await mintDelegation(tx, {
       agentActorId: login.agentActorId,
       delegatePersonId: fixture.member.personId,
@@ -78,10 +81,59 @@ it("the credentials checked for an agent's observation include its login credent
       expiresAt,
     });
     if (!minted.ok) throw new Error(`mint refused ${minted.refusal.code}`);
-    const held = (await agentCredentials(tx, minted.value.delegation.id)) ?? [];
-    expect([held.includes(login.credential), held.includes(minted.value.credential)]).toEqual([
-      true,
-      true,
-    ]);
+    return { keys: keys.keys, login, helper: await issue(), minted: minted.value };
+  });
+}
+
+/** A child the delegation minted for a helper: the parent's row under the helper's actor. */
+async function childOf(parentId: string, helperActorId: string): Promise<string> {
+  const childId = randomUUID();
+  await r.fixture.db.admin.execute(
+    `insert into public.delegations
+       select (jsonb_populate_record(d, jsonb_build_object(
+                 'id', $2::uuid, 'agent_actor_id', $3::uuid,
+                 'parent_delegation_id', d.id, 'purpose', 'rcpt_child'))).*
+         from public.delegations d where d.id = $1`,
+    [parentId, childId, helperActorId],
+  );
+  return childId;
+}
+
+const heldBy = async (delegationId: string) =>
+  await r.fixture.db.app.withBusiness(
+    r.fixture.business,
+    async (tx) => await agentCredentials(tx, delegationId),
+  );
+
+it("the credentials checked for an agent's observation are its unexpired login, delegations and their children, and none when one cannot be derived", async () => {
+  const { keys, login, helper, minted } = await agentWithDelegation();
+  const childId = await childOf(minted.delegation.id, helper.agentActorId);
+  const child = keys.derive(keys.activeKeyId, {
+    businessId: r.fixture.business,
+    agentActorId: helper.agentActorId,
+    delegationId: childId,
+  });
+  const held = (await heldBy(minted.delegation.id)) ?? [];
+  await r.fixture.db.admin.execute(
+    'update public.agent_credentials set expires_at = clock_timestamp() where id = $1',
+    [login.credentialId],
+  );
+  const afterExpiry = (await heldBy(minted.delegation.id)) ?? [];
+  await r.fixture.db.admin.execute(
+    "update public.delegations set credential_key_id = 'no-such-key' where id = $1",
+    [childId],
+  );
+  expect({
+    login: held.includes(login.credential),
+    delegation: held.includes(minted.credential),
+    child: child !== undefined && held.includes(child),
+    expiredLogin: afterExpiry.includes(login.credential),
+    underivable: (await heldBy(minted.delegation.id)) === undefined,
+  }).toEqual({
+    login: true,
+    delegation: true,
+    child: true,
+    expiredLogin: false,
+    underivable: true,
   });
 });
