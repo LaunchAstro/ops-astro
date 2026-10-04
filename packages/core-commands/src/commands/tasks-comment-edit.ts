@@ -11,7 +11,9 @@
 // else's is `SCOPE_NOT_GRANTED`, whoever they are, because holding `comment`
 // on a task is the right to speak on it, not to rewrite what others said. An
 // agent reaches here inside its delegation on its own task and edits only
-// what its own actor wrote.
+// what its own actor wrote for the person that delegation acts for: one agent
+// actor speaks for many people, so a comment it wrote for P is P's to correct,
+// not Q's (OW-036.1). A person's own comment carries no such person.
 
 import { lockComment, removeComment, rewriteComment } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -35,6 +37,8 @@ export interface CommentChange {
   /** The task, as its envelope locked it. */
   readonly target: TaskRow;
   readonly actorId: string;
+  /** The person the caller's delegation acts for; `null` for a person. */
+  readonly onBehalfOfPersonId: string | null;
 }
 
 /** The person entry's change, from its command context. */
@@ -48,6 +52,7 @@ export function changeFrom(context: CommandContext): CommentChange {
     declaration: context.declaration,
     target,
     actorId: context.session.actorId,
+    onBehalfOfPersonId: null,
   };
 }
 
@@ -76,7 +81,10 @@ async function ownComment(
       ? await lockComment(tx, typeId, on.target.id, commentId)
       : undefined;
   if (comment === undefined) return refused(refuseNotFound());
-  if (comment.authorActorId !== on.actorId) {
+  if (
+    comment.authorActorId !== on.actorId ||
+    comment.onBehalfOfPersonId !== on.onBehalfOfPersonId
+  ) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', ['commentId'], NOT_AUTHOR_FIXES));
   }
   return { typeId, id: comment.id };

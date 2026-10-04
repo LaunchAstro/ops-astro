@@ -392,6 +392,7 @@ async function serveComment(
       audiences: AGENT_AUDIENCES,
       operationId: String(request['operationId']),
       delegationId: delegation.id,
+      onBehalfOfPersonId: delegation.delegatePersonId,
     },
     request['body'],
     request['audience'],
@@ -437,7 +438,8 @@ async function servePropose(
 /**
  * An agent's edit or delete of its own comment on its own task (MP-4-5,
  * CS-4.34). The task is locked as `serveComment` locks it; the comment is
- * read through it and must be the agent's own actor's (`tasks-comment-edit.ts`).
+ * read through it and must be the agent's own actor's, written for the person
+ * this delegation acts for (`tasks-comment-edit.ts`, OW-036.1).
  */
 const serveCommentChange =
   (
@@ -453,7 +455,7 @@ const serveCommentChange =
     delegation: Delegation,
     taskId: string | undefined,
   ) => ReturnType<typeof editTaskComment>) =>
-  async (tx, { session, request, declaration }, _operands, _delegation, taskId) => {
+  async (tx, { session, request, declaration }, _operands, delegation, taskId) => {
     if (taskId === undefined) return NOT_FOUND();
     const spine = await readTaskSpine(tx);
     const task = await lockTask(tx, spine.taskTypeId, taskId);
@@ -465,6 +467,7 @@ const serveCommentChange =
         declaration,
         target: task,
         actorId: session.actorId,
+        onBehalfOfPersonId: delegation.delegatePersonId,
       },
       request,
     );

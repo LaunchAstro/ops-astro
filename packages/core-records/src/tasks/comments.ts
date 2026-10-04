@@ -157,6 +157,20 @@ export const COMMENT_SPINE: readonly SpineField[] = [
     owningOperations: [],
     escalatingOperation: null,
   },
+  {
+    key: 'on_behalf_of',
+    label: 'On behalf of',
+    valueType: 'uuid',
+    // In `data` only: nothing filters on it.
+    slot: null,
+    // The person an agent's delegation acted for when it wrote the comment,
+    // from that delegation and never the payload; absent on a person's own.
+    // One agent actor writes for many people, so its actor alone does not say
+    // whose words these are (OW-036.1).
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
 ];
 
 export interface StoredComment {
@@ -171,6 +185,8 @@ export interface StoredComment {
   readonly source: string;
   /** The top-level message this replies to, or null for a message. */
   readonly parentId: string | null;
+  /** The person an agent wrote it for; null when a person wrote their own. */
+  readonly onBehalfOfPersonId: string | null;
   /**
    * Written by a person outside the business (no active membership): one of
    * the client's people. Read from the author's actor at read time, never
@@ -188,6 +204,8 @@ export interface NewComment {
   readonly source: string;
   /** The top-level message a reply sits under; absent or null for a message. */
   readonly parentId?: string | null;
+  /** The person an agent's delegation writes it for; absent or null for a person. */
+  readonly onBehalfOfPersonId?: string | null;
 }
 
 /** The server's now, as the ISO text a comment's times are stored in. */
@@ -214,7 +232,9 @@ export async function writeComment(
        'audience', $7::text, 'body', $8::text, 'source', $9::text,
        'posted_at', ${NOW_TEXT})
        || case when $10::text is null then '{}'::jsonb
-               else jsonb_build_object('parent', $10::text) end)`,
+               else jsonb_build_object('parent', $10::text) end
+       || case when $11::text is null then '{}'::jsonb
+               else jsonb_build_object('on_behalf_of', $11::text) end)`,
     [
       tx.businessId,
       id,
@@ -226,6 +246,7 @@ export async function writeComment(
       comment.body,
       comment.source,
       comment.parentId ?? null,
+      comment.onBehalfOfPersonId ?? null,
     ],
   );
   return id;
@@ -242,6 +263,7 @@ const VALUE_OF: Readonly<Record<string, (comment: StoredComment) => unknown>> = 
   edited_at: (comment) => comment.editedAt,
   source: (comment) => comment.source,
   parent: (comment) => comment.parentId,
+  on_behalf_of: (comment) => comment.onBehalfOfPersonId,
 };
 
 /**

@@ -99,6 +99,7 @@
     "tests/commands/unproduced-reach.test.ts"
   ],
   "conformance": [
+    "tests/commands/agent-comment-represented-person.test.ts",
     "tests/commands/agent-operands.test.ts",
     "tests/commands/agent-operation-order.test.ts",
     "tests/commands/agent-replay-auth.test.ts",

@@ -51,6 +51,7 @@ function storedFrom(row: CommentRow): StoredComment {
         : new Date(data['edited_at']),
     source: data['source'] ?? '',
     parentId: data['parent'] ?? null,
+    onBehalfOfPersonId: data['on_behalf_of'] ?? null,
     fromOutside: row.from_outside,
   };
 }

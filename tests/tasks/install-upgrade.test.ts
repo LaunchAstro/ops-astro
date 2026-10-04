@@ -16,7 +16,7 @@
 // the current code writes and removes only the thing Base never wrote.
 //
 // Three assertions carry the finding. The upgrade adds the comment type with
-// its eight fields. The task and state type ids, their field rows and the task
+// its ten fields. The task and state type ids, their field rows and the task
 // records are untouched by it. A second call changes nothing at all.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -40,6 +40,8 @@ const COMMENT_FIELDS = [
   'body',
   'comment_type',
   'edited_at',
+  // The person an agent wrote it for (OW-036.1).
+  'on_behalf_of',
   // A reply's message (MP-4-5, R42).
   'parent',
   'posted_at',
