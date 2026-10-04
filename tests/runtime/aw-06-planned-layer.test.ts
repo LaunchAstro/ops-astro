@@ -10,7 +10,10 @@
 // Every read goes through the production read entry; the plan is accepted by
 // the production accept and the runs proposed through the production command
 // entry. The forged plan records are written by the product's own database
-// role, as any code holding it could.
+// role, as any code holding it could; the server stamps each with its own
+// transaction's clock. A record placed at its decision's instant, as only the
+// decision's own transaction could write one, is written by the owner with
+// triggers off, so the digests are what refuse it.
 
 import { createHash, randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -98,34 +101,42 @@ interface Forged {
   readonly recordDigest: string;
   /** The words' digest as written; the words' own when absent. */
   readonly textDigest?: string;
-  /** Written as the decision's own instant, or left to the insert's clock. */
+  /**
+   * Placed at its decision's instant, as the decision's own transaction would
+   * write it (the owner, triggers off); otherwise written by the product's
+   * role asking for that instant, which the server overrides.
+   */
   readonly withDecision: boolean;
 }
 
-/** A plan record written by the product's own role, as any code holding it could. */
+const INSERT_FORGED = `insert into public.plan_records (business_id, id, gate_id, decision_id,
+   run_id, plan_text, text_digest, record, record_digest, bound_by_actor_id, bound_at)
+ values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+         (select decided_at from public.gate_decisions where business_id = $1 and id = $4))`;
+
+/** A plan record forged on the task, asking for its decision's instant. */
 async function forge(row: Forged): Promise<void> {
+  const values = [
+    w.s.business,
+    randomUUID(),
+    row.gateId,
+    row.decisionId,
+    row.runId,
+    PLAN_TEXT,
+    row.textDigest ?? sha256(PLAN_TEXT),
+    row.record,
+    row.recordDigest,
+    w.s.decider.actorId,
+  ];
+  if (row.withDecision) {
+    await w.s.db.admin.transaction(async (execute) => {
+      await execute('set local session_replication_role = replica');
+      await execute(INSERT_FORGED, values);
+    });
+    return;
+  }
   await w.s.db.app.withBusiness(w.s.business, async (tx) => {
-    await tx.query(
-      `insert into public.plan_records (business_id, id, gate_id, decision_id, run_id,
-         plan_text, text_digest, record, record_digest, bound_by_actor_id, bound_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-               case when $11 then (select decided_at from public.gate_decisions
-                                    where business_id = $1 and id = $4)
-                    else now() end)`,
-      [
-        w.s.business,
-        randomUUID(),
-        row.gateId,
-        row.decisionId,
-        row.runId,
-        PLAN_TEXT,
-        row.textDigest ?? sha256(PLAN_TEXT),
-        row.record,
-        row.recordDigest,
-        w.s.decider.actorId,
-        row.withDecision,
-      ],
-    );
+    await tx.query(INSERT_FORGED, values);
   });
 }
 
@@ -135,7 +146,9 @@ it('projection_refuses_unbound_record: a record not written with its decision, o
   expectProjects(await graphAs(w.s.decider, taskId), plan, 'the accepted plan');
 
   // Each forged record is newer than the bound one and structurally valid, so
-  // neither recency nor shape is what refuses it.
+  // neither recency nor shape is what refuses it. The first carries its own
+  // words' and record's digests and asks for its decision's instant, so only
+  // the server's clock refuses it.
   const late = await decidedWithoutRecord(taskId);
   await forge({
     ...late,
@@ -143,7 +156,11 @@ it('projection_refuses_unbound_record: a record not written with its decision, o
     recordDigest: payloadDigest(FORGED),
     withDecision: false,
   });
-  expectProjects(await graphAs(w.s.decider, taskId), plan, 'written after its decision');
+  expectProjects(
+    await graphAs(w.s.decider, taskId),
+    plan,
+    'written after its decision, with matching digests and its instant asked for',
+  );
 
   const digest = await decidedWithoutRecord(taskId);
   await forge({ ...digest, record: FORGED, recordDigest: payloadDigest(PLAN), withDecision: true });
