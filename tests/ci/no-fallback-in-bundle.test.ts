@@ -7,10 +7,10 @@
 // the module graph Rollup recorded, so a fixture module that reached the
 // bundle is caught by its path even when minifying renamed its exports.
 //
-// It builds the bundle only when apps/web/dist is not this clean commit's
-// (tests/ci/web-bundle-build.ts). Under `pnpm check` the build step has already
-// made it, and other tests copy it in workers beside this one; rebuilding would
-// empty the directory under them. Run alone, or on a changed tree, it builds.
+// It builds the bundle unless `pnpm check` built it in this run and says so
+// (CHECK_WEB_BUILD, tests/ci/web-bundle-build.ts). Under the check other tests
+// copy the bundle in workers beside this one, and rebuilding would empty the
+// directory under them. Run any other way, it builds.
 
 import { spawnSync } from 'node:child_process';
 import {
@@ -26,9 +26,9 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildIdentifier, STAMP_FILE } from '../../apps/web/build-stamp.ts';
+import { STAMP_FILE } from '../../apps/web/build-stamp.ts';
 import { fixtureSelectors, scanBundle } from './fixture-bundle.ts';
-import { missingFromBundle, needsBuild } from './web-bundle-build.ts';
+import { BUILT_VARIABLE, missingFromBundle, needsBuild } from './web-bundle-build.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const DIST = join(ROOT, 'apps/web/dist');
@@ -47,7 +47,7 @@ afterAll(() => {
 
 describe('no_fallback_in_bundle', () => {
   beforeAll(() => {
-    if (!needsBuild(DIST, buildIdentifier(ROOT))) return;
+    if (!needsBuild(DIST, process.env[BUILT_VARIABLE])) return;
     const built = spawnSync(process.execPath, ['scripts/build.mjs'], {
       cwd: ROOT,
       encoding: 'utf8',

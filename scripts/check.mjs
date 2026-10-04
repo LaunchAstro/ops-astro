@@ -33,11 +33,23 @@
 // it writes to apps/web/dist. Run last, and on a pull request not at all, it
 // left them to whichever test worker built first, and a pull request's light set
 // could select them without the one test that builds, so they read no bundle at
-// all. The build takes seconds, and tests/ci/no-fallback-in-bundle.test.ts keeps
-// a clean tree's bundle rather than rewriting it under the other tests.
+// all. The build takes seconds.
+//
+// Once the build passes, every step after it gets the stamp it wrote, in
+// CHECK_WEB_BUILD, and no step before it gets one from outside.
+// tests/ci/no-fallback-in-bundle.test.ts keeps a bundle carrying exactly that
+// stamp rather than rewriting it under the other tests, and rebuilds any other
+// (tests/ci/web-bundle-build.ts). A build that leaves no stamp this can read
+// names nothing, so that test builds for itself.
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { readStamp } from '../apps/web/build-stamp.ts';
+
+/** The variable the steps after the build read the bundle's stamp from. */
+const BUILT = 'CHECK_WEB_BUILD';
+/** Where the build writes the bundle, from the directory every step runs in. */
+const BUNDLE = join('apps', 'web', 'dist');
 
 const STEPS = [
   ['brand:check', 'product name headings'],
@@ -111,6 +123,8 @@ function lightBase() {
 
 const base = lightBase();
 const results = [];
+const env = { ...process.env };
+delete env[BUILT];
 
 for (const [script, label, light] of STEPS) {
   const changed = base !== null && light === 'changed';
@@ -119,10 +133,14 @@ for (const [script, label, light] of STEPS) {
     ? ': the full run is in the merge queue; here, the tests the change reaches'
     : '';
   console.log(`\n=== ${label} (pnpm run ${script})${note} ===`);
-  const run = spawnSync(command, [...prefix, 'run', script, ...args], { stdio: 'inherit' });
+  const run = spawnSync(command, [...prefix, 'run', script, ...args], { stdio: 'inherit', env });
   const ok = run.status === 0;
   results.push({ script, label, ok });
   if (!ok) break;
+  if (script === 'build') {
+    const stamp = readStamp(BUNDLE);
+    if (stamp !== undefined) env[BUILT] = stamp;
+  }
 }
 
 console.log('\n=== summary ===');
