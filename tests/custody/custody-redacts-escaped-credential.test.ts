@@ -241,3 +241,28 @@ it('a key that a JSON answer writes as a number is redacted, and the answer stay
     parsed: { text: 'ok', usage: { input: '[redacted]' } },
   });
 });
+
+it('a 2 MB JSON answer of many small values is redacted without stalling custody', async () => {
+  const key = `synthetic-canary-key-${'0123456789'.repeat(3)}`;
+  const body = `[${Array.from({ length: 1_000_000 }, () => '0').join(',')}]`;
+  let raw = '';
+  const started = Date.now();
+  await withCustody(
+    {},
+    body,
+    async (custody) => {
+      const outcome = await custody.dispatch('auth_key', {
+        ...request,
+        timeoutMs: 30_000,
+        maxResponseBytes: 4_194_304,
+      });
+      if (outcome.kind !== 'answered' || !outcome.outbound.ok) throw new Error('not answered');
+      raw = outcome.outbound.body;
+    },
+    key,
+  );
+  expect({ same: raw === body, fast: Date.now() - started < 4_000 }).toEqual({
+    same: true,
+    fast: true,
+  });
+}, 60_000);
