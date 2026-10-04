@@ -7,19 +7,12 @@
 // restore-drill.mjs passes the drill itself in and re-exports each act.
 
 import { createHash, timingSafeEqual } from 'node:crypto';
-import {
-  closeSync,
-  existsSync,
-  openSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-  writeSync,
-} from 'node:fs';
+import { closeSync, openSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import { bound, stagingReach, value } from './backup-store-reach.mjs';
 import { readCarried, readCarriedReceipt, writeCarried } from './carried-archive.mjs';
 import { RESTORE_ROLE, recordCarriedDrill, recordDrill } from './drill-receipt.mjs';
 import { recordDeployment } from './operator.ts';
+import { holdOwed, noteOwed } from './stamp-owed.mjs';
 
 const HEX64 = /^[0-9a-f]{64}$/u;
 // The store's part size (deploy/staging/backup-store.sql, backups.archive_parts).
@@ -226,10 +219,10 @@ export async function recordCarried({
   }
   const outcome = carried.outcome === 'pending' ? 'passed' : 'failed';
   // The store takes a receipt once: a pass whose stamp failed is noted beside
-  // the receipt, and a re-run of --record takes the note and writes only the stamp.
+  // the receipt, and a re-run of --record holds the note and writes only the stamp.
   const owed = `${receiptFile}.stamp-owed`;
-  if (outcome === 'passed' && takeOwed(owed, archiveId))
-    return await stampCarried(gate, owed, archiveId);
+  const held = outcome === 'passed' ? holdOwed(owed, archiveId) : undefined;
+  if (held) return await stampCarried(gate, owed, archiveId, held);
   let lastTestedRestore;
   try {
     lastTestedRestore = await recordCarriedDrill(
@@ -257,44 +250,13 @@ const carriedAct = (outcome, lastTestedRestore) => ({
   lastTestedRestore,
 });
 
-/** A carried pass the store took, stamped; a note only if that fails. */
-async function stampCarried(gate, owed, archiveId) {
+/** A carried pass the store took, stamped; the note (`held`) is gone only once it is. */
+async function stampCarried(gate, owed, archiveId, held) {
   const act = await stampIfPassed(gate, carriedAct('passed', 'owed')).catch((error) => {
-    noteOwed(owed, archiveId, error);
+    if (held) renameSync(held, owed);
+    else noteOwed(owed, archiveId, error);
     throw new Error(`${error.message}: re-run --record to write it`, { cause: error });
   });
+  if (held) unlinkSync(held);
   return await recordDeployment(gate, act);
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-
-/** Notes beside the receipt that the store took `archiveId`'s pass and its stamp is owed. */
-function noteOwed(owed, archiveId, stampError) {
-  try {
-    writeFileSync(owed, JSON.stringify({ archiveId }), { flag: 'wx', mode: 0o600 });
-  } catch {
-    throw new Error(
-      `${stampError.message}; and the note to finish it, ${owed}, could not be written either, ` +
-        'so a re-run of --record cannot stamp this pass (the store has its receipt): ' +
-        'run select ops.record_tested_restore() with DATABASE_ADMIN_URL',
-      { cause: stampError },
-    );
-  }
-}
-
-/** Whether `archiveId`'s pass owes its stamp, from the note, which it takes: one re-run stamps. */
-function takeOwed(owed, archiveId) {
-  if (!existsSync(owed)) return false;
-  let noted;
-  try {
-    noted = JSON.parse(readFileSync(owed, 'utf8'));
-  } catch {}
-  if (typeof noted?.archiveId !== 'string' || !UUID.test(noted.archiveId)) {
-    throw new Error(
-      `the stamp-owed note ${owed} is not one --record wrote: remove it only if the store has not taken this receipt`,
-    );
-  }
-  if (noted.archiveId !== archiveId) throw new Error('the stamp owed is of another archive');
-  unlinkSync(owed);
-  return true;
 }
