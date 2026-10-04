@@ -18,19 +18,21 @@
 //   reason and nothing of the conversation.
 //
 // Each refusal is decided before any title, subject or message is selected.
-// A scope task outside the reader's `task:read` reach is decided in the
-// statement (`SHOWN`): neither its subject nor a title taken from the subject
-// leaves Postgres, and the scope is not returned (catalogue #412). A wrap-up's
-// pointers (`contentsForReader`) and the page are served per reader.
+// A scope task the reader may not read is decided by the live grants inside
+// the statement (`SHOWN`): neither its subject nor a title taken from the
+// subject leaves Postgres, and the scope is not returned (catalogue #412). A
+// wrap-up's pointers (`contentsForReader`) and the page are served per reader.
 
 import {
+  askedFor,
   checkAuthority,
   coveredScopes,
+  EFFECTIVE_GRANTS,
   isUuid,
   readableScope,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
-import type { ReadableScope, Session, TenantQuery } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
   ConversationListResult,
   ConversationMessageView,
@@ -124,13 +126,25 @@ async function messagesOf(
 }
 
 /**
- * Whether the row's scope task is within the reader's reach ($3 a business
- * grant, $4 the granted records), and the title as that reader sees it: one
- * taken from an unreadable task's subject leaves as the default ($5).
+ * Whether the reader's subjects ($3 kinds, $4 ids) may read the row's scope
+ * task, asked as `task.read` asks of the live grants (`EFFECTIVE_GRANTS`
+ * opens the statement) at the statement's own snapshot, so a revocation
+ * committed before it is honoured. A title taken from an unreadable task's
+ * subject leaves as the default ($5).
  */
-const SHOWN = `(scope_record_id is null or $3::boolean or scope_record_id = any($4::uuid[]))`;
+const SHOWN = `(conversations.scope_record_id is null or exists (
+    select 1 from effective e
+     where e.collection = 'task'
+       and e.action = 'read'
+       and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+                    where s.kind = e.subject_kind and s.id = e.subject_id)
+       and (e.scope_kind = 'business'
+            or (e.scope_kind = 'record' and e.scope_id = conversations.scope_record_id))))`;
 const TITLE = `case when ${SHOWN} or title is distinct from subject then title else $5 end as title`;
-const reach = (tasks: ReadableScope) => [tasks.business, tasks.records, DEFAULT_TITLE];
+function reader(session: Session): readonly unknown[] {
+  const asked = askedFor(subjectsOf(session), { collection: 'task', action: 'read' });
+  return [asked.map((subject) => subject.kind), asked.map((subject) => subject.id), DEFAULT_TITLE];
+}
 
 /** The conversation's own fields; its page names a task only to a reader who may read it. */
 function conversationView(
@@ -161,14 +175,14 @@ async function served(
   session: Session,
   conversationId: string,
 ): Promise<ConversationReadResult> {
-  const tasks = await readableScope(tx, subjectsOf(session), 'task', 'read');
   const rows = await tx.query<ConversationRow>(
-    `select id, ${TITLE}, case when ${SHOWN} then subject end as subject,
+    `${EFFECTIVE_GRANTS}
+     select id, ${TITLE}, case when ${SHOWN} then subject end as subject,
             case when ${SHOWN} then scope_kind end as scope_kind,
             case when ${SHOWN} then scope_record_id end as scope_record_id,
             page_address, page_shows, created_at, last_activity_at, body_purged_at
        from conversations where business_id = $1 and id = $2`,
-    [tx.businessId, conversationId, ...reach(tasks)],
+    [tx.businessId, conversationId, ...reader(session)],
   );
   const row = rows[0];
   if (row === undefined) throw new Error('conversation.read: the conversation went between reads');
@@ -182,7 +196,7 @@ async function served(
     [tx.businessId, conversationId],
   );
   const current = wrapUps[0];
-  const reads = addressReader(tasks);
+  const reads = addressReader(await readableScope(tx, subjectsOf(session), 'task', 'read'));
   return {
     ok: true,
     conversation: conversationView(row, reads),
@@ -262,15 +276,15 @@ export async function listConversations(
     scope: { kind: 'business', id: null },
   });
   if (session.roleKey === null || !own.ok) return HOLDS_NOTHING;
-  const tasks = await readableScope(tx, subjectsOf(session), 'task', 'read');
   const rows = await tx.query<
     Pick<ConversationRow, 'id' | 'title' | 'last_activity_at' | 'body_purged_at'>
   >(
-    `select id, ${TITLE}, last_activity_at, body_purged_at from conversations
+    `${EFFECTIVE_GRANTS}
+     select id, ${TITLE}, last_activity_at, body_purged_at from conversations
       where business_id = $1 and owner_actor_id = $2
       order by last_activity_at desc, id
       limit ${String(LIST_LIMIT)}`,
-    [tx.businessId, session.actorId, ...reach(tasks)],
+    [tx.businessId, session.actorId, ...reader(session)],
   );
   return {
     ok: true,
