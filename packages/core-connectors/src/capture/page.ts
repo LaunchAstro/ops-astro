@@ -31,12 +31,12 @@ export type CaptureOptions = Omit<FetchOptions, 'kind' | 'page'>;
 const digest = (text: string): string =>
   `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
 
-// parse5, the HTML standard's tree builder, reads the page as a browser does. Four of its costs
-// grow with the square of a hostile page, so each is bounded: a tag, or an <html> or <body> that
-// later tags merge theirs onto, past MAX_ATTRIBUTES (each name is checked against all before it),
-// and nesting or active formatting entries past MAX_DEPTH (walked by many tags) are refused as
-// oversized; a sibling is looked for from the end, where it sits.
-const [MAX_ATTRIBUTES, MAX_DEPTH] = [256, 256];
+// parse5, the HTML standard's tree builder, reads the page as a browser does. Its costs that grow
+// with the square of a hostile page are refused as oversized past: MAX_ATTRIBUTES on a tag, or on
+// an <html> or <body> later tags merge theirs onto (each name is checked against all before it);
+// MAX_DEPTH open elements or formatting entries (walked by many tags); WORK times the page's length
+// of siblings the tree's moves scan and shift (each found from the end, where it mostly sits).
+const [MAX_ATTRIBUTES, MAX_DEPTH, WORK] = [256, 256, 64];
 const PAST_BOUND = new Error('past a bound');
 
 /* oxlint-disable no-underscore-dangle -- the name is parse5's own */
@@ -49,25 +49,34 @@ class BoundedTokenizer extends Tokenizer {
 }
 /* oxlint-enable no-underscore-dangle */
 
-const fromEnd = {
-  insertBefore(parent: Tree.ParentNode, node: Tree.ChildNode, before: Tree.ChildNode): void {
-    parent.childNodes.splice(parent.childNodes.lastIndexOf(before), 0, node);
-    node.parentNode = parent;
-  },
-  detachNode(node: Tree.ChildNode): void {
-    node.parentNode?.childNodes.splice(node.parentNode.childNodes.lastIndexOf(node), 1);
-    node.parentNode = null;
-  },
-  insertTextBefore(parent: Tree.ParentNode, text: string, before: Tree.ChildNode): void {
-    const previous = parent.childNodes[parent.childNodes.lastIndexOf(before) - 1];
-    if (previous && defaultTreeAdapter.isTextNode(previous)) previous.value += text;
-    else fromEnd.insertBefore(parent, defaultTreeAdapter.createTextNode(text), before);
-  },
-  adoptAttributes(recipient: Tree.Element, attrs: Tree.Element['attrs']): void {
-    defaultTreeAdapter.adoptAttributes(recipient, attrs);
-    if (recipient.attrs.length > MAX_ATTRIBUTES) throw PAST_BOUND;
-  },
-};
+function moves(left: number) {
+  const at = (parent: Tree.ParentNode, node: Tree.ChildNode): number => {
+    const index = parent.childNodes.lastIndexOf(node);
+    left -= parent.childNodes.length - index;
+    if (left < 0) throw PAST_BOUND;
+    return index;
+  };
+  const adapter = {
+    insertBefore(parent: Tree.ParentNode, node: Tree.ChildNode, before: Tree.ChildNode): void {
+      parent.childNodes.splice(at(parent, before), 0, node);
+      node.parentNode = parent;
+    },
+    detachNode(node: Tree.ChildNode): void {
+      if (node.parentNode) node.parentNode.childNodes.splice(at(node.parentNode, node), 1);
+      node.parentNode = null;
+    },
+    insertTextBefore(parent: Tree.ParentNode, text: string, before: Tree.ChildNode): void {
+      const previous = parent.childNodes[at(parent, before) - 1];
+      if (previous && defaultTreeAdapter.isTextNode(previous)) previous.value += text;
+      else adapter.insertBefore(parent, defaultTreeAdapter.createTextNode(text), before);
+    },
+    adoptAttributes(recipient: Tree.Element, attrs: Tree.Element['attrs']): void {
+      defaultTreeAdapter.adoptAttributes(recipient, attrs);
+      if (recipient.attrs.length > MAX_ATTRIBUTES) throw PAST_BOUND;
+    },
+  };
+  return adapter;
+}
 
 // Elements whose text a browser does not show: these in HTML, and script and style anywhere.
 const HIDDEN = new Set('script style noscript template iframe noembed noframes'.split(' '));
@@ -91,7 +100,7 @@ function parsed(html: string): Tree.Document | undefined {
       throw PAST_BOUND;
   };
   const parser = new Parser<Tree.DefaultTreeAdapterMap>({
-    treeAdapter: { ...defaultTreeAdapter, ...fromEnd, onItemPush },
+    treeAdapter: { ...defaultTreeAdapter, ...moves(WORK * html.length), onItemPush },
   });
   parser.tokenizer = new BoundedTokenizer(parser.options, parser);
   try {
@@ -108,13 +117,12 @@ function parsed(html: string): Tree.Document | undefined {
 const names = Array.from({ length: MAX_ATTRIBUTES }, (_, at) => ` a${at}`).join('');
 const members = [
   Reflect.get(Tokenizer.prototype, '_leaveAttrName'),
-  ...Object.keys(fromEnd).map((name) => Reflect.get(defaultTreeAdapter, name)),
+  ...Object.keys(moves(0)).map((name) => Reflect.get(defaultTreeAdapter, name)),
 ];
-const probes = [`<p${names} z>`, `<html${names}><html z>`, '<b>'.repeat(MAX_DEPTH)];
-if (
-  members.some((member) => typeof member !== 'function') ||
-  probes.some((probe) => parsed(probe) !== undefined)
-)
+const adopting = `<b><p>${'<br>'.repeat(16 * WORK)}</b>`;
+const probes = [`<p${names} z>`, `<html${names}><html z>`, '<b>'.repeat(MAX_DEPTH), adopting];
+const held = members.every((member) => typeof member === 'function');
+if (!held || probes.some((probe) => parsed(probe) !== undefined))
   throw new Error('parse5 no longer holds the capture bounds');
 
 /** Reads the tree in document order with a stack of its own, so no depth can overflow the call stack. */
@@ -123,13 +131,8 @@ function readDocument(html: string): Reading | FenceCode {
   if (document === undefined) return 'CAPTURE_OVERSIZED';
   const [text, links, styles]: [string[], string[], string[]] = [[], [], []];
   let base: string | undefined;
-  const stack: (readonly [Tree.Node, boolean] | undefined)[] = [[document, false]];
-  while (stack.length > 0) {
-    const entry = stack.pop();
-    if (entry === undefined) {
-      text.push(' ');
-      continue;
-    }
+  const stack: (readonly [Tree.Node, boolean])[] = [[document, false]];
+  for (let entry = stack.pop(); entry !== undefined; entry = stack.pop()) {
     const [node, hidden] = entry;
     if (node.nodeName === '#text' && !hidden) text.push((node as Tree.TextNode).value);
     if (!('childNodes' in node)) continue;
@@ -150,7 +153,7 @@ function readDocument(html: string): Reading | FenceCode {
         styles.push(node.childNodes.map((child) => ('value' in child ? child.value : '')).join(''));
       hides ||= HIDDEN.has(name) && (html5 || name === 'script' || name === 'style');
       text.push(' ');
-      stack.push(undefined);
+      stack.push([defaultTreeAdapter.createTextNode(' '), false]);
     }
     for (const child of node.childNodes.toReversed()) stack.push([child, hides]);
   }
@@ -234,7 +237,6 @@ function importsOf(source: string): (string | undefined)[] {
 
 /** Rounds of `@import` followed past the sheets the page names; one more is refused as oversized. */
 const IMPORT_DEPTH = 3;
-
 const resolved = (href: string | undefined, from: string): string | undefined =>
   href !== undefined && URL.canParse(href, from) ? new URL(href, from).href : undefined;
 
@@ -253,6 +255,8 @@ async function readSheets(
     stylesheets[`inline:${index}`] = digest(css);
   const seen = new Set<string>();
   const run = limiter(SHEETS_AT_ONCE);
+  const fetchSheet = (href: string) =>
+    run(() => fencedFetch(href, { ...options, kind: 'stylesheet', page: url }));
   let wanted = [...document.links, ...document.styles.flatMap(importsOf)].map((href) =>
     resolved(href, base),
   );
@@ -263,11 +267,7 @@ async function readSheets(
       return { ok: false, code: 'CAPTURE_OVERSIZED' };
     for (const href of fresh) seen.add(href);
     // oxlint-disable-next-line no-await-in-loop -- one round of imports waits on the last
-    const fetched = await Promise.all(
-      fresh.map((href) =>
-        run(() => fencedFetch(href, { ...options, kind: 'stylesheet', page: url })),
-      ),
-    );
+    const fetched = await Promise.all(fresh.map((href) => fetchSheet(href)));
     wanted = [];
     for (const [index, sheet] of fetched.entries()) {
       if (!sheet.ok) return sheet;
