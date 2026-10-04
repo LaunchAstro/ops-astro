@@ -46,7 +46,8 @@ const WINDOW_SECONDS = SESSION_ABSOLUTE_SECONDS + SIGN_IN_CLOCK_SKEW_SECONDS;
  * Less the sessions an ending of the login's other sessions (0063) covers:
  * first served here at or before it. Login resolution refuses those (a
  * session's sign-in is no later than its first serving plus the minute of
- * clock) and serves any other, so the list names what the door serves.
+ * clock), so the list follows what the door serves, but for a request served
+ * in the instant the ending takes to commit, which stays listed.
  */
 const SEEN = `
   select a.session_id::text as session_id, min(a.at) as first_seen, max(a.at) as last_seen
