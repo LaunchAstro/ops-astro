@@ -105,7 +105,8 @@
       "files": [
         "tests/review/ending-claim-per-row-proof.test.ts",
         "tests/identity/ending-claim-and-shared-recheck-proof.test.ts",
-        "tests/authority/endings-once-exit-and-settings-proof.test.ts"
+        "tests/authority/endings-once-exit-and-settings-proof.test.ts",
+        "tests/identity/mapping-waits-while-ending-bans-subject-proof.test.ts"
       ],
       "rules": { "max-lines-per-function": "off", "require-await": "off" }
     }
