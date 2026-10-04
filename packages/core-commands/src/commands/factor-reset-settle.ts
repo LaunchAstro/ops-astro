@@ -62,7 +62,34 @@ export async function settleFactorResets(
     });
     if (answer.ok) settled += 1;
   }
-  return { attempted: tried.length, settled, owed: tried.length - settled };
+  return {
+    attempted: tried.length,
+    settled,
+    owed: await stillOwed(database, businessId, options.only),
+  };
+}
+
+/**
+ * The resets of this business (of `only`, when named) still owed after the
+ * pass: those it tried and failed, and those it skipped under another
+ * attempt's live claim, which are owed until that attempt stamps them done.
+ */
+async function stillOwed(
+  database: Database,
+  businessId: BusinessId,
+  only: readonly string[] | undefined,
+): Promise<number> {
+  const [row] = await database.withBusiness(
+    businessId,
+    async (tx) =>
+      await tx.query<{ readonly owed: number }>(
+        `select count(*)::int as owed from public.factor_resets
+          where business_id = $1 and done_at is null
+            and ($2::uuid[] is null or id = any($2::uuid[]))`,
+        [businessId, only ?? null],
+      ),
+  );
+  return row?.owed ?? 0;
 }
 
 /** The next owed reset no other settle holds, claimed; none when nothing is left. */
