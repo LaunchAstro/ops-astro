@@ -62,7 +62,7 @@ export async function setLoginPassword(
   return operation.answer(body)?.text === id ? 'set' : 'fault';
 }
 
-/** A JSON text's string literals, one by one: a repeated key's value too. */
+/** A JSON text's string literals, one by one. */
 const STRING = /"(?:[^"\\]|\\.)*"/gu;
 
 /**

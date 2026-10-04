@@ -75,12 +75,13 @@ export function routeDatabase(app: Database, faultIn: () => BusinessId | undefin
     run: (tx: TransactionQuery) => Promise<T>,
   ): Promise<T> {
     return await app.withBusiness(business, async (tx) => {
-      // The reset's change in a business: its sessions' ending, or its audit row.
+      // The reset's change in a business: its sessions' ending (read from the
+      // sessions it saw), or its audit row.
       let changing = false;
       const watched: TransactionQuery = {
         ...tx,
         query: async <Row>(text: string, parameters?: readonly unknown[]) => {
-          changing ||= /insert into (?:audit_events|ops\.ended_subject_sessions)/u.test(text);
+          changing ||= /insert into audit_events|select distinct a\.session_id/u.test(text);
           return await tx.query<Row>(text, parameters);
         },
       };

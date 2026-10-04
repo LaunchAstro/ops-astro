@@ -46,6 +46,7 @@
 
 import { createHash } from 'node:crypto';
 import {
+  endOtherSeenSessions,
   endSeenSessions,
   lockLoginFactors,
   loginHasVerifiedFactor,
@@ -194,12 +195,18 @@ async function spend(
   return { window: await openResetWindow(tx, found.subject) };
 }
 
-/** Step 6: in each business the login is mapped in, the sessions seen there end. */
-async function endedIn(database: Database, mapped: readonly Mapped[]) {
+/**
+ * Step 6: in each business the login is mapped in, the sessions seen there
+ * end; given the `subject` (a reset that set nothing), every session signed
+ * in until now too, to the instant (0063), as the settle's second is not.
+ */
+async function endedIn(database: Database, mapped: readonly Mapped[], subject?: string) {
   for (const { business, session } of mapped) {
     // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
     await database.withBusiness(business, async (tx) => {
-      await endSeenSessions(tx, session.personId, undefined, 'end_others');
+      await (subject === undefined
+        ? endSeenSessions(tx, session.personId, undefined, 'end_others')
+        : endOtherSeenSessions(tx, session.personId, undefined, 'end_others', subject));
     });
   }
 }
@@ -247,11 +254,13 @@ export async function setPasswordByToken(
   let set: LoginPasswordSet = 'fault';
   let ended = false;
   try {
-    // Set or not, the sessions each business saw end there, so its list
-    // agrees with its door (Sol, PR #382 round 3).
-    set = await setLoginPassword(dependencies.broker, found.subject, reset.password).finally(
-      async () => await endedIn(database, mapped),
-    );
+    try {
+      set = await setLoginPassword(dependencies.broker, found.subject, reset.password);
+    } finally {
+      // Set or not, the sessions each business saw end there, so its list
+      // agrees with its door (Sol, PR #382 round 3).
+      await endedIn(database, mapped, set === 'set' ? undefined : found.subject);
+    }
     ended = true;
   } finally {
     await database.withBusiness(found.business, async (tx) => {

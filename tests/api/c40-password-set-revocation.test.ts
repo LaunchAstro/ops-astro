@@ -4,9 +4,10 @@
 // reset runs on our own one-time token, so no recovery session exists. The
 // agent queue proof becomes "a token's use yields no bearer session at all",
 // and the paused reset proof becomes "a paused reset whose token was spent
-// meanwhile is refused". The commit-window proof is kept as written, on the
-// token.
+// meanwhile is refused". The commit-window proof is kept on the token, its
+// commit a whole second after the session's stamp (round 3, criterion 5).
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it } from 'vitest';
 import { PASSWORD_SET_PATH } from '../../apps/api/password-set.ts';
 import { setPasswordByToken } from '../../packages/core-commands/src/index.ts';
@@ -178,6 +179,8 @@ SOL(
         setTimeout(resolve, 1100);
       });
       during = await tokenFor(subject, randomUUID(), now());
+      // A whole second before the commit: a stamp of its own second is served (round 3, c5).
+      await delay(1000 - (Date.now() % 1000) + 25);
     } finally {
       release.open();
     }

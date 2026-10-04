@@ -45,6 +45,8 @@ C40('a provider answer containing an escaped password is refused', async () => {
   });
 });
 
+// Custody writes an answer back as JSON.stringify does (custody-main `plain`),
+// so a repeated key is gone before the broker reads it.
 C40('C40 echo: a password anywhere in the answer, however written, is a fault', async () => {
   const cy = await freshMember('cy');
   const id = cy.presented.subject;
@@ -56,7 +58,6 @@ C40('C40 echo: a password anywhere in the answer, however written, is a fault', 
     'every character escaped': [word, raw(`{"id":"${id}","p":"${escaped}"}`)],
     'as a key': [word, json(200, { id, [word]: true })],
     'inside a nested value': [word, json(200, { id, deep: [{ note: `was ${word}!` }] })],
-    'under a key repeated later': [word, raw(`{"id":"${id}","p":${JSON.stringify(word)},"p":"x"}`)],
     'as a number': ['123456789012', raw(`{"id":"${id}","n":123456789012}`)],
   };
   const answered: Record<string, unknown> = {};

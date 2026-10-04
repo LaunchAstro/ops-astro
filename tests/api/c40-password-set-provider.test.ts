@@ -33,6 +33,7 @@ import {
   insertPerson,
 } from '../identity/fixture.ts';
 import { bearer, call, personPath } from '../acceptance/world.ts';
+import { freshSubject, grantTo } from '../commands/fixture.ts';
 import { brokerFor, mintToken, usePasswordWorld, world } from './c40-password-set-world.ts';
 
 const issuer = process.env['C40_AUTH_URL'];
@@ -131,13 +132,15 @@ function realApi() {
   }).app;
 }
 
-/** A provider login mapped to a new member of alpha: its subject. */
+/** A provider login mapped to a new member of alpha, who may read: its person. */
 async function mapped(subject: string, name: string): Promise<string> {
   return await world.db.app.withBusiness(world.alpha, async (tx) => {
     const personId = await insertPerson(tx, name);
     const actorId = await insertActor(tx, personId);
     await insertMembership(tx, personId);
     await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
+    // A grant, so a served session's capabilities answer 200, not SCOPE_NOT_GRANTED.
+    await grantTo(tx, { personId, actorId, presented: freshSubject(subject) }, 'read');
     return personId;
   });
 }
