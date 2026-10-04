@@ -22,7 +22,7 @@ const handedBack: Reservation = {
   actualMinor: null,
   classifiedCause: 'handback_completed',
   lease: { state: 'released' },
-  attempt: { state: 'abandoned' },
+  attempt: { state: 'abandoned', outcome: 'completed' },
 };
 
 describe('REVIEW-3A-21 completed hand-back', () => {

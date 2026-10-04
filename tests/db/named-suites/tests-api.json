@@ -1,6 +1,7 @@
 {
   "comment": [
-    "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read)."
+    "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read).",
+    "SOLOW-G G1c names failed-handback-story (Sol OW-108.1: a failed hand-back never reports successful completion, through the real API) and handback-outcome-read (the task read carries the attempt outcome: a completed hand-back reads completed and Done)."
   ],
   "invariant": [
     "tests/api/agent-bare-handback-replay.test.ts",
@@ -107,8 +108,10 @@
     "tests/api/c54-recent-sign-in.test.ts",
     "tests/api/cancelled-unknown-hold-story.test.ts",
     "tests/api/credential-task-read-agent-view.test.ts",
+    "tests/api/failed-handback-story.test.ts",
     "tests/api/fix-2b1-rs-rollup-issued-and-revoked.test.ts",
     "tests/api/fix-2b1-rs2-left-at-door-real-routes.test.ts",
+    "tests/api/handback-outcome-read.test.ts",
     "tests/api/hosted-expired-lease-recovery.test.ts",
     "tests/api/hosted-recovery-waits-for-pass.test.ts",
     "tests/api/mp-6-1-checks.test.ts",
