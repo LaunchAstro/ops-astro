@@ -134,7 +134,7 @@ describe('C80 capture picture, no network of its own', () => {
     expect(directives).toEqual(
       expect.arrayContaining([
         "default-src 'none'",
-        "style-src 'self' 'unsafe-inline'",
+        "style-src https: 'unsafe-inline'",
         'img-src data:',
         "script-src 'none'",
       ]),

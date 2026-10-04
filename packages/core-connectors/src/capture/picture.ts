@@ -17,6 +17,9 @@
 //   followed a redirect for is answered with an import of its final address,
 //   served there from the fetched copy, so its own imports resolve as the page
 //   observation resolves them (a browser hands a sheet's redirect to no route);
+//   the document's policy lets every https sheet reach the route, so the fence
+//   alone decides, and one the route took or sent the browser to but never
+//   served fails the picture too;
 // - nothing else: images, fonts, scripts, frames and any other request are
 //   refused and recorded by code and origin only, never a path or query.
 //
@@ -85,11 +88,13 @@ export interface Picture {
 
 /**
  * The document's policy: markup, the fenced stylesheets and data: images render, nothing else
- * loads. A `<base>` is honoured, as the page observation honours it: every address it moves is
- * still answered through the route, so one the fence refuses fails the picture.
+ * loads. Any https sheet may load, so every sheet request reaches the route and the fence alone
+ * decides it: one the policy blocked would never reach the route, and the picture would succeed
+ * without it. A `<base>` is honoured, as the page observation honours it: every address it moves
+ * is still answered through the route, so one the fence refuses fails the picture.
  */
 export const PICTURE_POLICY: string =
-  "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src data:; script-src 'none'; " +
+  "default-src 'none'; style-src https: 'unsafe-inline'; img-src data:; script-src 'none'; " +
   "object-src 'none'; frame-src 'none'; worker-src 'none'";
 
 const originOf = (url: string): string => (URL.canParse(url) ? new URL(url).origin : '');
@@ -105,6 +110,8 @@ interface RouteState {
   readonly sheets: Map<string, Promise<Fenced<Fetched>>>;
   /** Fetched answers the browser was redirected to, by kind and final address. */
   readonly moved: Map<string, Fetched>;
+  /** Sheets taken, and addresses the browser was sent to, not yet served: by kind and address. */
+  readonly owed: Set<string>;
   served: boolean;
   failed: FenceCode | undefined;
 }
@@ -119,8 +126,10 @@ function answered(
   fetched: Fetched,
   headers: Readonly<Record<string, string>>,
 ): PictureAnswer {
+  state.owed.delete(`${request.kind} ${request.url}`);
   if (fetched.url === request.url) return { status: 200, headers, body: fetched.body };
   state.moved.set(`${request.kind} ${fetched.url}`, fetched);
+  state.owed.add(`${request.kind} ${fetched.url}`);
   if (request.kind === 'stylesheet')
     return { status: 200, headers, body: `@import "${fetched.url.replaceAll('\\', '\\\\')}";` };
   return { status: 302, headers: { location: fetched.url }, body: '' };
@@ -154,6 +163,7 @@ function pictureRoute(page: string, options: CaptureOptions, state: RouteState):
       return answered(state, request, fetched.value, DOCUMENT);
     }
     if (request.kind === 'stylesheet') {
+      state.owed.add(key);
       if (landed !== undefined) return answered(state, request, landed, STYLESHEET);
       if (!state.sheets.has(request.url) && state.sheets.size >= MAX_STYLESHEETS) {
         state.failed ??= 'CAPTURE_OVERSIZED';
@@ -186,6 +196,7 @@ export async function capturePicture(
     refused: [],
     sheets: new Map(),
     moved: new Map(),
+    owed: new Set(),
     served: false,
     failed: undefined,
   };
@@ -195,6 +206,7 @@ export async function capturePicture(
   } catch {
     return { ok: false, code: state.failed ?? 'CAPTURE_FAILED' };
   }
+  state.failed ??= state.owed.size > 0 ? 'CAPTURE_FAILED' : undefined;
   if (state.failed !== undefined) return { ok: false, code: state.failed };
   const digest = `sha256:${createHash('sha256').update(png).digest('hex')}`;
   return { ok: true, value: { url, digest, png, refused: state.refused } };
