@@ -118,6 +118,9 @@ importers:
       hono:
         specifier: 4.13.9
         version: 4.13.9
+      parse5:
+        specifier: 8.0.1
+        version: 8.0.1
     devDependencies:
       '@commitlint/cli':
         specifier: 21.2.2
