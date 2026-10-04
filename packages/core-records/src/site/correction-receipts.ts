@@ -12,11 +12,8 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
-import {
-  checkDelegatedAuthority,
-  resolveLiveById,
-  type Delegation,
-} from '../authority/delegations.ts';
+import { checkDelegatedAuthority, resolveLiveById } from '../authority/delegations.ts';
+import type { Delegation } from '../authority/delegations.ts';
 import {
   lockCorrectionForSystem,
   type CorrectionState,
@@ -79,6 +76,8 @@ export type ObservedRefusal =
 type Held = { readonly ok: true; readonly correction: LiveCorrection } | Refused;
 type Refused = { readonly ok: false; readonly code: ObservedRefusal };
 
+type OwnedLease = { readonly task_id: string; readonly delegation_id: string | null };
+
 /**
  * The correction locked, and a live worker lease on its task at the fence the
  * worker holds, or the refusal: no such lease of the caller's is
@@ -91,26 +90,23 @@ type Refused = { readonly ok: false; readonly code: ObservedRefusal };
  * is the caller's own, and its delegation, where it has one, is not revoked,
  * settled or expired: the check `core-runtime/src/lease-ownership.ts` makes.
  * A delegated lease then stands on its person's grants (`delegatedWriteStands`),
- * share-locked before any of these (`holdPersonWrites`).
+ * share-locked before any of these (`holdPersonWrites`) for the delegation the
+ * locked lease still names.
  */
 async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
   // The lease the caller holds names the one task it may reach, asked before any correction:
   // another task's correction and an id that names none get the same answer.
-  const [owned] = await tx.query<{
-    readonly task_id: string;
-    readonly delegation_id: string | null;
-  }>(
+  const [owned] = await tx.query<OwnedLease>(
     `select l.task_id, l.delegation_id from public.leases l
       where l.business_id = $1 and l.id = $2 and l.fence = $3 and l.holder_actor_id = $4`,
     [tx.businessId, at.leaseId, at.fence, at.actorId],
   );
   if (owned === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
-  let delegation: Delegation | undefined;
-  if (owned.delegation_id !== null) {
-    delegation = await resolveLiveById(tx, at.actorId, owned.delegation_id);
-    if (delegation === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
-    await holdPersonWrites(tx, delegation);
-  }
+  const person =
+    owned.delegation_id === null
+      ? null
+      : await holdPersonWrites(tx, at.actorId, owned.delegation_id);
+  if (person === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const correction = await lockCorrectionForSystem(tx, at.correctionId, owned.task_id);
   if (correction === undefined) return { ok: false, code: 'NOT_FOUND' };
   const [lease] = await tx.query<{ readonly delegation_id: string | null }>(
@@ -120,7 +116,6 @@ async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
       for share of l`,
     [tx.businessId, at.leaseId, correction.taskId, at.fence, at.actorId],
   );
-  // The delegation the grants were held for is the lease's still.
   if (lease === undefined || lease.delegation_id !== owned.delegation_id) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
   }
@@ -142,31 +137,40 @@ async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
   );
   const [instant] = live;
   if (instant === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
-  if (delegation !== undefined) {
-    const stands = await delegatedWriteStands(tx, delegation, instant.at);
+  if (person !== null) {
+    const stands = await delegatedWriteStands(tx, person, instant.at);
     if (!stands.ok) return stands;
   }
   return { ok: true, correction };
 }
 
+interface PersonHeld {
+  readonly delegation: Delegation;
+  readonly held: readonly string[];
+}
+
 /**
- * Share-lock, in id order and in one statement, every write grant the
- * delegating person holds on the collections the delegation carries, and each
- * grant it descends from, for the rest of the transaction
- * (`holdCoveringGrants`'s lock, over every collection at once). Grant rows come
- * before any other lock (`core-runtime/src/locks.ts`), as `grant.revoke` and
- * `access.end` take theirs: a revocation that committed first is seen by the
- * check after the locks, and one that comes later waits for the receipt to
- * commit. A child delegation draws on its parent's person (0100), and its
- * collections and person are fixed at mint, so these are the grants
- * `checkDelegatedAuthority` reads.
+ * The live delegation, and the ids of the grants `checkDelegatedAuthority`
+ * reads for it share-locked, with their parents, in id order in one statement:
+ * the person's writes on its collections, at the business or its purpose record
+ * (a child draws on its parent's person; both fixed at mint, 0100). Grant rows
+ * come first (`core-runtime/src/locks.ts`), as `grant.revoke` takes its own: a
+ * revocation that committed first is seen after the locks, a later one waits
+ * for the commit, and a grant issued after this statement is not held.
  */
-async function holdPersonWrites(tx: TenantQuery, delegation: Delegation): Promise<void> {
-  await tx.query(
+async function holdPersonWrites(
+  tx: TenantQuery,
+  actorId: string,
+  delegationId: string,
+): Promise<PersonHeld | undefined> {
+  const delegation = await resolveLiveById(tx, actorId, delegationId);
+  if (delegation === undefined) return undefined;
+  const rows = await tx.query<{ readonly id: string }>(
     `with recursive chain as (
        select g.id, g.parent_grant_id from public.grants g
         where g.business_id = $1 and g.subject_kind = 'person' and g.subject_id = $2
           and g.collection = any($3::text[]) and g.action = 'write'
+          and (g.scope_kind = 'business' or (g.scope_kind = $4 and g.scope_id = $5::uuid))
        union
        select p.id, p.parent_grant_id from public.grants p
          join chain c on p.id = c.parent_grant_id
@@ -176,8 +180,15 @@ async function holdPersonWrites(tx: TenantQuery, delegation: Delegation): Promis
       where g.business_id = $1 and g.id in (select id from chain)
       order by g.id
       for share`,
-    [tx.businessId, delegation.delegatePersonId, delegation.collections],
+    [
+      tx.businessId,
+      delegation.delegatePersonId,
+      delegation.collections,
+      delegation.purposeScope.kind,
+      delegation.purposeScope.id,
+    ],
   );
+  return { delegation, held: rows.map((row) => row.id) };
 }
 
 /**
@@ -189,12 +200,12 @@ async function holdPersonWrites(tx: TenantQuery, delegation: Delegation): Promis
  * carries on its purpose record; any one gone is `DELEGATION_NARROWED`. The
  * grants it answers are judged again at `at`, the instant read after the
  * locks, so a grant that lapsed while the caller waited no longer counts
- * (`core-runtime/src/recovery/classifier.ts`, `checkAuthorityAt`). The
- * grants are held (`holdPersonWrites`), so the answer stands until commit.
+ * (`core-runtime/src/recovery/classifier.ts`, `checkAuthorityAt`). Only
+ * grants `held` count, so the answer stands until commit.
  */
 async function delegatedWriteStands(
   tx: TenantQuery,
-  delegation: Delegation,
+  { delegation, held }: PersonHeld,
   at: string,
 ): Promise<{ readonly ok: true } | Refused> {
   for (const collection of delegation.collections) {
@@ -207,13 +218,13 @@ async function delegatedWriteStands(
     });
     if (!reach.ok) return { ok: false, code: 'DELEGATION_NARROWED' };
     // oxlint-disable-next-line no-await-in-loop
-    const held = await tx.query<{ readonly id: string }>(
+    const live = await tx.query<{ readonly id: string }>(
       `select id from public.grants
         where business_id = $1 and id = any($2::uuid[])
           and (expires_at is null or expires_at > $3::timestamptz)`,
-      [tx.businessId, reach.value, at],
+      [tx.businessId, reach.value.filter((id) => held.includes(id)), at],
     );
-    if (held.length === 0) return { ok: false, code: 'DELEGATION_NARROWED' };
+    if (live.length === 0) return { ok: false, code: 'DELEGATION_NARROWED' };
   }
   return { ok: true };
 }
