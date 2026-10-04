@@ -26,6 +26,7 @@ export {
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
 export { raiseBudgetWait, stopWords } from './broker-wait.ts';
 export { giveBack } from './broker-give-back.ts';
+export { setLoginPassword, type LoginPasswordSet } from './broker-login-password.ts';
 export {
   callModelInConversation,
   type ConversationCallRequest,
