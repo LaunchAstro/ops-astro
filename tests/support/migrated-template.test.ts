@@ -67,16 +67,20 @@ const templateRow = async (name: string) =>
   )[0];
 
 const run = promisify(execFile);
-/** ensureMigratedTemplate in a node process of its own, its answer read back. */
+/**
+ * ensureMigratedTemplate in a node process of its own, its answer read back.
+ * The server's address goes by environment, so a failure's command line,
+ * which names the arguments, carries no credential.
+ */
 async function builderProcess(name: string): Promise<unknown> {
   const script =
     "const m = await import('./tests/support/migrated-template.ts');" +
-    'console.log(JSON.stringify(await m.ensureMigratedTemplate(process.argv[1], process.argv[2])));';
-  const { stdout } = await run(
-    process.execPath,
-    ['--input-type=module', '-e', script, serverUrl as string, name],
-    { encoding: 'utf8' },
-  );
+    'const built = await m.ensureMigratedTemplate(process.env.TEMPLATE_SERVER_URL, process.argv[1]);' +
+    'console.log(JSON.stringify(built));';
+  const { stdout } = await run(process.execPath, ['--input-type=module', '-e', script, name], {
+    encoding: 'utf8',
+    env: { ...process.env, TEMPLATE_SERVER_URL: serverUrl },
+  });
   return JSON.parse(stdout) as unknown;
 }
 
