@@ -2878,7 +2878,8 @@ read in its own business. A login with a live verified second factor in any
 business is 403 `RESET_NEEDS_SUPPORT` (ORCH77-C40MFA), whatever code the body
 carries: refused before anything is spent, so the token stays live and the
 password and every session stay as they were; support resets it. A fault
-reading where the login stands is 503 `RESET_UNAVAILABLE`, never a set. Then,
+reading where the login stands is 503 `RESET_UNAVAILABLE`, never a set, and a
+login the token's own business no longer admits is 401 `RESET_LINK_INVALID`. Then,
 under C59's login lock (the one a factor's verification takes) and the token's
 row lock, the token is read again at that moment: spent or past its life is
 401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403
@@ -2890,10 +2891,14 @@ password is set at the provider through custody under the catalogued
 `auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
 held by custody alone, whose `auth` destination lists that route and takes no
 POST, `post: false`; the answer must name the same user). In each business
-the login is mapped in, one transaction ends the sessions seen there, and
-only once every business has, one transaction in each audits
-`account.password_changed`. Last, whatever happened, the window settles
-(`clock_timestamp()`): a sign-in after it is served.
+the login is mapped in, one transaction ends the sessions seen there. Last,
+whatever happened, one transaction in the token's business settles the window
+(`clock_timestamp()`; a sign-in after it is served) and, only when the
+password was set and every business's ending committed, audits
+`account.password_changed` there, once, as the person that business maps. The
+other businesses keep their ended sessions (`ended_sessions`) and no audit
+row, so a failure anywhere, in any business's ending, at the provider or in
+that last transaction, audits nothing anywhere (ORCH81 C40AUDIT).
 
 The answer is 200 `{ passwordSet: true }`. A token that is not live
 (unknown, out of shape, spent, past its 30 minutes, of a login no business

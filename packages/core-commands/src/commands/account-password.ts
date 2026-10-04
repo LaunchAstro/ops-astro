@@ -18,6 +18,7 @@
 //    spent, whatever code is sent, so the token stays live, the password and
 //    sessions stay as they were, and nothing is written. Support resets it.
 //    A fault reading where the login stands is `RESET_UNAVAILABLE`, never a set.
+//    A login the token's own business no longer admits is `RESET_LINK_INVALID`.
 // 4. Spend it, in one transaction: under C59's login lock, which a factor's
 //    verification takes too, then the token row's lock, the token is read
 //    again (spent or past its life is `RESET_LINK_INVALID`) and so is the
@@ -33,9 +34,12 @@
 //    `RESET_UNAVAILABLE`. Either way the token is spent, and the person asks
 //    for a new link.
 // 6. Set, each business the login is mapped in ends the sessions it has seen,
-//    and only once every one has, each audits `account.password_changed`,
-//    with no password and no token in it, so a failure before audits nothing.
-//    Last, whatever happened, the window settles: a sign-in after it is served.
+//    one transaction each. Last, whatever happened, one transaction in the
+//    token's business settles the window (a sign-in after it is served) and,
+//    only when the password was set and every business's ending committed,
+//    audits `account.password_changed` there, once, with no password and no
+//    token in it. The other businesses keep their ended sessions alone, and a
+//    failure anywhere audits nothing anywhere.
 
 import { createHash } from 'node:crypto';
 import {
@@ -187,19 +191,17 @@ async function spend(
   return { window: await openResetWindow(tx, found.subject) };
 }
 
-/** Step 6: `run` in each business the login is mapped in, one transaction each. */
-async function inEach(
-  database: Database,
-  mapped: readonly Mapped[],
-  run: (tx: TenantQuery, session: Session) => Promise<unknown>,
-): Promise<void> {
+/** Step 6: in each business the login is mapped in, the sessions seen there end. */
+async function endedIn(database: Database, mapped: readonly Mapped[], subject: string) {
   for (const { business, session } of mapped) {
     // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
-    await database.withBusiness(business, async (tx) => await run(tx, session));
+    await database.withBusiness(business, async (tx) => {
+      await endOtherSeenSessions(tx, session.personId, undefined, 'end_others', subject);
+    });
   }
 }
 
-/** Step 6's audit row, once every business's sessions have ended. */
+/** Step 6's one audit row, in the token's business. */
 const audited = async (tx: TenantQuery, session: Session) =>
   await writeAuditEvent(tx, {
     actorId: session.actorId,
@@ -234,21 +236,20 @@ export async function setPasswordByToken(
     return refused('RESET_UNAVAILABLE');
   }
   if (mapped === 'factored') return refused('RESET_NEEDS_SUPPORT');
-  if (mapped.length === 0) return refused('RESET_LINK_INVALID');
+  const own = mapped.find((one) => one.business === found.business);
+  if (own === undefined) return refused('RESET_LINK_INVALID');
   const spent = await database.withBusiness(found.business, async (tx) => await spend(tx, found));
   if (spent === 'factored') return refused('RESET_NEEDS_SUPPORT');
   if (spent === 'invalid') return refused('RESET_LINK_INVALID');
   let set: LoginPasswordSet = 'fault';
+  let ended = false;
   try {
     set = await setLoginPassword(dependencies.broker, found.subject, reset.password);
-    if (set === 'set') {
-      await inEach(database, mapped, async (tx, session) => {
-        await endOtherSeenSessions(tx, session.personId, undefined, 'end_others', found.subject);
-      });
-      await inEach(database, mapped, audited);
-    }
+    if (set === 'set') await endedIn(database, mapped, found.subject);
+    ended = set === 'set';
   } finally {
     await database.withBusiness(found.business, async (tx) => {
+      if (ended) await audited(tx, own.session);
       await settleResetWindow(tx, spent.window);
     });
   }
