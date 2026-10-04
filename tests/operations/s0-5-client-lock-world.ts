@@ -28,6 +28,8 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'task.duplicate': 'creates a new task from the shell; the old task is untouched (MP-4-8)',
   'task.set_party': 'a client change, which the lock allows while the task is empty',
   'client.create': 'writes a client, not a task',
+  'record.create': 'writes a client, not a task',
+  'onboarding.start': "lays a template out as new tasks on the client, each one's creation",
   'task.share_with_client': 'a share grant: who sees the task, not what it holds',
   'task.purge': 'removes the task; nothing is left to change the client of',
   'inbox.seen': "the caller's own seen stamp on an item, not the task's content",
@@ -177,6 +179,8 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'task.remove_tag',
   // SL11 (batch 3b): approves the proposal's gate as `task.decide` does, then pins and binds.
   'task.accept_plan',
+  // C41-A: a step's result is a comment on its task, as `task.comment` writes one.
+  'onboarding.step_result',
 ]);
 
 /** Per task, a digest of every row that names it, in the tables the lock reads. */

@@ -2,6 +2,7 @@
   "invariant": [
     "tests/onboarding/c41-a-inbox-raise.test.ts",
     "tests/onboarding/c41-a-move-follows-owner.test.ts",
-    "tests/onboarding/c41-a-onboarding.test.ts"
+    "tests/onboarding/c41-a-onboarding.test.ts",
+    "tests/onboarding/c41-a-step-client-lock.test.ts"
   ]
 }
