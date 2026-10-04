@@ -53,11 +53,11 @@ it.each([
   (_case, path) => {
     const link = `https://${HOST}/effects/${path}`;
     expect(receiptLinkOf(link, 'synthetic_comment')).toBe(link);
-    expect(receiptLinkOf(link, 'synthetic_comment', credential)).toBeNull();
+    expect(receiptLinkOf(link, 'synthetic_comment', [credential])).toBeNull();
   },
 );
 
 it("a receipt link without the observer's credential is kept when it is checked against it", () => {
   const link = `https://${HOST}/effects/0b6f3c9e-2f4a-4c1e-9d7b-5a8e2c1f0a3d`;
-  expect(receiptLinkOf(link, 'synthetic_comment', credential)).toBe(link);
+  expect(receiptLinkOf(link, 'synthetic_comment', [credential])).toBe(link);
 });

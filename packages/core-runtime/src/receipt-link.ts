@@ -16,10 +16,10 @@
 // refuses a link whose text, as sent or once its percent escapes are decoded
 // (either case, as often as they decode), holds a run as long as a delegation
 // credential (`CREDENTIAL_RUN`), or, for an agent's observation, the letters
-// and digits of that agent's own credential in order with anything between
-// them dropped, so its standard base64 spelling or a copy split by separators
-// is refused too (`presentedCredential`). A credential copied into a path is
-// recorded absent, never stored or shown.
+// and digits of any of that agent's live delegation credentials in order with
+// anything between them dropped, so a standard base64 spelling or a copy split
+// by separators is refused too (`agentCredentials`). A credential copied into
+// a path is recorded absent, never stored or shown.
 
 import { DERIVED_SCHEME, type TenantQuery } from '../../core-records/src/index.ts';
 import { delegationCredentialKeys } from './runtime-config.ts';
@@ -46,16 +46,17 @@ export const CREDENTIAL_RUN: RegExp = /[A-Za-z0-9_-]{43}/u;
 const alphanumerics = (text: string): string => text.replaceAll(/[^A-Za-z0-9]/gu, '');
 
 /**
- * Whether the link, as sent or decoded, holds a credential-length run or the
- * presenter's credential. Each decode that changes the text shortens it, so
- * the loop ends; an escape that does not decode is refused with it.
+ * Whether the link, as sent or decoded, holds a credential-length run or one
+ * of the observing agent's credentials. Each decode that changes the text
+ * shortens it, so the loop ends; an escape that does not decode is refused.
  */
-function carriesCredential(link: string, presented: string | undefined): boolean {
-  const own = presented === undefined ? undefined : alphanumerics(presented);
+function carriesCredential(link: string, held: readonly string[]): boolean {
+  const own = held.map((credential) => alphanumerics(credential));
   let text = link;
   for (;;) {
     if (CREDENTIAL_RUN.test(text)) return true;
-    if (own !== undefined && alphanumerics(text).includes(own)) return true;
+    const letters = alphanumerics(text);
+    if (own.some((credential) => letters.includes(credential))) return true;
     let decoded: string;
     try {
       decoded = decodeURIComponent(text);
@@ -68,7 +69,11 @@ function carriesCredential(link: string, presented: string | undefined): boolean
 }
 
 /** The link to keep, or `null`: absent, malformed, off the step's declared host or carrying a credential. */
-export function receiptLinkOf(raw: unknown, stepKind: string, presented?: string): string | null {
+export function receiptLinkOf(
+  raw: unknown,
+  stepKind: string,
+  held: readonly string[] = [],
+): string | null {
   const host = Object.hasOwn(EFFECT_RECEIPT_HOSTS, stepKind)
     ? EFFECT_RECEIPT_HOSTS[stepKind]
     : undefined;
@@ -89,38 +94,50 @@ export function receiptLinkOf(raw: unknown, stepKind: string, presented?: string
     url.hash === '' &&
     url.href === raw &&
     RECEIPT_LINK_SHAPE.test(raw) &&
-    !carriesCredential(raw, presented);
+    !carriesCredential(raw, held);
   return plain ? raw : null;
 }
 
 /**
- * The credential an agent's observation was presented with, derived again from
- * its delegation's fixed identity under the key it names, as a pickup replay
- * does (`agent-replay.ts`). `null` when there is no delegation (a person's
- * observation); `undefined` when it cannot be derived here, and then no link
- * is kept.
+ * The credentials of every live delegation the observing agent holds in this
+ * business, its pickup's and its purpose's alike, derived again from each
+ * delegation's fixed identity under the key it names, as a pickup replay does
+ * (`agent-replay.ts`). None for a person's observation; `undefined` when one
+ * cannot be derived here, and then no link is kept.
  */
-export async function presentedCredential(
+export async function agentCredentials(
   tx: TenantQuery,
   delegationId: string | null,
-): Promise<string | null | undefined> {
-  if (delegationId === null) return null;
-  const [row] = await tx.query<{
+): Promise<readonly string[] | undefined> {
+  if (delegationId === null) return [];
+  const rows = await tx.query<{
+    id: string;
     agent_actor_id: string;
     credential_key_id: string | null;
     credential_scheme: string;
   }>(
-    `select agent_actor_id, credential_key_id, credential_scheme
-       from public.delegations where business_id = $1 and id = $2`,
+    `select d.id, d.agent_actor_id, d.credential_key_id, d.credential_scheme
+       from public.delegations p
+       join public.delegations d
+         on d.business_id = p.business_id and d.agent_actor_id = p.agent_actor_id
+      where p.business_id = $1 and p.id = $2
+        and d.revoked_at is null and d.settled_at is null`,
     [tx.businessId, delegationId],
   );
   const keys = delegationCredentialKeys();
-  if (row?.credential_scheme !== DERIVED_SCHEME || row.credential_key_id === null || !keys.ok) {
-    return undefined;
+  if (!keys.ok) return undefined;
+  const credentials: string[] = [];
+  for (const row of rows) {
+    const credential =
+      row.credential_scheme === DERIVED_SCHEME && row.credential_key_id !== null
+        ? keys.keys.derive(row.credential_key_id, {
+            businessId: tx.businessId,
+            agentActorId: row.agent_actor_id,
+            delegationId: row.id,
+          })
+        : undefined;
+    if (credential === undefined) return undefined;
+    credentials.push(credential);
   }
-  return keys.keys.derive(row.credential_key_id, {
-    businessId: tx.businessId,
-    agentActorId: row.agent_actor_id,
-    delegationId,
-  });
+  return credentials;
 }
