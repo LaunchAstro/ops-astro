@@ -877,6 +877,8 @@ function AgentHead({
       people={persons}
       ledger={task.ledger}
       onChanged={props.onChanged}
+      note={props.note}
+      onDecided={props.onDecided}
     />
   );
 }

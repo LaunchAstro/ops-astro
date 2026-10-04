@@ -39,6 +39,7 @@ import type {
 import { useRead } from '../data/use-read.ts';
 import type { Settlement } from '../records/use-command.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
+import { closedNote, type DecisionNote } from './gate-controls.tsx';
 import { StepUpPrompt } from './step-up-prompt.tsx';
 import { wholeExecution } from './run-progress.tsx';
 
@@ -70,6 +71,9 @@ export interface AgentSectionProps {
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
   readonly ledger: TaskLedgerView | null | undefined;
   readonly onChanged: () => void;
+  /** The task page's held decision refusal: closed in either view, closed in both. */
+  readonly note: DecisionNote | null;
+  readonly onDecided: (note: DecisionNote | null) => void;
 }
 
 interface AgentControls {
@@ -125,7 +129,8 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
     props.onChanged();
   };
   const decide: AgentControls['decide'] = (gate, decision) => {
-    if (busy) return;
+    if (busy || props.note?.closed === true) return;
+    props.onDecided(null);
     run(
       (client) =>
         client.mutate('task.decide', {
@@ -134,7 +139,12 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
           decision,
           note: `Decided from the Agent pane (${decision}).`,
         }),
-      settle,
+      (settlement) => {
+        if (settlement.kind === 'closed') {
+          props.onDecided(closedNote(props.proposals, gate.gateId, settlement.because));
+        }
+        settle(settlement);
+      },
     );
   };
   const cancel = (lineageId: string): void => {
@@ -236,6 +246,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onJobList={setJobListOpen}
         busy={busy}
         refusal={refusal}
+        decideClosed={props.note?.closed === true}
         onDecide={decide}
         onReject={(gate) => {
           decide(gate, 'reject');
