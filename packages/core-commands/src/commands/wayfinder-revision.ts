@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import { isUuid } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { refuseCommand } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { BODY_LIMIT, invalid, notPermitted, textOk, type RequestOf } from './wayfinder.ts';
@@ -239,6 +239,8 @@ export async function reviseMap(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('reviseMap: the envelope read no target');
+  // A trashed map is missing here, as `map.view` answers it.
+  if (target.deleted_at !== null) return refused(refuseNotFound());
   if (target.data['type'] !== 'map') {
     return notPermitted(['type'], ['Only a task of type map has components to revise.']);
   }
