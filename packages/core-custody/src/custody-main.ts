@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { parseCredentials, type StoredCredential } from './credentials.ts';
 import { parseDestinations, send, type Destination, type OutboundRequest } from './egress.ts';
-import { METHODS, pathAllowed } from './egress-routes.ts';
+import { METHODS, pathAllowed, type Extras } from './egress-routes.ts';
 
 interface Loaded {
   readonly credentials: ReadonlyMap<string, StoredCredential>;
@@ -107,10 +107,15 @@ function isRequest(value: unknown): value is OutboundRequest {
 
 const loaded = load();
 
-/** A PUT its destination lists no route for: custody never sends one, so it is no request. */
-const unrouted = (asked: OutboundRequest): boolean =>
-  asked.method === 'PUT' &&
-  !pathAllowed(loaded.destinations.get(asked.destination) ?? {}, 'PUT', asked.path);
+/**
+ * A PUT its destination lists no route for, or a POST to a destination that
+ * takes none: custody never sends one, so it is no request.
+ */
+const unrouted = (asked: OutboundRequest): boolean => {
+  const destination: Extras = loaded.destinations.get(asked.destination) ?? {};
+  if (asked.method === 'PUT') return !pathAllowed(destination, 'PUT', asked.path);
+  return asked.method === 'POST' && destination.post === false;
+};
 
 process.on('uncaughtException', () => fail('internal fault'));
 

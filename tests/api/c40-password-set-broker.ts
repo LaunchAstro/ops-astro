@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The C40 reset world's custody and broker (ORCH77-C40B): custody holding a
-// service key for the `auth` destination, whose one PUT route is the admin
-// update of one user, a broker cataloguing `auth.update_user_password`, and
+// service key for the `auth` destination, whose one route is the admin
+// update of one user (no POST at all, SEC37 M1), a broker cataloguing `auth.update_user_password`, and
 // the route's database with a fault that can be injected after its change.
 
 import { writeFileSync } from 'node:fs';
@@ -35,7 +35,12 @@ export async function brokerFor(
   const started = await startCustody({
     credentialsFile,
     destinations: [
-      { key: 'auth', origin, routes: [{ method: 'PUT', path: '/auth/v1/admin/users/*' }] },
+      {
+        key: 'auth',
+        origin,
+        post: false,
+        routes: [{ method: 'PUT', path: '/auth/v1/admin/users/*' }],
+      },
     ],
   });
   const catalogued: Broker = {

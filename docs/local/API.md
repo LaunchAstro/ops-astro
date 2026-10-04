@@ -2878,7 +2878,8 @@ under the token's row lock, every live token of the login is spent and every
 session of the login ends in every business (0063, keeping none), and the
 password is set at the provider through custody under the catalogued
 `auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
-held by custody alone; the answer must name the same user). In each business
+held by custody alone, whose `auth` destination lists that route and takes no
+POST, `post: false`; the answer must name the same user). In each business
 the login is mapped in, one transaction audits `account.password_changed` and
 then ends the sessions seen there and every session of the login again, up to
 the moment that ending is written (`clock_timestamp()`).
