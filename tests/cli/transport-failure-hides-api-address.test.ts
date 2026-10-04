@@ -10,11 +10,16 @@ import { main as cli } from '../../apps/cli/main.ts';
 import { main as worker } from '../../apps/worker/main.ts';
 
 const CANARY = 'canary-7f3e0a91';
-/** Fetch refuses a user part before connecting; the others reach a closed port. */
+/**
+ * Fetch refuses a user part before connecting; the others reach a closed port.
+ * A `/` inside the user part makes the parser end the host early, so the start
+ * of the secret would read as the host.
+ */
 const ADDRESSES = [
   `http://ops:${CANARY}@127.0.0.1:9`,
   `http://127.0.0.1:9/?key=${CANARY}`,
   `http://127.0.0.1:9/${CANARY}`,
+  `http://${CANARY}/rest@127.0.0.1:9`,
 ] as const;
 
 const SETTINGS = {
@@ -25,7 +30,9 @@ const SETTINGS = {
 
 function expectHidden(streams: readonly string[], address: string): void {
   const printed = streams.join('\n');
-  expect(printed).toContain('no answer from http://127.0.0.1:9');
+  expect(printed).toMatch(
+    /no answer from (?:http:\/\/127\.0\.0\.1:9|the configured API address)$/mu,
+  );
   expect(printed).not.toContain(CANARY);
   expect(printed).not.toContain(address);
 }

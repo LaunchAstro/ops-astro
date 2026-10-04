@@ -47,12 +47,16 @@ export type Transport = (
 
 /**
  * The API address as a failure line may show it: scheme and host. Its user
- * part, path and query can carry a secret, so they never print; an address
- * that does not parse is not shown at all.
+ * part, path and query can carry a secret, so they never print. An address
+ * that does not parse is not shown at all, nor is one with an `@` anywhere: a
+ * `/` or `\` inside a user part ends the parsed host early, so the start of
+ * the secret would print as the host.
  */
 export function shownAddress(api: string): string {
   const url = URL.parse(api);
-  return url === null ? 'the configured API address' : `${url.protocol}//${url.host}`;
+  return url === null || api.includes('@')
+    ? 'the configured API address'
+    : `${url.protocol}//${url.host}`;
 }
 
 /**
