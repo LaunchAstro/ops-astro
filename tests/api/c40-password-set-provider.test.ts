@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Sol's PR #382 round 1 proofs, criteria 1 and 7, under ORCH77-C40B, at the
+// Sol's PR #382 round 1 proofs, criteria 1 and 7, and round 3's criterion 5, at the
 // pinned GoTrue (`c40-password-set-provider-containers.mjs` starts it and sets
 // C40_AUTH_URL; without it these skip). A reset sets the password through
 // custody's admin update with no provider recovery session anywhere, and an
@@ -12,6 +12,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
+import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
@@ -31,7 +32,7 @@ import {
   insertMembership,
   insertPerson,
 } from '../identity/fixture.ts';
-import { call } from '../acceptance/world.ts';
+import { bearer, call, personPath } from '../acceptance/world.ts';
 import { brokerFor, mintToken, usePasswordWorld, world } from './c40-password-set-world.ts';
 
 const issuer = process.env['C40_AUTH_URL'];
@@ -229,3 +230,37 @@ REAL(
     expect(field(await signIn(email, old, 200), 'access_token')).not.toBe('');
   },
 );
+
+// PR #382 round 3, criterion 5: GoTrue stamps a sign-in in whole seconds.
+REAL('a pinned GoTrue sign-in after reset is served in the same second', async () => {
+  const email = `sol-${randomUUID()}@example.test`;
+  const old = `old-password-${randomUUID()}`;
+  const signed = await post('/signup', { email, password: old });
+  const subject = field(signed['user'] as Record<string, unknown>, 'id');
+  await mapped(subject, 'sol-real-immediate');
+  const token = await mintToken(subject);
+  const freshPassword = `new-password-${randomUUID()}`;
+  const api = realApi();
+  await delay(1000 - (Date.now() % 1000) + 25);
+  const second = Math.floor(Date.now() / 1000);
+  const reset = await call(api, '/api/password/set', { token, password: freshPassword });
+  expect({ status: reset.status, body: reset.body }).toEqual({
+    status: 200,
+    body: { passwordSet: true },
+  });
+  // The actual new password signs in at the actual pinned provider after reset.
+  const access = field(await signIn(email, freshPassword, 200), 'access_token');
+  const encoded = access.split('.')[1] ?? '';
+  const claims = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as {
+    readonly amr: readonly { readonly method: string; readonly timestamp: number }[];
+  };
+  expect(
+    claims.amr.find((entry) => entry.method === 'password')?.timestamp,
+    'reset and real provider sign-in must complete in the same second',
+  ).toBe(second);
+  const door = await call(api, personPath('alpha', '/session/capabilities'), {}, bearer(access));
+  expect({ status: door.status, code: door.body['code'] }).toEqual({
+    status: 200,
+    code: undefined,
+  });
+});
