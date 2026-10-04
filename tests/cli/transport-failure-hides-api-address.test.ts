@@ -8,6 +8,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { main as cli } from '../../apps/cli/main.ts';
 import { main as worker } from '../../apps/worker/main.ts';
+import { streamText } from '../support/console-text.ts';
 
 const CANARY = 'canary-7f3e0a91';
 /**
@@ -61,7 +62,7 @@ describe('a failed request never prints a secret from the API address', () => {
   it.each(ADDRESSES)('the worker exits 4 and hides %s', async (address) => {
     const printed: string[] = [];
     const capture = (chunk: string | Uint8Array): boolean => {
-      printed.push(String(chunk));
+      printed.push(streamText(chunk));
       return true;
     };
     vi.spyOn(process.stdout, 'write').mockImplementation(capture);
