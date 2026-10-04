@@ -1333,7 +1333,9 @@ second loses the register's identity key and replays. After that commit the
 broker starts the call, sends it through custody and settles it
 (`sendReservedCall`), re-reading the task's client link, the lease, the
 delegation and the reservation under their locks, so authority lost in between refuses the call when its
-effect applies.
+effect applies. The start sends only a call it moves from `reserved` to
+`dispatched` itself: a second send of the same hold, at once or later, or a
+hold the sweep released meanwhile, sends nothing (`EFFECT_NOT_RECONCILABLE`).
 
 The answer is the call as its ledger row stands: `callId`, `state`,
 `reservedMinor`, `actualMinor`, `observedMinor`, `drop`, and `text`, the
