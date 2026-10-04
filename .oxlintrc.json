@@ -143,6 +143,10 @@
     {
       "files": ["tests/review/sol-ow007-migrations-proof.test.ts"],
       "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/review/sol-d1-seed-redirect.test.mjs"],
+      "rules": { "no-promise-executor-return": "off", "sort-vars": "off" }
     }
   ]
 }

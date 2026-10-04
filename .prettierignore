@@ -143,3 +143,4 @@ tests/operations/scan-login-token-and-shared-login.proof.test.ts
 # Sol's D1-FIX1 proofs, byte-for-byte as the review patch held them, file names
 # and titles included.
 tests/review/sol-ow007-migrations-proof.test.ts
+tests/review/sol-d1-seed-redirect.test.mjs
