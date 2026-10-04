@@ -168,8 +168,11 @@ function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
       throw new Error(`withBusiness: ${JSON.stringify(businessId)} is not a business identifier`);
     }
     // `begin` unwraps a promise-shaped result in its own types; the cast
-    // restores the caller's type and nothing else.
-    return (await sql.begin(async (tx) => {
+    // restores the caller's type and nothing else. The level is stated, not
+    // inherited: every lock-then-read (the limiter, the advisory keys) relies on
+    // a read after the lock seeing the last holder's commit, which a connection
+    // defaulting to repeatable read would not give (#472).
+    return (await sql.begin('isolation level read committed', async (tx) => {
       // Inside the transaction, and nowhere else. `true` is the is_local
       // argument, which is what makes this SET LOCAL rather than SET.
       await tx.unsafe(`select set_config('app.business_id', $1, true)`, [businessId]);
