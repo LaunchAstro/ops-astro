@@ -2729,10 +2729,10 @@ Named so they are not read as settled:
   verifies; only the gate and lineage checks stand against it. The key
   resolver holds one key: rows under an earlier key id fail the read.
 - **An agent comments in the `internal` audience only.** The `task.comment` row
-  passes `AGENT_AUDIENCES` (`commands/agent-operations.ts`) to
-  `writeTaskComment` (`commands/tasks-comment.ts`), which refuses `client` as
-  `AUDIENCE_NOT_PERMITTED`. This is Nathan's ruling (OWNER-CARD section 6), not
-  an open item.
+  passes `AGENT_AUDIENCES` (`commands/tasks-comment.ts`) to `writeTaskComment`,
+  which refuses `client` as `AUDIENCE_NOT_PERMITTED`. An agent credential
+  (API-2) reaches `commentOnTask` as its agent and gets the same set. This is
+  Nathan's ruling (OWNER-CARD section 6), not an open item.
 - **One lane choice awaits root or owner confirmation.** The heartbeat bounds are 1 hour a beat and 8 hours in total
   (`MAXIMUM_RENEWAL_SECONDS` and `MAXIMUM_LEASE_LIFETIME_SECONDS`,
   `core-runtime/src/heartbeat.ts`). Root ruling 6 at dd30aa8 covers bare agent

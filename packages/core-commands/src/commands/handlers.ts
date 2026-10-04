@@ -14,7 +14,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
-import { createTask, updateTask } from './tasks-write.ts';
+import { assignTaskAsAgent, createTask, updateTask, updateTaskAsAgent } from './tasks-write.ts';
 import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
 import { setScores } from './tasks-scores.ts';
@@ -83,14 +83,22 @@ type Handler<K extends WriteName> = (
 
 const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.create': createTask,
-  'task.update': updateTask,
+  // An agent credential (API-2) runs these person handlers as its agent, so it
+  // writes only what a delegated agent writes there (#420).
+  'task.update': (tx, context, request) =>
+    context.session.credentialScope === undefined
+      ? updateTask(tx, context, request)
+      : updateTaskAsAgent(tx, context, request.fields),
 
   'task.complete': (tx, context) => setState(tx, context, 'completed'),
   'task.reopen': (tx, context, request) => setState(tx, context, 'unstarted', request.reason),
   'task.start': (tx, context) => setState(tx, context, 'started'),
   'task.set_state': (tx, context, request) => setStateById(tx, context, request.stateId),
 
-  'task.assign': (tx, context, request) => assignTask(tx, context, request.fields),
+  'task.assign': (tx, context, request) =>
+    context.session.credentialScope === undefined
+      ? assignTask(tx, context, request.fields)
+      : assignTaskAsAgent(tx, context, request.fields),
   'task.triage': writeOwned,
   'task.set_stage': writeOwned,
   'task.set_party': (tx, context, request) => setPartyWhileEmpty(tx, context, request.fields),

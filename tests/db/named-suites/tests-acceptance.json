@@ -17,6 +17,7 @@
   ],
   "conformance": [
     "tests/acceptance/comment-on-trashed-task.test.ts",
+    "tests/acceptance/credential-assign-delegate.test.ts",
     "tests/acceptance/external-comment-from-own-reads.test.ts"
   ]
 }

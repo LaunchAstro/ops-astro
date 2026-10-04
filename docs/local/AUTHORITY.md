@@ -306,7 +306,9 @@ is the one exception to "no credential, no call"
 `AGENT_OPERATIONS`), and the matrix's case (i) asserts the saved comment
 identity. The agent may write in the `internal` audience only
 (`AGENT_AUDIENCES`). A `client` comment is `AUDIENCE_NOT_PERMITTED` 422, which
-the same case asserts. Internal-only is Nathan's ruling (OWNER-CARD section 6),
+the same case asserts. An agent credential (API-2) runs the person handlers as
+its agent and is held the same way: internal comments, the agent's update
+fields and the assignee only (`commands/handlers.ts`, #420). Internal-only is Nathan's ruling (OWNER-CARD section 6),
 and `tests/acceptance/comment-rulings.test.ts` holds it over HTTP.
 
 **`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
