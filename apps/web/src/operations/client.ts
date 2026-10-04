@@ -19,25 +19,24 @@
 // `OPERATION_ID_REUSED` names. A client that minted a fresh identity on every retry could never
 // exercise either, so `operationId` is an argument with a default, not a hidden value.
 //
-// **A session that has ended is reported from here, once, for every call.** The
-// API answers a bearer it will not act on with HTTP 401 on one of two codes
-// (`docs/local/API.md`): a missing, forged, unsigned or subject-less one is
-// `AUTH_UNKNOWN_LOGIN`, and one whose signature verifies against this
-// deployment's own secret and whose `exp` has passed is `AUTH_SESSION_EXPIRED`. Both mean the
-// credential this client holds is no longer one, so both end the session here. A client that
-// recognised only the first would leave a person whose hour ran out reading a raw refusal, with
-// the sign-in path never offered. It arrives at whichever call happens to be next, so recognising
-// it in each screen would be one rule written five times and forgotten in the sixth; here it is
-// one signal, and `onSessionEnded` is how the application hears it. The refusal is still returned
-// unchanged: reported, not swallowed.
+// **A session that has ended is reported from here, once, for every call.** The API answers a
+// bearer it will not act on with HTTP 401 on one of two codes (`docs/local/API.md`): a missing,
+// forged, unsigned or subject-less one is `AUTH_UNKNOWN_LOGIN`, and one whose signature verifies
+// against this deployment's own secret and whose `exp` has passed is `AUTH_SESSION_EXPIRED`. Both
+// mean the credential this client holds is no longer one, so both end the session here. A client
+// that recognised only the first would leave a person whose hour ran out reading a raw refusal,
+// with the sign-in path never offered. It arrives at whichever call happens to be next, so
+// recognising it in each screen would be one rule written five times and forgotten in the sixth;
+// here it is one signal, and `onSessionEnded` is how the application hears it. The refusal is still
+// returned unchanged: reported, not swallowed.
 //
 // **Access ended is the third way a session ends (C58).** Ending a person's access deactivates
 // their login and ends their memberships, but the bearer in the tab still verifies until its hour
 // is up, so the API answers their next call 403 `AUTH_NO_MEMBERSHIP`. A login that was never a
 // member gets the same answer on its first call, and that one is a denial to draw, not a session
 // to end. So the client remembers whether its bearer has been answered as a member, by a success
-// or by a refusal decided past login resolution (a scope not granted), and only a bearer that has
-// been ends its session on it.
+// (a live call's too) or by a refusal decided past login resolution (a scope not granted), and only
+// a bearer that has been ends its session on it.
 //
 // The wire spells the envelope `operationId` and `expectedRevision`, camelCase,
 // matching `commands/requests.ts`, though the slice contract's prose writes
@@ -209,6 +208,7 @@ export class OperationsClient {
     if (sessionId !== undefined) headers.set(SESSION_HEADER, sessionId);
     try {
       const response = await this.#options.fetch(url, { ...init, headers });
+      this.#answered ||= response.ok;
       if (response.ok) return response;
       const parsed: unknown = await response.json().catch(() => {});
       if (isWireRefusal(parsed)) this.#heard(response.status, parsed);
