@@ -312,7 +312,11 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
+      # request the wrapped command runs only when the change reaches what it
+      # proves, and the step says why when it does not; on a merge group or a
+      # push it always runs. No step here carries a condition.
+      - run: node scripts/ci-scope.ts 'database conformance' --shard ${{ matrix.shard }}/${{ strategy.job-total }} -- pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # T4a's clone past a reader dumps and restores inside the server's
@@ -532,14 +536,21 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
+      # Full history: on a pull request the scope reads the change from its base.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node scripts/db-conformance.mjs --manifest tests/db/isolation-suites.json
+      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
+      # request the wrapped command runs only when the change reaches what it
+      # proves, and the step says why when it does not; on a merge group or a
+      # push it always runs. No step here carries a condition.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --manifest tests/db/isolation-suites.json
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # The T4a fixture suites are named here too; their clone past a
@@ -547,7 +558,7 @@ jobs:
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
       # The named service-stop proof with both addresses a local setup has; it
       # skips without both, and the shard jobs set only one.
-      - run: pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts
+      - run: node scripts/ci-scope.ts 'isolation tests' -- pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
@@ -590,21 +601,30 @@ jobs:
     # Its slowest green run in the day to 1 October 2026: 13.4 min.
     timeout-minutes: 25
     steps:
+      # Full history: on a pull request the scope reads the change from its base.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
+      # request the wrapped command runs only when the change reaches what it
+      # proves, and the step says why when it does not; on a merge group or a
+      # push it always runs. No step here carries a condition.
       - name: The pinned headless shell and its system libraries
-        run: pnpm exec playwright install --with-deps --only-shell chromium
+        run: node scripts/ci-scope.ts 'visual drift' -- pnpm exec playwright install --with-deps --only-shell chromium
       - name: The mode's own cases, against a made-up page
-        run: node tests/visual/app-drift-cases.ts
-      - run: pnpm build:web
+        run: node scripts/ci-scope.ts 'visual drift' -- node tests/visual/app-drift-cases.ts
+      - run: node scripts/ci-scope.ts 'visual drift' -- pnpm build:web
       - name: App-only drift and look parity on the built app
         run: |
           set -euo pipefail
+          decision="$(node scripts/ci-scope.ts 'visual drift' --decide)"
+          case "$decision" in run) ;; skip) exit 0 ;; *) exit 1 ;; esac
           pnpm --filter @launchastro/web exec vite preview --host 127.0.0.1 --port 5391 --strictPort &
           for _ in $(seq 1 30); do curl -sf http://127.0.0.1:5391/ >/dev/null && break; sleep 1; done
           node tests/visual/run.ts --app-drift --app http://127.0.0.1:5391 --session tests/visual/made-up-session.json --out "$RUNNER_TEMP/visual"

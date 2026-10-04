@@ -1,0 +1,30 @@
+{
+  "invariant": [
+    "tests/db/api-events-forwarder.test.ts",
+    "tests/db/api-events.test.ts",
+    "tests/db/backup-carried-attest.test.ts",
+    "tests/db/backup-carried-drill.test.ts",
+    "tests/db/backup-identity-grants.test.ts",
+    "tests/db/backup-identity.test.ts",
+    "tests/db/backup-store-bounded.test.ts",
+    "tests/db/backup-store-drills.test.ts",
+    "tests/db/backup-store-encryption.test.ts",
+    "tests/db/backup-store-parts.test.ts",
+    "tests/db/backup-store-read-binding.test.ts",
+    "tests/db/backup-store.test.ts",
+    "tests/db/business-lookup.test.ts",
+    "tests/db/decision-never-delegated.test.ts",
+    "tests/db/forwarder-export-ageout-false-signals-dropped-review.test.ts",
+    "tests/db/inbox-conformance.test.ts",
+    "tests/db/inbox-read-revocation-race.test.ts",
+    "tests/db/inbox-records.test.ts",
+    "tests/db/reviewed-output-proposer.test.ts",
+    "tests/db/second-factor-codes-retention.test.ts",
+    "tests/db/backup-part-reads-wait-for-gate.test.ts"
+  ],
+  "conformance": [
+    "tests/db/mp-6-2-run-states.test.ts",
+    "tests/db/storage-triggers.test.ts",
+    "tests/db/identity-roles-hold-no-membership.test.ts"
+  ]
+}
