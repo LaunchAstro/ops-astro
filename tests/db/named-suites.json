@@ -499,6 +499,7 @@
     "tests/review/ow-063-deploy-business-proof.test.ts",
     "tests/review/ow-063-export-revocation-proof.test.ts",
     "tests/review/ow066-export-revocation-proof.test.ts",
+    "tests/review/sol-d1-export-session-gap.test.ts",
     "tests/review/stop-production-installation-gate-proof.test.ts",
     "tests/operations/scan-login-token-and-shared-login.proof.test.ts",
     "tests/runtime/storage-backstop-migrations.test.ts",
