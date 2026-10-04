@@ -34,6 +34,9 @@ export interface StoredCredential {
 export type CredentialRefusal =
   'CREDENTIAL_NOT_STORABLE' | 'SESSION_TOKEN_REFUSED' | 'CREDENTIAL_MALFORMED';
 
+/** What can stand between one token and the next in a pasted value. */
+const SEPARATOR = /[\s"'&,:;=\u200B-\u200D\u2060]/u;
+
 /**
  * Shapes of a browser session token for a consumer chat product, or of the
  * cookie that carries one. Never stored. Matched anywhere in the value, so a
@@ -43,12 +46,9 @@ export type CredentialRefusal =
  * Basic pair's colon, a cookie's `=` or `;`, a query's `&`, a quote, white
  * space or a zero-width character.
  */
-/** What can stand between one token and the next in a pasted value. */
-const SEPARATOR = /[\s"'&,:;=\u200B-\u200D\u2060]/u;
-
 const SESSION_TOKEN = [
   /sk-ant-sid/iu,
-  /(?:^|[\s"'&,:;=\u200B-\u200D\u2060])sess-/iu,
+  new RegExp(`(?:^|${SEPARATOR.source})sess-`, 'iu'),
   /sessionkey/iu,
   /session[-_]?token/iu,
   /__secure-next-auth/iu,
