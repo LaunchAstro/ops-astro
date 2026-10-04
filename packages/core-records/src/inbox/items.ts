@@ -14,14 +14,17 @@ import { taskAccess } from './access.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /** Why the item is owed to the recipient: CS-16.8's reasons, one each. */
-export type InboxReason =
-  | 'decision'
-  | 'waiting_run'
-  | 'run_finished'
-  | 'assignment'
-  | 'mention'
-  | 'incident'
-  | 'client_comment';
+export const INBOX_REASONS = [
+  'decision',
+  'waiting_run',
+  'run_finished',
+  'assignment',
+  'mention',
+  'incident',
+  'client_comment',
+] as const;
+
+export type InboxReason = (typeof INBOX_REASONS)[number];
 
 /** Where the fact lives. The item holds its identifier and nothing of it. */
 export type InboxFactKind = 'gate' | 'planned_run' | 'record' | 'operation';
@@ -137,13 +140,23 @@ export async function recordDeliveryAttempt(
     readonly channel: DeliveryChannel;
     readonly state: DeliveryState;
     readonly evidence?: string;
+    /** When it was observed, if not the transaction's start (`now()`). */
+    readonly observedAt?: string;
   },
 ): Promise<string> {
   const rows = await tx.query<{ readonly id: string }>(
-    `insert into public.inbox_delivery_attempts (business_id, id, item_id, channel, state, evidence)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5)
+    `insert into public.inbox_delivery_attempts
+       (business_id, id, item_id, channel, state, evidence, observed_at)
+     values ($1, gen_random_uuid(), $2, $3, $4, $5, coalesce($6::timestamptz, now()))
      returning id`,
-    [tx.businessId, attempt.itemId, attempt.channel, attempt.state, attempt.evidence ?? null],
+    [
+      tx.businessId,
+      attempt.itemId,
+      attempt.channel,
+      attempt.state,
+      attempt.evidence ?? null,
+      attempt.observedAt ?? null,
+    ],
   );
   const id = rows[0]?.id;
   if (id === undefined) throw new Error('recordDeliveryAttempt: the insert returned no row');

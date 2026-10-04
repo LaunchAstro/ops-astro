@@ -13,7 +13,10 @@
 // The class and the timing are written on the attempt's `asked` observation
 // as its evidence (`batch:daily`, `class:<class>`), so the windows are read
 // from the attempts themselves: one daily email per person and one
-// relationship email a week per client. Each window's read takes a
+// relationship email a week per client. Both ends of a window are clock
+// readings: an ask is observed when it is reserved (`recordAsked`), and a
+// window is read against the clock when the read runs, never a
+// transaction's start. Each window's read takes a
 // transaction-scoped advisory lock on its own key first and is written in the
 // same transaction, so two senders racing for one person or one client
 // queue, and the second reads the first's `asked`. An attempt that failed
@@ -22,6 +25,8 @@
 import {
   advisoryLock,
   hasRoom,
+  recordDeliveryAttempt,
+  taskAccess,
   type InboxReason,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
@@ -30,7 +35,8 @@ import type { ModelOperation } from '../../core-connectors/src/index.ts';
 export type MailClass = 'staff' | 'transactional' | 'relationship';
 
 /**
- * Failures that prove the provider took nothing: custody never reached it.
+ * Failures that prove the provider took nothing: custody never reached it,
+ * or the send never asked custody because its ask had lapsed (`expired`).
  * Any answer from the provider, a redirect or an error status included, may
  * have sent, so it is never followed by a second send (the broker's rule),
  * and it spends its window.
@@ -40,6 +46,7 @@ export const NOTHING_SENT: ReadonlySet<string> = new Set([
   'unlisted',
   'bad_path',
   'forbidden',
+  'expired',
 ]);
 
 export const DAY_MS: number = 24 * 60 * 60 * 1000;
@@ -67,6 +74,73 @@ export function askedEvidence(daily: boolean, mailClass: MailClass): string | un
   return evidence === '' ? undefined : evidence;
 }
 
+/** One item that passed every check: whose it is, where it goes, and its class. */
+export interface CheckedItem {
+  readonly itemId: string;
+  readonly reason: InboxReason;
+  readonly recipient: string;
+  readonly subject: string;
+  readonly to: string;
+  /** The task's client, which the weekly cap counts by; null for a task of no client. */
+  readonly client: string | null;
+  readonly mailClass: MailClass;
+}
+
+/**
+ * The items whose recipient can still read their task, judged again after every lock the send
+ * waits on and just before `asked` is written: access lost while the email was prepared withholds
+ * the items it reaches, however early they were checked.
+ */
+export async function stillReadable(
+  tx: TenantQuery,
+  items: readonly CheckedItem[],
+): Promise<CheckedItem[]> {
+  const kept: CheckedItem[] = [];
+  for (const item of items) {
+    // oxlint-disable-next-line no-await-in-loop
+    if ((await taskAccess(tx, item.recipient, item.subject)) === 'readable') kept.push(item);
+  }
+  return kept;
+}
+
+/** Both host clocks at one moment: the monotonic one, and the wall clock, which counts suspend. */
+export interface Reading {
+  readonly monotonic: number;
+  readonly wall: number;
+}
+
+export const readClocks = (): Reading => ({ monotonic: performance.now(), wall: Date.now() });
+
+/**
+ * Record `asked` on each item the email covers, with the batch marker and class it carries. Each
+ * is observed at one instant, the reservation's own (`clock_timestamp()`), not the transaction's
+ * start: the windows and the ceiling count from when the email was reserved, however long it took
+ * to prepare, and a batch's asks share it, so they count as one email. Answers the host's clocks
+ * read just before that instant, which the fence on the send counts from (`lapsed`).
+ */
+export async function recordAsked(
+  tx: TenantQuery,
+  items: readonly CheckedItem[],
+  daily: boolean,
+): Promise<Reading> {
+  const reading = readClocks();
+  const [reserved] = await tx.query<{ readonly at: string }>(
+    'select clock_timestamp()::text as at',
+  );
+  for (const item of items) {
+    const evidence = askedEvidence(daily, item.mailClass);
+    // oxlint-disable-next-line no-await-in-loop
+    await recordDeliveryAttempt(tx, {
+      itemId: item.itemId,
+      channel: 'email',
+      state: 'asked',
+      ...(evidence === undefined ? {} : { evidence }),
+      ...(reserved === undefined ? {} : { observedAt: reserved.at }),
+    });
+  }
+  return reading;
+}
+
 /**
  * Whether a window is spent: one person's daily email, or one client's
  * weekly relationship email. Takes the window's lock first, so the caller's
@@ -86,7 +160,7 @@ export async function windowSpent(
          join public.inbox_items i on i.business_id = a.business_id and i.id = a.item_id
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
         where a.business_id = $1 and a.channel = 'email' and a.state = 'asked'
-          and a.observed_at > now() - make_interval(secs => $3::double precision / 1000)
+          and a.observed_at > clock_timestamp() - make_interval(secs => $3::double precision / 1000)
           and case when $4 then i.recipient_person_id = $2::uuid and a.evidence like 'batch:daily%'
                    else r.uuid_7 = $2::uuid and a.evidence like '%class:relationship' end
           and not exists (
@@ -102,23 +176,48 @@ export async function windowSpent(
 
 /**
  * How long past custody's own timeout an ask may still be a live send: the
- * outcome's commit after the call ended. Custody ends every dispatch by the
- * operation's `timeoutMs` (one abort signal over the lookup, the request and
- * the answer), so an ask older than both was answered or its sender died.
- * Either way the provider holds no call of it open, and the ceiling bounds
- * provider calls. The attempt itself stays `asked`: unknown, never sent
- * again (`mayStillSend`), and still spending its day and its client's week.
+ * start of its call, and the outcome's commit after the call ended. Custody
+ * ends every dispatch by the operation's `timeoutMs` (one abort signal over
+ * the lookup, the request and the answer), and a send starts its call within
+ * the grace of its reservation or never (`lapsed`), so an ask older than both
+ * was answered, its sender died, or it never reached the provider. In each
+ * case the provider holds no call of it open, and the ceiling bounds provider
+ * calls. An attempt with no outcome stays `asked`: unknown, never sent again
+ * (`mayStillSend`), and still spending its day and its client's week.
  */
 export const IN_FLIGHT_GRACE_MS = 60_000;
 
-/** `observed_at` inside the bound: an ask older than it holds no provider call open. */
-const INSIDE_BOUND = `observed_at > now() - make_interval(secs => $2::double precision / 1000)`;
+/**
+ * Kept off the grace by the fence, not added to the ceiling's bound: the fence and the ceiling
+ * read different clocks, and a call starts a moment after its check, so a fence at the grace
+ * itself could let a resumed send overlap its replacement by that moment.
+ */
+const FENCE_MARGIN_MS = 10_000;
+
+/**
+ * The fence on an ask whose sender paused: whether more than the grace, less a margin, has passed
+ * since `reserved` (`recordAsked`'s reading, taken inside the ask's transaction just before its
+ * instant) on either host clock. The monotonic clock does not count a suspended host and the wall
+ * clock can step, while the ceiling ages an ask on the database's clock, so either one past the
+ * fence lapses it. Checked just before custody is asked: an ask past it may already have stopped
+ * counting, and a replacement may hold its place under the ceiling, so its sender records
+ * `failed`, evidence `expired`, and never calls the provider. One within it starts a call that
+ * custody ends while the ask still counts.
+ */
+export function lapsed(reserved: Reading): boolean {
+  const now = readClocks();
+  const fence = IN_FLIGHT_GRACE_MS - FENCE_MARGIN_MS;
+  return now.monotonic - reserved.monotonic > fence || now.wall - reserved.wall > fence;
+}
+
+/** `observed_at` inside the bound, read on the clock: an ask older than it holds no provider call open. */
+const INSIDE_BOUND = `observed_at > clock_timestamp() - make_interval(secs => $2::double precision / 1000)`;
 
 /**
  * Inbox emails in flight for this business: asks younger than the bound whose
  * item's last email observation is still `asked`. One email is one provider
- * call: a daily batch's asks share their person and their transaction's
- * `now()`, so they count once; an email sent at once covers one item.
+ * call: a daily batch's asks share their person and their reservation's
+ * instant, so they count once; an email sent at once covers one item.
  */
 async function inboxInFlight(tx: TenantQuery, boundMs: number): Promise<number> {
   const [flight] = await tx.query<{ readonly n: number }>(

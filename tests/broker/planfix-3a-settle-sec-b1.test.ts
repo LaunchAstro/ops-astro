@@ -40,8 +40,12 @@ const kept = async (title: string): Promise<{ work: Work; runId: string }> => {
   expect(await call(work)).toMatchObject({ ok: true, actualMinor: 100 });
   world.provider.mode('costly');
   expect(await call(work)).toMatchObject({ ok: false, code: 'LIABILITY_UNKNOWN' });
+  // A second past, not `clock_timestamp()`: the sweep binds its instant as a
+  // parameter, which the driver sends at millisecond precision, so a deadline
+  // of 'now' in the same millisecond was not yet due, the sweep kept nothing
+  // and the person's command was refused LIABILITY_NOT_UNKNOWN.
   await s.db.admin.execute(
-    `update public.leases set expires_at = clock_timestamp() where id = $1`,
+    `update public.leases set expires_at = clock_timestamp() - interval '1 second' where id = $1`,
     [work.picked['leaseId']],
   );
   expect(await sweepDeployment(s.db.app, resolve, ['home'])).toMatchObject({ ok: true });

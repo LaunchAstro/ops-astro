@@ -4,10 +4,11 @@
 // (owner line 75). `task.set_party` asks it under the task's row lock
 // (`task-client-lock.ts`); `task.read` sends it to a member, with the task's
 // client, for the Client field (MP-4-8), so the field and the lock never
-// disagree about a task they both see.
+// disagree about a task they both see. `task.board` sends each row's client by
+// the same rule (the Clients row door), so the board and the field agree too.
 
 import { clientsReached, type Subject, type TenantQuery } from '../../../core-records/src/index.ts';
-import { COMMAND_SURFACE } from '../../../core-wire/src/index.ts';
+import { COMMAND_SURFACE, type ClientView } from '../../../core-wire/src/index.ts';
 
 /**
  * Writes whose history event is content; creation and client changes are not.
@@ -65,4 +66,34 @@ export async function readClientFacts(
     client: reached.some((one) => one.clientId === client) ? client : null,
     hasContent: await hasContent(tx, taskId),
   };
+}
+
+/**
+ * The served board rows, each with its client (the Clients row door), by
+ * `readClientFacts`' rule: the id and `client.list`'s name only where the
+ * reader's grants reach the client; null for none, and null for a client they
+ * do not reach, whose row's `clientSet` says it is under one. Asked only of the
+ * rows served.
+ */
+export async function withBoardClients<Row extends { readonly id: string }>(
+  tx: TenantQuery,
+  served: readonly Row[],
+  subjects: readonly Subject[],
+): Promise<readonly (Row & { readonly client: ClientView | null })[]> {
+  const rows =
+    served.length === 0
+      ? []
+      : await tx.query<{ readonly id: string; readonly client: string }>(
+          `select id, uuid_7 as client from records
+            where business_id = $1 and id = any($2::uuid[]) and uuid_7 is not null`,
+          [tx.businessId, served.map((row) => row.id)],
+        );
+  const among = [...new Set(rows.map((row) => row.client))];
+  const reached = new Map(
+    among.length === 0
+      ? []
+      : ((await clientsReached(tx, subjects, among)) ?? []).map((one) => [one.clientId, one]),
+  );
+  const clientOf = new Map(rows.map((row) => [row.id, reached.get(row.client) ?? null]));
+  return served.map((row) => ({ ...row, client: clientOf.get(row.id) ?? null }));
 }
