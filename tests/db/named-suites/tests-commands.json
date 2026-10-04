@@ -107,6 +107,7 @@
     "tests/commands/audit-chain.test.ts",
     "tests/commands/command-shape.test.ts",
     "tests/commands/command-surface.test.ts",
+    "tests/commands/comment-change-agent-helper-revoke-order.test.ts",
     "tests/commands/comment-change-revoked-before-write.test.ts",
     "tests/commands/comment-change-revoked-while-waiting.test.ts",
     "tests/commands/concurrency.test.ts",
