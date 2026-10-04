@@ -20,7 +20,8 @@
 // `task.read` as the page does, and a write here asks the host to count a
 // change (`onChanged`); the host hands the count back to both, so each reads
 // again. The panel keeps its last answer drawn meanwhile, so a re-read leaves
-// what is typed, the perspective and the folds where they were.
+// what is typed, the perspective and the folds where they were; the comment
+// draft and the timer's stop are held above the read, so a failed one does too.
 //
 // **Its ids are its own.** The page and the panel are in one document, so
 // every id drawn here carries the `panel` scope.
@@ -50,7 +51,7 @@ import {
   type Perspective,
 } from './Perspectives.tsx';
 import { PageLink, pageLinkDoor } from './PageLink.tsx';
-import { PanelConversation } from './PanelConversation.tsx';
+import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
 import type { ClientSeams } from './client-seam.ts';
 import { PanelFields, PanelName } from './PanelFields.tsx';
@@ -85,11 +86,16 @@ export interface TaskPanelProps extends ClientSeams {
 }
 
 const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
-type Body = TaskPanelProps & { readonly fold: ReturnType<typeof useShowTrail> };
+type Body = TaskPanelProps & {
+  readonly fold: ReturnType<typeof useShowTrail>;
+  readonly conversation: ReturnType<typeof useConversationHeld>;
+  readonly onTimer: (running: string | null) => void;
+};
 
 export function TaskPanel(props: TaskPanelProps): ReactElement {
   const { client, opening } = props;
-  const body = { ...props, fold: useShowTrail(client) };
+  const fold = useShowTrail(client);
+  const conversation = useConversationHeld(opening.tab);
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: opening.taskKey }),
@@ -101,6 +107,8 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
     },
   });
   useRereadOn(props.changes ?? 0, reload);
+  const onTimer = useTimerStop(props, state.outcome === 'ready' ? state.value : null);
+  const body = { ...props, fold, conversation, onTimer };
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key !== 'Escape' || event.defaultPrevented) return;
     const target = event.target as HTMLElement;
@@ -130,7 +138,6 @@ function PanelBody(
 ): ReactElement {
   const { client, task } = props;
   const [perspective, setPerspective] = useState<Perspective>('team');
-  useTimerStop(props);
   const counts = perspectiveCounts({
     steps: stepMarks(task.steps),
     proposals: task.proposals ?? [],
@@ -161,7 +168,7 @@ function PanelBody(
             <PanelConversation
               client={client}
               task={task}
-              tab={props.opening.tab}
+              held={props.conversation}
               onChanged={props.onChanged}
             />
             <History history={task.history} fold={props.fold} />
@@ -173,28 +180,35 @@ function PanelBody(
   );
 }
 
-type SideProps = TaskPanelProps & { readonly task: Task };
+type SideProps = Body & { readonly task: Task };
 
 /**
  * While this person's timer runs on the task, the host holds its stop: closing
  * the panel or opening another task logs the time through `time.stop`, never
- * discarding it (MP-4-13, DP-07, D-33).
+ * discarding it (MP-4-13, DP-07, D-33). The timer is known from the last read
+ * that arrived and from a start or stop once answered (the setter handed
+ * back), so neither a reread still out nor one that failed drops the stop.
  */
-function useTimerStop(props: SideProps): void {
-  const { client, task, onLeaving, onChanged } = props;
-  const running = (task.time?.running ?? null) !== null;
+function useTimerStop(props: TaskPanelProps, read: TaskReadResult | null) {
+  const { client, onLeaving, onChanged } = props;
+  const [running, setRunning] = useState<string | null>(null);
+  useEffect(() => {
+    if (read === null || !('task' in read)) return;
+    setRunning((read.task.time?.running ?? null) === null ? null : read.task.id);
+  }, [read]);
   useEffect(() => {
     onLeaving?.(
-      running
-        ? () => {
-            void client.mutate('time.stop', { taskId: task.id }).then(onChanged);
-          }
-        : null,
+      running === null
+        ? null
+        : () => {
+            void client.mutate('time.stop', { taskId: running }).then(onChanged);
+          },
     );
     return () => {
       onLeaving?.(null);
     };
-  }, [client, task.id, running, onLeaving, onChanged]);
+  }, [client, running, onLeaving, onChanged]);
+  return setRunning;
 }
 
 /** The subtasks and time, without the doors: this is where their edits happen. */
@@ -207,6 +221,7 @@ function PanelWork(props: SideProps): ReactElement {
       showAllTime={showAllTime}
       onShowAllTime={setShowAllTime}
       onChanged={props.onChanged}
+      onTimer={props.onTimer}
       onOpenPanel={undefined}
       doors={false}
     />
