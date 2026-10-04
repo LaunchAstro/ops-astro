@@ -50,6 +50,7 @@ type Listed = readonly ChatConversationView[] | 'none' | null;
 
 /** Each conversation's messages; null when its read answered with none to draw. */
 type Held = Readonly<Record<string, ChatMessagesResult | null>>;
+type SetHeld = (update: (was: Held) => Held) => void;
 
 export interface ChatModel {
   readonly list: Listed;
@@ -115,7 +116,7 @@ function useReads(
   client: OperationsClient,
   grantKey: string,
   setList: (update: (was: Listed) => Listed) => void,
-  setHeld: (update: (was: Held) => Held) => void,
+  setHeld: SetHeld,
 ): Reads | null {
   const [reads, setReads] = useState<Reads | null>(null);
   useEffect(() => {
@@ -168,6 +169,25 @@ function useTopics(client: OperationsClient, reads: Reads | null, topics: string
   }, [client, reads, topics]);
 }
 
+/** Reads what the list shows newer; a departed group (no joinedAt) draws only reads asked since. */
+function useMessageReads(reads: Reads | null, list: Listed, held: Held, setHeld: SetHeld): void {
+  const heldRef = useRef(held);
+  heldRef.current = held;
+  const left = useRef(new Set<string>());
+  useEffect(() => {
+    if (reads === null || list === null || list === 'none') return;
+    for (const view of list) {
+      const id = view.conversationId;
+      const leaving = departed(view) && !left.current.has(id);
+      if (departed(view)) left.current.add(id);
+      else left.current.delete(id);
+      if (leaving)
+        setHeld((was) => (was[id] ? { ...was, [id]: { ...was[id], messages: [] } } : was));
+      if (leaving || stale(view, heldRef.current[id])) reads.messages(id);
+    }
+  }, [reads, list, setHeld]);
+}
+
 /** The reader's conversations as the panel's host holds them; `say` hears a failed command's words. */
 export function useChat(
   client: OperationsClient,
@@ -177,15 +197,7 @@ export function useChat(
   const [list, setList] = useState<Listed>(null);
   const [held, setHeld] = useState<Held>({});
   const reads = useReads(client, grantKey, setList, setHeld);
-  const heldRef = useRef(held);
-  heldRef.current = held;
-
-  useEffect(() => {
-    if (reads === null || list === null || list === 'none') return;
-    for (const view of list) {
-      if (stale(view, heldRef.current[view.conversationId])) reads.messages(view.conversationId);
-    }
-  }, [reads, list]);
+  useMessageReads(reads, list, held, setHeld);
 
   useTopics(client, reads, topicsOf(list));
 
