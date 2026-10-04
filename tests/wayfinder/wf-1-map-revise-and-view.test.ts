@@ -9,8 +9,12 @@ import { createApi } from '../../apps/api/app.ts';
 import type { SecuritySignal } from '../../apps/api/alerts/detect.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
-describe('WF-1 map revise and view, under review proofs', () => {
+/** Every case here needs a database: without one the file is skipped, not failed. */
+const withDatabase = describe.skipIf(databaseUrlFromEnvironment() === undefined);
+
+withDatabase('WF-1 map revise and view, under review proofs', () => {
   let w: WayfinderWorld;
   let owner: Decider;
   beforeAll(async () => {
@@ -293,7 +297,7 @@ describe('WF-1 map revise and view, under review proofs', () => {
   });
 });
 
-describe('WF-1 map reads: parent retype, cancelled tickets and download volume', () => {
+withDatabase('WF-1 map reads: parent retype, cancelled tickets and download volume', () => {
   let w: WayfinderWorld;
   let owner: Decider;
   beforeAll(async () => {
