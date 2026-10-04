@@ -86,6 +86,10 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
+      "files": ["tests/surfaces/aw-04-plan-card-accept-faithful.test.tsx"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
       "files": ["tests/ci/t2f-unwire-keeps-live-board-running.test.mjs"],
       "rules": { "max-lines-per-function": "off" }
     },
