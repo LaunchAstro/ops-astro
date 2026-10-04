@@ -4,6 +4,7 @@
 // any depth (catalogue #720), or a secret logged inside an object passes the
 // no-secret check unseen.
 
+import { format } from 'node:util';
 import { expect, it } from 'vitest';
 import { consoleLine, streamText } from './console-text.ts';
 
@@ -29,6 +30,20 @@ it('keeps a long string whole', () => {
 
 it('writes plain strings as the console does, unquoted and space-joined', () => {
   expect(consoleLine('one', 'two', 3)).toBe('one two 3');
+});
+
+it('formats percent directives on plain values as the console does', () => {
+  const calls: readonly (readonly unknown[])[] = [
+    ['a %s b', 'x'],
+    ['%d%%', 5],
+    ['%%s %s', 'x'],
+    ['%s %s', 'one'],
+    ['%j', { a: 1 }],
+    ['%c%s', 'color: red', 'x'],
+    ['%i %f', 1.5, 2.5],
+    ['%q %s', 'x', 'extra'],
+  ];
+  for (const call of calls) expect(consoleLine(...call)).toBe(format(...call));
 });
 
 it('writes an error with its stack', () => {
