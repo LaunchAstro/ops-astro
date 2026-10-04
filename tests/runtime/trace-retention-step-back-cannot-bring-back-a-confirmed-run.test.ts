@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import { derivedId, expireOnce, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
 import { asAgent, barrier, codeOf, handbackBody, liveWork } from './schedules-harness.ts';
 import { age, batchesOf } from './aw-13-retention-world.ts';
-import { drain, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
+import { drain, noDatabase, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
+
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useAw13World('retention_step_back_confirmed');
 

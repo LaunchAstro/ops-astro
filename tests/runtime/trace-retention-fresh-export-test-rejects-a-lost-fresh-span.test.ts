@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import { exportDeployment, retainDeployment } from '../../apps/api/trace-exporter.ts';
 import { derivedId, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
 import {
@@ -13,7 +13,9 @@ import {
   type Schedules,
 } from './schedules-harness.ts';
 import { age } from './aw-13-retention-world.ts';
-import { drain, spanIds, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
+import { drain, noDatabase, spanIds, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
+
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useAw13World('retention_lost_fresh_span');
 

@@ -5,13 +5,16 @@
 // The slower one's gap must name the cursor its batch was read after.
 
 import { setTimeout as sleep } from 'node:timers/promises';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import { exportOnce } from '../../packages/core-runtime/src/trace-export.ts';
 import { liveWork, openSchedules, type Schedules } from './schedules-harness.ts';
 
+const noDatabase = process.env['DATABASE_URL'] === undefined;
+const it = noDatabase ? vitestIt.skip : vitestIt;
 let alpha: Schedules;
 
 beforeAll(async () => {
+  if (noDatabase) return;
   alpha = await openSchedules('gapcursor', 1_000_000);
 });
 
