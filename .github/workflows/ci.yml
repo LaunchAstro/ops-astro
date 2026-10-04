@@ -605,6 +605,17 @@ jobs:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+      # The seed's boundary proof is a node:test file, so no manifest runs it: it
+      # makes and drops its own migrated databases on this service.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node --test tests/review/seed-boundaries-proof.test.mjs
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+      # So is the proof that an HTTPS redirect cannot carry the seed's key to plaintext HTTP.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node --test tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
 
   parity:
     # API-1: every app action has its API and CLI equivalent; no database.

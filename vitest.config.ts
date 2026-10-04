@@ -14,6 +14,19 @@ const database = (process.env['DATABASE_URL'] ?? '') !== '';
 const containerSuites: string[] = (
   JSON.parse(readFileSync('tests/ci/container-suites.json', 'utf8')) as { suites: string[] }
 ).suites;
+// These suites change the backup and lookup identities, which are the cluster's
+// and shared by every database on it: one grants them a role, the others drop
+// their row-security bypass. Any file migrating beside them reads or repairs
+// the same rows (0045, 0046, 20261004102910) and fails with "tuple concurrently
+// updated" or finds the membership mid-test. So a whole-suite run with a
+// database leaves them out; scripts/db-conformance.mjs, which runs the named
+// suites one at a time and sets SUITE_PART for each, runs them.
+const clusterRoleSuites = [
+  'tests/db/identity-roles-hold-no-membership.test.ts',
+  'tests/db/migration-retries-shared-role-race.test.ts',
+  'tests/review/role-repair-drops-inherited-access-proof.test.ts',
+];
+const oneSuiteAtATime = process.env['SUITE_PART'] !== undefined;
 
 export default defineConfig({
   test: {
@@ -51,8 +64,9 @@ export default defineConfig({
     // The browser proofs build `apps/web/dist`, which other suites rebuild (an
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
     // BROWSER_PROOFS=1. Sol's proofs kept byte for byte (the leaked-client
-    // proof and OW-002's), the OW-002 proofs written beside them, Sol's two
-    // PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
+    // proof, OW-002's, and the role, staging-login, copy-finder, scan-login and
+    // backup revocation proofs), the OW-002 proofs written beside them, Sol's
+    // two PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
     // c59-factor-routes-world (byte for byte but for one cookie-jar split CQ-11
     // asks for), Sol's six F2 lost-answer retry proofs and Sol's two F3
     // save-order proofs open their worlds with no skip; without a database they
@@ -64,6 +78,18 @@ export default defineConfig({
         ? []
         : [
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
+            'tests/review/role-repair-drops-inherited-access-proof.test.ts',
+            'tests/review/staging-logins-*-proof.test.ts',
+            'tests/operations/find-copies-values-only.proof.test.ts',
+            'tests/operations/scan-login-token-and-shared-login.proof.test.ts',
+            'tests/operations/scan-login-cleanup-mapping-race.test.ts',
+            'tests/review/backup-read-part-appointment-proof.test.ts',
+            'tests/review/backup-restore-revocation-proof.test.ts',
+            'tests/review/ow066-export-revocation-proof.test.ts',
+            'tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts',
+            'tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts',
+            'tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts',
+            'tests/operations/scan-login-cleanup-subject-race.proof.test.ts',
             'tests/api/function-outbox-before-response.test.ts',
             'tests/api/function-outbox-waits-for-own-events.test.ts',
             'tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts',
@@ -92,6 +118,7 @@ export default defineConfig({
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
       ...(process.env['CONTAINER_SUITES'] === 'apart' ? containerSuites : []),
+      ...(database && !oneSuiteAtATime ? clusterRoleSuites : []),
     ],
   },
 });
