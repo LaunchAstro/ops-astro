@@ -278,9 +278,11 @@ jobs:
       # ORCH91 MAGNETS: each named suite is a file of its own, so a change can
       # drop one by deleting a file. This fails naming each suite the base
       # named, or marked isolation, that the head does not, unless its test
-      # file went too. On a pull request or a group, merge-group.mjs runs it
-      # once per pull request against that pull request's base; on a push the
-      # base is the push's `before`, reaching the script through env alone. It
+      # file went too. On a pull request, merge-group.mjs runs it against the
+      # pull request's base. On a group it runs once per pull request the group
+      # holds, each time the checked-out group against the base branch's tip,
+      # so a drop fails every run and names them all. On a push the base is
+      # the push's `before`, reaching the script through env alone. It
       # branches in the shell, as a step condition could skip a group. The
       # script validates the id before git sees it; an all-zero base fails.
       - name: No named or isolation suite is dropped

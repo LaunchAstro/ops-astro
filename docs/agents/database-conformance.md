@@ -67,12 +67,14 @@ Deleting one of those files would drop a suite with no list diff to show it,
 so `database conformance gate` runs `node scripts/named-suites.ts kept
 <base>` on every event. On a pull request or a merge group it runs through
 `scripts/merge-group.mjs each`, once per pull request the check judges: on a
-pull request the base is the pull request's base, and on a group it is the
-base branch's tip as merge-group.mjs fetches it, which is why the job checks
-out the full history. On a push the base is the push's `before`. It reads
-the manifest at the base from git in whichever layout the base has (the
-single file, the per-area folder or one file per suite), and fails naming each suite the base named, or marked
-isolation, that the head does not, unless the change deleted its test file.
+pull request the base is the pull request's base. On a group it is the base
+branch's tip as merge-group.mjs fetches it, which is why the job checks out
+the full history, and every run compares the whole checked-out group with
+it, so one pull request's drop fails each run. On a push the base is the
+push's `before`. It reads the manifest at the base from git in whichever
+layout the base has (the single file, the per-area folder or one file per
+suite), and fails naming each suite the base named, or marked isolation,
+that the head does not, unless the change deleted its test file.
 A renamed test file (git's rename detection, a change of case included) takes
 its suite with it: the new path must be named with the same kind, and marked
 isolation when the old one was, or the step fails naming both paths. A rename
