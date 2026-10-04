@@ -21,6 +21,8 @@
     "tests/review/staging-reset-encoded-user-proof.test.ts",
     "tests/review/staging-reset-write-after-admission-proof.test.ts",
     "tests/review/staging-reset-keeps-revoked-session-proof.test.ts",
-    "tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts"
+    "tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts",
+    "tests/review/sl12-18-placement-lineage-proof.test.ts",
+    "tests/review/sl12-19-plan-record-restart-proof.test.ts"
   ]
 }
