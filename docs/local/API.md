@@ -1447,9 +1447,9 @@ file pinned in the same transaction. The command line and the app's client
 post it to the same route. No agent reaches it: an agent may propose a plan,
 never activate one.
 
-| Operation          | Route                          | Body                                                                                                                | Authority                                                                                          |
-| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `task.accept_plan` | `/api/b/:key/task/accept_plan` | `operationId`, `gateId`, `versionId`, `note`, `planText`, `plan`, `entryPath`, `paths`, `conversationId` (optional) | `decide`, asked of the gate's own task as `task.decide` is; `decide` asks it again under its locks |
+| Operation          | Route                          | Body                                                                                                                                                          | Authority                                                                                          |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `task.accept_plan` | `/api/b/:key/task/accept_plan` | `operationId`, `gateId`, `versionId`, `note`, `planText`, `plan`, `entryPath`, `paths`, `ceilingMinor` and `currency` (optional), `conversationId` (optional) | `decide`, asked of the gate's own task as `task.decide` is; `decide` asks it again under its locks |
 
 `versionId` is the plan version shown beside the button; a newer reply makes
 it stale and the accept is `PROPOSAL_SUPERSEDED` 409. `planText` is the exact
@@ -1461,7 +1461,11 @@ references, no cycle; anything else is `FIELD_VALUE_INVALID` 422 naming `plan`
 files in the server's instruction root (`OPS_ASTRO_INSTRUCTION_ROOT`); an odd
 path, a symlink, a name outside the root, a directory or a missing file is
 `DEFINITION_UNAVAILABLE`. With no root configured the accept is
-`DEPENDENCY_NOT_LANDED`. `conversationId` is the caller's own conversation
+`DEPENDENCY_NOT_LANDED`. `ceilingMinor` and `currency` are the rough cost the
+card drew, sent together or not at all (half of one, or a fraction of a minor
+unit, is `FIELD_VALUE_INVALID` 422); under the locks, a ceiling other than the
+version's maximum and currency is `VERSION_STALE` 409 and nothing is approved
+or held. Callers that draw no ceiling send neither. `conversationId` is the caller's own conversation
 or `NOT_FOUND` 404, and becomes the audit event's origin. Every other refusal
 is `task.decide`'s. It answers the approval's detail with `runId`, `pin`,
 `manifestDigest`, `planRecordId`, `textDigest` and `recordDigest`. A repeat of
@@ -2798,7 +2802,7 @@ the removal when `enrol` answers `FACTOR_ALREADY_ENROLLED` (`WEB.md`).
 
 | Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                                                      |
 | ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                                                       |
+| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `VERSION_STALE` 409 (a newer enrolment recorded first), `PROVIDER_ANSWER_INVALID` 502               |
 | `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `FACTOR_ALREADY_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
 | `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                                                 |
 
@@ -2820,12 +2824,14 @@ call, beside the record it changes, and carries the sent code's id as its
 too, so it stops counting, and a provider fault on the code leaves it counted. GoTrue served under a path (`/auth/v1`) is called
 under that path. The record step locks the login (a transaction-scoped
 advisory lock, `second-factor-subject:` and its subject's digest), then the
-person's own row (`for no key update`), so two tabs enrolling at once queue: the
-later enrolment replaces the earlier unverified one, and one live factor
-remains. Two businesses completing enrolments for one login at once queue too:
-the later is refused `FACTOR_ALREADY_ENROLLED`, and the factor the provider has
-just verified for it is removed there, best effort, so the login holds one
-verified factor.
+person's own row (`for no key update`), so two tabs enrolling at once queue.
+An enrolment replaces only the unverified factor it started from: one recorded
+after it started (another tab's) stays the factor the first code completes, and
+this one is refused `VERSION_STALE`, its provider factor reported as an
+`account.factor_orphaned` event. One live factor remains. Two businesses
+completing enrolments for one login at once queue too: the later is refused
+`FACTOR_ALREADY_ENROLLED`, and the factor the provider has just verified for it
+is removed there, best effort, so the login holds one verified factor.
 
 `PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.
