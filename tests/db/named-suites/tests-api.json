@@ -74,6 +74,7 @@
     "tests/api/history-trail-preference.test.ts",
     "tests/api/id-operand-shape.test.ts",
     "tests/api/inb1f-live-board.test.ts",
+    "tests/api/inbox-task-name-after-revocation.test.ts",
     "tests/api/leaked-client-read-isolation-assertion.test.ts",
     "tests/api/live-board-client-move-prompt-review.test.ts",
     "tests/api/live-board-client-move-review.test.ts",
@@ -101,6 +102,7 @@
     "tests/api/t3e1-worker-steps.test.ts",
     "tests/api/t3f-races.test.ts",
     "tests/api/task-runtime-routes.test.ts",
+    "tests/api/trace-read-after-revocation.test.ts",
     "tests/api/undescribed-body-field-refused.test.ts",
     "tests/api/unrelated-identifier-refused.test.ts",
     "tests/api/web-reads.test.ts"
