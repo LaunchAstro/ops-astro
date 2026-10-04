@@ -24,6 +24,7 @@ beforeAll(async () => {
 }, 180_000);
 afterAll(async () => await w?.drop());
 
+// eslint-disable-next-line max-lines-per-function -- the reviewer's proof, kept byte for byte
 it('person to person listing keeps an unreadable task subject inside Postgres', async () => {
   const hidden = 'SOL745R2_UNREADABLE_TASK_SUBJECT';
   const created = await w.as(w.owner, 'task.create', { fields: { title: hidden } });
