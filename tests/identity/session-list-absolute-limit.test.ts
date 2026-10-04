@@ -32,65 +32,90 @@ if (serverUrl === undefined) {
 const HOUR = 60 * 60;
 const nowSeconds = (): number => Math.floor(Date.now() / 1000);
 
+interface World {
+  readonly db: FreshDatabase;
+  readonly business: string;
+  readonly person: string;
+  readonly login: string;
+  readonly actor: string;
+}
+
+let world: World | undefined;
+
+function the(): World {
+  if (world === undefined) throw new Error('the world was not set up');
+  return world;
+}
+
+/** One resolved attempt on `sessionId`, signed in at `signedInAt` (epoch seconds). */
+async function served(tx: TenantQuery, sessionId: string, signedInAt: number): Promise<void> {
+  const { login, actor, person } = the();
+  await recordAuthenticationAttempt(tx, {
+    owner: 'person_login',
+    outcome: 'resolved',
+    presented: {
+      provider: 'supabase',
+      subject: 'sub-noor',
+      sessionId,
+      assurance: { level: 'aal1', signedInAt, factorAt: null },
+    },
+    loginId: login,
+    actorId: actor,
+    personId: person,
+  });
+}
+
+/** The sessions listed to the person, asking from `current`. */
+async function listedFrom(current: string): Promise<readonly string[]> {
+  const { db, business, person } = the();
+  const listed = await db.app.withBusiness(business, (tx) => listSeenSessions(tx, person, current));
+  return listed.map((row) => row.sessionId);
+}
+
+async function setUp(): Promise<World> {
+  const db = await createFreshDatabase({ part: 'b' });
+  const business = await insertBusiness(db.app, 'session-limit');
+  return await db.app.withBusiness(business, async (tx) => {
+    const person = await insertPerson(tx, 'Noor');
+    const actor = await insertActor(tx, person);
+    const login = await insertLogin(tx, 'sub-noor');
+    return { db, business, person, login, actor };
+  });
+}
+
+/** Signed in 13 hours ago, first served then, last served 2 hours ago. */
+async function servedLongAgoAndLately(): Promise<readonly [string, string]> {
+  const { db, business } = the();
+  const [old, current] = [randomUUID(), randomUUID()];
+  const signedInOld = nowSeconds() - 13 * HOUR;
+  await db.app.withBusiness(business, async (tx) => {
+    await served(tx, old, signedInOld);
+    await served(tx, old, signedInOld);
+    await served(tx, current, nowSeconds() - 60);
+  });
+  await db.admin.execute(
+    `update public.authentication_attempts a
+        set at = now() - case when ranked.n = 1 then interval '13 hours' else interval '2 hours' end
+       from (select id, row_number() over (order by id) as n
+               from public.authentication_attempts where session_id = $1) ranked
+      where a.id = ranked.id`,
+    [old],
+  );
+  return [old, current];
+}
+
 describe.skipIf(serverUrl === undefined)('the live-session list and the absolute limit', () => {
-  let db: FreshDatabase;
-  let business: string;
-  let person: string;
-  let login: string;
-  let actor: string;
-
-  /** One resolved attempt on `sessionId`, signed in at `signedInAt` (epoch seconds). */
-  const served = async (tx: TenantQuery, sessionId: string, signedInAt: number): Promise<void> =>
-    await recordAuthenticationAttempt(tx, {
-      owner: 'person_login',
-      outcome: 'resolved',
-      presented: {
-        provider: 'supabase',
-        subject: 'sub-noor',
-        sessionId,
-        assurance: { level: 'aal1', signedInAt, factorAt: null },
-      },
-      loginId: login,
-      actorId: actor,
-      personId: person,
-    });
-
   beforeAll(async () => {
-    db = await createFreshDatabase({ part: 'b' });
-    business = await insertBusiness(db.app, 'session-limit');
-    await db.app.withBusiness(business, async (tx) => {
-      person = await insertPerson(tx, 'Noor');
-      actor = await insertActor(tx, person);
-      login = await insertLogin(tx, 'sub-noor');
-    });
+    world = await setUp();
   }, 60_000);
 
   afterAll(async () => {
-    await db?.drop();
+    await world?.db.drop();
   });
 
   it('leaves out a session signed in 13 hours ago and served 2 hours ago, and keeps the current one', async () => {
-    const [old, current] = [randomUUID(), randomUUID()];
-    const signedInOld = nowSeconds() - 13 * HOUR;
-    await db.app.withBusiness(business, async (tx) => {
-      await served(tx, old, signedInOld);
-      await served(tx, old, signedInOld);
-      await served(tx, current, nowSeconds() - 60);
-    });
-    // The old session's first call when it signed in, its last one 2 hours ago.
-    await db.admin.execute(
-      `update public.authentication_attempts a
-          set at = now() - case when ranked.n = 1 then interval '13 hours' else interval '2 hours' end
-         from (select id, row_number() over (order by id) as n
-                 from public.authentication_attempts where session_id = $1) ranked
-        where a.id = ranked.id`,
-      [old],
-    );
-
-    const listed = await db.app.withBusiness(business, (tx) =>
-      listSeenSessions(tx, person, current),
-    );
-    const ids = listed.map((row) => row.sessionId);
+    const [old, current] = await servedLongAgoAndLately();
+    const ids = await listedFrom(current);
     expect(ids).not.toContain(old);
     expect(ids).toContain(current);
   });
@@ -98,17 +123,14 @@ describe.skipIf(serverUrl === undefined)('the live-session list and the absolute
   it('leaves out a session signed in 13 hours ago that this business first served a moment ago', async () => {
     // The login's first call here can come long after its sign-in (another
     // business served it first), so the earliest attempt cannot stand in for
-    // the sign-in: only the recorded first sign-in time decides.
+    // the sign-in: only the recorded first sign-in time decides. The person's
+    // earlier sessions are still live, so the list is not compared whole.
     const [elsewhere, current] = [randomUUID(), randomUUID()];
-    await db.app.withBusiness(business, async (tx) => {
+    await the().db.app.withBusiness(the().business, async (tx) => {
       await served(tx, elsewhere, nowSeconds() - 13 * HOUR);
       await served(tx, current, nowSeconds() - 60);
     });
-    const listed = await db.app.withBusiness(business, (tx) =>
-      listSeenSessions(tx, person, current),
-    );
-    // The person's earlier sessions are still live, so this names the two.
-    const ids = listed.map((row) => row.sessionId);
+    const ids = await listedFrom(current);
     expect(ids).not.toContain(elsewhere);
     expect(ids).toContain(current);
   });
