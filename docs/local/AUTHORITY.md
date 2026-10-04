@@ -627,11 +627,13 @@ unless the person named is a current member who may chat (staff holding
 members alone: a member who leaves or is removed, loses `chat:comment` or whose
 access ends is no longer shown it, counted for it, let stamp it seen or emailed
 it, and an operations viewer outside the conversation is never listed it as
-unattended. A mention is raised at its message's posted time, so a member who
+unattended. An agent key (API-2) that does not tick `chat:comment` is shown and
+counted none, as `chat.messages` refuses it. A mention is raised at its message's posted time, so a member who
 reads the message, a re-added one included, is shown and counted its mention.
 The owner and administrators hold no way round any of it.
 `tests/api/c71-live-conversations.test.ts` and
-`tests/api/c71-chat-mentions.test.ts` hold it.
+`tests/api/c71-chat-mentions.test.ts` and
+`tests/api/c71-c-agent-key-without-chat.test.ts` hold it.
 
 ## preset.plan
 

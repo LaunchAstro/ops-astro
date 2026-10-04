@@ -19,6 +19,7 @@
 // it: its kind and a group's name, never a task.
 
 import {
+  askedFor,
   CONVERSATION_TYPE_KEY,
   clientsReached,
   countOwedItems,
@@ -73,15 +74,23 @@ export async function readInbox(
   personId: string,
   subjects: readonly Subject[],
 ): Promise<readonly InboxEntry[]> {
-  const items = await readInboxItems(tx, personId);
+  const items = await readInboxItems(tx, personId, chats(subjects));
   const listed = items.filter((item) => item.access !== 'withheld').map((item) => entryOf(item));
   return await named(tx, listed, subjects);
 }
 
 /** The owed count: the list's counted entries, counted in one query under the same rule. */
-export async function countOwed(tx: TenantQuery, personId: string): Promise<number> {
-  return await countOwedItems(tx, personId);
+export async function countOwed(
+  tx: TenantQuery,
+  personId: string,
+  subjects: readonly Subject[],
+): Promise<number> {
+  return await countOwedItems(tx, personId, chats(subjects));
 }
+
+/** Whether conversations are shown at all: to an agent key (API-2) only when it ticks `chat:comment`. */
+const chats = (subjects: readonly Subject[]): boolean =>
+  askedFor(subjects, { collection: 'chat', action: 'comment' }).length > 0;
 
 interface Named {
   readonly key: string;

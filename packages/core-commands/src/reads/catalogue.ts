@@ -425,7 +425,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
       // `viewer` is the caller's own person, the one the viewer preset
       // narrows to (MP-5-12), and `owed` their own count as `inbox.count` gives it.
-      const [viewer, owed] = [session.personId, await countOwed(tx, session.personId)];
+      const viewer = session.personId;
+      const owed = await countOwed(tx, viewer, subjectsOf(session));
       return scope.business
         ? { ok: true, tasks, changedAt, viewer, owed, withheld: 0 }
         : { ok: true, tasks, changedAt, viewer, owed };
@@ -834,7 +835,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session) =>
       (await holdsAnyGrant(tx, session))
-        ? { ok: true, owed: await countOwed(tx, session.personId) }
+        ? { ok: true, owed: await countOwed(tx, session.personId, subjectsOf(session)) }
         : NO_GRANT_AT_ALL,
   },
   // Every path to a person broken (INB-1e): `operations:read` on the business,
