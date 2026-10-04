@@ -74,7 +74,7 @@ it.each([
   ['client to client', 'alpha:ada', 'CLIENT-B-TASK', 'alpha'],
   ['person to person', 'alpha:bea', 'T-1', 'alpha'],
 ])(
-  'Sol proof, criterion 2: %s inspector data is cleared while the new scope loads',
+  '%s inspector data is cleared while the new scope loads',
   async (_, grantKey, taskKey, businessKey) => {
     const page = await mount(
       <RunProgress

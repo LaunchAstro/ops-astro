@@ -34,7 +34,7 @@ const privateExecution = {
   },
 };
 
-it('Sol proof, criterion 5: the inspector stops arming an older pending gate when a newer execution read completes the run', async () => {
+it('the inspector stops arming an older pending gate when a newer execution read completes the run', async () => {
   const gates = [gate('r-1', 'pending', 3)];
   const page = await mountMap(graph('not_started', null), gates);
   try {
@@ -51,7 +51,7 @@ it('Sol proof, criterion 5: the inspector stops arming an older pending gate whe
   }
 });
 
-it('Sol proof, criterion 2: client to client task-page navigation never commits the preceding client inspector under the new task', async () => {
+it('client to client task-page navigation never commits the preceding client inspector under the new task', async () => {
   let pending = false;
   const fetch: typeof globalThis.fetch = async (input) => {
     const path = new URL(String(input), 'http://made.up').pathname;
