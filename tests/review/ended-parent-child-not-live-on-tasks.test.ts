@@ -5,16 +5,17 @@
 // task and board reads never offer it, never show it live, and `task.assign`
 // refuses it.
 import { randomUUID } from 'node:crypto';
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { readBoardAgents } from '../../packages/core-commands/src/reads/board-agents.ts';
 import { readTaskAgents } from '../../packages/core-commands/src/reads/task-agents.ts';
 import { revokeDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { codeOf } from '../commands/agent-fixture.ts';
 import { grantTo } from '../commands/fixture.ts';
-import { child, parentWork, useChildWorld, w } from '../runtime/aw-11-child-world.ts';
+import { child, noDatabase, parentWork, useChildWorld, w } from '../runtime/aw-11-child-world.ts';
 
 useChildWorld('endedparent413');
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
 /** Work with its parent and a child for the decider, then the parent revoked. */
 async function deadChild(): Promise<{ readonly taskId: string; readonly childId: string }> {

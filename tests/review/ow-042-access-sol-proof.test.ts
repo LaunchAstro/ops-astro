@@ -4,16 +4,17 @@
 // (R/sol/proofs/OW-042-4126931d1.patch), and the same rule for a parent
 // revoked rather than handed back: Access previews a child delegation only
 // while its parent stands, as `checkDelegatedAuthority` admits it.
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import { readAccess } from '../../packages/core-commands/src/reads/people.ts';
 import {
   checkDelegatedAuthority,
   revokeDelegation,
   settleDelegation,
 } from '../../packages/core-records/src/authority/delegations.ts';
-import { child, parentWork, useChildWorld, w } from '../runtime/aw-11-child-world.ts';
+import { child, noDatabase, parentWork, useChildWorld, w } from '../runtime/aw-11-child-world.ts';
 
 useChildWorld('sol042_aw');
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
 it('Access never previews usable child permissions after its parent delegation is settled', async () => {
   const { parent } = await parentWork(w.s);
