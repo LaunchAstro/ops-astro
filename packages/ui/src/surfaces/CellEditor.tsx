@@ -25,6 +25,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
+  type RefObject,
 } from 'react';
 
 export interface MenuOption {
@@ -133,8 +134,15 @@ function cancelled(event: KeyboardEvent, onCancel: (focusBack: boolean) => void)
   return true;
 }
 
-/** The menu's active option and its keys: the arrows move, Enter or Space chooses. */
-function useMenuKeys(props: EditorProps<Extract<CellEditorSpec, { readonly kind: 'menu' }>>) {
+/**
+ * The menu's active option and its keys: the arrows move, Enter or Space
+ * chooses. The list's height cap scrolls a long menu, so the active option is
+ * kept in its view.
+ */
+function useMenuKeys(
+  props: EditorProps<Extract<CellEditorSpec, { readonly kind: 'menu' }>>,
+  list: RefObject<HTMLUListElement | null>,
+) {
   const { options, current } = props.spec;
   const [active, setActive] = useState(() =>
     Math.max(
@@ -142,6 +150,9 @@ function useMenuKeys(props: EditorProps<Extract<CellEditorSpec, { readonly kind:
       options.findIndex((option) => option.value === current),
     ),
   );
+  useEffect(() => {
+    list.current?.children.item(active)?.scrollIntoView?.({ block: 'nearest' });
+  }, [list, active]);
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>): void => {
     if (cancelled(event, props.onCancel)) return;
     const last = options.length - 1;
@@ -172,7 +183,7 @@ function Menu(
   const { options, current } = props.spec;
   const id = useId();
   const list = useRef<HTMLUListElement>(null);
-  const { active, setActive, onKeyDown } = useMenuKeys(props);
+  const { active, setActive, onKeyDown } = useMenuKeys(props, list);
   useEffect(() => {
     list.current?.focus();
   }, []);
@@ -198,7 +209,8 @@ function Menu(
             role="option"
             aria-selected={option.value === current}
             className={at === active ? 'sel__opt is-active' : 'sel__opt'}
-            onMouseEnter={() => {
+            // A moving pointer picks; a list scrolled under a still one does not.
+            onMouseMove={() => {
               setActive(at);
             }}
             onClick={() => {

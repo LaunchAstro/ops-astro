@@ -7,7 +7,7 @@
 // delta are plain strings, and this tile draws a unit suffix and a delta that
 // says its direction.
 
-import type { ReactElement, ReactNode } from 'react';
+import { createContext, useContext, type ReactElement, type ReactNode } from 'react';
 import { Meter } from '../kit/blocks.tsx';
 import { Term } from '../kit/marks.tsx';
 
@@ -32,6 +32,9 @@ export interface StatProps {
 
 const figure = (value: number): string => value.toLocaleString('en-AU');
 
+// A tile inside a stat row takes the kit's row variant; the row only places it.
+const InRow = createContext(false);
+
 function Delta(props: { readonly delta: StatDelta }): ReactElement {
   const { value, period } = props.delta;
   const direction = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
@@ -46,7 +49,7 @@ function Delta(props: { readonly delta: StatDelta }): ReactElement {
 export function Stat(props: StatProps): ReactElement {
   const of = props.of;
   return (
-    <div className="stat">
+    <div className={useContext(InRow) ? 'stat stat--row' : 'stat'}>
       <span className="stat__label">
         {props.term === undefined ? props.label : <Term tip={props.term}>{props.label}</Term>}
       </span>
@@ -72,5 +75,9 @@ export function StatRow(props: {
   readonly columns: 2 | 3 | 4 | 5 | 6;
   readonly children: ReactNode;
 }): ReactElement {
-  return <div className={`statrow statrow--${String(props.columns)}`}>{props.children}</div>;
+  return (
+    <div className={`statrow statrow--${String(props.columns)}`}>
+      <InRow.Provider value>{props.children}</InRow.Provider>
+    </div>
+  );
 }
