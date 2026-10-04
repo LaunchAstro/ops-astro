@@ -66,6 +66,19 @@ export {
   type ClientRow,
 } from './clients/clients.ts';
 export {
+  checkClientEditRun,
+  checkClientModelUse,
+  judgeModelRequest,
+  listClientPrivacy,
+  MODEL_PROVIDERS,
+  readClientPrivacy,
+  recordModelRequest,
+  writeClientPrivacy,
+  type ClientPrivacy,
+  type ClientUse,
+  type ModelRequest,
+} from './clients/privacy.ts';
+export {
   readableRecordIds,
   readableScope,
   type ReadableScope,
