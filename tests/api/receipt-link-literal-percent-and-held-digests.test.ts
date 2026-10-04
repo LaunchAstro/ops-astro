@@ -49,7 +49,7 @@ it('credential derivation with mismatched key bytes fails closed against the sto
   const keyId = configured.keys.activeKeyId;
   const wrong = credentialKeyring(keyId, new Map([[keyId, Buffer.alloc(32, 0x5a)]]));
   const held = await withCredentialKeys({ ok: true, keys: wrong }, readHeld);
-  expect(held?.includes(credential)).toBe(false);
+  expect(held?.includes(credential) === true).toBe(false);
   expect(held === undefined, 'a digest mismatch must make the credential set uncheckable').toBe(
     true,
   );
