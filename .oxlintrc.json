@@ -133,12 +133,67 @@
     },
     {
       "files": [
+        "tests/review/backup-read-part-appointment-proof.test.ts",
+        "tests/review/ow-063-export-revocation-proof.test.ts",
+        "tests/review/export-session-ended-after-part-gate-proof.test.ts",
+        "tests/review/store-hands-out-no-part-after-session-end-proof.test.ts",
+        "tests/operations/scan-login-cleanup-subject-race.proof.test.ts",
         "tests/surfaces/page-kit-check-rejects-class-attribute-restyle.test.tsx",
         "tests/surfaces/page-kit-check-rejects-parent-scoped-tip-restyle.test.tsx",
         "tests/surfaces/page-kit-check-rejects-subject-only-restyle.test.tsx",
         "tests/surfaces/phone-width-funnel-check-rejects-collapsed-drawing.test.tsx"
       ],
       "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/review/backup-restore-revocation-proof.test.ts"],
+      "rules": { "require-await": "off" }
+    },
+    {
+      "files": [
+        "tests/review/ow066-export-revocation-proof.test.ts",
+        "tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts"
+      ],
+      "rules": { "unicorn/no-useless-undefined": "off" }
+    },
+    {
+      "files": [
+        "tests/ci/restore-check-barrier-and-logs.proof.test.mjs",
+        "tests/ci/restore-refuses-permissive-barrier.proof.test.mjs",
+        "tests/ci/restore-refuses-permissive-partitioned-barrier.proof.test.mjs",
+        "tests/operations/scan-login-cleanup-subject-race.proof.test.ts",
+        "tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts",
+        "tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts"
+      ],
+      "rules": {
+        "no-await-in-loop": "off",
+        "require-await": "off",
+        "no-promise-executor-return": "off",
+        "unicorn/no-array-callback-reference": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/review/staging-logins-duplicate-sslmode-proof.test.ts",
+        "tests/review/staging-logins-direct-privileges-proof.test.ts",
+        "tests/review/staging-logins-group-race-proof.test.ts",
+        "tests/review/seed-boundaries-proof.test.mjs"
+      ],
+      "rules": {
+        "max-depth": "off",
+        "max-lines-per-function": "off",
+        "no-await-in-loop": "off",
+        "no-promise-executor-return": "off",
+        "require-unicode-regexp": "off"
+      }
+    },
+    {
+      "files": ["tests/review/role-repair-drops-inherited-access-proof.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs"],
+      "rules": { "no-promise-executor-return": "off", "sort-vars": "off" }
     },
     {
       "files": ["tests/surfaces/term-tip-test-detects-invisible-tooltip.mjs"],

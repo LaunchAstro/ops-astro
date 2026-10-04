@@ -80,9 +80,16 @@ export interface QuotaKeys {
   readonly businessId: string;
 }
 
-/** A call's place in the quota, given back with what it handed out. */
+/** A call's place in the quota. */
 export interface QuotaSlot {
-  leave(answer: object | undefined): void;
+  /**
+   * Count the records `answer` hands out, at the moment it is decided: false,
+   * with nothing counted, when that would take a level past its limit. Asked
+   * again (a retried transaction), it first gives back what it counted before.
+   */
+  handOut(answer: object): boolean;
+  /** Give the place back, and what was counted too when the answer never reached the caller. */
+  leave(delivered: boolean): void;
 }
 
 /** The app's limits (`apps/api/auth/agent-quota.ts`): a slot, or undefined when one is reached. */
@@ -177,44 +184,76 @@ async function resolvedAndRun(
   doorFull: boolean,
 ): Promise<CommandResult | ReadResult> {
   // Entered once per request, outside `retryOnce`, so a retry is not a second call.
-  let slot: QuotaSlot | undefined;
-  let answer: CommandResult | ReadResult | undefined;
+  const held: Held = {};
+  let answer: CommandResult | ReadResult;
   try {
     answer = await retryOnce(
       async () =>
-        await database.withBusiness(businessId, async (tx) => {
-          const standing = await resolveAgentCredential(tx, call.credential, call.now);
-          if (standing === 'not-live') return await notLive(tx, call.credential, doorFull);
-          const keys = {
-            credentialId: standing.credentialId,
-            personId: standing.personId,
-            businessId,
-          };
-          // Before the reach, so a call outside it counts too.
-          slot ??= call.quota?.enter(keys);
-          if (call.quota !== undefined && slot === undefined) {
-            return limited();
-          }
-          const session = sessionOf(standing, tx.businessId);
-          if (!CREDENTIAL_REACH.has(request.command)) {
-            const outside = refuseCommand(
-              'DELEGATION_EXCLUDES_OPERATION',
-              [request.command],
-              OUTSIDE_FIXES,
-            );
-            return await enter(tx, session, request, { outside });
-          }
-          return declarationOf(request.command).kind === 'read'
-            ? await runRead(tx, session, readOf(request))
-            : await runCommand(tx, session, 'api', request);
-        }),
+        await database.withBusiness(
+          businessId,
+          async (tx) => await attempt(tx, call, request, doorFull, held),
+        ),
     );
-    if (!isCommandRefusal(answer)) return answer;
-    return asCallerVisible(answer);
-  } finally {
-    slot?.leave(answer === undefined || isCommandRefusal(answer) ? undefined : answer);
+  } catch (cause) {
+    if (!(cause instanceof ExportLimitReached)) {
+      held.slot?.leave(false);
+      throw cause;
+    }
+    answer = limited();
   }
+  held.slot?.leave(!isCommandRefusal(answer));
+  if (!isCommandRefusal(answer)) return answer;
+  return asCallerVisible(answer);
 }
+
+/** The call's place in the quota, once it is let in. */
+interface Held {
+  slot?: QuotaSlot | undefined;
+}
+
+/** One try of the call, inside its transaction. */
+async function attempt(
+  tx: TenantQuery,
+  call: CredentialCall,
+  request: UncheckedRequest,
+  doorFull: boolean,
+  held: Held,
+): Promise<CommandResult | ReadResult> {
+  const standing = await resolveAgentCredential(tx, call.credential, call.now);
+  if (standing === 'not-live') return await notLive(tx, call.credential, doorFull);
+  const keys = {
+    credentialId: standing.credentialId,
+    personId: standing.personId,
+    businessId: tx.businessId,
+  };
+  // Before the reach, so a call outside it counts too.
+  held.slot ??= call.quota?.enter(keys);
+  if (call.quota !== undefined && held.slot === undefined) {
+    return limited();
+  }
+  const session = sessionOf(standing, tx.businessId);
+  if (!CREDENTIAL_REACH.has(request.command)) {
+    const outside = refuseCommand(
+      'DELEGATION_EXCLUDES_OPERATION',
+      [request.command],
+      OUTSIDE_FIXES,
+    );
+    return await enter(tx, session, request, { outside });
+  }
+  const ran =
+    declarationOf(request.command).kind === 'read'
+      ? await runRead(tx, session, readOf(request))
+      : await runCommand(tx, session, 'api', request);
+  // Counted here, before the commit: calls let in at once all saw room at the
+  // door, and the one that would pass the limit rolls back.
+  if (held.slot !== undefined && !isCommandRefusal(ran) && !held.slot.handOut(ran)) {
+    throw new ExportLimitReached();
+  }
+  return ran;
+}
+
+/** Thrown inside the transaction so an answer over the export limit applies nothing. */
+class ExportLimitReached extends Error {}
 
 const live = async (tx: TenantQuery, call: CredentialCall): Promise<boolean> =>
   await isAgentCredentialLive(tx, call.credential, call.now);

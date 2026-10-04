@@ -52,27 +52,78 @@
 // the whole database, so another business's manager is refused before
 // anything is read, and learns nothing. A passed drill is that operator's own
 // attestation: the store takes a pass only through the store login the
-// installation appointed as them (deploy/staging/backup-store.sql).
+// installation appointed as them (deploy/staging/backup-store.sql). An export
+// and a drill from the store ask the gate again before each step with the
+// store, and once more after each part's read, so an operator whose sign-in
+// ended or whose `operations:manage` was revoked part way reads no further and
+// keeps nothing.
 //
 // It prints one JSON line, passed or failed, and exits 0 or 1. A failed line
 // names the stage and nothing else: Docker's, pg_restore's and the server's
 // messages can carry record data, so they are never kept.
 
 import { readFileSync, realpathSync } from 'node:fs';
-import { drillAsOperator as actAsOperator, exportArchive, recordCarried } from './drill-acts.mjs';
+import { stagingReach } from './backup-store-reach.mjs';
+import {
+  drillAsOperator as actAsOperator,
+  exportArchive as exportAct,
+  recordCarried,
+} from './drill-acts.mjs';
 import { restoreDrill } from './drill-restore.mjs';
 import { requireOperatingOperator } from './operator.ts';
 
 export { RECEIPT_FIELDS, recordDrill } from './drill-receipt.mjs';
-export { exportArchive, fetchLatest, recordCarried } from './drill-acts.mjs';
+export { fetchLatest, recordCarried } from './drill-acts.mjs';
 export { docker } from './drill-docker.mjs';
 export { restoreDrill } from './drill-restore.mjs';
 
 /**
  * The drill as the operator the gate admitted runs it (drill-acts.mjs): the
- * drill, then its receipt; this drill unless a test passes its own.
+ * drill, then its receipt; this drill unless a test passes its own. Its every
+ * read of and write to the store asks the gate again first.
  */
-export const drillAsOperator = (options) => actAsOperator({ drill: restoreDrill, ...options });
+export const drillAsOperator = ({ reach = stagingReach, ...options }) =>
+  actAsOperator({ drill: restoreDrill, ...options, reach: askingAgain(reach, options.gate) });
+
+/**
+ * `reach` asking the gate again (operator.ts, `stillOperator`) before each
+ * call. The fetch reads each part in a call of its own, begun only once the
+ * one before it has ended (drill-acts.mjs, `fetchLatest`), so a part is read
+ * from the store only after the gate admits it again, with nothing admitted
+ * earlier still queued: an operator whose sign-in ended or whose
+ * `operations:manage` was revoked part way reads no further part, and the
+ * fetch removes what it wrote. A part's read asks once more as the store's
+ * route takes its script, so a sign-in ended or a grant revoked once the read
+ * was called sends the store nothing; the operator's grant is held from the
+ * call until that ask or the part's first line, so a revocation waits for the
+ * ask and never for the read. The gate is asked again after the part has
+ * arrived, so an ending during the read refuses that part too, and nothing
+ * read is kept or reported. Every gate operator.ts admits carries both.
+ */
+function askingAgain(reach, gate) {
+  return async (url, script, onLine) => {
+    await gate.stillOperator?.();
+    if (onLine === undefined) return await reach(url, script, onLine);
+    const hold = gate.holdingGrant ?? ((during) => during(() => {}));
+    const answer = await hold(async (release) => {
+      async function* asked() {
+        await gate.stillOperator?.();
+        release();
+        yield* typeof script === 'string' ? [script] : script;
+      }
+      return await reach(url, asked(), (line) => {
+        release();
+        return onLine(line);
+      });
+    });
+    await gate.stillOperator?.();
+    return answer;
+  };
+}
+
+/** `--export` (drill-acts.mjs), its every read of the store asking the gate again. */
+export const exportArchive = ({ reach = stagingReach, ...options }) =>
+  exportAct({ ...options, reach: askingAgain(reach, options.gate) });
 
 const USAGE =
   'usage: restore-drill.mjs --drill [--archive <file>] | --export <file> | --record <receipt file> --archive <file>';

@@ -24,7 +24,12 @@
     "tests/operations/s0-5-lock-order.test.ts",
     "tests/operations/s0-5-readiness.test.ts",
     "tests/operations/s0-5-share-grant.test.ts",
-    "tests/operations/s0-5-step-up-sweep.test.ts"
+    "tests/operations/s0-5-step-up-sweep.test.ts",
+    "tests/operations/scan-login-token-and-shared-login.proof.test.ts"
   ],
-  "conformance": []
+  "conformance": [
+    "tests/operations/find-copies-values-only.proof.test.ts",
+    "tests/operations/scan-login-cleanup-mapping-race.test.ts",
+    "tests/operations/scan-login-cleanup-subject-race.proof.test.ts"
+  ]
 }

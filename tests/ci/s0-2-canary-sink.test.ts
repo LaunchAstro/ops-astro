@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PREFIX } from '../../packages/core-wire/src/index.ts';
 import { bearer, READ_PATH, served } from './s0-2-canary.fixture.ts';
 import { times } from './s0-2-plain.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const CANARY_SECRET = 'canary-S02CANARY-4e8a1c-alert-secret';
 
@@ -24,7 +25,7 @@ function canaryCases5() {
   it('an identifier-shaped planted error name never reaches the API log', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
-      (...parts: unknown[]) => void logged.push(parts.join(' ')),
+      (...parts: unknown[]) => void logged.push(consoleLine(...parts)),
     );
     const planted = new Error('a fault');
     planted.name = 'CanarySecretLettersOnly';
@@ -50,7 +51,7 @@ function canaryCases6() {
   it('a fault carrying a planted secret and record content reaches the sink without either', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
-      (...parts: unknown[]) => void logged.push(parts.join(' ')),
+      (...parts: unknown[]) => void logged.push(consoleLine(...parts)),
     );
     const { app, events, alerts } = served(() =>
       Promise.reject(new Error(`${CANARY_SECRET} ${RECORD_CONTENT}`)),

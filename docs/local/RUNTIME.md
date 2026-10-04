@@ -740,9 +740,10 @@ claim (`record_unique_values_claim_idx`), a deadlock victim (`40P01`) and
 it is retried once, like a lost unique race, and a second one faults
 (`tests/commands/unstorable-values-direct-callers.test.ts` holds the retry). The
 identity case is the one an agent reaches. A same-operationId retry in flight
-behind its original loses `operations_identity_key` to the original's commit, and its whole
-transaction rolls back. The second attempt reads the committed register row and
-replays it (DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
+behind its original waits at the envelope's door (`enter`, #932), then reads
+the committed register row and replays it; `operations_identity_key` is the
+backstop, and its loser's whole transaction rolls back and the retry replays
+(DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
 
 **A trash can deadlock, and the retry answers from the winner's commit.**
 `trashSubtree` (`tasks/trash.ts`) locks the rows it walks in id order, but that
@@ -994,7 +995,8 @@ provider's proof released or its own answer settled ignores a later answer or
 release, and gives nothing back again (`broker-settle.ts`). A hold moves a call
 only out of `reserved` or `dispatched`; an answer that comes after the sweep
 held it still settles or releases it, since the answer is what happened, and
-gives nothing back. A call released
+gives back what its hold counted, as an open call's answer does
+(`tests/broker/unknown-call-settled-lower-gives-back.test.ts`). A call released
 unsent (a start refused, a sweep) gives nothing back
 (`tests/broker/spend-closes-once.test.ts`).
 The sweep, a cancel, a lost
@@ -1458,7 +1460,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:821-832`). With neither setting present, the
+  rewrites it (`local-seed.mjs:855-866`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
