@@ -369,7 +369,9 @@ async function replay(
   // The original result, returned exactly. A caller cannot tell a replay from
   // the first call, which is the point; the chain can, which is also the point.
   const stored = seen.result as unknown as CommandResult;
-  // A stored refusal carries nothing protected. A stored success is released
+  // A stored refusal carries nothing protected (`Refused.kept`: a refusal
+  // naming what only the caller's rights then could see is kept without it,
+  // so its replay names less than the first answer). A stored success is released
   // only to the rights held now: a revocation bites on the next call, and a
   // replay is a call.
   const released = isCommandRefusal(stored) ? undefined : await release(stored);
@@ -464,7 +466,8 @@ async function attempt(
       // storing the untranslated one would hand a second caller an audit-only
       // code the first caller never saw — the one mechanism the visibility
       // column exists for, defeated on the replay path. A review found this.
-      await register(tx, session, request, digest, asCallerVisible(outcome.refusal), null);
+      const kept = outcome.kept ?? outcome.refusal;
+      await register(tx, session, request, digest, asCallerVisible(kept), null);
       const { refusal, attempted } = outcome;
       return await settle(tx, session, request, digest, refusal, 'registered', attempted);
     }
@@ -599,14 +602,17 @@ export async function settle(
   refusal: CommandRefusal,
   standing: IdentityStanding = 'register',
   attempted?: Readonly<Record<string, unknown>>,
+  kept?: CommandRefusal,
 ): Promise<CommandRefusal> {
   // A name can echo a key the caller sent, and `registerAttempt` stores it in
   // the form `storable` gives. The caller is answered with that form, so a
-  // replay's bytes are the first answer's.
+  // replay's bytes are the first answer's, unless the register keeps a form
+  // that names less (`Refused.kept`).
   const visible = storable(asCallerVisible(refusal));
   const identified = standing !== 'none' && hasIdentity(request) ? request : undefined;
   if (standing === 'register' && identified !== undefined) {
-    await register(tx, caller, identified, digest, visible, null);
+    const stored = kept === undefined ? visible : storable(asCallerVisible(kept));
+    await register(tx, caller, identified, digest, stored, null);
   }
   await writeRefusedAuditEvent(tx, {
     actorId: caller.actorId,

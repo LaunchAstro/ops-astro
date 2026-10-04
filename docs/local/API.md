@@ -701,7 +701,9 @@ hold. The author is the acting actor and the posting time is the server's;
 neither is a payload field. `mentions` lists person ids. Each person
 mentioned is raised an inbox item in the same transaction (INB-1). If one of
 them cannot read the task, or is an outside party named in an `internal`
-comment, the whole comment is refused before it saves.
+comment, the whole comment is refused before it saves. The register keeps
+that refusal naming each person by the identifier as sent, so a replay names
+nobody the author may no longer see.
 
 `preset.plan` is declared `kind: 'read'` because it writes nothing, even on
 success. It is the one read that does not take the `read` action, which is why
