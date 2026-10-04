@@ -20,7 +20,9 @@
     "tests/identity/ending-claim-and-shared-recheck-proof.test.ts",
     "tests/identity/ending-waits-for-login-lock.test.ts",
     "tests/identity/mapping-takes-subject-lock-key.test.ts",
-    "tests/identity/mapping-waits-while-ending-bans-subject-proof.test.ts"
+    "tests/identity/mapping-waits-while-ending-bans-subject-proof.test.ts",
+    "tests/identity/ending-spares-live-agent-login-elsewhere-proof.test.ts",
+    "tests/identity/login-subject-fixed-during-ban-proof.test.ts"
   ],
   "conformance": [
     "tests/identity/agent-deactivation.test.ts",

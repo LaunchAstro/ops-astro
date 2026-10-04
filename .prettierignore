@@ -119,3 +119,6 @@ tests/review/ending-claim-per-row-proof.test.ts
 tests/identity/ending-claim-and-shared-recheck-proof.test.ts
 tests/authority/endings-backlog-counts-claimed-proof.test.ts
 tests/authority/endings-once-exit-and-settings-proof.test.ts
+# Sol's D3-FIX2 proofs, byte-for-byte apart from their titles, as above.
+tests/identity/ending-spares-live-agent-login-elsewhere-proof.test.ts
+tests/identity/login-subject-fixed-during-ban-proof.test.ts
