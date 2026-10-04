@@ -781,6 +781,9 @@ its one-task delegation never does: `DELEGATION_OUT_OF_PURPOSE`, nothing written
 person and per business on calls a minute, calls at once and records handed out
 a minute (`apps/api/auth/agent-quota.ts`), answered `AGENT_QUOTA_EXCEEDED` 429.
 A call counts once, retried or not, and a call outside the reach counts too.
+Its records count when its answer is decided, inside its transaction: an
+answer that would pass a records limit is refused and rolls back, so calls
+let in together cannot hand out more between them than the limit.
 The quota is held in each API process, so it multiplies across instances.
 
 ## Settings ▸ Access (C32)

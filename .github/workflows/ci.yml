@@ -198,8 +198,8 @@ jobs:
         run: pnpm exec playwright install --with-deps --only-shell chromium
       # CI-SPEED, light pull requests: CHECK_SCOPE names this check, and
       # scripts/check.mjs asks scripts/ci-scope.ts. On a pull request it runs
-      # the light set: every step but the build, with the tests the change
-      # reaches in place of the full test run; the full run and the build run in the
+      # the light set: every step, the build before the tests, with the tests
+      # the change reaches in place of the full test run; the full run is in the
       # merge queue, the only way into main. On a merge group or a push it
       # runs every step, as before. No step here carries a condition.
       - run: pnpm check
@@ -231,8 +231,10 @@ jobs:
       # re-plan), stored the way staging keeps it, under the name the staging
       # definition gives it; the promotion step must select it by the stamp
       # it carries, check its bytes against the digest it records, and record
-      # it. It touches no service and no database. A pull request makes no
-      # build, so this runs in the merge queue.
+      # it. It touches no service and no database. A pull request's light set
+      # builds too, but this dry run is queue-only: on a pull request
+      # `scripts/ci-scope.ts --decide` says skip and it passes, so it runs in
+      # the merge queue.
       - name: S0-1 promotion same artefact, a dry run over the build output just made
         run: |
           set -euo pipefail

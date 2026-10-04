@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* oxlint-disable max-lines-per-function, unicorn/consistent-function-scoping, unicorn/prefer-string-replace-all
-   -- the proof's body is kept as reviewed, byte for byte. */
+   -- the proof's body is kept as reviewed, byte for byte, but for where it builds. */
+//
+// It builds into a directory of its own, never apps/web/dist: under `pnpm
+// check` other tests copy that bundle in workers beside this one, and a
+// rebuild there empties it under them.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChromium } from '../support/chromium.ts';
 import { build, preview } from 'vite';
-import { expect, it } from 'vitest';
+import { afterAll, expect, it } from 'vitest';
 
 const git = (...args: string[]): string => execFileSync('git', args, { encoding: 'utf8' }).trim();
 const anchor = '7bda387397357209f686709c7a94b297c10fcd9b';
@@ -16,6 +22,10 @@ const cssPath = 'packages/ui/src/styles/0-fonts.css';
 const fontFile = 'funnel-sans-latin-wght-normal.woff2';
 const bundledFont = /\/funnel-sans-latin-wght-normal-[^/]+\.woff2(?:\?|$)/u;
 const variableFace = /@font-face\s*\{\s*font-family:\s*'Funnel Sans';[\s\S]*?\n\}/u;
+const outDir = mkdtempSync(join(tmpdir(), 'fonts-forward-pair-'));
+afterAll(() => {
+  rmSync(outDir, { recursive: true, force: true });
+});
 
 it('MP-1-2 a forward red then green pair and a production woff2 request', async () => {
   const head = process.env['SOL_REVIEW_HEAD'] ?? 'HEAD';
@@ -60,10 +70,11 @@ it('MP-1-2 a forward red then green pair and a production woff2 request', async 
   );
 
   const configFile = fileURLToPath(new URL('../../apps/web/vite.config.ts', import.meta.url));
-  await build({ configFile, logLevel: 'silent' });
+  await build({ configFile, logLevel: 'silent', build: { outDir, emptyOutDir: true } });
   const server = await preview({
     configFile,
     logLevel: 'silent',
+    build: { outDir },
     preview: { host: '127.0.0.1', port: 0, strictPort: false },
   });
   try {
