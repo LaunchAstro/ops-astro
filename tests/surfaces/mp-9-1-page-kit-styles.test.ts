@@ -93,8 +93,23 @@ function selectorsOf(css: string): readonly Ruled[] {
   return found;
 }
 
+// The CSS tokens a selector is read by: an escape (up to six hex digits and
+// one optional space, or any one character), a name, and a quoted string.
+const ESCAPE = /^\\(?:[\da-f]{1,6}\s?|[\s\S])/iu;
+const NAME = /^(?:[\w\u0080-\uFFFF-]|\\(?:[\da-f]{1,6}\s?|[\s\S]))*/iu;
+const STRING = /^"(?:[^"\\]|\\[\s\S])*"?|^'(?:[^'\\]|\\[\s\S])*'?/u;
+function decoded(text: string): string {
+  return text.replaceAll(/\\(?:([\da-f]{1,6})\s?|([\s\S]))/giu, (_, hex?: string, one?: string) => {
+    const code = Number.parseInt(hex ?? '', 16);
+    if (Number.isNaN(code)) return one ?? '';
+    const valid = code > 0 && code <= 0x10_ffff && (code < 0xd8_00 || code > 0xdf_ff);
+    return valid ? String.fromCodePoint(code) : '\uFFFD';
+  });
+}
+
 // A selector text cut at each top-level `,` (a group's selectors) or at each
-// combinator (a selector's compounds); brackets, parentheses and strings stay whole.
+// combinator (a selector's compounds); brackets, parentheses, strings and
+// escapes (`.a\ .b` is one compound) stay whole.
 function split(text: string, at: ',' | 'combinator'): string[] {
   const parts: string[] = [];
   let depth = 0;
@@ -104,8 +119,12 @@ function split(text: string, at: ',' | 'combinator'): string[] {
     if (current.trim() !== '') parts.push(current.trim());
     current = '';
   };
-  for (const character of text) {
-    if (quote !== '') {
+  for (let index = 0; index < text.length; index += 1) {
+    let character = text[index] ?? '';
+    if (character === '\\') {
+      character = ESCAPE.exec(text.slice(index))?.[0] ?? character;
+      index += character.length - 1;
+    } else if (quote !== '') {
       if (character === quote) quote = '';
     } else if (character === '"' || character === "'") quote = character;
     else if (character === '(' || character === '[') depth += 1;
@@ -121,6 +140,59 @@ function split(text: string, at: ',' | 'combinator'): string[] {
   }
   cut();
   return parts;
+}
+
+// A compound read token by token: `take` consumes the token at the cursor.
+interface Cursor {
+  readonly text: string;
+  at: number;
+}
+function take(cursor: Cursor, token: RegExp): string {
+  const found = token.exec(cursor.text.slice(cursor.at))?.[0] ?? '';
+  cursor.at += found.length;
+  return found;
+}
+
+// The classes an attribute selector, read from just past its `[`, names. Only
+// `class` counts, in any case or namespace. `~=` and `=` name their value's
+// classes (any of the kit's under the `i` flag). A bare `[class]`, `^=`, `$=`,
+// `*=` or `|=` can match a class list carrying any kit class beside the
+// pattern, as can a selector this reader cannot close, so it names them all.
+function attributeNames(cursor: Cursor, kit: ReadonlySet<string>): string[] {
+  take(cursor, /^\s*/u);
+  let name = take(cursor, /^\*/u) || take(cursor, NAME);
+  if (take(cursor, /^\|(?!=)/u) !== '') name = take(cursor, NAME);
+  const operator = take(cursor, /^\s*[~|^$*]?=\s*/u).trim();
+  const value = decoded(take(cursor, STRING).slice(1, -1) || take(cursor, NAME));
+  const loose =
+    take(cursor, /^\s*[\w-]*\s*/u)
+      .trim()
+      .toLowerCase() === 'i';
+  const closed = take(cursor, /^\]/u) !== '';
+  if (!closed) take(cursor, /^[^\]]*\]?/u);
+  if (decoded(name).toLowerCase() !== 'class') return [];
+  if (!closed || (operator !== '=' && operator !== '~=')) return [...kit];
+  const tokens = value.split(/\s+/u).filter((token) => token !== '');
+  return tokens.flatMap((token) => {
+    const same = [...kit].filter((kitClass) => kitClass.toLowerCase() === token.toLowerCase());
+    return loose && same.length > 0 ? same : [token];
+  });
+}
+
+// The classes one compound names: each `.class`, inside `:is()`, `:where()`,
+// `:not()`, `:has()` and every other functional pseudo-class too, and each
+// attribute selector on `class`. A string elsewhere names nothing.
+function named(compound: string, kit: ReadonlySet<string>): string[] {
+  const cursor: Cursor = { text: compound, at: 0 };
+  const names: string[] = [];
+  while (cursor.at < compound.length) {
+    if (take(cursor, ESCAPE) !== '' || take(cursor, STRING) !== '') continue;
+    const next = compound[cursor.at];
+    cursor.at += 1;
+    if (next === '.') names.push(decoded(take(cursor, NAME)));
+    if (next === '[') names.push(...attributeNames(cursor, kit));
+  }
+  return names.filter((name) => name !== '');
 }
 
 // Every selector that styles a kit primitive rather than places it. A page
@@ -140,7 +212,7 @@ function restyled(css: string, kit: ReadonlySet<string>): readonly string[] {
       const placed = compounds.length > 1 && properties.every((name) => PLACEMENT.test(name));
       const reached = placed ? compounds.slice(0, -1) : compounds;
       return reached.some((compound) => {
-        const classes = [...compound.matchAll(/\.(-?[_a-zA-Z][\w-]*)/gu)].map((m) => m[1] ?? '');
+        const classes = named(compound, kit);
         // A kit state (`is-on`) beside a page part's own class is the part's state,
         // not a restyle; a compound of kit states alone restyles every primitive.
         const primitive = classes.some((name) => kit.has(name) && !name.startsWith('is-'));
@@ -185,6 +257,15 @@ describe('MP-9-1 primitives placed not restyled', () => {
       'aside.banner--hint > .y { x: 1 }',
       '.host .term:focus-visible .term__tip { display: none; }',
       '.host { & .term:hover .term__tip { display: none; } }',
+      '.host [class~="term__tip"] { visibility: hidden; }',
+      ".host [ CLASS ~= 'TERM__TIP' i ] { color: red; }",
+      '.host [*|class="x term__tip"] { color: red; }',
+      '.host [cl\\61ss=term\\_\\_tip] { color: red; }',
+      '.host [class*="term"] { color: red; }',
+      '.host :where([class|="x"]) .y { x: 1 }',
+      '.host:has(> .term__tip) .y { x: 1 }',
+      '.host :not(.term) .y { x: 1 }',
+      '.x\\ .term__tip { margin: 0 }',
     ];
     for (const css of planted) expect(restyled(css, kit), css).not.toEqual([]);
     expect(restyled('.statrow > .stat { x: 1 } .statrow .stat__num { x: 1 }', kit)).toEqual([]);
