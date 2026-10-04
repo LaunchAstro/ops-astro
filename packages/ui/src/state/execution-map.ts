@@ -12,7 +12,8 @@
 // **One rule for a line** (TG-06, D-38): a line is satisfied once its source
 // step is, and a step is satisfied when its newest run settled completed or
 // that run's gate was approved. An approved gate satisfies the lines after
-// it, so they draw solid and read "After", never "Waiting on".
+// it, so they draw solid and read "After", never "Waiting on". A superseded
+// run satisfies nothing, whatever gate it kept.
 //
 // This package imports no `core-*` package, so the shapes it reads are its
 // own: the fields of `task.execution`'s graph and of `task.read`'s gates the
@@ -120,6 +121,9 @@ function satisfiedBy(run: MapNode | undefined, gate: MapGate | null): boolean {
   if (run === undefined) return false;
   const { condition, outcome } = run.observed;
   if (condition === 'settled') return outcome === 'completed';
+  // A superseded version's approval authorises nothing (pickup's
+  // approvalCurrent): the gate it kept is history, not a way through.
+  if (condition === 'superseded') return false;
   return gate?.state === 'approved';
 }
 
