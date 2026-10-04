@@ -6,11 +6,13 @@
 // the shipped band. The settings install lock closes it: the reader holds it
 // shared and the install waits for the reader's transaction to end.
 
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { fourEyesBandMinor } from '../../packages/core-runtime/src/four-eyes.ts';
-import { useAw06World, w } from './aw-06-world.ts';
+import { noDatabase, useAw06World, w } from './aw-06-world.ts';
 import { awaitParked, barrier, racer, rows } from './schedules-harness.ts';
+
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useAw06World('four_eyes_first_install');
 

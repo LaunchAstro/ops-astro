@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { dispatch } from '../../packages/core-runtime/src/dispatch.ts';
-import { useAw06World, w } from './aw-06-world.ts';
+import { noDatabase, useAw06World, w } from './aw-06-world.ts';
 import { leased, marked, type Leased } from './aw-08-gate-world.ts';
 import { awaitParked, barrier, racer, rows, type Schedules } from './schedules-harness.ts';
+
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useAw06World('sol_ow050_signoff');
 

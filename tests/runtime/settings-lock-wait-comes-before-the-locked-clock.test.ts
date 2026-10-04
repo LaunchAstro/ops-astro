@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { randomUUID } from 'node:crypto';
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
-import { useAw06World, w } from './aw-06-world.ts';
+import { noDatabase, useAw06World, w } from './aw-06-world.ts';
 import { leased, marked } from './aw-08-gate-world.ts';
 import {
   asAgent,
@@ -14,6 +14,8 @@ import {
   rows,
   waitPast,
 } from './schedules-harness.ts';
+
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useAw06World('settings_clock');
 

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import { grantTo } from '../commands/fixture.ts';
-import { s, useBrokerWorld } from '../broker/broker-world.ts';
+import { noDatabase, s, useBrokerWorld } from '../broker/broker-world.ts';
 import { moneyOf, people, stopped, usePeople } from '../broker/budget-answers-world.ts';
 import { asPerson, topUpBody, useAnswerRoutes } from '../broker/budget-answer-routes-world.ts';
+
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('solow049band');
 usePeople();
