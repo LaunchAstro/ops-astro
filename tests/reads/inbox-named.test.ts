@@ -37,7 +37,7 @@ describe.skipIf(serverUrl === undefined)('INB-1g the inbox names what it points 
   let brunoToken = '';
 
   const inboxAnswer = async (token: string, key = BUSINESS_KEY): Promise<Answer> =>
-    await post(w.api, `/api/b/${key}${pathOf('inbox.read')}`, {}, authorised(token));
+    await w.send('inbox.read', token, {}, key);
   const inbox = async (token: string, key = BUSINESS_KEY): Promise<readonly Entry[]> =>
     ok(await inboxAnswer(token, key)).body['inbox'] as Entry[];
   const { task } = w;

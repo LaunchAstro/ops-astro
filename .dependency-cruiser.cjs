@@ -91,13 +91,14 @@ module.exports = {
       to: { path: '^packages/', pathNot: '^packages/core-custody/' },
     },
     {
-      name: 'connectors-are-a-leaf',
+      name: 'connectors-take-the-digest-only',
       severity: 'error',
       comment:
         'Provider operations say what a call is, what it may carry and to where. They hold ' +
-        'no credential and open no connection, so they import no other package.',
+        'no credential and take the payload digest and nothing else of the product, so no ' +
+        'path from them reaches a record, a grant or a command.',
       from: { path: '^packages/core-connectors/' },
-      to: { path: '^packages/', pathNot: '^packages/core-connectors/' },
+      to: { path: '^packages/', pathNot: '^packages/core-(connectors|digest)/' },
     },
     {
       name: 'index-only',

@@ -1,0 +1,7 @@
+{
+  "rules": {
+    "eslint(max-lines-per-function)": 4,
+    "eslint(max-lines)": 3,
+    "unicorn(prefer-import-meta-properties)": 1
+  }
+}
