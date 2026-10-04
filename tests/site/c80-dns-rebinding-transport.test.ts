@@ -40,7 +40,12 @@ function makeCertificate(into: string): void {
 function answer(incoming: IncomingMessage, response: ServerResponse): void {
   hosts.push(incoming.headers.host ?? '');
   if (incoming.url === '/slow') return;
-  response.writeHead(200, { 'content-type': 'text/html' });
+  // At /two, two Content-Type lines: the platform's headers keep the first, a browser reads both.
+  response.setHeader(
+    'content-type',
+    incoming.url === '/two' ? ['text/html', 'text/css'] : 'text/html',
+  );
+  response.writeHead(200);
   response.end(incoming.url === '/big' ? 'x'.repeat(4096) : '<p>pinned</p>');
 }
 
@@ -89,6 +94,12 @@ describe('C80 dns rebinding: the production transport', () => {
     if (got.kind !== 'answer') return;
     expect(new TextDecoder().decode(got.body)).toBe('<p>pinned</p>');
     expect(hosts.at(-1)).toBe(`${NAME}:${port}`);
+  });
+
+  it('counts every Content-Type line it was answered with', async () => {
+    const counted = (path: string) => pinnedTransport({ ca })(request(path));
+    expect(await counted('/two')).toMatchObject({ kind: 'answer', contentTypeLines: 2 });
+    expect(await counted('/')).toMatchObject({ kind: 'answer', contentTypeLines: 1 });
   });
 
   it('stops at the byte cap and at the timeout', async () => {

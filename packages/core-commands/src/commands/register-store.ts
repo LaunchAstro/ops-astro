@@ -130,7 +130,8 @@ export async function registerAttempt(
  *
  * Two unique claims, and one rollback. `record_unique_values_claim_idx` is a
  * counted `key` two creates picked at once. `operations_identity_key` is two
- * callers presenting one identity at once. A deadlock victim (40P01) was
+ * callers presenting one identity at once, the backstop behind `enter`'s
+ * door. A deadlock victim (40P01) was
  * rolled back whole by the server, so it has written nothing and the retry
  * asks again from the start, as the contract's roll-back-and-rediscover rule
  * asks (TRANSACTION-CONTRACT.md, lock order). `AffectedSetChanged` is a

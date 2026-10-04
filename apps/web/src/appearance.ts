@@ -9,6 +9,7 @@
 // another device, the read below applies the stored value.
 
 import { useEffect } from 'react';
+import { savedSince, savesSoFar } from './data/preference-saves.ts';
 import type { OperationsClient } from './operations/client.ts';
 import type { StorageLike } from './session/token.ts';
 
@@ -56,7 +57,8 @@ export function applyAppearance(
 
 /**
  * Once per signed-in session: read the person's own preferences and apply the
- * stored appearance. A refused or absent read changes nothing, and never throws.
+ * stored appearance. A refused or absent read changes nothing, and never throws;
+ * nor does an answer older than an appearance saved since it was asked.
  * Signed out, the tab's copy is dropped and the page follows the system again,
  * so one person's appearance never opens the next person's session.
  */
@@ -76,9 +78,12 @@ export function useStoredAppearance(
       return;
     }
     let current = true;
+    const mark = savesSoFar(client);
     void client.read<unknown>('preference.read', {}).then((answer) => {
       const value = 'value' in answer ? appearanceIn(answer.value) : null;
-      if (current && value !== null) applyAppearance(value, storage);
+      // A choice saved since the read left is newer than its answer.
+      const stale = savedSince(client, 'appearance', mark);
+      if (current && value !== null && !stale) applyAppearance(value, storage);
       return answer;
     });
     return () => {

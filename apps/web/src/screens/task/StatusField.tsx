@@ -48,6 +48,7 @@ async function sendState(
   client: OperationsClient,
   task: Task,
   target: TaskStateView,
+  onReopened: () => void,
 ): Promise<CallResult<CommandOutcome>> {
   const recordId = task.id;
   if (target.machineCategory === 'completed') {
@@ -61,6 +62,7 @@ async function sendState(
       { expectedRevision: revision },
     );
     if (isRefusal(reopened) || isUnavailable(reopened)) return reopened;
+    onReopened();
     if (target.machineCategory === 'unstarted') return reopened;
     revision = reopened.value.revision;
   }
@@ -80,10 +82,15 @@ export function StatusField(props: StatusFieldProps): ReactElement {
   const choose = (stateId: string): void => {
     const target = states.find((each) => each.id === stateId);
     if (target === undefined || stateId === current?.id) return;
+    // A reopen that landed is a change even when the state write after it is refused.
+    let reopened = false;
     run(
-      () => sendState(client, task, target),
+      () =>
+        sendState(client, task, target, () => {
+          reopened = true;
+        }),
       (settlement) => {
-        if (settlement.kind === 'ok') props.onChanged();
+        if (settlement.kind === 'ok' || reopened) props.onChanged();
       },
     );
   };

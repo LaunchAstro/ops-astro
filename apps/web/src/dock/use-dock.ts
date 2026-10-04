@@ -61,6 +61,14 @@ export interface DockModel {
   };
 }
 
+/**
+ * The panels a door or a walk may open: each with a registration, and the
+ * Agent drawer, which has none because the dock draws it itself wherever it
+ * draws the dock (`agent-dock.ts`). Storage restores only the registered.
+ */
+const reachable = (registry: PanelRegistry): ReadonlySet<PanelId> =>
+  new Set([...dockTabs({}, registry).map((tab) => tab.id), 'ai']);
+
 export function useDock(
   session: Session | null,
   storage: StorageLike | null,
@@ -126,7 +134,7 @@ export function useDock(
       const entry = moved.entries[moved.at];
       if (moved === trail.history || entry === undefined) return;
       trail.history = moved;
-      const tabs = new Set(dockTabs({}, registry).map((tab) => tab.id));
+      const tabs = reachable(registry);
       apply(
         only(
           entry,
@@ -163,7 +171,7 @@ export function useDock(
   // Heard on the application's own root, so a door answers to its own dock.
   const open = useCallback(
     (id: string, beside: boolean, place?: string): boolean => {
-      if (!isPanelId(id) || !dockTabs({}, registry).some((tab) => tab.id === id)) return false;
+      if (!isPanelId(id) || !reachable(registry).has(id)) return false;
       change((state) => openByGesture(state, id, beside, isOwnAddress(place) ? place : undefined));
       return true;
     },

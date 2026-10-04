@@ -134,7 +134,10 @@ it('a shard argument that is not i of n is refused', () => {
 it('the aggregate keeps the name and fails unless every shard succeeded', () => {
   const aggregate = job('database');
   expect(aggregate).toContain('    name: database conformance\n');
-  expect(aggregate).toContain('    needs: [database-shard]\n');
+  // It needs the gate too, and reads its result: a pull request whose gate failed skips the
+  // shards, and that skip must not pass (tests/ci/light-pull-requests-workflow.test.ts).
+  expect(aggregate).toContain('    needs: [gate, database-shard]\n');
+  expect(aggregate).toContain('GATE: ${{ needs.gate.result }}');
   // Without always() a failed or skipped shard would skip this job, and a
   // skipped required check reads as passed.
   expect(aggregate).toContain('    if: always()\n');

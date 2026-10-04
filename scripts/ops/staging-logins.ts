@@ -110,8 +110,10 @@ export function loginsRefusal(
     if (!POOLER.test(new URL(adminUrl).hostname.toLowerCase()))
       throw new Refusal("DATABASE_ADMIN_URL is not Supabase's pooler in Sydney");
     // The verifiers cross this connection: TLS, asked for in the address, is required.
+    // Named once: postgres.js takes the last of a repeated parameter, this the first.
     const query = new URL(adminUrl).searchParams;
-    if (!TLS_MODES.has(query.get('sslmode') ?? '') || query.has('ssl'))
+    const modes = query.getAll('sslmode');
+    if (modes.length !== 1 || !TLS_MODES.has(modes[0] ?? '') || query.has('ssl'))
       throw new Refusal(
         'DATABASE_ADMIN_URL does not require TLS (add ?sslmode=require or stricter)',
       );
@@ -205,9 +207,15 @@ export interface ExistingLogin {
   readonly powers: boolean;
   readonly admin: boolean;
   readonly groups: readonly string[];
+  /** It owns, or is granted directly, something in this database or the cluster's. */
+  readonly direct?: boolean;
 }
 
-/** What the step's logins already hold, read before anything changes. */
+/**
+ * What the step's logins already hold. A direct grant or an owned object is
+ * read from pg_shdepend, which records each for this database (and for shared
+ * objects, database 0); its role memberships are the groups.
+ */
 export const EXISTING_LOGINS = `
   select r.rolname,
          (r.rolsuper or r.rolcreaterole or r.rolcreatedb or r.rolbypassrls or r.rolreplication)
@@ -215,18 +223,24 @@ export const EXISTING_LOGINS = `
          coalesce((select bool_or(m.admin_option) from pg_auth_members m
                     where m.member = r.oid), false) as admin,
          coalesce((select array_agg(g.rolname order by g.rolname) from pg_auth_members m
-                    join pg_roles g on g.oid = m.roleid where m.member = r.oid), '{}') as groups
+                    join pg_roles g on g.oid = m.roleid where m.member = r.oid), '{}') as groups,
+         exists (select from pg_shdepend d
+                  where d.refclassid = 'pg_authid'::regclass and d.refobjid = r.oid
+                    and d.classid <> 'pg_auth_members'::regclass
+                    and d.dbid in (0, (select oid from pg_database
+                                        where datname = current_database()))) as direct
     from pg_roles r where r.rolname = any($1)`;
 
 /**
- * A login already there must hold exactly its one group, no admin option and
- * no power, or the run is refused before anything changes: the admin cannot
- * take a power away on hosted Supabase, so it never hands such a login on.
+ * A login already there must hold exactly its one group, no admin option, no
+ * power and nothing granted to it directly, or the run is refused before
+ * anything changes: the admin cannot take a power away on hosted Supabase, so
+ * it never hands such a login on.
  */
 export function loginsBeyondTheirGroup(existing: readonly ExistingLogin[]): string | undefined {
   for (const row of existing) {
     const own = LOGINS.find((login) => login.role === row.rolname)?.group;
-    if (row.powers || row.admin || row.groups.length !== 1 || row.groups[0] !== own) {
+    if (row.powers || row.admin || row.direct || row.groups.length !== 1 || row.groups[0] !== own) {
       return `${row.rolname} already holds more than its one group: drop it by hand, then run this again`;
     }
   }

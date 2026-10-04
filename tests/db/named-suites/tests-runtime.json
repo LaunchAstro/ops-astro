@@ -74,6 +74,7 @@
     "tests/runtime/person-work-http.test.ts",
     "tests/runtime/person-work-schedules.test.ts",
     "tests/runtime/plan-record-cannot-borrow-decision-time.test.ts",
+    "tests/runtime/receipt-link-column-refuses-credential-run.test.ts",
     "tests/runtime/recovery-entry.test.ts",
     "tests/runtime/resume-sizing-stop.test.ts",
     "tests/runtime/resume-sizing.test.ts",
