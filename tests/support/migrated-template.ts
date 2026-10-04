@@ -20,13 +20,18 @@
 // comment and takes no connections. Anything else under its name, a builder
 // that stopped half way, is dropped and built again. Builders take an
 // advisory lock, so two runs on one server build it once between them. An
-// advisory lock is held within one database, so every builder takes it in
-// `postgres`, whichever database it is configured for.
+// advisory lock is held within one database, so every builder reads whether
+// the template is finished, and takes the lock, in `postgres`, whichever
+// database it is configured for.
 //
-// It works through the database beside the configured one (`besideUrl`):
-// scripts/db-conformance.mjs reads the configured database's transaction
-// counter either side of each named suite, and the template is not the suite's
-// work. Only a build configured for `postgres` itself takes its lock there.
+// The build's own statements go through the database beside the configured
+// one (`besideUrl`): scripts/db-conformance.mjs reads the configured
+// database's transaction counter either side of each named suite, and the
+// template is not the suite's work. Only a run configured for `postgres`
+// itself reads and locks there. Beside `postgres` is template1, which a plain
+// `create database` copies and will not copy while anyone else is connected,
+// so the connection beside is opened only under the lock, for the short
+// statements before and after the migrations, and closed while they run.
 // `OPS_ASTRO_DB_TEMPLATE=off` turns it all off, and every fresh database
 // migrates from empty as before.
 
@@ -160,11 +165,12 @@ export function ensureMigratedTemplate(
 }
 
 async function build(serverUrl: string, name: string): Promise<MigratedTemplate> {
-  const server = connectAsAdmin(besideUrl(serverUrl), { source: 'harness' });
+  // pg_database is a shared catalogue, so the lock's connection reads it too.
+  const lock = connectAsAdmin(lockUrl(serverUrl), { source: 'harness' });
   const read = async () =>
     finished(
       (
-        await server.execute<{ connections: boolean; comment: string | null }>(
+        await lock.execute<{ connections: boolean; comment: string | null }>(
           `select datallowconn connections, shobj_description(oid, 'pg_database') comment
              from pg_database where datname = $1`,
           [name],
@@ -174,36 +180,42 @@ async function build(serverUrl: string, name: string): Promise<MigratedTemplate>
   try {
     const ready = await read();
     if (ready !== undefined) return { name, migration: ready };
-    const lock = connectAsAdmin(lockUrl(serverUrl), { source: 'harness' });
+    await lock.execute(LOCK);
     try {
-      await lock.execute(LOCK);
-      try {
-        // Another builder may have finished while this one waited.
-        const now = await read();
-        if (now !== undefined) return { name, migration: now };
-        return { name, migration: await buildFromEmpty(server, serverUrl, name) };
-      } finally {
-        await lock.execute(UNLOCK);
-      }
+      // Another builder may have finished while this one waited.
+      const now = await read();
+      if (now !== undefined) return { name, migration: now };
+      return { name, migration: await buildFromEmpty(serverUrl, name) };
     } finally {
-      await lock.close();
+      await lock.execute(UNLOCK);
     }
+  } finally {
+    await lock.close();
+  }
+}
+
+/** `run` on a connection beside the configured database, closed as soon as it is done. */
+async function beside<T>(
+  serverUrl: string,
+  run: (server: ReturnType<typeof connectAsAdmin>) => Promise<T>,
+): Promise<T> {
+  const server = connectAsAdmin(besideUrl(serverUrl), { source: 'harness' });
+  try {
+    return await run(server);
   } finally {
     await server.close();
   }
 }
 
-async function buildFromEmpty(
-  server: ReturnType<typeof connectAsAdmin>,
-  serverUrl: string,
-  name: string,
-): Promise<MigrationOutcome> {
-  // The migrations grant to the group role, which a new cluster has not got.
-  await server.execute(ENSURE_APPLICATION_ROLE);
-  await server.execute(`drop database if exists ${quoted(name)} with (force)`);
-  await server.execute(`create database ${quoted(name)}`);
-  // As fresh-database.ts does for every database it makes.
-  await server.execute(`revoke temporary on database ${quoted(name)} from public`);
+async function buildFromEmpty(serverUrl: string, name: string): Promise<MigrationOutcome> {
+  await beside(serverUrl, async (server) => {
+    // The migrations grant to the group role, which a new cluster has not got.
+    await server.execute(ENSURE_APPLICATION_ROLE);
+    await server.execute(`drop database if exists ${quoted(name)} with (force)`);
+    await server.execute(`create database ${quoted(name)}`);
+    // As fresh-database.ts does for every database it makes.
+    await server.execute(`revoke temporary on database ${quoted(name)} from public`);
+  });
   const url = new URL(serverUrl);
   url.pathname = `/${name}`;
   const admin = connectAsAdmin(url.toString(), { source: 'migration' });
@@ -213,21 +225,23 @@ async function buildFromEmpty(
   } finally {
     await admin.close();
   }
-  // A clone carries neither a database's settings nor its comment. None of the
-  // migrations sets one; if one ever does, say so rather than clone without it.
-  const [settings] = await server.execute<{ n: string }>(
-    `select count(*)::text n from pg_db_role_setting
-      where setdatabase = (select oid from pg_database where datname = $1)`,
-    [name],
-  );
-  if (settings?.n !== '0') {
-    throw new Error(
-      `migrated template: the migrations set ${String(settings?.n)} database setting(s), which a ` +
-        `clone does not carry; copy them in fresh-database.ts, or set ${TEMPLATE_SWITCH}=off`,
+  await beside(serverUrl, async (server) => {
+    // A clone carries neither a database's settings nor its comment. None of the
+    // migrations sets one; if one ever does, say so rather than clone without it.
+    const [settings] = await server.execute<{ n: string }>(
+      `select count(*)::text n from pg_db_role_setting
+        where setdatabase = (select oid from pg_database where datname = $1)`,
+      [name],
     );
-  }
-  const comment = JSON.stringify({ migration }).replaceAll("'", "''");
-  await server.execute(`comment on database ${quoted(name)} is '${comment}'`);
-  await server.execute(`alter database ${quoted(name)} allow_connections false`);
+    if (settings?.n !== '0') {
+      throw new Error(
+        `migrated template: the migrations set ${String(settings?.n)} database setting(s), which a ` +
+          `clone does not carry; copy them in fresh-database.ts, or set ${TEMPLATE_SWITCH}=off`,
+      );
+    }
+    const comment = JSON.stringify({ migration }).replaceAll("'", "''");
+    await server.execute(`comment on database ${quoted(name)} is '${comment}'`);
+    await server.execute(`alter database ${quoted(name)} allow_connections false`);
+  });
   return migration;
 }

@@ -94,8 +94,9 @@ Since CI-SPEED (the owner, 4 October 2026) there are 16 shards, and
 the 8-way and 16-way splits hold each item once and the same number of tests.
 Each shard also starts from one migrated template rather than migrating every
 database from empty: `tests/support/migrated-template.ts` migrates
-`migrated_<digest>` from empty once (the global setup builds it, through the
-database beside the configured one, so rule 7's counter is not moved), and
+`migrated_<digest>` from empty once (the global setup builds it, through
+`postgres` and the database beside the configured one, so rule 7's counter is
+not moved unless the configured database is `postgres` itself), and
 `createFreshDatabase` clones it.
 `tests/support/migrated-template.test.ts` proves a clone equals a database
 migrated from empty, catalogue and privileges alike. A suite that must migrate
