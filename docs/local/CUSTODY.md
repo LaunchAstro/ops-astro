@@ -20,11 +20,13 @@ The private half is the broker's (ADR 0028), which AW-01 builds. With no public
 key configured, `secret.set` refuses `DEPENDENCY_NOT_LANDED` and stores
 nothing.
 
-A consumer chat product's browser session (a Claude.ai or ChatGPT session
-token, bare, in a cookie pair or percent-encoded) is never stored:
-`secret.set` asks custody's own load check (`parseCredentials` in
-`packages/core-custody/src/credentials.ts`, AW-01 and C60) and refuses it
-`FIELD_VALUE_INVALID` on `value`, never echoing it (`C31 no session token`).
+`secret.set` stores only what custody's own load check would take
+(`parseCredentials` in `packages/core-custody/src/credentials.ts`, AW-01 and
+C60) and refuses anything else `FIELD_VALUE_INVALID` on `value`, never
+echoing it. A consumer chat product's browser session (a Claude.ai or ChatGPT
+session token, bare, in a cookie pair or percent-encoded) is never stored
+(`C31 no session token`), and neither is a value shorter than 8 characters or
+holding a space or line break, so a session wrapped in newlines is refused too.
 
 The application role is refused the three sealed columns by column grants, so
 a read that names them fails in the server, whatever the code asks.
@@ -40,10 +42,17 @@ a read that names them fails in the server, whatever the code asks.
 A client-scoped holder of `custody:manage` lists that client's rows only;
 setting and clearing need the key business-wide. A set for one client names
 a client of this business; another business's client or a made-up id is
-refused `NOT_FOUND` on `clientId`, and nothing is written. The body of a set reaches no
-log, error, audit payload or repeat-request row: the envelope stores its digest
-only. The tests are `tests/custody/c31-credentials.test.ts` and
-`tests/surfaces/c31-keys-panel.test.tsx`.
+refused `NOT_FOUND` on `clientId`, and nothing is written. A set may store a
+client's credential, so it is client data: on a real-data installation it waits
+on the first-client gate (`GATE_SHUT`) like any client write. The body of a set
+reaches no log, error, audit payload or repeat-request row: the envelope stores
+its digest only, and a refusal's attempted values are dropped for `secret.set`.
+
+A set's `expectedRevision` is compared in the upsert itself, against the row it
+would replace under that row's lock, so a setter that lost an insert race to a
+newer value is refused `VERSION_STALE` and changes nothing. The tests are
+`tests/custody/c31-credentials.test.ts`, `c31-secret-set-guards.test.ts`,
+`c31-two-setters-overlap.test.ts` and `tests/surfaces/c31-keys-panel.test.tsx`.
 
 `markSecretUsed` moves a row's last-used time. The broker calls it when it
 injects the secret into a dispatch; setting a value again leaves it alone.
