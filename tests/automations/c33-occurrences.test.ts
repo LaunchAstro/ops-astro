@@ -20,7 +20,6 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { createAutomationWorld, DIGEST, type AutomationWorld } from './world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-const ROUNDS = 25;
 
 /** A released version of a second definition of alpha's, not the world's own. */
 async function anotherDefinitionsVersion(w: AutomationWorld): Promise<{ readonly id: string }> {
@@ -172,25 +171,14 @@ describe.skipIf(serverUrl === undefined)('C33 occurrences', () => {
     expect(await w.occurrences(activation.id)).toBe(0);
   });
 
-  it('C33 concurrent claim: racing schedulers and racing deliveries commit one occurrence, held by the database', async () => {
+  // The race itself, claims overlapping on independent connections behind a
+  // barrier, is Sol's proof in sol-prv-oa-371-r1.test.ts; this case is the
+  // database's own refusal of a second row for one cause or one run.
+  it('C33 concurrent claim: one occurrence per cause or run is held by the database', async () => {
     const version = await w.release(['scheduled', 'event']);
     const scheduled = await w.activate(version, 'scheduled');
     const evented = await w.activate(version, 'event');
-    for (let round = 0; round < ROUNDS; round += 1) {
-      const dueAt = new Date(Date.UTC(2026, 10, 1, 0, round));
-      const eventId = `race-${round}-${randomUUID()}`;
-      // eslint-disable-next-line no-await-in-loop -- one round at a time; each round is its own race
-      const [a, b, c, d] = await Promise.all([
-        w.claim(scheduled.id, { dueAt }),
-        w.claim(scheduled.id, { dueAt }),
-        w.claim(evented.id, { eventId }),
-        w.claim(evented.id, { eventId }),
-      ]);
-      expect([a.kind, b.kind].toSorted()).toEqual(['claimed', 'replayed']);
-      expect([c.kind, d.kind].toSorted()).toEqual(['claimed', 'replayed']);
-    }
-    expect(await w.occurrences(scheduled.id)).toBe(ROUNDS);
-    expect(await w.occurrences(evented.id)).toBe(ROUNDS);
+    await w.claim(scheduled.id, { dueAt: new Date(Date.UTC(2026, 10, 1)) });
     // The uniqueness is the database's: a second row for one cause, or a
     // second occurrence naming one run, is refused whoever writes it.
     const taken = await w.db.admin.execute<{ readonly due_at: Date }>(

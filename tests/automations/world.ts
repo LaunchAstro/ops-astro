@@ -5,11 +5,13 @@
 // carries a canary. Occurrences are claimed by the scheduler and the event
 // intake under the worker lease (AW-01, not built), so the world claims
 // through the application role in the business's own transaction, as the
-// worker will.
+// worker will, each claim on its own connection so claims made at once
+// overlap (the app pool holds one).
 
 import { randomUUID } from 'node:crypto';
 import {
   claimOccurrence,
+  connect,
   insertActivation,
   insertDefinition,
   releaseVersion,
@@ -108,7 +110,12 @@ export async function createAutomationWorld(part: string): Promise<AutomationWor
       return row;
     },
     async claim(activationId, cause) {
-      return await inAlpha((tx) => claimOccurrence(tx, activationId, cause));
+      const own = connect(db.appUrl);
+      try {
+        return await own.withBusiness(alpha, (tx) => claimOccurrence(tx, activationId, cause));
+      } finally {
+        await own.close();
+      }
     },
     async occurrences(activationId) {
       return await count(
