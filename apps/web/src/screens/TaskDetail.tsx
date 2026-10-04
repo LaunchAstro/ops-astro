@@ -391,8 +391,9 @@ function useHeld<T>(
   }
   const value = held !== null && held.identity === identity ? held.value : null;
   const set = (next: T | null): void => {
+    // A setter from an older task or grant writes nothing over the current one.
     setHeld((current) =>
-      current !== null && current.identity === identity && keeps?.(current.value, next) === true
+      current !== null && (current.identity !== identity || keeps?.(current.value, next) === true)
         ? current
         : next === null
           ? null
