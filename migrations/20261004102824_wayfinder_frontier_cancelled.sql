@@ -1,9 +1,9 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 20261004070410 WF-1: the frontier leaves out a cancelled ticket as it does a
+-- 20261004102824 WF-1: the frontier leaves out a cancelled ticket as it does a
 -- completed one, and a cancelled blocker no longer holds a ticket back. Only
 -- the frontier's two state tests change; the summary counts, the definer, the
--- search path, the per-map advisory lock and the revoke are 20261003001618's.
+-- search path, the per-map advisory lock and the revoke are the wayfinder maps migration's.
 -- Every live map is then refreshed once, so a ticket cancelled before this
 -- upgrade leaves its frontier now rather than at its map's next write.
 

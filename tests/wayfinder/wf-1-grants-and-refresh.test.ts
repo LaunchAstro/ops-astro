@@ -827,7 +827,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(end).toBeGreaterThan(start);
       await w.db.admin.execute(old.slice(start, end));
       const migration = readFileSync(
-        'migrations/20261004070410_wayfinder_frontier_cancelled.sql',
+        'migrations/20261004102824_wayfinder_frontier_cancelled.sql',
         'utf8',
       );
       const map = await w.create(
