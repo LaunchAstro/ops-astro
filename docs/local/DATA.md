@@ -684,8 +684,18 @@ and who made it and when. It is the party a party-scoped grant names in
 `grants.scope_id` and a task names in its `client` link (`records.uuid_7`).
 Neither carries a foreign key to it, so `access.grant` and `task.set_party`
 check a client is of this business before writing its id. The application may
-select and insert; nothing updates or deletes a row. Tenancy-keyed with the
-restrictive policy.
+select and insert; nothing deletes a row. Tenancy-keyed with the restrictive
+policy.
+
+C60 (20261003000423) adds the client's privacy settings, each off for a new
+client: `model_egress` with `model_providers` (on only with a provider named,
+`clients_egress_names_providers`), `handles_health` (which keeps model egress
+off, `clients_health_keeps_egress_off`) and `no_agent_edits`. The application
+may update those four columns alone, by `client.set_privacy`.
+`client_model_requests` keeps each written request for model use: who asked,
+when, the link to the request, the providers and the outcome (`applied` or the
+refusal's code), with who recorded it. Select and insert only; written once.
+Tenancy-keyed with the restrictive policy.
 
 ## Access endings (0056, C58)
 

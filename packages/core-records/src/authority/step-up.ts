@@ -90,6 +90,15 @@ const STEP_UP_FIXES: readonly string[] = [
 ];
 
 /**
+ * A client meets it with a password sign-in, so their refusal names `sign_in`
+ * for the page to ask for the password rather than a code (C59, Q1).
+ */
+const SIGN_IN_FIXES: readonly string[] = [
+  'Sign in again with your password, then retry.',
+  'A money action needs a sign-in in the last 60 minutes.',
+];
+
+/**
  * Whether a command on this key is asked the step-up now: a key in the money
  * set while the setting is on. An absent setting row is read as on, so a
  * business that never installed it is not quietly exempt. Settings ▸ Access
@@ -126,5 +135,7 @@ export async function refuseStaleMoneyStep(
   );
   const now = rows[0]?.now ?? Number.POSITIVE_INFINITY;
   if (judgeStepUp(standing, now) === 'fresh') return undefined;
+  if (standing.roleKey === null)
+    return refuseCommand('STEP_UP_REQUIRED', ['sign_in'], SIGN_IN_FIXES);
   return refuseCommand('STEP_UP_REQUIRED', [], STEP_UP_FIXES);
 }

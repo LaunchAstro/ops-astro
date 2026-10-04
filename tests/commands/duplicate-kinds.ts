@@ -151,6 +151,7 @@ export const DECLARED: Readonly<
   'credential.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'session.end': { carry: 'not carried', plant: 'a sign-in, not task content' },
   'client.create': { carry: 'not carried', plant: 'a client of the business, not task content' },
+  'client.set_privacy': { carry: 'not carried', plant: "a client's settings, not task content" },
   'preference.save': { carry: 'not carried', plant: 'a person’s setting' },
   'preference.dismiss_tip': { carry: 'not carried', plant: 'a person’s setting' },
   'settings.set_money_step_up': { carry: 'not carried', plant: 'a business setting' },
