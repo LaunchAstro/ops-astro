@@ -8,6 +8,7 @@
 // a `MAIL_FROM` the sender gate would refuse stops the start (SEC28 F8).
 
 import { expect, it } from 'vitest';
+import { checkSender, fakeSenderSource } from '../../packages/core-connectors/src/index.ts';
 import {
   MAIL_DELIVERY_SETTINGS,
   mailDeliverySettings,
@@ -119,5 +120,32 @@ it('AW-07b mail delivery: a MAIL_FROM the sender gate refuses stops the start, n
       kind: 'mock',
       from,
     });
+  }
+});
+
+it('AW-07b mail delivery: a MAIL_FROM domain the sender check cannot verify stops the start', async () => {
+  // Each a domain the address shape takes but the setup check refuses: a label led or ended
+  // by a hyphen, a top-level label with a digit, a label past 63 octets.
+  const unverifiable = [
+    '-send.example.test',
+    'secret-.example.test',
+    'secret.example.t3st',
+    `secret${'e'.repeat(58)}.example.test`,
+  ];
+  for (const domain of unverifiable) {
+    const root = domain.slice(domain.indexOf('.') + 1);
+    const source = fakeSenderSource({
+      name: domain,
+      dkim: 'verified',
+      spf: 'verified',
+      returnPathMx: 'verified',
+      dmarc: ['v=DMARC1; p=none'],
+    });
+    // oxlint-disable-next-line no-await-in-loop
+    expect((await checkSender(source, domain, root)).verified, domain).toBe(false);
+    const refused = mailDeliverySettings({ ...mock, MAIL_FROM: `hello@${domain}` });
+    expect(refused, domain).toMatchObject({ kind: 'invalid' });
+    expect(JSON.stringify(refused)).toContain('MAIL_FROM');
+    expect(JSON.stringify(refused)).not.toContain('secret');
   }
 });
