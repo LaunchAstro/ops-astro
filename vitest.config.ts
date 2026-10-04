@@ -71,6 +71,7 @@ export default defineConfig({
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
             'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
             'tests/broker/late-answer-after-sweep-gives-back-once.test.ts',
+            'tests/broker/late-planning-settlement-keeps-owner-release.test.ts',
             'tests/broker/topped-up-unknown-call-late-answer-gives-back.test.ts',
             'tests/broker/unknown-call-settled-lower-gives-back.test.ts',
             'tests/web/authenticator-cancelled-enrol-lands-late.test.tsx',
