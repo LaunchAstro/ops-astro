@@ -3,7 +3,8 @@
 // CI-SPEED, light pull requests, the workflow's side (the scripts' side is
 // light-pull-requests.test.ts). Every required check still reports under its own name on a pull
 // request and on a group; the shards behind `database conformance` skip pull requests alone, and
-// the aggregate passes their skip on a pull request alone; `local checks` and `isolation tests`
+// the aggregate passes their skip on a pull request alone, and only when the contamination gate
+// passed; every always() job behind the gate reads the gate's result; `local checks` and `isolation tests`
 // defer their heavy steps through scripts/ci-scope.ts; and planted forms of each go red. The
 // workflows are read with a YAML parser, as merge-group-jobs.test.ts reads them.
 
@@ -56,6 +57,32 @@ const queueOnlyOf = (): string[] =>
   (JSON.parse(read('scripts/ci-scope.json')) as { queueOnly?: string[] }).queueOnly ?? [];
 const problemsNow = (ci: Workflow) => workflowProblems(ci, load(REVIEW), queueOnlyOf());
 const aggregateStep = (ci: Workflow) => ci.jobs['database']?.steps?.[0];
+const needsOf = (job: Job | undefined): string[] =>
+  job?.needs === undefined ? [] : ([] as unknown[]).concat(job.needs).map(String);
+
+/**
+ * Each job that runs with always() behind the contamination gate, directly or through another job,
+ * and neither needs the gate nor reads its result. always() runs a job when the gate failed and
+ * skipped every job between, so such a job could pass a red gate's skip as green.
+ */
+function alwaysProblems(ci: Workflow): string[] {
+  const problems: string[] = [];
+  const behindGate = (key: string, seen = new Set<string>()): boolean =>
+    needsOf(ci.jobs[key]).some(
+      (n) => n === 'gate' || (!seen.has(n) && (seen.add(n), behindGate(n, seen))),
+    );
+  for (const [key, job] of Object.entries(ci.jobs)) {
+    const cond = condition(job.if);
+    if (typeof cond !== 'string' || !cond.includes('always()') || !behindGate(key)) continue;
+    if (!needsOf(job).includes('gate'))
+      problems.push(`${key}: runs always() behind the gate, without needing it`);
+    const reads = (job.steps ?? []).some((s) =>
+      Object.values(s.env ?? {}).some((v) => condition(v) === 'needs.gate.result'),
+    );
+    if (!reads) problems.push(`${key}: runs always() behind the gate, without reading its result`);
+  }
+  return problems;
+}
 
 /** Each required check with no job, a workflow that skips a pull request or a group, or a condition. */
 function requiredProblems(workflows: Workflow[]): string[] {
@@ -103,12 +130,16 @@ export function workflowProblems(ci: Workflow, review: Workflow, queueOnly: stri
     ...requiredProblems([ci, review]),
     ...stepProblems(CI, ci),
     ...stepProblems(REVIEW, review),
+    ...alwaysProblems(ci),
   ];
   const shards = condition(ci.jobs['database-shard']?.if);
   if (shards !== SKIPS_PULL_REQUESTS) problems.push(`database-shard: if: ${String(shards)}`);
   const aggregate = ci.jobs['database'];
-  if (condition(aggregate?.if) !== 'always()' || String(aggregate?.needs) !== 'database-shard')
-    problems.push('database: must always run over database-shard');
+  if (
+    condition(aggregate?.if) !== 'always()' ||
+    needsOf(aggregate).toSorted().join(' ') !== 'database-shard gate'
+  )
+    problems.push('database: must always run over the gate and database-shard');
   for (const entry of queueOnly)
     if (!DEFERRED.has(entry)) problems.push(`queueOnly: ${entry} runs in full`);
   for (const job of Object.values(ci.jobs))
@@ -117,27 +148,39 @@ export function workflowProblems(ci: Workflow, review: Workflow, queueOnly: stri
   return problems;
 }
 
-/** The aggregate's script, run under GitHub's bash with each event and shards result. */
+const RESULTS = ['success', 'skipped', 'failure', 'cancelled'];
+
+/**
+ * The aggregate's script, run under GitHub's bash with each event, gate result and shards result.
+ * A skip passes on a pull request whose gate passed, and nowhere else: a pull request whose gate
+ * failed, was cancelled or skipped skips the shards too, and that skip must not read as green.
+ */
 function aggregateProblems(step: Step | undefined): string[] {
   if (step?.run === undefined) return ['the aggregate has no script'];
   const problems = step.run.includes('${{') ? ['the script interpolates an expression'] : [];
   for (const event of ['merge_group', 'push', 'pull_request', '', 'workflow_dispatch'])
-    for (const shards of ['success', 'skipped', 'failure', 'cancelled']) {
-      const env: Env = { PATH: process.env['PATH'] ?? '' };
-      for (const [key, value] of Object.entries(step.env ?? {})) {
-        const expr = condition(value);
-        if (expr === 'needs.database-shard.result') env[key] = shards;
-        else if (expr === 'github.event_name') env[key] = event;
-        else problems.push(`env ${key}: ${String(value)} is not read here`);
+    for (const gate of RESULTS)
+      for (const shards of RESULTS) {
+        const env: Env = { PATH: process.env['PATH'] ?? '' };
+        for (const [key, value] of Object.entries(step.env ?? {})) {
+          const expr = condition(value);
+          if (expr === 'needs.database-shard.result') env[key] = shards;
+          else if (expr === 'needs.gate.result') env[key] = gate;
+          else if (expr === 'github.event_name') env[key] = event;
+          else problems.push(`env ${key}: ${String(value)} is not read here`);
+        }
+        const out = spawnSync(
+          'bash',
+          ['--noprofile', '--norc', '-eo', 'pipefail', '-c', step.run],
+          { env, encoding: 'utf8' },
+        );
+        const wants =
+          shards === 'success' ||
+          (shards === 'skipped' && gate === 'success' && event === 'pull_request');
+        const got = out.status === 0 ? 'passed' : 'failed';
+        if ((out.status === 0) !== wants)
+          problems.push(`${event || 'no event'} gate ${gate} shards ${shards}: ${got}`);
       }
-      const out = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', step.run], {
-        env,
-        encoding: 'utf8',
-      });
-      const wants = shards === 'success' || (shards === 'skipped' && event === 'pull_request');
-      const got = out.status === 0 ? 'passed' : 'failed';
-      if ((out.status === 0) !== wants) problems.push(`${event || 'no event'} ${shards}: ${got}`);
-    }
   return problems;
 }
 
@@ -166,9 +209,9 @@ describe('the workflows: every required check reports on a pull request and on a
       expect(s.run).toMatch(/^node scripts\/ci-scope\.ts 'isolation tests' -- /u);
   });
 
-  it('the aggregate needs success on a group and a push, passes a skip on a pull request alone, and fails a failure or a cancel', () => {
+  it('the aggregate needs success on a group and a push, passes a skip on a pull request whose gate passed alone, and fails a failure or a cancel', () => {
     expect(aggregateProblems(aggregateStep(load(CI)))).toStrictEqual([]);
-  }, 60_000);
+  }, 120_000);
 });
 
 describe('planted: each goes red', () => {
@@ -203,9 +246,45 @@ describe('planted: each goes red', () => {
   it('the aggregate accepting a skip on a merge group, or refusing one on a pull request', () => {
     const step = aggregateStep(load(CI));
     const run = 'test "$SHARDS" = success || test "$SHARDS" = skipped';
-    expect(aggregateProblems({ ...step, run })).toContain('merge_group skipped: passed');
-    expect(aggregateProblems({ ...step, run: 'test "$SHARDS" = success' })).toContain(
-      'pull_request skipped: failed',
+    expect(aggregateProblems({ ...step, run })).toContain(
+      'merge_group gate success shards skipped: passed',
     );
-  }, 60_000);
+    expect(aggregateProblems({ ...step, run: 'test "$SHARDS" = success' })).toContain(
+      'pull_request gate success shards skipped: failed',
+    );
+  }, 120_000);
+
+  it('the aggregate passing the shards’ skip on a pull request whose gate failed', () => {
+    const step = aggregateStep(load(CI));
+    const run =
+      '[ "$EVENT" = pull_request ] && [ "$SHARDS" = skipped ] && exit 0\ntest "$SHARDS" = success';
+    const problems = aggregateProblems({ ...step, run });
+    for (const gate of ['failure', 'cancelled', 'skipped'])
+      expect(problems).toContain(`pull_request gate ${gate} shards skipped: passed`);
+  }, 120_000);
+
+  it('the aggregate not needing the gate', () => {
+    const ci = load(CI);
+    const aggregate = ci.jobs['database'];
+    if (aggregate !== undefined) aggregate.needs = ['database-shard'];
+    expect(problemsNow(ci)).toContain('database: must always run over the gate and database-shard');
+    expect(problemsNow(ci)).toContain(
+      'database: runs always() behind the gate, without needing it',
+    );
+  });
+
+  it('a new always() job behind the gate that neither needs it nor reads its result', () => {
+    const ci = load(CI);
+    ci.jobs['later'] = {
+      needs: ['database-shard'],
+      if: '${{ always() && true }}',
+      steps: [
+        { run: 'test "$SHARDS" = success', env: { SHARDS: '${{ needs.database-shard.result }}' } },
+      ],
+    };
+    expect(problemsNow(ci)).toStrictEqual([
+      'later: runs always() behind the gate, without needing it',
+      'later: runs always() behind the gate, without reading its result',
+    ]);
+  });
 });
