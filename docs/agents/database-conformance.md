@@ -99,7 +99,10 @@ database from empty: `tests/support/migrated-template.ts` migrates
 not moved unless the configured database is `postgres` itself), and
 `createFreshDatabase` clones it.
 `tests/support/migrated-template.test.ts` proves a clone equals a database
-migrated from empty, catalogue and privileges alike. A suite that must migrate
+migrated from empty, catalogue and privileges alike, and
+`tests/support/template-lock-and-clone-catalogue.test.ts` that builders share
+one lock, leave template1 free, and that the comparison sees disabled triggers
+and membership options. A suite that must migrate
 itself passes `fromEmpty` or its own `migrationsDirectory`, and
 `OPS_ASTRO_DB_TEMPLATE=off` sends every suite the old way. The Postgres 18
 look-ahead runs the same suites each night (`.github/workflows/lookahead.yml`),
