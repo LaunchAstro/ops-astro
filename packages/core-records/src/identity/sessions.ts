@@ -28,7 +28,7 @@ export interface SeenSession {
  * nothing.
  */
 const END_PROVIDER_SESSIONS = `insert into ops.ended_provider_sessions (session_id)
-  select ids.id from unnest($1::uuid[]) as ids (id)
+  select ids.id from unnest($1::uuid[]) as ids (id) order by ids.id
   on conflict (session_id) do nothing`;
 
 /** The most sessions one list names; a person has a handful, never hundreds. */
@@ -106,7 +106,8 @@ export async function endSeenSessions(
        from public.authentication_attempts a
       where a.business_id = $1 and a.person_id = $2 and a.outcome = 'resolved'
         and a.session_id is not null
-        and a.at > now() - make_interval(secs => $3)`,
+        and a.at > now() - make_interval(secs => $3)
+      order by 1`,
     [tx.businessId, personId, WINDOW_SECONDS],
   );
   const others = seen.map((row) => row.session_id).filter((id) => id !== keep);
@@ -215,12 +216,13 @@ async function endSessions(
   if (sessionIds.length === 0) return 0;
   const rows = await tx.query(
     `insert into public.ended_sessions (business_id, person_id, session_id, reason)
-     select $1, $2, ids.id, $4 from unnest($3::uuid[]) as ids (id)
+     select $1, $2, ids.id, $4 from unnest($3::uuid[]) as ids (id) order by ids.id
      on conflict (business_id, person_id, session_id) do nothing
      returning 1`,
     [tx.businessId, personId, sessionIds, reason],
   );
-  // Ended in every business the login reaches, not only this one (0061).
+  // Ended in every business the login reaches, not only this one (0061). Each
+  // insert takes its ids in order, so two enders at once cannot deadlock.
   await tx.query(END_PROVIDER_SESSIONS, [sessionIds]);
   return rows.length;
 }
