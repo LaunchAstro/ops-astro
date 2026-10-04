@@ -236,4 +236,16 @@ describe.skipIf(!installed)('C80 capture picture, in a real browser, Sol R1', ()
     ]);
     expect([RED, 'refused']).toContain(shown);
   }, 60_000);
+
+  it('Sol proof, criterion correctness: picture honours a same-host base URL or refuses the capture', async () => {
+    const { observed, shown } = await both({
+      [ABOUT]: page('<base href=/assets/><link rel=stylesheet href=site.css>'),
+      [at('/assets/site.css')]: sheet('red'),
+      [at('/site.css')]: sheet('blue'),
+    });
+    expect(observed.ok && Object.keys(observed.value.stylesheets)).toEqual([
+      at('/assets/site.css'),
+    ]);
+    expect([RED, 'refused']).toContain(shown);
+  }, 60_000);
 });
