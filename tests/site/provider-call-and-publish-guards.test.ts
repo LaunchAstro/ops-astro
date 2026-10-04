@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* eslint-disable unicorn/consistent-function-scoping -- the proof bodies are kept as written */
+/* eslint-disable max-lines, require-await, unicorn/consistent-function-scoping -- the proof bodies are kept as written */
 import { expect, it, vi } from 'vitest';
 import {
   callConnector,

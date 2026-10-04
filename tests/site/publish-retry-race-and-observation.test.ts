@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable require-await -- the proof bodies are kept as written */
 import { expect, it } from 'vitest';
 import {
   contentDigest,
