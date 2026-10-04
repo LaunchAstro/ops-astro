@@ -3,8 +3,8 @@
 // The inbox inside Tasks (INB-1g), the working minimum on today's board
 // screen: the caller's own items and the owed count, from `inbox.read` and
 // `inbox.count`, the reads the API and the command line serve. The dock's
-// Notifications panel (MP-7-3) and `/inbox/` will read the same list; the
-// designed surfaces are theirs, and this is the record of the states.
+// Notifications panel (MP-7-3) and `/inbox/` will read the same list and
+// carry the design. This panel shows every state they will have to show.
 //
 // Opening an item stamps it seen (`inbox.seen`, the recipient's own row) and
 // leaves it open and counted: read is not done. The delivery word is the last
@@ -12,7 +12,7 @@
 // and nothing says delivered when only an attempt was asked or accepted. A
 // gone entry names nothing and links nowhere.
 
-import { useEffect, type MouseEvent, type ReactElement } from 'react';
+import { useEffect, type ReactElement } from 'react';
 import { CountBadge, Empty } from '@launchastro/ui';
 import type {
   InboxCountResult,
@@ -88,7 +88,7 @@ export function Inbox(props: InboxProps): ReactElement {
 
   return (
     <section className="card card--flush inbox" aria-labelledby="inbox-heading">
-      <Owed client={client} grantKey={props.grantKey} follow={props.follow} />
+      <Owed client={client} grantKey={props.grantKey} follow={follow} />
       <RecordState
         state={list.state}
         subject="inbox"
@@ -154,7 +154,7 @@ function OwedLine(props: {
     const owed = state.value.owed;
     return (
       <p className="card__sub" data-inbox-count={owed}>
-        {owed === 1 ? '1 waiting for you' : `${String(owed)} waiting for you`}
+        {`${String(owed)} waiting for you`}
       </p>
     );
   }
@@ -188,7 +188,7 @@ function InboxRow(props: {
             <a
               className="inbox__task"
               href={pathTo('agency:task-detail', { key: entry.task.key })}
-              onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+              onClick={(event) => {
                 event.preventDefault();
                 props.onOpen(event.currentTarget.href);
               }}

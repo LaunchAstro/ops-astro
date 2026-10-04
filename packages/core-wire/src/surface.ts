@@ -601,6 +601,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['holderId'],
   }),
+  // C60: the tracked action `client privacy setting changed (model egress,
+  // providers, health, no agent edits)`, under `privacy:manage` on the named
+  // client (party scope), never an agent's.
+  declare('client.set_privacy', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['clientId'],
+  }),
 
   // The grant manager's authority, which is `manage` on the task family this
   // head's grants are about, asked of the revoked row's own scope. The

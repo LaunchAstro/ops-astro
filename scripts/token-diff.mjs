@@ -4,51 +4,40 @@
 // It reads the two blocks of `packages/ui/src/styles/1-tokens.css` that carry
 // values, `:root` and `[data-theme='dark']`, and resolves every `var()` the way
 // the browser does when both blocks sit on the same element: dark declarations
-// win where they exist and every reference is substituted after that, so an
-// alias declared only in `:root` still follows a primitive the dark block
-// flips. Each expected token is then compared, as text with its whitespace
-// collapsed and one spelling per number and hex, to what that resolution
-// gives. A token that is missing or differs is named with both values, as is a
-// token declared in dark alone, and the run exits 1.
+// win where they exist, unless the `:root` one is `!important` and the dark one
+// is not, and every reference is substituted after that, so an alias declared
+// only in `:root` still follows a primitive the dark block flips. Each expected
+// token is then compared, as text with its whitespace collapsed and one
+// spelling per number and hex, to what that resolution gives. A token that is
+// missing or differs is named with both values, as is a token declared in dark
+// alone, and the run exits 1.
 //
 //   node scripts/token-diff.mjs [--css <file>] [--expected <file>]
 //   node scripts/token-diff.mjs --print [--css <file>]   the resolved sets as JSON
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { parseSheet } from './type-census.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const DEFAULT_CSS = `${root}packages/ui/src/styles/1-tokens.css`;
 const DEFAULT_EXPECTED = `${root}tests/surfaces/fixtures/mp-1-1-tokens.json`;
 
-/**
- * The declarations of the first block whose selector is exactly `selector`:
- * a block opens at the start of the sheet or after a `}`, and its selector is
- * compared as text, never built into a pattern.
- */
+/** The custom properties of the first top-level block whose selector is exactly `selector`. */
 function block(css, selector) {
-  const bare = css.replaceAll(/\/\*[\s\S]*?\*\//gu, '');
-  const chunk = bare.split('}').find((part) => {
-    const open = part.indexOf('{');
-    return open >= 0 && part.slice(0, open).trim() === selector;
-  });
-  if (chunk === undefined) return new Map();
-  const body = chunk.slice(chunk.indexOf('{') + 1);
-  const declared = new Map();
-  for (const line of body.split(';')) {
-    const at = line.indexOf(':');
-    const name = line.slice(0, at).trim();
-    if (!name.startsWith('--')) continue;
-    declared.set(
-      name,
-      line
-        .slice(at + 1)
-        .replaceAll(/\s+/gu, ' ')
-        .trim(),
-    );
-  }
-  return declared;
+  const rule = parseSheet(css).find((one) => one.selector === selector && one.context === '');
+  const tokens = (rule?.decls ?? []).filter(({ prop }) => prop.startsWith('--'));
+  return tokens.reduce((map, decl) => cascade(map, decl), new Map());
 }
+
+/** `map` with `decl` declared after what it holds; it loses only to an important held one. */
+function cascade(map, decl) {
+  const held = map.get(decl.prop);
+  return held?.important && !decl.important ? map : map.set(decl.prop, decl);
+}
+
+/** Each token's value, priority dropped. */
+const values = (declared) => new Map([...declared].map(([name, { value }]) => [name, value]));
 
 /** Every declared token with its references substituted, in one theme. */
 function resolve(declared) {
@@ -65,8 +54,11 @@ function resolve(declared) {
 /** The resolved light and dark sets of a token file's text. */
 export function resolveTokens(css) {
   const light = block(css, ':root');
-  const dark = new Map([...light, ...block(css, "[data-theme='dark']")]);
-  return { light: resolve(light), dark: resolve(dark) };
+  const dark = [...block(css, "[data-theme='dark']").values()].reduce(
+    (map, decl) => cascade(map, decl),
+    new Map(light),
+  );
+  return { light: resolve(values(light)), dark: resolve(values(dark)) };
 }
 
 /** One spelling per value: hex in lower case, no trailing zeros, as the formatter writes it. */
