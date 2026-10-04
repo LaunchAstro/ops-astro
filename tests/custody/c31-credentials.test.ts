@@ -24,6 +24,7 @@ import {
   seal,
 } from '../../packages/core-records/src/custody/index.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
+import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
 import { createClient } from '../../packages/core-records/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 
@@ -184,9 +185,8 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
     const rows = await controls.fixture.db.admin.execute<{
       readonly command: string;
       readonly outcome: string;
-      readonly hash: string;
     }>(
-      `select command, outcome, hash from public.audit_events
+      `select command, outcome from public.audit_events
         where actor_id = $1 and command in ('secret.set', 'secret.clear') order by seq`,
       [admin.actorId],
     );
@@ -196,7 +196,11 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
     expect(
       rows.filter((row) => row.command === 'secret.clear' && row.outcome === 'applied').length,
     ).toBeGreaterThan(0);
-    for (const row of rows) expect(row.hash).toMatch(/^[0-9a-f]{64}$/u);
+    const { db, business } = controls.fixture;
+    expect(await db.app.withBusiness(business, verifyAuditChain)).toMatchObject({
+      intact: true,
+      firstBreak: undefined,
+    });
     const history = await controls.fixture.db.admin.execute<{
       readonly set_by_actor_id: string | null;
       readonly cleared_by_actor_id: string | null;
