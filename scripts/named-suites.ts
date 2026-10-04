@@ -77,7 +77,7 @@ const listOf = (value: unknown): string[] => (Array.isArray(value) ? value.map(S
 /** The named suites under `root`, from the folder when it exists, else the single file. */
 export function readNamedSuites(root: string): NamedSuites {
   if (existsSync(join(root, SUITES))) {
-    const files = readSuiteFiles(root, [FOLDER, SINGLE]);
+    const files = readSuiteFiles(root, [FOLDER, SINGLE, ISOLATION]);
     const of = (kind: 'invariant' | 'conformance') =>
       files.filter((entry) => entry.kind === kind).map((entry) => entry.suite);
     const history = join(root, SUITES_HISTORY);

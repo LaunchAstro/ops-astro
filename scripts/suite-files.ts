@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// One file per named suite (MERGE-PLAN item 5, ORCH91 MAGNETS step 1).
-//
-// The per-area lists under tests/db/named-suites/ and the isolation list were
-// edited by most pull requests, so two that each added a suite conflicted.
-// Each suite now has a file of its own, at its path below tests/ plus .json:
+// One file per named suite (MERGE-PLAN item 5, ORCH91 MAGNETS step 1): two
+// pull requests that each added a suite to the per-area lists under
+// tests/db/named-suites/ or the isolation list conflicted, so each suite now
+// has a file of its own, at its path below tests/ plus .json:
 //
 //   tests/db/suites/api/a.test.ts.json   { "kind", "isolation", "why" }
 //
@@ -15,6 +14,7 @@
 // keptSuites runs `named-suites.ts kept <base>`: deleting a file here drops a
 // suite with no list diff, so it fails on a suite the base commit named or
 // marked isolation that the head does not, unless its test file was deleted.
+// A renamed test file takes its suite, kind and isolation to the new path.
 // It reads the base from git in any layout it has had; what it cannot, fails.
 
 import { spawnSync } from 'node:child_process';
@@ -51,25 +51,21 @@ export function refuse(file: string, why: string): never {
 export const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const byName = (a: { name: string }, b: { name: string }): number =>
-  a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-
-/** Every file below `dir`, as paths relative to it, sorted. */
-function filesBelow(dir: string, prefix = ''): string[] {
-  return readdirSync(join(dir, prefix), { withFileTypes: true })
-    .toSorted(byName)
+/** Every file below `root`'s SUITES, as paths relative to it, sorted; a symlink is refused. */
+function filesBelow(root: string, prefix = ''): string[] {
+  return readdirSync(join(root, SUITES, prefix), { withFileTypes: true })
+    .toSorted((a, b) => (a.name < b.name ? -1 : 1))
     .flatMap((entry) => {
       const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
-      return entry.isDirectory() ? filesBelow(dir, rel) : [rel];
+      if (entry.isSymbolicLink()) refuse(`${SUITES}/${rel}`, 'is a symlink, not a suite file');
+      return entry.isDirectory() ? filesBelow(root, rel) : [rel];
     });
 }
 
-/** One suite file, refused unless it holds exactly a known kind, a boolean isolation and a reason. */
+/** One suite file, refused unless it names a test file and holds a known kind, isolation and why. */
 function readSuiteFile(root: string, rel: string): SuiteFile {
   const file = `${SUITES}/${rel}`;
-  if (!rel.endsWith('.json')) {
-    refuse(file, `is not a .json file; ${SUITES}/ holds one <path below tests/>.json per suite`);
-  }
+  if (!/\.test\.tsx?\.json$/u.test(rel)) refuse(file, 'is not <a test file below tests/>.json');
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(join(root, file), 'utf8'));
@@ -90,23 +86,16 @@ function readSuiteFile(root: string, rel: string): SuiteFile {
     refuse(file, '"kind" must be "invariant" or "conformance"');
   }
   if (typeof isolation !== 'boolean') refuse(file, '"isolation" must be true or false');
-  if (typeof why !== 'string' || why.trim() === '') {
-    refuse(file, '"why" must say what the suite proves');
-  }
+  if (typeof why !== 'string' || why.trim() === '') refuse(file, '"why" must say what it proves');
   return { suite: `tests/${rel.slice(0, -'.json'.length)}`, kind, isolation };
 }
 
 /** Every suite file under `root`; the old lists named in `old` may not sit beside them. */
 export function readSuiteFiles(root: string, old: readonly string[]): SuiteFile[] {
   for (const path of old) {
-    if (existsSync(join(root, path))) {
-      refuse(
-        path,
-        `is still here beside ${SUITES}/; each suite has its own file now, so remove it`,
-      );
-    }
+    if (existsSync(join(root, path))) refuse(path, `is still here beside ${SUITES}/; remove it`);
   }
-  return filesBelow(join(root, SUITES)).map((rel) => readSuiteFile(root, rel));
+  return filesBelow(root).map((rel) => readSuiteFile(root, rel));
 }
 
 /** Whether two lists hold the same entries, in any order. */
@@ -120,11 +109,7 @@ const sameMembers = (a: readonly string[], b: readonly string[]): boolean =>
  */
 export function writeSuiteFiles(
   root: string,
-  manifest: {
-    comment: readonly string[];
-    invariant: readonly string[];
-    conformance: readonly string[];
-  },
+  manifest: Record<'comment' | 'invariant' | 'conformance', readonly string[]>,
   isolation: readonly string[],
   why: string,
 ): void {
@@ -138,19 +123,15 @@ export function writeSuiteFiles(
       writeFileSync(path, `${JSON.stringify(body, null, 2)}\n`);
     }
   }
-  writeFileSync(
-    join(root, SUITES_HISTORY),
-    `${JSON.stringify({ comment: manifest.comment }, null, 2)}\n`,
-  );
+  const history = { comment: manifest.comment };
+  writeFileSync(join(root, SUITES_HISTORY), `${JSON.stringify(history, null, 2)}\n`);
   const back = readSuiteFiles(root, []);
   const of = (kind: SuiteFile['kind']) => back.filter((e) => e.kind === kind).map((e) => e.suite);
+  const marked = back.filter((e) => e.isolation).map((e) => e.suite);
   if (
     !sameMembers(of('invariant'), manifest.invariant) ||
     !sameMembers(of('conformance'), manifest.conformance) ||
-    !sameMembers(
-      back.filter((e) => e.isolation).map((e) => e.suite),
-      [...isolated],
-    )
+    !sameMembers(marked, [...isolated])
   ) {
     throw new Error(`${SUITES}/ does not read back as the lists it was written from`);
   }
@@ -247,18 +228,33 @@ export interface Readers {
   readIsolationSuites: (root: string) => { invariant: string[] };
 }
 
-function suitesIn(root: string, read: Readers): { named: string[]; isolation: string[] } {
+function suitesIn(root: string, read: Readers) {
   const { invariant, conformance } = read.readNamedSuites(root);
-  const isolation = read.readIsolationSuites(root).invariant;
   return {
+    invariant: new Set(invariant),
     named: [...new Set([...invariant, ...conformance])],
-    isolation: [...new Set(isolation)],
+    isolation: [...new Set(read.readIsolationSuites(root).invariant)],
   };
 }
 
+/** The test files deleted between `base` and HEAD, and those renamed, old path to new. */
+function changesSince(root: string, base: string) {
+  const diff = ['diff', '--name-status', '-M', '-l0', '--diff-filter=DR', '-z', base, 'HEAD'];
+  const fields = gitIn(root, diff).toString().split('\0').filter(Boolean);
+  const deleted: string[] = [];
+  const renamed = new Map<string, string>();
+  for (let at = 0; at < fields.length; at += fields[at] === 'D' ? 2 : 3) {
+    const [status = '', path = '', to = ''] = fields.slice(at, at + 3);
+    if (status === 'D') deleted.push(path);
+    else if (/^R\d+$/u.test(status) && to !== '') renamed.set(path, to);
+    else throw new Error('git diff printed an entry that is not a deletion or a rename');
+  }
+  return { deleted, renamed };
+}
+
 /**
- * Throws naming each suite the base commit named, or marked isolation, that the checkout no
- * longer does, unless its test file was deleted between the base and HEAD; else says the counts.
+ * Throws naming each suite the base named, or marked isolation, that the checkout does not at its
+ * path, or with its kind at its renamed test file's, unless that was deleted; else says the counts.
  */
 export function keptSuites(value: string | undefined, event = 'local', read: Readers): string {
   const base = baseOf(value, event);
@@ -276,17 +272,23 @@ export function keptSuites(value: string | undefined, event = 'local', read: Rea
     rmSync(into, { recursive: true, force: true });
   }
   const after = suitesIn(root, read);
-  // No renames: a renamed test file counts as deleted at its old path.
-  const diff = ['diff', '--name-only', '--no-renames', '--diff-filter=D', '-z', base, 'HEAD'];
-  const deleted = gitIn(root, diff).toString().split('\0').filter(Boolean);
-  const named = droppedSuites(before.named, after.named, deleted);
-  const isolation = droppedSuites(before.isolation, after.isolation, deleted);
-  if (named.length + isolation.length > 0) {
+  const { deleted, renamed } = changesSince(root, base);
+  const moved = (suites: string[]) => suites.map((suite) => renamed.get(suite) ?? suite);
+  const named = droppedSuites(moved(before.named), after.named, deleted);
+  const isolation = droppedSuites(moved(before.isolation), after.isolation, deleted);
+  const kind = [...renamed]
+    .filter(([from, to]) => before.named.includes(from) && after.named.includes(to))
+    .filter(([from, to]) => before.invariant.has(from) !== after.invariant.has(to))
+    .map(([, to]) => to);
+  const from = new Map([...renamed].map(([old, to]) => [to, old]));
+  const shown = (suite: string) => (from.has(suite) ? `${from.get(suite)} -> ${suite}` : suite);
+  if (named.length + isolation.length + kind.length > 0) {
     throw new Error(
       [
         `the head drops suites the base ${base} kept, and their test files are still here:`,
-        ...named.map((suite) => `  no longer named: ${suite}`),
-        ...isolation.map((suite) => `  no longer marked isolation: ${suite}`),
+        ...named.map((suite) => `  no longer named: ${shown(suite)}`),
+        ...isolation.map((suite) => `  no longer marked isolation: ${shown(suite)}`),
+        ...kind.map((suite) => `  named as another kind: ${shown(suite)}`),
         `Name each again under ${SUITES}/, or delete its test file in the same change.`,
       ].join('\n'),
     );

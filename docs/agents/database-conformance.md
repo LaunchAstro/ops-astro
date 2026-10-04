@@ -57,7 +57,8 @@ suite `tests/<path>` is named by `tests/db/suites/<path>.json`, holding
 `"kind"` (`"invariant"` or `"conformance"`), `"isolation"` (`true` when
 `isolation tests` runs it too) and `"why"` (what it proves). To name a suite,
 add its file; to stop naming one, delete its test file with it. The reader
-refuses a file with another key, a missing or empty reason, or the old lists
+refuses a file with another key, a missing or empty reason, a name that is
+not a test file's plus `.json`, a symlink, or the old lists
 (`tests/db/named-suites/`, `tests/db/isolation-suites.json`) beside the
 folder, and names the file. The old lists' comment lines are kept, unchanged,
 in `tests/db/suites-history.json`.
@@ -68,10 +69,12 @@ so `database conformance gate` runs `node scripts/named-suites.ts kept
 group's base or the push's `before`. It reads the manifest at the base from
 git in whichever layout the base has (the single file, the per-area folder or
 one file per suite), and fails naming each suite the base named, or marked
-isolation, that the head does not, unless the change deleted its test file
-(a rename counts as a deletion at the old path). A base it cannot read, an
-id that is not 40 or 64 hex, an all-zero base or a failed git command fails
-the step.
+isolation, that the head does not, unless the change deleted its test file.
+A renamed test file (git's rename detection, a change of case included) takes
+its suite with it: the new path must be named with the same kind, and marked
+isolation when the old one was, or the step fails naming both paths. A base
+it cannot read, an id that is not 40 or 64 hex, an all-zero base or a failed
+git command fails the step.
 
 Run one after another the named suites took 40 to 50 minutes, so the hosted
 job is a matrix of shards (`database conformance shard <i>`), each running
