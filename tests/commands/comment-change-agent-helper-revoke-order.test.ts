@@ -114,7 +114,12 @@ it.each(['task.edit_comment', 'task.delete_comment'] as const)(
   async (command) => {
     const { taskId, helper, credential, childId, commentId } = await helperWithComment();
     const manager = await enrol(w.world.db.app, w.world.business, `manager_${randomUUID()}`);
-    await w.world.db.app.withBusiness(w.world.business, (tx) => grantTo(tx, manager, 'manage'));
+    // A delegation is revoked within the revoker's own ceiling: manage, and
+    // the comment the helper's delegation carries.
+    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+      await grantTo(tx, manager, 'manage');
+      await grantTo(tx, manager, 'comment');
+    });
     const revoker = connect(w.world.db.appUrl);
     const [revokerBackend] = await revoker.withBusiness(w.world.business, (tx) =>
       tx.query<{ pid: number }>('select pg_backend_pid() as pid'),
