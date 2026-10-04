@@ -109,7 +109,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '0072',
     line: `ops_astro_app ${act} ops.second_factor_codes.${column}`,
   })),
-  // C31: custody's select leaves out the three sealed columns (20261003001523).
+  // C31: custody's select leaves out the three sealed columns (20261004103606).
   ...[
     'business_id',
     'cleared_at',
@@ -125,7 +125,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     'set_at',
     'set_by_actor_id',
   ].map((column) => ({
-    from: '20261003001523',
+    from: '20261004103606',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
   })),
 ];
