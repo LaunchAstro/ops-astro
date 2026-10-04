@@ -2,8 +2,9 @@
 //
 // Catalogue #413: a child assignment takes the audit chain's lock before its
 // operation record, so one operation identity presented on two tasks at once
-// can deadlock. Postgres aborts one whole transaction; its one retry reads the
-// winner's record and is refused, and nothing it wrote survives.
+// can deadlock. Postgres aborts one whole transaction; its one retry is
+// refused on the winner's record, or raises on it when it read first, and
+// nothing it wrote survives.
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
@@ -106,9 +107,19 @@ it('one operation identity on two tasks at once: Postgres aborts one whole trans
   expect(won.filter(Boolean), 'one of the two applied').toHaveLength(1);
   const lost = results.find((_, index) => won[index] !== true);
   if (lost?.status === 'fulfilled') expect(codeOf(lost.value)).toBe('OPERATION_ID_REUSED');
-  const loserTask = won[0] === true ? personTask : agentTask;
-  const loserRevision = loserTask === agentTask ? agentRevision : personRevision;
-  expect(await revisionOf(w.s, loserTask), 'the loser wrote nothing').toBe(loserRevision);
+  if (lost?.status === 'rejected') {
+    expect(lost.reason).toMatchObject({
+      code: '23505',
+      constraint_name: 'operations_identity_key',
+    });
+  }
+  const [loserTask, winnerTask] =
+    won[0] === true ? [personTask, agentTask] : [agentTask, personTask];
+  const revisions = { [agentTask]: agentRevision, [personTask]: personRevision };
+  expect(await revisionOf(w.s, loserTask), 'the loser wrote nothing').toBe(revisions[loserTask]);
+  expect(await revisionOf(w.s, winnerTask), 'the winner wrote').toBeGreaterThan(
+    revisions[winnerTask] ?? Number.POSITIVE_INFINITY,
+  );
   const stored = await w.s.db.admin.execute<{ readonly n: string }>(
     `select count(*)::text as n from public.operations
       where business_id = $1 and operation_id = $2`,

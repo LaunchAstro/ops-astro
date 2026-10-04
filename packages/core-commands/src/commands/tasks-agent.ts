@@ -21,7 +21,8 @@
 // delegation or parent that expired while the assignment waited on a lock
 // holds no task, and the write rolls back. One wait can follow: the operation
 // record's insert, behind a request presenting the same operation identity,
-// until Postgres breaks that deadlock.
+// until Postgres breaks that deadlock or the other request rolls back. An
+// expiry during that wait is not caught (#932).
 //
 // **Assignment starts nothing.** It records who holds the task; a run still
 // needs its own commands.
@@ -119,7 +120,8 @@ async function refuseAgent(
 }
 
 /**
- * The last liveness read: after the audit chain's lock, the last wait left.
+ * The last liveness read, after the audit chain's lock: only the operation
+ * record's insert can wait after it (#932).
  * Its key is the chain trigger's, `business_id::text`, which is lower case.
  */
 async function standsAfterWaits(tx: TenantQuery, delegationId: string): Promise<boolean> {

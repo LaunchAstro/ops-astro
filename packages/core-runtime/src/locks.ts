@@ -53,9 +53,9 @@
 // then the same ceiling and route keys, last.
 // The pinned read (AW-02, `definitions-read.ts`) takes one lock, its lease,
 // through `acquire`, before it writes its ledger row.
-// The audit chain's key (the business id, `audit_events_chain`) is every
-// audited command's last lock; an agent `task.assign` takes it just after its
-// write, before its operation record (`tasks-agent.ts`), to read liveness last.
+// The audit chain's key (the business id, `audit_events_chain`) is taken by
+// each audit write, for most commands their last lock; an agent `task.assign`
+// takes it just after its write, before its operation record (`tasks-agent.ts`).
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements
