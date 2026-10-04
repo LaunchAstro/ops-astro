@@ -168,6 +168,8 @@ create trigger live_corrections_pinned
 -- Receipt L's observations of one publish or revert, written by the system
 -- under the worker lease in the transaction that records the observed result.
 -- Append only: a receipt is evidence, and evidence that can be rewritten is not.
+-- `created_at` is the instant of the insert, not the transaction's start: the
+-- write holds the correction's lock, so the latest is the one written last.
 create table public.live_correction_receipts (
   business_id    uuid        not null,
   id             uuid        not null,
@@ -177,7 +179,7 @@ create table public.live_correction_receipts (
   step           text        not null,
   outcome        text        not null,
   observations   jsonb       not null,
-  created_at     timestamptz not null default now(),
+  created_at     timestamptz not null default clock_timestamp(),
   constraint live_correction_receipts_pkey primary key (id),
   constraint live_correction_receipts_tenant_id_key unique (business_id, id),
   constraint live_correction_receipts_business_fkey foreign key (business_id, business_id)
