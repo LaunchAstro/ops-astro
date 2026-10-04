@@ -385,19 +385,22 @@ function useHeld<T>(
   denied: boolean,
   keeps?: (held: T, next: T | null) => boolean,
 ): readonly [T | null, (next: T | null) => void] {
-  const [held, setHeld] = useState<{ readonly identity: string; readonly value: T } | null>(null);
-  if (held !== null && (held.identity !== identity || denied)) {
-    setHeld(null);
+  // The slot always names the task and grant it is for, empty or not, so a
+  // setter from an older task or grant can tell it writes nothing here.
+  const [held, setHeld] = useState<{ readonly identity: string; readonly value: T | null }>({
+    identity,
+    value: null,
+  });
+  if (held.identity !== identity || (denied && held.value !== null)) {
+    setHeld({ identity, value: null });
   }
-  const value = held !== null && held.identity === identity ? held.value : null;
+  const value = held.identity === identity ? held.value : null;
   const set = (next: T | null): void => {
-    // A setter from an older task or grant writes nothing over the current one.
     setHeld((current) =>
-      current !== null && (current.identity !== identity || keeps?.(current.value, next) === true)
+      current.identity !== identity ||
+      (current.value !== null && keeps?.(current.value, next) === true)
         ? current
-        : next === null
-          ? null
-          : { identity, value: next },
+        : { identity, value: next },
     );
   };
   return [value, set];
