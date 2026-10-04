@@ -17,7 +17,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -30,6 +30,21 @@ const DEFAULT_TITLE = 'New conversation';
 
 /** The conversation's address: the page C36 draws, and the API's read of it. */
 export const conversationAddress = (conversationId: string): string => `/agent/${conversationId}`;
+
+/**
+ * Whether the caller still holds their own conversations: a member holding
+ * `conversation:write`, which `conversation.read` and `conversation.list` ask
+ * of the owner and the exchange asks before it reads or keeps a reply.
+ */
+export async function holdsOwnConversations(tx: TenantQuery, session: Session): Promise<boolean> {
+  if (session.roleKey === null) return false;
+  const own = await checkAuthority(tx, subjectsOf(session), {
+    collection: 'conversation',
+    action: 'write',
+    scope: { kind: 'business', id: null },
+  });
+  return own.ok;
+}
 
 export const bounded = (value: unknown, limit: number): value is string =>
   typeof value === 'string' && value.trim() !== '' && value.length <= limit;

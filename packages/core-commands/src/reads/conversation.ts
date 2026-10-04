@@ -33,7 +33,7 @@ import type {
   WrapUpView,
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
-import { conversationAddress } from '../commands/conversations.ts';
+import { conversationAddress, holdsOwnConversations } from '../commands/conversations.ts';
 
 const COLLECTION = 'conversation';
 
@@ -250,12 +250,7 @@ export async function listConversations(
   tx: TenantQuery,
   session: Session,
 ): Promise<ConversationListResult | CommandRefusal> {
-  const own = await checkAuthority(tx, subjectsOf(session), {
-    collection: COLLECTION,
-    action: 'write',
-    scope: { kind: 'business', id: null },
-  });
-  if (session.roleKey === null || !own.ok) return HOLDS_NOTHING;
+  if (!(await holdsOwnConversations(tx, session))) return HOLDS_NOTHING;
   const rows = await tx.query<{
     readonly id: string;
     readonly title: string;

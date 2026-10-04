@@ -1248,21 +1248,23 @@ deployment started a broker, `composeApi` mounts `answerConversation` beside
 `executeModelCall`, and after `conversation.start` or `conversation.message`
 is applied on the person path the API asks it for the agent's answer, after
 the command has committed: the message stays kept whatever the answer is. It
-resolves the caller again, finds the message as the caller's own person
-message in a conversation of this business whose body is kept, and sends its
+resolves the caller again, asks that they still hold `conversation:write` (as
+`conversation.read` asks of an owner), finds the message as the caller's own
+person message in a conversation of this business whose body is kept, and
+sends its
 words through AW-01's conversation seam (`callModelInConversation`,
 `model.conversation_answer`, the owner's own session, local routes only,
 nothing held). The answer is kept as an `agent` message whose
 `answers_message_id` names the question (0099: one reply per message, in the
 same conversation), in a second transaction under the conversation's row
-lock. The HTTP answer then carries `reply` beside the command's own fields:
+lock, which asks the grant again. The HTTP answer then carries `reply` beside the command's own fields:
 `{ answered: true, messageId, body }`, or `{ answered: false, code, words }`
 in fixed words (`LOCAL_MODEL_REQUIRED`: models are off for this material and
 nothing was sent, AW-03 egress off; `RATE_LIMITED`; anything else, an answer
 that could not be used and nothing kept). No `reply` means nothing answers: no
-broker, or the message is not the caller's to have answered. A repeat of the
-same operation finds the reply kept and answers with it; the model is not
-asked again. The register stores the command's answer only, so the model's
+broker, the grant revoked, or the message is not the caller's to have
+answered. A repeat of the same operation finds the reply kept and answers with
+it while the grant holds; the model is not asked again. The register stores the command's answer only, so the model's
 words are in the reply's row and nowhere else.
 
 Two system operations, the worker's and no person's command

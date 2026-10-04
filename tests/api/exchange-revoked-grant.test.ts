@@ -17,6 +17,7 @@ import { localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
 import { createControls, type Controls } from './controls-fixture.ts';
 import { grantTo } from '../commands/fixture.ts';
 
+// eslint-disable-next-line max-lines-per-function -- one world, both cases on it
 describe('the conversation exchange and the conversation grant', () => {
   let w: ConversationWorld;
   let c: Controls;

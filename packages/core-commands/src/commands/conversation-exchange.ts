@@ -6,17 +6,19 @@
 // `conversation.message`), which commits first. Then, on the person path
 // only, the API hands the kept message here:
 //
-// 1. The caller is resolved again from the verified session, and the message
-//    is found as the caller's own, a person's message, in a conversation of
-//    this business whose body is kept. Anything else answers nothing.
+// 1. The caller is resolved again from the verified session, still holds
+//    `conversation:write` as `conversation.read` asks of an owner, and the
+//    message is found as the caller's own, a person's message, in a
+//    conversation of this business whose body is kept. Anything else answers
+//    nothing, a reply already kept included.
 // 2. Its words go to AW-01's broker on the conversation seam
 //    (`callModelInConversation`): the owner in their own session, a local
 //    route only, nothing held. A cloud route is refused there before anything
 //    is written or sent (AW-03 egress off).
 // 3. The answer is kept as the agent's message answering that one message
-//    (0099), in a second transaction that resolves the caller again and takes
+//    (0099), in a second transaction that resolves the caller again, takes
 //    the conversation's row lock, as a message and the purge do, so a reply
-//    never lands in a body being purged.
+//    never lands in a body being purged, and asks the grant again under it.
 //
 // A message has at most one reply. A repeat of the request finds the reply
 // kept and answers with it, and the model is not asked again; two repeats at
@@ -38,7 +40,7 @@ import type {
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { bounded } from './conversations.ts';
+import { bounded, holdsOwnConversations } from './conversations.ts';
 import { auditAs, type ModelBroker } from './model-call.ts';
 import { isCommandRefusal } from './refusal.ts';
 
@@ -116,6 +118,7 @@ async function questionOf(
   asked: Asked,
 ): Promise<Question | undefined> {
   if (!isUuid(asked.conversationId) || !isUuid(asked.messageId)) return undefined;
+  if (!(await holdsOwnConversations(tx, session))) return undefined;
   const [found] = await tx.query<{ readonly owner_person_id: string; readonly body: string }>(
     `select c.owner_person_id, m.body
        from conversations c
@@ -150,6 +153,7 @@ async function keep(
     [tx.businessId, asked.conversationId, session.actorId],
   );
   if (conversation === undefined || conversation.body_purged_at !== null) return undefined;
+  if (!(await holdsOwnConversations(tx, session))) return undefined;
   const id = randomUUID();
   const inserted = await tx.query(
     `insert into conversation_messages
