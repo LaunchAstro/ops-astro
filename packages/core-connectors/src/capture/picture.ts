@@ -13,7 +13,10 @@
 // - its stylesheets, fetched by the fence as stylesheets of that page, each
 //   once (a repeat is answered from the first fetch), a few at a time and no
 //   more distinct ones than the page observation allows; one that cannot be
-//   fetched fails the picture, as it fails the page observation;
+//   fetched fails the picture, as it fails the page observation; one the fence
+//   followed a redirect for is answered with an import of its final address,
+//   served there from the fetched copy, so its own imports resolve as the page
+//   observation resolves them (a browser hands a sheet's redirect to no route);
 // - nothing else: images, fonts, scripts, frames and any other request are
 //   refused and recorded by code and origin only, never a path or query.
 //
@@ -86,6 +89,7 @@ export const PICTURE_POLICY: string =
   "object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'";
 
 const originOf = (url: string): string => (URL.canParse(url) ? new URL(url).origin : '');
+const STYLESHEET = { 'content-type': 'text/css; charset=utf-8' };
 const DOCUMENT = {
   'content-type': 'text/html; charset=utf-8',
   'content-security-policy': PICTURE_POLICY,
@@ -101,7 +105,10 @@ interface RouteState {
   failed: FenceCode | undefined;
 }
 
-/** The fetched copy, served where it was fetched; if it moved, the browser is sent there first. */
+/**
+ * The fetched copy, served where it was fetched; if it moved, the browser is sent there first: a
+ * document by a redirect (the port hands the next request to the route), a sheet by an import.
+ */
 function answered(
   state: RouteState,
   request: PictureRequest,
@@ -110,6 +117,8 @@ function answered(
 ): PictureAnswer {
   if (fetched.url === request.url) return { status: 200, headers, body: fetched.body };
   state.moved.set(`${request.kind} ${fetched.url}`, fetched);
+  if (request.kind === 'stylesheet')
+    return { status: 200, headers, body: `@import "${fetched.url.replaceAll('\\', '\\\\')}";` };
   return { status: 302, headers: { location: fetched.url }, body: '' };
 }
 
@@ -141,6 +150,7 @@ function pictureRoute(page: string, options: CaptureOptions, state: RouteState):
       return answered(state, request, fetched.value, DOCUMENT);
     }
     if (request.kind === 'stylesheet') {
+      if (landed !== undefined) return answered(state, request, landed, STYLESHEET);
       if (!state.sheets.has(request.url) && state.sheets.size >= MAX_STYLESHEETS) {
         state.failed ??= 'CAPTURE_OVERSIZED';
         record({ code: 'CAPTURE_OVERSIZED', hop: 0, origin: originOf(request.url) });
@@ -155,8 +165,7 @@ function pictureRoute(page: string, options: CaptureOptions, state: RouteState):
         state.failed ??= sheet.code;
         return null;
       }
-      const headers = { 'content-type': 'text/css; charset=utf-8' };
-      return { status: 200, headers, body: sheet.value.body };
+      return answered(state, request, sheet.value, STYLESHEET);
     }
     record({ code: 'CAPTURE_KIND_REFUSED', hop: 0, origin: originOf(request.url) });
     return null;
