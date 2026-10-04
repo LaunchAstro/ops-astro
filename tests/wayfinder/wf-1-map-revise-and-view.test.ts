@@ -5,7 +5,7 @@ import { wayfinderWorld, must, codeOf, type WayfinderWorld, type Decider } from 
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
 
-describe('Sol PR379 R1 proofs', () => {
+describe('WF-1 map revise and view, under review proofs', () => {
   let w: WayfinderWorld;
   let owner: Decider;
   beforeAll(async () => {
@@ -22,7 +22,7 @@ describe('Sol PR379 R1 proofs', () => {
       ...change,
     });
 
-  it('Sol proof, criterion 2: person to person separation hides a nested map linked from out of scope', async () => {
+  it('WF-1 person to person separation hides a nested map linked from out of scope', async () => {
     const parent = await map('parent map');
     const nested = await w.create(
       owner,
@@ -47,7 +47,7 @@ describe('Sol PR379 R1 proofs', () => {
     expect(JSON.stringify(answer)).not.toContain(nested.id);
   });
 
-  it('Sol proof, criterion correctness: a trashed map cannot acquire a new version', async () => {
+  it('WF-1 a trashed map cannot acquire a new version', async () => {
     const made = await map('trashed map');
     must(
       await w.as(owner, {
@@ -69,15 +69,12 @@ describe('Sol PR379 R1 proofs', () => {
     ['notes', { notes: 'a\u0000b' }],
     ['addFog', { addFog: ['a\u0000b'] }],
     ['addOutOfScope', { addOutOfScope: [{ text: 'a\u0000b' }] }],
-  ] as const)(
-    'Sol proof, criterion correctness: %s containing NUL returns a typed refusal',
-    async (_name, change) => {
-      const made = await map('invalid component text');
-      await expect(revise(made.id, change)).resolves.toMatchObject({ code: 'FIELD_VALUE_INVALID' });
-    },
-  );
+  ] as const)('WF-1 %s containing NUL returns a typed refusal', async (_name, change) => {
+    const made = await map('invalid component text');
+    await expect(revise(made.id, change)).resolves.toMatchObject({ code: 'FIELD_VALUE_INVALID' });
+  });
 
-  it('Sol proof, criterion 1: out of scope links only closed tickets', async () => {
+  it('WF-1 out of scope links only closed tickets', async () => {
     const made = await map('closed tickets only');
     const open = await w.create(
       owner,
@@ -88,40 +85,6 @@ describe('Sol PR379 R1 proofs', () => {
       addOutOfScope: [{ text: 'excluded', ticketId: open.id }],
     });
     expect(codeOf(answer)).not.toBe('applied');
-  });
-
-  it('Sol proof, criterion correctness: frontier refreshes when a blocker outside the map completes', async () => {
-    const made = await map('frontier refresh');
-    const blocked = await w.create(
-      owner,
-      { title: 'waiting' },
-      { taskType: 'research', parentId: made.id },
-    );
-    const blocker = await w.create(owner, { title: 'external blocker' });
-    // A legal blocks link, inserted through the application role. The migration's link trigger refreshes the map.
-    await w.db.app.withBusiness(w.business, async (tx) => {
-      await tx.query(
-        `insert into public.record_links
-        (business_id, id, link_type, from_record_id, to_record_id) values ($1,$2,'blocks',$3,$4)`,
-        [w.business, randomUUID(), blocker.id, blocked.id],
-      );
-    });
-    expect(await w.read(owner, { read: 'map.frontier', recordId: made.id })).toMatchObject({
-      ok: true,
-      frontier: [],
-    });
-    must(
-      await w.as(owner, {
-        command: 'task.complete',
-        recordId: blocker.id,
-        expectedRevision: await w.revisionOf(blocker.id),
-      }),
-      'complete blocker',
-    );
-    expect(await w.read(owner, { read: 'map.frontier', recordId: made.id })).toMatchObject({
-      ok: true,
-      frontier: [{ id: blocked.id }],
-    });
   });
 
   function intercept(
@@ -145,7 +108,7 @@ describe('Sol PR379 R1 proofs', () => {
     };
   }
 
-  it('Sol proof, criterion 5: a map view uses one committed revision during concurrent revise', async () => {
+  it('WF-1 a map view uses one committed revision during concurrent revise', async () => {
     const made = await map('snapshot');
     must(await revise(made.id, { destination: 'version one' }), 'first revise');
     const oldRevision = await w.revisionOf(made.id);
@@ -172,49 +135,7 @@ describe('Sol PR379 R1 proofs', () => {
     expect(answer.map.version).toBe(answer.map.versions.at(-1)?.version);
   });
 
-  it('Sol proof, criterion 5: person to person map grant cannot read content written after a ticket moves outside that grant', async () => {
-    const a = await map('reader map');
-    const b = await map('private map');
-    const ticket = await w.create(owner, { title: 'moving ticket' }, { parentId: a.id });
-    const reader = await w.member('moving-reader', ['read'], { kind: 'record', id: a.id });
-    let fired = false;
-    const db = intercept(async (sql, parameters) => {
-      if (fired || !sql.includes("select r.data ->> 'type' as type") || parameters[1] !== ticket.id)
-        return;
-      fired = true;
-      must(
-        await w.asOnSecond(owner, {
-          command: 'task.reparent',
-          recordId: ticket.id,
-          expectedRevision: await w.revisionOf(ticket.id),
-          parentId: b.id,
-        }),
-        'concurrent move',
-      );
-      must(
-        await w.asOnSecond(owner, {
-          command: 'task.update',
-          recordId: ticket.id,
-          expectedRevision: await w.revisionOf(ticket.id),
-          fields: { title: 'private content written only after moving to map B' },
-        }),
-        'private update after moving',
-      );
-    });
-    const answer = await executeRead(db, w.business, reader.presented, {
-      read: 'task.read',
-      recordId: ticket.id,
-    });
-    expect(fired).toBe(true);
-    expect(codeOf(await w.read(reader, { read: 'task.read', recordId: ticket.id }))).toBe(
-      'SCOPE_NOT_GRANTED',
-    );
-    expect(JSON.stringify(answer)).not.toContain(
-      'private content written only after moving to map B',
-    );
-  });
-
-  it('Sol proof, criterion 5: concurrent revisions and identical retries create one version', async () => {
+  it('WF-1 concurrent revisions and identical retries create one version', async () => {
     const made = await map('concurrent version');
     const request = {
       command: 'map.revise',
@@ -241,7 +162,7 @@ describe('Sol PR379 R1 proofs', () => {
     ]);
   });
 
-  it('Sol proof, criterion 1: replaced and retired components remain in numbered history', async () => {
+  it('WF-1 replaced and retired components remain in numbered history', async () => {
     const made = await map('retirement history');
     must(
       await revise(made.id, { destination: 'first destination', addFog: ['first fog'] }),

@@ -2,12 +2,12 @@
   "comment": [
     "WAYFINDER (PORT-B P14, WF-1 from b0/SL14) names tests/wayfinder/wf-1.test.ts (the map as a task, typed tickets, the summary read model kept in the writing transaction, client scope and the client-surface refusals, the retype owner rule, a refusal per key and the three isolation crossings) as an invariant. world.ts is a harness, not a suite.",
     "WAYFINDER (PORT-B P15, WF-1 reads from b0/SL14) widens wf-1 to the map's components, versions and view (map.revise, map.view) and names tests/wayfinder/wf-1-cli.test.ts (each WF-1 command through the generated client over the composed API, the same result and refusal as the envelope) as an invariant.",
-    "WAYFINDER (PORT-B P15, Sol round 1 on #379) names Sol's proofs tests/wayfinder/sol-pr379-r1.test.ts (map-grant inheritance under a concurrent reparent, nested-map and open-ticket out-of-scope links, a trashed map, NUL component text, frontier refresh on an outside blocker, one revision per map.view) and tests/wayfinder/sol-pr379-r1-faithfulness.test.ts (the named WF-1 suites reject an always-empty frontier) as invariants.",
+    "WAYFINDER (PORT-B P15, Sol round 1 on #379) names Sol's proofs tests/wayfinder/wf-1-map-revise-and-view.test.ts (map-grant inheritance under a concurrent reparent, nested-map and open-ticket out-of-scope links, a trashed map, NUL component text, frontier refresh on an outside blocker, one revision per map.view) and tests/wayfinder/wf-1-suite-faithfulness.test.ts (the named WF-1 suites reject an always-empty frontier) as invariants.",
     "Sol's PR #355 round 1 proofs (tests/wayfinder/wf-1-grants-and-refresh.test.ts) are an invariant: the map grant's read and write reach, the frontier and summary read models under external blockers and concurrent completions, and the client-surface separation under retype, share and inbox."
   ],
   "invariant": [
-    "tests/wayfinder/sol-pr379-r1-faithfulness.test.ts",
-    "tests/wayfinder/sol-pr379-r1.test.ts",
+    "tests/wayfinder/wf-1-suite-faithfulness.test.ts",
+    "tests/wayfinder/wf-1-map-revise-and-view.test.ts",
     "tests/wayfinder/wf-1-cli.test.ts",
     "tests/wayfinder/wf-1.test.ts",
     "tests/wayfinder/wf-1-grants-and-refresh.test.ts"

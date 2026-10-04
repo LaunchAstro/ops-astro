@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 
-it('Sol proof, criterion 7: the named WF-1 suites reject a frontier implementation returning empty lists', async () => {
+it('WF-1 the named WF-1 suites reject a frontier implementation returning empty lists', async () => {
   const root = resolve(import.meta.dirname, '../..');
   const copy = mkdtempSync(join(tmpdir(), 'sol379-frontier-'));
   try {
