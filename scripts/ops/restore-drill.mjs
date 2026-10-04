@@ -54,9 +54,9 @@
 // attestation: the store takes a pass only through the store login the
 // installation appointed as them (deploy/staging/backup-store.sql). An export
 // and a drill from the store ask the gate again before each step with the
-// store, and hold it over each part's read and ask once more after it, so an
-// operator whose sign-in ended or whose `operations:manage` was revoked part
-// way reads no further and keeps nothing.
+// store, and once more after each part's read, so an operator whose sign-in
+// ended or whose `operations:manage` was revoked part way reads no further and
+// keeps nothing.
 //
 // It prints one JSON line, passed or failed, and exits 0 or 1. A failed line
 // names the stage and nothing else: Docker's, pg_restore's and the server's
@@ -92,25 +92,17 @@ export const drillAsOperator = ({ reach = stagingReach, ...options }) =>
  * from the store only after the gate admits it again, with nothing admitted
  * earlier still queued: an operator whose sign-in ended or whose
  * `operations:manage` was revoked part way reads no further part, and the
- * fetch removes what it wrote. A part's read holds the gate over it
- * (`holdingOperations`): a revocation waits until the read has ended, and the
- * gate is asked once more after it, so a sign-in ended during the read
- * refuses that part too and nothing read is kept or reported. Every gate
- * operator.ts admits carries both.
+ * fetch removes what it wrote. A part's read holds no lock, so a revocation
+ * never waits on it; the gate is asked once more after the part has arrived,
+ * so a sign-in ended or a grant revoked during the read refuses that part too,
+ * and nothing read is kept or reported. Every gate operator.ts admits carries it.
  */
 function askingAgain(reach, gate) {
   return async (url, script, onLine) => {
-    if (onLine === undefined) {
-      await gate.stillOperator?.();
-      return await reach(url, script, onLine);
-    }
-    const hold = gate.holdingOperations ?? ((during) => during());
-    return await hold(async () => {
-      await gate.stillOperator?.();
-      const answer = await reach(url, script, onLine);
-      await gate.stillOperator?.();
-      return answer;
-    });
+    await gate.stillOperator?.();
+    const answer = await reach(url, script, onLine);
+    if (onLine !== undefined) await gate.stillOperator?.();
+    return answer;
   };
 }
 
