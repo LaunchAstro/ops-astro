@@ -73,7 +73,9 @@ type Refused = { readonly ok: false; readonly code: ObservedRefusal };
 
 /**
  * The correction locked, and a live worker lease on its task at the fence the
- * worker holds, or the refusal. The lease and then its delegation are locked
+ * worker holds, or the refusal: no such lease of the caller's is
+ * `LEASE_NOT_OWNED` whatever the id; a correction absent or on another task,
+ * `NOT_FOUND`. The lease and then its delegation are locked
  * `for share` (`core-runtime/src/locks.ts`'s order), so neither can end or be
  * revoked until this transaction does; then the clock is read once, after the
  * locks, and both expiries are judged at it (`core-runtime/src/clock.ts`), so a
@@ -82,7 +84,15 @@ type Refused = { readonly ok: false; readonly code: ObservedRefusal };
  * settled or expired: the check `core-runtime/src/lease-ownership.ts` makes.
  */
 async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
-  const correction = await lockCorrectionForSystem(tx, at.correctionId);
+  // The lease the caller holds names the one task it may reach, asked before any correction:
+  // another task's correction and an id that names none get the same answer.
+  const [owned] = await tx.query<{ readonly task_id: string }>(
+    `select l.task_id from public.leases l
+      where l.business_id = $1 and l.id = $2 and l.fence = $3 and l.holder_actor_id = $4`,
+    [tx.businessId, at.leaseId, at.fence, at.actorId],
+  );
+  if (owned === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  const correction = await lockCorrectionForSystem(tx, at.correctionId, owned.task_id);
   if (correction === undefined) return { ok: false, code: 'NOT_FOUND' };
   const [lease] = await tx.query<{ readonly delegation_id: string | null }>(
     `select l.delegation_id from public.leases l

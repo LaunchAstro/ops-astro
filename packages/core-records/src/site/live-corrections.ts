@@ -160,19 +160,21 @@ export async function insertLiveCorrection(
 }
 
 /**
- * One correction by its id, locked, with no grant filter: the system's read
- * for the runner, whose authority is the worker lease on the correction's own
- * task (`correction-receipts.ts` checks it in the same transaction).
+ * One correction by its id on `taskId`, locked, with no grant filter: the
+ * system's read for the runner, whose authority is the worker lease on that
+ * task (`correction-receipts.ts` checks it in the same transaction). A
+ * correction on another task is not read, locked or told apart from none.
  */
 export async function lockCorrectionForSystem(
   tx: TenantQuery,
   id: string,
+  taskId: string,
 ): Promise<LiveCorrection | undefined> {
   const rows = await tx.query<Row>(
     `select ${COLUMNS} from public.live_corrections c
-      where c.business_id = $1 and c.id = $2
+      where c.business_id = $1 and c.id = $2 and c.task_id = $3
       for update of c`,
-    [tx.businessId, id],
+    [tx.businessId, id, taskId],
   );
   const [row] = rows;
   return row === undefined ? undefined : correctionFrom(row);
