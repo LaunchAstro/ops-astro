@@ -1517,9 +1517,12 @@ releasedMinor, spentMinor }`. The task stays open for a person. It reaches a
   an earlier stop never applies to a later one). A refusal writes nothing.
 - **No agent answers.** Neither row is in `AGENT_SURFACE`: the agent prefix
   answers `DELEGATION_EXCLUDES_OPERATION` 403 with or without a delegation.
+- **Recent sign-in.** `run.top_up` holds `billing:decide`, so C59's step-up
+  asks it in the envelope: `STEP_UP_REQUIRED` 403 past 60 minutes while the
+  business's money step-up setting is on (`C54 recent sign-in`). The end holds
+  `gate:decide`, which the step-up does not ask.
 - **Not here yet.** The question and its two buttons in the conversation where
-  the plan was approved (AW-04), and the recent sign-in a money answer asks
-  for (C59).
+  the plan was approved (AW-04).
 
 ## The launch and its receipt
 
@@ -2348,8 +2351,9 @@ revision, and two setters at once from one limit leave one applied. The answer i
 and `{ key: 'planning', limitMinor, currency }`. A lower limit is taken even
 below what is committed: the next planning reply that no longer fits is
 refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). Until a person moves
-it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. Not here
-yet: the recent sign-in a money action asks (C59).
+it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. It holds
+`billing:decide`, so C59's step-up asks it in the envelope: `STEP_UP_REQUIRED`
+403 past 60 minutes while the business's money step-up setting is on.
 
 ## Tags
 
