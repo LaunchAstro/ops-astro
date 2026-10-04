@@ -4,10 +4,10 @@
 // pinned GoTrue (`sol-pr382-proof-containers.mjs` starts it and sets
 // SOL_AUTH_URL; without it these skip). A reset sets the password through
 // custody's admin update with no provider recovery session anywhere, and an
-// MFA login's reset needs our checked second factor first. Custody reaches
+// MFA login's reset is refused for support with nothing spent (ORCH77-C40MFA). Custody reaches
 // GoTrue through a loopback stand-in for the gateway, which serves the auth
 // service under `/auth/v1` as a Supabase deployment's does.
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -16,7 +16,6 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
 import { composeApi } from '../../apps/api/server.ts';
-import type { FactorCodeCheck } from '../../packages/core-commands/src/index.ts';
 import type { Broker, Custody } from '../../packages/core-custody/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import {
@@ -118,7 +117,7 @@ afterAll(async () => {
   if (folder !== undefined) rmSync(folder, { recursive: true, force: true });
 });
 
-function realApi(checkFactor?: FactorCodeCheck) {
+function realApi() {
   return composeApi({
     database: world.db.app,
     admin: world.db.admin,
@@ -127,7 +126,6 @@ function realApi(checkFactor?: FactorCodeCheck) {
     passwordSet: {
       businesses: async () => await Promise.resolve([world.alpha]),
       broker: held.broker,
-      ...(checkFactor === undefined ? {} : { checkFactor }),
     },
   }).app;
 }
@@ -167,7 +165,8 @@ REAL(
 /** A provider login with a verified TOTP factor, mapped and mirrored in alpha. */
 async function mfaLogin() {
   const email = `sol-${randomUUID()}@example.test`;
-  const signed = await post('/signup', { email, password: `old-password-${randomUUID()}` });
+  const old = `old-password-${randomUUID()}`;
+  const signed = await post('/signup', { email, password: old });
   const initial = field(signed, 'access_token');
   const subject = field(signed['user'] as Record<string, unknown>, 'id');
   const provider = createGoTrueFactors({ baseUrl: issuer ?? '' });
@@ -186,42 +185,47 @@ async function mfaLogin() {
     });
     await recordFactorVerified(tx, { personId, factorId: local.id, subject });
   });
-  return { email, subject, factorId, secret, provider, aal2: verified.value.accessToken };
+  return { email, old, subject, secret };
+}
+
+/** Whether the reset token is still unspent, read in alpha. */
+async function unspent(token: string): Promise<boolean> {
+  const hash = createHash('sha256').update(token).digest('hex');
+  const [row] = await world.db.app.withBusiness(
+    world.alpha,
+    async (tx) =>
+      await tx.query<{ spent: boolean }>(
+        'select spent_at is not null as spent from password_reset_tokens where token_hash = $1',
+        [hash],
+      ),
+  );
+  return row?.spent === false;
 }
 
 REAL(
-  'Sol proof, criterion 7: an MFA login’s reset needs our verified second factor, then succeeds at the pinned GoTrue',
+  'Sol proof, criterion 7 (ORCH77-C40MFA): an MFA login’s reset answers RESET_NEEDS_SUPPORT; token unspent; password unchanged at the pinned GoTrue',
   async () => {
-    const { email, subject, factorId, secret, provider, aal2 } = await mfaLogin();
-    // The check the reset is handed: the code proved at the provider, our verdict on it.
-    const asked: string[] = [];
-    const check: FactorCodeCheck = async (who, id, code) => {
-      asked.push(`${who}:${id}`);
-      const answer = await provider.verify(aal2, id, code);
-      if (answer.ok) return 'good';
-      return answer.fault === 'refused' ? 'wrong' : 'fault';
-    };
-    const api = realApi(check);
+    const { email, old, subject, secret } = await mfaLogin();
+    const api = realApi();
     const token = await mintToken(subject);
     const fresh = `new-password-${randomUUID()}`;
-    const none = await call(api, '/api/password/set', { token, password: fresh });
-    const wrong = await call(api, '/api/password/set', { token, password: fresh, code: '000000' });
-    expect([none, wrong].map((one) => [one.status, one.body['code']])).toEqual([
-      [401, 'RESET_FACTOR_INVALID'],
-      [401, 'RESET_FACTOR_INVALID'],
+    // The same answer with no code, a wrong one and the good one.
+    const answers = [];
+    for (const code of [undefined, '000000', codeFor(secret)]) {
+      const body =
+        code === undefined ? { token, password: fresh } : { token, password: fresh, code };
+      // oxlint-disable-next-line no-await-in-loop -- one request after another on one token
+      const answer = await call(api, '/api/password/set', body);
+      answers.push([answer.status, answer.body['code']]);
+    }
+    expect(answers).toEqual([
+      [403, 'RESET_NEEDS_SUPPORT'],
+      [403, 'RESET_NEEDS_SUPPORT'],
+      [403, 'RESET_NEEDS_SUPPORT'],
     ]);
+    expect(await unspent(token)).toBe(true);
+    // Unchanged at the provider: the old password signs in, the new one does not.
     await signIn(email, fresh, 400);
-    // The token was not spent by either: with the code, the same token sets the password.
-    const good = await call(api, '/api/password/set', {
-      token,
-      password: fresh,
-      code: codeFor(secret, 1),
-    });
-    expect({ status: good.status, body: good.body }).toEqual({
-      status: 200,
-      body: { passwordSet: true },
-    });
-    expect(asked).toEqual([`${subject}:${factorId}`, `${subject}:${factorId}`]);
-    expect(field(await signIn(email, fresh, 200), 'access_token')).not.toBe('');
+    expect(field(await signIn(email, old, 200), 'access_token')).not.toBe('');
   },
 );

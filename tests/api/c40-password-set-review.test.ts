@@ -2,16 +2,11 @@
 //
 // C40's reviews, on the reset token (ORCH77-C40B): one token sets one
 // password however many requests carry it; a password the provider refuses
-// spends the token and ends sessions; a login with a verified second factor
-// gives its code, checked by us under the wrong-code lockout; and a failure
-// after the provider set the password still leaves every session ended.
+// spends the token and ends sessions; and a failure after the provider set
+// the password still leaves every session ended.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
-import {
-  recordFactorEnrolled,
-  recordFactorVerified,
-} from '../../packages/core-records/src/index.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import { json } from './c58-sessions-world.ts';
 import {
@@ -20,7 +15,6 @@ import {
   doorAnswer,
   faultTheChangeIn,
   freshMember,
-  GOOD_CODE,
   inBravoToo,
   mintToken,
   now,
@@ -42,24 +36,6 @@ const answerOf = (answer: { status: number; body: Record<string, unknown> }) => 
 });
 
 const oldSession = async (subject: string) => await tokenFor(subject, randomUUID(), now() - 60);
-
-/** A new member of alpha whose login has a verified second factor. */
-async function withFactor(name: string) {
-  const member = await freshMember(name);
-  await world.db.app.withBusiness(world.alpha, async (tx) => {
-    const local = await recordFactorEnrolled(tx, {
-      personId: member.personId,
-      provider: 'supabase',
-      providerFactorId: randomUUID(),
-    });
-    await recordFactorVerified(tx, {
-      personId: member.personId,
-      factorId: local.id,
-      subject: member.presented.subject,
-    });
-  });
-  return member;
-}
 
 const REVIEW = it.skipIf(serverUrl === undefined);
 
@@ -89,46 +65,6 @@ REVIEW(
     expect(await doorAnswer(old, 'alpha')).toBe(ENDED);
   },
 );
-
-REVIEW(
-  'C40 F5 a login with a verified factor resets only with its code, checked by us',
-  async () => {
-    const kit = await withFactor('kit');
-    const token = await mintToken(kit.presented.subject);
-    const none = await setPassword(token, NEW_PASSWORD);
-    const wrong = await setPassword(token, NEW_PASSWORD, '000000');
-    expect([answerOf(none), answerOf(wrong)]).toEqual([
-      { status: 401, code: 'RESET_FACTOR_INVALID' },
-      { status: 401, code: 'RESET_FACTOR_INVALID' },
-    ]);
-    expect(seen).toEqual([]);
-    // The token was not spent: with the code, it sets the password, and the factor stays.
-    expect((await setPassword(token, NEW_PASSWORD, GOOD_CODE)).status).toBe(200);
-    const [person] = await world.db.app.withBusiness(
-      world.alpha,
-      async (tx) =>
-        await tx.query<{ verified: boolean }>(
-          'select second_factor_verified as verified from people where id = $1',
-          [kit.personId],
-        ),
-    );
-    expect(person?.verified).toBe(true);
-  },
-);
-
-REVIEW('C40 F5 lockout: after five wrong codes even the good one is refused', async () => {
-  const rex = await withFactor('rex');
-  const token = await mintToken(rex.presented.subject);
-  for (let tried = 0; tried < 5; tried += 1) {
-    // oxlint-disable-next-line no-await-in-loop
-    expect((await setPassword(token, NEW_PASSWORD, '111111')).status).toBe(401);
-  }
-  expect(answerOf(await setPassword(token, NEW_PASSWORD, GOOD_CODE))).toEqual({
-    status: 429,
-    code: 'SECOND_FACTOR_LOCKED',
-  });
-  expect(seen).toEqual([]);
-});
 
 REVIEW(
   'C40 L2 the provider answers 500 after a sign-in mid-call: that session is ended',

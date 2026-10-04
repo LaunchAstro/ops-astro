@@ -4,8 +4,7 @@
 // `POST /api/password/set` mounted beside it, custody holding a made-up
 // service key for the `auth` destination, a stand-in login provider on a
 // loopback port whose one route is the admin update of one user, a broker
-// that catalogues `auth.update_user_password`, a stand-in factor check, and
-// the people a reset is tried on. A reset token is minted here as the reset
+// that catalogues `auth.update_user_password`, and the people a reset is tried on. A reset token is minted here as the reset
 // ask (C40 P2) will mint one: 32 random bytes, kept as their SHA-256 alone.
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -22,7 +21,6 @@ import { mountPasswordSet, PASSWORD_SET_PATH } from '../../apps/api/password-set
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import type { FactorCodeCheck } from '../../packages/core-commands/src/index.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { Broker, Custody } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
@@ -58,9 +56,6 @@ const userBack: Reply = (request, response) => {
   json(200, { id, email: 'x@example.test', aud: 'authenticated' })(request, response);
 };
 
-/** The one code the stand-in factor check takes as good. */
-export const GOOD_CODE = '246810';
-
 export interface Seen {
   readonly route: string;
   readonly authorization: string | undefined;
@@ -90,10 +85,6 @@ export function faultTheChangeIn(business: BusinessId): void {
 export function answerWith(next: Reply): void {
   reply = next;
 }
-
-/** The stand-in factor check: the good code is good, any other wrong. */
-export const checkFactor: FactorCodeCheck = async (_subject, _factorId, code) =>
-  await Promise.resolve(code === GOOD_CODE ? 'good' : 'wrong');
 
 /** An ordinary provider session's bearer, signed in at `signedInAt`. */
 export const tokenFor = async (
@@ -135,15 +126,11 @@ export async function mintToken(
 }
 
 /** Set a password with a token, as the reset page does. */
-export const setPassword = async (
-  token: string,
-  password: unknown,
-  code?: string,
-): Promise<Answer> =>
+export const setPassword = async (token: string, password: unknown): Promise<Answer> =>
   await call(
     api as unknown as ReturnType<typeof createApi>,
     PASSWORD_SET_PATH,
-    code === undefined ? { token, password } : { token, password, code },
+    { token, password },
     {},
   );
 
@@ -229,7 +216,6 @@ async function openWorld(): Promise<void> {
     {
       businesses: async () => await Promise.resolve([world.alpha, world.bravo]),
       broker: held.broker,
-      checkFactor,
     },
   );
   api.route('/', inner);

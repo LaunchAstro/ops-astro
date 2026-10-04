@@ -13,11 +13,11 @@
 //    one answer: `RESET_LINK_INVALID`.
 // 2. Where the token's login stands, business by business. A login mapped in
 //    none of the deployment's businesses is `RESET_LINK_INVALID` too.
-// 3. A login with a verified second factor gives its code, checked by us
-//    under C59's wrong-code lockout (`account-factor-checks.ts`) through the
-//    factor check the composition root hands in. No provider assurance level
-//    is read. A missing or wrong code is `RESET_FACTOR_INVALID`, and the
-//    token is not spent, so the person tries again inside its life.
+// 3. A login with a live verified second factor, in any business, cannot
+//    reset by link (ORCH77-C40MFA): `RESET_NEEDS_SUPPORT`, before anything is
+//    spent, whatever code is sent, so the token stays live, the password and
+//    sessions stay as they were, and nothing is written. Support resets it.
+//    A fault reading where the login stands is `RESET_UNAVAILABLE`, never a set.
 // 4. Spend it, under the token row's lock: every live token of the login is
 //    spent and every session of the login ends in every business (0063,
 //    keeping none), in one transaction. Of any requests carrying the token at
@@ -32,11 +32,10 @@
 //    then ends the sessions it has seen and every session of the login again,
 //    up to the moment that ending is written.
 
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import {
   endOtherSeenSessions,
   endSubjectSessions,
-  liveFactor,
   NO_ASSURANCE,
   standingOf,
   type BusinessId,
@@ -47,7 +46,6 @@ import {
 } from '../../../core-records/src/index.ts';
 import { setLoginPassword, type Broker } from '../../../core-custody/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
-import { recordCode, wrongCodeLock } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
 
 /** A password's bounds in UTF-8 bytes (C40). */
@@ -65,30 +63,19 @@ const TOKEN = /^[\w-]{43}$/u;
 /** A business-less transaction's business: the lookup reads no tenant's rows. */
 const NO_BUSINESS = '00000000-0000-0000-0000-000000000000';
 
-/** A second-factor code checked for a login with no session of the person's. */
-export type FactorCodeCheck = (
-  subject: string,
-  providerFactorId: string,
-  code: string,
-) => Promise<'good' | 'wrong' | 'fault'>;
-
 export interface PasswordReset {
   readonly token: string;
   readonly password: string;
-  readonly code?: string;
 }
 
 export interface ResetDependencies {
   readonly broker: Broker;
-  /** Absent, a login with a verified factor cannot reset (`RESET_UNAVAILABLE`). */
-  readonly checkFactor?: FactorCodeCheck;
 }
 
 export type PasswordResetCode =
   | 'RESET_LINK_INVALID'
   | 'PASSWORD_INVALID'
-  | 'RESET_FACTOR_INVALID'
-  | 'SECOND_FACTOR_LOCKED'
+  | 'RESET_NEEDS_SUPPORT'
   | 'RESET_PASSWORD_REFUSED'
   | 'RESET_UNAVAILABLE';
 
@@ -103,11 +90,10 @@ interface Found {
   readonly subject: string;
 }
 
-/** The login in one business, and its verified factor's provider id when it has one. */
+/** The login in one business. */
 interface Mapped {
   readonly business: BusinessId;
   readonly session: Session;
-  readonly factorId?: string;
 }
 
 /** Step 1: the one business whose live token this is, among the deployment's, or none. */
@@ -143,54 +129,23 @@ async function find(
   return row === undefined ? undefined : { business, tokenId, subject: row.subject };
 }
 
-/** Step 2: where the login stands in each business, with its factor where it holds one. */
+/** Step 2: where the login stands in each business, or `factored` when it holds a verified factor. */
 async function mappedIn(
   database: Database,
   businesses: readonly BusinessId[],
   presented: VerifiedSubject,
-): Promise<Mapped[]> {
+): Promise<Mapped[] | 'factored'> {
   const found: Mapped[] = [];
   for (const business of businesses) {
     // oxlint-disable-next-line no-await-in-loop -- one business at a time, every one of them
     const mapped = await database.withBusiness(business, async (tx) => {
-      const strict = await standingOf(tx, presented, 'required');
-      if (!('refused' in strict)) return { business, session: strict };
-      if (strict.code !== 'AUTH_SECOND_FACTOR_REQUIRED') return null;
-      const session = await standingOf(tx, presented, 'enrolling');
-      if ('refused' in session) return null;
-      const factor = await liveFactor(tx, session.personId);
-      return { business, session, factorId: factor?.providerFactorId ?? '' };
+      const session = await standingOf(tx, presented, 'required');
+      return 'refused' in session ? session : { business, session };
     });
-    if (mapped !== null) found.push(mapped);
+    if (!('refused' in mapped)) found.push(mapped);
+    else if (mapped.code === 'AUTH_SECOND_FACTOR_REQUIRED') return 'factored';
   }
   return found;
-}
-
-/** Step 3: the code checked under the wrong-code lockout; undefined when it is good. */
-async function factorRefusal(
-  database: Database,
-  check: FactorCodeCheck | undefined,
-  at: Mapped & { readonly factorId: string },
-  presented: VerifiedSubject,
-  code: string | undefined,
-): Promise<PasswordResetResult | undefined> {
-  if (code === undefined || !/^[0-9]{6}$/u.test(code)) return refused('RESET_FACTOR_INVALID');
-  if (check === undefined) return refused('RESET_UNAVAILABLE');
-  const attempt = randomUUID();
-  const caller = { presented, attempt };
-  const lockout = await database.withBusiness(at.business, async (tx) => {
-    const refusal = await wrongCodeLock(tx, presented.subject);
-    await recordCode(tx, at.session, caller, 'before', refusal);
-    return refusal;
-  });
-  if (lockout !== undefined) return refused('SECOND_FACTOR_LOCKED');
-  const answer = await check(presented.subject, at.factorId, code);
-  if (answer === 'fault') return refused('RESET_UNAVAILABLE');
-  if (answer === 'wrong') return refused('RESET_FACTOR_INVALID');
-  await database.withBusiness(at.business, async (tx) => {
-    await recordCode(tx, at.session, { ...caller, proven: true }, 'after', lockout);
-  });
-  return undefined;
 }
 
 /** Step 4, under the token's lock: false when it was spent or died meanwhile. */
@@ -254,14 +209,14 @@ export async function setPasswordByToken(
     subject: found.subject,
     assurance: NO_ASSURANCE,
   };
-  const mapped = await mappedIn(database, businesses, presented);
-  if (mapped.length === 0) return refused('RESET_LINK_INVALID');
-  const factored = mapped.find((one): one is Mapped & { factorId: string } => 'factorId' in one);
-  if (factored !== undefined) {
-    const { checkFactor } = dependencies;
-    const refusal = await factorRefusal(database, checkFactor, factored, presented, reset.code);
-    if (refusal !== undefined) return refusal;
+  let mapped: Mapped[] | 'factored';
+  try {
+    mapped = await mappedIn(database, businesses, presented);
+  } catch {
+    return refused('RESET_UNAVAILABLE');
   }
+  if (mapped === 'factored') return refused('RESET_NEEDS_SUPPORT');
+  if (mapped.length === 0) return refused('RESET_LINK_INVALID');
   const spent = await database.withBusiness(found.business, async (tx) => await spend(tx, found));
   if (!spent) return refused('RESET_LINK_INVALID');
   let set: Awaited<ReturnType<typeof setLoginPassword>> = 'fault';

@@ -114,7 +114,6 @@ export {
   RESET_COMMAND,
   RESET_TOKEN_MINUTES,
   setPasswordByToken,
-  type FactorCodeCheck,
   type PasswordReset,
   type PasswordResetCode,
   type PasswordResetResult,

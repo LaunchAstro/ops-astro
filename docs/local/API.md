@@ -2858,7 +2858,7 @@ In the web app, Settings ▸ General's "Your sessions" panel calls the first two
 ending the others only once confirmed, then listing again; it draws no session
 id (`apps/web/src/screens/settings/sessions.tsx`).
 
-`POST /api/password/set` with `{ token, password, code? }` sets a new
+`POST /api/password/set` with `{ token, password }` sets a new
 password with a reset link's one-time token (C40, ORCH77-C40B,
 `setPasswordByToken`, mounted by `mountPasswordSet` with the deployment's
 businesses and the broker; `main()` does not mount it yet). No provider
@@ -2869,9 +2869,11 @@ login of one business, good for 30 minutes and spent once. The reset asks
 for one is C40 P2. The token is found by `password_reset_token_find`, a
 narrow security definer function the application group alone runs (the
 business and the token's id for a hash exactly one business holds), then
-read in its own business. A login with a verified second factor sends its
-six-digit `code`, checked under C59's wrong-code lockout by the factor check
-the composition root hands in; no provider assurance level is read. Then,
+read in its own business. A login with a live verified second factor in any
+business is 403 `RESET_NEEDS_SUPPORT` (ORCH77-C40MFA), whatever code the body
+carries: refused before anything is spent, so the token stays live and the
+password and every session stay as they were; support resets it. A fault
+reading where the login stands is 503 `RESET_UNAVAILABLE`, never a set. Then,
 under the token's row lock, every live token of the login is spent and every
 session of the login ends in every business (0063, keeping none), and the
 password is set at the provider through custody under the catalogued
@@ -2883,17 +2885,14 @@ the moment that ending is written (`clock_timestamp()`).
 
 The answer is 200 `{ passwordSet: true }`. A token that is not live
 (unknown, out of shape, spent, past its 30 minutes, of a login no business
-maps) is 401 `RESET_LINK_INVALID`. A second-factor code missing or wrong is
-401 `RESET_FACTOR_INVALID`, and the token stays live; five wrong codes in 15
-minutes are 429 `SECOND_FACTOR_LOCKED`. A password outside 12 to 72 bytes is
+maps) is 401 `RESET_LINK_INVALID`. A password outside 12 to 72 bytes is
 400 `PASSWORD_INVALID`, a body that is not a JSON object holding the token and
 password as strings 400 `RESET_MALFORMED`, and one over 1 KiB 413
 `RESET_TOO_LARGE`. Of two requests on one token at once, one sets the
 password and the other is 401. A password the provider refuses itself (its
 422: weak, leaked, the same as before) is 422 `RESET_PASSWORD_REFUSED`: the
 token is spent, so choose a different password and ask for a new link. Any
-other provider fault or wrong answer is 503 `RESET_UNAVAILABLE`, as is a
-login with a factor when no factor check is configured; anything else
+other provider fault or wrong answer is 503 `RESET_UNAVAILABLE`; anything else
 failing is 503 `RESET_FAULT`. A reset that fails after the token is spent
 ends every session of the login again, a sign-in made while the provider was
 asked included, and audits nothing. Answers carry a code alone; nothing is
