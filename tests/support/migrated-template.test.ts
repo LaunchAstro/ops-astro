@@ -11,7 +11,7 @@
 
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { cpSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -95,6 +95,25 @@ const keep = (db: FreshDatabase) => {
   made.push(db);
   return db;
 };
+
+describe('the template name', () => {
+  it('follows the code that applies the migrations: a change to any of it names a new template', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tpl-harness-'));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const tenancy = 'packages/core-records/src/tenancy';
+    const self = 'tests/support/migrated-template.ts';
+    cpSync(tenancy, join(root, tenancy), { recursive: true });
+    cpSync(self, join(root, self));
+    expect(templateName('migrations', root)).toBe(templateName());
+    for (const file of ['migrate.ts', 'statements.ts', 'database.ts', 'migration-ids.ts']) {
+      const path = join(root, tenancy, file);
+      const before = readFileSync(path);
+      writeFileSync(path, '// one byte more\n', { flag: 'a' });
+      expect(templateName('migrations', root), file).not.toBe(templateName());
+      writeFileSync(path, before);
+    }
+  });
+});
 
 describe.skipIf(serverUrl === undefined)('the migrated template', () => {
   theTemplate();
