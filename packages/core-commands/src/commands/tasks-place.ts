@@ -438,17 +438,27 @@ export async function rankTask(
   }
   const parent = (target.data['parent'] as string | undefined) ?? null;
   const given = [afterId, beforeId].filter((id) => id !== null);
+  let viaMap: CommandRefusal | undefined;
   for (const id of given) {
     // eslint-disable-next-line no-await-in-loop
     const unreached = await refuseUnreachedRecord(tx, context, id);
+    if (unreached === undefined) continue;
     // eslint-disable-next-line no-await-in-loop
-    if (unreached !== undefined && !(await reachedThroughMap(tx, context, id, parent))) {
-      return refused(unreached);
-    }
+    if (!(await reachedThroughMap(tx, context, id, parent))) return refused(unreached);
+    viaMap = unreached;
   }
 
   const board = parent === null ? ((target.data['board'] as string | undefined) ?? null) : null;
   await lockSiblings(tx, parent, board);
+  // A neighbour admitted by the map's grant: the parent is held and read again,
+  // so a retype that committed meanwhile is refused and none commits before the rank.
+  if (
+    viaMap !== undefined &&
+    parent !== null &&
+    (await wayfinderFacts(tx, parent, true))?.type !== 'map'
+  ) {
+    return refused(viaMap);
+  }
 
   const neighbours = await tx.query<{ readonly id: string; readonly rank: string | null }>(
     `select id, ${BOARD_RANK}::text as rank from records
