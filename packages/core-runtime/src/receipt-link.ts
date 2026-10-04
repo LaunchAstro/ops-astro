@@ -136,7 +136,11 @@ interface HeldRow {
   readonly login: boolean;
 }
 
-/** The observer's live delegations, the live children they minted, and its live logins; expired ones are no working token. */
+/**
+ * The observer's live delegations, the live children any of its delegations
+ * minted (revoking or settling a parent leaves its children standing), and its
+ * live logins; expired ones are no working token.
+ */
 async function heldRows(tx: TenantQuery, delegationId: string): Promise<readonly HeldRow[]> {
   return await tx.query<HeldRow>(
     `with observer as (
@@ -152,7 +156,10 @@ async function heldRows(tx: TenantQuery, delegationId: string): Promise<readonly
      union all
      select c.id, c.agent_actor_id, c.credential_key_id, c.credential_scheme, c.credential_hash, false
        from public.delegations c
-      where c.business_id = $1 and c.parent_delegation_id in (select id from own)
+      where c.business_id = $1
+        and c.parent_delegation_id in (
+          select d.id from public.delegations d join observer o on o.agent_actor_id = d.agent_actor_id
+           where d.business_id = $1)
         and c.revoked_at is null and c.settled_at is null and c.expires_at > now()
      union all
      select a.id, a.agent_actor_id, a.credential_key_id, a.credential_scheme, a.credential_hash, true
