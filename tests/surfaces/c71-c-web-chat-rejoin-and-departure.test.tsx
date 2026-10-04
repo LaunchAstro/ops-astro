@@ -8,6 +8,7 @@ import { mount, settle } from './mount.tsx';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const AT = '2026-10-01T10:00:00.000Z';
+const REJOINED = '2026-10-01T11:00:00.000Z';
 const message = {
   id: 'm1',
   authorId: 'p-bo',
@@ -20,6 +21,7 @@ const conversation = {
   kind: 'group',
   name: 'Shoot crew',
   members: ['p-me', 'p-bo', 'p-cy'],
+  joinedAt: '2026-10-01T09:00:00.000Z',
   lastRead: null,
   lastMessageAt: AT,
   unread: 1,
@@ -36,6 +38,8 @@ interface ServerState {
   window: string;
   failMessages: boolean;
   messageReads: number;
+  /** While set, a messages read answers only once it is released. */
+  held: (() => void)[] | null;
 }
 
 function teamList(): Response {
@@ -55,28 +59,40 @@ function conversations(state: ServerState): Response {
   // withholds name and members, rejoining discards the earlier history.
   const view =
     state.window === 'left'
-      ? { ...conversation, name: null, members: [] }
+      ? { ...conversation, name: null, members: [], joinedAt: null }
       : state.window === 'rejoined'
-        ? { ...conversation, lastMessageAt: null, unread: 0 }
+        ? { ...conversation, joinedAt: REJOINED, lastMessageAt: null, unread: 0 }
         : conversation;
   return Response.json({ ok: true, conversations: [view] });
 }
 
-function messages(state: ServerState): Response {
+async function messages(state: ServerState): Promise<Response> {
   state.messageReads += 1;
   if (state.failMessages) return Response.json({ error: 'temporarily down' }, { status: 503 });
-  return Response.json({
+  const answer = Response.json({
     ok: true,
     conversationId: ID,
     lastRead: null,
     messages: state.window === 'rejoined' ? [] : [message],
   });
+  const { held } = state;
+  if (held !== null) {
+    await new Promise<void>((release) => {
+      held.push(release);
+    });
+  }
+  return answer;
 }
 
 function server() {
   let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
-  const state: ServerState = { window: 'first', failMessages: false, messageReads: 0 };
-  const answer = (at: string): Response => {
+  const state: ServerState = {
+    window: 'first',
+    failMessages: false,
+    messageReads: 0,
+    held: null,
+  };
+  const answer = async (at: string): Promise<Response> => {
     if (at.includes('/live?')) {
       return new Response(
         new ReadableStream<Uint8Array>({
@@ -89,11 +105,11 @@ function server() {
     }
     if (at.endsWith('/team/list')) return teamList();
     if (at.endsWith('/chat/conversations')) return conversations(state);
-    if (at.endsWith('/chat/messages')) return messages(state);
+    if (at.endsWith('/chat/messages')) return await messages(state);
     throw new Error(`unexpected ${at}`);
   };
   const fetch: typeof globalThis.fetch = async (input) =>
-    await Promise.resolve().then(() => answer(String(input)));
+    await Promise.resolve().then(async () => await answer(String(input)));
   return {
     state,
     client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
@@ -155,4 +171,58 @@ it('a departed group is not presented as a writable conversation', async () => {
   // current members and name. send_group and leave now refuse NOT_FOUND.
   expect.soft(page.find('.tmc__conv .composer')).toBeNull();
   expect.soft(page.find('.tmc__conv .tmc__leave')).toBeNull();
+});
+
+it('a rejoin no list saw as a leave cannot redraw messages from the earlier window', async () => {
+  const api = server();
+  const page = await mount(<TeamScreen client={api.client} grantKey="alpha:ana" />);
+  await flush();
+  expect(page.text()).toContain('old-window canary');
+  // Left and re-added between two list reads: the next list shows only a new join time.
+  api.state.window = 'rejoined';
+  api.state.failMessages = true;
+  const before = api.state.messageReads;
+  await act(() => {
+    api.signal('conversation', 'board');
+  });
+  await flush();
+  expect(api.state.messageReads).toBeGreaterThan(before);
+  expect(page.text()).not.toContain('old-window canary');
+});
+
+it('a messages read asked while departed cannot refill the group after a rejoin', async () => {
+  const api = server();
+  const page = await mount(<TeamScreen client={api.client} grantKey="alpha:ana" />);
+  await flush();
+  api.state.window = 'left';
+  await act(() => {
+    api.signal('closed', `conversation:${ID}`);
+  });
+  await flush();
+  // A read asked while departed answers with the earlier window, but only late.
+  const late: (() => void)[] = [];
+  api.state.held = late;
+  await act(() => {
+    api.signal('invalidate', `conversation:${ID}`);
+  });
+  await flush();
+  expect(late).toHaveLength(1);
+  api.state.held = null;
+  api.state.window = 'rejoined';
+  api.state.failMessages = true;
+  // The rejoined list lands, then the late read, before the panel draws again.
+  await act(async () => {
+    api.signal('conversation', 'board');
+    for (let turn = 0; turn < 20; turn += 1) {
+      // eslint-disable-next-line no-await-in-loop -- the list answers first
+      await Promise.resolve();
+    }
+    for (const release of late) release();
+    for (let turn = 0; turn < 20; turn += 1) {
+      // eslint-disable-next-line no-await-in-loop -- then the late read
+      await Promise.resolve();
+    }
+  });
+  await flush();
+  expect(page.text()).not.toContain('old-window canary');
 });
