@@ -1,6 +1,8 @@
 {
   "invariant": [],
   "conformance": [
+    "tests/review/child-assign-refuses-parent-expired-in-audit-lock-wait.test.ts",
+    "tests/review/child-assign-refuses-parent-expired-in-delegation-lock-wait.test.ts",
     "tests/review/child-assign-refuses-parent-expired-in-lock-wait.test.ts",
     "tests/review/column-grants-name-batch-1.test.ts",
     "tests/review/ended-parent-child-not-live-on-tasks.test.ts",
