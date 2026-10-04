@@ -179,10 +179,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'operations.change_installation_mode': writing(business('ops.installation')),
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
-  // Custody (C31): a secret row names a client only by its scope id, which
-  // holds no client content and no foreign key to one; the value is sealed.
+  // Custody (C31): a set may store a client's credential (a clientId), so it
+  // is client data and waits on the first-client gate, as a task that may
+  // name no client does. A clear gives no one anything, as a share revoked.
   'secret.list': READ,
-  'secret.set': writing(business('custody_secrets')),
+  'secret.set': writing(client('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
   'client.create': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
