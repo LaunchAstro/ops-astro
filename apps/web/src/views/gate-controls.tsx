@@ -214,3 +214,12 @@ export function closedNote(
   );
   return { because, closed: true, gateId, lineageId: lineage?.lineageId ?? '' };
 }
+
+/**
+ * A held closure gives way only to another closure. The views decide
+ * independently, so an older request can settle after the refusal, and its
+ * answer says nothing about this reader's authority now.
+ */
+export function keepsClosure(held: DecisionNote, next: DecisionNote | null): boolean {
+  return held.closed && next?.closed !== true;
+}

@@ -103,6 +103,7 @@ import { usePresence } from '../data/presence.ts';
 import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
 import { useFreshOnPage } from '../views/freshness.tsx';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
+import { keepsClosure } from '../views/gate-controls.tsx';
 import { ConflictNotice, MovedNotice, UnsavedBar, changedSince } from './task/Notices.tsx';
 import { TaskHeader } from './task/Header.tsx';
 import { TaskFacts } from './task/Facts.tsx';
@@ -213,7 +214,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   // authority. The comment and proposal refusals, and a stale press's quote,
   // are held the same way for the same reason.
   const denied = state.outcome === 'denied';
-  const [note, setNote] = useHeld<DecisionNote>(identity, denied);
+  const [note, setNote] = useHeld<DecisionNote>(identity, denied, keepsClosure);
   const [commentRefusal, setCommentRefusal] = useHeld<string>(identity, denied);
   const [proposeRefusal, setProposeRefusal] = useHeld<string>(identity, denied);
   const [moved, setMoved] = useHeld<string>(identity, denied);
@@ -382,6 +383,7 @@ function RefreshRow(props: {
 function useHeld<T>(
   identity: string,
   denied: boolean,
+  keeps?: (held: T, next: T | null) => boolean,
 ): readonly [T | null, (next: T | null) => void] {
   const [held, setHeld] = useState<{ readonly identity: string; readonly value: T } | null>(null);
   if (held !== null && (held.identity !== identity || denied)) {
@@ -389,7 +391,13 @@ function useHeld<T>(
   }
   const value = held !== null && held.identity === identity ? held.value : null;
   const set = (next: T | null): void => {
-    setHeld(next === null ? null : { identity, value: next });
+    setHeld((current) =>
+      current !== null && current.identity === identity && keeps?.(current.value, next) === true
+        ? current
+        : next === null
+          ? null
+          : { identity, value: next },
+    );
   };
   return [value, set];
 }
