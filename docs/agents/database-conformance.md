@@ -62,6 +62,17 @@ refuses a file with another key, a missing or empty reason, or the old lists
 folder, and names the file. The old lists' comment lines are kept, unchanged,
 in `tests/db/suites-history.json`.
 
+Deleting one of those files would drop a suite with no list diff to show it,
+so `database conformance gate` runs `node scripts/named-suites.ts kept
+<base>` on every event, the base being the pull request's base, the merge
+group's base or the push's `before`. It reads the manifest at the base from
+git in whichever layout the base has (the single file, the per-area folder or
+one file per suite), and fails naming each suite the base named, or marked
+isolation, that the head does not, unless the change deleted its test file
+(a rename counts as a deletion at the old path). A base it cannot read, an
+id that is not 40 or 64 hex, an all-zero base or a failed git command fails
+the step.
+
 Run one after another the named suites took 40 to 50 minutes, so the hosted
 job is a matrix of shards (`database conformance shard <i>`), each running
 `db:conformance --shard <i>/<n>` against a Postgres of its own. The required
