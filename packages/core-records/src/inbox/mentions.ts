@@ -66,12 +66,13 @@ export async function readMentions(
 
 /**
  * Which of these people an author could already see, so a refusal may name
- * them: staff, to an author who is staff here too, or one of a client's
- * people (no membership) holding read on a client the author reads (a
- * business-wide reader reads every client). Anyone else is named back only by
- * the identifier as sent, so a commenter cannot learn another client's names,
- * and one of the client's people, whose directory read is refused, cannot
- * learn the team's, a staff member's client-scoped read included (OW-037.1).
+ * them: staff, to an author who may read the people directory (`person:read`
+ * across the business, what `person.list` asks), or one of a client's people
+ * (no membership) holding read on a client the author reads (a business-wide
+ * reader reads every client). Anyone else is named back only by the
+ * identifier as sent, so a commenter cannot learn another client's names, and
+ * a caller refused the directory cannot learn the team's from a refusal, a
+ * staff member's client-scoped read included (OW-037.1).
  */
 export async function seenBy(
   tx: TenantQuery,
@@ -92,9 +93,14 @@ export async function seenBy(
       where p.business_id = $1 and p.id = any($3::uuid[])
         and ((select business from reach)
              or (s.staff
-                 and exists (select 1 from public.memberships m
-                              where m.business_id = p.business_id and m.person_id = $2
-                                and m.active))
+                 and exists (select 1 from effective d
+                              where d.collection = 'person' and d.action = 'read'
+                                and d.scope_kind = 'business'
+                                and ((d.subject_kind = 'person' and d.subject_id = $2)
+                                     or (d.subject_kind = 'actor' and d.subject_id in (
+                                           select a.id from public.actors a
+                                            where a.business_id = $1 and a.person_id = $2
+                                              and a.kind = 'person' and a.active)))))
              or not s.staff and exists (select 1 from effective e
                          where e.collection = 'task' and e.action = 'read'
                            and e.scope_kind = 'party'
