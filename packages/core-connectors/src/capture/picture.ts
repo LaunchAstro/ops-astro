@@ -83,10 +83,14 @@ export interface Picture {
   readonly refused: readonly FenceRefusal[];
 }
 
-/** The document's policy: markup, the fenced stylesheets and data: images render, nothing else loads. */
+/**
+ * The document's policy: markup, the fenced stylesheets and data: images render, nothing else
+ * loads. A `<base>` is honoured, as the page observation honours it: every address it moves is
+ * still answered through the route, so one the fence refuses fails the picture.
+ */
 export const PICTURE_POLICY: string =
   "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src data:; script-src 'none'; " +
-  "object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'";
+  "object-src 'none'; frame-src 'none'; worker-src 'none'";
 
 const originOf = (url: string): string => (URL.canParse(url) ? new URL(url).origin : '');
 const STYLESHEET = { 'content-type': 'text/css; charset=utf-8' };
