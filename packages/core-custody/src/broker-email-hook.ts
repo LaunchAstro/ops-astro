@@ -11,8 +11,11 @@
 // event id is refused and the attempt's last observation is read:
 //
 // - `email.delivered` moves an accepted attempt to `delivered`;
-// - `email.bounced` moves it to `failed`, evidence `bounced`, and a bounced
-//   attempt is never sent again (it is not a failure that proves nothing went);
+// - `email.bounced` moves an accepted or a delivered attempt to `failed`,
+//   evidence `bounced`: delivered is the receiving server's acceptance, and a
+//   bounce can follow it. Failed is final, whichever event came first, and a
+//   bounced attempt is never sent again (it is not a failure that proves
+//   nothing went);
 // - `email.sent` moves nothing: accepted is already known, and delivered is
 //   never shown when only sent is;
 // - anything else, an open or a click among them, is ignored: an email open
@@ -33,10 +36,17 @@ export type EmailHookOutcome =
   'DELIVERED' | 'BOUNCED' | 'UNCHANGED' | 'IGNORED' | 'REPLAYED' | 'UNKNOWN_MESSAGE';
 
 const MOVES: Readonly<
-  Record<string, { readonly state: 'delivered' | 'failed'; readonly kind: string }>
+  Record<
+    string,
+    {
+      readonly state: 'delivered' | 'failed';
+      readonly kind: string;
+      readonly from: readonly string[];
+    }
+  >
 > = {
-  'email.delivered': { state: 'delivered', kind: 'delivered' },
-  'email.bounced': { state: 'failed', kind: 'bounced' },
+  'email.delivered': { state: 'delivered', kind: 'delivered', from: ['accepted'] },
+  'email.bounced': { state: 'failed', kind: 'bounced', from: ['accepted', 'delivered'] },
 };
 const KNOWN_UNMOVED: ReadonlySet<string> = new Set(['email.sent']);
 
@@ -70,7 +80,7 @@ async function landIn(
       order by observed_seq desc limit 1`,
     [tx.businessId, sent.item],
   );
-  if (last?.state !== 'accepted') return 'UNCHANGED';
+  if (!move.from.includes(last?.state ?? '')) return 'UNCHANGED';
   await recordDeliveryAttempt(tx, {
     itemId: sent.item,
     channel: 'email',

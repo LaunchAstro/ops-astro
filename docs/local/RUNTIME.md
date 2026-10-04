@@ -1930,9 +1930,12 @@ base64 key); a malformed one stops the server, naming the setting and never
 the value. There is no sign-in on the route: the signature is the authority,
 checked over the raw bytes before the body is parsed
 (`packages/core-connectors/src/email-hook.ts`), within five minutes either side
-of now. A verified `email.delivered` or `email.bounced` moves only the accepted
-attempt of the business that sent the message (`landEmailEvent`,
-`core-custody/src/broker-email-hook.ts`); `sent`, `opened` and `clicked` move
+of now. A verified event moves only the attempt of the business that sent the
+message (`landEmailEvent`, `core-custody/src/broker-email-hook.ts`):
+`email.delivered` moves an accepted attempt to delivered, and `email.bounced`
+moves an accepted or delivered one to failed, which is final in either arrival
+order (a delivery is the receiving server's acceptance, and a bounce can follow
+it); `sent`, `opened` and `clicked` move
 nothing, and no hook path writes a decision. The hosted function
 (`apps/api/function.ts`) does not mount the hook yet, as it does not wire the
 model broker.
