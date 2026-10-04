@@ -142,7 +142,9 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 privacy incident's `whatHappened`, `foundBy` and `affected`, a legal
 document version's `body`, an overseas service's `service`, `receives`,
 `where`, `trainsOnIt` and `contract`, a data class's `dataClass`,
-`purpose`, `disclosures`, `retention` and `deletion`, and a client's `name`, holding U+0000 or an unpaired surrogate, in any string or key, are
+`purpose`, `disclosures`, `retention` and `deletion`, a client's `name`, and a
+map revision's `destination`, `notes`, `addFog` and `addOutOfScope`, holding
+U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
