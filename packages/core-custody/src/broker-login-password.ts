@@ -8,8 +8,9 @@
 // What comes back is read by the operation's answer schema to the user's id
 // alone, and it must be the id asked for. The provider's 422 is `refused`: its
 // no to the password itself, with nothing changed. Any other answer, one that
-// names another user, carries the password, or is oversized, redirected,
-// malformed or slow, is a `fault`: the password may or may not be set.
+// names another user, carries the password however written, or is oversized,
+// redirected, malformed or slow, is a `fault`: the password may or may not be
+// set.
 
 import {
   AUTH_UPDATE_USER_PASSWORD,
@@ -51,13 +52,32 @@ export async function setLoginPassword(
       ? 'refused'
       : 'fault';
   }
-  // An answer is the user's id, never a place the password is kept.
-  if (outbound.body.includes(password)) return 'fault';
   let body: unknown;
   try {
     body = JSON.parse(outbound.body);
   } catch {
     return 'fault';
   }
+  if (echoes(outbound.body, id, password)) return 'fault';
   return operation.answer(body)?.text === id ? 'set' : 'fault';
+}
+
+/** A JSON text's string literals, one by one: a repeated key's value too. */
+const STRING = /"(?:[^"\\]|\\.)*"/gu;
+
+/**
+ * Whether a JSON answer carries the password (Sol, PR #382 round 3): a string
+ * in it, key or value, read with its escapes, holds it, or the text does (a
+ * number, say). A string that is the id asked for is ours and is left out,
+ * whatever password it holds part of.
+ */
+function echoes(text: string, id: string, password: string): boolean {
+  let held = false;
+  const rest = text.replaceAll(STRING, (literal) => {
+    const value = JSON.parse(literal) as string;
+    if (value === id) return '""';
+    held ||= value.includes(password);
+    return literal;
+  });
+  return held || rest.includes(password);
 }
