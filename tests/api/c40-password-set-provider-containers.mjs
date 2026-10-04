@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Run from the repository root: node tests/api/sol-pr382-proof-containers.mjs
+// Run from the repository root: node tests/api/c40-password-set-provider-containers.mjs
 // Owns and removes only its throwaway containers, volume, network and keys.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -13,10 +13,10 @@ const pgImage = 'postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec491
 const authImage =
   'public.ecr.aws/supabase/gotrue:v2.192.0@sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab';
 const suffix = randomUUID().slice(0, 8);
-const pg = `sol-pr382-${suffix}-pg`;
-const auth = `sol-pr382-${suffix}-auth`;
-const network = `sol-pr382-${suffix}-net`;
-const directory = mkdtempSync('/tmp/sol-pr382-proof-');
+const pg = `c40-reset-${suffix}-pg`;
+const auth = `c40-reset-${suffix}-auth`;
+const network = `c40-reset-${suffix}-net`;
+const directory = mkdtempSync('/tmp/c40-reset-proof-');
 const docker = (...args) =>
   execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
@@ -136,8 +136,8 @@ try {
       'exec',
       'vitest',
       'run',
-      'tests/api/sol-pr382-reset-revocation.test.ts',
-      'tests/api/sol-pr382-real-provider.test.ts',
+      'tests/api/c40-password-set-revocation.test.ts',
+      'tests/api/c40-password-set-provider.test.ts',
     ],
     {
       stdio: 'inherit',
@@ -145,7 +145,7 @@ try {
         ...process.env,
         DATABASE_URL: databaseUrl,
         DATABASE_ADMIN_URL: databaseUrl,
-        SOL_AUTH_URL: issuer,
+        C40_AUTH_URL: issuer,
         SOL_AUTH_KEYS: keysPath,
         SOL_AUTH_DATABASE_URL: `postgres://postgres@127.0.0.1:${pgPort}/sol_auth`,
       },

@@ -65,52 +65,49 @@ function pausedAfterBravoStanding() {
   return { delayed, checked, release };
 }
 
-SOL(
-  'Sol proof, criterion 5: a reset revoked after standing was checked cannot claim another password change',
-  async () => {
-    const member = await freshMember('sol-stale-link');
-    const subject = member.presented.subject;
-    await inBravoToo(subject, 'sol-stale-link-bravo');
-    const token = await mintToken(subject);
-    const replacement = await mintToken(subject);
-    const { delayed, checked, release } = pausedAfterBravoStanding();
-    // No provider call from the stale request is expected. Record one if it happens.
-    const staleCalls: string[] = [];
-    const stale = setPasswordByToken(
-      delayed,
-      [world.alpha, world.bravo],
-      {
-        broker: {
-          ...broker,
-          custody: {
-            ...broker.custody,
-            dispatch: async (...args) => {
-              staleCalls.push('setPassword');
-              return await broker.custody.dispatch(...args);
-            },
+SOL('a reset revoked after standing was checked cannot claim another password change', async () => {
+  const member = await freshMember('sol-stale-link');
+  const subject = member.presented.subject;
+  await inBravoToo(subject, 'sol-stale-link-bravo');
+  const token = await mintToken(subject);
+  const replacement = await mintToken(subject);
+  const { delayed, checked, release } = pausedAfterBravoStanding();
+  // No provider call from the stale request is expected. Record one if it happens.
+  const staleCalls: string[] = [];
+  const stale = setPasswordByToken(
+    delayed,
+    [world.alpha, world.bravo],
+    {
+      broker: {
+        ...broker,
+        custody: {
+          ...broker.custody,
+          dispatch: async (...args) => {
+            staleCalls.push('setPassword');
+            return await broker.custody.dispatch(...args);
           },
         },
       },
-      { token, password: 'sol stale link password' },
-    );
-    await checked.promise;
-    try {
-      expect((await setPassword(replacement, 'sol replacement password')).body).toEqual({
-        passwordSet: true,
-      });
-      expect((await setPassword(token, 'sol replay password')).status).toBe(401);
-    } finally {
-      release.open();
-    }
-    const result = await stale;
-    expect({ result, staleCalls }).toEqual({
-      result: { ok: false, code: 'RESET_LINK_INVALID' },
-      staleCalls: [],
+    },
+    { token, password: 'sol stale link password' },
+  );
+  await checked.promise;
+  try {
+    expect((await setPassword(replacement, 'sol replacement password')).body).toEqual({
+      passwordSet: true,
     });
-  },
-);
+    expect((await setPassword(token, 'sol replay password')).status).toBe(401);
+  } finally {
+    release.open();
+  }
+  const result = await stale;
+  expect({ result, staleCalls }).toEqual({
+    result: { ok: false, code: 'RESET_LINK_INVALID' },
+    staleCalls: [],
+  });
+});
 
-SOL('Sol proof, criterion 3: the agent queue refuses a recovery session', async () => {
+SOL('the agent queue refuses a recovery session', async () => {
   // No recovery session exists: a token's use answers no credential and sets no cookie,
   // and the token itself is no bearer anywhere, the agent queue included.
   const member = await freshMember('sol-no-bearer');
@@ -140,7 +137,7 @@ SOL('Sol proof, criterion 3: the agent queue refuses a recovery session', async 
 });
 
 SOL(
-  'Sol proof, criterion 3: a password session opened before the reset commit is refused once the reset ends sessions',
+  'a password session opened before the reset commit is refused once the reset ends sessions',
   async () => {
     const member = await freshMember('sol-commit-window');
     const subject = member.presented.subject;

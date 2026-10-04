@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Sol's PR #382 round 1 proofs, criteria 1 and 7, under ORCH77-C40B, at the
-// pinned GoTrue (`sol-pr382-proof-containers.mjs` starts it and sets
-// SOL_AUTH_URL; without it these skip). A reset sets the password through
+// pinned GoTrue (`c40-password-set-provider-containers.mjs` starts it and sets
+// C40_AUTH_URL; without it these skip). A reset sets the password through
 // custody's admin update with no provider recovery session anywhere, and an
 // MFA login's reset is refused for support with nothing spent (ORCH77-C40MFA). Custody reaches
 // GoTrue through a loopback stand-in for the gateway, which serves the auth
@@ -34,7 +34,7 @@ import {
 import { call } from '../acceptance/world.ts';
 import { brokerFor, mintToken, usePasswordWorld, world } from './c40-password-set-world.ts';
 
-const issuer = process.env['SOL_AUTH_URL'];
+const issuer = process.env['C40_AUTH_URL'];
 const keysPath = process.env['SOL_AUTH_KEYS'] ?? '';
 const REAL = it.skipIf(issuer === undefined || process.env['DATABASE_URL'] === undefined);
 
@@ -142,7 +142,7 @@ async function mapped(subject: string, name: string): Promise<string> {
 }
 
 REAL(
-  'Sol proof, criterion 1: a reset sets the password at the pinned GoTrue through the custody admin update without any provider recovery session',
+  'a reset sets the password at the pinned GoTrue through the custody admin update without any provider recovery session',
   async () => {
     const email = `sol-${randomUUID()}@example.test`;
     const old = `old-password-${randomUUID()}`;
@@ -203,7 +203,7 @@ async function unspent(token: string): Promise<boolean> {
 }
 
 REAL(
-  'Sol proof, criterion 7 (ORCH77-C40MFA): an MFA login’s reset answers RESET_NEEDS_SUPPORT; token unspent; password unchanged at the pinned GoTrue',
+  'an MFA login’s reset answers RESET_NEEDS_SUPPORT; token unspent; password unchanged at the pinned GoTrue',
   async () => {
     const { email, old, subject, secret } = await mfaLogin();
     const api = realApi();

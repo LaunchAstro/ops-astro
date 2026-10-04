@@ -1,6 +1,6 @@
 {
   "comment": [
-    "C40 (PR #382): sol-pr382-real-provider.test.ts skips without SOL_AUTH_URL (the pinned GoTrue its container script starts) and is not named."
+    "C40 (PR #382): c40-password-set-provider.test.ts skips without C40_AUTH_URL (the pinned GoTrue its container script starts) and is not named."
   ],
   "invariant": [
     "tests/api/agent-bare-handback-replay.test.ts",
@@ -34,6 +34,7 @@
     "tests/api/c4-notifications-live.test.ts",
     "tests/api/c4-rollup-scope.test.ts",
     "tests/api/c40-password-set-review.test.ts",
+    "tests/api/c40-password-set-revocation.test.ts",
     "tests/api/c40-password-set.test.ts",
     "tests/api/c54-isolation.test.ts",
     "tests/api/c58-end-others-every-business.test.ts",
@@ -79,7 +80,6 @@
     "tests/api/restart-expiry-bound.test.ts",
     "tests/api/s0-6-isolation.test.ts",
     "tests/api/settings-revision-routes.test.ts",
-    "tests/api/sol-pr382-reset-revocation.test.ts",
     "tests/api/t2b-identity-route.test.ts",
     "tests/api/t2b-worker.test.ts",
     "tests/api/t2f-live-channel.test.ts",
