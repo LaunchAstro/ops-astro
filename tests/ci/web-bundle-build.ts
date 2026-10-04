@@ -13,6 +13,11 @@
 import { readStamp } from '../../apps/web/build-stamp.ts';
 
 /** True when `dist` must be rebuilt before a test reads it as the tree `identifier` names. */
-export function needsBuild(dist: string, identifier: string): boolean {
-  return identifier.endsWith('-dirty') || readStamp(dist) !== identifier;
+export function needsBuild(dist: string, identifier?: string): boolean {
+  return identifier?.endsWith('-dirty') === true || readStamp(dist) !== identifier;
+}
+
+/** A stub until the bundle check lands: it finds nothing missing. */
+export function missingFromBundle(_dist: string): string[] {
+  return [];
 }

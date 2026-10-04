@@ -28,7 +28,7 @@ import { dirname, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildIdentifier, STAMP_FILE } from '../../apps/web/build-stamp.ts';
 import { fixtureSelectors, scanBundle } from './fixture-bundle.ts';
-import { needsBuild } from './web-bundle-build.ts';
+import { missingFromBundle, needsBuild } from './web-bundle-build.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const DIST = join(ROOT, 'apps/web/dist');
@@ -56,6 +56,7 @@ describe('no_fallback_in_bundle', () => {
   }, 180_000);
 
   it('the shipped bundle carries no fixture selector and no module from tests/', () => {
+    expect(missingFromBundle(DIST)).toStrictEqual([]);
     expect(scanBundle(DIST)).toStrictEqual([]);
   });
 
@@ -129,8 +130,9 @@ describe('no_fallback_in_bundle: the selectors', () => {
   });
 });
 
-describe('no_fallback_in_bundle: building the bundle only when it is not this tree', () => {
-  const HEAD = '0123456789ab';
+describe('no_fallback_in_bundle: building the bundle unless this check just built it', () => {
+  /** The build `pnpm check` names in CHECK_WEB_BUILD, the stamp its build step wrote. */
+  const BUILT = '0123456789ab';
 
   /** A bundle directory stamped with `build`, or with no stamp file when it is undefined. */
   function bundle(name: string, build?: string): string {
@@ -141,22 +143,55 @@ describe('no_fallback_in_bundle: building the bundle only when it is not this tr
   }
 
   it('builds when there is no bundle', () => {
-    expect(needsBuild(join(scratch, 'never-built'), HEAD)).toBe(true);
+    expect(needsBuild(join(scratch, 'never-built'), BUILT)).toBe(true);
   });
 
   it('builds when the bundle carries no stamp', () => {
-    expect(needsBuild(bundle('unstamped'), HEAD)).toBe(true);
+    expect(needsBuild(bundle('unstamped'), BUILT)).toBe(true);
   });
 
-  it('builds when the bundle is stamped with another commit', () => {
-    expect(needsBuild(bundle('other-commit', 'ba9876543210'), HEAD)).toBe(true);
+  it('builds when the bundle is stamped with another build than the check made', () => {
+    expect(needsBuild(bundle('other-commit', 'ba9876543210'), BUILT)).toBe(true);
   });
 
-  it('builds on a changed tree, even over a bundle stamped with that same changed tree', () => {
-    expect(needsBuild(bundle('dirty', `${HEAD}-dirty`), `${HEAD}-dirty`)).toBe(true);
+  it('builds outside a check, even over a copy holding only a stamp that names the clean commit', () => {
+    expect(needsBuild(bundle('outside-a-check', BUILT))).toBe(true);
   });
 
-  it('keeps the bundle the clean checkout already built, so nothing rewrites it mid-run', () => {
-    expect(needsBuild(bundle('this-commit', HEAD), HEAD)).toBe(false);
+  it('builds when the check names an empty build', () => {
+    expect(needsBuild(bundle('empty-name', BUILT), '')).toBe(true);
+  });
+
+  it('keeps the bundle the check built in this run, so nothing rewrites it under other tests', () => {
+    expect(needsBuild(bundle('this-run', BUILT), BUILT)).toBe(false);
+  });
+
+  it('keeps the bundle of a changed tree too, when the check built that tree in this run', () => {
+    expect(needsBuild(bundle('this-run-changed', `${BUILT}-dirty`), `${BUILT}-dirty`)).toBe(false);
+  });
+});
+
+describe('no_fallback_in_bundle: a bundle worth scanning', () => {
+  it('a copy holding only the stamp file lacks the module graph and every script', () => {
+    const dist = join(scratch, 'stamp-only');
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(join(dist, STAMP_FILE), JSON.stringify({ build: '0123456789ab' }));
+    expect(missingFromBundle(dist)).toStrictEqual(['module-graph.json', 'a .js file in assets/']);
+  });
+
+  it('a script outside assets/ does not count as the bundle script', () => {
+    const dist = join(scratch, 'script-elsewhere');
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(join(dist, 'module-graph.json'), '{"modules":{}}');
+    writeFileSync(join(dist, 'theme-before-paint.js'), '');
+    expect(missingFromBundle(dist)).toStrictEqual(['a .js file in assets/']);
+  });
+
+  it('a bundle with its module graph and a script in assets/ lacks nothing', () => {
+    const dist = join(scratch, 'whole');
+    mkdirSync(join(dist, 'assets'), { recursive: true });
+    writeFileSync(join(dist, 'module-graph.json'), '{"modules":{}}');
+    writeFileSync(join(dist, 'assets', 'index-0a1b2c.js'), '');
+    expect(missingFromBundle(dist)).toStrictEqual([]);
   });
 });
