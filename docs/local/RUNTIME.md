@@ -994,7 +994,8 @@ provider's proof released or its own answer settled ignores a later answer or
 release, and gives nothing back again (`broker-settle.ts`). A hold moves a call
 only out of `reserved` or `dispatched`; an answer that comes after the sweep
 held it still settles or releases it, since the answer is what happened, and
-gives nothing back. A call released
+gives back what its hold counted, as an open call's answer does
+(`tests/broker/unknown-call-settled-lower-gives-back.test.ts`). A call released
 unsent (a start refused, a sweep) gives nothing back
 (`tests/broker/spend-closes-once.test.ts`).
 The sweep, a cancel, a lost
