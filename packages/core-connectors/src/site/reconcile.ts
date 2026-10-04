@@ -19,11 +19,9 @@ export type ReadBack<T> =
 const ALSO_IF_LANDED: ReadonlySet<string> = new Set(['not_mergeable', 'sha_mismatch']);
 
 /**
- * A send that may repeat an earlier one. Landed is the effect's answer; only
- * positive proof that nothing landed lets `send` go; anything else stays
- * unknown and is never resent. A refusal that a late landing also explains is
- * read back again: landed is the answer, absent keeps the refusal, anything
- * else is unknown.
+ * A send that may repeat an earlier one: landed is the answer, only proof that nothing landed
+ * lets `send` go, anything else stays unknown. A refusal a late landing also explains is read
+ * back again: landed is the answer, absent keeps the refusal, anything else is unknown.
  */
 export async function reconciled<T>(
   back: ReadBack<T>,

@@ -145,24 +145,14 @@ export async function publishCorrection(
   ports: PublishPorts,
 ): Promise<PublishOutcome> {
   const token = dispatchToken('site.publish', job.version.digest);
-  return await claimed(job.seam, token, () => dispatch(job, ports, token));
-}
-
-async function dispatch(
-  job: PublishJob,
-  ports: PublishPorts,
-  token: string,
-): Promise<PublishOutcome> {
   const readBack = () => ports.readBack({ seam: job.seam, dispatchToken: token });
-  const back = await readBack();
-  const stopped = await beforeDispatch(job, ports, back);
-  if (stopped !== undefined) return stopped;
-  const answer = await reconciled(
-    back,
-    () =>
-      ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest }),
-    readBack,
-  );
+  const send = () =>
+    ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest });
+  const answer = await claimed(job.seam, token, async () => {
+    const back = await readBack();
+    return (await beforeDispatch(job, ports, back)) ?? (await reconciled(back, send, readBack));
+  });
+  if ('state' in answer) return answer;
   const unknown = async (code: string): Promise<PublishOutcome> => {
     await ports.raiseTask(code);
     return { state: 'unknown', code, reference: job.seam, dispatchToken: token };
