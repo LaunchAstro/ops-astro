@@ -8,13 +8,8 @@
 
 import { EFFECTIVE } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import {
-  APPROVER_SETTING,
-  COVERED,
-  coveringParameters,
-  type CorrectionState,
-  type Covering,
-} from './live-corrections.ts';
+import { COVERED, EFFECTIVE_AT, coveringParameters, type Covering } from './covering.ts';
+import { APPROVER_SETTING, type CorrectionState } from './live-corrections.ts';
 
 /** What a card reads again of one correction: its state, who decided it, its version. */
 export interface CorrectionDecision {
@@ -41,7 +36,7 @@ export async function readCoveredDecision(
     readonly approver: string | null;
     readonly version_id: string;
   }>(
-    `${EFFECTIVE}
+    `${EFFECTIVE_AT}
      select c.id, c.state, p.display_name as approver, c.version_id
        from public.live_corrections c
        left join public.people p

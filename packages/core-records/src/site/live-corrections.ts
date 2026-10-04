@@ -12,11 +12,18 @@
 //
 // The system write that records an observed publish or revert with its
 // receipt is `correction-receipts.ts`; the decision read and the approver
-// reads, `correction-decisions.ts`.
+// reads, `correction-decisions.ts`; the grant filter and its lock, `covering.ts`.
 
 import { randomUUID } from 'node:crypto';
-import { EFFECTIVE, askedFor, type Subject } from '../authority/grants.ts';
+import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import {
+  COVERED,
+  EFFECTIVE_AT,
+  coveringParameters,
+  holdCoveringGrants,
+  type Covering,
+} from './covering.ts';
 
 export const RUN_COLLECTION = 'run';
 export const GATE_COLLECTION = 'gate';
@@ -180,46 +187,16 @@ export async function lockCorrectionForSystem(
   return row === undefined ? undefined : correctionFrom(row);
 }
 
-/** Covered by a grant still live at `at`, an SQL instant: one that ended by then covers nothing. */
-const coveredAt = (at: string): string => `exists (
-    select 1 from effective e
-     where e.collection = $2 and e.action = $3 and (e.expires_at is null or e.expires_at > ${at})
-       and exists (select 1 from unnest($4::text[], $5::uuid[]) as s (kind, id)
-                    where s.kind = e.subject_kind and s.id = e.subject_id)
-       and (e.scope_kind = 'business' or (e.scope_kind = 'party' and e.scope_id = c.party_id)))`;
-
-export const COVERED: string = coveredAt('now()');
-
-export interface Covering {
-  readonly subjects: readonly Subject[];
-  readonly collection: string;
-  readonly action: string;
-}
-
-/**
- * The query's parameters, with only the subjects asked about this key: an
- * agent credential's person counts within the keys it ticked (API-2), so the
- * guarantee lives here and not in each caller.
- */
-export const coveringParameters = (covering: Covering): readonly unknown[] => {
-  const asked = askedFor(covering.subjects, covering);
-  return [
-    covering.collection,
-    covering.action,
-    asked.map((subject) => subject.kind),
-    asked.map((subject) => subject.id),
-  ];
-};
-
 /**
  * One correction the caller's grant covers at its party, locked for the
  * caller's write, or undefined: absent, in another business, or not covered
  * are one answer.
  *
  * The grant is judged twice: in the locking read, so a caller it does not
- * cover never waits on the row, and again once the lock is held, in a fresh
- * statement at the clock read then, so a grant revoked or expired while the
- * lock waited covers nothing.
+ * cover never waits on the row, and again once the lock is held and the
+ * covering grants are share-locked, in a fresh statement at the clock read
+ * then. A grant revoked or expired while the lock waited covers nothing, and
+ * a revocation after the second judgement waits for the caller's write.
  */
 export async function lockCoveredCorrection(
   tx: TenantQuery,
@@ -228,17 +205,18 @@ export async function lockCoveredCorrection(
 ): Promise<LiveCorrection | undefined> {
   const parameters = [tx.businessId, ...coveringParameters(covering), id];
   const [row] = await tx.query<Row>(
-    `${EFFECTIVE}
+    `${EFFECTIVE_AT}
      select ${COLUMNS} from public.live_corrections c
       where c.business_id = $1 and c.id = $6 and ${COVERED}
       for update of c`,
     parameters,
   );
   if (row === undefined) return undefined;
+  await holdCoveringGrants(tx, covering);
   const still = await tx.query<{ readonly id: string }>(
-    `${EFFECTIVE}, instant as materialized (select clock_timestamp() as at)
+    `${EFFECTIVE_AT}
      select c.id from public.live_corrections c
-      where c.business_id = $1 and c.id = $6 and ${coveredAt('(select i.at from instant i)')}`,
+      where c.business_id = $1 and c.id = $6 and ${COVERED}`,
     parameters,
   );
   return still.length === 0 ? undefined : correctionFrom(row);
@@ -250,7 +228,7 @@ export async function listCoveredCorrections(
   subjects: readonly Subject[],
 ): Promise<readonly LiveCorrection[]> {
   const rows = await tx.query<Row>(
-    `${EFFECTIVE}
+    `${EFFECTIVE_AT}
      select ${COLUMNS} from public.live_corrections c
       where c.business_id = $1 and ${COVERED}
       order by c.created_at desc, c.id`,
