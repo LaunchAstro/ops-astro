@@ -17,7 +17,7 @@ const RESTORE_DRILL_ROLE = 'ops_astro_restore_drill';
  * The carried archive whose pass is being stamped, if any (drill-acts.mjs runs
  * the gate's stamp inside it; the gate's stamp takes no argument). Its stamp is
  * written once: a re-run for an archive already stamped answers the date as
- * it stands (migrations/20261004072829_tested_restore_once_per_archive.sql).
+ * it stands (migrations/20261004082551_tested_restore_once_per_archive.sql).
  */
 export const stampedArchive: AsyncLocalStorage<string> = new AsyncLocalStorage();
 
