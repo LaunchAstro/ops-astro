@@ -29,7 +29,7 @@ import { grantKeyOf, sessionGeneration, type Session } from './session/token.ts'
 import { useSignedIn, type HeldNotice } from './session/use-signed-in.ts';
 import { stepUpSession, type StepUpResult } from './session/step-up.ts';
 import { signInAgainSession } from './session/sign-in-again.ts';
-import { SignInAgainContext, StepUpContext } from './records/use-money-command.ts';
+import { StepUpProviders } from './records/step-up-providers.tsx';
 import { SignIn } from './screens/SignIn.tsx';
 import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
@@ -238,62 +238,60 @@ export function App(props: AppProps): ReactElement {
       />
     );
   return (
-    <SignedInName value={personName}>
-      <PageFreshnessProvider>
-        <PagePresenceProvider>
-          <Shell
-            face={face}
-            build={buildStamp()}
-            rail={rail}
-            here={bare}
-            strip={
-              <FrameStrip
-                face={face}
-                identity={identity}
-                clientSlug={at?.client ?? null}
-                steps={props.steps}
-                onSearch={searchable ? search.open : null}
-                searchRef={search.box}
-                session={session}
-                personName={personName}
-                navigate={navigate}
-                onSignOut={onSignOut}
-              />
-            }
-            tabs={tabs}
-            nav={{ open: navOpen, onToggle: setNavOpen }}
-            onNavigate={navigate}
-            meta={
-              <>
-                <StripFreshness
-                  fallback={
-                    offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
-                  }
+    <StepUpProviders on={session !== null} stepUp={stepUp} signInAgain={signInAgain}>
+      <SignedInName value={personName}>
+        <PageFreshnessProvider>
+          <PagePresenceProvider>
+            <Shell
+              face={face}
+              build={buildStamp()}
+              rail={rail}
+              here={bare}
+              strip={
+                <FrameStrip
+                  face={face}
+                  identity={identity}
+                  clientSlug={at?.client ?? null}
+                  steps={props.steps}
+                  onSearch={searchable ? search.open : null}
+                  searchRef={search.box}
+                  session={session}
+                  personName={personName}
+                  navigate={navigate}
+                  onSignOut={onSignOut}
                 />
-                {session === null ? null : <StripPresence />}
-              </>
-            }
-            title={title}
-            {...shellDock(docked, dockScreen, agent)}
-          >
-            <StepUpContext.Provider value={session === null ? null : stepUp}>
-              <SignInAgainContext.Provider value={session === null ? null : signInAgain}>
-                <FaceProvider face={face}>{content}</FaceProvider>
-              </SignInAgainContext.Provider>
-            </StepUpContext.Provider>
-          </Shell>
-          {search.showing && searchable ? (
-            <SearchPalette
-              client={client}
-              onOpen={(address) => {
-                search.dismiss();
-                navigate(address);
-              }}
-              onClose={search.close}
-            />
-          ) : null}
-        </PagePresenceProvider>
-      </PageFreshnessProvider>
-    </SignedInName>
+              }
+              tabs={tabs}
+              nav={{ open: navOpen, onToggle: setNavOpen }}
+              onNavigate={navigate}
+              meta={
+                <>
+                  <StripFreshness
+                    fallback={
+                      offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
+                    }
+                  />
+                  {session === null ? null : <StripPresence />}
+                </>
+              }
+              title={title}
+              {...shellDock(docked, dockScreen, agent)}
+            >
+              <FaceProvider face={face}>{content}</FaceProvider>
+            </Shell>
+            {search.showing && searchable ? (
+              <SearchPalette
+                client={client}
+                onOpen={(address) => {
+                  search.dismiss();
+                  navigate(address);
+                }}
+                onClose={search.close}
+              />
+            ) : null}
+          </PagePresenceProvider>
+        </PageFreshnessProvider>
+      </SignedInName>
+    </StepUpProviders>
   );
 }

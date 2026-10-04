@@ -147,8 +147,8 @@ export interface LiveDrag {
 
 /**
  * The table's layout and its grips. A drag draws its widths live and is one
- * history step when the pointer lets go; a cancelled one leaves nothing
- * behind. An arrow step is one history step at once.
+ * history step when its pointer lets go, and no other finger takes it over; a
+ * cancelled one leaves nothing behind. An arrow step is one history step at once.
  */
 export function useColumnDrag<Row>(
   columns: readonly ColumnSpec<Row>[],
@@ -159,15 +159,18 @@ export function useColumnDrag<Row>(
   const [live, setLive] = useState<LiveDrag | null>(null);
   const layout = layoutColumns(columns, room, live?.widths ?? widths);
   const endDrag = useRef<(() => void) | null>(null);
+  const dragPointer = useRef<number | null>(null);
   useEffect(
     () => () => {
       endDrag.current?.();
     },
     [],
   );
-  const start = (key: string, startX: number): void => {
+  const start = (key: string, startX: number, pointerId: number): void => {
+    if (endDrag.current !== null && dragPointer.current !== pointerId) return;
     endDrag.current?.();
-    const drag = { key, startX, columns, from: layout, previous: widths };
+    dragPointer.current = pointerId;
+    const drag = { key, startX, pointerId, columns, from: layout, previous: widths };
     endDrag.current = followPointer(drag, { setLive, endDrag, dispatch });
   };
   const nudge = (key: string, dx: number): void => {
@@ -177,11 +180,15 @@ export function useColumnDrag<Row>(
   return { layout, live, start, nudge };
 }
 
-/** Follows one drag's pointer until it lets go or is cancelled; answers the cancel. */
+/**
+ * Follows one drag's pointer until it lets go or is cancelled; answers the
+ * cancel. Another pointer's moves and release are not this drag's.
+ */
 function followPointer<Row>(
   drag: {
     readonly key: string;
     readonly startX: number;
+    readonly pointerId: number;
     readonly columns: readonly ColumnSpec<Row>[];
     readonly from: Layout;
     readonly previous: ColumnWidths | null;
@@ -194,7 +201,8 @@ function followPointer<Row>(
 ): () => void {
   const { key } = drag;
   let latest: ColumnWidths | null = null;
-  const move = (event: MouseEvent): void => {
+  const move = (event: PointerEvent): void => {
+    if (event.pointerId !== drag.pointerId) return;
     latest = widthsAfterDrag(
       drag.columns,
       drag.from,
@@ -212,11 +220,11 @@ function followPointer<Row>(
     to.setLive(null);
     if (keep && latest !== null) to.dispatch({ type: 'resize', key, widths: latest });
   };
-  const up = (): void => {
-    stop(true);
+  const up = (event: PointerEvent): void => {
+    if (event.pointerId === drag.pointerId) stop(true);
   };
-  const cancel = (): void => {
-    stop(false);
+  const cancel = (event?: PointerEvent): void => {
+    if (event === undefined || event.pointerId === drag.pointerId) stop(false);
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);

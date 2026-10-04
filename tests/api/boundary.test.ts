@@ -271,13 +271,22 @@ describe('the business is named in the path and verified (N7)', () => {
   });
 });
 
-describe('an unknown business is refused before the body is read (N7)', () => {
-  it('refuses before it reads the body, so a bad body cannot tell you a business exists', async () => {
-    const seen: Seen[] = [];
+describe('a bad body cannot tell you a business exists (N7)', () => {
+  it('reads the body at a key nobody holds too, and answers a bad one exactly as at a business that exists', async () => {
     const token = await tokenFor(MIA);
-    const answer = await post(build({}, seen), '/api/b/nowhere/task/create', {}, authorised(token));
-    expect(answer.body['code']).toBe('AUTH_NO_MEMBERSHIP');
-    expect(seen).toHaveLength(0);
+    const api = build({ database: stubDatabase([]) });
+    const at = async (key: string) => {
+      const request = new Request(`http://api.test/api/b/${key}/task/create`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...authorised(token) },
+        body: '["not", "an", "object"]',
+      });
+      const response = await api.fetch(request);
+      return { read: request.bodyUsed, status: response.status, text: await response.text() };
+    };
+    const known = await at('alpha');
+    expect(known).toMatchObject({ read: true, status: 400 });
+    expect(await at('nowhere')).toEqual(known);
   });
 });
 
