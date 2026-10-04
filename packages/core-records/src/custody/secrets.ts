@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
-import type { Scope } from '../authority/grants.ts';
+import { EFFECTIVE, askedFor, type Subject } from '../authority/grants.ts';
 import { seal, type SealingKey } from './sealing.ts';
 
 /** A secret's scope: the business, or one client (a party). */
@@ -191,24 +191,50 @@ export async function clearSecret(
   return { id: row.id, revision: Number(row.revision) };
 }
 
+/** What `custody:manage` reaches: every row business-wide, else its clients' rows. */
+export interface SecretsHeld {
+  readonly whole: boolean;
+  readonly rows: readonly SecretRow[];
+}
+
 /**
- * The secrets at the scopes the caller holds. A business-wide scope sees every
- * row; a party scope sees that party's rows only. The filter is in the
- * statement, so a row outside it is never read, counted or ordered.
+ * The secrets the subjects hold `custody:manage` over, or null when they hold
+ * it nowhere. The grant walk and the rows are one statement, one snapshot: a
+ * revocation committed while the list runs leaves no row behind it, and a row
+ * outside the grant is never read, counted or ordered.
  */
 export async function listSecrets(
   tx: TenantQuery,
-  scopes: readonly Scope[],
-): Promise<readonly SecretRow[]> {
-  const whole = scopes.some((scope) => scope.kind === 'business');
-  const parties = scopes.filter((scope) => scope.kind === 'party').map((scope) => scope.id);
-  const rows = await tx.query<Row>(
-    `select ${COLUMNS} from public.custody_secrets
-      where $1::boolean or (scope_kind = 'party' and scope_id = any($2::uuid[]))
+  subjects: readonly Subject[],
+): Promise<SecretsHeld | null> {
+  const asked = askedFor(subjects, { collection: 'custody', action: 'manage' });
+  const rows = await tx.query<
+    { readonly held: boolean; readonly whole: boolean } & (Row | { readonly id: null })
+  >(
+    `${EFFECTIVE},
+     mine as (
+       select e.scope_kind, e.scope_id from effective e
+        where e.collection = 'custody' and e.action = 'manage'
+          and exists (select 1 from unnest($1::text[], $2::uuid[]) as s (kind, id)
+                       where s.kind = e.subject_kind and s.id = e.subject_id)
+     )
+     select exists (select 1 from mine) as held,
+            exists (select 1 from mine where scope_kind = 'business') as whole,
+            ${COLUMNS}
+       from (select 1) as one
+       left join public.custody_secrets c
+         on exists (select 1 from mine m
+                     where m.scope_kind = 'business'
+                        or (m.scope_kind = 'party' and c.scope_kind = 'party'
+                            and c.scope_id = m.scope_id))
       order by name, scope_kind, scope_id nulls first`,
-    [whole, parties],
+    [asked.map((subject) => subject.kind), asked.map((subject) => subject.id)],
   );
-  return rows.map((row) => toRow(row));
+  if (rows[0]?.held !== true) return null;
+  return {
+    whole: rows[0].whole,
+    rows: rows.flatMap((row) => (row.id === null ? [] : [toRow(row)])),
+  };
 }
 
 /**
