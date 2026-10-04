@@ -920,6 +920,59 @@ describe.skipIf(serverUrl === undefined)(
       expect(await w.revisionOf(target.id)).toBe(revision);
     });
 
+    it('WF-1 person to person map ranking rechecks inherited target authority with a directly granted neighbour', async () => {
+      const map = await w.create(owner, { title: 'rank authority map' }, { taskType: 'map' });
+      const neighbour = await w.create(owner, { title: 'rank neighbour' }, { parentId: map.id });
+      const target = await w.create(owner, { title: 'rank target' }, { parentId: map.id });
+      const writer = await w.member('neighbour-granted-ranker', ['write'], {
+        kind: 'record',
+        id: map.id,
+      });
+      await w.db.app.withBusiness(w.business, async (tx) => {
+        await grantTo(tx, writer, 'write', { kind: 'record', id: neighbour.id });
+      });
+      const revision = await w.revisionOf(target.id);
+      let fired = false;
+      const db = intercept(async (sql, parameters) => {
+        if (
+          fired ||
+          !sql.includes('pg_advisory_xact_lock') ||
+          parameters[0] !== `task.siblings:${w.business}:parent:${map.id}`
+        )
+          return;
+        fired = true;
+        must(
+          await w.asOnSecond(owner, {
+            command: 'task.set_type',
+            recordId: map.id,
+            expectedRevision: await w.revisionOf(map.id),
+            taskType: 'task',
+          }),
+          'concurrent parent retype',
+        );
+      });
+      const answer = await executeCommand(db, w.business, writer.presented, 'api', {
+        command: 'task.rank',
+        operationId: randomUUID(),
+        recordId: target.id,
+        expectedRevision: revision,
+        afterId: neighbour.id,
+      });
+      expect(fired).toBe(true);
+      expect(
+        codeOf(
+          await w.as(writer, {
+            command: 'task.rank',
+            recordId: target.id,
+            expectedRevision: await w.revisionOf(target.id),
+            afterId: neighbour.id,
+          }),
+        ),
+      ).toBe('SCOPE_NOT_GRANTED');
+      expect.soft(codeOf(answer)).toBe('SCOPE_NOT_GRANTED');
+      expect(await w.revisionOf(target.id)).toBe(revision);
+    });
+
     it('WF-1 person to person unattended reach cannot combine an old map placement with a later grant', async () => {
       await w.grant(owner, 'assign');
       const a = await w.create(owner, { title: 'former recipient map' }, { taskType: 'map' });
