@@ -53,7 +53,7 @@ export const running: RunLineage['reservations'][number] = {
   actualMinor: null,
   classifiedCause: null,
   lease: { state: 'live' },
-  attempt: { state: 'dispatched' },
+  attempt: { state: 'dispatched', outcome: null },
 };
 
 const live: Mounted[] = [];
