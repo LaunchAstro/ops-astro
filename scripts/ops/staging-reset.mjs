@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The staging reset's command (ticket S0-1, STAGING-PREP B4). The decisions
-// are in `staging-reset.ts`; this file runs them.
+// The staging reset's command (S0-1, STAGING-PREP B4); its decisions are in `staging-reset.ts`.
 //
 //   node scripts/ops/staging-reset.mjs
 //

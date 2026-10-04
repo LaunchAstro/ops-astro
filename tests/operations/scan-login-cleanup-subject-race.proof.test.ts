@@ -38,7 +38,7 @@ function provider(users: Map<string, string>, hooks: { onDelete?: () => void }):
     };
     const id = req.url?.startsWith('/admin/users/') ? req.url.slice('/admin/users/'.length) : '';
     if (req.url === '/admin/users' && req.method === 'POST') {
-      const made = randomUUID();
+      const made = typeof body.id === 'string' ? body.id : randomUUID();
       users.set(made, body.email);
       answer(200, { id: made });
     } else if (req.url === '/token?grant_type=password') {
