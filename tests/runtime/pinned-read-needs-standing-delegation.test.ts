@@ -4,7 +4,7 @@
 // (R/sol/proofs/OW-048-4126931d1.patch); the file's other criterion is not
 // this issue's.
 import { setTimeout as sleep } from 'node:timers/promises';
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import { revokeDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { readPinned, type ReadAuditNote } from '../../packages/core-runtime/src/index.ts';
@@ -14,6 +14,7 @@ import {
   FRAGMENT,
   fingerprint,
   leaseOf,
+  noDatabase,
   seedPin,
   sourceOf,
   useAw02World,
@@ -21,6 +22,7 @@ import {
 } from './aw-02-world.ts';
 
 useAw02World('solow048');
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
 it('a revoked delegation cannot read pinned instructions through its still-live lease', async () => {
   if (process.env['DATABASE_URL'] === undefined) throw new Error('Postgres is required');
