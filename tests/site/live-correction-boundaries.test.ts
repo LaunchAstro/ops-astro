@@ -13,6 +13,10 @@ import {
 } from '../../packages/core-records/src/site/index.ts';
 import { describeWorld, file, filed, inBusiness, lows } from './live-correction-lows.ts';
 
+// The mutation cases below match the child run's plain 'FAIL  tests/...' line. CI sets CI=true,
+// which turns the child's colours on, so the child inherits NO_COLOR and prints plain text.
+process.env['NO_COLOR'] = '1';
+
 // eslint-disable-next-line max-lines-per-function -- these ordered cases share one isolated database
 describeWorld('the live correction boundaries on a real database', 'sol365r1', () => {
   it('client to client worker refusals hide inaccessible correction existence', async () => {
