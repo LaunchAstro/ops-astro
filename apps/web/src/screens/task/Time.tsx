@@ -9,7 +9,7 @@
 // by keyboard through `time.set_note`; an entry deletes through `time.delete`.
 // After each, the page rereads rather than guessing the next state.
 
-import { useState, type KeyboardEvent, type ReactElement } from 'react';
+import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { Icon } from '@launchastro/ui';
 import type { TaskTimeView, TimeEntryView } from '../../../../../packages/core-wire/src/index.ts';
 import { useSignedInName } from '../../app-state.ts';
@@ -152,17 +152,21 @@ function EntryRow(props: {
   );
 }
 
-/** What was typed, sent as `time.log` on Enter or Log; the server says whether it is a length of time. */
+/** What was typed, as `time.log`, which the server parses; a lost answer's id is kept for the same box. */
 function LogBox(props: {
   readonly busy: boolean;
-  readonly log: (duration: string, done: () => void) => void;
+  readonly mint: () => string;
+  readonly log: (duration: string, operationId: string, then: (kind: string) => void) => void;
 }): ReactElement {
   const [typed, setTyped] = useState('');
+  const held = useRef<Record<string, string | undefined>>({});
   const send = (): void => {
     const duration = typed.trim();
     if (duration === '' || props.busy) return;
-    props.log(duration, () => {
-      setTyped('');
+    const operationId = (held.current[duration] ??= props.mint());
+    props.log(duration, operationId, (kind) => {
+      if (kind !== 'unknown') held.current[duration] = undefined;
+      if (kind === 'ok') setTyped('');
     });
   };
   return (
@@ -173,9 +177,7 @@ function LogBox(props: {
         aria-label="Log time"
         placeholder="1h 30m, 90m or 90"
         value={typed}
-        onChange={(event) => {
-          setTyped(event.target.value);
-        }}
+        onChange={(event) => setTyped(event.target.value)}
         onKeyDown={(event) => {
           if (event.key !== 'Enter') return;
           event.preventDefault();
@@ -239,9 +241,7 @@ function Fold(props: {
       className="btn btn--ghost"
       data-time-fold
       aria-expanded={props.open}
-      onClick={() => {
-        props.onOpen(!props.open);
-      }}
+      onClick={() => props.onOpen(!props.open)}
     >
       {props.open ? 'Show latest three' : `Show all (${String(props.count)})`}
     </button>
@@ -259,23 +259,23 @@ export function TimeLog(props: {
 }): ReactElement {
   const { client, taskId, time } = props;
   const { busy, because, run } = useCommand();
-  const after = (done?: () => void) => (settlement: { readonly kind: string }) => {
+  const after = (done?: (kind: string) => void) => (settlement: { readonly kind: string }) => {
+    done?.(settlement.kind);
     if (settlement.kind !== 'ok') return;
-    done?.();
     props.onChanged();
   };
   const timer = (): void => {
     const name = time.running === null ? 'time.start' : 'time.stop';
     run(() => client.mutate(name, { taskId }), after());
   };
-  const log = (duration: string, done: () => void): void => {
-    run(() => client.mutate('time.log', { taskId, duration }), after(done));
+  const log = (duration: string, operationId: string, done: (kind: string) => void): void => {
+    run(() => client.mutate('time.log', { taskId, duration }, { operationId }), after(done));
   };
   const shown = props.showAll ? time.entries : time.entries.slice(0, LATEST);
   return (
     <div className="sb__steplist" data-time-log-section>
       <TimerButton running={time.running !== null} busy={busy} onPress={timer} />
-      <LogBox busy={busy} log={log} />
+      <LogBox key={taskId} busy={busy} mint={() => client.newOperationId()} log={log} />
       <Totals total={time.totalMinutes} estimate={props.estimateMinutes} />
       <ul className="sb__steps">
         {shown.map((entry) => (

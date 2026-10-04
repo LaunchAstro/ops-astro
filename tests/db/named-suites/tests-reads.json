@@ -46,12 +46,14 @@
     "tests/reads/task-rank-agent.test.ts",
     "tests/reads/task-rank.test.ts",
     "tests/reads/task-read-client-reach.test.ts",
+    "tests/reads/task-read-client.test.ts",
     "tests/reads/task-read-states.test.ts",
     "tests/reads/task-steps.test.ts",
     "tests/reads/verified-decisions.test.ts"
   ],
   "conformance": [
     "tests/reads/decision-evidence-binding.test.ts",
-    "tests/reads/decision-signature-read.test.ts"
+    "tests/reads/decision-signature-read.test.ts",
+    "tests/reads/steps-child-text-stays-in-database.test.ts"
   ]
 }

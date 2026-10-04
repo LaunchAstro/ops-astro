@@ -27,6 +27,8 @@ export interface ScopeInput {
     readonly id: string;
     readonly title: string;
     readonly clientId: string | null;
+    /** Under a client the reader's grants do not reach (`clientSet`, no id, CS-4.12). */
+    readonly clientUnseen?: true;
   } | null;
 }
 
@@ -38,6 +40,8 @@ export interface Subject {
   readonly chips: readonly string[];
   /** The client whose material this is, if any: the egress rule reads it. */
   readonly clientId: string | null;
+  /** Client material whose client this reader cannot see: its setting is unreadable, so off. */
+  readonly clientUnseen: boolean;
 }
 
 export const LOCAL_MODEL_WAIT =
@@ -63,6 +67,7 @@ export function subjectFor(input: ScopeInput): Subject {
       placeholder: 'Ask about this task…',
       chips: CHIPS.task,
       clientId: task.clientId ?? client?.id ?? null,
+      clientUnseen: task.clientUnseen === true,
     };
   }
   if (client !== null) {
@@ -73,6 +78,7 @@ export function subjectFor(input: ScopeInput): Subject {
       placeholder: 'Ask about this client…',
       chips: CHIPS.client,
       clientId: client.id,
+      clientUnseen: false,
     };
   }
   return {
@@ -82,6 +88,7 @@ export function subjectFor(input: ScopeInput): Subject {
     placeholder: 'Ask about this page…',
     chips: CHIPS.page,
     clientId: null,
+    clientUnseen: false,
   };
 }
 
@@ -91,7 +98,7 @@ export function modelOffer(
   catalogue: readonly ModelChoice[],
   clientModelUse: boolean | null,
 ): AssistantOffer {
-  if (subject.clientId !== null && clientModelUse !== true) {
+  if (subject.clientUnseen || (subject.clientId !== null && clientModelUse !== true)) {
     return { models: [], waiting: LOCAL_MODEL_WAIT };
   }
   return { models: catalogue, waiting: null };
