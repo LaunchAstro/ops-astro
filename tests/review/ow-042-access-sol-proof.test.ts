@@ -15,7 +15,7 @@ import { child, parentWork, useChildWorld, w } from '../runtime/aw-11-child-worl
 
 useChildWorld('sol042_aw');
 
-it('Sol proof, criterion correctness: Access never previews usable child permissions after its parent delegation is settled', async () => {
+it('Access never previews usable child permissions after its parent delegation is settled', async () => {
   const { parent } = await parentWork(w.s);
   const minted = await child(w.s, parent, w.helper);
   const before = await w.s.db.app.withBusiness(w.s.business, async (tx) => await readAccess(tx));
