@@ -10,6 +10,8 @@
     "tests/authority/c58-end-access.test.ts",
     "tests/authority/c58-endings-loop.test.ts",
     "tests/authority/c58-shared-login.test.ts",
+    "tests/authority/c60-client-privacy-refusals.test.ts",
+    "tests/authority/c60-client-privacy.test.ts",
     "tests/authority/grant-chain.test.ts",
     "tests/authority/non-member-grants.test.ts"
   ],
