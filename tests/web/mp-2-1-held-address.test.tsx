@@ -29,6 +29,7 @@ function world(bravo: Bravo, asked: string[] = []): typeof fetch {
     const at = String(url);
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH });
     if (at === '/api/session') return json({ ok: true, session: FRESH_SESSION });
+    if (at.endsWith('/session/person')) return json({ person: { name: 'Mia Hart' } });
     const headers = (init?.headers ?? {}) as Record<string, string>;
     asked.push(`${at} ${String(headers['x-ops-astro-session'])}`);
     if (!at.startsWith('/api/b/bravo/session/capabilities')) return await silent(url, init);
