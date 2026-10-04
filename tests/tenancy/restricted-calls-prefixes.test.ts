@@ -343,6 +343,29 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // 0067: nothing in the journey saves a preference yet.
   'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
+  // WF-1: the journey charts no map.
+  'public.map_components': {
+    map_id: randomUUID(),
+    kind: 'destination',
+    body: 'restricted calls seed',
+    position: 1,
+    created_version: 1,
+  },
+  'public.map_versions': {
+    map_id: randomUUID(),
+    version: 1,
+    changed: [randomUUID()],
+    actor_id: randomUUID(),
+  },
+  'public.map_summaries': {
+    map_id: randomUUID(),
+    version: 1,
+    open_tickets: 0,
+    closed_tickets: 0,
+    fog: 0,
+    out_of_scope: 0,
+  },
+  'public.map_frontier': { map_id: randomUUID(), ticket_id: randomUUID(), position: 1 },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

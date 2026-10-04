@@ -34,6 +34,7 @@ import {
   mergeFieldValues,
   raiseAssignment,
   setTaskState,
+  isWayfinderRecord,
 } from '../../../core-records/src/index.ts';
 import type {
   TenantQuery,
@@ -413,6 +414,21 @@ export async function writeOwnedFields(
   if (absent !== undefined) return refused(absent);
   const noClient = await refuseClientNotHere(tx, fields);
   if (noClient !== undefined) return refused(noClient);
+
+  // A map, its tickets and their threads never reach a client surface (WF-1).
+  if (
+    command === 'task.set_audience' &&
+    fields['client_visible'] === true &&
+    (await isWayfinderRecord(tx, target.id))
+  ) {
+    return refused(
+      refuseCommand(
+        'TRANSITION_NOT_PERMITTED',
+        ['client_visible'],
+        ['A map and its tickets stay internal; share a finished document instead.'],
+      ),
+    );
+  }
 
   // Stored in the spelling the uuid cast answers, so the task names the
   // person in the one form every read and join compares against.
