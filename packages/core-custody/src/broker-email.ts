@@ -175,12 +175,20 @@ export async function stillReadable(
   return kept;
 }
 
-/** Record `asked` on each item the email covers, with the batch marker and class it carries. */
+/**
+ * Record `asked` on each item the email covers, with the batch marker and class it carries. Each
+ * is observed at one instant, the reservation's own (`clock_timestamp()`), not the transaction's
+ * start: the windows and the ceiling count from when the email was reserved, however long it took
+ * to prepare, and a batch's asks share it, so they count as one email.
+ */
 export async function recordAsked(
   tx: TenantQuery,
   items: readonly CheckedItem[],
   daily: boolean,
 ): Promise<void> {
+  const [reserved] = await tx.query<{ readonly at: string }>(
+    'select clock_timestamp()::text as at',
+  );
   for (const item of items) {
     const evidence = askedEvidence(daily, item.mailClass);
     // oxlint-disable-next-line no-await-in-loop
@@ -189,6 +197,7 @@ export async function recordAsked(
       channel: 'email',
       state: 'asked',
       ...(evidence === undefined ? {} : { evidence }),
+      ...(reserved === undefined ? {} : { observedAt: reserved.at }),
     });
   }
 }

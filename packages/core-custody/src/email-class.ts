@@ -13,7 +13,10 @@
 // The class and the timing are written on the attempt's `asked` observation
 // as its evidence (`batch:daily`, `class:<class>`), so the windows are read
 // from the attempts themselves: one daily email per person and one
-// relationship email a week per client. Each window's read takes a
+// relationship email a week per client. Both ends of a window are clock
+// readings: an ask is observed when it is reserved (`recordAsked`), and a
+// window is read against the clock when the read runs, never a
+// transaction's start. Each window's read takes a
 // transaction-scoped advisory lock on its own key first and is written in the
 // same transaction, so two senders racing for one person or one client
 // queue, and the second reads the first's `asked`. An attempt that failed
@@ -86,7 +89,7 @@ export async function windowSpent(
          join public.inbox_items i on i.business_id = a.business_id and i.id = a.item_id
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
         where a.business_id = $1 and a.channel = 'email' and a.state = 'asked'
-          and a.observed_at > now() - make_interval(secs => $3::double precision / 1000)
+          and a.observed_at > clock_timestamp() - make_interval(secs => $3::double precision / 1000)
           and case when $4 then i.recipient_person_id = $2::uuid and a.evidence like 'batch:daily%'
                    else r.uuid_7 = $2::uuid and a.evidence like '%class:relationship' end
           and not exists (
@@ -114,7 +117,7 @@ export const IN_FLIGHT_GRACE_MS = 60_000;
 /**
  * Emails in flight for this business: asks younger than the bound whose item's
  * last email observation is still `asked`. One email is one provider call: a
- * daily batch's asks share their person and their transaction's `now()`, so
+ * daily batch's asks share their person and their reservation's instant, so
  * they count once; an email sent at once covers one item.
  */
 function emailsInFlight(boundMs: number): (tx: TenantQuery) => Promise<number> {
@@ -128,7 +131,7 @@ function emailsInFlight(boundMs: number): (tx: TenantQuery) => Promise<number> {
                  from public.inbox_delivery_attempts a
                  join public.inbox_items i on i.business_id = a.business_id and i.id = a.item_id
                 where a.business_id = $1 and a.channel = 'email'
-                  and a.observed_at > now() - make_interval(secs => $2::double precision / 1000)
+                  and a.observed_at > clock_timestamp() - make_interval(secs => $2::double precision / 1000)
                 order by a.item_id, a.observed_seq desc) last
         where last.state = 'asked'`,
       [tx.businessId, boundMs],
