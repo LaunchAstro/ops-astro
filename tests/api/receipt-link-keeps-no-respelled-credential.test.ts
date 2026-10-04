@@ -97,7 +97,7 @@ async function childOf(
     `insert into public.delegations
        select (jsonb_populate_record(d, jsonb_build_object(
                  'id', $2::uuid, 'agent_actor_id', $3::uuid,
-                 'parent_delegation_id', d.id, 'purpose', 'rcpt_child_' || $2::text,
+                 'parent_delegation_id', d.id, 'purpose', 'rcpt_child_' || left(replace($2::text, '-', ''), 8),
                  'actions', jsonb_build_array('read'),
                  'credential_key_id', coalesce($4, d.credential_key_id)))).*
          from public.delegations d where d.id = $1`,
