@@ -87,7 +87,9 @@ export function readField(body: unknown, dotted: string): unknown {
   return value;
 }
 
-type Prepared = { readonly request: TransportRequest } | { readonly refused: string };
+type Prepared =
+  | { readonly request: TransportRequest; readonly secret: string | undefined }
+  | { readonly refused: string };
 
 function requestFor(
   registration: OperationRegistration,
@@ -103,8 +105,11 @@ function requestFor(
       params[name] === undefined ? [] : [[name, params[name]]],
     ),
   );
+  const url = new URL(`https://${connector.host}${path}`);
+  // A read carries its declared parameters as the query (a source read's pinned ref).
+  if (!write) for (const [name, value] of Object.entries(body)) url.searchParams.set(name, value);
   return {
-    url: new URL(`https://${connector.host}${path}`),
+    url,
     address,
     family: familyOf(address),
     method: connector.method,
@@ -152,7 +157,7 @@ async function prepare(
       return { refused: 'CREDENTIAL_UNAVAILABLE' };
     }
   }
-  return { request: requestFor(registration, params, built.path, address, token) };
+  return { request: requestFor(registration, params, built.path, address, token), secret: token };
 }
 
 type Read =
@@ -192,17 +197,72 @@ function readAnswer(registration: OperationRegistration, answer: TransportAnswer
   return { value };
 }
 
+/** A base64 or base64url text decoded (line breaks ignored), or undefined if it does not decode cleanly. */
+function unbase64(text: string): string | undefined {
+  try {
+    return atob(text.replaceAll('-', '+').replaceAll('_', '/'));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Every text an answer could carry the credential in: each field and all
+ * string fields joined in order, each as sent, base64 or base64url decoded,
+ * and percent-decoded. An arbitrary transform stays out of reach; the
+ * credential's own scope bounds that.
+ */
+function readings(value: ProviderValue): string[] {
+  const fields = Object.values(value).map(String);
+  const strings = Object.values(value).filter((field) => typeof field === 'string');
+  return [...fields, strings.join('')].flatMap((text) => [
+    text,
+    unbase64(text) ?? '',
+    text.replaceAll(/%([0-9A-Fa-f]{2})/gu, (_, hex: string) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)),
+    ),
+  ]);
+}
+
+/** `work`'s answer, or undefined once `ms` pass first. */
+async function withinDeadline<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: Parameters<typeof clearTimeout>[0];
+  const late = new Promise<undefined>((done) => {
+    timer = setTimeout(done, ms);
+  });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function callConnector(
   registration: OperationRegistration,
   params: Readonly<Record<string, string>>,
   deps: CallDependencies,
 ): Promise<ConnectorResult> {
-  const prepared = await prepare(registration, params, deps);
+  // One deadline for the call: resolving the host spends it as the transport does.
+  const { timeoutMs } = registration.connector;
+  const started = Date.now();
+  const ready = await withinDeadline(prepare(registration, params, deps), timeoutMs);
+  const left = timeoutMs - (Date.now() - started);
+  const prepared = ready === undefined || left <= 0 ? { refused: 'PROVIDER_TIMEOUT' } : ready;
   if ('refused' in prepared) {
     deps.record(prepared.refused);
     return { kind: 'refused', code: prepared.refused };
   }
-  const read = readAnswer(registration, await deps.transport(prepared.request));
+  const answered = readAnswer(
+    registration,
+    await deps.transport({ ...prepared.request, timeoutMs: left }),
+  );
+  const { secret } = prepared;
+  // A field holding the borrowed credential is the provider echoing it: unreadable, never returned.
+  const echoed =
+    'value' in answered &&
+    secret !== undefined &&
+    readings(answered.value).some((text) => text.includes(secret));
+  const read: Read = echoed ? { unreadable: 'PROVIDER_CREDENTIAL_ECHOED' } : answered;
   if ('value' in read) return { kind: 'ok', value: read.value };
   if ('proof' in read) {
     deps.record(read.refused);

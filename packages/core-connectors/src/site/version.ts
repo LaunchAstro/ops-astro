@@ -18,6 +18,8 @@ export interface VersionPin {
   readonly preImageDigest: string;
   readonly baseRevision: string;
   readonly pageUrl: string;
+  /** The reference the publish acts on and is read back by: approval of one never authorises another. */
+  readonly seam: string;
 }
 
 /** The version digest, computed one way where the request stores it and where the publish checks it. */
@@ -28,6 +30,7 @@ export function versionDigestOf(pin: VersionPin): string {
     preImageDigest: pin.preImageDigest,
     baseRevision: pin.baseRevision,
     pageUrl: pin.pageUrl,
+    seam: pin.seam,
   });
 }
 

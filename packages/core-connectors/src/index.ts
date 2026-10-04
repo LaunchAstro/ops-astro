@@ -145,6 +145,7 @@ export {
   type PublishPorts,
   type RevertOutcome,
 } from './site/publish.ts';
+export type { Occurrence, ReadBack } from './site/reconcile.ts';
 export {
   ACCEPTANCE_CASES,
   PRECONDITIONS,
