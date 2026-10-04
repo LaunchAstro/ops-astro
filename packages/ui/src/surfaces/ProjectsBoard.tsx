@@ -53,6 +53,8 @@ export interface ProjectsBoardProps {
   readonly actions?: RowActions;
   /** Whether its tab is not shown: a hidden board takes no Undo and writes no address. */
   readonly hidden?: boolean;
+  /** The clients the reader reaches, by name: each a Client filter, with rows or none. */
+  readonly clients?: readonly string[];
 }
 
 const WORK_ORDER = { key: 'rank', dir: 'asc' } as const;
@@ -79,10 +81,13 @@ function useChips(
   rows: readonly ProjectRow[],
   viewer: string | null,
   now: Date,
-  board: Pick<ProjectsBoardProps, 'owed'>,
+  board: Pick<ProjectsBoardProps, 'owed' | 'clients'>,
 ) {
-  const { owed } = board;
-  const facets = useMemo(() => projectFacets(rows, now, viewer), [rows, now, viewer]);
+  const { owed, clients } = board;
+  const facets = useMemo(
+    () => projectFacets(rows, now, viewer, clients),
+    [rows, now, viewer, clients],
+  );
   const presets = useMemo(() => projectPresets(rows, viewer), [rows, viewer]);
   const modes = useMemo(
     () => [{ ...REVIEW_MODE, badge: reviewBadge(rows, owed), empty: REVIEW_EMPTY }],

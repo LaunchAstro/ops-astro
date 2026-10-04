@@ -591,6 +591,18 @@ reads each row's rank, stage and client mark back against `task.read` and
 holds the crossings; `mp-5-8-board-rank-steps.test.ts` reads an archived
 step back.
 
+Each row also carries `client` (the Clients row door): the task's client as
+`{ clientId, name }`, by `task.read`'s and `client.list`'s rule, so only where
+the caller's grants reach that client (a grant across the business, or one on
+the client). A task under a client the caller does not reach reads `null`
+beside `clientSet: true`, never the id or name `client.list` withholds; a task
+under none reads `null`. Asked only of the rows served
+(`commands/task-content.ts` `withBoardClients`). The Projects board names its
+Client column and facet from it, and a Clients row door opens
+`/projects/?f=client:"<name>"`. `tests/reads/board-row-client.test.ts` reads it
+back against `task.read` and `client.list` and holds the crossings: another
+business, another client, a task holder without the client, and the agent.
+
 Each row also carries `actualMinutes` (MP-5-8's Actual column): every
 finished minute logged on the task (MP-4-6), summed at read over the rows
 served (`reads/board-time.ts`), the total `task.read`'s `time` answers: one
@@ -686,10 +698,10 @@ cannot hold reaches `business_settings`.
 `task.comment` writes a comment record beside the task and leaves the task's
 own revision alone, so a caller may keep writing against the revision they
 hold. The author is the acting actor and the posting time is the server's;
-neither is a payload field. `mentions` lists person ids; each one mentioned
-is raised an inbox item in the same transaction (INB-1), and one who cannot
-read the task, or an outside party named in an `internal` comment, refuses
-the whole comment before it saves.
+neither is a payload field. `mentions` lists person ids. Each person
+mentioned is raised an inbox item in the same transaction (INB-1). If one of
+them cannot read the task, or is an outside party named in an `internal`
+comment, the whole comment is refused before it saves.
 
 `preset.plan` is declared `kind: 'read'` because it writes nothing, even on
 success. It is the one read that does not take the `read` action, which is why
@@ -2780,7 +2792,7 @@ the removal when `enrol` answers `FACTOR_ALREADY_ENROLLED` (`WEB.md`).
 
 | Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                                                      |
 | ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                                                       |
+| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `VERSION_STALE` 409 (a newer enrolment recorded first), `PROVIDER_ANSWER_INVALID` 502               |
 | `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `FACTOR_ALREADY_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
 | `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                                                 |
 
@@ -2802,12 +2814,14 @@ call, beside the record it changes, and carries the sent code's id as its
 too, so it stops counting, and a provider fault on the code leaves it counted. GoTrue served under a path (`/auth/v1`) is called
 under that path. The record step locks the login (a transaction-scoped
 advisory lock, `second-factor-subject:` and its subject's digest), then the
-person's own row (`for no key update`), so two tabs enrolling at once queue: the
-later enrolment replaces the earlier unverified one, and one live factor
-remains. Two businesses completing enrolments for one login at once queue too:
-the later is refused `FACTOR_ALREADY_ENROLLED`, and the factor the provider has
-just verified for it is removed there, best effort, so the login holds one
-verified factor.
+person's own row (`for no key update`), so two tabs enrolling at once queue.
+An enrolment replaces only the unverified factor it started from: one recorded
+after it started (another tab's) stays the factor the first code completes, and
+this one is refused `VERSION_STALE`, its provider factor reported as an
+`account.factor_orphaned` event. One live factor remains. Two businesses
+completing enrolments for one login at once queue too: the later is refused
+`FACTOR_ALREADY_ENROLLED`, and the factor the provider has just verified for it
+is removed there, best effort, so the login holds one verified factor.
 
 `PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.

@@ -1,0 +1,10 @@
+{
+  "invariant": [
+    "tests/surfaces/aw-09-reject-header.test.tsx",
+    "tests/surfaces/inbox-three-surfaces.test.tsx",
+    "tests/surfaces/incident-retry-once-and-task-draft-stays-with-business.test.tsx",
+    "tests/surfaces/mp-7-3-inbox-isolation.test.tsx",
+    "tests/surfaces/proposal-snapshot.test.tsx"
+  ],
+  "conformance": []
+}
