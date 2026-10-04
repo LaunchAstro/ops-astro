@@ -168,14 +168,16 @@ async function withoutSettingsManageRefused(): Promise<void> {
   const api = apiWith(factorFake().provider);
   const member = await memberWithFactor('lux');
   const before = await resetState(member.person);
-  // A manager of access, but not of settings, is refused like the others.
+  // A manager of access alone, or of privacy alone, is refused like the others.
   const keeper = await enrol(harness.world.db.app, harness.world.alpha, `keeper-${randomUUID()}`);
+  const warden = await enrol(harness.world.db.app, harness.world.alpha, `warden-${randomUUID()}`);
   await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
     await grantTo(tx, keeper, 'manage', WHOLE_BUSINESS, false, 'access');
+    await grantTo(tx, warden, 'manage', WHOLE_BUSINESS, false, 'privacy');
   });
-  const keeperToken = await sessionToken(keeper.presented.subject);
-  const tokens = [harness.world.mia.token, harness.world.noah.token, keeperToken, clientToken];
-  for (const token of tokens) {
+  const keepers = [keeper, warden].map((one) => sessionToken(one.presented.subject));
+  const tokens = [harness.world.mia.token, harness.world.noah.token, clientToken];
+  for (const token of [...tokens, ...(await Promise.all(keepers))]) {
     // oxlint-disable-next-line no-await-in-loop
     const refused = await reset(api, member.person.personId, token);
     expect(refused.status).toBe(403);
@@ -280,7 +282,7 @@ describe.skipIf(serverUrl === undefined)("C59 the owner resets a member's factor
   it("C59 reset: the caller's own person is refused FACTOR_RESET_REFUSED", ownPersonRefused);
   it('C59 reset: an agent caller is refused, with nothing written', agentRefused);
   it(
-    'C59 reset: a caller without settings:manage is refused, with nothing written',
+    'C59 reset: a caller without settings:manage, privacy:manage alone included, is refused, with nothing written',
     withoutSettingsManageRefused,
   );
   it(
