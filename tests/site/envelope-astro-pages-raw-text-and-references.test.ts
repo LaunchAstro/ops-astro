@@ -14,10 +14,10 @@ import {
   type PageObservation,
 } from '../../packages/core-connectors/src/index.ts';
 
-function edit(path: string, word: string, replacement: string, before: string) {
+async function edit(path: string, word: string, replacement: string, before: string) {
   const target: CorrectionTarget = { path, word, replacement };
   const after = before.replace(word, replacement);
-  return checkEnvelope({ files: [{ path, before, after }] }, target);
+  return await checkEnvelope({ files: [{ path, before, after }] }, target);
 }
 
 describe('the envelope edits Astro pages only', () => {
@@ -32,8 +32,8 @@ describe('the envelope edits Astro pages only', () => {
     ],
     ['a headers file', 'public/_headers', 'good', 'evil', '/*\n  X-Frame-Options: good\n'],
     ['a YAML file', 'src/data/site.yaml', 'yes', 'no', 'indexable: yes\n'],
-  ])('refuses %s', (_name, path, word, replacement, before) => {
-    expect(edit(path, word, replacement, before)).toMatchObject({
+  ])('refuses %s', async (_name, path, word, replacement, before) => {
+    expect(await edit(path, word, replacement, before)).toMatchObject({
       ok: false,
       code: 'CHANGE_ENVELOPE_EXCEEDED',
     });
@@ -62,8 +62,10 @@ describe('a word a browser may read as markup is refused', () => {
     ],
     ['in a textarea', 'Hello', 'Hi', '<textarea>Hello there</textarea>\n'],
     ['in a template', 'Hello', 'Hi', '<template><p>Hello there</p></template>\n'],
-  ])('refuses a word %s', (_name, word, replacement, before) => {
-    expect(edit('src/pages/index.astro', word, replacement, before)).toMatchObject({ ok: false });
+  ])('refuses a word %s', async (_name, word, replacement, before) => {
+    expect(await edit('src/pages/index.astro', word, replacement, before)).toMatchObject({
+      ok: false,
+    });
   });
 });
 
@@ -71,8 +73,10 @@ describe('a word in a character reference is refused', () => {
   it.each([
     ['a named reference', 'amp', 'lt', '<p>Fish &amp; chips</p>\n'],
     ['a legacy reference without its semicolon', 'D', 'copy', '<p>Our R&D team</p>\n'],
-  ])('refuses %s', (_name, word, replacement, before) => {
-    expect(edit('src/pages/index.astro', word, replacement, before)).toMatchObject({ ok: false });
+  ])('refuses %s', async (_name, word, replacement, before) => {
+    expect(await edit('src/pages/index.astro', word, replacement, before)).toMatchObject({
+      ok: false,
+    });
   });
 });
 

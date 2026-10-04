@@ -12,6 +12,7 @@ import {
   compareCaptures,
   type PageObservation,
 } from '../../packages/core-connectors/src/index.ts';
+import { parsedApart } from '../../packages/core-connectors/src/site/page-parse.ts';
 
 async function edit(word: string, replacement: string, before: string) {
   const path = 'src/pages/index.astro';
@@ -38,6 +39,15 @@ describe('the parser is bounded', () => {
     }
     expect(process.memoryUsage().rss - start).toBeLessThan(300 * 1024 * 1024);
   }, 60_000);
+
+  it('a page that exhausts the parser ends only its worker, and the host lives on', async () => {
+    const huge = `${'<p>x</p>'.repeat(20_000)}\n`;
+    expect(await parsedApart(huge, huge)).toBeUndefined();
+    await new Promise((settled) => {
+      setTimeout(settled, 4000);
+    });
+    expect(await edit('Hello', 'Hi', ordinary)).toMatchObject({ ok: true });
+  }, 30_000);
 
   it.each([
     ['many elements', `${'<p>x</p>'.repeat(7000)}<p>Hello there</p>\n`],

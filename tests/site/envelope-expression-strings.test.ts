@@ -42,16 +42,16 @@ describe('the envelope reads strings and comments inside an expression', () => {
     ['a block comment holding a closing brace', "    <p>{x /* } */ ? 'alongside' : ''}</p>"],
     ['a line comment holding a closing brace', "    <p>{x // }\n ? 'alongside' : ''}</p>"],
     ['an attribute expression holding a `>`', "    <Card label={x > 1 ? 'alongside' : ''} />"],
-  ])('refuses the word after %s', (_name, line) => {
-    expect(checkEnvelope(proposed(line), TARGET)).toMatchObject({
+  ])('refuses the word after %s', async (_name, line) => {
+    expect(await checkEnvelope(proposed(line), TARGET)).toMatchObject({
       ok: false,
       code: 'CHANGE_ENVELOPE_EXCEEDED',
     });
   });
 
-  it('accepts the word in text after a closed expression holding a quoted brace', () => {
+  it('accepts the word in text after a closed expression holding a quoted brace', async () => {
     expect(
-      checkEnvelope(proposed("    <p>{'}'} We walk alongside you.</p>"), TARGET),
+      await checkEnvelope(proposed("    <p>{'}'} We walk alongside you.</p>"), TARGET),
     ).toMatchObject({
       ok: true,
       value: { line: 6 },

@@ -54,16 +54,16 @@ describe('the envelope refuses a word Astro does not render as body copy', () =>
       '<p set:html={html}>We walk alongside you.</p>\n',
     ],
     ['a style block', '<style>.alongside { color: red; }</style>\n'],
-  ])('refuses the word in %s', (_name, before) => {
-    expect(checkEnvelope(proposed(before), TARGET)).toMatchObject({
+  ])('refuses the word in %s', async (_name, before) => {
+    expect(await checkEnvelope(proposed(before), TARGET)).toMatchObject({
       ok: false,
       code: 'CHANGE_ENVELOPE_EXCEEDED',
     });
   });
 
-  it('refuses, and does not throw, after 20,000 nested template expressions', () => {
+  it('refuses, and does not throw, after 20,000 nested template expressions', async () => {
     const before = `<p>{${'`${'.repeat(20_000)}}</p>\n<!-- alongside -->\n`;
-    expect(checkEnvelope(proposed(before), TARGET)).toMatchObject({ ok: false });
+    expect(await checkEnvelope(proposed(before), TARGET)).toMatchObject({ ok: false });
   });
 });
 
@@ -80,8 +80,11 @@ describe('the envelope still accepts body copy', () => {
       4,
     ],
     ['after a word with an accent', '<p>Café staff walk alongside you.</p>\n', 1],
-  ])('accepts the word %s', (_name, before, line) => {
-    expect(checkEnvelope(proposed(before), TARGET)).toMatchObject({ ok: true, value: { line } });
+  ])('accepts the word %s', async (_name, before, line) => {
+    expect(await checkEnvelope(proposed(before), TARGET)).toMatchObject({
+      ok: true,
+      value: { line },
+    });
   });
 });
 
