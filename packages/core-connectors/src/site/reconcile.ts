@@ -40,6 +40,20 @@ export async function reconciled<T>(
   return after.state === 'absent' ? answer : unproven;
 }
 
+const claims = new Map<string, Promise<unknown>>();
+
+/** One caller per seam and token in this process holds the read back through the send (across runners, the lease). */
+export async function claimed<T>(seam: string, token: string, work: () => Promise<T>): Promise<T> {
+  const key = `${seam} ${token}`;
+  const mine = (claims.get(key) ?? Promise.resolve()).then(work, work);
+  claims.set(key, mine);
+  try {
+    return await mine;
+  } finally {
+    if (claims.get(key) === mine) claims.delete(key);
+  }
+}
+
 type Proven = { readonly kind: 'refused'; readonly code: string; readonly proof: string };
 
 /** A refusal carrying one of the operation's declared nothing-happened proofs. */

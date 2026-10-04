@@ -23,6 +23,7 @@
 import type { ProviderResult } from '../call.ts';
 import { checkEnvelope, type CorrectionTarget, type ProposedChange } from './envelope.ts';
 import {
+  claimed,
   occurrenceOf,
   proven,
   reconciled,
@@ -143,6 +144,14 @@ export async function publishCorrection(
   const stopped = await beforeDispatch(job, ports);
   if (stopped !== undefined) return stopped;
   const token = dispatchToken('site.publish', job.version.digest);
+  return await claimed(job.seam, token, () => dispatch(job, ports, token));
+}
+
+async function dispatch(
+  job: PublishJob,
+  ports: PublishPorts,
+  token: string,
+): Promise<PublishOutcome> {
   const readBack = () => ports.readBack({ seam: job.seam, dispatchToken: token });
   const back = await readBack();
   // Last, after every awaited read: a cancellation that arrived during one still stops the send.
@@ -261,10 +270,9 @@ export async function revertCorrection(
   // One token per published revision, and a retry is read back before it is ever sent again.
   const token = dispatchToken('site.source.revert', input.publishedRevision);
   const readBack = () => ports.readBack({ seam: input.seam, dispatchToken: token });
-  const reverted = await reconciled(
-    await readBack(),
-    () => ports.revert({ seam: input.seam, dispatchToken: token }),
-    readBack,
+  const send = () => ports.revert({ seam: input.seam, dispatchToken: token });
+  const reverted = await claimed(input.seam, token, async () =>
+    reconciled(await readBack(), send, readBack),
   );
   if (reverted.kind !== 'ok') {
     const state = proven('site.source.revert', reverted) ? 'failed' : 'unknown';
