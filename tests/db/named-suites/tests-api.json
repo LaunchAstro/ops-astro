@@ -33,6 +33,7 @@
     "tests/api/c4-live-stream.test.ts",
     "tests/api/c4-notifications-live.test.ts",
     "tests/api/c4-rollup-scope.test.ts",
+    "tests/api/c40-password-set-races.test.ts",
     "tests/api/c40-password-set-review.test.ts",
     "tests/api/c40-password-set-revocation.test.ts",
     "tests/api/c40-password-set.test.ts",
