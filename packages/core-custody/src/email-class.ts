@@ -25,6 +25,8 @@
 import {
   advisoryLock,
   hasRoom,
+  recordDeliveryAttempt,
+  taskAccess,
   type InboxReason,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
@@ -33,7 +35,8 @@ import type { ModelOperation } from '../../core-connectors/src/index.ts';
 export type MailClass = 'staff' | 'transactional' | 'relationship';
 
 /**
- * Failures that prove the provider took nothing: custody never reached it.
+ * Failures that prove the provider took nothing: custody never reached it,
+ * or the send never asked custody because its ask had lapsed (`expired`).
  * Any answer from the provider, a redirect or an error status included, may
  * have sent, so it is never followed by a second send (the broker's rule),
  * and it spends its window.
@@ -43,6 +46,7 @@ export const NOTHING_SENT: ReadonlySet<string> = new Set([
   'unlisted',
   'bad_path',
   'forbidden',
+  'expired',
 ]);
 
 export const DAY_MS: number = 24 * 60 * 60 * 1000;
@@ -68,6 +72,62 @@ export function askedEvidence(daily: boolean, mailClass: MailClass): string | un
   const parts = [daily ? 'batch:daily' : '', mailClass === 'staff' ? '' : `class:${mailClass}`];
   const evidence = parts.filter((part) => part !== '').join(' ');
   return evidence === '' ? undefined : evidence;
+}
+
+/** One item that passed every check: whose it is, where it goes, and its class. */
+export interface CheckedItem {
+  readonly itemId: string;
+  readonly reason: InboxReason;
+  readonly recipient: string;
+  readonly subject: string;
+  readonly to: string;
+  /** The task's client, which the weekly cap counts by; null for a task of no client. */
+  readonly client: string | null;
+  readonly mailClass: MailClass;
+}
+
+/**
+ * The items whose recipient can still read their task, judged again after every lock the send
+ * waits on and just before `asked` is written: access lost while the email was prepared withholds
+ * the items it reaches, however early they were checked.
+ */
+export async function stillReadable(
+  tx: TenantQuery,
+  items: readonly CheckedItem[],
+): Promise<CheckedItem[]> {
+  const kept: CheckedItem[] = [];
+  for (const item of items) {
+    // oxlint-disable-next-line no-await-in-loop
+    if ((await taskAccess(tx, item.recipient, item.subject)) === 'readable') kept.push(item);
+  }
+  return kept;
+}
+
+/**
+ * Record `asked` on each item the email covers, with the batch marker and class it carries. Each
+ * is observed at one instant, the reservation's own (`clock_timestamp()`), not the transaction's
+ * start: the windows and the ceiling count from when the email was reserved, however long it took
+ * to prepare, and a batch's asks share it, so they count as one email.
+ */
+export async function recordAsked(
+  tx: TenantQuery,
+  items: readonly CheckedItem[],
+  daily: boolean,
+): Promise<void> {
+  const [reserved] = await tx.query<{ readonly at: string }>(
+    'select clock_timestamp()::text as at',
+  );
+  for (const item of items) {
+    const evidence = askedEvidence(daily, item.mailClass);
+    // oxlint-disable-next-line no-await-in-loop
+    await recordDeliveryAttempt(tx, {
+      itemId: item.itemId,
+      channel: 'email',
+      state: 'asked',
+      ...(evidence === undefined ? {} : { evidence }),
+      ...(reserved === undefined ? {} : { observedAt: reserved.at }),
+    });
+  }
 }
 
 /**
@@ -105,14 +165,28 @@ export async function windowSpent(
 
 /**
  * How long past custody's own timeout an ask may still be a live send: the
- * outcome's commit after the call ended. Custody ends every dispatch by the
- * operation's `timeoutMs` (one abort signal over the lookup, the request and
- * the answer), so an ask older than both was answered or its sender died.
- * Either way the provider holds no call of it open, and the ceiling bounds
- * provider calls. The attempt itself stays `asked`: unknown, never sent
- * again (`mayStillSend`), and still spending its day and its client's week.
+ * start of its call, and the outcome's commit after the call ended. Custody
+ * ends every dispatch by the operation's `timeoutMs` (one abort signal over
+ * the lookup, the request and the answer), and a send starts its call within
+ * the grace of its reservation or never (`lapsed`), so an ask older than both
+ * was answered, its sender died, or it never reached the provider. In each
+ * case the provider holds no call of it open, and the ceiling bounds provider
+ * calls. An attempt with no outcome stays `asked`: unknown, never sent again
+ * (`mayStillSend`), and still spending its day and its client's week.
  */
 export const IN_FLIGHT_GRACE_MS = 60_000;
+
+/**
+ * The fence on an ask whose sender paused: whether more than the grace has passed since
+ * `reserving`, a `performance.now()` reading taken before the ask's transaction began. Checked
+ * just before custody is asked: an ask past it may already have stopped counting, and a
+ * replacement may hold its place under the ceiling, so its sender records `failed`, evidence
+ * `expired`, and never calls the provider. One within it starts a call that custody ends while
+ * the ask still counts.
+ */
+export function lapsed(reserving: number): boolean {
+  return performance.now() - reserving > IN_FLIGHT_GRACE_MS;
+}
 
 /**
  * Emails in flight for this business: asks younger than the bound whose item's

@@ -15,7 +15,8 @@
 //    Then each item the email covers is recorded `asked`, with its class.
 // 2. Send, through custody, a request the adapter built from the declared
 //    fields. The body carries one address, the item's or the inbox's, and
-//    never a decision.
+//    never a decision. A send that paused past the grace since its ask
+//    began sends nothing and records `failed`, `expired` (`lapsed`).
 // 3. Record what came back as each item's next observation: `accepted`
 //    with the provider's message id, or `failed` with the fault's kind. No
 //    answer body, address or link is kept, returned or written anywhere.
@@ -36,19 +37,21 @@ import type { ModelOperation, SenderReport } from '../../core-connectors/src/ind
 import type { Broker, BrokerRoute, ProviderAdapter } from './broker-types.ts';
 import type { CustodyOutcome } from './custody.ts';
 import {
-  askedEvidence,
   classOf,
+  type CheckedItem,
   type DeliverRefusal,
   fromVerifiedSender,
+  lapsed,
   mayStillSend,
+  recordAsked,
   roomFor,
+  stillReadable,
   WEEK_MS,
   windowSpent,
-  type MailClass,
   type Room,
 } from './email-class.ts';
 
-export type { Room } from './email-class.ts';
+export { recordAsked, stillReadable, type CheckedItem, type Room } from './email-class.ts';
 
 /** The catalogued name the send dispatches by. */
 export const EMAIL_OPERATION = 'email.send';
@@ -94,18 +97,6 @@ function routed(broker: Broker): Routed | undefined {
   const route = broker.routes.find((entry) => entry.provider === operation.provider);
   const adapter = broker.providers.get(operation.provider);
   return route === undefined || adapter === undefined ? undefined : { operation, route, adapter };
-}
-
-/** One item that passed every check: whose it is, where it goes, and its class. */
-export interface CheckedItem {
-  readonly itemId: string;
-  readonly reason: InboxReason;
-  readonly recipient: string;
-  readonly subject: string;
-  readonly to: string;
-  /** The task's client, which the weekly cap counts by; null for a task of no client. */
-  readonly client: string | null;
-  readonly mailClass: MailClass;
 }
 
 /**
@@ -156,50 +147,6 @@ export async function checkItem(
     client: item.client,
     mailClass: await classOf(tx, item),
   };
-}
-
-/**
- * The items whose recipient can still read their task, judged again after every lock the send
- * waits on and just before `asked` is written: access lost while the email was prepared withholds
- * the items it reaches, however early they were checked.
- */
-export async function stillReadable(
-  tx: TenantQuery,
-  items: readonly CheckedItem[],
-): Promise<CheckedItem[]> {
-  const kept: CheckedItem[] = [];
-  for (const item of items) {
-    // oxlint-disable-next-line no-await-in-loop
-    if ((await taskAccess(tx, item.recipient, item.subject)) === 'readable') kept.push(item);
-  }
-  return kept;
-}
-
-/**
- * Record `asked` on each item the email covers, with the batch marker and class it carries. Each
- * is observed at one instant, the reservation's own (`clock_timestamp()`), not the transaction's
- * start: the windows and the ceiling count from when the email was reserved, however long it took
- * to prepare, and a batch's asks share it, so they count as one email.
- */
-export async function recordAsked(
-  tx: TenantQuery,
-  items: readonly CheckedItem[],
-  daily: boolean,
-): Promise<void> {
-  const [reserved] = await tx.query<{ readonly at: string }>(
-    'select clock_timestamp()::text as at',
-  );
-  for (const item of items) {
-    const evidence = askedEvidence(daily, item.mailClass);
-    // oxlint-disable-next-line no-await-in-loop
-    await recordDeliveryAttempt(tx, {
-      itemId: item.itemId,
-      channel: 'email',
-      state: 'asked',
-      ...(evidence === undefined ? {} : { evidence }),
-      ...(reserved === undefined ? {} : { observedAt: reserved.at }),
-    });
-  }
 }
 
 /** One item, sent on its own: every check, the client's weekly cap, the ceiling, then `asked`. */
@@ -274,6 +221,7 @@ export async function deliver<R extends string>(
   const found = routed(broker);
   if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
   const { operation, route, adapter } = found;
+  const reserving = performance.now();
   const asked = await database.withBusiness(
     businessId,
     async (tx) => await ask(tx, roomFor(tx, operation)),
@@ -282,15 +230,19 @@ export async function deliver<R extends string>(
   const path = asked.link === null ? '/inbox' : `/inbox/${encodeURIComponent(asked.link)}`;
   const address = new URL(path, mail.appOrigin).href;
   const built = adapter.build({ to: asked.to, from: mail.from, address });
-  const outcome = await broker.custody.dispatch(route.credentialRef, {
-    destination: operation.destination,
-    path: built.path,
-    method: built.method,
-    body: built.body,
-    timeoutMs: operation.timeoutMs,
-    maxResponseBytes: operation.maxResponseBytes,
-  });
-  const seen = observed(outcome, operation);
+  const seen = lapsed(reserving)
+    ? ({ state: 'failed', evidence: 'expired' } as const)
+    : observed(
+        await broker.custody.dispatch(route.credentialRef, {
+          destination: operation.destination,
+          path: built.path,
+          method: built.method,
+          body: built.body,
+          timeoutMs: operation.timeoutMs,
+          maxResponseBytes: operation.maxResponseBytes,
+        }),
+        operation,
+      );
   const attemptIds = await database.withBusiness(businessId, async (tx) => {
     const ids: string[] = [];
     for (const itemId of asked.itemIds) {
