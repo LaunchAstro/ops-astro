@@ -57,7 +57,8 @@ it('the matrix numbers its shards 1 to n, and the runner is told which of n it i
   expect(shardJob).toContain('FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}');
 });
 
-it('CI-SPEED (NATHAN-CF-RECORD item 1): the run is split 16 ways, each shard near its share', () => {
+// CI-SPEED, the owner's 4 October 2026 decision (NATHAN-CF-RECORD item 1): 16 shards.
+it('the run is split 16 ways, each shard near its share', () => {
   expect(shardCount).toBe(16);
   const weight = (item: string) => timings[item] ?? 0;
   const loads = assignShards(items, timings, shardCount).map((shard) =>
