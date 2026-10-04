@@ -180,9 +180,9 @@ it.each([
   });
   expect({
     decodes: Buffer.from(text, 'base64').toString('utf8').includes(KEY),
-    // The longest stable run of each slice that is left, so a slice cut short fails here.
-    left: stable.some(
-      (slice) => text.includes(slice.slice(0, slice.length - 1)) || text.includes(slice.slice(1)),
+    // Any four characters of a stable slice left over: a slice cut short fails here.
+    left: stable.some((slice) =>
+      [...slice].some((_, at) => at + 4 <= slice.length && text.includes(slice.slice(at, at + 4))),
     ),
   }).toEqual({ decodes: false, left: false });
 });
@@ -196,4 +196,34 @@ it('a key holding a run of backslashes is redacted from a long run of them witho
     held: false,
     fast: true,
   });
+});
+
+/** The raw body custody returned for `body`, not read as JSON. */
+async function answeredRaw(body: string, key: string): Promise<string> {
+  let raw = '';
+  await withCustody(
+    {},
+    body,
+    async (custody) => {
+      const outcome = await custody.dispatch('auth_key', request);
+      if (outcome.kind !== 'answered' || !outcome.outbound.ok) throw new Error('not answered');
+      raw = outcome.outbound.body;
+    },
+    key,
+  );
+  return raw;
+}
+
+it('a key holding a percent sign is redacted when the answer escapes it as %25', async () => {
+  const key = 'synthetic%canary-key-0123';
+  const text = await answered(encodeURIComponent(key), key);
+  expect(decodeURIComponent(text).includes(key), 'decoded answer must not hold the key').toBe(
+    false,
+  );
+});
+
+it('a key holding two backslashes is redacted from an answer that is not JSON', async () => {
+  const key = 'synthetic\\\\canary-key-0123';
+  const raw = await answeredRaw(`plain text ${key} end`, key);
+  expect(raw.includes(key), 'the answer must not hold the key').toBe(false);
 });
