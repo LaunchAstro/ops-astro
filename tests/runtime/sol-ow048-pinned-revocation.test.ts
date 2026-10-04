@@ -3,6 +3,7 @@
 // Catalogue #423: Sol's OW-048 criterion 3 proof, unchanged
 // (R/sol/proofs/OW-048-4126931d1.patch); the file's other criterion is not
 // this issue's.
+import { setTimeout as sleep } from 'node:timers/promises';
 import { expect, it } from 'vitest';
 import { revokeDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
@@ -41,8 +42,9 @@ it('Sol proof, criterion 3: a revoked delegation cannot read pinned instructions
     await owner.db.app.withBusiness(
       owner.business,
       async (tx) =>
-        await readPinned(tx, request, source, async (_inner, note) => {
+        await readPinned(tx, request, source, (_inner, note) => {
           notes.push(note);
+          return Promise.resolve();
         }),
     );
   expect((await read()).ok, 'the live owner can read before revocation').toBe(true);
@@ -68,6 +70,15 @@ it('Sol proof, criterion 3: a revoked delegation cannot read pinned instructions
   expect(await fingerprint(owner)).toBe(before);
 });
 
+/** A promise and the call that settles it. */
+function gate(): { readonly promise: Promise<void>; readonly open: () => void } {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
+
 it('a revocation waits for a pinned read that already checked the delegation', async () => {
   if (process.env['DATABASE_URL'] === undefined) throw new Error('Postgres is required');
   const owner = w.alpha;
@@ -82,25 +93,19 @@ it('a revocation waits for a pinned read that already checked the delegation', a
     stepId: null,
     path: FRAGMENT,
   };
-  let checked!: () => void;
-  const inFlight = new Promise<void>((resolve) => {
-    checked = resolve;
-  });
-  let release!: () => void;
-  const finish = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const inFlight = gate();
+  const finish = gate();
   // The read stops inside its transaction after the delegation check and the
   // ledger row, before it commits: the audit hook is its last step.
   const reading = owner.db.app.withBusiness(
     owner.business,
     async (tx) =>
       await readPinned(tx, request, sourceOf(FILES), async () => {
-        checked();
-        await finish;
+        inFlight.open();
+        await finish.promise;
       }),
   );
-  await inFlight;
+  await inFlight.promise;
   // Its own connection: the app pool would queue it behind the open read.
   const second = connect(owner.db.appUrl);
   let revokedAt: number | undefined;
@@ -111,9 +116,9 @@ it('a revocation waits for a pinned read that already checked the delegation', a
     );
     revokedAt = Date.now();
   })();
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  await sleep(300);
   expect(revokedAt, 'the revocation waits for the read that checked it').toBeUndefined();
-  release();
+  finish.open();
   expect((await reading).ok).toBe(true);
   await revoking;
   await second.close();
