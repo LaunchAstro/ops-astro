@@ -88,6 +88,25 @@ it.skipIf(noDatabase)(
     expect(t.target.stored.has(traceId), 'the fresh exported event must remain retrievable').toBe(
       true,
     );
+    // Not only the trace: the fresh event's own span is sent again after the delete.
+    const [fresh] = await t.alpha.db.app.withBusiness(
+      t.alpha.business,
+      async (tx) =>
+        await tx.query<{ readonly id: string }>(
+          `select id from public.run_events
+            where business_id = $1 and run_id = $2 and kind = 'handed_back'`,
+          [tx.businessId, runId],
+        ),
+    );
+    const freshSpan = derivedId(TRACE_KEY, ['span', t.alpha.business, String(fresh?.id)], 16);
+    const deletion = t.target.methods.lastIndexOf('DELETE');
+    const sentAfter = t.target.received.filter(
+      (_, at) => at > deletion && t.target.methods[at] === 'POST',
+    );
+    expect(
+      sentAfter.some((body) => body.includes(`"spanId":"${freshSpan}"`)),
+      'the fresh event’s span is sent again after the delete',
+    ).toBe(true);
   },
 );
 
