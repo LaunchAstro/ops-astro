@@ -30,6 +30,8 @@ type Answer =
   | { readonly kind: 'refused' }
   | { readonly kind: 'unavailable' };
 
+const IDLE: Answer = { kind: 'idle' };
+
 const hasWord = (query: string): boolean => /[\p{L}\p{N}]/u.test(query);
 
 /**
@@ -153,7 +155,8 @@ function useFocusAndOneEscape(
 
 /**
  * The service's answer to `query`, asked once typing has rested; a new answer
- * moves the highlight back to the first hit through `setActive`.
+ * moves the highlight back to the first hit through `setActive`. An answer is
+ * the client's that asked it: another business or person sees none of it.
  */
 function useAnswer(
   client: OperationsClient,
@@ -161,11 +164,17 @@ function useAnswer(
   setActive: (index: number) => void,
 ): Answer {
   const asked = useRef(0);
-  const [answer, setAnswer] = useState<Answer>({ kind: 'idle' });
+  const [held, setHeld] = useState<{ readonly of: OperationsClient; readonly answer: Answer }>({
+    of: client,
+    answer: IDLE,
+  });
   useEffect(() => {
     const ask = ++asked.current;
+    const setAnswer = (answer: Answer): void => {
+      setHeld({ of: client, answer });
+    };
     if (!hasWord(query)) {
-      setAnswer({ kind: 'idle' });
+      setAnswer(IDLE);
       return;
     }
     const rest = setTimeout(() => {
@@ -182,7 +191,7 @@ function useAnswer(
       clearTimeout(rest);
     };
   }, [client, query, setActive]);
-  return answer;
+  return held.of === client ? held.answer : IDLE;
 }
 
 /** Arrows move the highlight round the hits; Enter opens the highlighted one. */

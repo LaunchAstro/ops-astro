@@ -37,6 +37,23 @@ The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix. It
 is a routing choice, not a claim, so picking `bravo` with an alpha-only account
 gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.
 
+**A login with an authenticator app gives its code before anything opens
+(C59).** The password grant is only `aal1`, and the API refuses it
+`AUTH_SECOND_FACTOR_REQUIRED` for a login with a verified factor. So once the
+token is traded, sign-in makes one extra read, `session.person`, on the new
+cookie (`openSignIn` in `session/sign-in.ts`). On that refusal the form asks
+for the six-digit code (`autocomplete="one-time-code"`) and the password field
+is emptied. The code goes through the money step-up's own `stepUpSession`:
+checked on the account route, the `aal2` token traded for a new cookie, the
+`aal1` one cleared, and only then does the session open. A wrong code shows
+the server's words and asks again; Cancel signs the half-made sign-in out (API,
+provider and cookie) and returns to the password step. Leaving the page signs it
+out too, at once even while `session.person` is still out, and no answer that
+read gives after the page has gone opens anything. Any other answer to the
+read opens the session as before: the API, not this read, refuses what it
+refuses, so a login with no membership still lands on a denial (N2).
+`tests/web/sign-in-second-factor.test.tsx` holds the three ways.
+
 A failed sign-in marks the password field `aria-invalid`, points at the
 message with `aria-describedby` (`signin-password-error`, from `FieldError`),
 and announces it in a `role="alert"` region (`apps/web/src/screens/SignIn.tsx`).
@@ -85,7 +102,8 @@ deactivates their login and ends their memberships, but their bearer still
 verifies until its hour is up, so the API answers their next call 403
 `AUTH_NO_MEMBERSHIP`. A login that was never a member gets the same answer, and
 for it that is a denial to draw (the browser's N2 row). So the client remembers
-whether its bearer has had an answer only a member gets: a success, or a refusal
+whether its bearer has had an answer only a member gets: a success (a live
+call's counts as a read's), or a refusal
 decided past login resolution such as `SCOPE_NOT_GRANTED` (a 401 or a door
 refusal proves nothing). Only a bearer that has ends its session on that
 refusal, with the same notice. A person who signs out in the tab
@@ -95,6 +113,12 @@ only in the screen's state, so it goes with the screen: no browser storage holds
 record content for a signed-out tab (`C58 no draft after session end`). ND1 to
 ND3 in `tests/browser/cases-c58-no-draft.mjs` show it in a real browser against
 the real API, reading IndexedDB, Cache Storage and every cookie as well.
+
+**A refused live join or presence call ends it too.** The live channel
+(`#live` in `operations/client.ts`) hears a refusal through the same `#heard` as
+a read, so a join or a presence call refused for an expired session or ended
+access ends the session as a refused read does, with the same notice.
+`tests/surfaces/live-join-and-presence-refusals-end-session.test.ts` holds it.
 
 **The refusal belongs to the session that made the request.** A client keeps the
 bearer it was built with, so a call can be answered after that bearer has
@@ -121,10 +145,26 @@ The address and its business are kept in `sessionStorage` under
 out clears it too, so an ordinary sign-in is never redirected by an interruption
 somebody already answered.
 
+**A change of owner shows nothing of the last one.** A business switch, another
+person in the tab or another assistant conversation is a new owner. The search
+palette's answer, the new-task draft and its pending attempt, the preferences
+in Settings, the allowance line, a dock grip's unfinished width and a read's
+held answer and freshness each belong to the owner they were read or typed for.
+The moment the owner changes they are hidden, before the new owner's read
+answers, and nothing of the old owner is sent under the new one: a preference
+saved while the new read is pending merges into the new reader's values only
+(`use-read.ts`, `search.tsx`, `CreateTask.tsx`, `settings/you.tsx`,
+`allowance-line.tsx`, `use-layout.ts`, `freshness.tsx`).
+
 All browser storage is read and written through `jsonSlot` in
 `apps/web/src/session/token.ts`. The screens get their storage from
 `tabStorage()` in the same file. A tab with blocked site data draws the screens
 with nothing remembered rather than failing.
+
+A session kept before the session cookie (S0-6c) also held its bearer. On
+reload `SessionStore` takes only the fields a session has now and writes them
+back over the old copy, so that bearer is gone from `sessionStorage` and from
+memory (`tests/web/pre-cookie-bearer-and-factor-check-cancel.test.tsx`).
 
 Nothing in the web calls for a refresh token, inspects a token or decodes one.
 The server decides the hour, and the browser finds out only by being refused. `tests/surfaces/session-ended.test.tsx` holds the three rules, and
@@ -156,7 +196,11 @@ kept nowhere.
 Settings ▸ General's authenticator panel (`screens/settings/authenticator.tsx`
 and `authenticator-change.tsx`) sets the app up, or removes it with the
 current code from it (`account/factor/remove`); a removal says the other
-sessions were signed out and offers set-up again. A set-up refused
+sessions were signed out and offers set-up again. A set-up cancelled or
+left still lands at the server, where an enrol replaces the unverified factor,
+so Start waits (`Cancelling…`) until it has, and the next enrol from any panel
+is sent only after the last one lands: a late answer cannot replace the key on
+screen. A set-up refused
 `FACTOR_ALREADY_ENROLLED` opens that removal. One refused
 `FRESH_SIGN_IN_REQUIRED` asks for the password, signs in again the same way,
 and starts the set-up again once the new sign-in's client is in hand.
@@ -462,6 +506,18 @@ title and due date whose answer never arrived is retried under the same
 replayed as the success it was ([API.md](API.md), "A replay of a stored
 success") instead of being drawn as somebody else's change; any keystroke starts
 a new attempt (`saveFields` in `TaskDetail.tsx`).
+
+**A write whose answer was lost keeps its `operationId` until the server
+answers.** The incident form, the duplicate, a subtask's Enter and the time log
+hold each id keyed by the exact request it was sent with. An unchanged retry
+presents the same id and the server's register replays the write it recorded,
+so nothing is recorded twice; a changed request mints a new one, and any answer
+from the server lets the id go. The comment box keeps its attempt while a
+reply, a tab or Cancel is chosen, so posting the unchanged box to the same
+reply again is that attempt. A draft's Create gives each part the id
+`<create id>.<index>`, and a new tag's `tag.create` the id `<part id>.tag`, so
+every run of one attempt sends the same ids (`record-incident.tsx`, `client-seam.ts`, `Subtasks.tsx`, `Time.tsx`,
+`Comments.tsx`, `task-draft.ts`).
 
 The settings screen's writes go through `useCommand` too. `use-settings.ts`
 keeps only what settings does with each kind, and its memory of the last

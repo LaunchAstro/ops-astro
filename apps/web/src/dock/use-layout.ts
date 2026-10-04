@@ -9,7 +9,9 @@
 // The width and the sheet height are the `dock.width` and `dock.sheetHeight`
 // keys of MP-2-11's one preference store (shell/layout-store.ts), no dock record
 // of their own: handed in before the first render and saved once on release.
-// Only the value under a moving grip is held here.
+// Only the value under a moving grip is held here, and only over the layout it
+// was moved on: another person or business brings its own layout, and the
+// grip's leftover width is not theirs.
 
 import { useEffect, useState } from 'react';
 import type { PanelRegistry } from '../panels.ts';
@@ -71,7 +73,8 @@ export function useDockLayout(
   store: { readonly layout: Layout; readonly save: LayoutStore['save'] },
 ): DockLayoutModel {
   const { viewport, tall } = useWindowSize();
-  const [moving, setMoving] = useState<{ width?: number; sheet?: number }>({});
+  const [held, setMoving] = useState<{ of?: Layout; width?: number; sheet?: number }>({});
+  const moving = held.of === store.layout ? held : {};
   const width = moving.width ?? lengthOr(store.layout['dock.width'], PANEL_DEFAULT);
   const sheet = moving.sheet ?? lengthOr(store.layout['dock.sheetHeight'], SHEET_DEFAULT);
   const [stamp, setStamp] = useState<string | null>(null);
@@ -93,7 +96,7 @@ export function useDockLayout(
     geometry,
     width,
     setWidth: (next) => {
-      setMoving({ width: next });
+      setMoving({ of: store.layout, width: next });
     },
     keepWidth: (next) => {
       setMoving({});
@@ -103,7 +106,7 @@ export function useDockLayout(
     sheetHeight: clampSheet(sheet, tall),
     sheetMax: tall - SHEET_GAP,
     setSheetHeight: (height) => {
-      setMoving({ sheet: clampSheet(height, tall) });
+      setMoving({ of: store.layout, sheet: clampSheet(height, tall) });
     },
     keepSheetHeight: (height) => {
       setMoving({});
