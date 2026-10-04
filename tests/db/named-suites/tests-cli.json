@@ -1,0 +1,24 @@
+{
+  "invariant": [
+    "tests/cli/api-2-credential-cli.test.ts",
+    "tests/cli/aw-04-pin-ledger-cli.test.ts",
+    "tests/cli/aw-09-reviewed-on-every-surface.test.ts",
+    "tests/cli/aw-11-child-credential-cli.test.ts",
+    "tests/cli/cli-delegation-replay.test.ts",
+    "tests/cli/cli-process.test.ts",
+    "tests/cli/inbox-process.test.ts",
+    "tests/cli/inbox-readback.test.ts",
+    "tests/cli/mp-4-15-completion-cli.test.ts",
+    "tests/cli/t2g-decide-parity.test.ts",
+    "tests/cli/t2g-journey.test.ts",
+    "tests/cli/u14-access-cli.test.ts",
+    "tests/cli/u14-access-end-cli.test.ts"
+  ],
+  "conformance": [
+    "tests/cli/c23-session-surfaces.test.ts",
+    "tests/cli/t2c1-dispatch-surfaces.test.ts",
+    "tests/cli/t2e-top-up-surfaces.test.ts",
+    "tests/cli/t3c-write-off-surfaces.test.ts",
+    "tests/cli/t3f-two-workers.test.ts"
+  ]
+}

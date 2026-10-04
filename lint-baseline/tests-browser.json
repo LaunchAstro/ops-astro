@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "eslint(max-lines-per-function)": 19,
+    "eslint(max-lines)": 7,
+    "eslint(no-negated-condition)": 1,
+    "eslint(no-promise-executor-return)": 1,
+    "eslint(require-await)": 2,
+    "oxc(branches-sharing-code)": 1,
+    "unicorn(no-negated-condition)": 1,
+    "unicorn(no-useless-undefined)": 33,
+    "unicorn(prefer-dom-node-dataset)": 9,
+    "unicorn(prefer-string-replace-all)": 1
+  }
+}

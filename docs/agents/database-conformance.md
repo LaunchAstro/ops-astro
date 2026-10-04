@@ -50,7 +50,13 @@ product.
 ## Claiming product conformance
 
 `database conformance` runs `pnpm run db:conformance` against Postgres
-service containers, reading `tests/db/named-suites.json`.
+service containers, reading the named-suite manifest through
+`scripts/named-suites.ts`: `tests/db/named-suites.json`, or once it is split,
+`tests/db/named-suites/`, which holds `_history.json` (the comment lines) and
+one `<area>.json` per area, the area being `areaOf` (`scripts/ci-areas.ts`) of
+each suite it names. A suite goes in its own area's file; the reader refuses a
+suite in the wrong file, a path named twice and an area file naming nothing.
+`node scripts/named-suites.ts split --check` proves the split loses nothing.
 
 Run one after another the named suites took 40 to 50 minutes, so the hosted
 job is a matrix of shards (`database conformance shard <i>`), each running
@@ -174,7 +180,7 @@ The order:
 
 ### What the job's result means now
 
-The manifest is no longer empty. `tests/db/named-suites.json` names the suites
+The manifest is no longer empty. It names the suites
 the landed parts contributed, so a failure of `database conformance` is now a
 real one: a suite missing from disk, a skipped test, a run that executed
 nothing, a named suite the database never heard from, or vitest's own verdict.

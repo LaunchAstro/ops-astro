@@ -15,8 +15,8 @@
 // 2. Send, through custody, the adapter's message: the address the invitation
 //    names and one link, the enrolment page carrying the token.
 // 3. Record what came back as the attempt's next observation, read as the
-//    inbox send reads it; an answer carrying the token is malformed. Nothing
-//    returned or written holds the token.
+//    inbox send reads it; an answer holding anything token-shaped is
+//    malformed. Nothing returned or written holds a token.
 //
 // The concurrency ceiling is the catalogued one, and the inbox send's own
 // (`roomFor`): one limit, under one lock, counts every email in flight
@@ -52,6 +52,12 @@ export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'in
 /** Where the link lands: the enrolment page, with the token as its last segment. */
 export const ENROL_PATH = '/enrol/';
 
+/**
+ * A run of base64url as long as an enrolment token (32 random bytes, 43 characters): evidence
+ * holding one may hold a live link, whichever send or business minted it.
+ */
+const TOKEN_SHAPED = /[\w-]{43}/u;
+
 export type InvitationSendRefusal =
   DeliverRefusal | 'INVITATION_NOT_PENDING' | 'NO_SEND_ACT' | 'EMAIL_AT_CEILING' | 'REPLAYED';
 
@@ -72,6 +78,11 @@ interface Asked {
   readonly token: string;
 }
 
+/**
+ * One observation, stamped when it is written (`clock_timestamp()`), not when its transaction
+ * began: an `asked` counts toward the ceiling from its reservation, however long the send waited
+ * on the invitation's lock before it, as `recordAsked` stamps an inbox ask.
+ */
 async function recordAttempt(
   tx: TenantQuery,
   asked: Pick<Asked, 'invitationId' | 'tokenId'>,
@@ -79,11 +90,25 @@ async function recordAttempt(
 ): Promise<string> {
   const [row] = await tx.query<{ id: string }>(
     `insert into invitation_delivery_attempts
-       (business_id, id, invitation_id, token_id, state, evidence)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5) returning id`,
+       (business_id, id, invitation_id, token_id, state, evidence, observed_at)
+     values ($1, gen_random_uuid(), $2, $3, $4, $5, clock_timestamp()) returning id`,
     [tx.businessId, asked.invitationId, asked.tokenId, seen.state, seen.evidence ?? null],
   );
   return row?.id ?? '';
+}
+
+/**
+ * Whether the invitation's lifetime is still running, judged by a statement of its own once its
+ * lock is held: a send that waited for the lock is judged when it got it, never when its
+ * transaction began, and never by a lock statement's own reading taken before the wait.
+ */
+async function liveNow(tx: TenantQuery, invitationId: string): Promise<boolean> {
+  const [row] = await tx.query<{ live: boolean }>(
+    `select expires_at > clock_timestamp() as live from invitations
+      where business_id = $1 and id = $2`,
+    [tx.businessId, invitationId],
+  );
+  return row?.live === true;
 }
 
 /** The act checks under the invitation's lock: its address, or why nothing may send. */
@@ -95,11 +120,12 @@ async function pendingAct(
   if (!isUuid(invitationId)) return 'INVITATION_NOT_PENDING';
   const [invitation] = await tx.query<{ address: string; expires_at: Date }>(
     `select address, expires_at from invitations
-      where business_id = $1 and id = $2 and state = 'pending' and expires_at > now()
-      for update`,
+      where business_id = $1 and id = $2 and state = 'pending' for update`,
     [tx.businessId, invitationId],
   );
-  if (invitation === undefined) return 'INVITATION_NOT_PENDING';
+  if (invitation === undefined || !(await liveNow(tx, invitationId))) {
+    return 'INVITATION_NOT_PENDING';
+  }
   const [tally] = await tx.query<{ acts: number; sends: number; replayed: boolean }>(
     `select (select count(*) from audit_events
               where business_id = $1 and subject_record_id = $2 and outcome = 'applied'
@@ -171,9 +197,10 @@ async function deliver(
     timeoutMs: operation.timeoutMs,
     maxResponseBytes: operation.maxResponseBytes,
   });
-  // An answer is evidence about the message, never a place the link's token is kept.
+  // An answer is evidence about the message, never a place a link's token is kept: this
+  // send's, an earlier send's or any other business's, all of one shape.
   const read = observed(outcome, operation);
-  const seen = read.evidence.includes(asked.token)
+  const seen = TOKEN_SHAPED.test(read.evidence)
     ? ({ state: 'failed', evidence: 'malformed' } as const)
     : read;
   const attemptId = await database.withBusiness(

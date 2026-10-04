@@ -194,6 +194,8 @@ describe('CQ-16 size counts code only', () => {
     expect(big.status).toBe(0);
     expect(big.out).toContain('pr-size: 0 changed lines of non-test code across 0 file(s).');
     expect(sized({ 'tests/db/named-suites.json': 500, 'src/a.ts': 10 }).status).toBe(0);
+    const split = sized({ 'tests/db/named-suites/tests-api.json': 500 });
+    expect(split.out).toContain('pr-size: 0 changed lines of non-test code across 0 file(s).');
     expect(sized({ 'packages/x/src/big.test.ts': 450, 'apps/web/big.spec.tsx': 450 }).status).toBe(
       0,
     );
