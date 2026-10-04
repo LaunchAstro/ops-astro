@@ -1,6 +1,7 @@
 {
   "invariant": [
     "tests/reads/access-step-up-preview.test.ts",
+    "tests/reads/board-admission-refuses-as-the-read.test.ts",
     "tests/reads/board-agents.test.ts",
     "tests/reads/board-comments.test.ts",
     "tests/reads/board-row-client.test.ts",
