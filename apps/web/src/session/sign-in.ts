@@ -86,13 +86,19 @@ export interface AskedForCode {
  * not this read, refuses whatever it refuses.
  */
 export async function openSignIn(
-  request: SignInRequest & ApiRoute & { readonly businessKey: string },
+  request: SignInRequest &
+    ApiRoute & {
+      readonly businessKey: string;
+      /** Told the cookie's id as it is issued, before the read: the page ends it if it goes. */
+      readonly issued?: (sessionId: string | undefined) => void;
+    },
 ): Promise<
   | { readonly ok: true; readonly sessionId?: string; readonly asked?: AskedForCode }
   | { readonly ok: false; readonly because: string }
 > {
   const result = await openSession(request);
   if (!result.ok) return result;
+  request.issued?.(result.sessionId);
   const named = result.sessionId === undefined ? {} : { sessionId: result.sessionId };
   // The commands' own client sends the read. Its fetch is named off the request, as App's is:
   // command parity (API-1) reads a bare `fetch` here as a request this file sends itself.

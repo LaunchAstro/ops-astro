@@ -61,6 +61,13 @@ export const access = (team: readonly unknown[], agents: readonly unknown[] = [A
   clients: [CLEO],
   agents,
   clientRecords: [ACME, BOLT],
+  clientPrivacy: [ACME, BOLT].map(({ clientId }) => ({
+    clientId,
+    modelEgress: false,
+    providers: [],
+    handlesHealth: false,
+    noAgentEdits: false,
+  })),
 });
 
 export const json = (body: unknown, status = 200): Response =>
