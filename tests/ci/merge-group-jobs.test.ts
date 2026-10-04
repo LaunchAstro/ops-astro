@@ -15,7 +15,14 @@ const CI = '.github/workflows/ci.yml';
 const REVIEW = '.github/workflows/review-evidence.yml';
 const LOOKAHEAD = 'database look-ahead, Postgres 18 (not required)';
 const ONLY_PULL_REQUESTS = "github.event_name == 'pull_request'";
-const ALLOWED = new Set([undefined, 'always()', "github.event_name != 'push'"]);
+// `!= 'pull_request'` never skips a group: the database conformance shards carry it (CI-SPEED,
+// light pull requests). A required job carrying it is refused by merge-group-workflows.test.ts.
+const ALLOWED = new Set([
+  undefined,
+  'always()',
+  "github.event_name != 'push'",
+  "github.event_name != 'pull_request'",
+]);
 const required = (
   JSON.parse(read('.github/required-checks.json')) as {
     required_status_checks: { context: string }[];
