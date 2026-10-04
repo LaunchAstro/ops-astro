@@ -28,7 +28,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -112,9 +112,12 @@ async function jobOf(asked: Promise<Response>): Promise<string | undefined> {
  * The preview lock: the branch holds one commit at a time, so a request, in
  * this process or another, pushes only once the one before has its hook's
  * answer, and each job is asked while the branch holds the commit its record
- * names. A directory, made and removed whole; waited on for a minute at most.
+ * names. A directory, made and removed whole, as auth-up.sh locks its key;
+ * waited on for a minute at most. It sits in the sign-in's home folder as the
+ * system records it, never where TMPDIR or HOME point, so every command the
+ * sign-in runs on this machine, from any checkout, takes the same one.
  */
-export const PREVIEW_LOCK: string = join(tmpdir(), 'ops-astro-preview-request.lock');
+export const PREVIEW_LOCK: string = join(userInfo().homedir, '.ops-astro-preview-request.lock');
 const LOCK_WAIT_MS = 60_000;
 
 async function lockPreview(until: number): Promise<boolean> {
