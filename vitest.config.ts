@@ -50,17 +50,24 @@ export default defineConfig({
     ],
     // The browser proofs build `apps/web/dist`, which other suites rebuild (an
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
-    // BROWSER_PROOFS=1. Sol's leaked-client proof, C31's four Sol proof files
-    // (kept as Sol wrote them) and the Keys panel's first-Set proof open their
-    // world with no skip; without a database they are left out here, and the
-    // manifests run them where there is one.
+    // BROWSER_PROOFS=1. Sol's leaked-client proof, C31's Sol proof files (kept as
+    // Sol wrote them) and the Keys panel's DB proofs open their world with no skip;
+    // without a database they are left out here, and the manifests run them where
+    // there is one. C31's corrupted audit chain fails by design: only the proof that
+    // spawns it from inside a test worker collects it.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
+      ...(process.env['VITEST_WORKER_ID'] === undefined
+        ? ['tests/custody/c31-audit-chain-corrupted.test.ts']
+        : []),
       ...(database
         ? []
         : [
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
+            'tests/custody/c31-audit-chain-test-catches-corruption.test.ts',
+            'tests/custody/c31-last-used-moves-forward.test.ts',
+            'tests/custody/c31-revoked-list-and-revision-range.test.ts',
             'tests/custody/c31-secret-set-guards.test.ts',
             'tests/custody/c31-two-setters-overlap.test.ts',
             'tests/surfaces/c31-keys-panel-first-set-refused.test.tsx',

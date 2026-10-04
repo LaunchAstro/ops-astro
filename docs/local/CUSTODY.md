@@ -39,8 +39,10 @@ a read that names them fails in the server, whatever the code asks.
 | `secret.set`   | `custody:manage` | never | seals and stores a value, business-wide or for one client                            |
 | `secret.clear` | `custody:manage` | never | removes the value, keeps the row and who cleared it                                  |
 
-A client-scoped holder of `custody:manage` lists that client's rows only;
-setting and clearing need the key business-wide. A set for one client names
+A client-scoped holder of `custody:manage` lists that client's rows only,
+and the grant is asked in the statement that reads the rows, so a list running
+across a revocation serves nothing created after it; setting and clearing need
+the key business-wide. A set for one client names
 a client of this business; another business's client or a made-up id is
 refused `NOT_FOUND` on `clientId`, and nothing is written. A set may store a
 client's credential, so it is client data: on a real-data installation it waits
@@ -53,13 +55,18 @@ would replace under that row's lock, so a setter that lost an insert race to a
 newer value is refused `VERSION_STALE` and changes nothing. `expectedRevision: 0`
 means the name must not exist yet (rows start at revision 1): a first set from
 a list that did not show the name sends it, so a key another administrator
-created since is refused `VERSION_STALE` naming its revision, not replaced. The
-tests are `tests/custody/c31-credentials.test.ts`, `c31-secret-set-absent.test.ts`,
+created since is refused `VERSION_STALE` naming its revision, not replaced. A
+revision past a safe integer is refused `FIELD_VALUE_INVALID` on
+`expectedRevision`. The tests are `tests/custody/c31-credentials.test.ts`, `c31-secret-set-absent.test.ts`,
 `c31-secret-set-guards.test.ts`, `c31-two-setters-overlap.test.ts`,
-`tests/surfaces/c31-keys-panel.test.tsx` and `c31-keys-panel-first-set-refused.test.tsx`.
+`c31-revoked-list-and-revision-range.test.ts`, `tests/surfaces/c31-keys-panel.test.tsx`
+and `c31-keys-panel-first-set-refused.test.tsx`.
 
-`markSecretUsed` moves a row's last-used time. The broker calls it when it
-injects the secret into a dispatch; setting a value again leaves it alone.
+`markSecretUsed` moves a row's last-used time to the moment of use
+(`clock_timestamp()`), never backwards, so an older transaction committing a
+later use cannot wind it back (`c31-last-used-moves-forward.test.ts`). The
+broker calls it when it injects the secret into a dispatch; setting a value
+again leaves it alone.
 
 ## When a credential leaks
 
