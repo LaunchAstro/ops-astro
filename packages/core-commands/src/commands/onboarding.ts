@@ -189,8 +189,8 @@ function parseResult(
 
 /**
  * A step's result, onto its own task, after the caller's `task:write` on it
- * (the envelope's for a person, the delegation's for an agent). An agent
- * records agent steps only; the rest are a person's checkpoint (ORCH79).
+ * (the envelope's, the delegation's). An agent, delegated or by its API-2
+ * credential, records agent steps only; the rest are a person's (ORCH79).
  */
 export async function writeStepResult(
   tx: TenantQuery,
@@ -247,7 +247,7 @@ export async function recordStepResult(
     tx,
     {
       actorId: context.session.actorId,
-      actorKind: 'person',
+      actorKind: context.session.credentialScope === undefined ? 'person' : 'agent',
       entryPoint: context.entryPoint,
       commentTypeId: context.spine.taskCommentTypeId,
     },

@@ -3067,10 +3067,12 @@ task. `task:write` is asked at the step task's own client (`prepare.ts`, the
 `target` lookup), and only while the task is still on the onboarding's client,
 so a holder scoped to one client writes that client's steps and no other's; an
 agent writes the step on the task it is delegated on. An agent records agent
-steps only: a person or client-wait step is a person's checkpoint, so an
-agent's result on one is `DELEGATION_EXCLUDES_OPERATION` 403 naming `kind`,
-asked under the locks before anything is written (ORCH79 P12STEPACTOR). A
-person records a step of any kind. A person's result clears the step's open
+steps only, on both agent paths: under a delegation, and by an API-2 agent
+credential, whose call runs as its agent, so its comment's source is the
+agent's (`agent:api`), never its person's. A person or client-wait step is a
+person's checkpoint, so an agent's result on one is
+`DELEGATION_EXCLUDES_OPERATION` 403 naming `kind`, asked under the locks before
+anything is written (ORCH79 P12STEPACTOR). A person records a step of any kind. A person's result clears the step's open
 item (`closeStepMove`); an agent's withdraws it, naming nobody, which is
 reached only by an agent step's task carrying an ordinary `task.assign` item,
 since the step's own items are raised on person and client-wait steps alone.
