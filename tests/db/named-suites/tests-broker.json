@@ -27,6 +27,7 @@
     "tests/broker/aw-05-four-eyes-one-rule.test.ts",
     "tests/broker/aw-07b-email-hostile.test.ts",
     "tests/broker/aw-07b-email.test.ts",
+    "tests/broker/aw-07b-hook-bounce-after-delivery.test.ts",
     "tests/broker/aw-07b-hook-canary.test.ts",
     "tests/broker/aw-07b-hook.test.ts",
     "tests/broker/aw-07b-no-second-send.test.ts",

@@ -7,6 +7,8 @@
 
 import { beforeAll, expect, it as vitestIt } from 'vitest';
 import { sendInboxEmail } from '../../packages/core-custody/src/index.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { insertActor, insertPerson } from '../identity/fixture.ts';
 import { attemptsOf, itemFor, MAIL, noDatabase, useEmailWorld, w } from './email-world.ts';
 import { eventBody, hook, mountHook, post, sentItem, sign } from './email-hook-world.ts';
 
@@ -19,6 +21,32 @@ beforeAll(() => {
 
 const states = async (item: string): Promise<readonly string[]> =>
   (await attemptsOf(item)).map((row) => row.state);
+
+let cleo = '';
+/** A second person in the first business, reading its every task, with a confirmed address. */
+async function secondPerson(): Promise<string> {
+  if (cleo !== '') return cleo;
+  cleo = await w.db.app.withBusiness(w.alpha, async (tx) => {
+    const person = await insertPerson(tx, 'Cleo');
+    const granted = await issueGrant(tx, [], {
+      subject: { kind: 'person', id: person },
+      scope: { kind: 'business', id: null },
+      collection: 'task',
+      action: 'read',
+      parentGrantId: null,
+      grantedByActorId: await insertActor(tx, person),
+    });
+    if (!granted.ok) throw new Error('hook isolation: the read grant was refused');
+    await tx.query(
+      `insert into public.person_identifiers
+         (business_id, id, person_id, kind, value, observed_value, source_system, review_state)
+       values ($1, gen_random_uuid(), $2, 'email', $3, $3, 'test', 'confirmed')`,
+      [tx.businessId, person, `cleo-${w.canary}`],
+    );
+    return person;
+  });
+  return cleo;
+}
 
 it('AW-07b hook signature: a signed delivered event moves an accepted attempt; sent alone never shows delivered, an open never sets seen', async () => {
   const { item, messageId } = await sentItem();
@@ -218,4 +246,34 @@ it('AW-07b isolation (hook): an event moves only the attempt of the business tha
   expect(await w.db.admin.execute('select id from public.inbox_delivery_attempts')).toHaveLength(
     before.length,
   );
+});
+
+it('AW-07b isolation (hook): in one business, an event on a client A message moves no client B attempt', async () => {
+  const clientA = await sentItem();
+  const clientB = await sentItem({ id: w.alpha, person: await secondPerson(), task: w.otherTask });
+  expect(await post(eventBody('email.bounced', clientA.messageId))).toMatchObject({
+    code: 'BOUNCED',
+  });
+  expect(await states(clientA.item)).toEqual(['asked', 'accepted', 'failed']);
+  expect(await states(clientB.item)).toEqual(['asked', 'accepted']);
+  expect(await post(eventBody('email.delivered', clientB.messageId))).toMatchObject({
+    code: 'DELIVERED',
+  });
+  expect(await states(clientB.item)).toEqual(['asked', 'accepted', 'delivered']);
+  expect(await states(clientA.item)).toEqual(['asked', 'accepted', 'failed']);
+});
+
+it('AW-07b isolation (hook): on one client task, an event on the mail to one person moves nothing sent to another person', async () => {
+  const ada = await sentItem();
+  const other = await sentItem({ id: w.alpha, person: await secondPerson(), task: w.task });
+  expect(await post(eventBody('email.delivered', other.messageId))).toMatchObject({
+    code: 'DELIVERED',
+  });
+  expect(await states(other.item)).toEqual(['asked', 'accepted', 'delivered']);
+  expect(await states(ada.item)).toEqual(['asked', 'accepted']);
+  expect(await post(eventBody('email.bounced', ada.messageId))).toMatchObject({
+    code: 'BOUNCED',
+  });
+  expect(await states(ada.item)).toEqual(['asked', 'accepted', 'failed']);
+  expect(await states(other.item)).toEqual(['asked', 'accepted', 'delivered']);
 });

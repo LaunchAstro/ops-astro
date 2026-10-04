@@ -74,10 +74,12 @@ it('AW-07b sender: mail is refused until the sending subdomain verifies DKIM, SP
   for (const [name, bend] of unverified) {
     const state = fresh();
     bend(state);
+    // A source that is not the fake, so the report is not mock and only its
+    // verified flag can refuse the send.
     // oxlint-disable-next-line no-await-in-loop
-    const report = await checkSender(fakeSenderSource(state), SUBDOMAIN, ROOT);
+    const report = await checkSender({ ...fakeSenderSource(state), mock: false }, SUBDOMAIN, ROOT);
     expect(report.verified, name).toBe(false);
-    expect(report.mock, name).toBe(true);
+    expect(report.mock, name).toBe(false);
     const item = await itemFor(w.task, 'decision'); // oxlint-disable-line no-await-in-loop
     const received = w.provider.received.length;
     // oxlint-disable-next-line no-await-in-loop
