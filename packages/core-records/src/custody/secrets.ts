@@ -240,11 +240,13 @@ export async function listSecrets(
 /**
  * The broker's use of a set secret moves its last-used time. Called by the
  * dispatch that injected it (AW-01); a clear secret cannot be used, so it
- * answers false and moves nothing.
+ * answers false and moves nothing. The time is the use's own
+ * (`clock_timestamp()`, not the transaction's start), and it only moves
+ * forward, so an older transaction committing later never winds it back.
  */
 export async function markSecretUsed(tx: TenantQuery, id: string): Promise<boolean> {
   const rows = await tx.query<{ readonly id: string }>(
-    `update public.custody_secrets set last_used_at = now()
+    `update public.custody_secrets set last_used_at = greatest(last_used_at, clock_timestamp())
       where id = $1 and set_at is not null
       returning id`,
     [id],
