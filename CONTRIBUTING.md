@@ -117,8 +117,9 @@ the next line.
 
 A pull request's checks are the light set, and they flag issues early. Every
 required check still reports on a pull request under its own name, but there
-`local checks` runs the static steps of `pnpm check` and only the tests the
-change reaches; the full test run, the build and the heavy steps after it,
+`local checks` runs every step of `pnpm check` except the build, with the
+tests the change reaches in place of the full test run; the full test run,
+the build and the heavy steps after it,
 `isolation tests` and the database conformance shards run in the merge queue,
 and `database conformance` passes on the shards' skip. The full set runs in the
 merge queue, which tests each pull request on top of `main` and is the only
