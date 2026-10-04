@@ -30,6 +30,11 @@ const COLUMN_UPDATES: Readonly<
       'version_id',
     ],
   },
+  // C60: a client's four privacy settings, by `client.set_privacy` alone.
+  'public.clients': {
+    from: '20261003000423',
+    columns: ['handles_health', 'model_egress', 'model_providers', 'no_agent_edits'],
+  },
 };
 
 /**

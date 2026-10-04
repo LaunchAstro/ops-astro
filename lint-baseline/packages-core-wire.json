@@ -1,0 +1,5 @@
+{
+  "rules": {
+    "eslint(max-lines)": 2
+  }
+}
