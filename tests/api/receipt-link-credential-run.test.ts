@@ -37,3 +37,27 @@ it('a receipt link naming a UUID or an ordinary id is kept', () => {
     receiptLinkOf(id, 'synthetic_comment'),
   ]).toEqual([uuid, id]);
 });
+
+const standard = Buffer.from(credential, 'base64url').toString('base64');
+
+it.each([
+  ['in standard base64', standard],
+  ['split by dots', `${credential.slice(0, 20)}.${credential.slice(20)}`],
+  [
+    'split into path segments',
+    `${credential.slice(0, 15)}/${credential.slice(15, 30)}/${credential.slice(30)}`,
+  ],
+  ['in standard base64 split by tildes', `${standard.slice(0, 22)}~${standard.slice(22)}`],
+] as const)(
+  "a receipt link carrying the observer's own credential %s is recorded absent",
+  (_case, path) => {
+    const link = `https://${HOST}/effects/${path}`;
+    expect(receiptLinkOf(link, 'synthetic_comment')).toBe(link);
+    expect(receiptLinkOf(link, 'synthetic_comment', credential)).toBeNull();
+  },
+);
+
+it("a receipt link without the observer's credential is kept when it is checked against it", () => {
+  const link = `https://${HOST}/effects/0b6f3c9e-2f4a-4c1e-9d7b-5a8e2c1f0a3d`;
+  expect(receiptLinkOf(link, 'synthetic_comment', credential)).toBe(link);
+});

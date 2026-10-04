@@ -22,8 +22,8 @@
 // settled attempt answers its settlement and charges nothing more.
 //
 // AW-08: the provider's receipt link rides with the first observation of an
-// applied effect and is kept only when `receiptLinkOf` keeps it; otherwise it
-// is recorded absent. A later observation never changes it.
+// applied effect and is kept only when `receiptLinkOf` keeps it, checked
+// against the observing agent's own credential; otherwise it is recorded absent. A later observation never changes it.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
@@ -31,7 +31,7 @@ import { fenceCause, holdsLease, readLease, refuseLease } from './lease-ownershi
 import { acquire } from './locks.ts';
 import { settleAtObserved, settledAt, type Settlement } from './budget.ts';
 import { priceAttempt } from './price-book.ts';
-import { receiptLinkOf } from './receipt-link.ts';
+import { presentedCredential, receiptLinkOf } from './receipt-link.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import type { DispatchRequest } from './dispatch.ts';
 
@@ -79,6 +79,18 @@ interface Found {
   readonly delegation_id: string | null;
 }
 
+/** The receipt link to store: none unless the observer's own credential could be checked. */
+async function keptLink(
+  tx: TenantQuery,
+  request: ObserveRequest,
+  presented: string | null,
+  stepKind: string,
+): Promise<string | null> {
+  const credential = await presentedCredential(tx, presented);
+  if (credential === undefined) return null;
+  return receiptLinkOf(request.receiptLink, stepKind, credential ?? undefined);
+}
+
 export async function observe(
   tx: TenantQuery,
   request: ObserveRequest,
@@ -123,7 +135,7 @@ export async function observe(
     await tx.query(
       `update public.attempts set observed = true, receipt_link = $3
         where business_id = $1 and id = $2 and dispatch_marker`,
-      [tx.businessId, found.attempt_id, receiptLinkOf(request.receiptLink, state.step_kind)],
+      [tx.businessId, found.attempt_id, await keptLink(tx, request, presented, state.step_kind)],
     );
   }
   return {

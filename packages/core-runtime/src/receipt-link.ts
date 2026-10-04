@@ -15,8 +15,14 @@
 // link is recorded absent and never fails the observation. The credential rule
 // refuses a link whose text, as sent or once its percent escapes are decoded
 // (either case, as often as they decode), holds a run as long as a delegation
-// credential (`CREDENTIAL_RUN`): an agent's credential copied into a path is
+// credential (`CREDENTIAL_RUN`), or, for an agent's observation, the letters
+// and digits of that agent's own credential in order with anything between
+// them dropped, so its standard base64 spelling or a copy split by separators
+// is refused too (`presentedCredential`). A credential copied into a path is
 // recorded absent, never stored or shown.
+
+import { DERIVED_SCHEME, type TenantQuery } from '../../core-records/src/index.ts';
+import { delegationCredentialKeys } from './runtime-config.ts';
 
 /** The host each effect operation's receipt link may name, by step kind. */
 export const EFFECT_RECEIPT_HOSTS: Readonly<Record<string, string>> = {
@@ -36,15 +42,20 @@ export const RECEIPT_LINK_SHAPE: RegExp =
  */
 export const CREDENTIAL_RUN: RegExp = /[A-Za-z0-9_-]{43}/u;
 
+/** Letters and digits only: what survives any re-spelling of a base64 credential. */
+const alphanumerics = (text: string): string => text.replaceAll(/[^A-Za-z0-9]/gu, '');
+
 /**
- * Whether the link, as sent or decoded, holds a credential-length run. Each
- * decode that changes the text shortens it, so the loop ends; an escape that
- * does not decode is refused with it.
+ * Whether the link, as sent or decoded, holds a credential-length run or the
+ * presenter's credential. Each decode that changes the text shortens it, so
+ * the loop ends; an escape that does not decode is refused with it.
  */
-function carriesCredential(link: string): boolean {
+function carriesCredential(link: string, presented: string | undefined): boolean {
+  const own = presented === undefined ? undefined : alphanumerics(presented);
   let text = link;
   for (;;) {
     if (CREDENTIAL_RUN.test(text)) return true;
+    if (own !== undefined && alphanumerics(text).includes(own)) return true;
     let decoded: string;
     try {
       decoded = decodeURIComponent(text);
@@ -57,7 +68,7 @@ function carriesCredential(link: string): boolean {
 }
 
 /** The link to keep, or `null`: absent, malformed, off the step's declared host or carrying a credential. */
-export function receiptLinkOf(raw: unknown, stepKind: string): string | null {
+export function receiptLinkOf(raw: unknown, stepKind: string, presented?: string): string | null {
   const host = Object.hasOwn(EFFECT_RECEIPT_HOSTS, stepKind)
     ? EFFECT_RECEIPT_HOSTS[stepKind]
     : undefined;
@@ -78,6 +89,38 @@ export function receiptLinkOf(raw: unknown, stepKind: string): string | null {
     url.hash === '' &&
     url.href === raw &&
     RECEIPT_LINK_SHAPE.test(raw) &&
-    !carriesCredential(raw);
+    !carriesCredential(raw, presented);
   return plain ? raw : null;
+}
+
+/**
+ * The credential an agent's observation was presented with, derived again from
+ * its delegation's fixed identity under the key it names, as a pickup replay
+ * does (`agent-replay.ts`). `null` when there is no delegation (a person's
+ * observation); `undefined` when it cannot be derived here, and then no link
+ * is kept.
+ */
+export async function presentedCredential(
+  tx: TenantQuery,
+  delegationId: string | null,
+): Promise<string | null | undefined> {
+  if (delegationId === null) return null;
+  const [row] = await tx.query<{
+    agent_actor_id: string;
+    credential_key_id: string | null;
+    credential_scheme: string;
+  }>(
+    `select agent_actor_id, credential_key_id, credential_scheme
+       from public.delegations where business_id = $1 and id = $2`,
+    [tx.businessId, delegationId],
+  );
+  const keys = delegationCredentialKeys();
+  if (row?.credential_scheme !== DERIVED_SCHEME || row.credential_key_id === null || !keys.ok) {
+    return undefined;
+  }
+  return keys.keys.derive(row.credential_key_id, {
+    businessId: tx.businessId,
+    agentActorId: row.agent_actor_id,
+    delegationId,
+  });
 }

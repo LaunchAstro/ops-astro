@@ -2116,7 +2116,10 @@ launch of the reviewed output is the only decision an effect waits on.
   (`EFFECT_RECEIPT_HOSTS`), no user, password, port, query or fragment, at most
   512 characters, the parsed form byte for byte the text sent, and no run of
   43 base64url characters, a delegation credential's length, as sent or once
-  its percent escapes decode (`CREDENTIAL_RUN`). Anything else is stored as null, which a reader shows as "no link", never as a link.
+  its percent escapes decode (`CREDENTIAL_RUN`), and, for an agent's
+  observation, not the letters and digits of its own credential in order
+  (derived again from its delegation, `presentedCredential`; one that cannot
+  be derived keeps no link). Anything else is stored as null, which a reader shows as "no link", never as a link.
   0109's check repeats the shape and allows a link only on an observed
   attempt; its trigger fixes the link once the attempt is observed, so a link
   resolved later is not a receipt. `task.receipt` names it as `link` beside
@@ -2124,8 +2127,8 @@ launch of the reviewed output is the only decision an effect waits on.
 
 Tests: `aw-08-approval-gate`, `aw-08-client-sign-off`, `aw-08-isolation` and
 `aw-08-receipt-provider` (`AW-08 receipt link`, `AW-08 hostile provider`,
-`AW-08 canary`), `receipt-link-keeps-no-credential` and
-`receipt-link-credential-run`.
+`AW-08 canary`), `receipt-link-keeps-no-credential`,
+`receipt-link-keeps-no-respelled-credential` and `receipt-link-credential-run`.
 
 ## What is not here
 
