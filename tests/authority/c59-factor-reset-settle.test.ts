@@ -20,6 +20,7 @@ import type { Member } from '../commands/fixture.ts';
 import { insertLogin } from '../identity/fixture.ts';
 import { apiWith, harness, outcome, useEndAccessWorld } from './c58-end-access-world.ts';
 import {
+  agentInBravo,
   CANARY,
   factorFake,
   liveInBravo,
@@ -245,7 +246,10 @@ async function definerAnswersBoolean(): Promise<void> {
   const shared = await memberWithFactor('xi');
   await liveInBravo(shared.person.presented.subject);
   const alone = await memberWithFactor('yo');
+  const agentShared = await memberWithFactor('zu');
+  await agentInBravo(agentShared.person.presented.subject);
   expect(await askInAlpha(await loginOf(shared.person))).toEqual([{ live: true }]);
+  expect(await askInAlpha(await loginOf(agentShared.person))).toEqual([{ live: true }]);
   expect(await askInAlpha(await loginOf(alone.person))).toEqual([{ live: false }]);
   // With no business set, the answer refuses.
   const [unset] = await harness.world.db.admin.execute<{ readonly live: boolean }>(
@@ -282,7 +286,7 @@ describe.skipIf(serverUrl === undefined)("C59 a reset's provider step", () => {
     definerNotPublic,
   );
   it(
-    'C59 definer: it answers a boolean alone, and true with no business set',
+    "C59 definer: it answers a boolean alone, true for a person's or an agent's login elsewhere, and true with no business set",
     definerAnswersBoolean,
   );
   it(

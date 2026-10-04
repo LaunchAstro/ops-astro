@@ -17,6 +17,8 @@ import { bearer, call, personPath, type Answer } from '../acceptance/world.ts';
 import { grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import {
   insertActor,
+  insertAgentActor,
+  insertAgentMapping,
   insertLogin,
   insertMapping,
   insertMembership,
@@ -140,6 +142,14 @@ export async function liveInBravo(subject: string): Promise<void> {
     await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
     const member: Member = { personId, actorId, presented: { provider: 'supabase', subject } };
     await grantTo(tx, member, 'read', WHOLE_BUSINESS);
+  });
+}
+
+/** The subject made bravo's live agent login: an agent's sign-in is live too (D3-FIX2). */
+export async function agentInBravo(subject: string): Promise<void> {
+  await harness.world.db.app.withBusiness(harness.world.bravo, async (tx) => {
+    const agent = await insertAgentActor(tx);
+    await insertAgentMapping(tx, await insertLogin(tx, subject), agent, agent);
   });
 }
 
