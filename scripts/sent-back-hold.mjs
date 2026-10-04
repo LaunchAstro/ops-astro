@@ -29,9 +29,10 @@ export function held(eventName, payload) {
 
 function main() {
   const eventName = process.env.GITHUB_EVENT_NAME ?? '';
+  const eventPath = process.env.GITHUB_EVENT_PATH ?? '';
   let payload;
   try {
-    payload = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH ?? '', 'utf8'));
+    payload = JSON.parse(readFileSync(eventPath, 'utf8'));
   } catch {
     console.log('sent-back hold: no event to read; every check runs');
     return 0;
