@@ -10,7 +10,7 @@ import { expect, it } from 'vitest';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { fourEyesBandMinor } from '../../packages/core-runtime/src/four-eyes.ts';
 import { useAw06World, w } from './aw-06-world.ts';
-import { barrier, racer, rows } from './schedules-harness.ts';
+import { awaitParked, barrier, racer, rows } from './schedules-harness.ts';
 
 useAw06World('four_eyes_first_install');
 
@@ -41,13 +41,9 @@ it('a first settings install waits for a four-eyes band read that found no row',
     return true;
   });
   try {
-    await Promise.race([
-      install,
-      new Promise((resolve) => {
-        setTimeout(resolve, 2000);
-      }),
-    ]);
-    // The reader is still open on the shipped band: the install has not committed.
+    // The install is seen waiting on the server for the reader's lock, not
+    // assumed to be after a timeout.
+    await awaitParked(owner, 'advisory', 1);
     expect(installed).toBe(false);
     endReader.release();
     expect(await reader).toBe(50_000n);

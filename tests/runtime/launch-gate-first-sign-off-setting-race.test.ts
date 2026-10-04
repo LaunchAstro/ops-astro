@@ -5,7 +5,7 @@ import { installBusinessSettings } from '../../packages/core-records/src/records
 import { dispatch } from '../../packages/core-runtime/src/dispatch.ts';
 import { useAw06World, w } from './aw-06-world.ts';
 import { leased, marked, type Leased } from './aw-08-gate-world.ts';
-import { barrier, racer, rows, type Schedules } from './schedules-harness.ts';
+import { awaitParked, barrier, racer, rows, type Schedules } from './schedules-harness.ts';
 
 useAw06World('sol_ow050_signoff');
 
@@ -77,13 +77,9 @@ it('first sign-off setting write cannot commit between dispatch check and marker
       return true;
     });
   try {
-    // The real reader is paused after its check; a writer must wait for its transaction.
-    await Promise.race([
-      setting,
-      new Promise((resolve) => {
-        setTimeout(resolve, 5000);
-      }),
-    ]);
+    // The real reader is paused after its check; the writer is seen waiting on
+    // the server for the reader's lock before dispatch goes on.
+    await awaitParked(owner, 'advisory', 1);
     const crossedTheCheck = committedBeforeMarker;
     continueDispatch.release();
     const answer = await dispatching;
