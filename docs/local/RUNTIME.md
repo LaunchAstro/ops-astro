@@ -1876,7 +1876,12 @@ and codes, never a sentence, to a trace target an operator reads.
 - `core-runtime/src/trace-export.ts`: `exportOnce` reads up to 100 events after
   the business's cursor, registers each run's copy (`diagnostic_trace`,
   `run:<id>`, retained as `trace`) before it is materialised, delivers through
-  the `Deliver` port, then advances the cursor or records a gap. The read and
+  the `Deliver` port, then advances the cursor or records a gap. An event
+  already older than the trace window (30 days, `TRACE_WINDOW_DAYS`) when it
+  is read is passed by the cursor and never sent, and registers no copy:
+  retention would owe it a delete at once, and a run retention confirmed has
+  only such events, so a retention step back that re-reads them brings no
+  trace back. The read and
   the advance are separate transactions and no transaction is open while the
   target is asked. Anything short of a 2xx JSON reply is a gap with a fixed
   code (`target_unreachable`, `target_redirect`, `target_timeout`,

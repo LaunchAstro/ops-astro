@@ -32,6 +32,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import {
   gapOf,
+  TRACE_WINDOW_DAYS,
   type Cursor,
   type Delivered,
   type GapCode,
@@ -39,8 +40,6 @@ import {
 } from './trace-export.ts';
 import { derivedId } from './trace-span.ts';
 
-/** The trace window, in days (contract 7.5). */
-export const TRACE_WINDOW_DAYS = 30;
 /** The deletion endpoint's cap on ids per call. */
 export const EXPIRY_PAGE = 1_000;
 

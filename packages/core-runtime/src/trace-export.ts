@@ -52,6 +52,11 @@ export type ExportOutcome =
 /** The most events one export sends. */
 export const TRACE_BATCH = 100;
 
+/** The trace window, in days (contract 7.5): an event older than it when read is never sent. */
+export const TRACE_WINDOW_DAYS = 30;
+
+type Pending = Row & { readonly past: boolean };
+
 interface Row {
   readonly id: string;
   readonly runId: string;
@@ -88,7 +93,7 @@ export async function exportOnce(
   const { from, batch } = await database.withBusiness(businessId, async (tx) => {
     const cursor = await cursorOf(tx);
     const rows = await pending(tx, cursor);
-    for (const runId of new Set(rows.map((row) => row.runId))) {
+    for (const runId of new Set(rows.filter((row) => !row.past).map((row) => row.runId))) {
       // eslint-disable-next-line no-await-in-loop -- one registration per run, in order
       await registerTraceCopy(tx, runId);
     }
@@ -96,9 +101,8 @@ export async function exportOnce(
   });
   const last = batch.at(-1);
   if (last === undefined) return { kind: 'idle' };
-  const spans = batch.map((row) => spanOf(key, businessId, row));
-  const answer = await deliver(otlp(spans));
-  const code = gapOf(answer);
+  const spans = batch.filter((row) => !row.past).map((row) => spanOf(key, businessId, row));
+  const code = spans.length === 0 ? null : gapOf(await deliver(otlp(spans)));
   await database.withBusiness(businessId, async (tx) => {
     if (code === null) await advance(tx, last, from.version);
     else await recordGap(tx, code, from, batch.length);
@@ -138,17 +142,24 @@ async function cursorOf(tx: TenantQuery): Promise<Cursor> {
   return row ?? { tx: null, id: null, version: null };
 }
 
-/** The batch after `from`, the cursor this export read: its gap, if it has one, names the same. */
-async function pending(tx: TenantQuery, from: Cursor): Promise<readonly Row[]> {
-  return await tx.query<Row>(
-    `select ${EVENT_CELLS}
+/**
+ * The batch after `from`, the cursor this export read: its gap, if it has one,
+ * names the same. An event `past` the window is passed by the cursor, never
+ * sent: retention would owe it a delete at once, and a run retention confirmed
+ * has only such events, so a retention step back that re-reads them brings no
+ * trace back.
+ */
+async function pending(tx: TenantQuery, from: Cursor): Promise<readonly Pending[]> {
+  return await tx.query<Pending>(
+    `select ${EVENT_CELLS},
+            ev.created_at < now() - make_interval(days => $5) as past
        from public.run_events ev
       where ev.business_id = $1
         and ev.tx < pg_snapshot_xmin(pg_current_snapshot())
         and ($3::xid8 is null or (ev.tx, ev.id) > ($3::xid8, $4::uuid))
       order by ev.tx, ev.id
       limit $2`,
-    [tx.businessId, TRACE_BATCH, from.tx, from.id],
+    [tx.businessId, TRACE_BATCH, from.tx, from.id, TRACE_WINDOW_DAYS],
   );
 }
 
