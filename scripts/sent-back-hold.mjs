@@ -9,8 +9,8 @@
 // tested and merged on its group's own run, so take it out of the queue too.
 //
 // Only that one event holds. The fix push (`synchronize`) runs every check in
-// full whatever labels the pull request carries; removing the label runs
-// them again on the head as it stands. A merge group or a push carries no
+// full whatever labels the pull request carries; removing the label, any
+// other label change or a reopen runs them again on the head as it stands. A merge group or a push carries no
 // label event, so neither is ever held. Anything this cannot read runs the
 // checks in full: a mistake here costs runner time, never a check.
 

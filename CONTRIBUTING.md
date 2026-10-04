@@ -124,10 +124,11 @@ checks still running; a newer run does not cancel a merge group's checks. When
 review sends a pull request back for fixes, add the `sent-back` label: it
 cancels the checks on that head and fails `contamination gate` there, so no
 runner is spent on code about to change. The fix push runs every check in
-full. To run them on the same head instead, remove the label. To send back a
-later head, remove the label and add it again. The label keeps a pull request
-from entering the merge queue, not one already in it: remove a queued pull
-request from the queue as well.
+full. To run them on the same head instead, remove the label; any other label
+change or a reopen runs them too, so the hold lasts until the next such event.
+To send back a later head, remove the label and add it again. A held head
+cannot enter the merge queue, but one already queued is not stopped: remove it
+from the queue as well.
 
 A conformance proof is a separate condition. For changes to the domain
 model, tenancy wrapper, queue and delivery contracts, gate engine, credential

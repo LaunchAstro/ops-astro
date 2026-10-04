@@ -237,21 +237,62 @@ describe('merge group: CodeQL reports on a group', () => {
   });
 });
 
+// CI-SPEED (ORCH78 LOOKAHEAD): one job may skip a group, the Postgres 18 look-ahead, which is
+// not required and runs on pull requests alone. Every other job runs on a group, and no job
+// waits on the look-ahead, directly or through another job: a job that did would be skipped on
+// every group, and a skipped required check reads as passed.
+const LOOKAHEAD = 'database look-ahead, Postgres 18 (not required)';
+const ALLOWED = new Set([undefined, 'always()', "github.event_name != 'push'"]);
+
+/** Each job of a workflow by its key: its name, its one condition and what it waits on. */
+function jobTable(path: string) {
+  const text = top(read(path), 'jobs');
+  // The one form these cases read (review3 M7's rule, for job keys and needs): a job key is a
+  // bare key alone on its line (a whole-line comment may sit between jobs), so a quoted key or
+  // a trailing comment cannot fold one job into the job above; `needs` is one inline list or
+  // name, never a block list.
+  for (const line of text.split('\n').slice(1))
+    if (/^ {2}[^\s#]/u.test(line)) expect(line, `${path}: job key`).toMatch(/^ {2}[\w-]+:$/u);
+  expect(text, `${path}: block-list needs`).not.toMatch(/^ {4}["']?needs["']?:\s*(?:#.*)?$/mu);
+  return jobs(read(path)).map((block) => {
+    const conds = [...block.matchAll(/^ {4}["']?if["']?:(.*)$/gmu)].map((m) => m[1]?.trim());
+    expect(conds.length, `${path}: one condition at most`).toBeLessThan(2);
+    const needs = /^ {4}["']?needs["']?: (.+)$/mu.exec(block)?.[1]?.replaceAll(/^\[|\]$/gu, '');
+    return {
+      key: /^ {2}([\w-]+):$/mu.exec(block)?.[1] ?? '',
+      name: /^ {4}name: (.+)$/mu.exec(block)?.[1] ?? block.slice(0, 80),
+      cond: conds[0],
+      needs: needs ? needs.split(',').map((n) => n.trim()) : [],
+    };
+  });
+}
+
 describe('merge group: no job skips a group', () => {
-  // CI-SPEED (ORCH78 LOOKAHEAD): one job may skip a group, the Postgres 18 look-ahead, which is
-  // not required and runs on pull requests alone. Every other job runs on a group.
   it('no job in either workflow skips a group, apart from the not-required look-ahead', () => {
-    const LOOKAHEAD = 'database look-ahead, Postgres 18 (not required)';
     expect(required.map((c) => c.context)).not.toContain(LOOKAHEAD);
     for (const path of [CI, REVIEW])
-      for (const block of jobs(read(path))) {
-        const name = /^ {4}name: (.+)$/mu.exec(block)?.[1] ?? block.slice(0, 80);
-        const cond = /^ {4}["']?if["']?: (.+)$/mu.exec(block)?.[1];
+      for (const { name, cond } of jobTable(path)) {
         const allowed =
-          name === LOOKAHEAD
-            ? cond === "github.event_name == 'pull_request'"
-            : [undefined, 'always()', "github.event_name != 'push'"].includes(cond);
+          name === LOOKAHEAD ? cond === "github.event_name == 'pull_request'" : ALLOWED.has(cond);
         expect(allowed, `${path}: ${name}: if: ${cond}`).toBe(true);
       }
+  });
+
+  it('no job waits on the look-ahead, directly or through another job', () => {
+    const table = jobTable(CI);
+    const look = table.find((j) => j.name === LOOKAHEAD)?.key;
+    expect(look).toBe('database-lookahead');
+    const byKey = new Map(table.map((j) => [j.key, j]));
+    const waitsOn = (key: string) => {
+      const seen = new Set<string>();
+      const todo = [...(byKey.get(key)?.needs ?? [])];
+      for (let n = todo.pop(); n !== undefined; n = todo.pop()) {
+        if (seen.has(n)) continue;
+        seen.add(n);
+        todo.push(...(byKey.get(n)?.needs ?? []));
+      }
+      return seen;
+    };
+    for (const { key, name } of table) expect(waitsOn(key).has(look ?? ''), name).toBe(false);
   });
 });
