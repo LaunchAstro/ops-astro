@@ -13,7 +13,7 @@ import {
 
 useReceiptWorld('solow014secret');
 
-it('Sol proof, criterion 3: a provider receipt on the declared host must not persist or return an agent delegation credential in its path', async () => {
+it('a provider receipt on the declared host must not persist or return an agent delegation credential in its path', async () => {
   const { taskId, credential } = await launched();
   const link = `https://${HOST}/effects/${credential}`;
   // A safe link on the same host remains a positive control when this defect is fixed.
