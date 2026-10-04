@@ -5,7 +5,8 @@
 // by `attempts_receipt_link_shape`, as the worker's `CREDENTIAL_RUN` refuses
 // it; a 42-character run is still stored. The check is added to a database
 // migrated to the head before it, with observed links already stored, and
-// rewrites none of them.
+// rewrites none of them. A stored 43-character run stops the upgrade, which
+// then changes nothing: the rows, the old check and the ledger stand.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -38,7 +39,7 @@ if (serverUrl === undefined) {
   console.warn('runtime/receipt-link-column: DATABASE_URL is unset, so nothing below ran.');
 }
 
-const RUN_CHECK = '20261004100647';
+const RUN_CHECK = '20261004100647_receipt_link_credential_run';
 const BEFORE_RUN_CHECK = readMigrations('migrations').filter((m) => m.version !== RUN_CHECK);
 const linkWithRun = (length: number): string =>
   `https://receipts.example/effects/${'aB3_-'.repeat(9).slice(0, length)}`;
@@ -96,8 +97,8 @@ const observe = (attemptId: string, link: string): Promise<void> =>
     );
   });
 
-const stored = async (): Promise<unknown> =>
-  await db.admin.execute('select id, observed, receipt_link from public.attempts order by id');
+const stored = async (on: EmptyDatabase = db): Promise<unknown> =>
+  await on.admin.execute('select id, observed, receipt_link from public.attempts order by id');
 
 const storedLink = async (attemptId: string): Promise<string | null | undefined> => {
   const [row] = await db.admin.execute<{ readonly receipt_link: string | null }>(
@@ -112,6 +113,7 @@ describe.skipIf(serverUrl === undefined)(
   () => {
     let storedBefore: unknown;
     let storedAfter: unknown;
+    let applied: readonly string[];
 
     beforeAll(async () => {
       db = await createEmptyDatabase({ part: 'rlrun' });
@@ -124,7 +126,7 @@ describe.skipIf(serverUrl === undefined)(
       await observe(await heldAttempt(db.app, fixture), linkWithRun(42));
       storedBefore = await stored();
       await db.closeSessions();
-      await migrate(db.admin, 'migrations');
+      applied = (await migrate(db.admin, 'migrations')).applied;
       storedAfter = await stored();
     }, 180_000);
 
@@ -133,6 +135,7 @@ describe.skipIf(serverUrl === undefined)(
     });
 
     it('is added over stored observed links and rewrites none of them', () => {
+      expect(applied).toStrictEqual([RUN_CHECK]);
       expect(storedBefore).toHaveLength(2);
       expect(storedAfter).toStrictEqual(storedBefore);
     });
@@ -152,4 +155,61 @@ describe.skipIf(serverUrl === undefined)(
       expect(await storedLink(attemptId)).toBe(linkWithRun(42));
     });
   },
+);
+
+/** The receipt link check as it stands, read from the catalogue. */
+const shapeOf = async (on: EmptyDatabase): Promise<unknown> =>
+  await on.admin.execute(
+    `select pg_get_constraintdef(oid) as definition from pg_constraint
+      where conrelid = 'public.attempts'::regclass and conname = 'attempts_receipt_link_shape'`,
+  );
+
+/** A database at the head before the check, holding one observed link with a `length` run. */
+async function storedRun(length: number): Promise<EmptyDatabase> {
+  const on = await createEmptyDatabase({ part: `rlrun${String(length)}` });
+  try {
+    await applyMigrations(on.admin, BEFORE_RUN_CHECK);
+    const owner = await buildFixture(on.app, `rlrun_${String(length)}`);
+    const attemptId = await heldAttempt(on.app, owner);
+    await on.app.withBusiness(owner.businessId, async (tx) => {
+      await tx.query(
+        `update public.attempts set state = 'dispatched', dispatch_marker = true,
+                observed = true, receipt_link = $2 where id = $1`,
+        [attemptId, linkWithRun(length)],
+      );
+    });
+    await on.closeSessions();
+  } catch (error) {
+    await on.drop();
+    throw error;
+  }
+  return on;
+}
+
+it.skipIf(serverUrl === undefined)(
+  'stops the upgrade over a stored 43-character run and changes nothing',
+  async () => {
+    const on = await storedRun(43);
+    try {
+      const rowsBefore = await stored(on);
+      const shapeBefore = await shapeOf(on);
+      await expect(migrate(on.admin, 'migrations')).rejects.toMatchObject({
+        cause: { code: '23514', constraint_name: 'attempts_receipt_link_shape' },
+      });
+      expect(await stored(on)).toStrictEqual(rowsBefore);
+      expect(await shapeOf(on)).toStrictEqual(shapeBefore);
+      expect(
+        await on.admin.execute('select 1 from ops.schema_migrations where version = $1', [
+          RUN_CHECK,
+        ]),
+      ).toHaveLength(0);
+      // An ordinary clear of the link is refused by 0109's once-only trigger.
+      await expect(
+        on.admin.execute('update public.attempts set receipt_link = null'),
+      ).rejects.toMatchObject({ code: '23001' });
+    } finally {
+      await on.drop();
+    }
+  },
+  180_000,
 );
