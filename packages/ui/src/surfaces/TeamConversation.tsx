@@ -73,7 +73,8 @@ export function Conversation(props: {
   readonly thread: TeamConversation | undefined;
   readonly me: string;
   readonly onRead: () => void;
-  readonly onSend: (body: string) => void;
+  /** Null where the reader may not send: a group they have left. */
+  readonly onSend: ((body: string) => void) | null;
 }): ReactElement {
   const messages = props.thread?.messages ?? [];
   const scroller = useRef<HTMLDivElement>(null);
@@ -93,7 +94,9 @@ export function Conversation(props: {
           ))}
         </div>
       </div>
-      <Composer key={props.id} to={props.to} onSend={props.onSend} />
+      {props.onSend === null ? null : (
+        <Composer key={props.id} to={props.to} onSend={props.onSend} />
+      )}
     </>
   );
 }

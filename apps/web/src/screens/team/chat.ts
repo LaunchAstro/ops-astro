@@ -16,7 +16,7 @@
 // held is followed, the most recently active first, up to `FOLLOWED`; the
 // stream names at most 32 topics for the whole tab, and one past the cap still
 // moves through the list. `closed` on a topic (the reader left, or was removed)
-// re-reads the list, which no longer holds it.
+// re-reads the list, which shows a group left read-only.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DirectThread, GroupAction, GroupThread, TeamConversations } from '@launchastro/ui';
@@ -275,8 +275,9 @@ export function talkOf(chat: ChatModel, me: string): TeamConversations | null {
     const other = view.members.find((id) => id !== me);
     if (view.kind === 'direct' && other !== undefined) threads.push({ with: other, ...readable });
     else if (view.kind === 'group') {
-      const { conversationId: id, name, members } = view;
-      groups.push({ id, name: name ?? '', members, canManage: false, ...readable });
+      const { conversationId: id, members } = view;
+      const name = view.name ?? 'A group you left';
+      groups.push({ id, name, members, canManage: false, left: departed(view), ...readable });
     }
   }
   const directWith = (person: string): string | undefined =>

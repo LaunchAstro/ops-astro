@@ -89,6 +89,14 @@ function markRead(
   if (thread !== undefined && upTo !== null && unreadOf(thread, me) > 0) move(upTo);
 }
 
+/** A group's send, or null once the reader has left it: they read what they had, and send nothing. */
+function sendTo(talk: TeamConversations, group: GroupThread): ((body: string) => void) | null {
+  if (group.left) return null;
+  return (body) => {
+    talk.onGroup({ do: 'send', id: group.id, body });
+  };
+}
+
 function OpenConversation(props: {
   readonly talk: TeamConversations;
   readonly me: string;
@@ -131,9 +139,7 @@ function OpenConversation(props: {
         thread={group}
         me={me}
         onRead={onRead}
-        onSend={(body) => {
-          talk.onGroup({ do: 'send', id: group.id, body });
-        }}
+        onSend={sendTo(talk, group)}
       />
     </>
   );
