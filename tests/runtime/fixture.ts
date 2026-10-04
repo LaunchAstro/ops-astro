@@ -30,6 +30,7 @@ import {
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { SigningKey } from '../../packages/core-runtime/src/signing.ts';
+import { BEFORE_STEP_PLAN_RECORD } from '../../packages/core-runtime/src/propose.ts';
 
 /** Isolated, created in the test, never a production key. */
 export const TEST_SIGNING_KEY: SigningKey = {
@@ -140,6 +141,22 @@ export async function envelopeTotals(
     actual: Number(row.actual_minor),
     maximum: Number(row.maximum_minor),
   };
+}
+
+/**
+ * The plan record a step proposed on this schema stores, for a task with no
+ * plan bound: none, written; or, before 20261003001115 adds the columns,
+ * the step written as it was then. Upgrade suites seed on both schemas.
+ */
+export async function stepPlanRecord(
+  tx: TenantQuery,
+): Promise<null | typeof BEFORE_STEP_PLAN_RECORD> {
+  const [row] = await tx.query<{ readonly stored: boolean }>(
+    `select exists (select 1 from information_schema.columns
+                     where table_schema = 'public' and table_name = 'planned_steps'
+                       and column_name = 'plan_record_written') as stored`,
+  );
+  return row?.stored === true ? null : BEFORE_STEP_PLAN_RECORD;
 }
 
 export { insertPerson, insertActor, insertMembership, insertMapping, TASK_COLLECTION };
