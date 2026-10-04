@@ -9,7 +9,11 @@
 // client-wait step is a person's checkpoint (ORCH79 P12STEPACTOR).
 
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { authorised, post } from '../api/fixture.ts';
+import { agentPath } from '../api/controls-fixture.ts';
+import { issueBody } from '../api/api-2-agent-credential-world.ts';
+import { grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { detail, useMoveWorld } from './c41-a-move-world.ts';
 
@@ -152,6 +156,54 @@ describe.skipIf(serverUrl === undefined)('C41-A a step result under its task loc
     await refusedOnly('access-grant');
     await done(steps, 'access-grant');
     expect(await agentStep('access-check')).toBe(200);
+  });
+
+  // API-2: an agent credential's call runs as its agent, so the step-actor
+  // rule holds on that path as under a delegation.
+  beforeAll(async () => {
+    const { db, business } = the.controls.fixture;
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, the.admin, 'write', { kind: 'business', id: null }, false, 'credential');
+    });
+  });
+
+  it('C41-A step actor: an API-2 agent credential with task:write is refused a person step, writing nothing, and records an agent step as the agent', async () => {
+    const steps = await onboard('Made-up Client Credential Step');
+    const tasks = [...steps.values()];
+    const on = (key: string): string => String(steps.get(key));
+    const issued = await as(the.admin, 'credential.issue', issueBody());
+    expect(issued.status, JSON.stringify(issued.body)).toBe(200);
+    const secret = String(detail(issued)['credential']);
+    const byCredential = async (key: string, operationId: string): Promise<unknown> => {
+      const body = { operationId, recordId: on(key), outcome: 'done', result: 'by credential' };
+      const answer = await post(
+        the.controls.api,
+        agentPath('onboarding.step_result'),
+        body,
+        authorised(secret),
+      );
+      return [answer.status, answer.body['code']];
+    };
+    expect(await byCredential('welcome-email', randomUUID())).toStrictEqual([200, undefined]);
+    const sources = await the.controls.fixture.db.admin.execute(
+      `select data ->> 'source' as source from public.records where data ->> 'task' = $1`,
+      [on('welcome-email')],
+    );
+    expect(sources).toEqual([{ source: 'agent:api' }]);
+    const [rows, items, audits] = await stepWorld(tasks);
+    const operationId = randomUUID();
+    expect(await byCredential('kickoff-call', operationId)).toStrictEqual([
+      403,
+      'DELEGATION_EXCLUDES_OPERATION',
+    ]);
+    expect(await stepWorld(tasks)).toStrictEqual([rows, items, Number(audits) + 1]);
+    const audited = await the.controls.fixture.db.admin.execute(
+      'select outcome, refusal_code from public.audit_events where operation_id = $1',
+      [operationId],
+    );
+    expect(audited).toEqual([
+      { outcome: 'refused', refusal_code: 'DELEGATION_EXCLUDES_OPERATION' },
+    ]);
   });
 
   it('S0-5 lock order: a step result racing its task moving to another client is refused under the task lock, writing nothing', async () => {
