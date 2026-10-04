@@ -262,6 +262,7 @@ describe('the kept map against the code', () => {
 });
 
 describe('the workflow', () => {
+  const SKIPS_PULL_REQUESTS = "github.event_name != 'pull_request'";
   const ci = read('.github/workflows/ci.yml');
   const job = (key: string): string => {
     const start = ci.indexOf(`\n  ${key}:\n`);
@@ -282,16 +283,18 @@ describe('the workflow', () => {
     for (const { context } of required) expect(reported, context).toContain(context);
   });
 
-  it('scopes only the three heavy checks, each deciding in its own step with no job-level skip', () => {
-    for (const key of ['database-shard', 'isolation', 'visual-drift']) {
+  // CI-SPEED: local checks defers through it too; the shards skip pull requests, never a group.
+  it('scopes only the heavy checks, each deciding in its own step, the shards alone skipping pull requests', () => {
+    for (const key of ['check', 'database-shard', 'isolation', 'visual-drift']) {
       const block = job(key);
+      const conds = [...block.matchAll(/^ {4}if: (.+)$/gmu)].map((m) => m[1]);
       expect(block, key).toMatch(/node scripts\/ci-scope\.ts/u);
-      expect(block, key).not.toMatch(/^ {4}if:/mu);
+      expect(conds, key).toStrictEqual(key === 'database-shard' ? [SKIPS_PULL_REQUESTS] : []);
       expect(block, key).not.toMatch(/needs: \[[^\]]*scope/u);
     }
     const others = ci
       .split(/\n(?= {2}[\w-]+:\n)/u)
-      .filter((b) => !/^ {2}(database-shard|isolation|visual-drift):/u.test(b));
+      .filter((b) => !/^ {2}(check|database-shard|isolation|visual-drift):/u.test(b));
     for (const block of others) expect(block).not.toMatch(/ci-scope/u);
   });
 });
