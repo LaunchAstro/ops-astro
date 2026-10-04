@@ -130,8 +130,9 @@ const pointersOf = (
 ): readonly ConversationPointerView[] =>
   work.filter((item) => item.pointer.kind === kind).map((item) => item.pointer);
 
-/** The facts that count their item's pointers, by item key. */
+/** The facts worked out from their item's pointers, by item key. */
 export const COUNTED_FACTS = {
+  scope: (n: number): string => (n === 0 ? 'Opened with no scope' : 'Opened on a task'),
   tasks_created: (n: number) => `${String(n)} ${n === 1 ? 'task' : 'tasks'} created`,
   runs_started: (n: number) => `${String(n)} runs started`,
   gates_raised: (n: number) => `${String(n)} gates raised`,
@@ -243,7 +244,7 @@ export async function itemsOf(
     },
     {
       key: 'scope',
-      fact: tasks.length === 0 ? 'Opened with no scope' : 'Opened on a task',
+      fact: COUNTED_FACTS.scope(tasks.length),
       pointers: tasks,
     },
     {
