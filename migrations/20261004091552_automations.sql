@@ -2,7 +2,7 @@
 -- A UTC timestamp ID (docs/local/DATA.md, "What the schema is"): b0/SL13's
 -- 0255, ported onto main after migrations moved to timestamps.
 --
--- 20261003002216 automations: definitions, released versions, activations and
+-- 20261004091552 automations: definitions, released versions, activations and
 -- their occurrences (C33, U36; roadmap#27's model, TR-API2-1).
 --
 -- `automation_definitions` is one skill or automation a business keeps.

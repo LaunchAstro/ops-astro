@@ -18,7 +18,7 @@ const COLUMN_UPDATES: Readonly<
   'public.planned_runs': { from: '0086', columns: ['state'] },
   // C33: an activation's setting, pin and switch, each change by a person.
   'public.activations': {
-    from: '20261003002216',
+    from: '20261004091552',
     columns: [
       'changed_at',
       'changed_by_actor_id',
@@ -40,7 +40,7 @@ const COLUMN_UPDATES: Readonly<
 
 /**
  * Whether the migration `at` (its version, `0086_bootstrap_pins` or
- * `20261003002216_automations`) is `from` or later. Every four-digit ID sorts
+ * `20261004091552_automations`) is `from` or later. Every four-digit ID sorts
  * before every fourteen-digit timestamp, so both are padded to fourteen.
  */
 const reached = (at: string, from: string): boolean =>

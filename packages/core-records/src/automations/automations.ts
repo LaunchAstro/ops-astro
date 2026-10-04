@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Automation definitions, released versions and activations (C33, U36;
-// migration 20261003002216). A version is written once and never changes; an
+// migration 20261004091552). A version is written once and never changes; an
 // activation is always pinned to one of its definition's versions, in a mode
 // that version permits. The database holds each rule (the pin, the mode
 // trigger and the immutability trigger); occurrences are in `occurrences.ts`.

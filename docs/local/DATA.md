@@ -821,7 +821,7 @@ secret itself is stored nowhere. A guard keeps every issued column as written
 and lets the revocation be set once. The application may select, insert and
 update; nothing deletes a row. Tenancy-keyed with the restrictive policy.
 
-## Automations (20261003002216, C33)
+## Automations (20261004091552, C33)
 
 `automation_definitions` holds one skill or automation a business keeps (its
 kind and name). `definition_versions` holds each release of one: the bytes

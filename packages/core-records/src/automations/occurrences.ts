@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Occurrences (C33, U36; migration 20261003002216): each due schedule time or matching
+// Occurrences (C33, U36; migration 20261004091552): each due schedule time or matching
 // event, written once. The database's uniqueness on the activation and its
 // due time or event id holds that, so a claimer that races another commits
 // one row and learns the other's, never a second.
