@@ -30,6 +30,8 @@ export type TransportAnswer =
       readonly kind: 'answer';
       readonly status: number;
       readonly headers: Readonly<Record<string, string>>;
+      /** Content-Type lines received (`headers` keeps the first); absent if none can repeat. */
+      readonly contentTypeLines?: number;
       readonly body: Uint8Array;
     }
   | { readonly kind: 'timeout' }
@@ -147,6 +149,7 @@ function collect(
       kind: 'answer',
       status: response.statusCode ?? 0,
       headers: flatten(response.headers),
+      contentTypeLines: response.headersDistinct['content-type']?.length ?? 0,
       body: new Uint8Array(Buffer.concat(chunks)),
     }),
   );
