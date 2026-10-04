@@ -76,7 +76,7 @@ async function agentWithDelegation() {
       mintedByActorId: fixture.member.actorId,
       purpose: `rcpt_${randomUUID().slice(0, 8)}`,
       collections: ['task'],
-      actions: ['read'],
+      actions: ['read', 'comment'],
       purposeScope: { kind: 'record', id: String(created.body['recordId']) },
       expiresAt,
     });
@@ -85,14 +85,15 @@ async function agentWithDelegation() {
   });
 }
 
-/** A child the delegation minted for a helper: the parent's row under the helper's actor. */
+/** A child the delegation minted for a helper: the parent's row under the helper's actor, reading only. */
 async function childOf(parentId: string, helperActorId: string): Promise<string> {
   const childId = randomUUID();
   await r.fixture.db.admin.execute(
     `insert into public.delegations
        select (jsonb_populate_record(d, jsonb_build_object(
                  'id', $2::uuid, 'agent_actor_id', $3::uuid,
-                 'parent_delegation_id', d.id, 'purpose', 'rcpt_child'))).*
+                 'parent_delegation_id', d.id, 'purpose', 'rcpt_child',
+                 'actions', jsonb_build_array('read')))).*
          from public.delegations d where d.id = $1`,
     [parentId, childId, helperActorId],
   );
