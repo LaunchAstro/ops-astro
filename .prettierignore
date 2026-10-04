@@ -160,3 +160,7 @@ tests/ci/signing-key-first-runs-and-node-floor.proof.test.mjs
 # Sol's D1-FIX1 proofs, byte-for-byte as the review patch held them, file names
 # and titles included.
 tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
+
+# Sol's D2-FIX1 proofs, byte-for-byte as the review patch held them apart from each
+# title, which names what it proves.
+tests/operations/scan-login-make-and-new-business-races.proof.test.ts

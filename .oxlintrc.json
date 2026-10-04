@@ -176,6 +176,14 @@
     {
       "files": ["tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs"],
       "rules": { "no-promise-executor-return": "off", "sort-vars": "off" }
+    },
+    {
+      "files": ["tests/operations/scan-login-make-and-new-business-races.proof.test.ts"],
+      "rules": {
+        "no-await-in-loop": "off",
+        "no-promise-executor-return": "off",
+        "sort-vars": "off"
+      }
     }
   ]
 }

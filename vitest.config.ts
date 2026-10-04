@@ -78,6 +78,7 @@ export default defineConfig({
             'tests/operations/find-copies-values-only.proof.test.ts',
             'tests/operations/scan-login-token-and-shared-login.proof.test.ts',
             'tests/operations/scan-login-cleanup-mapping-race.test.ts',
+            'tests/operations/scan-login-make-and-new-business-races.proof.test.ts',
             'tests/review/backup-read-part-appointment-proof.test.ts',
             'tests/review/backup-restore-revocation-proof.test.ts',
             'tests/review/ow066-export-revocation-proof.test.ts',
