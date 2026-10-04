@@ -4,7 +4,10 @@
 // content on its task, so it takes the task's row lock and asks again, under
 // it, whether the task is still on the onboarding's client. Raced both ways
 // against `task.set_party`, each held at the audit-chain lock uncommitted.
+// A task read in the trash under that lock is no step's, as `task.comment`
+// answers a trashed task.
 
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { detail, useMoveWorld } from './c41-a-move-world.ts';
@@ -37,6 +40,49 @@ describe.skipIf(serverUrl === undefined)('C41-A a step result under its task loc
       fields: { client: String(detail(other)['recordId']) },
     };
   };
+
+  it('C41-A trash: a step whose task is in the trash takes no result from a person or a delegated agent, writing nothing', async () => {
+    const steps = await onboard('Made-up Client Trashed Step');
+    const welcome = String(steps.get('welcome-email'));
+    const { controls, admin } = the;
+    const proposal = await controls.propose(welcome, await revisionOf(welcome), 'onboarding_step');
+    const credential = String(
+      (await controls.pickup(await controls.approve(proposal)))['credential'],
+    );
+    const trashed = await as(admin, 'task.trash', {
+      recordId: welcome,
+      expectedRevision: await revisionOf(welcome),
+    });
+    expect(trashed.status, JSON.stringify(trashed.body)).toBe(200);
+    const world = async (): Promise<readonly unknown[]> => [
+      await resultsOn(welcome),
+      await controls.fixture.db.admin.execute(
+        `select s.step_key, s.state, o.state as onboarding, o.revision::text
+           from public.onboarding_steps s join public.onboardings o on o.id = s.onboarding_id
+          where s.task_id = any($1::uuid[]) order by s.position`,
+        [[...steps.values()]],
+      ),
+      await controls.count(
+        'select count(*) as n from public.inbox_items where subject_record_id = any($1::uuid[])',
+        [[...steps.values()]],
+      ),
+    ];
+    const before = await world();
+    const body = { recordId: welcome, outcome: 'done', result: 'closed in the trash' };
+    const answers = [
+      await as(admin, 'onboarding.step_result', body),
+      await controls.asAgent(
+        'onboarding.step_result',
+        { operationId: randomUUID(), ...body },
+        credential,
+      ),
+    ];
+    expect(answers.map((one) => [one.status, one.body['code']])).toStrictEqual([
+      [404, 'NOT_FOUND'],
+      [404, 'NOT_FOUND'],
+    ]);
+    expect(await world()).toStrictEqual(before);
+  });
 
   it('S0-5 lock order: a step result racing its task moving to another client is refused under the task lock, writing nothing', async () => {
     const steps = await onboard('Made-up Client Move Race');
