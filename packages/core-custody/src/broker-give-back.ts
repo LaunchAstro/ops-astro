@@ -34,6 +34,21 @@ interface Due {
   readonly back: string;
 }
 
+/**
+ * The call's envelope, first in the contract's order (cap, envelope, task, ...):
+ * settlement takes it by the call's rows (`lockCall`), and a start or a proved
+ * release before its call can close and give back (`giveBack`).
+ */
+export async function lockEnvelope(tx: TenantQuery, callId: string): Promise<void> {
+  await tx.query(
+    `select 1 from public.model_calls c
+       join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
+       join public.task_envelopes e on e.business_id = r.business_id and e.id = r.envelope_id
+      where c.business_id = $1 and c.id = $2 for update of e`,
+    [tx.businessId, callId],
+  );
+}
+
 /** Give back what the ended call did not spend, when its hold counted it at its maximum. */
 export async function giveBack(tx: TenantQuery, callId: string): Promise<void> {
   const [due] = await tx.query<Due>(

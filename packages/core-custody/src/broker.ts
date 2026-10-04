@@ -46,6 +46,7 @@
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
+import { giveBack, lockEnvelope } from './broker-give-back.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { resolveFields } from './broker-sources.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
@@ -89,7 +90,9 @@ export {
  * under their locks, so a lease, delegation or reservation lost since the
  * hold, a sibling call held unknown since, or a client put on the task since,
  * sends nothing. The hold is then released, never started, with the route it
- * would have taken and no start time. Only then is the call marked `dispatched`.
+ * would have taken and no start time, and gives back what a top-up or a stop
+ * counted of it (`giveBack`, catalogue #756), under its envelope's lock, taken
+ * first as settlement takes it. Only then is the call marked `dispatched`.
  */
 async function markStarted(
   database: Database,
@@ -101,17 +104,20 @@ async function markStarted(
 ): Promise<{ readonly fields: readonly ResolvedField[] } | BrokerRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const route = [reserved.route.key, reserved.route.reach, reserved.route.credentialKind];
+    await lockEnvelope(tx, reserved.callId);
     const facts = await lockFacts(tx, caller, request);
     const unknown = facts.ok && (await heldUnknown(tx, facts.facts.reservationId));
     const checked = startable(facts, request, reserved, unknown);
     if (!checked.ok) {
-      await tx.query(
+      const released = await tx.query(
         `update public.model_calls
             set state = 'released', ended_at = clock_timestamp(),
                 route_key = $3, route_reach = $4, credential_kind = $5
-          where business_id = $1 and id = $2 and state = 'reserved'`,
+          where business_id = $1 and id = $2 and state = 'reserved'
+          returning id`,
         [tx.businessId, reserved.callId, ...route],
       );
+      if (released.length > 0) await giveBack(tx, reserved.callId);
       await broker.audit(tx, {
         action: 'model.call_released',
         outcome: 'refused',
@@ -207,8 +213,9 @@ export async function sendReservedCall(
 
 /**
  * The lease-expiry sweep's half: a started call with no answer is held, never
- * released; one never started is released. A conversation call's lease is its
- * age.
+ * released; one never started is released, and gives back what a top-up or a
+ * stop counted of it (`giveBack`, catalogue #756). A conversation call's lease
+ * is its age.
  */
 export async function sweepModelCalls(
   tx: TenantQuery,
@@ -235,14 +242,39 @@ export async function sweepModelCalls(
       returning id`,
     [tx.businessId],
   );
-  const released = await tx.query(
-    `update public.model_calls c
-        set state = 'released', ended_at = clock_timestamp()
-       from public.leases l
-      where c.business_id = $1 and l.business_id = c.business_id and l.id = c.lease_id
-        and c.state = 'reserved' and (l.state <> 'live' or l.expires_at <= clock_timestamp())
-      returning c.id`,
+  const released = await releaseUnsent(tx);
+  return { held: held.length + conversations.length, released: released.length };
+}
+
+/**
+ * The sweep's release of calls never started on a lease that ended, each giving
+ * back what a top-up or a stop counted of it.
+ */
+async function releaseUnsent(tx: TenantQuery): Promise<readonly { readonly id: string }[]> {
+  // Each unsent call's envelope and hold, before its row, as settlement takes
+  // them. This runs after the lost-worker sweep's locks in one transaction, so
+  // it never waits out of the contract's order: a call whose envelope or hold
+  // another transaction holds is skipped, and the next pass releases it.
+  const free = await tx.query<{ readonly id: string }>(
+    `select c.id from public.model_calls c
+       join public.leases l on l.business_id = c.business_id and l.id = c.lease_id
+       join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
+       join public.task_envelopes e on e.business_id = r.business_id and e.id = r.envelope_id
+      where c.business_id = $1 and c.state = 'reserved'
+        and (l.state <> 'live' or l.expires_at <= clock_timestamp())
+        for update of e, r skip locked`,
     [tx.businessId],
   );
-  return { held: held.length + conversations.length, released: released.length };
+  const released = await tx.query<{ readonly id: string }>(
+    `update public.model_calls set state = 'released', ended_at = clock_timestamp()
+      where business_id = $1 and id = any($2::uuid[]) and state = 'reserved'
+      returning id`,
+    [tx.businessId, free.map((row) => row.id)],
+  );
+  for (const { id } of released) {
+    // One call at a time, on the sweep's one connection.
+    // eslint-disable-next-line no-await-in-loop
+    await giveBack(tx, id);
+  }
+  return released;
 }
