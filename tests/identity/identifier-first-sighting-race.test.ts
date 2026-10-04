@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   resolveIdentifier,
   type IdentifierResolution,
+  type Observation,
 } from '../../packages/core-records/src/identity/identifier-resolution.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/transaction.ts';
@@ -84,6 +85,39 @@ function lookupGate(db: FreshDatabase): {
   };
 }
 
+function signal(): { readonly promise: Promise<void>; readonly open: () => void } {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
+
+/**
+ * The first sighting, on `second`, commits while a transaction on `app` that
+ * began before it waits; that transaction then observes the same identifier,
+ * with a now() earlier than the link's first_observed_at.
+ */
+async function beganFirst(
+  app: Database,
+  second: Database,
+  business: string,
+  observation: Observation,
+): Promise<readonly [IdentifierResolution, IdentifierResolution]> {
+  const begun = signal();
+  const released = signal();
+  const later = app.withBusiness(business, async (tx) => {
+    begun.open();
+    await released.promise;
+    return await resolveIdentifier(tx, observation);
+  });
+  await begun.promise;
+  await delay(20);
+  const first = await second.withBusiness(business, (tx) => resolveIdentifier(tx, observation));
+  released.open();
+  return [first, await later];
+}
+
 function personOf(resolution: IdentifierResolution): string {
   if (resolution.outcome !== 'attached')
     throw new Error('expected an attachment, and it was unresolved');
@@ -130,5 +164,12 @@ describe.skipIf(serverUrl === undefined)('two first observations of one identifi
     expect(personOf(two)).toBe(personOf(one));
     expect(await people()).toBe(before + 1);
     expect(personOf(await observe(value))).toBe(personOf(one));
+  }, 30_000);
+
+  it("keep the link's times in order when the later attach began first", async () => {
+    const value = 'began-first@example.com';
+    const observation = { kind: 'email', value, sourceSystem: 'import' } as const;
+    const [first, later] = await beganFirst(db.app, second, business, observation);
+    expect(personOf(later)).toBe(personOf(first));
   }, 30_000);
 });
