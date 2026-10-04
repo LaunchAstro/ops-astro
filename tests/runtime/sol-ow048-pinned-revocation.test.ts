@@ -5,6 +5,7 @@
 // this issue's.
 import { expect, it } from 'vitest';
 import { revokeDelegation } from '../../packages/core-records/src/authority/delegations.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { readPinned, type ReadAuditNote } from '../../packages/core-runtime/src/index.ts';
 import { liveWork } from './schedules-harness.ts';
 import {
@@ -65,4 +66,56 @@ it('Sol proof, criterion 3: a revoked delegation cannot read pinned instructions
   expect(source.asked, 'revoked authority must not reach the instruction source').toEqual([]);
   expect(notes).toEqual([]);
   expect(await fingerprint(owner)).toBe(before);
+});
+
+it('a revocation waits for a pinned read that already checked the delegation', async () => {
+  if (process.env['DATABASE_URL'] === undefined) throw new Error('Postgres is required');
+  const owner = w.alpha;
+  const work = await liveWork(owner, 'OW-048 read in flight', 1_000);
+  const leaseId = String(work.picked['leaseId']);
+  const lease = await leaseOf(owner, leaseId);
+  await seedPin(owner, lease.run_id);
+  const request = {
+    leaseId,
+    holderActorId: lease.holder_actor_id,
+    runId: lease.run_id,
+    stepId: null,
+    path: FRAGMENT,
+  };
+  let checked!: () => void;
+  const inFlight = new Promise<void>((resolve) => {
+    checked = resolve;
+  });
+  let release!: () => void;
+  const finish = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  // The read stops inside its transaction after the delegation check and the
+  // ledger row, before it commits: the audit hook is its last step.
+  const reading = owner.db.app.withBusiness(
+    owner.business,
+    async (tx) =>
+      await readPinned(tx, request, sourceOf(FILES), async () => {
+        checked();
+        await finish;
+      }),
+  );
+  await inFlight;
+  // Its own connection: the app pool would queue it behind the open read.
+  const second = connect(owner.db.appUrl);
+  let revokedAt: number | undefined;
+  const revoking = (async () => {
+    await second.withBusiness(
+      owner.business,
+      async (tx) => await revokeDelegation(tx, String(work.picked['delegationId'])),
+    );
+    revokedAt = Date.now();
+  })();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(revokedAt, 'the revocation waits for the read that checked it').toBeUndefined();
+  release();
+  expect((await reading).ok).toBe(true);
+  await revoking;
+  await second.close();
+  expect(revokedAt).toBeDefined();
 });
