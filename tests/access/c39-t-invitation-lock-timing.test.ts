@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* eslint-disable no-await-in-loop -- each wait observes the preceding database state */
+/* eslint-disable max-lines-per-function -- each proof holds its lock schedule in one place */
 import { setTimeout as delay } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
