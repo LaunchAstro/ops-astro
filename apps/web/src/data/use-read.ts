@@ -39,6 +39,16 @@ export interface UseReadResult<T> {
   readonly reload: () => void;
 }
 
+/** `useRead`'s answer, and whether the read in flight came from the live channel. */
+export interface UseReadLive<T> extends UseReadResult<T> {
+  /**
+   * True while the read in flight was started by the live channel, so a host
+   * can keep its last answer drawn through an ordinary live change (MP-6-3).
+   * A reload, a new grant or a changed dependency is not one.
+   */
+  readonly live: boolean;
+}
+
 /**
  * Run the read and offer its answer. An answer the read or the projection
  * cannot take (a malformed body the read rejects on, an emptiness test that
@@ -58,7 +68,7 @@ async function offer<T>(
   }
 }
 
-export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
+export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const [state, setState] = useState<ReadState<T>>(() => initialState<T>(options.grantKey));
   const readRef = useRef<AuthorisedRead<T> | null>(null);
   const runRef = useRef(options.run);
@@ -67,12 +77,20 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   const grantKey = options.grantKey;
   const isEmpty = options.isEmpty;
 
+  const liveRef = useRef(false);
+  const reread = useCallback(
+    (live: boolean) => {
+      const projection = readRef.current;
+      if (projection === null) return;
+      liveRef.current = live;
+      const generation = projection.begin();
+      void offer(projection, generation, runRef.current, grantKey);
+    },
+    [grantKey],
+  );
   const reload = useCallback(() => {
-    const projection = readRef.current;
-    if (projection === null) return;
-    const generation = projection.begin();
-    void offer(projection, generation, runRef.current, grantKey);
-  }, [grantKey]);
+    reread(false);
+  }, [reread]);
 
   useEffect(() => {
     const projection = new AuthorisedRead<T>(
@@ -81,6 +99,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
         : { grantKey, onState: setState, isEmpty },
     );
     readRef.current = projection;
+    liveRef.current = false;
     setState(projection.state);
     const generation = projection.begin();
     void offer(projection, generation, runRef.current, grantKey);
@@ -97,22 +116,35 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the dependency list is the caller's, plus the grant.
   }, [grantKey, ...options.deps]);
 
-  // The last answer's topic, kept while a re-read is in flight or denied, so a
-  // revoked page still hears the channel that tells it so.
-  const topicRef = useRef<string | null>(null);
-  if (state.outcome === 'ready' || state.outcome === 'empty') {
-    topicRef.current = options.live?.topic(state.value) ?? null;
-  }
-  const topic = topicRef.current;
-  const hub = options.live?.hub;
-
-  useEffect(() => {
-    if (hub === undefined || topic === null) return;
-    return hub.follow(topic, reload);
-  }, [hub, topic, reload]);
+  useFollow(options.live, state, reread);
 
   const { rollup } = options;
   useEffect(() => rollup?.follow(reload), [rollup, reload]);
 
-  return { state, reload };
+  return { state, reload, live: liveRef.current && state.outcome === 'loading' };
+}
+
+/**
+ * Follow the live topic for what the read shows: the last answer's topic,
+ * kept while a re-read is in flight or denied, so a revoked page still hears
+ * the channel that tells it so. Each change re-reads as a live one.
+ */
+function useFollow<T>(
+  live: UseReadOptions<T>['live'],
+  state: ReadState<T>,
+  reread: (live: boolean) => void,
+): void {
+  const topicRef = useRef<string | null>(null);
+  if (state.outcome === 'ready' || state.outcome === 'empty') {
+    topicRef.current = live?.topic(state.value) ?? null;
+  }
+  const topic = topicRef.current;
+  const hub = live?.hub;
+
+  useEffect(() => {
+    if (hub === undefined || topic === null) return;
+    return hub.follow(topic, () => {
+      reread(true);
+    });
+  }, [hub, topic, reread]);
 }

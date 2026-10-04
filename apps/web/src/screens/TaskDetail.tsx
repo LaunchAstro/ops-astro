@@ -179,7 +179,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const client = props.client;
   const hub = hubOf(client);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const { state, reload } = useRead<TaskReadResult>({
+  const { state, reload, live } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
     deps: [props.taskKey, props.changes ?? 0],
@@ -190,10 +190,10 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   });
   useFreshOnPage(state, hub);
 
-  // **The draft lives above the read.** A re-read under a draft keeps `Loaded`
-  // mounted (C4 live-sync 4: the rest of the page stays live and the edit is
-  // never read over), and any other re-read unmounts it, so the draft has to
-  // outlive that to be settled at all.
+  // **The draft lives above the read.** A re-read under a draft, or from the
+  // live channel, keeps `Loaded` mounted (C4 live-sync 4: the edit is never read
+  // over; MP-6-3: the map keeps its graph and selected card), and any other
+  // re-read unmounts it, so the draft has to outlive that to be settled at all.
   // It is still dropped exactly where it always was: a different task, a
   // different grant, or a read the server denied. A draft that outlived its
   // authority would be stale authorised data left on the screen, which is the
@@ -235,7 +235,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
       {state.outcome === 'denied' && state.refusal.code === 'NOT_FOUND' ? (
         <TaskUnknown typed={props.taskKey} refusal={state.refusal} />
       ) : (
-        <RecordState state={state} subject="task" onRetry={reload} keep={held !== null}>
+        <RecordState state={state} subject="task" onRetry={reload} keep={held !== null || live}>
           {(value) =>
             'sharedTask' in value ? (
               <SharedTaskDetail task={value.sharedTask} />
