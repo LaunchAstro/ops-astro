@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { writeWrapUp } from '../../packages/core-commands/src/index.ts';
-import { revokeGrant } from '../../packages/core-records/src/index.ts';
+import { revokeGrant, writeBusinessSetting } from '../../packages/core-records/src/index.ts';
 import {
   conversationWorld,
   setConversationWindow,
@@ -118,6 +118,69 @@ async function listAfterTaskLost(): Promise<void> {
   expect(list.body['conversations']).toMatchObject([{ title: 'New conversation' }]);
 }
 
+/** Trash a task through the API and age its trash an hour, so a zero-day window purges it. */
+const trash = async (taskId: string) => {
+  const read = await w.as(w.owner, 'task.read', { recordId: taskId });
+  expect(read.status).toBe(200);
+  const trashed = await w.as(w.owner, 'task.trash', {
+    operationId: randomUUID(),
+    recordId: taskId,
+    expectedRevision: (read.body['task'] as { revision: number }).revision,
+  });
+  expect(trashed.status, JSON.stringify(trashed.body)).toBe(200);
+  await w.fixture.db.admin.execute(
+    `update public.records set deleted_at = now() - interval '1 hour' where id = $1`,
+    [taskId],
+  );
+};
+
+/** Purging the scope task takes its title off every conversation opened on it. */
+async function titleGoneAfterPurge(): Promise<void> {
+  const hidden = `purged task title ${randomUUID()}`;
+  const ownTitle = `a title of its own ${randomUUID()}`;
+  const scoped = await task(hidden);
+  const scope = { kind: 'task', id: scoped };
+  const untitled = await started(w, w.owner, { scope, subject: hidden, body: 'Untitled' });
+  const titled = await started(w, w.owner, {
+    scope,
+    subject: hidden,
+    title: ownTitle,
+    body: 'Titled',
+  });
+  const reader = await enrol(w.fixture.db.app, w.fixture.business, 'purged_scope_reader');
+  await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+    await grantTo(tx, reader, 'read', { kind: 'business', id: null }, false, 'conversation');
+    await grantTo(tx, w.owner, 'manage');
+    const written = await writeBusinessSetting(tx, {
+      key: 'retention_window_days',
+      owningOperation: 'settings.set_retention_window',
+      value: 0,
+    });
+    if (written === undefined || 'refused' in written) throw new Error('window not written');
+  });
+  await trash(scoped);
+  const purge = await w.as(w.owner, 'task.purge', { operationId: randomUUID() });
+  expect(purge.status, JSON.stringify(purge.body)).toBe(200);
+  expect((purge.body as { detail: { purgedIds: string[] } }).detail.purgedIds).toContain(scoped);
+  for (const who of [reader, w.owner]) {
+    for (const [conversationId, title] of [
+      [untitled, 'New conversation'],
+      [titled, ownTitle],
+    ] as const) {
+      // eslint-disable-next-line no-await-in-loop -- each conversation is read in turn
+      const answer = await w.as(who, 'conversation.read', { conversationId });
+      expect(answer.status).toBe(200);
+      expect(JSON.stringify(answer.body)).not.toContain(hidden);
+      expect(answer.body['conversation']).toMatchObject({ subject: null, title });
+    }
+  }
+  // The tab row lists the caller's own conversations, so the owner's.
+  const list = await w.as(w.owner, 'conversation.list', {});
+  expect(list.status).toBe(200);
+  expect(JSON.stringify(list.body)).not.toContain(hidden);
+}
+
+// eslint-disable-next-line max-lines-per-function -- one world, one case per behaviour
 describe.skipIf(serverUrl === undefined)('wrap-up pointers on a real database', () => {
   beforeAll(async () => {
     c = await createControls('solow031');
@@ -167,4 +230,5 @@ describe.skipIf(serverUrl === undefined)('wrap-up pointers on a real database', 
 
   it('a reader who may not read the scope task never sees its title', subjectBlindReader);
   it('an owner who loses the scope task no longer lists its title', listAfterTaskLost);
+  it('purging the scope task leaves its title on no conversation', titleGoneAfterPurge);
 });
