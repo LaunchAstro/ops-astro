@@ -38,3 +38,6 @@ export type ChatRequest<E> =
       /** The newest message's time the reader saw, as ISO text. */
       readonly upTo: string;
     } & E);
+
+/** Both for `requests.ts`: a comment takes the targeted envelope, a chat command does not. */
+export type CommentOrChatRequest<Targeted, E> = CommentRequest<Targeted> | ChatRequest<E>;

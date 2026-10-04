@@ -29,7 +29,7 @@ import type { CheckRequest } from './requests-check.ts';
 import type { ConversationRequest } from './requests-conversation.ts';
 import type { RunRequest } from './requests-run.ts';
 import type { Envelope } from './request-envelope.ts';
-import type { ChatRequest, CommentRequest } from './requests-comments.ts';
+import type { CommentOrChatRequest } from './requests-comments.ts';
 import type { DuplicateRequest } from './requests-duplicate.ts';
 import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
@@ -87,8 +87,8 @@ export type CommandRequest =
   | ({ readonly command: 'task.set_state'; readonly stateId: string } & Targeted)
   // Duplicate without contents (MP-4-8), in `requests-duplicate.ts`.
   | DuplicateRequest<Envelope>
-  // A comment, its edit and its deletion (MP-4-5), in `requests-comments.ts`.
-  | CommentRequest<Targeted>
+  // Comments (MP-4-5) and team chat (C71-D), in `requests-comments.ts`.
+  | CommentOrChatRequest<Targeted, Envelope>
   // A proposal is a record beside the task and targets it, so it names the
   // revision it was written against like every other targeted command. What it
   // does *not* carry is who is proposing, what they may spend it against or
@@ -296,6 +296,5 @@ export type CommandRequest =
   | SelfRequest<Envelope>
   // Time tracking (MP-4-6), in `requests-time.ts`.
   | TimeRequest<Envelope>
-  // Tags (MP-4-11), in `requests-tags.ts`; team conversations (C71-D) beside the comments.
-  | TagRequest<Envelope>
-  | ChatRequest<Envelope>;
+  // Tags (MP-4-11), in `requests-tags.ts`.
+  | TagRequest<Envelope>;
