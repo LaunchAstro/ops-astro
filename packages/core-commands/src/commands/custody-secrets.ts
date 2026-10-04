@@ -5,10 +5,11 @@
 // One command family serves both secret screens. The envelope has already
 // checked `custody:manage` business-wide and refused every agent (the row is
 // `agent: never`), so what is left here is the value itself: checked by kind
-// and size, refused if it is a chat product's browser session (custody's own
-// load check), sealed to the broker's key, and never repeated back. A refusal
-// names the field, never what arrived in it, and the audit event and the
-// repeat-request register hold only the body's digest (0007).
+// and size, refused unless custody's own load check would take it (never a
+// chat product's browser session), sealed to the broker's key, and never
+// repeated back. A refusal names the field, never what arrived in it, and the
+// audit event and the repeat-request register hold only the body's digest
+// (0007), never a refusal's attempted values (`settle`).
 
 import {
   clearSecret,
@@ -36,6 +37,7 @@ const VALUE_FIXES = [`Send the value as text of 1 to ${VALUE_LIMIT} characters.`
 const SESSION_FIXES = [
   "A chat product's browser session is never stored. Send an API key or a cloud provider credential.",
 ];
+const LOAD_FIXES = ['Send the value as one line of 8 or more characters, with no spaces.'];
 const REVISION_FIXES = [
   'Send expectedRevision as the whole number secret.list showed, or leave it out.',
 ];
@@ -61,20 +63,32 @@ function revisionOf(value: unknown): Revision {
 }
 
 /**
- * Whether a value is, or carries, a consumer chat product's session (AW-01,
- * C60): custody refuses one at load before any other check, so its answer on
- * a one-entry list is the product's one rule.
+ * What custody's own load check (AW-01, C60) answers for the value as a
+ * stored credential: nothing when it would load, else the fix to send. A
+ * chat product's session is refused first, and a value the broker could not
+ * load (too short, or holding a space or line break) is refused too, so a
+ * session wrapped in newlines is never stored.
  */
-function isChatSession(value: string): boolean {
-  const read = parseCredentials([{ kind: 'api_key', value }]);
-  return !read.ok && read.code === 'SESSION_TOKEN_REFUSED';
+function loadRefusal(value: string): readonly string[] | undefined {
+  const read = parseCredentials([
+    {
+      ref: 'custody',
+      kind: 'api_key',
+      account: 'custody',
+      destination: 'custody',
+      value,
+      header: 'authorization',
+    },
+  ]);
+  if (read.ok) return undefined;
+  return read.code === 'SESSION_TOKEN_REFUSED' ? SESSION_FIXES : LOAD_FIXES;
 }
 
 type Value =
   | { readonly ok: true; readonly value: string }
   | { readonly ok: false; readonly refusal: HandlerOutcome };
 
-/** The value as text of the allowed size, and never a chat product's session. */
+/** The value as text of the allowed size that custody would load. */
 function valueOf(value: unknown): Value {
   if (typeof value !== 'string' || value.length === 0 || value.length > VALUE_LIMIT) {
     return {
@@ -82,11 +96,9 @@ function valueOf(value: unknown): Value {
       refusal: refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], VALUE_FIXES)),
     };
   }
-  if (isChatSession(value)) {
-    return {
-      ok: false,
-      refusal: refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], SESSION_FIXES)),
-    };
+  const fixes = loadRefusal(value);
+  if (fixes !== undefined) {
+    return { ok: false, refusal: refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], fixes)) };
   }
   return { ok: true, value };
 }
