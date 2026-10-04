@@ -156,6 +156,9 @@ const GRANTS_BY_ROLE = {
     // their own work stops at a second approver. The write is the admin's:
     // `settings:manage` is not widened by this line.
     ['settings', 'read'],
+    // Team conversations (C71-D): `chat:comment` is every agency member's
+    // key (the catalogue's default holders), not the administrators' alone.
+    ['chat', 'comment'],
   ],
   none: [],
   // The external party holds no business grant, and must not: a person with no

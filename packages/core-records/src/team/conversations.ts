@@ -87,11 +87,12 @@ const CLOCK_MS = `date_trunc('milliseconds', clock_timestamp())`;
 
 /**
  * Serialise one conversation's message writes and read-marker moves until the
- * transaction ends. A message is stamped and a marker capped by the wall clock
- * under this lock, so a message that commits later is always stamped later
- * than any marker moved before it, and never hides behind one.
+ * transaction ends. A message is stamped and placed (`created_at`, strictly
+ * after the one before) and a marker set under this lock, so a message that
+ * commits later is always placed after any marker moved before it, and never
+ * hides behind one, even in the same millisecond.
  */
-async function lockConversation(tx: TenantQuery, conversationId: string): Promise<void> {
+export async function lockConversation(tx: TenantQuery, conversationId: string): Promise<void> {
   await advisoryLock(tx, `chat.conversation:${tx.businessId}:${conversationId}`);
 }
 
@@ -134,8 +135,22 @@ export async function directConversation(
 }
 
 /**
- * Move a member's own read marker to `upTo`, never back and never past now.
- * False when the person is not a current member: nothing is moved.
+ * A message's position, which a read marker is compared with: its millisecond
+ * (`ts_1`) plus, in microseconds, its rank among that millisecond's messages in
+ * write order (`created_at`, `tasks/comments.ts`), live ones on the indexes (no
+ * command trashes a message). No conversation writes a thousand in one millisecond.
+ */
+const POSITION = `c.ts_1 + interval '1 microsecond' * (select count(*) from public.records s
+   where s.business_id = c.business_id and s.record_type_id = c.record_type_id
+     and s.uuid_4 = c.uuid_4 and s.ts_1 = c.ts_1 and s.deleted_at is null
+     and (s.created_at, s.id) <= (c.created_at, c.id))`;
+
+/**
+ * Move a member's own read marker to `upTo`, never back and never past now;
+ * false, moving nothing, when the person is not a current member. A marker is a
+ * position: the millisecond plus how many of its messages were seen. `now` has
+ * seen all of them, counted before the clock is read. A sent time names the
+ * newest message seen, and counts only the first of its millisecond's.
  */
 export async function moveReadMarker(
   tx: TenantQuery,
@@ -145,9 +160,17 @@ export async function moveReadMarker(
 ): Promise<boolean> {
   await lockConversation(tx, conversationId);
   const moved = await tx.query(
-    `update public.team_conversation_members
-        set last_read_at = greatest(coalesce(last_read_at, '-infinity'),
-                                    least(coalesce($4::timestamptz, ${CLOCK_MS}), ${CLOCK_MS}))
+    `with mine as (
+       select c.ts_1 from public.records c where c.business_id = $1 and c.uuid_4 = $2::uuid and c.deleted_at is null
+          and c.record_type_id = (select id from public.record_types where business_id = $1 and key = 'task_comment')
+     ), upto as (
+       select coalesce(least(date_trunc('milliseconds', $4::timestamptz), ${CLOCK_MS}), (select max(ts_1) from mine)) as ms
+     )
+     update public.team_conversation_members
+        set last_read_at = greatest(coalesce(last_read_at, '-infinity'), (
+              select ms + interval '1 microsecond' * (select case when $4::timestamptz is null
+                       then count(*) else least(count(*), 1) end from mine where ts_1 = upto.ms)
+                from upto), case when $4::timestamptz is null then ${CLOCK_MS} end)
       where business_id = $1 and conversation_id = $2 and person_id = $3 and left_at is null
       returning 1`,
     [tx.businessId, conversationId, personId, upTo === 'now' ? null : upTo.toISOString()],
@@ -196,7 +219,7 @@ export async function listConversations(
             (select count(*) from public.records c
                join public.actors a on a.business_id = c.business_id and a.id = c.uuid_2
               where ${MEMBER_READS} and a.person_id is distinct from m.person_id
-                and (m.last_read_at is null or c.ts_1 > m.last_read_at)) as unread
+                and (m.last_read_at is null or ${POSITION} > m.last_read_at)) as unread
        from public.team_conversation_members m
        join public.records r on r.business_id = m.business_id and r.id = m.conversation_id
         and r.record_type_id = $3 and r.deleted_at is null
@@ -261,7 +284,7 @@ export async function readConversation(
        join public.actors a on a.business_id = c.business_id and a.id = c.uuid_2
        join public.people p on p.business_id = a.business_id and p.id = a.person_id
       where m.business_id = $1 and m.conversation_id = $3 and m.person_id = $4
-      order by c.ts_1, c.id`,
+      order by c.ts_1, c.created_at, c.id`,
     [tx.businessId, types.commentTypeId, conversationId, personId],
   );
   return {

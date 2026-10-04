@@ -250,6 +250,7 @@ export {
   directConversation,
   isStaff,
   listConversations,
+  lockConversation,
   moveReadMarker,
   readConversation,
   readConversationTypes,

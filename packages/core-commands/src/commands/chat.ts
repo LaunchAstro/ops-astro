@@ -12,22 +12,38 @@
 // teammate to write to, and every such name gets the one NOT_FOUND.
 // Sending moves the sender's own read marker (R36).
 //
+// **Authority is read again after the last lock wait.** The door admitted the
+// caller before the pair and conversation locks, and a wait there can outlast
+// a revocation. So both writes take the business's access lock after their
+// conversation locks and read the sender's or reader's membership, the grant
+// and the recipient's staff membership again under it. A grant revocation or
+// an ended access takes that lock first (`lockAccess`), so it either committed
+// before this read, which then refuses with the door's own code, or waits for
+// this write to commit. Lock order: pair, conversation, access; nothing that
+// holds the access lock takes a conversation's. A conversation the send has
+// just started goes with the refusal (the envelope's savepoint).
+//
 // `chat.mark_read`: the reader's own marker on a conversation they are in,
 // moved to the newest message they saw and never back. Their own member row
 // only, no grant asked, and not audited (CS-7.25): anyone else's conversation
 // is NOT_FOUND.
 
 import {
+  checkAuthority,
   directConversation,
   isStaff,
+  lockAccess,
+  lockConversation,
   moveReadMarker,
+  NO_MEMBERSHIP_FIXES,
   readConversationTypes,
+  subjectsOf,
   writeComment,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
 import { isInternalReader } from '../reads/tasks.ts';
 import type { CommandContext } from './context.ts';
-import { refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { commentBodyOf, NO_COMMENT_TYPE_FIXES } from './tasks-comment.ts';
 
@@ -64,6 +80,8 @@ export async function sendDirect(
     session.personId,
     teammateId.toLowerCase(),
   );
+  const lost = await standsNow(tx, context, teammateId.toLowerCase());
+  if (lost !== undefined) return refused(lost);
   const commentId = await writeComment(tx, types.commentTypeId, {
     taskId: null,
     conversationId,
@@ -88,7 +106,38 @@ export async function markOwnRead(
   if (at === undefined || Number.isNaN(at.getTime())) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['upTo'], UP_TO_FIXES));
   }
+  await lockConversation(tx, conversationId);
+  const lost = await standsNow(tx, context, null);
+  if (lost !== undefined) return refused(lost);
   return (await moveReadMarker(tx, conversationId, context.session.personId, at))
     ? applied(null, null, { conversationId })
     : refused(refuseNotFound());
+}
+
+/**
+ * The caller's standing read again under the access lock, after every lock
+ * wait the write takes: membership first, as the door asks it, then the
+ * declaration's grant (none for the reader's own marker), then the recipient
+ * is still staff. Nothing, or the refusal the next call would get.
+ */
+async function standsNow(
+  tx: TenantQuery,
+  context: CommandContext,
+  recipientId: string | null,
+): Promise<CommandRefusal | undefined> {
+  const { session, declaration } = context;
+  await lockAccess(tx);
+  if (!(await isStaff(tx, session.personId))) {
+    return refuseCommand('AUTH_NO_MEMBERSHIP', [], NO_MEMBERSHIP_FIXES);
+  }
+  if (declaration.authorisedOn !== 'self') {
+    const granted = await checkAuthority(tx, subjectsOf(session), {
+      collection: declaration.collection,
+      action: declaration.action,
+      scope: { kind: 'business', id: null },
+    });
+    if (!granted.ok) return granted.refusal;
+  }
+  if (recipientId !== null && !(await isStaff(tx, recipientId))) return refuseNotFound();
+  return undefined;
 }
