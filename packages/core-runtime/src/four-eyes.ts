@@ -43,19 +43,26 @@ export function minorDigits(currency: string): number {
   return iso4217Digits(currency);
 }
 
-/** The band in the currency's minor units, read under the caller's locks; null is off. */
+/**
+ * The band in the currency's minor units, read under the caller's locks; null
+ * is off. Postgres converts the stored decimal exactly and floors it, so a band
+ * of 500.005 is 50000 and 500.01 is above it: a float product rounded up would
+ * let one person approve a figure above the band.
+ */
 export async function fourEyesBandMinor(tx: TenantQuery, currency: string): Promise<bigint | null> {
   // A missing row locks nothing: the settings install lock, shared, keeps a first row out (#463).
   await lockSettingsInstall(tx, 'shared');
-  const [row] = await tx.query<{ readonly value: unknown }>(
-    `select value from public.business_settings
+  const digits = minorDigits(currency);
+  const [row] = await tx.query<{ readonly minor: string | null }>(
+    `select case when jsonb_typeof(value) = 'number'
+                 then floor(value::numeric * power(10::numeric, $2::int))::text end as minor
+       from public.business_settings
       where business_id = $1 and key = 'four_eyes_threshold'
       for share`,
-    [tx.businessId],
+    [tx.businessId, digits],
   );
-  const band = row === undefined ? SHIPPED_FOUR_EYES_BAND : row.value;
-  if (typeof band !== 'number') return null;
-  return BigInt(Math.round(band * 10 ** minorDigits(currency)));
+  if (row === undefined) return BigInt(SHIPPED_FOUR_EYES_BAND) * 10n ** BigInt(digits);
+  return row.minor === null ? null : BigInt(row.minor);
 }
 
 /**

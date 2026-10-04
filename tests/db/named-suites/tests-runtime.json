@@ -87,6 +87,7 @@
     "tests/runtime/schedules-w01.test.ts",
     "tests/runtime/schedules-w03.test.ts",
     "tests/runtime/schedules-w05.test.ts",
+    "tests/runtime/sol-ow049-four-eyes-rounding.test.ts",
     "tests/runtime/storage-backstop-migrations.test.ts",
     "tests/runtime/successor-bounds-edge.test.ts",
     "tests/runtime/successor-bounds-exact.test.ts",

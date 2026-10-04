@@ -1835,7 +1835,9 @@ or delete.
   major unit, read `for share` under the locks, null is off and no stored row
   is the shipped 500; the settings install lock (`lockSettingsInstall`,
   advisory key `<business id>:business_settings`) is held shared first, so a
-  first row cannot commit under a decision that read none. Above it the first approval is recorded and applies
+  first row cannot commit under a decision that read none. Postgres floors the
+  band exactly to whole minor units, so a band of 500.005 makes 500.01 need
+  two people. Above it the first approval is recorded and applies
   nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
   threshold, a different amount is `FIELD_VALUE_INVALID`, and a second,
   distinct holder approving the same amount completes it, but only while the
