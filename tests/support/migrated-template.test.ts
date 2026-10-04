@@ -146,7 +146,7 @@ function aClone() {
       await onServer((server) => databaseFactsOf(server, fromEmpty.name)),
     );
     // A clone takes connections, unlike its template.
-    expect(facts.find((fact) => fact.startsWith('database '))).toContain(' connections=true ');
+    expect(facts.find((fact) => fact.startsWith('database '))).toContain(' connections=t ');
     // 0031's revokes do not survive a clone on their own, so they are asked by name.
     const asked = await onServer((server) =>
       server.execute<{ who: string; temp: boolean; connect: boolean }>(
