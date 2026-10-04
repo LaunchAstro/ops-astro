@@ -64,9 +64,9 @@ export default defineConfig({
     // The browser proofs build `apps/web/dist`, which other suites rebuild (an
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
     // BROWSER_PROOFS=1. Sol's proofs kept byte for byte (the leaked-client
-    // proof, OW-002's, and the role, staging-login, copy-finder, scan-login and
-    // backup revocation proofs), the OW-002 proofs written beside them, Sol's
-    // two PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
+    // proof, OW-001's two, OW-002's, and the role, staging-login, copy-finder,
+    // scan-login and backup revocation proofs), the OW-002 proofs written beside
+    // them, Sol's two PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
     // c59-factor-routes-world (byte for byte but for one cookie-jar split CQ-11
     // asks for), Sol's six F2 lost-answer retry proofs, Sol's two F3 save-order
     // proofs and C31's Sol proof files open their worlds with no skip; without a
@@ -88,6 +88,10 @@ export default defineConfig({
             'tests/custody/c31-revoked-list-and-revision-range.test.ts',
             'tests/custody/c31-secret-set-guards.test.ts',
             'tests/custody/c31-two-setters-overlap.test.ts',
+            'tests/api/end-others-provider-clock-skew.test.ts',
+            'tests/api/end-others-delayed-ending.test.ts',
+            'tests/api/end-others-ended-session-leaves-live-list.test.ts',
+            'tests/api/agent-credential-exports-counted.test.ts',
             'tests/review/role-repair-drops-inherited-access-proof.test.ts',
             'tests/review/staging-logins-*-proof.test.ts',
             'tests/operations/find-copies-values-only.proof.test.ts',
@@ -106,6 +110,8 @@ export default defineConfig({
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
             'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
+            'tests/commands/mention-refusal-replay-name.test.ts',
+            'tests/commands/mention-refusal-staff-name.test.ts',
             'tests/broker/counted-call-closes-give-back-once.test.ts',
             'tests/broker/late-answer-after-sweep-gives-back-once.test.ts',
             'tests/broker/late-planning-settlement-keeps-owner-release.test.ts',
