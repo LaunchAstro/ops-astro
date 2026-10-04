@@ -10,7 +10,7 @@
 // own toString keeps that text); a Buffer is written as the text its bytes
 // carry, as `String(part)` did, not as hex.
 
-import { formatWithOptions, inspect } from 'node:util';
+import { formatWithOptions, inspect, types } from 'node:util';
 
 const whole = {
   depth: Infinity,
@@ -25,8 +25,11 @@ const hidden = { ...whole, showHidden: true, showProxy: true } as const;
 /** How `%s` writes an object it inspects, rather than one with its own toString. */
 const shallow = { ...whole, depth: 0, colors: false, compact: 3 } as const;
 
-const bytesAsText = (part: unknown): unknown =>
-  Buffer.isBuffer(part) ? part.toString('utf8') : part;
+/** A Buffer, asked without a prototype walk, which a revoked proxy would throw on. */
+const isBuffer = (part: unknown): part is Buffer =>
+  types.isUint8Array(part) && Buffer.isBuffer(part);
+
+const bytesAsText = (part: unknown): unknown => (isBuffer(part) ? part.toString('utf8') : part);
 
 /** One console call's arguments as the console would print them, nothing cut short. */
 export function consoleLine(...parts: readonly unknown[]): string {
@@ -40,7 +43,7 @@ export function consoleLine(...parts: readonly unknown[]): string {
     if (letter === '%' || next >= rest.length) return spec;
     const index = next++;
     const value = rest[index];
-    if (Buffer.isBuffer(value)) return '%s';
+    if (isBuffer(value)) return '%s';
     if (letter === 'o') {
       args[index] = inspect(value, hidden);
       return '%s';

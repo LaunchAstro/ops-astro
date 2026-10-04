@@ -57,6 +57,13 @@ it('writes an object with its own toString under percent-s as that text', () => 
   expect(consoleLine('key=%s', { [Symbol.toPrimitive]: () => planted })).toBe(`key=${planted}`);
 });
 
+it('keeps the rest of a call that also logs a revoked proxy', () => {
+  const revocable = Proxy.revocable({}, {});
+  revocable.revoke();
+  expect(consoleLine('token %s', planted, revocable.proxy)).toContain(planted);
+  expect(consoleLine(revocable.proxy, planted)).toContain(planted);
+});
+
 it('writes an error with its stack', () => {
   const error = new Error(planted);
   expect(consoleLine(error)).toContain(String(error.stack));
