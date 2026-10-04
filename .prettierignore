@@ -173,3 +173,11 @@ tests/operations/scan-login-make-and-new-business-races.proof.test.ts
 tests/ci/preview-lock-shared-across-temp-dirs.proof.test.ts
 tests/review/carried-stamp-committed-before-kill-proof.test.ts
 tests/operations/scan-login-interrupted-make-keeps-recovery.proof.test.ts
+
+# Sol's D1-FIX2 proofs, byte-for-byte as the review patch held them apart from
+# each title; the export gate-gap proof is Sol's D1-FIX1 original, restored.
+tests/review/store-hands-out-no-part-after-session-end-proof.test.ts
+tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts
+tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts
+tests/ci/restore-refuses-permissive-partitioned-barrier.proof.test.mjs
+tests/operations/scan-login-cleanup-subject-race.proof.test.ts

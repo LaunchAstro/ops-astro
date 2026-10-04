@@ -35,7 +35,7 @@ const PRODUCTION_MAJOR = staging['x-ops-astro'].productionDatabaseMajor;
 const leaking = (business) =>
   `(select count(*) from pg_class t join pg_namespace n on n.oid = t.relnamespace
      join pg_attribute a on a.attrelid = t.oid and a.attname = 'business_id'
-     where n.nspname = 'public' and t.relkind = 'r' and not a.attisdropped
+     where n.nspname = 'public' and t.relkind in ('r', 'p') and not a.attisdropped
        and has_table_privilege(t.oid, 'select') and (xpath('/row/n/text()', query_to_xml(format(
          'select exists (select from %I.%I where business_id <> %L) as n',
          n.nspname, t.relname, '${business}'), false, true, '')))[1]::text = 'true')`;
@@ -162,7 +162,7 @@ export async function restoreDrill({
           `${EFFECTIVE_GRANTS} select (select string_agg(schemaname || '.' || tablename, ',') from pg_tables
              where schemaname not in ('pg_catalog', 'information_schema')),
              (select count(*) from pg_class t join pg_namespace n on n.oid = t.relnamespace
-               where n.nspname = 'public' and t.relkind = 'r'
+               where n.nspname = 'public' and t.relkind in ('r', 'p')
                  and not (t.relrowsecurity and t.relforcerowsecurity)),
              ${leaking(scope.business)},
              (exists (select from public.memberships where person_id = '${p}' and active)

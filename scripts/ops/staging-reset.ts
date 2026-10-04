@@ -170,7 +170,10 @@ export const TENANT_TABLES: string = `select c.oid::regclass::text as name from 
 /**
  * The sessions ended installation-wide (0061, 0063) outlive the reset, as the
  * sign-ins they end do: carried into a schema the reset does not empty, merged
- * with any a stopped run left there, and put back once migrated.
+ * with any a stopped run left there, and put back once migrated. The carry is
+ * a function the emptying calls first (staging-reset.mjs): it locks each source
+ * against new endings until the emptying commits, so an ending committed before
+ * it is carried, and one begun after waits and then fails, never lost.
  */
 export const CARRY_ENDED_SESSIONS: readonly string[] = [
   'create schema if not exists ops_astro_reset',
@@ -179,12 +182,15 @@ export const CARRY_ENDED_SESSIONS: readonly string[] = [
      (session_id uuid primary key, ended_at timestamptz not null)`,
   `create table if not exists ops_astro_reset.ended_subject_sessions
      (subject_digest text not null, kept_session uuid, ended_before timestamptz not null)`,
-  `do $$ begin
+  `create or replace function ops_astro_reset.carry_ended_sessions() returns void
+     language plpgsql as $$ begin
      if to_regclass('ops.ended_provider_sessions') is not null then
+       lock table ops.ended_provider_sessions in share mode;
        insert into ops_astro_reset.ended_provider_sessions
          select session_id, ended_at from ops.ended_provider_sessions on conflict do nothing;
      end if;
      if to_regclass('ops.ended_subject_sessions') is not null then
+       lock table ops.ended_subject_sessions in share mode;
        insert into ops_astro_reset.ended_subject_sessions
          select subject_digest, kept_session, ended_before from ops.ended_subject_sessions
          except select * from ops_astro_reset.ended_subject_sessions;
