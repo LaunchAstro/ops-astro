@@ -5,8 +5,9 @@
 // unchanged. It is checked here at proposal time and refused by name, so a
 // grown diff never reaches a gate for someone to notice.
 //
-// And the captures' comparison: the word moved on the live page, the rest of
-// the page did not, the served stylesheets are equal and the decoy occurrence
+// And the captures' comparison: each pair is one address served
+// successfully both times, the word moved on the live page, the rest of the
+// page did not, the served stylesheets are equal and the decoy occurrence
 // elsewhere on the site is untouched (Receipt L fields 9 to 12).
 
 export interface CorrectionTarget {
@@ -67,6 +68,51 @@ function replacedAt(before: string, after: string, target: CorrectionTarget): nu
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+/**
+ * The offset just past the quote that closes the string opening at `open`. A
+ * template literal's `${}` is read as an expression, so its braces and quotes
+ * count only there.
+ */
+function quotedEnd(source: string, open: number): number {
+  const quote = source.charAt(open);
+  for (let at = open + 1; at < source.length; at += 1) {
+    const character = source.charAt(at);
+    if (character === '\\') at += 1;
+    else if (character === quote) return at + 1;
+    else if (quote === '`' && source.startsWith('${', at)) at = expressionEnd(source, at + 1) - 1;
+    else if (quote !== '`' && character === '\n') return at + 1;
+  }
+  return source.length;
+}
+
+/**
+ * The offset just past the `}` that closes the expression opening at `open`,
+ * read as JavaScript: a brace or quote inside a string, a template literal or
+ * a comment counts for nothing. The source's length when it never closes.
+ */
+function expressionEnd(source: string, open: number): number {
+  let depth = 0;
+  let at = open;
+  while (at < source.length) {
+    const character = source.charAt(at);
+    if (source.startsWith('//', at)) {
+      const end = source.indexOf('\n', at);
+      at = end < 0 ? source.length : end;
+    } else if (source.startsWith('/*', at)) {
+      const end = source.indexOf('*/', at + 2);
+      at = end < 0 ? source.length : end + 2;
+    } else if (character === '"' || character === "'" || character === '`') {
+      at = quotedEnd(source, at);
+    } else {
+      if (character === '{') depth += 1;
+      if (character === '}') depth -= 1;
+      at += 1;
+      if (depth === 0) return at;
+    }
+  }
+  return source.length;
+}
+
 /** Whether `offset` is in body copy: not frontmatter, a tag, a comment, an expression, a script or a style. */
 function inTextNode(source: string, offset: number): boolean {
   if (source.startsWith('---\n')) {
@@ -75,7 +121,6 @@ function inTextNode(source: string, offset: number): boolean {
   }
   let state: 'text' | 'tag' | 'comment' | 'raw' = 'text';
   let quote = '';
-  let braces = 0;
   let rawClose = '';
   for (let at = 0; at < offset; at += 1) {
     const rest = source.slice(at);
@@ -93,6 +138,10 @@ function inTextNode(source: string, offset: number): boolean {
     } else if (state === 'tag') {
       if (quote !== '') {
         if (character === quote) quote = '';
+      } else if (character === '{') {
+        const end = expressionEnd(source, at);
+        if (end > offset) return false;
+        at = end - 1;
       } else if (character === '"' || character === "'") {
         quote = character;
       } else if (character === '>') {
@@ -106,12 +155,12 @@ function inTextNode(source: string, offset: number): boolean {
       rawClose = raw === null ? '' : `</${raw[1]?.toLowerCase() ?? ''}`;
       if (rest.startsWith('</')) rawClose = '';
     } else if (character === '{') {
-      braces += 1;
-    } else if (character === '}') {
-      braces = Math.max(0, braces - 1);
+      const end = expressionEnd(source, at);
+      if (end > offset) return false;
+      at = end - 1;
     }
   }
-  return state === 'text' && braces === 0;
+  return state === 'text';
 }
 
 /** Refuses anything wider than the envelope, naming why. */
@@ -186,13 +235,23 @@ function sameStylesheets(left: PageObservation, right: PageObservation): boolean
   );
 }
 
+const served = (page: PageObservation): boolean => page.status >= 200 && page.status < 300;
+
+/** Both captures are of one address, and each was served successfully. */
+function samePage(left: PageObservation, right: PageObservation): boolean {
+  return left.url === right.url && served(left) && served(right);
+}
+
 export function compareCaptures(input: CaptureComparison): ComparisonResult {
   const { before, after, decoyBefore, decoyAfter, target } = input;
   const failed: ('word' | 'page' | 'stylesheets' | 'decoy')[] = [];
   if (after.text === before.text) failed.push('word');
-  else if (replacedAt(before.text, after.text, target) === undefined) failed.push('page');
+  const moved =
+    after.text !== before.text && replacedAt(before.text, after.text, target) === undefined;
+  if (moved || !samePage(before, after)) failed.push('page');
   if (!sameStylesheets(before, after)) failed.push('stylesheets');
   const decoyHeld =
+    samePage(decoyBefore, decoyAfter) &&
     wordOffsets(decoyBefore.text, target.word).length > 0 &&
     decoyAfter.text === decoyBefore.text &&
     decoyAfter.documentDigest === decoyBefore.documentDigest &&
