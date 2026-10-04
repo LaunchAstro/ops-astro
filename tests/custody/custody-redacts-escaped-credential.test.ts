@@ -19,7 +19,7 @@ const request: OutboundRequest = {
 };
 
 /** The one synthetic credential, written owner-only into `folder`. */
-function credentialsIn(folder: string): string {
+function credentialsIn(folder: string, value: string): string {
   const credentialsFile = join(folder, 'credentials.json');
   writeFileSync(
     credentialsFile,
@@ -30,7 +30,7 @@ function credentialsIn(folder: string): string {
         account: 'synthetic-auth-account',
         destination: 'auth_target',
         header: 'authorization',
-        value: KEY,
+        value,
       },
     ]),
     { mode: 0o600 },
@@ -45,6 +45,7 @@ async function withCustody(
     custody: Awaited<ReturnType<typeof startCustody>>,
     seen: IncomingHttpHeaders[],
   ) => Promise<void>,
+  key: string = KEY,
 ): Promise<void> {
   const folder = mkdtempSync(join(tmpdir(), 'sol-ow018-'));
   const seen: IncomingHttpHeaders[] = [];
@@ -62,7 +63,7 @@ async function withCustody(
     });
     const address = server.address();
     if (address === null || typeof address === 'string') throw new Error('server has no port');
-    const credentialsFile = credentialsIn(folder);
+    const credentialsFile = credentialsIn(folder, key);
     const parsed = parseDestinations([
       {
         key: 'auth_target',
@@ -123,4 +124,44 @@ it('every character percent-escaped, in mixed hex case, is redacted from the ans
     ).toBe(false);
     expect(outcome.outbound.body).toContain('[redacted]');
   });
+});
+
+/** The answer custody returned for `text`, as a consumer reads it back. */
+async function answered(text: string, key: string): Promise<string> {
+  let body = '';
+  await withCustody(
+    {},
+    JSON.stringify({ text }),
+    async (custody) => {
+      const outcome = await custody.dispatch('auth_key', request);
+      if (outcome.kind !== 'answered' || !outcome.outbound.ok) throw new Error('not answered');
+      body = outcome.outbound.body;
+    },
+    key,
+  );
+  const decoded: unknown = JSON.parse(body);
+  if (typeof decoded !== 'object' || decoded === null || !('text' in decoded)) return '';
+  return String(decoded.text);
+}
+
+it('a key with a quote, JSON-escaped beside a percent escape, is redacted from the answer', async () => {
+  const key = 'synthetic"canary-key-0123';
+  const text = await answered(key.replace('y-', '%79-'), key);
+  expect(decodeURIComponent(text).includes(key), 'decoded answer must not hold the key').toBe(
+    false,
+  );
+});
+
+it.each([
+  [
+    'base64 without padding',
+    (key: string) => Buffer.from(key).toString('base64').replace(/=+$/u, ''),
+  ],
+  ['base64url', (key: string) => Buffer.from(key).toString('base64url')],
+] as const)('the key in %s is redacted from the answer', async (_case, spell) => {
+  const text = await answered(spell(KEY), KEY);
+  expect(
+    Buffer.from(text, 'base64').toString('utf8').includes(KEY),
+    'decoded answer must not hold the key',
+  ).toBe(false);
 });

@@ -81,31 +81,38 @@ const hex = (byte: number): string =>
     .map((digit) => (/[a-f]/u.test(digit) ? `[${digit}${digit.toUpperCase()}]` : digit))
     .join('');
 
+/** A character as a pattern that matches only itself. */
+const literal = (text: string): string => text.replaceAll(SYNTAX, '\\$&');
+
 /**
  * The secret with any of its characters percent-escaped, in either hex case
- * or a mix: one pattern for every spelling a URL decoder turns back into it.
- * Each character is a fixed alternation, so matching stays linear.
+ * or a mix, or written as JSON text writes it: one pattern for every spelling
+ * a JSON parse and a URL decoder turn back into it. Each character is a fixed
+ * alternation, so matching stays linear.
  */
 function escapedSpelling(secret: string): RegExp {
   const characters = [...secret].map((character) => {
     const escaped = [...Buffer.from(character, 'utf8')].map((byte) => `%${hex(byte)}`).join('');
-    return `(?:${character.replaceAll(SYNTAX, '\\$&')}|${escaped})`;
+    const json = JSON.stringify(character).slice(1, -1);
+    const spellings = json === character ? [character] : [character, json];
+    return `(?:${[...spellings.map((spelling) => literal(spelling)), escaped].join('|')})`;
   });
   return new RegExp(characters.join(''), 'gu');
 }
 
 /**
  * Remove every spelling of the credential a provider might echo back: the
- * value, and a Basic pair's secret half alone, each as JSON text spells it,
- * percent-escaped in either case, or in base64.
+ * value, and a Basic pair's secret half alone, each as itself, as JSON text
+ * spells it, percent-escaped in either case, or in base64 with or without its
+ * padding or in base64url.
  */
 function redact(text: string, credential: StoredCredential): string {
   const { value } = credential;
   const secrets = credential.scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value];
-  const spellings = secrets.flatMap((secret) => [
-    JSON.stringify(secret).slice(1, -1),
-    Buffer.from(secret).toString('base64'),
-  ]);
+  const spellings = secrets.flatMap((secret) => {
+    const base64 = Buffer.from(secret).toString('base64');
+    return [base64, base64.replace(/=+$/u, ''), Buffer.from(secret).toString('base64url')];
+  });
   const unescaped = secrets.reduce(
     (out, secret) => out.replace(escapedSpelling(secret), '[redacted]'),
     plain(text),
