@@ -23,6 +23,27 @@ describe('the agent door under a flood of unheld keys', () => {
     expect(performance.now() - started).toBeLessThan(1000);
   });
 
+  it('a flood that outlasts the window, so old doors keep going, costs each new one the same', () => {
+    let at = 0;
+    const quota = createAgentQuota(
+      DEFAULT_AGENT_LIMITS,
+      () => new Date(at),
+      () => 0,
+    );
+    // Eight new keys a millisecond for two minutes: from the second minute on,
+    // every new door finds lapsed ones ahead of it.
+    for (let key = 0; key < 960_000; key += 1) {
+      at = Math.floor(key / 8);
+      quota.knock(`unheld:${key}`);
+    }
+    const started = performance.now();
+    for (let key = 960_000; key < 1_000_000; key += 1) {
+      at = Math.floor(key / 8);
+      quota.knock(`unheld:${key}`);
+    }
+    expect(performance.now() - started, 'forty thousand more doors').toBeLessThan(500);
+  });
+
   it('a door renewed after its window lapsed keeps its count while older doors go', () => {
     let at = 0;
     const quota = createAgentQuota(
