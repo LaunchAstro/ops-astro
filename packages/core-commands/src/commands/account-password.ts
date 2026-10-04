@@ -38,11 +38,12 @@
 //    for a new link.
 // 6. Set or not, each business the login is mapped in ends the sessions it
 //    has seen, one transaction each. Last, whatever happened, one transaction
-//    in the token's business settles the window (a sign-in after it is
-//    served) and, only when the password was set and every business's ending
-//    committed, audits `account.password_changed` there, once, with no
-//    password and no token in it. The other businesses keep their ended sessions alone, and a
-//    failure anywhere audits nothing anywhere.
+//    in the token's business ends its own, settles the window (a sign-in
+//    after it is served) and, only when the password was set and every
+//    business's ending committed, audits `account.password_changed` there,
+//    once, with no password and no token in it. The other businesses keep
+//    their ended sessions alone, and a failure anywhere audits nothing
+//    anywhere.
 
 import { createHash } from 'node:crypto';
 import {
@@ -196,20 +197,14 @@ async function spend(
 }
 
 /**
- * Step 6: in each business the login is mapped in, the sessions seen there
- * end; given the `subject` (a reset that set nothing), every session signed
- * in until now too, to the instant (0063), as the settle's second is not.
+ * Step 6: the sessions seen in a business end; given the `subject` (a reset
+ * that set nothing), every session signed in until now too, to the instant
+ * (0063), as the settle's second is not.
  */
-async function endedIn(database: Database, mapped: readonly Mapped[], subject?: string) {
-  for (const { business, session } of mapped) {
-    // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
-    await database.withBusiness(business, async (tx) => {
-      await (subject === undefined
-        ? endSeenSessions(tx, session.personId, undefined, 'end_others')
-        : endOtherSeenSessions(tx, session.personId, undefined, 'end_others', subject));
-    });
-  }
-}
+const endIn = async (tx: TenantQuery, session: Session, subject?: string) =>
+  await (subject === undefined
+    ? endSeenSessions(tx, session.personId, undefined, 'end_others')
+    : endOtherSeenSessions(tx, session.personId, undefined, 'end_others', subject));
 
 /** Step 6's one audit row, in the token's business. */
 const audited = async (tx: TenantQuery, session: Session) =>
@@ -220,6 +215,47 @@ const audited = async (tx: TenantQuery, session: Session) =>
     refusalCode: null,
     payloadDigest: payloadDigest({ command: RESET_COMMAND, person: session.personId }),
   });
+
+/** What steps 5 and 6 need once the token is spent. */
+interface Spent {
+  readonly found: Found;
+  readonly mapped: readonly Mapped[];
+  readonly own: Mapped;
+  readonly window: string;
+}
+
+/** Steps 5 and 6: the provider's answer, the sessions ended, the window settled. */
+async function setAndEnd(
+  database: Database,
+  broker: Broker,
+  { found, mapped, own, window }: Spent,
+  password: string,
+): Promise<LoginPasswordSet> {
+  let set: LoginPasswordSet = 'fault';
+  let ended = false;
+  const unset = () => (set === 'set' ? undefined : found.subject);
+  try {
+    try {
+      set = await setLoginPassword(broker, found.subject, password);
+    } finally {
+      // Set or not, the sessions each business saw end there, so its list
+      // agrees with its door (Sol, PR #382 round 3); the token's business's
+      // with the settle, below.
+      for (const { business, session } of mapped.filter((one) => one !== own)) {
+        // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
+        await database.withBusiness(business, async (tx) => await endIn(tx, session, unset()));
+      }
+    }
+    ended = true;
+  } finally {
+    await database.withBusiness(found.business, async (tx) => {
+      await endIn(tx, own.session, unset());
+      if (ended && set === 'set') await audited(tx, own.session);
+      await settleResetWindow(tx, window);
+    });
+  }
+  return set;
+}
 
 /** Set a new password with a reset token, then end every session of its login. */
 export async function setPasswordByToken(
@@ -251,23 +287,12 @@ export async function setPasswordByToken(
   const spent = await database.withBusiness(found.business, async (tx) => await spend(tx, found));
   if (spent === 'factored') return refused('RESET_NEEDS_SUPPORT');
   if (spent === 'invalid') return refused('RESET_LINK_INVALID');
-  let set: LoginPasswordSet = 'fault';
-  let ended = false;
-  try {
-    try {
-      set = await setLoginPassword(dependencies.broker, found.subject, reset.password);
-    } finally {
-      // Set or not, the sessions each business saw end there, so its list
-      // agrees with its door (Sol, PR #382 round 3).
-      await endedIn(database, mapped, set === 'set' ? undefined : found.subject);
-    }
-    ended = true;
-  } finally {
-    await database.withBusiness(found.business, async (tx) => {
-      if (ended && set === 'set') await audited(tx, own.session);
-      await settleResetWindow(tx, spent.window);
-    });
-  }
+  const set = await setAndEnd(
+    database,
+    dependencies.broker,
+    { found, mapped, own, window: spent.window },
+    reset.password,
+  );
   if (set === 'set') return { ok: true };
   return refused(set === 'refused' ? 'RESET_PASSWORD_REFUSED' : 'RESET_UNAVAILABLE');
 }
