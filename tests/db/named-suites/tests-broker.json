@@ -34,6 +34,7 @@
     "tests/broker/aw-07b-hook.test.ts",
     "tests/broker/aw-07b-in-flight.test.ts",
     "tests/broker/aw-07b-no-second-send.test.ts",
+    "tests/broker/aw-07b-send-waits-on-ceiling.test.ts",
     "tests/broker/aw-07b-sender-mention.test.ts",
     "tests/broker/aw-07b-timing.test.ts",
     "tests/broker/aw-07b-worker-standing.test.ts",

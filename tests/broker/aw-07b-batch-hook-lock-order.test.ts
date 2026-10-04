@@ -4,7 +4,8 @@
 // hook both lock the items one email covered, each in its own transaction.
 // Both take them in item id order, so a new daily pass that overlaps a
 // delayed hook for the previous batch waits on it and never deadlocks, even
-// when the items were raised in the reverse of their id order.
+// when the items were raised in the reverse of their id order: the pass finds
+// nothing left to send and the hook lands its delivery.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -115,7 +116,11 @@ it('AW-07b one lock order: a new daily pass and a hook for the previous batch do
     await Promise.all([batchDb.close(), hookDb.close()]);
   }
   const outcomes = (await settled).map((result) =>
-    result.status === 'fulfilled' ? 'fulfilled' : String((result.reason as { code?: string }).code),
+    result.status === 'fulfilled'
+      ? result.value
+      : `rejected ${String((result.reason as { code?: string }).code)}`,
   );
-  expect(outcomes).toEqual(['fulfilled', 'fulfilled']);
+  // The previous batch's items may have gone, so the new pass finds nothing to send, and the
+  // hook lands its delivery.
+  expect(outcomes).toEqual([{ ok: false, code: 'NOTHING_WAITING' }, 'DELIVERED']);
 });

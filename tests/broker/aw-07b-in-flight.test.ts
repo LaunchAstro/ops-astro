@@ -8,11 +8,12 @@
 // sender died before recording an outcome stays `asked` (unknown, never sent
 // again) but stops holding a place once custody's own timeout and a grace have
 // passed, so a business is never held at the ceiling for good and its
-// decisions and incidents still go out at once.
+// decisions and incidents still go out at once. A send paused after its ask
+// past the fence, on either host clock, sends nothing.
 
-import { expect, it as vitestIt } from 'vitest';
+import { expect, it as vitestIt, vi } from 'vitest';
 import { checkItem, recordAsked } from '../../packages/core-custody/src/broker-email.ts';
-import { roomFor } from '../../packages/core-custody/src/email-class.ts';
+import { IN_FLIGHT_GRACE_MS, roomFor } from '../../packages/core-custody/src/email-class.ts';
 import { emailAtOnce } from '../../packages/core-custody/src/index.ts';
 import { catalogue, EMAIL_SEND } from '../../packages/core-connectors/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/index.ts';
@@ -225,3 +226,46 @@ it('AW-07b ceiling: an expired ask cannot resume its send while its replacement 
     w.provider.mode('accept');
   }
 }, 90_000);
+
+/**
+ * One host clock, moved forward by `ms` from now on: as if the sender's host
+ * stood still that long (`performance`), or was suspended or stepped by its
+ * time service (`Date`), which the other clock does not see.
+ */
+function moved(clock: 'performance' | 'Date', ms: number): void {
+  if (clock === 'performance') {
+    const real = performance.now.bind(performance);
+    vi.spyOn(performance, 'now').mockImplementation(() => real() + ms);
+  } else {
+    const real = Date.now.bind(Date);
+    vi.spyOn(Date, 'now').mockImplementation(() => real() + ms);
+  }
+}
+
+it.each([
+  // Short of the grace itself, past the margin the fence keeps before it.
+  { clock: 'performance' as const, ms: IN_FLIGHT_GRACE_MS - 5000, why: 'within ms of the grace' },
+  // The wall clock alone: a suspended host, which the monotonic clock does not count.
+  { clock: 'Date' as const, ms: IN_FLIGHT_GRACE_MS + 10_000, why: 'on the wall clock only' },
+])('AW-07b ceiling: a send paused past the fence $why sends nothing', async ({ clock, ms }) => {
+  await freshInbox();
+  const item = await itemFor(w.task, 'decision');
+  const before = w.provider.received.length;
+  const held = pausedAfterAsk();
+  const sending = emailAtOnce(held.database, w.alpha, item, timing());
+  try {
+    await held.reserved;
+    moved(clock, ms);
+    held.resume();
+    expect(await sending).toMatchObject({ ok: false, code: 'EMAIL_FAILED', fault: 'expired' });
+  } finally {
+    held.resume();
+    await sending.catch(() => {});
+    vi.restoreAllMocks();
+  }
+  expect(w.provider.received.length).toBe(before);
+  expect(await attemptsOf(item)).toEqual([
+    { state: 'asked', evidence: null },
+    { state: 'failed', evidence: 'expired' },
+  ]);
+});
