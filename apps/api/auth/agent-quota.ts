@@ -52,10 +52,14 @@ interface Window {
 function currentWindow(windows: Map<string, Window>, key: string, at: number): Window {
   const held = windows.get(key);
   if (held !== undefined && at - held.start < WINDOW_MS) return held;
-  // A new window; stale ones go when the map grows, so it cannot grow without end.
-  if (windows.size > 10_000) {
-    for (const [old, window] of windows) if (at - window.start >= WINDOW_MS) windows.delete(old);
+  // A new window goes to the back, so the map runs oldest first: stale ones
+  // go from the front and the pass stops at the first live one. A flood of
+  // new keys (a made-up business key each) costs each one the same.
+  for (const [old, window] of windows) {
+    if (at - window.start < WINDOW_MS) break;
+    windows.delete(old);
   }
+  windows.delete(key);
   const fresh = { start: at, requests: 0, exports: 0 };
   windows.set(key, fresh);
   return fresh;

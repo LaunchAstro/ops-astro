@@ -285,7 +285,7 @@ interface Admitted {
  * business or not, and the attempt is recorded only in a business that
  * resolved. A key that names no business answers as the prefix's own login
  * resolution answers a stranger, and a credential as one not live at that key's
- * own door (`atUnheldKey`), so a held key and an unheld one cannot be told apart.
+ * own door (`atUnheldKey`), so a held key and an unheld one answer the same bytes.
  */
 async function admit(
   options: ApiOptions,

@@ -133,8 +133,8 @@ const credentialNotLive = (): CommandRefusal =>
 /**
  * A credential at a business key nobody holds. It takes a place at that key's
  * own door and keeps it, as a bearer not live at a business does, so past the
- * door's count it is limited there too: a key that exists cannot be told from
- * one that does not.
+ * door's count it is limited there too: its answers do not tell a key that
+ * exists from one that does not (response time aside: catalogue #784).
  */
 export function atUnheldKey(businessKey: string, quota?: CredentialQuota): CommandRefusal {
   // The caller chose the key, so the door holds its digest, never the key, and
