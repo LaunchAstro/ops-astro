@@ -134,9 +134,11 @@ export async function openResetWindow(tx: TenantQuery, subject: string): Promise
  * Wait, on the database's clock, into its next whole second (C40). GoTrue
  * stamps a sign-in in whole seconds, rounded down, and a settled window
  * refuses only a stamp whose whole second had passed, so a reset that set the
- * password waits here before it settles: every sign-in with the old password
- * is then stamped a whole second before the settle and refused, and one with
- * the new password after the answer is served.
+ * password waits here before it settles: a sign-in stamped up to the
+ * provider's set is then a whole second before the settle and refused, and one
+ * with the new password after the answer is served. A sign-in the provider
+ * checked against the old password before the set but stamped after it is
+ * not covered (#752).
  */
 export async function waitForNextSecond(tx: TenantQuery): Promise<void> {
   await tx.query(`select pg_sleep(1 - extract(epoch from clock_timestamp()) % 1)`);
