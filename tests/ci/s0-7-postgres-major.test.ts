@@ -198,6 +198,8 @@ function ciOnTheCases3() {
     expect(report?.needs).toStrictEqual([runId]);
     expect(report?.permissions).toStrictEqual({ issues: 'write' });
     const script = report?.steps.map((step) => step.run ?? '').join('\n') ?? '';
+    // Only an issue this workflow opened: anyone may open one under that title.
+    expect(script).toMatch(/\bgh issue list\b[^\n]* --author app\/github-actions /u);
     expect(script).toMatch(/\bgh issue comment\b/u);
     expect(script).toMatch(/\bgh issue create\b/u);
     for (const [key, each] of Object.entries(workflow.jobs)) {
