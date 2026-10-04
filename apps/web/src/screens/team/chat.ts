@@ -54,7 +54,7 @@ type Held = Readonly<Record<string, ChatMessagesResult | null>>;
 export interface ChatModel {
   readonly list: Listed;
   readonly held: Held;
-  /** The first list and each of its conversations' messages have answered. */
+  /** The first list and each of its conversations' messages have answered; unavailable is not. */
   readonly settled: boolean;
   readonly run: (name: ChatCommand, body: Readonly<Record<string, unknown>>) => void;
 }
@@ -148,11 +148,10 @@ function useReads(
         .then((answer) => {
           if (!current || asked.get(id) !== generation) return answer;
           const read = 'value' in answer ? answer.value : undefined;
-          const kept = (was: Held): ChatMessagesResult | null => {
-            if (read !== undefined) return Array.isArray(read.messages) ? read : null;
-            return isRefusal(answer) ? null : (was[id] ?? null);
-          };
-          setHeld((was) => ({ ...was, [id]: kept(was) }));
+          // An unavailable read keeps what was held and answers for nothing.
+          if (read === undefined && !isRefusal(answer)) return answer;
+          const kept = read !== undefined && Array.isArray(read.messages) ? read : null;
+          setHeld((was) => ({ ...was, [id]: kept }));
           return answer;
         });
     };
