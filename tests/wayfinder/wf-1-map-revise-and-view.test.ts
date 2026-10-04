@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* eslint-disable max-lines-per-function -- the review's proofs, kept as written on one shared world */
+/* eslint-disable max-lines, max-lines-per-function -- the review's proofs, kept as written on one shared world each */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { wayfinderWorld, must, codeOf, type WayfinderWorld, type Decider } from './world.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
+import { createApi } from '../../apps/api/app.ts';
+import type { SecuritySignal } from '../../apps/api/alerts/detect.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
 
 describe('WF-1 map revise and view, under review proofs', () => {
   let w: WayfinderWorld;
@@ -287,4 +291,134 @@ describe('WF-1 map revise and view, under review proofs', () => {
     expect(codeOf(answer)).toBe('applied');
     expect(JSON.stringify(answer)).not.toContain(nested.id);
   });
+});
+
+describe('WF-1 map reads: parent retype, cancelled tickets and download volume', () => {
+  let w: WayfinderWorld;
+  let owner: Decider;
+  beforeAll(async () => {
+    w = await wayfinderWorld('solp15fix2', 'solp15fix2');
+    owner = await w.decider('owner');
+  }, 180_000);
+  afterAll(async () => await w?.drop());
+
+  it('WF-1 person to person map view cannot read child content written after its parent ceases to be a map', async () => {
+    const map = await w.create(owner, { title: 'map before retype' }, { taskType: 'map' });
+    const child = await w.create(
+      owner,
+      { title: 'previously readable ticket' },
+      { parentId: map.id },
+    );
+    const reader = await w.member('only-parent', ['read'], { kind: 'record', id: map.id });
+    expect(codeOf(await w.read(reader, { read: 'task.read', recordId: child.id }))).toBe('applied');
+    let fired = false;
+    const db: Database = {
+      ...w.db.app,
+      async withBusiness(businessId, run) {
+        return await w.db.app.withBusiness(
+          businessId,
+          async (tx) =>
+            await run({
+              ...tx,
+              async query<Row>(sql: string, parameters: readonly unknown[] = []) {
+                const rows = await tx.query<Row>(sql, parameters);
+                if (!fired && sql.includes('left join public.map_summaries')) {
+                  fired = true;
+                  must(
+                    await w.asOnSecond(owner, {
+                      command: 'task.set_type',
+                      recordId: map.id,
+                      expectedRevision: await w.revisionOf(map.id),
+                      taskType: 'task',
+                    }),
+                    'retype parent away from map',
+                  );
+                  must(
+                    await w.asOnSecond(owner, {
+                      command: 'task.update',
+                      recordId: child.id,
+                      expectedRevision: await w.revisionOf(child.id),
+                      fields: { title: 'PRIVATE-CHILD-AFTER-PARENT-RETYPE' },
+                    }),
+                    'write child after inherited access ended',
+                  );
+                }
+                return rows;
+              },
+            }),
+        );
+      },
+    };
+    const answer = await executeRead(db, w.business, reader.presented, {
+      read: 'map.view',
+      recordId: map.id,
+    });
+    expect(fired).toBe(true);
+    expect(codeOf(await w.read(reader, { read: 'task.read', recordId: child.id }))).toBe(
+      'SCOPE_NOT_GRANTED',
+    );
+    expect(JSON.stringify(answer)).not.toContain('PRIVATE-CHILD-AFTER-PARENT-RETYPE');
+  });
+
+  it('WF-1 the frontier omits a cancelled ticket', async () => {
+    const map = await w.create(owner, { title: 'cancelled frontier' }, { taskType: 'map' });
+    const ticket = await w.create(owner, { title: 'cancelled work' }, { parentId: map.id });
+    expect(await w.read(owner, { read: 'map.frontier', recordId: map.id })).toMatchObject({
+      ok: true,
+      frontier: [{ id: ticket.id }],
+    });
+    const cancelled = await w.db.app.withBusiness(w.business, async (tx) => {
+      const rows = await tx.query<{ id: string }>(
+        `insert into records (business_id, id, record_type_id, data)
+         select $1, gen_random_uuid(), id,
+                '{"key":"cancelled","label":"Cancelled","machine_category":"cancelled","position":6000}'::jsonb
+           from record_types where business_id = $1 and key = 'task_state'
+         returning id`,
+        [w.business],
+      );
+      const state = rows[0];
+      if (state === undefined) throw new Error('cancelled state was not installed');
+      return state.id;
+    });
+    must(
+      await w.as(owner, {
+        command: 'task.set_state',
+        recordId: ticket.id,
+        expectedRevision: await w.revisionOf(ticket.id),
+        stateId: cancelled,
+      }),
+      'move ticket to the installed cancelled state',
+    );
+    const answer = await w.read(owner, { read: 'map.frontier', recordId: map.id });
+    expect(answer).toMatchObject({ ok: true, frontier: [] });
+  });
+
+  it.each(['task.read', 'map.view', 'map.frontier'] as const)(
+    'WF-1 %s contributes to download-volume detection',
+    async (read) => {
+      const map = await w.create(owner, { title: 'downloaded map' }, { taskType: 'map' });
+      const ticket = await w.create(owner, { title: 'downloaded ticket' }, { parentId: map.id });
+      const signals: SecuritySignal[] = [];
+      const api = createApi({
+        database: w.db.app,
+        // oxlint-disable-next-line eslint/require-await -- the reviewer's proof, kept as written
+        verify: async () => owner.presented,
+        // oxlint-disable-next-line eslint/require-await -- the reviewer's proof, kept as written
+        resolveBusiness: async (key) => (key === 'solp15fix2' ? w.business : undefined),
+        executeCommand,
+        executeRead,
+        observe: (signal) => signals.push(signal),
+      });
+      const response = await api.fetch(
+        new Request(`http://api.test${PREFIX.person}solp15fix2${pathOf(read)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ recordId: map.id }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain(ticket.id);
+      expect(signals.some((signal) => signal.kind === 'export' && signal.items > 0)).toBe(true);
+    },
+  );
 });
