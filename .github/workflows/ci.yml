@@ -267,6 +267,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # merge-group.mjs walks a group's first parents down to the base tip.
+          fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -275,16 +278,20 @@ jobs:
       # ORCH91 MAGNETS: each named suite is a file of its own, so a change can
       # drop one by deleting a file. This fails naming each suite the base
       # named, or marked isolation, that the head does not, unless its test
-      # file went too. The event's base reaches the script through env alone;
-      # it validates the id before git sees it, and fetches it, as the checkout
-      # is depth 1. An all-zero or missing base fails.
+      # file went too. On a pull request or a group, merge-group.mjs runs it
+      # once per pull request against that pull request's base; on a push the
+      # base is the push's `before`, reaching the script through env alone. It
+      # branches in the shell, as a step condition could skip a group. The
+      # script validates the id before git sees it; an all-zero base fails.
       - name: No named or isolation suite is dropped
         env:
-          BASE: >-
-            ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha
-            || github.event_name == 'merge_group' && github.event.merge_group.base_sha
-            || github.event_name == 'push' && github.event.before || '' }}
-        run: node scripts/named-suites.ts kept "$BASE"
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            node scripts/named-suites.ts kept "$BEFORE"
+          else
+            node scripts/merge-group.mjs each sh -c 'node scripts/named-suites.ts kept "$BASE_SHA"'
+          fi
       - run: pnpm install --frozen-lockfile
       - run: pnpm run db:cases
 

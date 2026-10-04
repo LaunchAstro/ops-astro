@@ -182,7 +182,7 @@ function baseOf(value: string | undefined, event: string): string {
   return value;
 }
 
-/** Fetches the base when the checkout lacks it: the gate's checkout is depth 1. */
+/** Fetches the base when the checkout lacks it, as a shallow checkout may. */
 function fetchBase(root: string, base: string): void {
   if (hasCommit(root, base)) return;
   const shallow = gitIn(root, ['rev-parse', '--is-shallow-repository']).toString().trim();
