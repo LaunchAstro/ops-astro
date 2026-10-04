@@ -1357,7 +1357,8 @@ with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
 run stops and asks in the same transaction (AW-05, the budget wait in
 [RUNTIME.md](RUNTIME.md)), its lease ends, and every later call on that lease
 is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
-each counting a call from its hold until it ends: the business's own per
+each counting a call from its hold until it ends, and a reconciliation pass's
+provider lookup while its slot lasts (AW-10, [RUNTIME.md](RUNTIME.md)): the business's own per
 operation, and its fair share of the route's, which is the installation's.
 The business's own is a durable limit (`hasRoom`, `core-records/src/tenancy/limit.ts`):
 a count read back from the records under a lock keyed by the business, against
@@ -2798,7 +2799,7 @@ the removal when `enrol` answers `FACTOR_ALREADY_ENROLLED` (`WEB.md`).
 
 | Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                                                      |
 | ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                                                       |
+| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `VERSION_STALE` 409 (a newer enrolment recorded first), `PROVIDER_ANSWER_INVALID` 502               |
 | `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `FACTOR_ALREADY_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
 | `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                                                 |
 
@@ -2820,12 +2821,14 @@ call, beside the record it changes, and carries the sent code's id as its
 too, so it stops counting, and a provider fault on the code leaves it counted. GoTrue served under a path (`/auth/v1`) is called
 under that path. The record step locks the login (a transaction-scoped
 advisory lock, `second-factor-subject:` and its subject's digest), then the
-person's own row (`for no key update`), so two tabs enrolling at once queue: the
-later enrolment replaces the earlier unverified one, and one live factor
-remains. Two businesses completing enrolments for one login at once queue too:
-the later is refused `FACTOR_ALREADY_ENROLLED`, and the factor the provider has
-just verified for it is removed there, best effort, so the login holds one
-verified factor.
+person's own row (`for no key update`), so two tabs enrolling at once queue.
+An enrolment replaces only the unverified factor it started from: one recorded
+after it started (another tab's) stays the factor the first code completes, and
+this one is refused `VERSION_STALE`, its provider factor reported as an
+`account.factor_orphaned` event. One live factor remains. Two businesses
+completing enrolments for one login at once queue too: the later is refused
+`FACTOR_ALREADY_ENROLLED`, and the factor the provider has just verified for it
+is removed there, best effort, so the login holds one verified factor.
 
 `PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.

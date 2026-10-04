@@ -33,6 +33,8 @@
     "tests/broker/aw-10-isolation.test.ts",
     "tests/broker/aw-10-lookup-room-isolation.test.ts",
     "tests/broker/aw-10-lookup-room.test.ts",
+    "tests/broker/aw-10-lookup-slot-isolation.test.ts",
+    "tests/broker/aw-10-lookup-slot.test.ts",
     "tests/broker/aw-10-operation-id.test.ts",
     "tests/broker/aw-10-outcomes.test.ts",
     "tests/broker/aw-10-positive-proof.test.ts",
@@ -56,6 +58,7 @@
     "tests/broker/review-3a-7-stale-budget-answer.test.ts",
     "tests/broker/review-3a-9-echo-canary.test.ts",
     "tests/broker/s3-bound-source.test.ts",
+    "tests/broker/spend-closes-once.test.ts",
     "tests/broker/spend-give-back-late.test.ts",
     "tests/broker/spend-give-back.test.ts"
   ],
