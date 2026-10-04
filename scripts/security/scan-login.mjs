@@ -9,7 +9,8 @@
 // local), SCAN_LOGIN_FILE and SCAN_TOKEN_FILE (written owner-only). `make` claims
 // SCAN_LOGIN_FILE, naming the sign-in's address and the id it asks the provider
 // to give it, before it asks: a second `make` finds it claimed, and `remove`
-// finds the sign-in even when `make` stopped part way or its reply was lost.
+// finds the sign-in even when `make` stopped part way or its reply was lost. Both
+// hold the scan-login lock throughout, so a `remove` waits out a pending `make`.
 // Exit 0 when done, 1 when refused or stopped. Nothing
 // printed carries an address, a key, a password or the token.
 
@@ -141,7 +142,22 @@ async function member(tx, subject) {
   return personId;
 }
 
-async function make() {
+/** The scan-login lock, in a scan business transaction `run` gets with a second connection. */
+async function scanLoginLocked(run) {
+  const scan = businessId(await businesses());
+  const db = connect(env.DATABASE_URL, { source: 'scan-login', max: 2 });
+  try {
+    await db.withBusiness(scan, async (tx) => {
+      await tx.query(`select pg_advisory_xact_lock(hashtextextended('scan-login', 0))`);
+      await run(tx, db);
+    });
+  } finally {
+    await db.close();
+  }
+}
+
+// The membership commits with the lock, once the token is kept.
+async function make(tx) {
   const email = scanEmail(randomBytes(6).toString('hex'));
   const userId = randomUUID();
   try {
@@ -159,14 +175,7 @@ async function make() {
   });
   if (made.status >= 300 || made.body?.id !== userId)
     stop(`the admin API did not make the sign-in (${made.status})`);
-
-  const business = businessId(await businesses());
-  const db = connect(env.DATABASE_URL, { source: 'scan-login' });
-  try {
-    await db.withBusiness(business, (tx) => member(tx, userId));
-  } finally {
-    await db.close();
-  }
+  await member(tx, userId);
 
   const publishable = env.SUPABASE_PUBLISHABLE_KEY;
   const signedIn = await provider(
@@ -192,52 +201,44 @@ async function make() {
 // mapping of this sign-in already being written commits first and the check
 // finds it; one begun after is refused. The businesses are read under both locks,
 // so one made and mapped to the sign-in while removal waited is checked too.
-async function endRows(record, providerEmail) {
-  const scan = businessId(await businesses());
-  // Two connections: the scan business's transaction holds its locks while the others are read.
-  const db = connect(env.DATABASE_URL, { source: 'scan-login', max: 2 });
-  try {
-    await db.withBusiness(scan, async (tx) => {
-      await lockAccess(tx);
-      await tx.query(`select pg_advisory_xact_lock(hashtextextended('supabase:' || $1, 0))`, [
-        record.userId,
-      ]);
-      const all = await businesses();
-      for (const { id } of all.filter((row) => row.id !== scan)) {
-        // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own barrier
-        const elsewhere = await db.withBusiness(id, (other) =>
-          other.query(
-            `select from public.logins l join public.person_logins pl on pl.login_id = l.id
-              where l.provider = 'supabase' and l.subject = $1 and pl.active limit 1`,
-            [record.userId],
-          ),
-        );
-        if (elsewhere.length > 0)
-          stop("the sign-in is a person's in another business too; nothing was removed");
-      }
-      const mapped = await tx.query(
-        `select pl.person_id, p.display_name from public.logins l
-           join public.person_logins pl on pl.login_id = l.id
-           join public.people p on p.id = pl.person_id
-          where l.provider = 'supabase' and l.subject = $1`,
+async function endRows(tx, db, record, providerEmail) {
+  const scan = tx.businessId;
+  await lockAccess(tx);
+  await tx.query(`select pg_advisory_xact_lock(hashtextextended('supabase:' || $1, 0))`, [
+    record.userId,
+  ]);
+  const all = await businesses();
+  for (const { id } of all.filter((row) => row.id !== scan)) {
+    // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own barrier
+    const elsewhere = await db.withBusiness(id, (other) =>
+      other.query(
+        `select from public.logins l join public.person_logins pl on pl.login_id = l.id
+          where l.provider = 'supabase' and l.subject = $1 and pl.active limit 1`,
         [record.userId],
-      );
-      const why = [undefined, ...mapped.map((row) => row.display_name)]
-        .map((displayName) => removalRefusal({ email: record.email, providerEmail, displayName }))
-        .find((each) => each !== undefined);
-      if (why !== undefined) stop(why);
-      for (const { person_id: personId } of mapped) {
-        // eslint-disable-next-line no-await-in-loop -- one person, in one transaction
-        await endPerson(tx, personId, record.userId);
-      }
-      if (providerEmail !== undefined) {
-        const gone = await provider(`/admin/users/${record.userId}`, 'DELETE');
-        if (gone.status >= 300 && gone.status !== 404)
-          stop(`the admin API did not delete the sign-in (${gone.status})`);
-      }
-    });
-  } finally {
-    await db.close();
+      ),
+    );
+    if (elsewhere.length > 0)
+      stop("the sign-in is a person's in another business too; nothing was removed");
+  }
+  const mapped = await tx.query(
+    `select pl.person_id, p.display_name from public.logins l
+       join public.person_logins pl on pl.login_id = l.id
+       join public.people p on p.id = pl.person_id
+      where l.provider = 'supabase' and l.subject = $1`,
+    [record.userId],
+  );
+  const why = [undefined, ...mapped.map((row) => row.display_name)]
+    .map((displayName) => removalRefusal({ email: record.email, providerEmail, displayName }))
+    .find((each) => each !== undefined);
+  if (why !== undefined) stop(why);
+  for (const { person_id: personId } of mapped) {
+    // eslint-disable-next-line no-await-in-loop -- one person, in one transaction
+    await endPerson(tx, personId, record.userId);
+  }
+  if (providerEmail !== undefined) {
+    const gone = await provider(`/admin/users/${record.userId}`, 'DELETE');
+    if (gone.status >= 300 && gone.status !== 404)
+      stop(`the admin API did not delete the sign-in (${gone.status})`);
   }
 }
 
@@ -267,26 +268,27 @@ async function endPerson(tx, personId, subject) {
 }
 
 async function remove() {
-  if (!existsSync(env.SCAN_LOGIN_FILE)) {
-    console.log('scan-login: no scan login on record; nothing to remove');
-    return;
-  }
-  const record = loginRecord(readFileSync(env.SCAN_LOGIN_FILE, 'utf8'));
-  const found = await provider(`/admin/users/${record.userId}`, 'GET');
-  if (found.status !== 200 && found.status !== 404)
-    stop(`the admin API did not read the sign-in (${found.status})`);
-  const providerEmail = found.status === 404 ? undefined : found.body?.email;
-  if (found.status === 200 && typeof providerEmail !== 'string')
-    stop('the admin API answered for the sign-in with no address; nothing was removed');
-
-  await endRows(record, providerEmail);
-  rmSync(env.SCAN_TOKEN_FILE, { force: true });
-  rmSync(env.SCAN_LOGIN_FILE, { force: true });
-  console.log(`scan-login: removed ${record.email}`);
+  await scanLoginLocked(async (tx, db) => {
+    if (!existsSync(env.SCAN_LOGIN_FILE)) {
+      console.log('scan-login: no scan login on record; nothing to remove');
+      return;
+    }
+    const record = loginRecord(readFileSync(env.SCAN_LOGIN_FILE, 'utf8'));
+    const found = await provider(`/admin/users/${record.userId}`, 'GET');
+    if (found.status !== 200 && found.status !== 404)
+      stop(`the admin API did not read the sign-in (${found.status})`);
+    const providerEmail = found.status === 404 ? undefined : found.body?.email;
+    if (found.status === 200 && typeof providerEmail !== 'string')
+      stop('the admin API answered for the sign-in with no address; nothing was removed');
+    await endRows(tx, db, record, providerEmail);
+    rmSync(env.SCAN_TOKEN_FILE, { force: true });
+    rmSync(env.SCAN_LOGIN_FILE, { force: true });
+    console.log(`scan-login: removed ${record.email}`);
+  });
 }
 
 try {
-  if (args[0] === 'make') await make();
+  if (args[0] === 'make') await scanLoginLocked(make);
   else await remove();
 } catch (error) {
   // A driver's message can carry an address, so anything not ours is named by kind and code.
