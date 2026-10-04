@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function, require-await, unicorn/no-useless-undefined -- Sol's proof, kept as written */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
@@ -20,7 +21,7 @@ function latch() {
 
 const b64 = (text: string) => Buffer.from(text).toString('base64url');
 
-describe('Sol PR 373 round 1 proofs', () => {
+describe('C31 secret.set guards', () => {
   const pair = generateSealingPair('sol/373@1');
   let controls: Controls;
   let pool: Database;
@@ -47,7 +48,7 @@ describe('Sol PR 373 round 1 proofs', () => {
     await controls?.drop();
   });
 
-  it('Sol proof, criterion 5: an insert race must compare expectedRevision against the row the upsert replaces', async () => {
+  it('an insert race must compare expectedRevision against the row the upsert replaces', async () => {
     const inserted = latch();
     const commit = latch();
     const entered = latch();
@@ -130,7 +131,7 @@ describe('Sol PR 373 round 1 proofs', () => {
     expect(answer.body['code']).toBe('VERSION_STALE');
   });
 
-  it('Sol proof, criterion 3: a system field named value must not put secret.set plaintext in audit_events', async () => {
+  it('a system field named value must not put secret.set plaintext in audit_events', async () => {
     const fieldId = randomUUID();
     const value = `sol-plaintext-${randomUUID()}`;
     const operationId = randomUUID();
@@ -172,7 +173,7 @@ describe('Sol PR 373 round 1 proofs', () => {
     }
   });
 
-  it('Sol proof, criterion 3: whitespace around a ChatGPT encrypted session must not allow custody to store it', async () => {
+  it('whitespace around a ChatGPT encrypted session must not allow custody to store it', async () => {
     const session = [
       b64(JSON.stringify({ alg: 'dir', enc: 'A256GCM' })),
       '',
@@ -208,7 +209,7 @@ describe('Sol PR 373 round 1 proofs', () => {
     expect(padded.body['code']).toBe('FIELD_VALUE_INVALID');
   });
 
-  it('Sol proof, criterion 4: a client credential must wait on the first-client gate in real mode', async () => {
+  it('a client credential must wait on the first-client gate in real mode', async () => {
     const { db, business } = controls.fixture;
     const client = await db.app.withBusiness(
       business,

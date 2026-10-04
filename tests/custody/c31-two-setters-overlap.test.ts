@@ -34,7 +34,7 @@ vi.mock('../../packages/core-records/src/tenancy/database.ts', async (original) 
 // Execute the PR's exact named tests, including its two-setters race test.
 import './c31-credentials.test.ts';
 
-it('Sol proof, criterion 7: the named two-setters test must overlap real database transactions', () => {
+it('the named two-setters test must overlap real database transactions', () => {
   expect(
     observed.maximum,
     'The named race test used only one active transaction, so it cannot expose an insert race',
