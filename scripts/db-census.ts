@@ -80,7 +80,11 @@ function listed(files: readonly string[], part = ''): Map<string, number> {
         maxBuffer: 256 * 1024 * 1024,
       },
     );
-    if (run.status !== 0 || !existsSync(out)) {
+    // Collection imports each file but runs no hook, so a teardown can object to
+    // what a file's afterAll would have removed (the temp guard); the list is
+    // still whole. A file vitest could not collect is absent from it, and the
+    // census names an item with no test.
+    if (!existsSync(out)) {
       const said = `${run.error?.message ?? ''}${run.stdout}${run.stderr}`.slice(-4000);
       throw new Error(`vitest list failed (${String(run.status ?? run.signal)}): ${said}`);
     }
