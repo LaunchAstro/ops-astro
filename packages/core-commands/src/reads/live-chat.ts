@@ -39,7 +39,7 @@ import type { AdmissionAt } from './execute.ts';
 async function heard(
   tx: TenantQuery,
   session: Session,
-  conversationIds: readonly string[],
+  conversationIds: readonly string[] | 'any',
 ): Promise<ReadonlySet<string>> {
   if (askedFor(subjectsOf(session), { collection: 'chat', action: 'comment' }).length === 0) {
     return new Set();
@@ -68,16 +68,17 @@ export async function admitConversations(
 }
 
 /**
- * Whether `personId` is a current member of any of these conversations now,
- * asked on the board stream before it says one moved; false unless the bearer
- * still resolves to that same person. Records nothing.
+ * Whether `personId` is a current member of any of these conversations (or,
+ * given `any`, of any conversation) now, asked on the board stream before it
+ * says one moved; false unless the bearer still resolves to that same person.
+ * Records nothing.
  */
 export async function hearsConversation(
   database: Database,
   businessId: BusinessId,
   presented: VerifiedSubject,
   personId: string,
-  conversationIds: readonly string[],
+  conversationIds: readonly string[] | 'any',
 ): Promise<boolean> {
   const outcome = await withStanding(database, businessId, presented, async (tx, session) =>
     session.personId === personId && (await heard(tx, session, conversationIds)).size > 0

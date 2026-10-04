@@ -24,7 +24,9 @@
 // whether the bound person is a current member of it, then the join, then
 // membership again, and says `conversation` (naming none) to a member alone,
 // so the Team tab's unread chip re-reads through `chat.conversations`; anyone
-// else, one removed while the join was asked included, is told nothing.
+// else, one removed while the join was asked included, is told nothing. A
+// reconnected listener (`resync`) may have lost a conversation's signal, so
+// it asks the same of any conversation and says `conversation` once.
 //
 // Stopping the stream (the tab leaving, or the topics closing) ends its
 // recheck, and the stream lets go only once no question it asked is in
@@ -40,8 +42,11 @@ export interface BoardQuestions {
   readonly reach: (personId: string) => Promise<string | undefined>;
   /** A digest of what `inbox.read` shows `personId` now; undefined when refused. */
   readonly shown: (personId: string) => Promise<string | undefined>;
-  /** Whether `personId` is a current member of any of these conversations now; absent, never. */
-  readonly hears?: (personId: string, conversationIds: readonly string[]) => Promise<boolean>;
+  /** Whether `personId` is a current member of any of these (`any`: of any) now; absent, never. */
+  readonly hears?: (
+    personId: string,
+    conversationIds: readonly string[] | 'any',
+  ) => Promise<boolean>;
 }
 
 /** The stream, or the board topic's share of C4's one stream. */
@@ -115,20 +120,21 @@ function batch(
   bound: Bound,
   bind: (personId: string) => void,
 ): (signal: BoardSignal | 'check') => void {
-  const pending = { heard: false, check: false, chats: new Set<string>() };
+  const pending = { heard: false, check: false, any: false, chats: new Set<string>() };
   const drain = async (): Promise<void> => {
     while (!stream.aborted && (pending.heard || pending.check || pending.chats.size > 0)) {
       const { heard, check } = pending;
-      const chats = [...pending.chats];
-      pending.heard = pending.check = false;
+      const chats = pending.any ? 'any' : [...pending.chats];
+      pending.heard = pending.check = pending.any = false;
       pending.chats.clear();
       // eslint-disable-next-line no-await-in-loop -- one run before the next.
       const joined = heard || check ? await rule(stream, ask, bound, bind, check) : 'same';
       if (joined === 'closed') return;
       // A rebind the recheck found is told by that recheck, from the new person's reads.
       if (joined === 'rebound' && check) pending.check = true;
+      const toTell = chats === 'any' || chats.length > 0;
       // eslint-disable-next-line no-await-in-loop -- one run before the next.
-      if (chats.length > 0 && (await told(stream, ask, bound, bind, chats)) === 'closed') return;
+      if (toTell && (await told(stream, ask, bound, bind, chats)) === 'closed') return;
     }
   };
   let queued = false;
@@ -145,7 +151,11 @@ function batch(
   return (signal) => {
     if (signal === 'check') pending.check = true;
     else if (signal.kind === 'conversation') pending.chats.add(signal.conversationId);
-    else pending.heard = true;
+    else {
+      pending.heard = true;
+      // A reconnect may have lost a conversation's signal: ask of every one.
+      pending.any ||= signal.kind === 'resync';
+    }
     wake();
   };
 }
@@ -191,7 +201,7 @@ async function told(
   ask: BoardQuestions,
   bound: Bound,
   bind: (personId: string) => void,
-  chats: readonly string[],
+  chats: readonly string[] | 'any',
 ): Promise<'closed' | 'rebound' | 'same'> {
   const hears = async (): Promise<boolean> => (await ask.hears?.(bound.personId, chats)) ?? false;
   const member = await hears();

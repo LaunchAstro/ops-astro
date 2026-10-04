@@ -2496,8 +2496,10 @@ or leaving, never by a read marker. The board stream hears it too and asks
 `hearsConversation` whether its person is a current member, before the join
 and again after it, so one removed meanwhile is told nothing; to a member alone
 it says `conversation`, labelled `board` and naming no conversation, so the Team
-tab's unread chip re-reads `chat.conversations`. _Changes since_ lists tasks
-alone.
+tab's unread chip re-reads `chat.conversations`. After the listener reconnects,
+when a conversation's signal may have been lost, it asks the same of any
+conversation and says `conversation` once to a current member of one. _Changes
+since_ lists tasks alone.
 
 `task.read` carries the task's comments. An internal reader, meaning a
 membership role of `owner`, `admin` or `member`, is given every comment in full.

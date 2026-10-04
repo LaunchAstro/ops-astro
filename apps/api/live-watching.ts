@@ -137,7 +137,7 @@ export function hearing(
   options: Door,
   context: Context,
   businessId: string,
-): (personId: string, conversationIds: readonly string[]) => Promise<boolean> {
+): (personId: string, conversationIds: readonly string[] | 'any') => Promise<boolean> {
   return async (personId, conversationIds) => {
     const presented = await options.verify(context.req);
     if (typeof presented !== 'object') return false;

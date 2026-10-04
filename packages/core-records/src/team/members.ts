@@ -15,15 +15,19 @@ import type { Mentioned } from '../inbox/mentions.ts';
  * Which of these live conversations `personId` is a current member of (joined
  * and not left) who may chat now (`chatsNow`), both asked in one statement so a
  * revocation committed before it admits nothing. Another person's, another
- * business's and a fabricated id are all simply not in the answer.
+ * business's and a fabricated id are all simply not in the answer. `any` asks
+ * every conversation they are in.
  */
 export async function currentConversations(
   tx: TenantQuery,
-  conversationIds: readonly string[],
+  conversationIds: readonly string[] | 'any',
   personId: string,
 ): Promise<ReadonlySet<string>> {
-  const ids = conversationIds.filter((id) => isUuid(id)).map((id) => id.toLowerCase());
-  if (ids.length === 0) return new Set();
+  const ids =
+    conversationIds === 'any'
+      ? null
+      : conversationIds.filter((id) => isUuid(id)).map((id) => id.toLowerCase());
+  if (ids?.length === 0) return new Set();
   const rows = await tx.query<{ readonly id: string }>(
     `select m.conversation_id::text as id
        from public.team_conversation_members m
@@ -31,7 +35,8 @@ export async function currentConversations(
         and r.deleted_at is null
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
         and t.key = 'team_conversation'
-      where m.business_id = $1 and m.conversation_id = any($2::uuid[]) and m.person_id = $3
+      where m.business_id = $1 and ($2::uuid[] is null or m.conversation_id = any($2::uuid[]))
+        and m.person_id = $3
         and m.left_at is null and ${chatsNow('m.person_id')}`,
     [tx.businessId, ids, personId],
   );
