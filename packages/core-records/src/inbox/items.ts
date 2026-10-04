@@ -42,6 +42,8 @@ export interface RaiseInboxItem {
   readonly subjectRecordId: string;
   readonly reason: InboxReason;
   readonly fact: { readonly kind: InboxFactKind; readonly id: string };
+  /** When it was raised, as timestamptz text; absent, the transaction's start. */
+  readonly raisedAt?: string | undefined;
 }
 
 export interface InboxItemAxes {
@@ -102,12 +104,13 @@ export async function raiseInboxItem(tx: TenantQuery, item: RaiseInboxItem): Pro
   ];
   const inserted = await tx.query<{ readonly id: string }>(
     `insert into public.inbox_items
-       (business_id, id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id, owed)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7)
+       (business_id, id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id, owed,
+        raised_at)
+     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7, coalesce($8::timestamptz, now()))
      on conflict (business_id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id)
        where work_state = 'open' do nothing
      returning id`,
-    [...values, owes(item.reason)],
+    [...values, owes(item.reason), item.raisedAt ?? null],
   );
   const id =
     inserted[0]?.id ??

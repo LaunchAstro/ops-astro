@@ -107,7 +107,14 @@ export async function writeMessage(
     source: context.entryPoint,
   });
   // The inbox item is about the conversation: its members alone are shown it.
-  const about = { taskId: conversationId, commentId, authorActorId, audience };
+  // It is raised when the message is posted, under the lock, so a member who
+  // reads the message (joined by then) is shown its mention too.
+  const posted = await tx.query<{ readonly at: string }>(
+    'select ts_1::text as at from public.records where business_id = $1 and id = $2',
+    [tx.businessId, commentId],
+  );
+  const postedAt = posted[0]?.at;
+  const about = { taskId: conversationId, commentId, authorActorId, audience, postedAt };
   await raiseMentions(tx, about, mentioned);
   await moveReadMarker(tx, conversationId, context.session.personId, 'now');
   return applied(conversationId, null, { conversationId, commentId });
