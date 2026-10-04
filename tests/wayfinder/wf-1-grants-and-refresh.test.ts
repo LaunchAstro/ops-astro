@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* eslint-disable max-lines, max-lines-per-function -- the review's proofs, kept as written on one shared world */
-// Review proofs for PR #355 at 3fac44c (Sol round 1, R/sol/PRV-oa-355-R1.md): one case per finding.
+// Review proofs for PR #355 at 3fac44c (Sol round 1, R/sol/PRV-oa-355-R1.md) and c653fda (round 2,
+// R/sol/P14-FIX1.md): one case per finding.
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -465,5 +466,80 @@ it('WF-1 person to person map grant cannot read content written after a ticket m
   );
   expect(JSON.stringify(answer)).not.toContain(
     'private content written only after moving to map B',
+  );
+});
+
+// Sol round 2 proofs for PR #355 at c653fda (R/sol/P14-FIX1.md), assertions and interleavings as written.
+it('WF-1 a client inbox cannot disclose map content written after its access query', async () => {
+  await w.grant(owner, 'assign');
+  const plain = await w.create(owner, { title: 'shareable assignment' });
+  const client = await w.member('inbox-client', ['read'], { kind: 'record', id: plain.id });
+  await w.db.app.withBusiness(w.business, async (tx) => {
+    await tx.query(
+      `update memberships set role_key = 'client' where business_id = $1 and person_id = $2`,
+      [w.business, client.personId],
+    );
+  });
+  must(
+    await w.as(owner, {
+      command: 'task.assign',
+      recordId: plain.id,
+      expectedRevision: await w.revisionOf(plain.id),
+      fields: { assignee: client.personId },
+    }),
+    'assign',
+  );
+  expect(JSON.stringify(await w.read(client, { read: 'inbox.read' }))).toContain(plain.id);
+  let fired = false;
+  const db = intercept(async (sql) => {
+    if (fired || !sql.includes('from shown s')) return;
+    fired = true;
+    must(
+      await w.asOnSecond(owner, {
+        command: 'task.set_type',
+        recordId: plain.id,
+        expectedRevision: await w.revisionOf(plain.id),
+        taskType: 'map',
+      }),
+      'retype',
+    );
+    must(
+      await w.asOnSecond(owner, {
+        command: 'task.update',
+        recordId: plain.id,
+        expectedRevision: await w.revisionOf(plain.id),
+        fields: { title: 'PRIVATE-MAP-CONTENT-AFTER-RETYPE' },
+      }),
+      'private map content',
+    );
+  });
+  const answer = await executeRead(db, w.business, client.presented, { read: 'inbox.read' });
+  expect(fired).toBe(true);
+  expect(codeOf(await w.read(client, { read: 'task.read', recordId: plain.id }))).toBe('NOT_FOUND');
+  expect(JSON.stringify(answer)).not.toContain('PRIVATE-MAP-CONTENT-AFTER-RETYPE');
+});
+
+it('WF-1 a map read grant covers its ticket assignment in the recipient inbox', async () => {
+  await w.grant(owner, 'assign');
+  const map = await w.create(owner, { title: 'assignment map' }, { taskType: 'map' });
+  const ticket = await w.create(owner, { title: 'MAP-GRANT-ASSIGNMENT' }, { parentId: map.id });
+  const reader = await w.member('map-assignee', ['read'], { kind: 'record', id: map.id });
+  must(
+    await w.as(owner, {
+      command: 'task.assign',
+      recordId: ticket.id,
+      expectedRevision: await w.revisionOf(ticket.id),
+      fields: { assignee: reader.personId },
+    }),
+    'assign map ticket',
+  );
+  expect(codeOf(await w.read(reader, { read: 'task.read', recordId: ticket.id }))).toBe('applied');
+  const items = await w.db.admin.execute<{ n: string }>(
+    `select count(*)::text as n from inbox_items where business_id = $1 and recipient_person_id = $2 and subject_record_id = $3 and reason = 'assignment' and work_state = 'open'`,
+    [w.business, reader.personId, ticket.id],
+  );
+  expect(items[0]?.n).toBe('1');
+  expect(JSON.stringify(await w.read(reader, { read: 'inbox.read' }))).toContain(
+    'MAP-GRANT-ASSIGNMENT',
   );
 });
