@@ -556,7 +556,7 @@ jobs:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
       # So is the proof that an HTTPS redirect cannot carry the seed's key to plaintext HTTP.
-      - run: node --test tests/review/sol-d1-seed-redirect.test.mjs
+      - run: node --test tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance

@@ -16,7 +16,7 @@ const listen = async (server) => {
 };
 const close = (server) => new Promise((resolve) => server.close(resolve));
 
-test('Sol proof, criterion 3: a seed HTTPS redirect cannot send the service key to remote plaintext HTTP', async () => {
+test('a seed HTTPS redirect cannot send the service key to remote plaintext HTTP', async () => {
   const db = await createFreshDatabase({ part: 'sol_d1_redirect' });
   const folder = mkdtempSync(join(tmpdir(), 'sol-d1-redirect-'));
   const keyFile = join(folder, 'key.pem'), certFile = join(folder, 'cert.pem');
