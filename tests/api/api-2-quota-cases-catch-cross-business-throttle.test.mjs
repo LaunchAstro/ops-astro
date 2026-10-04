@@ -60,14 +60,21 @@ needsServer('Sol mutant witness: Alpha exports incorrectly refuse Bravo', async 
   expect(answer.code, 'the injected global counter blocks a separate business').toBe('AGENT_QUOTA_EXCEEDED');
 });
 `;
-  const { cases } = runSuite('business-mutant', prelude, suffix,
-    'API-2 quota|Sol mutant witness');
+  const { cases } = runSuite('business-mutant', prelude, suffix, 'API-2 quota|Sol mutant witness');
   const witnesses = cases.filter((one) => one.fullName.startsWith('Sol mutant witness'));
   assert.equal(witnesses.length, 2);
-  assert.ok(witnesses.every((one) => one.status === 'passed'),
-    'Both API witnesses must establish the actual cross-business fault');
-  const named = cases.filter((one) => /^API-2 quota (in flight|on export) per business/u.test(one.fullName) && ['passed', 'failed'].includes(one.status));
+  assert.ok(
+    witnesses.every((one) => one.status === 'passed'),
+    'Both API witnesses must establish the actual cross-business fault',
+  );
+  const named = cases.filter(
+    (one) =>
+      /^API-2 quota (in flight|on export) per business/u.test(one.fullName) &&
+      ['passed', 'failed'].includes(one.status),
+  );
   assert.equal(named.length, 2);
-  assert.ok(named.every((one) => one.status === 'failed'),
-    'A named per-business case passed even though Alpha throttled Bravo; add a named business to business admission control to each case');
+  assert.ok(
+    named.every((one) => one.status === 'failed'),
+    'A named per-business case passed even though Alpha throttled Bravo; add a named business to business admission control to each case',
+  );
 });

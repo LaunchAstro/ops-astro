@@ -21,6 +21,9 @@ vi.mock('./api-2-agent-credential-use-world.ts', async (original) => {
   const { child, cases } = runSuite('slow-admission', prelude, '', 'API-2 quota in flight per');
   const selected = cases.filter((one) => ['passed', 'failed'].includes(one.status));
   assert.equal(selected.length, 3, 'All three in-flight cases must run');
-  assert.equal(child.status, 0,
-    'A 900 ms setup delay lets the probe read before the held comment enters its slot; the healthy limiter is reported broken');
+  assert.equal(
+    child.status,
+    0,
+    'A 900 ms setup delay lets the probe read before the held comment enters its slot; the healthy limiter is reported broken',
+  );
 });

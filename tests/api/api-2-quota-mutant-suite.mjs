@@ -10,13 +10,27 @@ export function runSuite(label, prelude, suffix, pattern) {
   assert.ok(process.env.DATABASE_URL, 'Run this proof through solm5.sh with Postgres');
   const suite = fileURLToPath(new URL(`api-2-quota-mutant-${label}.test.ts`, import.meta.url));
   const report = `${suite}.json`;
-  const source = readFileSync(new URL('./api-2-agent-credential-quota.test.ts', import.meta.url), 'utf8');
+  const source = readFileSync(
+    new URL('./api-2-agent-credential-quota.test.ts', import.meta.url),
+    'utf8',
+  );
   try {
     writeFileSync(suite, `${prelude}\n${source}\n${suffix}`);
-    const child = spawnSync('corepack', [
-      'pnpm', 'exec', 'vitest', 'run', suite,
-      '--testNamePattern', pattern, '--reporter=json', `--outputFile=${report}`,
-    ], { encoding: 'utf8', timeout: 120_000, maxBuffer: 4_000_000 });
+    const child = spawnSync(
+      'corepack',
+      [
+        'pnpm',
+        'exec',
+        'vitest',
+        'run',
+        suite,
+        '--testNamePattern',
+        pattern,
+        '--reporter=json',
+        `--outputFile=${report}`,
+      ],
+      { encoding: 'utf8', timeout: 120_000, maxBuffer: 4_000_000 },
+    );
     assert.ifError(child.error);
     const result = JSON.parse(readFileSync(report, 'utf8'));
     const cases = result.testResults.flatMap((file) => file.assertionResults);
