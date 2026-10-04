@@ -7,7 +7,7 @@ import { settleFactorResets } from '../../packages/core-commands/src/index.ts';
 import { retryFactorResets } from '../../apps/endings/pass.ts';
 import { lockAccess, type Database } from '../../packages/core-records/src/index.ts';
 import { serverUrl } from '../acceptance/world.ts';
-import { enrol, grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
+import { enrol, grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import { harness, nowSeconds, useEndAccessWorld } from './c58-end-access-world.ts';
 import {
   factorFake,
@@ -167,26 +167,18 @@ async function sessionRevocationDeclared(): Promise<void> {
 }
 
 /**
- * The same race as `revokedBeforeLockRefused`, by the clock: a grant that
- * lapses while the reset waits for the access lock, with nobody revoking it.
- * The envelope admits it at the transaction's start; under the lock it has
- * expired, so the reset refuses and writes nothing.
+ * A reset by `caller` of `target`, paused at its access lock, after the
+ * envelope has admitted the caller. `meanwhile` runs on the owner's
+ * connection while it waits; the answer is the reset's.
  */
-async function expiredBeforeLockRefused(): Promise<void> {
+async function resetAcrossLock(
+  caller: Member,
+  target: Member,
+  meanwhile: () => Promise<void>,
+): Promise<string> {
   const { db, alpha } = harness.world;
-  const caller = await enrol(db.app, alpha, 'reset-lapsing-caller');
-  const target = await enrol(db.app, alpha, 'reset-lapsing-target');
-  await withFactor(target);
-  const grantId = await db.app.withBusiness(
-    alpha,
-    async (tx) => await grantTo(tx, caller, 'manage', WHOLE_BUSINESS, false, 'settings'),
-  );
-  await db.admin.execute(
-    "update public.grants set expires_at = clock_timestamp() + interval '1 second' where id = $1",
-    [grantId],
-  );
-  const before = await resetState(target);
   const reached = latch();
+  const resume = latch();
   const paused: Database = {
     log: db.app.log,
     close: async () => {},
@@ -199,9 +191,7 @@ async function expiredBeforeLockRefused(): Promise<void> {
             query: async (sql, parameters = []) => {
               if (sql.includes('pg_advisory_xact_lock') && parameters[0] === `access:${alpha}`) {
                 reached.open();
-                await new Promise<void>((resolve) => {
-                  setTimeout(resolve, 2000);
-                });
+                await resume.promise;
               }
               return await tx.query(sql, parameters);
             },
@@ -214,8 +204,63 @@ async function expiredBeforeLockRefused(): Promise<void> {
     holderId: target.personId,
   });
   await reached.promise;
+  try {
+    await meanwhile();
+  } finally {
+    resume.open();
+  }
   const answer = await pending;
-  expect(isCommandRefusal(answer) ? answer.code : 'ok').toBe('SCOPE_NOT_GRANTED');
+  return isCommandRefusal(answer) ? answer.code : 'ok';
+}
+
+/** The grant lapses now: after the waiting transaction began, before its lock. */
+const lapse = async (grantId: string): Promise<void> => {
+  await harness.world.db.admin.execute(
+    'update public.grants set expires_at = clock_timestamp() where id = $1',
+    [grantId],
+  );
+};
+
+/**
+ * The same race as `revokedBeforeLockRefused`, by the clock: the caller's
+ * settings grant lapses while the reset waits for the access lock, with
+ * nobody revoking it, so the reset refuses and writes nothing.
+ */
+async function expiredBeforeLockRefused(): Promise<void> {
+  const { db, alpha } = harness.world;
+  const caller = await enrol(db.app, alpha, 'reset-lapsing-caller');
+  const target = await enrol(db.app, alpha, 'reset-lapsing-target');
+  await withFactor(target);
+  const grantId = await db.app.withBusiness(
+    alpha,
+    async (tx) => await grantTo(tx, caller, 'manage', WHOLE_BUSINESS, false, 'settings'),
+  );
+  const before = await resetState(target);
+  expect(await resetAcrossLock(caller, target, async () => await lapse(grantId))).toBe(
+    'SCOPE_NOT_GRANTED',
+  );
+  expect(await resetState(target)).toEqual(before);
+}
+
+/**
+ * The rank (ORCH66-FACTORM2) on the same clock: the target holds a
+ * business-wide key the caller's own copy of lapses during the wait, so under
+ * the lock the caller no longer holds every key the target holds.
+ */
+async function rankLapsedBeforeLockRefused(): Promise<void> {
+  const { db, alpha } = harness.world;
+  const caller = await enrol(db.app, alpha, 'reset-ranking-caller');
+  const target = await enrol(db.app, alpha, 'reset-ranking-target');
+  await withFactor(target);
+  const callerRead = await db.app.withBusiness(alpha, async (tx) => {
+    await grantTo(tx, caller, 'manage', WHOLE_BUSINESS, false, 'settings');
+    await grantTo(tx, target, 'read', WHOLE_BUSINESS);
+    return await grantTo(tx, caller, 'read', WHOLE_BUSINESS);
+  });
+  const before = await resetState(target);
+  expect(await resetAcrossLock(caller, target, async () => await lapse(callerRead))).toBe(
+    'FACTOR_RESET_REFUSED',
+  );
   expect(await resetState(target)).toEqual(before);
 }
 
@@ -241,6 +286,10 @@ describe.skipIf(serverUrl === undefined)(
     it(
       'a settings grant that expires while the reset waits for its access lock prevents the write',
       expiredBeforeLockRefused,
+    );
+    it(
+      'a business-wide key of the caller that expires while the reset waits no longer counts toward its rank',
+      rankLapsedBeforeLockRefused,
     );
   },
 );
