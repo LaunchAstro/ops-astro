@@ -139,3 +139,7 @@ tests/review/ow066-export-revocation-proof.test.ts
 tests/ci/restore-check-barrier-and-logs.proof.test.mjs
 tests/ci/malformed-database-address-hidden.proof.test.ts
 tests/operations/scan-login-token-and-shared-login.proof.test.ts
+
+# Sol's D1-FIX1 proofs, byte-for-byte as the review patch held them, file names
+# and titles included.
+tests/review/sol-ow007-migrations-proof.test.ts

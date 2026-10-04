@@ -291,7 +291,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
     "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
     "SOLOW-D D1 (security review F2 and F3) names the gate and backup proofs: operator-installation-gate and stop-production-installation-gate-proof (installation-wide commands refuse another business's manager), ow-063-deploy-business-proof, ow-063-export-revocation-proof, ow066-export-revocation-proof and drill-fetch-asks-again (an export or a store drill reads and records nothing once the operator's sign-in ends or key is revoked), backup-read-part-appointment-proof and backup-restore-revocation-proof (read_part ends with the appointment), scan-login-token-and-shared-login.proof (the token file owner-only; a sign-in another business maps is kept), each also an isolation suite; and backup-part-reads-wait-for-gate (an export's part read never reaches the store once the gate refuses).",
-    "SL06 (Clients row door) adds board-row-client (each task.board row carries its client by id and name only where the reader's grants reach it, read back against task.read and client.list; the crossings: another business names none of alpha's clients, a reader of client A is never sent B, a task holder without the client reads null beside clientSet, the agent under a live delegation is refused)."
+    "SL06 (Clients row door) adds board-row-client (each task.board row carries its client by id and name only where the reader's grants reach it, read back against task.read and client.list; the crossings: another business names none of alpha's clients, a reader of client A is never sent B, a task holder without the client reads null beside clientSet, the agent under a live delegation is refused).",
+    "SOLOW-D D1R2A names Sol's D1-FIX1 role proof, sol-ow007-migrations-proof (two databases repairing the shared lookup role at once both commit; it also carries the three cases role-repair-drops-inherited-access-proof holds), as conformance. It changes the cluster's lookup role, so vitest.config.ts runs it only one suite at a time."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -1012,6 +1013,7 @@
     "tests/review/staging-reset-keeps-revoked-session-proof.test.ts",
     "tests/ci/staging-reset-agent-signs-in.test.ts",
     "tests/operations/find-copies-values-only.proof.test.ts",
-    "tests/db/identity-roles-hold-no-membership.test.ts"
+    "tests/db/identity-roles-hold-no-membership.test.ts",
+    "tests/review/sol-ow007-migrations-proof.test.ts"
   ]
 }
