@@ -15,18 +15,29 @@ export type ReadBack<T> =
   | { readonly state: 'absent' }
   | { readonly state: 'unknown' };
 
+/** Refusals an effect that already landed also earns: read back before they count as failed. */
+const ALSO_IF_LANDED: ReadonlySet<string> = new Set(['not_mergeable', 'sha_mismatch']);
+
 /**
  * A send that may repeat an earlier one. Landed is the effect's answer; only
  * positive proof that nothing landed lets `send` go; anything else stays
- * unknown and is never resent.
+ * unknown and is never resent. A refusal that a late landing also explains is
+ * read back again: landed is the answer, absent keeps the refusal, anything
+ * else is unknown.
  */
-export function reconciled<T>(
+export async function reconciled<T>(
   back: ReadBack<T>,
   send: () => Promise<ProviderResult<T>>,
+  readBack: () => Promise<ReadBack<T>>,
 ): Promise<ProviderResult<T>> {
-  if (back.state === 'landed') return Promise.resolve({ kind: 'ok', value: back.value });
-  if (back.state === 'absent') return send();
-  return Promise.resolve({ kind: 'unknown', code: 'RECONCILE_UNPROVEN' });
+  const unproven = { kind: 'unknown', code: 'RECONCILE_UNPROVEN' } as const;
+  if (back.state === 'landed') return { kind: 'ok', value: back.value };
+  if (back.state !== 'absent') return unproven;
+  const answer = await send();
+  if (answer.kind !== 'refused' || !ALSO_IF_LANDED.has(answer.proof ?? '')) return answer;
+  const after = await readBack();
+  if (after.state === 'landed') return { kind: 'ok', value: after.value };
+  return after.state === 'absent' ? answer : unproven;
 }
 
 type Proven = { readonly kind: 'refused'; readonly code: string; readonly proof: string };

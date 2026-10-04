@@ -69,6 +69,7 @@ export interface PublishPorts {
   /** `site.source.read` of the target file on the branch being published. */
   readonly readSource: () => Promise<ProviderResult<{ content: string; revision: string }>>;
   /** `site.request.read` by the seam: absent only while the request is provably unmerged. */
+  // The wiring must return landed only when the merged head is the approved one, else unknown.
   readonly readBack: (input: {
     seam: string;
     dispatchToken: string;
@@ -142,13 +143,17 @@ export async function publishCorrection(
   const stopped = await beforeDispatch(job, ports);
   if (stopped !== undefined) return stopped;
   const token = dispatchToken('site.publish', job.version.digest);
-  const back = await ports.readBack({ seam: job.seam, dispatchToken: token });
+  const readBack = () => ports.readBack({ seam: job.seam, dispatchToken: token });
+  const back = await readBack();
   // Last, after every awaited read: a cancellation that arrived during one still stops the send.
   if (back.state === 'absent' && (await ports.cancellation()) === 'requested') {
     return refused('CANCELLED');
   }
-  const answer = await reconciled(back, () =>
-    ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest }),
+  const answer = await reconciled(
+    back,
+    () =>
+      ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest }),
+    readBack,
   );
   const unknown = async (code: string): Promise<PublishOutcome> => {
     await ports.raiseTask(code);
@@ -255,9 +260,11 @@ export async function revertCorrection(
   const decidedAt = new Date(input.decidedAt).toISOString();
   // One token per published revision, and a retry is read back before it is ever sent again.
   const token = dispatchToken('site.source.revert', input.publishedRevision);
-  const back = await ports.readBack({ seam: input.seam, dispatchToken: token });
-  const reverted = await reconciled(back, () =>
-    ports.revert({ seam: input.seam, dispatchToken: token }),
+  const readBack = () => ports.readBack({ seam: input.seam, dispatchToken: token });
+  const reverted = await reconciled(
+    await readBack(),
+    () => ports.revert({ seam: input.seam, dispatchToken: token }),
+    readBack,
   );
   if (reverted.kind !== 'ok') {
     const state = proven('site.source.revert', reverted) ? 'failed' : 'unknown';
