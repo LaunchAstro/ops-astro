@@ -3,6 +3,7 @@
 // Review proofs for PR #355 at 3fac44c (Sol round 1, R/sol/PRV-oa-355-R1.md) and c653fda (round 2,
 // R/sol/P14-FIX1.md): one case per finding.
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
@@ -14,8 +15,15 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { boardReach } from '../../packages/core-commands/src/reads/live-join.ts';
 import { readUnattended } from '../../packages/core-records/src/inbox/unattended.ts';
 import { raiseInboxItem } from '../../packages/core-records/src/inbox/items.ts';
-import { grantTo } from '../commands/fixture.ts';
-import { codeOf, must, wayfinderWorld, type Decider, type WayfinderWorld } from './world.ts';
+import { addClient, grantTo, type Member } from '../commands/fixture.ts';
+import {
+  codeOf,
+  must,
+  wayfinderWorld,
+  type Decider,
+  type Made,
+  type WayfinderWorld,
+} from './world.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -803,6 +811,337 @@ describe.skipIf(serverUrl === undefined)(
         await grantTo(tx, decider, 'decide', { kind: 'record', id: ticket.id });
       });
       expect(await unattended()).not.toContain(ticket.id);
+    });
+
+    // Sol round 1 proofs for PR #722 at 0f78988 (R/sol/PRV-oa-722-R1.md), assertions and interleavings as written.
+    it('WF-1 an upgrade repairs frontier rows for tickets cancelled before the migration', async () => {
+      const old = readFileSync('migrations/20261003001618_wayfinder_maps.sql', 'utf8');
+      const start = old.indexOf(
+        'create or replace function public.map_summary_refresh(p_map uuid)',
+      );
+      const end = old.indexOf(
+        'revoke all on function public.map_summary_refresh(uuid) from public;',
+        start,
+      );
+      expect(start).toBeGreaterThan(0);
+      expect(end).toBeGreaterThan(start);
+      await w.db.admin.execute(old.slice(start, end));
+      const migration = readFileSync(
+        'migrations/20261004070410_wayfinder_frontier_cancelled.sql',
+        'utf8',
+      );
+      const map = await w.create(
+        owner,
+        { title: 'map present before upgrade' },
+        { taskType: 'map' },
+      );
+      const ticket = await w.create(
+        owner,
+        { title: 'cancelled before upgrade' },
+        { parentId: map.id },
+      );
+      const state = await second.withBusiness(w.business, async (tx) => {
+        const rows = await tx.query<{ id: string }>(
+          `insert into records (business_id, id, record_type_id, data)
+       select $1, gen_random_uuid(), id,
+         '{"key":"cancelled","label":"Cancelled","machine_category":"cancelled","position":6000}'::jsonb
+       from record_types where business_id = $1 and key = 'task_state' returning id`,
+          [w.business],
+        );
+        const row = rows[0];
+        if (row === undefined) throw new Error('cancelled state absent');
+        return row.id;
+      });
+      must(
+        await w.as(owner, {
+          command: 'task.set_state',
+          recordId: ticket.id,
+          expectedRevision: await w.revisionOf(ticket.id),
+          stateId: state,
+        }),
+        'cancel before upgrade',
+      );
+      expect(await w.read(owner, { read: 'map.frontier', recordId: map.id })).toMatchObject({
+        ok: true,
+        frontier: [{ id: ticket.id }],
+      });
+      // Apply the shipped upgrade without touching any map or ticket afterwards.
+      await w.db.admin.execute(migration);
+      expect(await w.read(owner, { read: 'map.frontier', recordId: map.id })).toMatchObject({
+        ok: true,
+        frontier: [],
+      });
+    });
+
+    it('WF-1 person to person map ranking cannot write after its parent loses map authority', async () => {
+      const map = await w.create(owner, { title: 'rank authority map' }, { taskType: 'map' });
+      const neighbour = await w.create(owner, { title: 'rank neighbour' }, { parentId: map.id });
+      const target = await w.create(owner, { title: 'rank target' }, { parentId: map.id });
+      const writer = await w.member('ranker', ['write'], { kind: 'record', id: map.id });
+      const revision = await w.revisionOf(target.id);
+      let fired = false;
+      const db = intercept(async (sql, parameters) => {
+        if (
+          fired ||
+          !sql.includes('pg_advisory_xact_lock') ||
+          parameters[0] !== `task.siblings:${w.business}:parent:${map.id}`
+        )
+          return;
+        fired = true;
+        must(
+          await w.asOnSecond(owner, {
+            command: 'task.set_type',
+            recordId: map.id,
+            expectedRevision: await w.revisionOf(map.id),
+            taskType: 'task',
+          }),
+          'concurrent parent retype',
+        );
+      });
+      const answer = await executeCommand(db, w.business, writer.presented, 'api', {
+        command: 'task.rank',
+        operationId: randomUUID(),
+        recordId: target.id,
+        expectedRevision: revision,
+        afterId: neighbour.id,
+      });
+      expect(fired).toBe(true);
+      expect(
+        codeOf(
+          await w.as(writer, {
+            command: 'task.rank',
+            recordId: target.id,
+            expectedRevision: await w.revisionOf(target.id),
+            afterId: neighbour.id,
+          }),
+        ),
+      ).toBe('SCOPE_NOT_GRANTED');
+      expect.soft(codeOf(answer)).toBe('SCOPE_NOT_GRANTED');
+      expect(await w.revisionOf(target.id)).toBe(revision);
+    });
+
+    it('WF-1 person to person unattended reach cannot combine an old map placement with a later grant', async () => {
+      await w.grant(owner, 'assign');
+      const a = await w.create(owner, { title: 'former recipient map' }, { taskType: 'map' });
+      const b = await w.create(owner, { title: 'unreachable recipient map' }, { taskType: 'map' });
+      const ticket = await w.create(
+        owner,
+        { title: 'unattended moved ticket' },
+        { parentId: a.id },
+      );
+      const recipient = await w.member('recipient', []);
+      must(
+        await w.as(owner, {
+          command: 'task.assign',
+          recordId: ticket.id,
+          expectedRevision: await w.revisionOf(ticket.id),
+          fields: { assignee: recipient.personId },
+        }),
+        'assign unreachable recipient',
+      );
+      let fired = false;
+      const db = intercept(async (sql) => {
+        if (fired || !sql.includes('as "mapId"')) return;
+        fired = true;
+        must(
+          await w.asOnSecond(owner, {
+            command: 'task.reparent',
+            recordId: ticket.id,
+            expectedRevision: await w.revisionOf(ticket.id),
+            parentId: b.id,
+          }),
+          'move before granting',
+        );
+        await second.withBusiness(w.business, async (tx) => {
+          await grantTo(tx, recipient, 'read', { kind: 'record', id: a.id });
+        });
+      });
+      const racy = await db.withBusiness(
+        w.business,
+        async (tx) => await readUnattended(tx, owner.personId),
+      );
+      const current = await w.db.app.withBusiness(
+        w.business,
+        async (tx) => await readUnattended(tx, owner.personId),
+      );
+      expect(fired).toBe(true);
+      expect(codeOf(await w.read(recipient, { read: 'task.read', recordId: ticket.id }))).toBe(
+        'SCOPE_NOT_GRANTED',
+      );
+      expect(current.map((item) => item.subjectRecordId)).toContain(ticket.id);
+      expect(racy.map((item) => item.subjectRecordId)).toContain(ticket.id);
+    });
+
+    it('WF-1 person to person live board digest excludes map tickets changed after grant revocation', async () => {
+      const map = await w.create(owner, { title: 'revoked live map' }, { taskType: 'map' });
+      const ticket = await w.create(owner, { title: 'live private ticket' }, { parentId: map.id });
+      const stillReadable = await w.create(owner, { title: 'stream remains admitted' });
+      const reader = await w.member('live-reader', ['read'], { kind: 'record', id: map.id });
+      await second.withBusiness(w.business, async (tx) => {
+        await grantTo(tx, reader, 'read', { kind: 'record', id: stillReadable.id });
+      });
+      const digestAfterRevocation = async (editPrivateTicket: boolean) => {
+        let fired = false;
+        const db = intercept(async (sql) => {
+          if (fired || !sql.includes('select distinct e.scope_kind as kind')) return;
+          fired = true;
+          await second.withBusiness(w.business, async (tx) => {
+            await tx.query(
+              `update grants set revoked_at = greatest(now(), granted_at)
+          where business_id = $1 and subject_id = $2 and scope_id = $3 and action = 'read'
+            and revoked_at is null`,
+              [w.business, reader.personId, map.id],
+            );
+          });
+          if (editPrivateTicket) {
+            must(
+              await w.asOnSecond(owner, {
+                command: 'task.update',
+                recordId: ticket.id,
+                expectedRevision: await w.revisionOf(ticket.id),
+                fields: { title: 'private update after revocation' },
+              }),
+              'update after revoking map grant',
+            );
+          }
+        });
+        const digest = await boardReach(db, w.business, reader.presented, reader.personId);
+        expect(fired).toBe(true);
+        return digest;
+      };
+      const before = await digestAfterRevocation(false);
+      const currentBefore = await boardReach(
+        w.db.app,
+        w.business,
+        reader.presented,
+        reader.personId,
+      );
+      await second.withBusiness(w.business, async (tx) => {
+        await grantTo(tx, reader, 'read', { kind: 'record', id: map.id });
+      });
+      const after = await digestAfterRevocation(true);
+      const currentAfter = await boardReach(
+        w.db.app,
+        w.business,
+        reader.presented,
+        reader.personId,
+      );
+      expect(codeOf(await w.read(reader, { read: 'task.read', recordId: ticket.id }))).toBe(
+        'SCOPE_NOT_GRANTED',
+      );
+      expect(currentAfter).toBe(currentBefore);
+      expect(after).toBe(before);
+    });
+
+    // Criterion 2 of the same review: the crossings for map-grant rank and the live board.
+    async function clientMap(title: string): Promise<Made> {
+      await w.grant(owner, 'share');
+      const map = await w.create(owner, { title }, { taskType: 'map' });
+      const client = randomUUID();
+      await addClient(w.db.app, w.business, client, owner);
+      must(
+        await w.as(owner, {
+          command: 'map.scope',
+          recordId: map.id,
+          expectedRevision: await w.revisionOf(map.id),
+          client,
+        }),
+        'scope map to its client',
+      );
+      return map;
+    }
+
+    it('WF-1 business to business and client to client map-grant ranking cannot place beside another map', async () => {
+      const x = await clientMap('client X map');
+      const y = await clientMap('client Y map');
+      const x1 = await w.create(owner, { title: 'client X first' }, { parentId: x.id });
+      const x2 = await w.create(owner, { title: 'client X second' }, { parentId: x.id });
+      const y1 = await w.create(owner, { title: 'client Y ticket' }, { parentId: y.id });
+      const writer = await w.member('client-x-ranker', ['write'], { kind: 'record', id: x.id });
+      const bea = await w.outsider('bravo-ranker');
+      const bravoMap = await w.create(bea, { title: 'bravo map' }, { taskType: 'map' }, w.bravo);
+      const bravoTicket = await w.create(
+        bea,
+        { title: 'bravo ticket' },
+        { parentId: bravoMap.id },
+        w.bravo,
+      );
+      const revisions = async () => [
+        await w.revisionOf(x2.id),
+        await w.revisionOf(y1.id),
+        await w.revisionOf(bravoTicket.id, w.bravo),
+      ];
+      const unchanged = await revisions();
+      const rank = async (who: Member, recordId: string, afterId: string, business = w.business) =>
+        codeOf(
+          await w.as(
+            who,
+            {
+              command: 'task.rank',
+              recordId,
+              expectedRevision: await w.revisionOf(recordId, business),
+              afterId,
+            },
+            business,
+          ),
+        );
+      // Client to client: map X's grant reaches neither client Y's ticket as a neighbour nor as a target.
+      expect(await rank(writer, x2.id, y1.id)).toBe('SCOPE_NOT_GRANTED');
+      expect(await rank(writer, y1.id, x1.id)).toBe('SCOPE_NOT_GRANTED');
+      // Business to business: neither business ranks beside the other's ticket.
+      expect(await rank(writer, x2.id, bravoTicket.id)).toBe('SCOPE_NOT_GRANTED');
+      expect(await rank(bea, bravoTicket.id, x1.id, w.bravo)).toBe('NOT_FOUND');
+      expect(await revisions()).toStrictEqual(unchanged);
+      // Control: the same grant ranks beside its own map's ticket.
+      expect(await rank(writer, x2.id, x1.id)).toBe('applied');
+    });
+
+    it('WF-1 business to business and client to client live board digest ignores another map', async () => {
+      const x = await clientMap('client X map');
+      const y = await clientMap('client Y map');
+      const x1 = await w.create(owner, { title: 'client X live' }, { parentId: x.id });
+      const y1 = await w.create(owner, { title: 'client Y live' }, { parentId: y.id });
+      const reader = await w.member('client-x-live', ['read'], { kind: 'record', id: x.id });
+      const bea = await w.outsider('bravo-live');
+      const bravoMap = await w.create(
+        bea,
+        { title: 'bravo live map' },
+        { taskType: 'map' },
+        w.bravo,
+      );
+      const bravoTicket = await w.create(
+        bea,
+        { title: 'bravo live ticket' },
+        { parentId: bravoMap.id },
+        w.bravo,
+      );
+      const digest = async () =>
+        await boardReach(w.db.app, w.business, reader.presented, reader.personId);
+      const update = async (who: Member, recordId: string, business = w.business) =>
+        must(
+          await w.as(
+            who,
+            {
+              command: 'task.update',
+              recordId,
+              expectedRevision: await w.revisionOf(recordId, business),
+              fields: { title: 'changed elsewhere' },
+            },
+            business,
+          ),
+          'update',
+        );
+      const before = await digest();
+      expect(before).toBeDefined();
+      // Client to client: client Y's map ticket moves nothing on client X's reader's board.
+      await update(owner, y1.id);
+      expect(await digest()).toBe(before);
+      // Business to business: bravo's map ticket moves nothing either.
+      await update(bea, bravoTicket.id, w.bravo);
+      expect(await digest()).toBe(before);
+      // Control: the reader's own map ticket does.
+      await update(owner, x1.id);
+      expect(await digest()).not.toBe(before);
     });
   },
 );
