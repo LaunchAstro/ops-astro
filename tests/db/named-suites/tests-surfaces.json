@@ -1,6 +1,7 @@
 {
   "invariant": [
     "tests/surfaces/aw-09-reject-header.test.tsx",
+    "tests/surfaces/c71-c-web-chat-departed-window-api.test.tsx",
     "tests/surfaces/inbox-three-surfaces.test.tsx",
     "tests/surfaces/mp-7-3-inbox-isolation.test.tsx",
     "tests/surfaces/proposal-snapshot.test.tsx"
