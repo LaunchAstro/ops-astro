@@ -27,7 +27,7 @@ import type {
   TaskExecutionResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
-import { RunMap } from './run-map.tsx';
+import { isExecutionGraph, RunMap } from './run-map.tsx';
 import { Observed } from './run-observed.tsx';
 
 export interface RunProgressProps {
@@ -63,10 +63,8 @@ function RunSection(props: RunProgressProps): ReactElement {
   });
   const value =
     state.outcome === 'ready' || state.outcome === 'empty' ? (state.value.execution ?? null) : null;
-  // An answer without the run list is not one this page can read, so it draws
-  // as unavailable rather than as no run.
   const settledRead = state.outcome === 'ready' || state.outcome === 'empty';
-  const readable = value !== null && Array.isArray(value.runs) && Array.isArray(value.events);
+  const readable = value !== null && isReadable(value);
   const outcome = settledRead ? (readable ? value.outcome : 'unavailable') : state.outcome;
   const graph = readable ? value.graph : undefined;
   return (
@@ -102,6 +100,16 @@ function RunSection(props: RunProgressProps): ReactElement {
         )}
       </section>
     </>
+  );
+}
+
+// An answer without the run list, or with a graph not whole, draws as
+// unavailable, never as no run or a throw. No graph: its runs and no map.
+function isReadable(value: NonNullable<TaskExecutionResult['execution']>): boolean {
+  return (
+    Array.isArray(value.runs) &&
+    Array.isArray(value.events) &&
+    (value.graph === undefined || isExecutionGraph(value.graph))
   );
 }
 
