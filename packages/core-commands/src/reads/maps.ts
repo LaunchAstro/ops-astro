@@ -162,13 +162,18 @@ export async function readMapView(
   const map = maps[0];
   if (map === undefined) return undefined;
   // The components and versions as of the version read with the map, so a
-  // revision committed since is not mixed into this one.
+  // revision committed since is not mixed into this one. A linked ticket's id
+  // shows only while it is still a live non-map ticket of this map.
   const components = await tx.query<ComponentRow>(
-    `select id, kind, body, ticket_id from public.map_components
-      where business_id = $1 and map_id = $2 and created_version <= $3
-        and (retired_version is null or retired_version > $3)
-      order by kind, position`,
-    [tx.businessId, mapId, map.version ?? 0],
+    `select c.id, c.kind, c.body, t.id as ticket_id
+       from public.map_components c
+       left join public.records t on t.business_id = c.business_id and t.id = c.ticket_id
+        and t.uuid_4 = c.map_id and t.record_type_id = $4 and t.deleted_at is null
+        and coalesce(t.data ->> 'type', 'task') <> 'map'
+      where c.business_id = $1 and c.map_id = $2 and c.created_version <= $3
+        and (c.retired_version is null or c.retired_version > $3)
+      order by c.kind, c.position`,
+    [tx.businessId, mapId, map.version ?? 0, taskTypeId],
   );
   const tickets = await readMapTickets(tx, taskTypeId, mapId);
   const versions = await tx.query<VersionRow>(
