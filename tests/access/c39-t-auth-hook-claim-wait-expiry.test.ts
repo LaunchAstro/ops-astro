@@ -5,7 +5,16 @@ import { expect, it } from 'vitest';
 import { mountAuthEmailHook } from '../../apps/api/auth-email-hook.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
 import { AUTH_HOOK_SECRET, authMessage, mailTo, postAuth, signAuth } from './c39-t-hook-world.ts';
-import { addressFor, c, countFor, invite, MAIL, useInvitationWorld, w } from './c39-t-world.ts';
+import {
+  addressFor,
+  c,
+  countFor,
+  invite,
+  MAIL,
+  noDatabase,
+  useInvitationWorld,
+  w,
+} from './c39-t-world.ts';
 
 useInvitationWorld();
 
@@ -85,36 +94,39 @@ async function claimThenAbort(
   }
 }
 
-it('a hook claim that rolls back after the invitation expires sends no expired link', async () => {
-  w.provider.mode('accept');
-  const address = addressFor('sol-claim-expiry');
-  const invitation = await invite(c.admin, address);
-  const raw = authMessage('invite', address);
-  const signed = signAuth(raw, Math.floor(Date.now() / 1000));
-  const digest = createHash('sha256').update(signed.id).digest('hex');
-  const { database, reachedClaim } = watchClaim();
-  const app = route(database);
-  await w.db.admin.execute(
-    "update public.invitations set expires_at = clock_timestamp() + interval '2 seconds' where id = $1",
-    [invitation],
-  );
-  let reply: ReturnType<typeof postAuth> | undefined;
-  try {
-    await claimThenAbort(digest, invitation, async () => {
-      reply = postAuth(raw, signed, undefined, app);
-      await reachedClaim;
-    });
-  } finally {
-    await reply;
-  }
-  const [claim] = await w.db.admin.execute<{ n: number }>(
-    'select count(*)::int as n from ops.auth_hook_messages where message_digest = $1',
-    [digest],
-  );
-  expect({
-    messages: mailTo(address).length,
-    minted: await countFor('enrolment_tokens', invitation),
-    attempts: await countFor('invitation_delivery_attempts', invitation),
-    claims: claim?.n,
-  }).toEqual({ messages: 0, minted: 0, attempts: 0, claims: 0 });
-});
+it.skipIf(noDatabase)(
+  'a hook claim that rolls back after the invitation expires sends no expired link',
+  async () => {
+    w.provider.mode('accept');
+    const address = addressFor('sol-claim-expiry');
+    const invitation = await invite(c.admin, address);
+    const raw = authMessage('invite', address);
+    const signed = signAuth(raw, Math.floor(Date.now() / 1000));
+    const digest = createHash('sha256').update(signed.id).digest('hex');
+    const { database, reachedClaim } = watchClaim();
+    const app = route(database);
+    await w.db.admin.execute(
+      "update public.invitations set expires_at = clock_timestamp() + interval '2 seconds' where id = $1",
+      [invitation],
+    );
+    let reply: ReturnType<typeof postAuth> | undefined;
+    try {
+      await claimThenAbort(digest, invitation, async () => {
+        reply = postAuth(raw, signed, undefined, app);
+        await reachedClaim;
+      });
+    } finally {
+      await reply;
+    }
+    const [claim] = await w.db.admin.execute<{ n: number }>(
+      'select count(*)::int as n from ops.auth_hook_messages where message_digest = $1',
+      [digest],
+    );
+    expect({
+      messages: mailTo(address).length,
+      minted: await countFor('enrolment_tokens', invitation),
+      attempts: await countFor('invitation_delivery_attempts', invitation),
+      claims: claim?.n,
+    }).toEqual({ messages: 0, minted: 0, attempts: 0, claims: 0 });
+  },
+);
