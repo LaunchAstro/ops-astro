@@ -2,7 +2,8 @@
 //
 // The dock task panel's conversation (MP-4-5 in MP-4-8): the task's comments,
 // opening on the tab the reply door was pressed from. Its draft, open edit and
-// refusal are the panel's own, so a re-read of the task keeps them.
+// refusal are the panel's own, held above its read (`useConversationHeld`), so
+// a reread keeps them, one that failed and was tried again included.
 
 import { useState, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -11,22 +12,26 @@ import { Comments, type CommentDraft } from './Comments.tsx';
 import type { ConversationTab } from './Perspectives.tsx';
 import type { RowEdit } from './Thread.tsx';
 
-interface PanelConversationProps {
-  readonly client: OperationsClient;
-  readonly task: Task;
-  /** The tab the reply door was pressed from, or null for the conversation's own. */
-  readonly tab: ConversationTab | null;
-  readonly onChanged: () => void;
-}
-
-/** The conversation, opening on the tab the reply door was pressed from. */
-export function PanelConversation(props: PanelConversationProps): ReactElement {
-  const { task, tab } = props;
+/** The conversation's draft, open edit and refusal, opening on the tab the reply door was pressed from. */
+export function useConversationHeld(tab: ConversationTab | null) {
   const [draft, setDraft] = useState<CommentDraft | null>(
     tab === null ? null : { body: '', tab, replyTo: null, pending: null, stale: null },
   );
   const [refusal, setRefusal] = useState<string | null>(null);
   const [editing, setEditing] = useState<RowEdit | null>(null);
+  return { draft, setDraft, refusal, setRefusal, editing, setEditing };
+}
+
+interface PanelConversationProps {
+  readonly client: OperationsClient;
+  readonly task: Task;
+  readonly held: ReturnType<typeof useConversationHeld>;
+  readonly onChanged: () => void;
+}
+
+/** The conversation, with what the panel holds for it. */
+export function PanelConversation(props: PanelConversationProps): ReactElement {
+  const { task, held } = props;
   return (
     <Comments
       scope="panel"
@@ -34,13 +39,13 @@ export function PanelConversation(props: PanelConversationProps): ReactElement {
       comments={task.comments}
       recordId={task.id}
       revision={task.revision}
-      refusal={refusal}
-      onRefused={setRefusal}
+      refusal={held.refusal}
+      onRefused={held.setRefusal}
       onPosted={props.onChanged}
-      draft={draft}
-      onDraft={setDraft}
-      editing={editing}
-      onEditing={setEditing}
+      draft={held.draft}
+      onDraft={held.setDraft}
+      editing={held.editing}
+      onEditing={held.setEditing}
     />
   );
 }

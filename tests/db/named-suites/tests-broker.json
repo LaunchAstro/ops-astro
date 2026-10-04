@@ -45,6 +45,9 @@
     "tests/broker/aw-11-child-spend.test.ts",
     "tests/broker/c60-egress-before-route.test.ts",
     "tests/broker/c60-route-and-carry.test.ts",
+    "tests/broker/counted-call-closes-give-back-once.test.ts",
+    "tests/broker/late-answer-after-sweep-gives-back-once.test.ts",
+    "tests/broker/late-planning-settlement-keeps-owner-release.test.ts",
     "tests/broker/model-call-concurrent-sends-dispatch-once.test.ts",
     "tests/broker/model-call-retried-send-sends-once.test.ts",
     "tests/broker/model-call-swept-hold-sends-nothing.test.ts",
@@ -60,7 +63,9 @@
     "tests/broker/s3-bound-source.test.ts",
     "tests/broker/spend-closes-once.test.ts",
     "tests/broker/spend-give-back-late.test.ts",
-    "tests/broker/spend-give-back.test.ts"
+    "tests/broker/spend-give-back.test.ts",
+    "tests/broker/topped-up-unknown-call-late-answer-gives-back.test.ts",
+    "tests/broker/unknown-call-settled-lower-gives-back.test.ts"
   ],
   "conformance": [
     "tests/broker/planfix-3b-1-planning-outcome.test.ts",

@@ -20,9 +20,31 @@
 // the first slice has no table for one, and it does not record who observed
 // what — the audit event per attempt is T1f's, and it will wrap these calls
 // rather than replace them.
+//
+// A link a human rejected is not evidence. It stays on the person as the record
+// of that decision, but matching reads only observed and confirmed links, so a
+// rejected one neither attaches a new observation nor makes it ambiguous. Nor
+// is the person who rejected it a candidate through another link (an absorbed
+// person's, say): attaching there would write over the rejection.
+//
+// Match and create are one step. Two first observations of one identifier
+// would otherwise both find nobody and both create a person (the unique index
+// includes the person, so nothing conflicts), and every later observation would
+// then be unresolved between the two. A lookup that finds nobody takes the
+// business's lock on that identifier, held to commit, and looks again; under
+// read committed the second lookup sees what the lock's last holder committed.
+// A lookup that finds someone takes no lock, and the lock names the identifier
+// rather than the business, so a transaction holding one waits only on another
+// first sighting of the same identifier: batches mixing attaches and distinct
+// first sightings, in any order, never wait on each other. Two transactions
+// that each first-sight the same two identifiers in opposite order cannot both
+// commit without one creating a person the other has not seen, so Postgres
+// aborts one and its retry attaches. Calls sharing one transaction share its
+// locks as well, so the create also refuses once a live link has appeared
+// since its lookup, and the call resolves again.
 
-import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../tenancy/database.ts';
+import { createHash, randomUUID } from 'node:crypto';
+import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 
 export type IdentifierKind = 'email' | 'phone';
 
@@ -111,11 +133,12 @@ const ATTACH = `
     (business_id, id, person_id, kind, value, observed_value, source_system, source_id, confidence)
   values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
   on conflict (business_id, person_id, kind, value) do update
-     set last_observed_at = now(),
+     set last_observed_at = greatest(person_identifiers.last_observed_at, now()),
          observed_value   = excluded.observed_value,
          source_system    = excluded.source_system,
          source_id        = excluded.source_id,
          confidence       = greatest(person_identifiers.confidence, excluded.confidence)
+   where person_identifiers.review_state <> 'rejected'
   returning id`;
 
 async function attach(
@@ -140,14 +163,75 @@ async function attach(
   return attached.id;
 }
 
-async function createPerson(tx: TenantQuery, displayName: string): Promise<string> {
-  const rows = await tx.query<{ readonly id: string }>(
-    `insert into public.people (business_id, id, display_name) values ($1, $2, $3) returning id`,
-    [tx.businessId, randomUUID(), displayName],
-  );
+// The person and their link in one statement, and neither unless no live link
+// has appeared since the lookup that read `seen`.
+const CREATE = `
+  with person as (
+    insert into public.people (business_id, id, display_name)
+    select $1, $2, $3
+     where not exists (
+       select 1 from public.person_identifiers
+        where kind = $4 and value = $5 and review_state <> 'rejected'
+          and person_id <> all($6::uuid[]))
+    returning id)
+  insert into public.person_identifiers
+    (business_id, id, person_id, kind, value, observed_value, source_system, source_id, confidence)
+  select $1, $7, person.id, $4, $5, $8, $9, $10, $11 from person
+  returning id, person_id`;
+
+async function createAttached(
+  tx: TenantQuery,
+  observation: Observation,
+  value: string,
+  seen: readonly string[],
+): Promise<IdentifierResolution | undefined> {
+  const rows = await tx.query<{ readonly id: string; readonly person_id: string }>(CREATE, [
+    tx.businessId,
+    randomUUID(),
+    observation.displayName ?? observation.value.trim(),
+    observation.kind,
+    value,
+    seen,
+    randomUUID(),
+    observation.value.trim(),
+    observation.sourceSystem,
+    observation.sourceId ?? null,
+    observation.confidence ?? 1,
+  ]);
   const created = rows[0];
-  if (created === undefined) throw new Error('resolveIdentifier: the person was not created');
-  return created.id;
+  if (created === undefined) return undefined;
+  return {
+    outcome: 'attached',
+    personId: created.person_id,
+    identifierId: created.id,
+    person: 'new',
+  };
+}
+
+interface Match {
+  /** The surviving people the live links reach, less any who rejected the identifier. */
+  readonly survivors: readonly string[];
+  /** The people holding a live link, before survivors are taken. */
+  readonly live: readonly string[];
+}
+
+async function match(tx: TenantQuery, kind: IdentifierKind, value: string): Promise<Match> {
+  const links = await tx.query<{ readonly person_id: string; readonly rejected: boolean }>(
+    `select person_id, review_state = 'rejected' as rejected from public.person_identifiers
+      where kind = $1 and value = $2`,
+    [kind, value],
+  );
+  const rejecters = new Set(links.filter((link) => link.rejected).map((link) => link.person_id));
+  const live = links.filter((link) => !link.rejected).map((link) => link.person_id);
+  const survivors = await survivingPersonIds(tx, live);
+  return { survivors: survivors.filter((id) => !rejecters.has(id)), live };
+}
+
+async function matchLocked(tx: TenantQuery, kind: IdentifierKind, value: string): Promise<Match> {
+  // A digest, so the address itself is not the lock's key.
+  const digest = createHash('sha256').update(`${kind}:${value}`).digest('hex');
+  await advisoryLock(tx, `person-identifier:${tx.businessId.toLowerCase()}:${digest}`);
+  return await match(tx, kind, value);
 }
 
 /**
@@ -162,25 +246,20 @@ export async function resolveIdentifier(
   observation: Observation,
 ): Promise<IdentifierResolution> {
   const value = normaliseIdentifier(observation.kind, observation.value);
-  const matched = await tx.query<{ readonly person_id: string }>(
-    `select distinct person_id from public.person_identifiers where kind = $1 and value = $2`,
-    [observation.kind, value],
-  );
-  const survivors = await survivingPersonIds(
-    tx,
-    matched.map((row) => row.person_id),
-  );
+  const unlocked = await match(tx, observation.kind, value);
+  const found =
+    unlocked.survivors.length > 0 ? unlocked : await matchLocked(tx, observation.kind, value);
 
-  if (survivors.length > 1) return { outcome: 'unresolved', candidatePersonIds: survivors };
-
-  const existing = survivors[0];
-  const personId =
-    existing ?? (await createPerson(tx, observation.displayName ?? observation.value.trim()));
-  const identifierId = await attach(tx, personId, observation, value);
-  return {
-    outcome: 'attached',
-    personId,
-    identifierId,
-    person: existing === undefined ? 'new' : 'existing',
-  };
+  if (found.survivors.length > 1) {
+    return { outcome: 'unresolved', candidatePersonIds: found.survivors };
+  }
+  const existing = found.survivors[0];
+  if (existing !== undefined) {
+    const identifierId = await attach(tx, existing, observation, value);
+    return { outcome: 'attached', personId: existing, identifierId, person: 'existing' };
+  }
+  return (
+    (await createAttached(tx, observation, value, found.live)) ??
+    (await resolveIdentifier(tx, observation))
+  );
 }

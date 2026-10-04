@@ -994,7 +994,8 @@ provider's proof released or its own answer settled ignores a later answer or
 release, and gives nothing back again (`broker-settle.ts`). A hold moves a call
 only out of `reserved` or `dispatched`; an answer that comes after the sweep
 held it still settles or releases it, since the answer is what happened, and
-gives nothing back. A call released
+gives back what its hold counted, as an open call's answer does
+(`tests/broker/unknown-call-settled-lower-gives-back.test.ts`). A call released
 unsent (a start refused, a sweep) gives nothing back
 (`tests/broker/spend-closes-once.test.ts`).
 The sweep, a cancel, a lost
@@ -1458,7 +1459,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:821-832`). With neither setting present, the
+  rewrites it (`local-seed.mjs:855-866`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
