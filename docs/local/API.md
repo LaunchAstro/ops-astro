@@ -2000,7 +2000,7 @@ proposals: {
     runId;                             // the run it holds for: one per-run row
     state; heldMinor; actualMinor; classifiedCause; leaseId;
     lease: { id; fence; state; expiresAt; holderActorId } | null;
-    attempt: { id; state; dispatchMarker; observed } | null;
+    attempt: { id; state; dispatchMarker; observed; dropCause; outcome } | null;
   }[];
 }[]
 ```
