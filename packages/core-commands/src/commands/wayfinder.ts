@@ -210,14 +210,14 @@ export async function refuseSharedIntoMap(
   );
 }
 
-/** The first subtask, live or trashed, still holding client access, refused. */
+/** A subtask, live or trashed, holding client access; locked first, so a share in flight is seen. */
 async function refuseSharedChildren(
   tx: TenantQuery,
   context: CommandContext,
   recordId: string,
 ): Promise<CommandRefusal | undefined> {
   const children = await tx.query<{ readonly id: string }>(
-    `select id from records where business_id = $1 and record_type_id = $2 and uuid_4 = $3`,
+    `select id from records where business_id = $1 and record_type_id = $2 and uuid_4 = $3 for update`,
     [tx.businessId, context.spine.taskTypeId, recordId],
   );
   for (const { id } of children) {

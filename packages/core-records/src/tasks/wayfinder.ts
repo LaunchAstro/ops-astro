@@ -77,7 +77,16 @@ export async function wayfinderFacts(
   };
 }
 
-/** Whether this task is a map or a map's ticket; false for an id that names no task. */
-export async function isWayfinderRecord(tx: TenantQuery, recordId: string): Promise<boolean> {
+/**
+ * Whether this task is a map or a map's ticket; false for an id that names no
+ * task. `hold` takes the task `for share` first and reads after it, so a retype
+ * or move holding the task commits before the answer is read.
+ */
+export async function isWayfinderRecord(
+  tx: TenantQuery,
+  recordId: string,
+  hold = false,
+): Promise<boolean> {
+  if (hold) await wayfinderFacts(tx, recordId, true);
   return (await wayfinderFacts(tx, recordId))?.wayfinder ?? false;
 }
