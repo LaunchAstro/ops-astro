@@ -32,6 +32,7 @@
 
 import type { Action } from '../../core-records/src/index.ts';
 import type { CommandName } from './command-names.ts';
+import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { WRITE_OPERANDS, type OperandSpec } from './write-operands.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -251,12 +252,6 @@ function read(
     audited: options.audited ?? true,
   };
 }
-
-/**
- * The key every write to a map's structure serialises on, taken before any
- * task row: no two writes hold a map and a ticket in opposite orders.
- */
-const WAYFINDER_MAP_LOCK = 'wayfinder.map';
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent credential's under its person's business-wide `task:write`
