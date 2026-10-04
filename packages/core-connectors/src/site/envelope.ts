@@ -75,8 +75,23 @@ function replacedAt(before: string, after: string, target: CorrectionTarget): nu
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-/** Elements whose children are code, never body copy. */
-const CODE_ELEMENTS: ReadonlySet<string> = new Set(['script', 'style']);
+/**
+ * Elements whose children are code or raw text, never body copy: the
+ * compiler and a browser can disagree on where raw text ends.
+ */
+const CODE_ELEMENTS: ReadonlySet<string> = new Set([
+  'script',
+  'style',
+  'title',
+  'textarea',
+  'xmp',
+  'iframe',
+  'noembed',
+  'noframes',
+  'noscript',
+  'plaintext',
+  'template',
+]);
 /** Directives under which an element's children are not rendered as written. */
 const UNRENDERED: ReadonlySet<string> = new Set(['is:raw', 'set:html', 'set:text']);
 
@@ -87,14 +102,15 @@ const MOST_BYTES = 64 * 1024;
  * The text node holding the bytes from `start` to `end` wholly, in the page
  * as Astro's own compiler reads it, under elements and components only:
  * never the frontmatter, an expression, a comment, a script or style, or an
- * element whose children are raw or replaced. A text node whose recorded
- * position does not hold its own text is not trusted.
+ * element whose children are raw or replaced. A text node holding '<', or
+ * whose recorded position does not hold its own text, is not trusted.
  */
 function textAt(node: Node, bytes: Uint8Array, start: number, end: number): TextNode | undefined {
   if (node.type === 'text') {
     const from = node.position?.start.offset;
     const to = node.position?.end?.offset;
     if (from === undefined || to === undefined || start < from || end > to) return undefined;
+    if (node.value.includes('<')) return undefined;
     return new TextDecoder().decode(bytes.subarray(from, to)) === node.value ? node : undefined;
   }
   const tag =
@@ -162,6 +178,7 @@ export function checkEnvelope(change: ProposedChange, target: CorrectionTarget):
   if (change.files.length !== 1) return exceeded('more than one file');
   const [file] = change.files;
   if (file === undefined || file.path !== target.path) return exceeded('not the target file');
+  if (!file.path.endsWith('.astro')) return exceeded('not an Astro page');
   if (file.before === null || file.after === null) return exceeded('a create, delete or rename');
   const before = file.before.split('\n');
   const after = file.after.split('\n');
@@ -172,6 +189,9 @@ export function checkEnvelope(change: ProposedChange, target: CorrectionTarget):
   const index = changed[0] ?? 0;
   const at = replacedAt(before[index] ?? '', after[index] ?? '', target);
   if (at === undefined) return exceeded('not the one word replaced in place');
+  if (/&#?$/u.test((before[index] ?? '').slice(0, at))) {
+    return exceeded('the word is part of a character reference');
+  }
   const offset = before.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0) + at;
   if (!onlyTheWord(file.before, file.after, offset, target)) {
     return exceeded('the word is not in body copy, or the edit changes more than the word');
@@ -255,6 +275,7 @@ export function compareCaptures(input: CaptureComparison): ComparisonResult {
   if (!sameStylesheets(before, after)) failed.push('stylesheets');
   const decoyHeld =
     anotherPageOfSite(decoyBefore.url, before.url) &&
+    ![before.documentDigest, after.documentDigest].includes(decoyBefore.documentDigest) &&
     samePage(decoyBefore, decoyAfter) &&
     wordOffsets(decoyBefore.text, target.word).length > 0 &&
     decoyAfter.text === decoyBefore.text &&
