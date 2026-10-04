@@ -66,7 +66,7 @@ export async function setLoginPassword(
 const STRING = /"(?:[^"\\]|\\.)*"/gu;
 
 /**
- * Whether a JSON answer carries the password (Sol, PR #382 round 3): a string
+ * Whether a JSON answer carries the password: a string
  * in it, key or value, read with its escapes, holds it, or the text does (a
  * number, say). A string that is the id asked for is ours and is left out,
  * whatever password it holds part of.

@@ -159,14 +159,14 @@ export async function settleResetWindow(tx: TenantQuery, id: string): Promise<vo
  * from any business (0063), not the kept one, first signed in at or before
  * that ending, or first signed in a whole second before a reset of the login
  * settled, or up to the bound of one still open (C40); a session refused while
- * one is open is ended, so it stays refused however the reset settles (Sol, PR
- * #382 round 3). A token naming no session has none to end.
+ * one is open is ended, so it stays refused however the reset settles. A token
+ * naming no session has none to end.
  */
 export async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
   if (presented.sessionId === undefined) return false;
   // GoTrue stamps a sign-in in whole seconds, rounded down. One stamped with
   // the settle's own second may follow the settle, and a new password's must
-  // be served (round 3), so the settle refuses only a stamp whose whole second
+  // be served, so the settle refuses only a stamp whose whole second
   // had passed; comparing the stamp as an instant would refuse that sign-in.
   // A reset that set the password settles in a later whole second than the
   // provider's answer (waitForNextSecond), so no old password's sign-in

@@ -240,7 +240,7 @@ async function setAndEnd(
       set = await setLoginPassword(broker, found.subject, password);
     } finally {
       // Set or not, the sessions each business saw end there, so its list
-      // agrees with its door (Sol, PR #382 round 3); the token's business's
+      // agrees with its door; the token's business's
       // with the settle, below.
       for (const { business, session } of mapped.filter((one) => one !== own)) {
         // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
