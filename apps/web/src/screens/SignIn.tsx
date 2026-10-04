@@ -36,12 +36,12 @@
 // leaving the page (before the code is asked for too), signs the half-made sign-in out, and any
 // new one it lands on; Cancel returns to the emptied password.
 
-import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { useState, type FormEvent, type ReactElement } from 'react';
 import { BrandMark, FieldError } from '@launchastro/ui';
 import { buildStamp } from '../app-state.ts';
 import { pathTo } from '../routes.ts';
-import { openSignIn, signOutOf, type ApiRoute, type AskedForCode } from '../session/sign-in.ts';
-import { stepUpSession } from '../session/step-up.ts';
+import { useCodeStep } from '../session/code-step.ts';
+import { openSignIn } from '../session/sign-in.ts';
 import { CodeField } from '../views/step-up-prompt.tsx';
 import { PUBLIC_DOCUMENTS } from './Legal.tsx';
 import type { Interruption, Session } from '../session/token.ts';
@@ -63,57 +63,6 @@ const BUSINESSES: readonly { readonly key: string; readonly label: string }[] = 
   { key: 'alpha', label: 'Alpha' },
   { key: 'bravo', label: 'Bravo' },
 ];
-
-/** The code step: its field, its check through the step-up, and its cancel. */
-function useCodeStep(route: ApiRoute, open: (sessionId: string) => void) {
-  const [asked, setAsked] = useState<AskedForCode | null>(null);
-  const [code, setCode] = useState('');
-  const [because, setBecause] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
-  // Moved on by every check, cancel and unmount: an answer for an older one is dropped. The
-  // half sign-in goes with its code step (Cancel, or the page left) unless a good code opened.
-  const attempt = useRef(0);
-  const opened = useRef(false);
-  const leave = (client: AskedForCode['client'], sessionId?: string): void => {
-    if (sessionId !== undefined)
-      void signOutOf(route, { sessionId, businessKey: client.businessKey });
-  };
-  useEffect(
-    () => () => {
-      attempt.current += 1;
-      if (asked !== null && !opened.current) leave(asked.client, asked.sessionId);
-    },
-    [asked],
-  );
-  const check = (): void => {
-    if (asked === null) return;
-    const mine = ++attempt.current;
-    setChecking(true);
-    setBecause(null);
-    void (async () => {
-      const { client, sessionId: from } = asked;
-      const current = () => attempt.current === mine;
-      const result = await stepUpSession({ code, client, route, from, current, adopt: () => {} });
-      // A cancel or a leave landing as the new sign-in was finished signs that one out too.
-      if (result.ok && !current()) leave(client, result.sessionId);
-      if (!current()) return;
-      setChecking(false);
-      setCode('');
-      if (result.ok) {
-        opened.current = true;
-        open(result.sessionId);
-      } else setBecause(result.because);
-    })();
-  };
-  const cancel = (): void => {
-    attempt.current += 1;
-    setAsked(null);
-    setCode('');
-    setBecause(null);
-    setChecking(false);
-  };
-  return { asked, setAsked, attempt, leave, code, setCode, because, checking, check, cancel };
-}
 
 /** The six-digit code, its continue and its cancel back to the password. */
 function CodeStep(props: { readonly step: ReturnType<typeof useCodeStep> }): ReactElement {
