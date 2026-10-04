@@ -1835,7 +1835,10 @@ or delete.
   major unit, read `for share` under the locks, null is off and no stored row
   is the shipped 500; the settings install lock (`lockSettingsInstall`,
   advisory key `<business id>:business_settings`) is held shared first, so a
-  first row cannot commit under a decision that read none. Postgres floors the
+  first row cannot commit under a decision that read none. Both are held
+  before the locked instant is read (`lockedInstant(tx, ['four_eyes_threshold'])`
+  in the top-up, the write-off and the budget-stop answer), so a grant that
+  ends while the decision waits on them no longer counts. Postgres floors the
   band exactly to whole minor units, so a band of 500.005 makes 500.01 need
   two people. Above it the first approval is recorded and applies
   nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
@@ -2135,7 +2138,9 @@ launch of the reviewed output is the only decision an effect waits on.
   (`lockSettingsInstall`, advisory key `<business id>:business_settings`) is
   held shared first; the install takes it exclusive before adding rows, so a
   first row cannot commit between the check and the dispatch marker
-  (catalogue #463). The client's own sign-off is MP-11-5's (phase 8); until the portal
+  (catalogue #463). Dispatch and the decision hold both before they read the
+  locked instant (`lockedInstant(tx, ['client_sign_off_required'])`), so a
+  lease, delegation or grant that ends during that wait is judged ended. The client's own sign-off is MP-11-5's (phase 8); until the portal
   exists the work stays held, visibly, under that code.
 - **The receipt link.** The worker reads the provider's answer
   (`readProviderAnswer`, `apps/worker/usage.ts`): a status outside 2xx (a
