@@ -2,7 +2,7 @@
 -- A UTC timestamp ID (docs/local/DATA.md, "What the schema is"): ported from
 -- b0/SL13's 0251 after migrations moved to timestamps.
 --
--- 20261003001523 custody: the business's secrets, sealed (C31, U33).
+-- 20261004103606 custody: the business's secrets, sealed (C31, U33).
 --
 -- One row per named secret at one scope: the business as a whole, or one
 -- client (a `party`, the scope a party-scoped grant names). A row says whether

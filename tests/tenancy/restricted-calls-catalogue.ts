@@ -16,6 +16,7 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
+  'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
   'public.clients': {
     from: '20261003000423',
@@ -108,7 +109,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '0072',
     line: `ops_astro_app ${act} ops.second_factor_codes.${column}`,
   })),
-  // C31: custody's select leaves out the three sealed columns (20261003001523).
+  // C31: custody's select leaves out the three sealed columns (20261004103606).
   ...[
     'business_id',
     'cleared_at',
@@ -124,7 +125,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     'set_at',
     'set_by_actor_id',
   ].map((column) => ({
-    from: '20261003001523',
+    from: '20261004103606',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
   })),
 ];

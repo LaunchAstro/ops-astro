@@ -20,8 +20,17 @@
 // The order matters. The contamination gate's self-test comes before its
 // sweep, because a blind gate that has stopped working looks exactly like a
 // clean repository.
+//
+// CI-SPEED, light pull requests. The `local checks` job sets CHECK_SCOPE to its
+// name and scripts/ci-scope.ts decides. On a pull request a step marked `queue`
+// runs in the merge queue instead, the only way into main, and the step marked
+// `changed` runs only the tests the change reaches (`vitest run --changed`, from
+// the pull request's base). A merge group, a push, any other event and a run
+// with no CHECK_SCOPE, every local run, run every step in full. A decision or a
+// base it cannot read fails the check before any step runs.
 
 import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 
 const STEPS = [
   ['brand:check', 'product name headings'],
@@ -30,7 +39,7 @@ const STEPS = [
   ['lint', 'lint'],
   ['lint:ratchet', 'no new lint warning, no product source file over 1,000 lines'],
   ['format:check', 'format'],
-  ['test', 'tests'],
+  ['test', 'tests', 'changed'],
   ['gate:selftest', 'the gate proves itself'],
   ['gate:cases', 'the gate catches what it must'],
   ['gate:hooks', 'the hook handles every exit code'],
@@ -58,7 +67,7 @@ const STEPS = [
   ['deps:cruise', 'structural dependency rules'],
   ['db:cases', 'the database gate refuses a skip, a missing suite and an empty run'],
   ['local:cases', 'the local scripts never reuse a database on another major'],
-  ['build', 'build'],
+  ['build', 'build', 'queue'],
 ];
 
 const execPath = process.env['npm_execpath'];
@@ -66,19 +75,57 @@ const isScript = execPath !== undefined && /\.[cm]?js$/u.test(execPath);
 const command = execPath === undefined ? 'pnpm' : isScript ? process.execPath : execPath;
 const prefix = isScript && execPath !== undefined ? [execPath] : [];
 
+/** A script beside this one, run by this node; its stdout, or the check fails. */
+const read = (script, ...args) => {
+  const run = spawnSync(process.execPath, [join(import.meta.dirname, script), ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  if (run.status !== 0) {
+    console.error(`check: ${script} ${args.join(' ')} failed; nothing ran.`);
+    process.exit(1);
+  }
+  return run.stdout;
+};
+
+/** On a pull request under CHECK_SCOPE, the base the light set reads the change from; else null. */
+function lightBase() {
+  const scope = process.env['CHECK_SCOPE'] ?? '';
+  if (scope === '') return null;
+  const decision = read('ci-scope.ts', scope, '--decide');
+  if (decision === 'run\n') return null;
+  const base = decision === 'skip\n' ? read('merge-group.mjs', 'base').trim() : '';
+  if (!/^[0-9a-f]{40}$/u.test(base)) {
+    console.error(`check: no light set (decision ${JSON.stringify(decision)}, base "${base}").`);
+    process.exit(1);
+  }
+  return base;
+}
+
+const base = lightBase();
 const results = [];
 
-for (const [script, label] of STEPS) {
-  console.log(`\n=== ${label} (pnpm run ${script}) ===`);
-  const run = spawnSync(command, [...prefix, 'run', script], { stdio: 'inherit' });
+for (const [script, label, light] of STEPS) {
+  if (base !== null && light === 'queue') {
+    console.log(`\n=== ${label} (pnpm run ${script}): runs in the merge queue ===`);
+    results.push({ script, label, ok: true, queued: true });
+    continue;
+  }
+  const changed = base !== null && light === 'changed';
+  const args = changed ? ['--changed', base, '--passWithNoTests'] : [];
+  const note = changed
+    ? ': the full run is in the merge queue; here, the tests the change reaches'
+    : '';
+  console.log(`\n=== ${label} (pnpm run ${script})${note} ===`);
+  const run = spawnSync(command, [...prefix, 'run', script, ...args], { stdio: 'inherit' });
   const ok = run.status === 0;
   results.push({ script, label, ok });
   if (!ok) break;
 }
 
 console.log('\n=== summary ===');
-for (const { script, label, ok } of results) {
-  console.log(`${ok ? 'pass' : 'FAIL'}  ${label} (${script})`);
+for (const { script, label, ok, queued } of results) {
+  console.log(`${queued ? 'queue' : ok ? 'pass' : 'FAIL'}  ${label} (${script})`);
 }
 
 const failed = results.find((r) => !r.ok);
@@ -86,4 +133,8 @@ if (failed) {
   console.error(`\ncheck: failed at ${failed.script}. Nothing after it ran.`);
   process.exit(1);
 }
-console.log('\ncheck: green.');
+console.log(
+  base === null
+    ? '\ncheck: green.'
+    : '\ncheck: green, the light set. The full set runs in the merge queue.',
+);
