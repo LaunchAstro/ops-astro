@@ -16,6 +16,22 @@ interface PendingCreate {
 }
 
 /**
+ * What the form holds for one reader: the title being typed and the unresolved
+ * attempt. It is the reader's whose client typed it, so another business or
+ * person opens on an empty form and nothing typed for one is sent as another.
+ */
+interface Draft {
+  readonly of: OperationsClient;
+  readonly title: string;
+  readonly pending: PendingCreate | null;
+}
+
+const empty = (of: OperationsClient): Draft => ({ of, title: '', pending: null });
+
+/** A change to one reader's draft. */
+type DraftChange = (edit: (draft: Draft) => Draft) => void;
+
+/**
  * The settlement of one create. `unknown` is the one case the attempt is kept
  * for: the task may or may not exist. Anything else is a known outcome and the
  * attempt is over: a refusal is a decision, and holding it would resend an
@@ -29,15 +45,14 @@ interface PendingCreate {
  */
 function settled(
   attempt: PendingCreate,
-  setPending: (pending: PendingCreate | null) => void,
-  setTitle: (next: (current: string) => string) => void,
+  change: DraftChange,
   onCreated: () => void,
 ): (settlement: Settlement) => void {
   return (settlement) => {
     if (settlement.kind === 'unknown') return;
-    setPending(null);
+    change((draft) => ({ ...draft, pending: null }));
     if (settlement.kind !== 'ok') return;
-    setTitle((current) => (current.trim() === attempt.title ? '' : current));
+    change((draft) => (draft.title.trim() === attempt.title ? { ...draft, title: '' } : draft));
     onCreated();
   };
 }
@@ -69,8 +84,19 @@ function settled(
 function useCreateTask(client: OperationsClient, onCreated: () => void) {
   const command = useCommand();
   const { locked, run, reset } = command;
-  const [title, setTitle] = useState('');
-  const [pending, setPending] = useState<PendingCreate | null>(null);
+  const [held, setHeld] = useState<Draft>(() => empty(client));
+  const { title, pending } = held.of === client ? held : empty(client);
+  /** The form's own change: to this reader's draft, never another's carried over. */
+  const own: DraftChange = (edit) => {
+    setHeld((before) => edit(before.of === client ? before : empty(client)));
+  };
+  /** A settlement's change: to the draft it was sent from, or nothing once that has gone. */
+  const sentFrom: DraftChange = (edit) => {
+    setHeld((before) => (before.of === client ? edit(before) : before));
+  };
+  const setTitle = (next: string): void => {
+    own((draft) => ({ ...draft, title: next }));
+  };
 
   const onCreate = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -80,7 +106,7 @@ function useCreateTask(client: OperationsClient, onCreated: () => void) {
       pending !== null && pending.title === asked
         ? pending
         : { operationId: client.newOperationId(), title: asked };
-    setPending(attempt);
+    own((draft) => ({ ...draft, pending: attempt }));
     run(
       () =>
         client.mutate(
@@ -88,15 +114,14 @@ function useCreateTask(client: OperationsClient, onCreated: () => void) {
           { fields: { title: attempt.title }, board: null },
           { operationId: attempt.operationId },
         ),
-      settled(attempt, setPending, setTitle, onCreated),
+      settled(attempt, sentFrom, onCreated),
     );
   };
 
   /** Abandon an unresolved attempt and ask for a genuinely different task. */
   const startNew = (): void => {
-    setPending(null);
+    setHeld(empty(client));
     reset();
-    setTitle('');
   };
 
   return { ...command, title, setTitle, pending, onCreate, startNew };
