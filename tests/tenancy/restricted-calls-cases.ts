@@ -54,6 +54,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.ended_subject_sessions'],
   // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
   ['si', 'ops.second_factor_subjects'],
+  // 20261004005844 (C40): a reset in flight, by subject digest; settled by its column grant alone.
+  ['si', 'ops.subject_resets'],
   // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
   ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],

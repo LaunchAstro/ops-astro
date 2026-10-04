@@ -93,6 +93,19 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
       line: `ops_astro_app ${act} ops.second_factor_subjects.${column}`,
     })),
   ),
+  // C40 (20261004005844): a reset in flight; the application opens one and settles it.
+  ...[
+    ['INSERT', 'id'],
+    ['INSERT', 'subject_digest'],
+    ['SELECT', 'id'],
+    ['SELECT', 'open_until'],
+    ['SELECT', 'settled_at'],
+    ['SELECT', 'subject_digest'],
+    ['UPDATE', 'settled_at'],
+  ].map(([act, column]) => ({
+    from: '20261004005844',
+    line: `ops_astro_app ${act} ops.subject_resets.${column}`,
+  })),
   // Batch 2b's (C55, C59): the forwarder writes an alert's kind alone and the
   // application reads kind and time (0069); a second-factor code's rows are
   // read and written column by column (0072).

@@ -81,3 +81,23 @@ revoke all on function public.password_reset_token_find(text) from public;
 grant execute on function public.password_reset_token_find(text) to ops_astro_app;
 
 alter table ops.ended_subject_sessions alter column ended_before set default clock_timestamp();
+
+-- A reset in flight (Sol, PR #382 round 2). Spending a token opens a row
+-- here; the reset's last transaction settles it. Until it settles, every
+-- session of the login is ended in every business up to `open_until`, five
+-- minutes on, far past the provider call's 10 second limit; once settled, up
+-- to `settled_at`. So a session opened while the provider is asked stays
+-- ended even when that last transaction never commits (a database outage),
+-- and a sign-in after the reset is served. The row names no business,
+-- person or token. The application group may open a row and settle it; it
+-- removes nothing, and the times are the database's own.
+create table ops.subject_resets (
+  id             uuid        primary key,
+  subject_digest text        not null check (subject_digest ~ '^[0-9a-f]{64}$'),
+  open_until     timestamptz not null default clock_timestamp() + interval '5 minutes',
+  settled_at     timestamptz
+);
+create index subject_resets_subject on ops.subject_resets (subject_digest);
+revoke all on ops.subject_resets from public;
+grant select (id, subject_digest, open_until, settled_at), insert (id, subject_digest),
+  update (settled_at) on ops.subject_resets to ops_astro_app;

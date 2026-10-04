@@ -294,7 +294,8 @@ change, also ends every session of the login but the kept one in every
 business, seen here or not: a token whose first sign-in (`amr`) is at or
 before that ending is refused; a sign-in after it is served
 (`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest of the
-subject). The provider's sign-out, which revokes
+subject). An agent login's bearer is refused by these endings too, whichever
+business ended them (C40). The provider's sign-out, which revokes
 the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
 longer admits the person) still ends the verified token's own session in
 every business and at the provider, and answers the refusal.
@@ -2874,15 +2875,21 @@ business is 403 `RESET_NEEDS_SUPPORT` (ORCH77-C40MFA), whatever code the body
 carries: refused before anything is spent, so the token stays live and the
 password and every session stay as they were; support resets it. A fault
 reading where the login stands is 503 `RESET_UNAVAILABLE`, never a set. Then,
-under the token's row lock, every live token of the login is spent and every
-session of the login ends in every business (0063, keeping none), and the
+under C59's login lock (the one a factor's verification takes) and the token's
+row lock, the token is read again at that moment: spent or past its life is
+401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403
+`RESET_NEEDS_SUPPORT` with nothing spent. Otherwise every live token of the
+login is spent and the reset's window opens (`ops.subject_resets`,
+20261004005844): every session of the login, in every business, is ended up to
+the moment the window settles, and until then up to five minutes on. The
 password is set at the provider through custody under the catalogued
 `auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
 held by custody alone, whose `auth` destination lists that route and takes no
 POST, `post: false`; the answer must name the same user). In each business
-the login is mapped in, one transaction audits `account.password_changed` and
-then ends the sessions seen there and every session of the login again, up to
-the moment that ending is written (`clock_timestamp()`).
+the login is mapped in, one transaction ends the sessions seen there, and
+only once every business has, one transaction in each audits
+`account.password_changed`. Last, whatever happened, the window settles
+(`clock_timestamp()`): a sign-in after it is served.
 
 The answer is 200 `{ passwordSet: true }`. A token that is not live
 (unknown, out of shape, spent, past its 30 minutes, of a login no business
@@ -2896,7 +2903,8 @@ token is spent, so choose a different password and ask for a new link. Any
 other provider fault or wrong answer is 503 `RESET_UNAVAILABLE`; anything else
 failing is 503 `RESET_FAULT`. A reset that fails after the token is spent
 ends every session of the login again, a sign-in made while the provider was
-asked included, and audits nothing. Answers carry a code alone; nothing is
+asked included, even when the database fails before the window settles, and
+audits nothing. Answers carry a code alone; nothing is
 logged. No limit holds the route's rate yet.
 
 ## The operations view and privacy incidents (C55)

@@ -113,6 +113,7 @@ export {
 } from './identity/verified-subject.ts';
 export {
   liveFactor,
+  lockLoginFactors,
   loginHasVerifiedFactor,
   recordFactorEnrolled,
   recordFactorRemoved,
@@ -124,8 +125,9 @@ export {
   endOtherSeenSessions,
   endProviderSession,
   endOwnSession,
-  endSubjectSessions,
   listSeenSessions,
+  openResetWindow,
+  settleResetWindow,
   type SeenSession,
   type SessionEndReason,
 } from './identity/sessions.ts';

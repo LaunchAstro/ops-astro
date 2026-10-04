@@ -18,25 +18,33 @@
 //    spent, whatever code is sent, so the token stays live, the password and
 //    sessions stay as they were, and nothing is written. Support resets it.
 //    A fault reading where the login stands is `RESET_UNAVAILABLE`, never a set.
-// 4. Spend it, under the token row's lock: every live token of the login is
-//    spent and every session of the login ends in every business (0063,
-//    keeping none), in one transaction. Of any requests carrying the token at
-//    once, only the one that spent it goes on.
+// 4. Spend it, in one transaction: under C59's login lock, which a factor's
+//    verification takes too, then the token row's lock, the token is read
+//    again (spent or past its life is `RESET_LINK_INVALID`) and so is the
+//    login's factor (one verified meanwhile is `RESET_NEEDS_SUPPORT`, nothing
+//    spent). Then every live token of the login is spent and the reset's
+//    window opens (20261004005844): every session of the login, in every
+//    business, ends up to the moment the window settles, and until then up
+//    to its bound. Of any requests carrying the token at once, only the one
+//    that spent it goes on.
 // 5. Set the password at the provider through custody (`setLoginPassword`,
 //    `auth.update_user_password`), never with a key this process holds. A
 //    no to the password itself is `RESET_PASSWORD_REFUSED`; a fault is
-//    `RESET_UNAVAILABLE`. Either way the token is spent and every session of
-//    the login ends again, and the person asks for a new link.
-// 6. In each business the login is mapped in, one transaction audits
-//    `account.password_changed`, with no password and no token in it, and
-//    then ends the sessions it has seen and every session of the login again,
-//    up to the moment that ending is written.
+//    `RESET_UNAVAILABLE`. Either way the token is spent, and the person asks
+//    for a new link.
+// 6. Set, each business the login is mapped in ends the sessions it has seen,
+//    and only once every one has, each audits `account.password_changed`,
+//    with no password and no token in it, so a failure before audits nothing.
+//    Last, whatever happened, the window settles: a sign-in after it is served.
 
 import { createHash } from 'node:crypto';
 import {
   endOtherSeenSessions,
-  endSubjectSessions,
+  lockLoginFactors,
+  loginHasVerifiedFactor,
   NO_ASSURANCE,
+  openResetWindow,
+  settleResetWindow,
   standingOf,
   type BusinessId,
   type Database,
@@ -44,7 +52,11 @@ import {
   type TenantQuery,
   type VerifiedSubject,
 } from '../../../core-records/src/index.ts';
-import { setLoginPassword, type Broker } from '../../../core-custody/src/index.ts';
+import {
+  setLoginPassword,
+  type Broker,
+  type LoginPasswordSet,
+} from '../../../core-custody/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
 
@@ -148,48 +160,54 @@ async function mappedIn(
   return found;
 }
 
-/** Step 4, under the token's lock: false when it was spent or died meanwhile. */
-async function spend(tx: TenantQuery, found: Found): Promise<boolean> {
-  const [live] = await tx.query<{ login_id: string }>(
-    `select login_id from password_reset_tokens
-      where business_id = $1 and id = $2 and spent_at is null and expires_at > clock_timestamp()
-      for update`,
+/** Step 4: the window's id once spent, or why not. */
+async function spend(
+  tx: TenantQuery,
+  found: Found,
+): Promise<{ readonly window: string } | 'invalid' | 'factored'> {
+  await lockLoginFactors(tx, found.subject);
+  const [held] = await tx.query<{ login_id: string }>(
+    `select login_id from password_reset_tokens where business_id = $1 and id = $2 for update`,
     [tx.businessId, found.tokenId],
   );
-  if (live === undefined) return false;
+  if (held === undefined) return 'invalid';
+  // Read once the lock is held, at that moment, not when the wait began.
+  const [state] = await tx.query<{ live: boolean }>(
+    `select spent_at is null and expires_at > clock_timestamp() as live
+       from password_reset_tokens where business_id = $1 and id = $2`,
+    [tx.businessId, found.tokenId],
+  );
+  if (state?.live !== true) return 'invalid';
+  if (await loginHasVerifiedFactor(tx, found.subject)) return 'factored';
   await tx.query(
     `update password_reset_tokens set spent_at = now()
       where business_id = $1 and login_id = $2 and spent_at is null`,
-    [tx.businessId, live.login_id],
+    [tx.businessId, held.login_id],
   );
-  await endSubjectSessions(tx, found.subject);
-  return true;
+  return { window: await openResetWindow(tx, found.subject) };
 }
 
-/** Step 6, in each business the login is mapped in. */
-async function changedIn(database: Database, mapped: readonly Mapped[], subject: string) {
+/** Step 6: `run` in each business the login is mapped in, one transaction each. */
+async function inEach(
+  database: Database,
+  mapped: readonly Mapped[],
+  run: (tx: TenantQuery, session: Session) => Promise<unknown>,
+): Promise<void> {
   for (const { business, session } of mapped) {
     // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
-    await database.withBusiness(business, async (tx) => {
-      await writeAuditEvent(tx, {
-        actorId: session.actorId,
-        command: RESET_COMMAND,
-        outcome: 'applied',
-        refusalCode: null,
-        payloadDigest: payloadDigest({ command: RESET_COMMAND, person: session.personId }),
-      });
-      // Last, so its ending reaches every session opened while this ran.
-      await endOtherSeenSessions(tx, session.personId, undefined, 'end_others', subject);
-    });
+    await database.withBusiness(business, async (tx) => await run(tx, session));
   }
 }
 
-/** Every session of the login ends again, after a failure past the spend. */
-async function endAgain(database: Database, found: Found): Promise<void> {
-  await database.withBusiness(found.business, async (tx) => {
-    await endSubjectSessions(tx, found.subject);
+/** Step 6's audit row, once every business's sessions have ended. */
+const audited = async (tx: TenantQuery, session: Session) =>
+  await writeAuditEvent(tx, {
+    actorId: session.actorId,
+    command: RESET_COMMAND,
+    outcome: 'applied',
+    refusalCode: null,
+    payloadDigest: payloadDigest({ command: RESET_COMMAND, person: session.personId }),
   });
-}
 
 /** Set a new password with a reset token, then end every session of its login. */
 export async function setPasswordByToken(
@@ -218,16 +236,22 @@ export async function setPasswordByToken(
   if (mapped === 'factored') return refused('RESET_NEEDS_SUPPORT');
   if (mapped.length === 0) return refused('RESET_LINK_INVALID');
   const spent = await database.withBusiness(found.business, async (tx) => await spend(tx, found));
-  if (!spent) return refused('RESET_LINK_INVALID');
-  let set: Awaited<ReturnType<typeof setLoginPassword>> = 'fault';
-  let changed = false;
+  if (spent === 'factored') return refused('RESET_NEEDS_SUPPORT');
+  if (spent === 'invalid') return refused('RESET_LINK_INVALID');
+  let set: LoginPasswordSet = 'fault';
   try {
     set = await setLoginPassword(dependencies.broker, found.subject, reset.password);
-    if (set === 'set') await changedIn(database, mapped, found.subject);
-    changed = set === 'set';
+    if (set === 'set') {
+      await inEach(database, mapped, async (tx, session) => {
+        await endOtherSeenSessions(tx, session.personId, undefined, 'end_others', found.subject);
+      });
+      await inEach(database, mapped, audited);
+    }
   } finally {
-    if (!changed) await endAgain(database, found);
+    await database.withBusiness(found.business, async (tx) => {
+      await settleResetWindow(tx, spent.window);
+    });
   }
-  if (changed) return { ok: true };
+  if (set === 'set') return { ok: true };
   return refused(set === 'refused' ? 'RESET_PASSWORD_REFUSED' : 'RESET_UNAVAILABLE');
 }

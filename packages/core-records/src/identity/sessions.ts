@@ -9,8 +9,9 @@
 // Every statement names the business and the person, so a person reads and
 // ends their own sessions and nobody else's.
 
+import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { SESSION_ABSOLUTE_SECONDS } from './verified-subject.ts';
+import { SESSION_ABSOLUTE_SECONDS, type VerifiedSubject } from './verified-subject.ts';
 
 export type SessionEndReason = 'sign_out' | 'end_others' | 'factor_change';
 
@@ -82,7 +83,11 @@ export async function endOtherSeenSessions(
   /** The login's provider subject: the ending holds in every business (0063). */
   subject: string,
 ): Promise<number> {
-  await endSubjectSessions(tx, subject, keep);
+  await tx.query(
+    `insert into ops.ended_subject_sessions (subject_digest, kept_session)
+     values (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2::uuid)`,
+    [subject, keep ?? null],
+  );
   const seen = await tx.query<{ readonly session_id: string }>(
     `select distinct a.session_id::text as session_id
        from public.authentication_attempts a
@@ -96,20 +101,55 @@ export async function endOtherSeenSessions(
 }
 
 /**
- * End every session of the login but `keep` (none when undefined), in every
- * business, up to the moment the ending is written (0063, 20261004005844): a
- * sign-in after it is served.
+ * Open a reset's window (C40, 20261004005844): every session of the login, in
+ * every business, is ended up to the moment the window settles, and until
+ * then up to its bound, so a session opened while the reset is in flight is
+ * ended even when the reset's last transaction never commits. Answers its id.
  */
-export async function endSubjectSessions(
-  tx: TenantQuery,
-  subject: string,
-  keep?: string,
-): Promise<void> {
+export async function openResetWindow(tx: TenantQuery, subject: string): Promise<string> {
+  const id = randomUUID();
   await tx.query(
-    `insert into ops.ended_subject_sessions (subject_digest, kept_session)
-     values (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2::uuid)`,
-    [subject, keep ?? null],
+    `insert into ops.subject_resets (id, subject_digest)
+     values ($1::uuid, encode(sha256(convert_to($2, 'UTF8')), 'hex'))`,
+    [id, subject],
   );
+  return id;
+}
+
+/** Settle the window: a sign-in from this moment is served. */
+export async function settleResetWindow(tx: TenantQuery, id: string): Promise<void> {
+  await tx.query(
+    `update ops.subject_resets set settled_at = clock_timestamp()
+      where id = $1::uuid and settled_at is null`,
+    [id],
+  );
+}
+
+/**
+ * Whether the session the token belongs to has ended (C58): signed out, in any
+ * business the login reaches (0061), one of the login's other sessions ended
+ * from any business (0063), not the kept one, first signed in at or before
+ * that ending, or first signed in before a reset of the login settled (C40).
+ * A token naming no session has none to end.
+ */
+export async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
+  if (presented.sessionId === undefined) return false;
+  const rows = await tx.query<{ readonly ended: boolean }>(
+    `select exists (
+       select 1 from ops.ended_provider_sessions where session_id = $1::uuid
+     ) or exists (
+       select 1 from ops.ended_subject_sessions s
+        where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
+          and s.kept_session is distinct from $1::uuid
+          and to_timestamp($3::bigint) <= s.ended_before
+     ) or exists (
+       select 1 from ops.subject_resets r
+        where r.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
+          and to_timestamp($3::bigint) <= coalesce(r.settled_at, r.open_until)
+     ) as ended`,
+    [presented.sessionId, presented.subject, presented.assurance?.signedInAt ?? null],
+  );
+  return rows[0]?.ended === true;
 }
 
 /**
