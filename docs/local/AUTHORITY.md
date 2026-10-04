@@ -622,11 +622,15 @@ one live stream only while it is staff holding `chat:comment` and a current
 member, asked at the join and again before every delivery
 (`reads/live-chat.ts`); the board stream says a conversation moved only to its
 current members. A mention in a message is refused `MENTION_NOT_READABLE`
-unless the person named is a current member, and its inbox item is held by
-current members alone: a member who leaves or is removed is no longer shown it
-or counted for it, and an operations viewer outside the conversation is never
-listed it as unattended. The owner and administrators hold no way round any of
-it. `tests/api/c71-live-conversations.test.ts` and
+unless the person named is a current member who may chat (staff holding
+`chat:comment`, as `chat.messages` asks), and its inbox item is held by such
+members alone: a member who leaves or is removed, loses `chat:comment` or whose
+access ends is no longer shown it, counted for it, let stamp it seen or emailed
+it, and an operations viewer outside the conversation is never listed it as
+unattended. A mention is raised at its message's posted time, so a member who
+reads the message, a re-added one included, is shown and counted its mention.
+The owner and administrators hold no way round any of it.
+`tests/api/c71-live-conversations.test.ts` and
 `tests/api/c71-chat-mentions.test.ts` hold it.
 
 ## preset.plan

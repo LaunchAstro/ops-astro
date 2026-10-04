@@ -3,7 +3,8 @@
 // An inbox item's access axis (INB-1a), derived on every read from the
 // recipient's live grants and never stored: readable, withheld or gone.
 // An item about a team conversation (C71, a mention in it) is held by the
-// conversation's current members alone, whatever task grants they hold.
+// conversation's current members alone, while they may chat, whatever task
+// grants they hold.
 import {
   EFFECTIVE,
   effectiveGrants,
@@ -28,16 +29,36 @@ export const IS_CONVERSATION = `exists (select 1 from public.record_types ct
      and ct.key = 'team_conversation')`;
 
 /**
- * Whether `person` (an SQL expression) is a current member of conversation `r`,
- * and, given `since`, has been since then: a re-added member reads from the new
- * join only, an item raised before it included (AUTHORITY.md, team chat).
+ * Whether `person` (an SQL expression) may chat in `r`'s business now, as
+ * `chat.messages` admits them: staff (an active owner, administrator or member
+ * membership) holding a live `chat:comment` across the business, walked from
+ * `EFFECTIVE` in the statement that asks it.
+ */
+const chatsNow = (person: string): string => `(exists (select 1 from public.memberships ms
+     where ms.business_id = r.business_id and ms.person_id = ${person} and ms.active
+       and ms.role_key in ('owner', 'admin', 'member'))
+   and exists (${EFFECTIVE}
+     select 1 from effective e
+      where e.business_id = r.business_id and e.collection = 'chat' and e.action = 'comment'
+        and e.scope_kind = 'business'
+        and ((e.subject_kind = 'person' and e.subject_id = ${person})
+             or (e.subject_kind = 'actor' and e.subject_id in (
+                   select a.id from public.actors a
+                    where a.business_id = r.business_id and a.person_id = ${person}
+                      and a.kind = 'person' and a.active)))))`;
+
+/**
+ * Whether `person` (an SQL expression) is a current member of conversation `r`
+ * who may chat now (`chatsNow`), and, given `since`, has been a member since
+ * then: a re-added member reads from the new join only, an item raised before
+ * it included (AUTHORITY.md, team chat).
  */
 export const inConversation = (person: string, since?: string): string =>
-  `exists (select 1 from public.team_conversation_members cm
+  `(exists (select 1 from public.team_conversation_members cm
    where cm.business_id = r.business_id and cm.conversation_id = r.id
      and cm.person_id = ${person} and cm.left_at is null${
        since === undefined ? '' : ` and cm.joined_at <= ${since}`
-     })`;
+     }) and ${chatsNow(person)})`;
 
 /**
  * One person's access to one task, or to one conversation, derived as every

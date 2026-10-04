@@ -21,9 +21,10 @@
 // frame, so a digest taken for a person the bearer has left is never said.
 //
 // C71 (CS-7.42): a team conversation heard is not digested. The stream asks
-// whether the bound person is a current member of it, then the join, and says
-// `conversation` (naming none) to a member alone, so the Team tab's unread
-// chip re-reads through `chat.conversations`; anyone else is told nothing.
+// whether the bound person is a current member of it, then the join, then
+// membership again, and says `conversation` (naming none) to a member alone,
+// so the Team tab's unread chip re-reads through `chat.conversations`; anyone
+// else, one removed while the join was asked included, is told nothing.
 //
 // Stopping the stream (the tab leaving, or the topics closing) ends its
 // recheck, and the stream lets go only once no question it asked is in
@@ -181,7 +182,9 @@ async function rule(
 
 /**
  * Conversations heard: `conversation` said when the bound person is a current
- * member of one, and the bearer is still that person, already told.
+ * member of one, and the bearer is still that person, already told. A member
+ * is asked again after the join, so one removed while it was asked is told
+ * nothing.
  */
 async function told(
   stream: BoardStream,
@@ -190,9 +193,12 @@ async function told(
   bind: (personId: string) => void,
   chats: readonly string[],
 ): Promise<'closed' | 'rebound' | 'same'> {
-  const member = (await ask.hears?.(bound.personId, chats)) ?? false;
+  const hears = async (): Promise<boolean> => (await ask.hears?.(bound.personId, chats)) ?? false;
+  const member = await hears();
   const joined = await rejoin(stream, ask, bound, bind);
-  if (joined === 'same' && member && !bound.owed) await send(stream, 'conversation');
+  if (joined === 'same' && member && !bound.owed && (await hears())) {
+    await send(stream, 'conversation');
+  }
   return joined;
 }
 

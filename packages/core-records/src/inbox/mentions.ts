@@ -114,6 +114,8 @@ export async function raiseMentions(
     readonly commentId: string;
     readonly authorActorId: string;
     readonly audience: string;
+    /** When the comment was posted, as timestamptz text: its mentions are raised then. */
+    readonly postedAt?: string | undefined;
   },
   named: readonly Mentioned[],
 ): Promise<void> {
@@ -131,6 +133,7 @@ export async function raiseMentions(
       subjectRecordId: comment.taskId,
       reason,
       fact: { kind: 'record', id: comment.commentId },
+      raisedAt: comment.postedAt,
     });
   }
 }
