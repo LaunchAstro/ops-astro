@@ -177,3 +177,29 @@ it('a builder holds template1 for nobody while its migrations run', async () => 
     await Promise.all([server.close(), watch.close()]);
   }
 }, 300_000);
+
+it('the clone catalogue comparison sees a foreign key stop being enforced', async () => {
+  const db = await createFreshDatabase({ part: 'fkdisabled' });
+  try {
+    // A table with a foreign key and no trigger of its own, so only the
+    // foreign key's internal triggers change.
+    const [table] = await db.admin.execute<{ name: string }>(
+      `select k.conrelid::regclass::text name from pg_constraint k
+        where k.contype = 'f' and k.connamespace = 'public'::regnamespace
+          and not exists (select 1 from pg_trigger t where t.tgrelid = k.conrelid and not t.tgisinternal)
+        order by 1 limit 1`,
+    );
+    expect(table?.name).toBeDefined();
+    const before = await catalogueOf(db.admin);
+    await db.admin.execute(`alter table ${table?.name ?? ''} disable trigger all`);
+    const [disabled] = await db.admin.execute<{ n: string }>(
+      `select count(*)::text n from pg_trigger
+        where tgrelid = $1::regclass and tgisinternal and tgenabled = 'D'`,
+      [table?.name],
+    );
+    expect(disabled?.n).not.toBe('0');
+    expect(await catalogueOf(db.admin)).not.toStrictEqual(before);
+  } finally {
+    await db.drop();
+  }
+});
