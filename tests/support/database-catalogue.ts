@@ -13,9 +13,10 @@ const NOT_SYSTEM = `not in (select oid from pg_namespace where nspname ~ '^(pg_|
  * Everything inside the database, one line per object, read the way a schema
  * dump prints it: schemas, relations with their owners, privileges and row
  * security, columns, constraints, indexes, functions with their bodies,
- * triggers and whether each fires, policies, views, types, default
- * privileges, extensions, event triggers, the migration ledger and each
- * table's row count.
+ * triggers and whether each fires (a constraint's internal triggers by
+ * constraint and function, as their names carry OIDs), policies, views,
+ * types, default privileges, extensions, event triggers, the migration ledger
+ * and each table's row count.
  */
 const CATALOGUE = `
 select format('schema %s owner=%s acl=%s', nspname, pg_get_userbyid(nspowner), nspacl) line
@@ -43,6 +44,10 @@ select format('function %s owner=%s acl=%s config=%s %s', p.oid::regprocedure, p
 union all
 select format('trigger %s %s enabled=%s', tgrelid::regclass, pg_get_triggerdef(oid), tgenabled)
   from pg_trigger where not tgisinternal
+union all
+select format('internal trigger %s %s %s enabled=%s', t.tgrelid::regclass, k.conname, t.tgfoid::regproc,
+              t.tgenabled)
+  from pg_trigger t join pg_constraint k on k.oid = t.tgconstraint where t.tgisinternal
 union all
 select format('policy %s.%s %s %s %s %s %s %s', schemaname, tablename, policyname, permissive, roles, cmd,
               qual, with_check)
