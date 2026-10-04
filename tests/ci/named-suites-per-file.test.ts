@@ -122,6 +122,8 @@ it('refuses a suite file it cannot trust, and names it', () => {
   refused({ '.json': ok }, '.json', /test file/u);
   refused({ 'api.json': ok }, 'api.json', /test file/u);
   refused({ 'api/a.ts.json': ok }, 'api/a.ts.json', /test file/u);
+  refused({ '.test.ts.json': ok }, '.test.ts.json', /test file/u);
+  refused({ 'api/.test.tsx.json': ok }, 'api/.test.tsx.json', /test file/u);
 });
 
 it('refuses a symlink among the suite files by name, and never reads what it points at', () => {
