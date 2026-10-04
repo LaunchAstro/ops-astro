@@ -15,7 +15,7 @@ const containerSuites: string[] = (
   JSON.parse(readFileSync('tests/ci/container-suites.json', 'utf8')) as { suites: string[] }
 ).suites;
 // These suites change the backup and lookup identities, which are the cluster's
-// and shared by every database on it: one grants them a role, the other drops
+// and shared by every database on it: one grants them a role, the others drop
 // their row-security bypass. Any file migrating beside them reads or repairs
 // the same rows (0045, 0046, 20261003173600) and fails with "tuple concurrently
 // updated" or finds the membership mid-test. So a whole-suite run with a
@@ -23,6 +23,7 @@ const containerSuites: string[] = (
 // suites one at a time and sets SUITE_PART for each, runs them.
 const clusterRoleSuites = [
   'tests/db/identity-roles-hold-no-membership.test.ts',
+  'tests/db/migration-retries-shared-role-race.test.ts',
   'tests/review/role-repair-drops-inherited-access-proof.test.ts',
 ];
 const oneSuiteAtATime = process.env['SUITE_PART'] !== undefined;
