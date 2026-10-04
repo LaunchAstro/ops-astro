@@ -129,7 +129,7 @@ const ATTACH = `
     (business_id, id, person_id, kind, value, observed_value, source_system, source_id, confidence)
   values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
   on conflict (business_id, person_id, kind, value) do update
-     set last_observed_at = now(),
+     set last_observed_at = greatest(person_identifiers.last_observed_at, now()),
          observed_value   = excluded.observed_value,
          source_system    = excluded.source_system,
          source_id        = excluded.source_id,
