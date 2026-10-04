@@ -50,7 +50,7 @@ beforeAll(async () => {
 
 afterAll(async () => await db?.drop());
 
-it('Sol proof, criterion 3: readableScope cannot give an agent an unticked read key', async () => {
+it('readableScope cannot give an agent an unticked read key', async () => {
   await db.app.withBusiness(business, async (tx) => {
     const standing = await resolveLogin(tx, owner.presented);
     if ('refused' in standing) throw new Error('owner refused');
@@ -71,7 +71,7 @@ it('Sol proof, criterion 3: readableScope cannot give an agent an unticked read 
   });
 });
 
-it('Sol proof, criterion 3: readableRecordIds cannot give an agent records under an unticked read key', async () => {
+it('readableRecordIds cannot give an agent records under an unticked read key', async () => {
   await db.app.withBusiness(business, async (tx) => {
     const standing = await resolveLogin(tx, owner.presented);
     if ('refused' in standing) throw new Error('owner refused');
