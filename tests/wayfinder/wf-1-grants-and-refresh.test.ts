@@ -303,6 +303,61 @@ it('WF-1 retyping a parent to map cannot race a client share on its child', asyn
   expect(rows[0]?.n).toBe('0');
 });
 
+it('WF-1 retyping a parent to map cannot race a reparent that files a shared task under it', async () => {
+  const parent = await w.create(owner, { title: 'parent about to become a map' });
+  const shared = await w.create(owner, { title: 'shared task moving in' });
+  await w.grant(owner, 'share');
+  const outsider = await w.db.app.withBusiness(
+    w.business,
+    async (tx) => await insertPerson(tx, `outside-${randomUUID()}`),
+  );
+  await w.db.app.withBusiness(
+    w.business,
+    async (tx) =>
+      await shareRecord(tx, owner, { collection: 'task', recordId: shared.id, personId: outsider }),
+  );
+  const ready = latch();
+  const commit = latch();
+  const retyper = withSession(w.db.app, w.business, owner.presented, async (tx, session) => {
+    must(
+      await runCommand(tx, session, 'api', {
+        command: 'task.set_type',
+        operationId: randomUUID(),
+        recordId: parent.id,
+        expectedRevision: await w.revisionOf(parent.id),
+        taskType: 'map',
+      }),
+      'retype parent',
+    );
+    ready.release();
+    await commit.promise;
+  });
+  await ready.promise;
+  // The reparent reads the parent while the retype is uncommitted, then meets its lock.
+  const moving = w.asOnSecond(owner, {
+    command: 'task.reparent',
+    recordId: shared.id,
+    expectedRevision: await w.revisionOf(shared.id),
+    parentId: parent.id,
+  });
+  try {
+    await waitForBlockedQuery();
+  } finally {
+    commit.release();
+  }
+  await retyper;
+  await moving;
+  const rows = await w.db.admin.execute<{ n: string }>(
+    `select count(*)::text as n from grants g join records c
+       on c.business_id = g.business_id and c.id = g.scope_id
+      join records p on p.business_id = c.business_id and p.id = c.uuid_4
+     where g.business_id = $1 and c.id = $2 and g.subject_id = $3
+       and g.action = 'read' and g.revoked_at is null and p.data->>'type' = 'map'`,
+    [w.business, shared.id, outsider],
+  );
+  expect(rows[0]?.n).toBe('0');
+});
+
 // From Sol's PR #379 round 1 proofs (PRV-oa-379-R1-0e9c9b029.patch), the read half of
 // the map grant's reach, brought here with that reach (its `map()` is a map task here).
 function intercept(
