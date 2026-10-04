@@ -170,10 +170,11 @@ export const TENANT_TABLES: string = `select c.oid::regclass::text as name from 
 /**
  * The sessions ended installation-wide (0061, 0063) outlive the reset, as the
  * sign-ins they end do: carried into a schema the reset does not empty, merged
- * with any a stopped run left there, and put back once migrated. The carry is
- * a function the emptying calls first (staging-reset.mjs): it locks each source
- * against new endings until the emptying commits, so an ending committed before
- * it is carried, and one begun after waits and then fails, never lost.
+ * with any a stopped run left there, and put back once migrated. The last
+ * statement runs the copy, in the emptying's transaction (staging-reset.mjs):
+ * it locks each source against new endings until the emptying commits, so an
+ * ending committed before it is carried, and one begun after waits and then
+ * fails, never lost.
  */
 export const CARRY_ENDED_SESSIONS: readonly string[] = [
   'create schema if not exists ops_astro_reset',
@@ -196,6 +197,7 @@ export const CARRY_ENDED_SESSIONS: readonly string[] = [
          except select * from ops_astro_reset.ended_subject_sessions;
      end if;
    end $$`,
+  'select ops_astro_reset.carry_ended_sessions()',
 ];
 export const RESTORE_ENDED_SESSIONS: readonly string[] = [
   `insert into ops.ended_provider_sessions (session_id, ended_at)
