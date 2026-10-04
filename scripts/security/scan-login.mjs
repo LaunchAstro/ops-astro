@@ -190,10 +190,10 @@ async function make() {
 // subject lock (migrations/20261004005736_login_subject_lock.sql), both held from
 // the check through the provider's deletion, which comes before the commit: a
 // mapping of this sign-in already being written commits first and the check
-// finds it; one begun after is refused.
+// finds it; one begun after is refused. The businesses are read under both locks,
+// so one made and mapped to the sign-in while removal waited is checked too.
 async function endRows(record, providerEmail) {
-  const all = await businesses();
-  const scan = businessId(all);
+  const scan = businessId(await businesses());
   // Two connections: the scan business's transaction holds its locks while the others are read.
   const db = connect(env.DATABASE_URL, { source: 'scan-login', max: 2 });
   try {
@@ -202,6 +202,7 @@ async function endRows(record, providerEmail) {
       await tx.query(`select pg_advisory_xact_lock(hashtextextended('supabase:' || $1, 0))`, [
         record.userId,
       ]);
+      const all = await businesses();
       for (const { id } of all.filter((row) => row.id !== scan)) {
         // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own barrier
         const elsewhere = await db.withBusiness(id, (other) =>
