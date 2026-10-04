@@ -8,7 +8,31 @@
 import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { BrokerRoute, Broker, ProviderAdapter } from './broker-types.ts';
 import type { CustodyOutcome } from './custody.ts';
-import { fromVerifiedSender, type DeliverRefusal } from './email-class.ts';
+import type { DeliverRefusal } from './email-class.ts';
+
+/** RFC 5322's dot-atom in ASCII: a from's local part, never a display name, space or line break. */
+const DOT_ATOM = /^[\w!#$%&'*+/=?^`{|}~-]+(?:\.[\w!#$%&'*+/=?^`{|}~-]+)*$/u;
+/** Printable ASCII: a domain that lower-cases to the verified subdomain only if it already is one. */
+const ASCII = /^[!-~]+$/u;
+
+/**
+ * The report vouches for one subdomain: mail from anything but one bare address on it is not
+ * verified, and only a report that says it is not from the fake source (`mock`) counts.
+ */
+export function fromVerifiedSender(
+  from: string,
+  sender: { readonly verified: boolean; readonly subdomain: string; readonly mock: boolean },
+): boolean {
+  const [local = '', domain = '', ...rest] = from.split('@');
+  return (
+    sender.verified &&
+    sender.mock === false &&
+    DOT_ATOM.test(local) &&
+    rest.length === 0 &&
+    ASCII.test(domain) &&
+    domain.toLowerCase() === sender.subdomain.toLowerCase()
+  );
+}
 
 /** The catalogued name the send dispatches by. */
 export const EMAIL_OPERATION = 'email.send';
