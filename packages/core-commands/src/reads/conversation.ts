@@ -33,7 +33,7 @@ import type {
   ConversationReadResult,
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
-import { conversationAddress } from '../commands/conversations.ts';
+import { conversationAddress, DEFAULT_TITLE } from '../commands/conversations.ts';
 import {
   addressReader,
   wrapUpView,
@@ -119,20 +119,32 @@ async function messagesOf(
   }));
 }
 
+/**
+ * A scope task the reader may not read hides the subject, which names it,
+ * and the title when it was taken from the subject.
+ */
+function named(
+  row: Pick<ConversationRow, 'title' | 'subject' | 'scope_record_id'>,
+  reads: ReadsAddress,
+): { readonly hidden: boolean; readonly title: string; readonly subject: string | null } {
+  const hidden = row.scope_record_id !== null && !reads(`/task/${row.scope_record_id}`);
+  if (!hidden) return { hidden, title: row.title, subject: row.subject };
+  return { hidden, title: row.title === row.subject ? DEFAULT_TITLE : row.title, subject: null };
+}
+
 /** The conversation's own fields; its scope and page name a task only to a reader who may read it. */
 function conversationView(
   row: ConversationRow,
   reads: ReadsAddress,
 ): ConversationReadResult['conversation'] {
+  const { hidden, title, subject } = named(row, reads);
   return {
     id: row.id,
     address: conversationAddress(row.id),
-    title: row.title,
-    subject: row.subject,
+    title,
+    subject,
     scope:
-      row.scope_kind === null ||
-      row.scope_record_id === null ||
-      !reads(`/task/${row.scope_record_id}`)
+      row.scope_kind === null || row.scope_record_id === null || hidden
         ? null
         : { kind: row.scope_kind, id: row.scope_record_id },
     page:
@@ -248,24 +260,25 @@ export async function listConversations(
     scope: { kind: 'business', id: null },
   });
   if (session.roleKey === null || !own.ok) return HOLDS_NOTHING;
-  const rows = await tx.query<{
-    readonly id: string;
-    readonly title: string;
-    readonly last_activity_at: Date;
-    readonly body_purged_at: Date | null;
-  }>(
-    `select id, title, last_activity_at, body_purged_at from conversations
+  const rows = await tx.query<
+    Pick<
+      ConversationRow,
+      'id' | 'title' | 'subject' | 'scope_record_id' | 'last_activity_at' | 'body_purged_at'
+    >
+  >(
+    `select id, title, subject, scope_record_id, last_activity_at, body_purged_at from conversations
       where business_id = $1 and owner_actor_id = $2
       order by last_activity_at desc, id
       limit ${String(LIST_LIMIT)}`,
     [tx.businessId, session.actorId],
   );
+  const reads = await addressReader(tx, session);
   return {
     ok: true,
     conversations: rows.map((row) => ({
       id: row.id,
       address: conversationAddress(row.id),
-      title: row.title,
+      title: named(row, reads).title,
       lastActivityAt: row.last_activity_at.toISOString(),
       bodyPurged: row.body_purged_at !== null,
     })),
