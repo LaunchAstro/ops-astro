@@ -63,7 +63,9 @@ describe('the parser is bounded', () => {
     },
     30_000,
   );
+});
 
+describe('scans are bounded', () => {
   it('refuses a long line before it scans it', async () => {
     const before = `<p>${'a '.repeat(500_000)}</p>\n`;
     expect(await edit('a', 'b', before)).toMatchObject({ ok: false });
