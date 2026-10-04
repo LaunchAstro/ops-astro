@@ -63,9 +63,15 @@ export async function recordAuthenticationAttempt(
   // The session a person came in on, so they can see it (C58). Only a
   // resolved attempt's: a refused one's session is nobody's here. The column
   // is named only when there is one, so a database from before 0057, which
-  // has no such column, is still written to by a token that names none.
+  // has no such column, is still written to by a token that names none. Its
+  // first sign-in time (epoch seconds, or none) goes beside it, so the list
+  // can drop a session past its absolute limit (#771).
   const sessionId = resolved ? attempt.presented.sessionId : undefined;
-  const session = sessionId === undefined ? ['', ''] : [', session_id', ', $10'];
+  const signedInAt = attempt.presented.assurance?.signedInAt ?? null;
+  const session =
+    sessionId === undefined
+      ? ['', '']
+      : [', session_id, signed_in_at', ', $10, to_timestamp($11::double precision)'];
   await tx.query(
     `insert into public.authentication_attempts
        (business_id, id, owner, provider, subject_digest, outcome,
@@ -81,7 +87,7 @@ export async function recordAuthenticationAttempt(
       resolved ? attempt.actorId : null,
       resolved ? (attempt.personId ?? null) : null,
       resolved ? null : attempt.refusalCode,
-      ...(sessionId === undefined ? [] : [sessionId]),
+      ...(sessionId === undefined ? [] : [sessionId, signedInAt]),
     ],
   );
 }

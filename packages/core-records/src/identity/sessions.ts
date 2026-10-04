@@ -6,6 +6,10 @@
 // The sign-in provider gives a person no list of their sessions, so the list
 // is what the door has seen: the distinct `session_id`s of the person's
 // resolved attempts inside the absolute limit, less the ones already ended.
+// The limit runs from the session's first sign-in, not its latest call, so a
+// session the door now refuses as expired is not listed however recently it
+// was served (#771); rows written before that time was kept fall back to the
+// session's earliest attempt.
 // Every statement names the business and the person, so a person reads and
 // ends their own sessions and nobody else's.
 
@@ -47,6 +51,7 @@ const SEEN = `
      and not exists (
        select 1 from ops.ended_provider_sessions e where e.session_id = a.session_id)
    group by a.session_id
+  having coalesce(min(a.signed_in_at), min(a.at)) > now() - make_interval(secs => $3)
    order by max(a.at) desc, a.session_id
    limit $4`;
 
