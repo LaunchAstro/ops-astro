@@ -7,18 +7,14 @@
 // browser half reads the drawn gallery at 1480, 900 and 390 in both themes
 // (mp-1-3-gallery-own-width.ts).
 
-import { spawnSync } from 'node:child_process';
-import { URL as NodeURL } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { runLeg } from './browser-leg.ts';
 import { CHOSEN, type WidthView } from './mp-1-3-gallery-own-width.ts';
 
 let views: WidthView[] = [];
 
 beforeAll(() => {
-  const script = new NodeURL('mp-1-3-gallery-own-width.ts', import.meta.url).pathname;
-  const run = spawnSync(process.execPath, [script], { encoding: 'utf8', timeout: 900_000 });
-  expect(run.status, run.stderr.slice(-2000)).toBe(0);
-  views = JSON.parse(run.stdout) as WidthView[];
+  views = runLeg<WidthView[]>('mp-1-3-gallery-own-width.ts');
   expect(views).toHaveLength(6);
 }, 900_000);
 
