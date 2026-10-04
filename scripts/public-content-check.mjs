@@ -64,6 +64,8 @@ const publishedAddresses = [
   /^security@launchastro\.com$/u,
   /^[a-z0-9._%+-]+@example\.(?:invalid|test|localhost)$/u,
   /^example@(?:production-db\.example\.test|aws-0-ap-southeast-2\.pooler\.supabase\.com)$/u,
+  // Sol's staging-logins proof names a synthetic pooler login by this user (ORCH76 D1ALLOW).
+  /^owner@aws-0-ap-southeast-2\.pooler\.supabase\.com$/u,
   /^[a-z0-9._%+-]+@example\.(?:com|net|org)$/u,
   /^ada@alpha\.local$/u,
   /^mia@alpha\.local$/u,
