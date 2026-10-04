@@ -257,6 +257,9 @@ export async function refuseOwnerTicketMove(
     );
     if (leaving !== undefined) return leaving;
   }
+  // The parent is held `for share` before its type is read, so a retype to map
+  // in flight commits first and is seen (target, then parent, as before).
+  if (parentId !== null) await wayfinderFacts(tx, parentId, true);
   const into = parentId === null ? undefined : await wayfinderFacts(tx, parentId);
   if (into?.type !== 'map' || into.mapId === facts.mapId) return undefined;
   const shared = await refuseSharedIntoMap(tx, recordId);

@@ -150,6 +150,51 @@ it('WF-1 concurrent ticket completions cannot lose a map summary count', async (
   expect(summary[0]).toStrictEqual({ open_tickets: 0, closed_tickets: 2 });
 });
 
+it('WF-1 writes to two tasks under one ordinary parent do not queue on a map summary', async () => {
+  const parent = await w.create(owner, { title: 'ordinary parent' });
+  const a = await w.create(owner, { title: 'ordinary child A' }, { parentId: parent.id });
+  const b = await w.create(owner, { title: 'ordinary child B' }, { parentId: parent.id });
+  const touch = `update records set data = data || '{"note":"touched"}'::jsonb
+    where business_id = $1 and id = $2`;
+  const ready = latch();
+  const commit = latch();
+  const first = w.db.app.withBusiness(w.business, async (tx) => {
+    await tx.query(touch, [w.business, a.id]);
+    ready.release();
+    await commit.promise;
+  });
+  await ready.promise;
+  let finished = false;
+  const next = second
+    .withBusiness(w.business, async (tx) => await tx.query(touch, [w.business, b.id]))
+    .finally(() => {
+      finished = true;
+    });
+  let queued = false;
+  let settledWhileHeld = false;
+  try {
+    // oxlint-disable-next-line no-unmodified-loop-condition -- the second write's settling sets it
+    for (let attempt = 0; !finished && !queued && attempt < 500; attempt += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+      const waiting = await w.db.admin.execute<{ blocked: boolean }>(
+        `select exists (select 1 from pg_stat_activity
+          where datname = current_database() and pid <> pg_backend_pid()
+            and wait_event_type = 'Lock') as blocked`,
+      );
+      queued = waiting[0]?.blocked === true;
+      // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+      if (!queued) await delay(10);
+    }
+    settledWhileHeld = finished;
+  } finally {
+    commit.release();
+  }
+  await first;
+  await next;
+  expect(queued).toBe(false);
+  expect(settledWhileHeld).toBe(true);
+});
+
 it('WF-1 a map A grant cannot write a ticket after its concurrent move to map B', async () => {
   const a = await w.create(owner, { title: 'authority map A' }, { taskType: 'map' });
   const b = await w.create(owner, { title: 'authority map B' }, { taskType: 'map' });
@@ -299,6 +344,61 @@ it('WF-1 retyping a parent to map cannot race a client share on its child', asyn
      where g.business_id = $1 and c.id = $2 and g.subject_id = $3
        and g.action = 'read' and g.revoked_at is null and p.data->>'type' = 'map'`,
     [w.business, child.id, outsider],
+  );
+  expect(rows[0]?.n).toBe('0');
+});
+
+it('WF-1 retyping a parent to map cannot race a reparent that files a shared task under it', async () => {
+  const parent = await w.create(owner, { title: 'parent about to become a map' });
+  const shared = await w.create(owner, { title: 'shared task moving in' });
+  await w.grant(owner, 'share');
+  const outsider = await w.db.app.withBusiness(
+    w.business,
+    async (tx) => await insertPerson(tx, `outside-${randomUUID()}`),
+  );
+  await w.db.app.withBusiness(
+    w.business,
+    async (tx) =>
+      await shareRecord(tx, owner, { collection: 'task', recordId: shared.id, personId: outsider }),
+  );
+  const ready = latch();
+  const commit = latch();
+  const retyper = withSession(w.db.app, w.business, owner.presented, async (tx, session) => {
+    must(
+      await runCommand(tx, session, 'api', {
+        command: 'task.set_type',
+        operationId: randomUUID(),
+        recordId: parent.id,
+        expectedRevision: await w.revisionOf(parent.id),
+        taskType: 'map',
+      }),
+      'retype parent',
+    );
+    ready.release();
+    await commit.promise;
+  });
+  await ready.promise;
+  // The reparent reads the parent while the retype is uncommitted, then meets its lock.
+  const moving = w.asOnSecond(owner, {
+    command: 'task.reparent',
+    recordId: shared.id,
+    expectedRevision: await w.revisionOf(shared.id),
+    parentId: parent.id,
+  });
+  try {
+    await waitForBlockedQuery();
+  } finally {
+    commit.release();
+  }
+  await retyper;
+  await moving;
+  const rows = await w.db.admin.execute<{ n: string }>(
+    `select count(*)::text as n from grants g join records c
+       on c.business_id = g.business_id and c.id = g.scope_id
+      join records p on p.business_id = c.business_id and p.id = c.uuid_4
+     where g.business_id = $1 and c.id = $2 and g.subject_id = $3
+       and g.action = 'read' and g.revoked_at is null and p.data->>'type' = 'map'`,
+    [w.business, shared.id, outsider],
   );
   expect(rows[0]?.n).toBe('0');
 });

@@ -48,6 +48,8 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/web/src/operations/client.ts': "the browser calls the product's own API, same origin",
   'apps/web/src/session/sign-in.ts':
     "the browser signs in through the product's own API, same origin",
+  'apps/web/src/session/sign-in-again.ts':
+    'signs out, at the sign-in provider, a new session the tab never adopted (C59)',
   // Batch 1's, taken at 5d3e129 (reviewed there):
   'apps/api/auth/jwks.ts':
     "reads the sign-in provider's published key set at its pinned address (S0-6b)",

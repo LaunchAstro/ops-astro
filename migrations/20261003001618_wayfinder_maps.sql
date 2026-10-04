@@ -219,13 +219,26 @@ declare
   v_business uuid := public.app_business_id();
   v_task_type uuid;
 begin
+  select t.id into v_task_type
+    from public.record_types t where t.business_id = v_business and t.key = 'task';
+  if v_task_type is null then return; end if;
+
+  -- An id that is no live map and has no summary to drop is done here, with
+  -- no lock, so writes under one ordinary parent do not queue on each other.
+  if not exists (
+    select 1 from public.records r
+     where r.business_id = v_business and r.id = p_map and r.record_type_id = v_task_type
+       and r.deleted_at is null and r.data ->> 'type' = 'map'
+  ) and not exists (
+    select 1 from public.map_summaries s where s.business_id = v_business and s.map_id = p_map
+  ) then
+    return;
+  end if;
+
   -- One refresh of a map at a time, to the end of the transaction: each
   -- statement below then counts what an earlier writer committed, so two
   -- concurrent writes cannot each upsert a count missing the other's.
   perform pg_advisory_xact_lock(hashtextextended('map.summary:' || v_business || ':' || p_map, 0));
-  select t.id into v_task_type
-    from public.record_types t where t.business_id = v_business and t.key = 'task';
-  if v_task_type is null then return; end if;
 
   if not exists (
     select 1 from public.records r
@@ -316,6 +329,8 @@ begin
        and l.from_record_id in (
          case when tg_op <> 'DELETE' then new.id end,
          case when tg_op <> 'INSERT' then old.id end)
+    -- One order for every writer, so two refreshing the same maps cannot deadlock.
+    order by 1
   loop
     perform public.map_summary_refresh(v_map);
   end loop;

@@ -88,6 +88,7 @@ export type {
   CapabilitiesResult,
   SessionPersonResult,
   ClientListResult,
+  ClientPrivacyView,
   ClientView,
   CommentView,
   DecisionLink,

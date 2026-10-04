@@ -270,6 +270,8 @@ const FREE_OPERANDS: readonly string[] = [
   'reason',
   'receives',
   'report',
+  'requestLink',
+  'requestedBy',
   'retention',
   'service',
   'step',
@@ -427,6 +429,11 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
   // scope; a body naming no client is asked of the business.
   'task.duplicate': [
     'client',
+    (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
+  ],
+  // C60: a client's privacy settings are asked of that client, at party scope.
+  'client.set_privacy': [
+    'clientId',
     (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
   ],
   'delegation.revoke': [

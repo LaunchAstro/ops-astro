@@ -343,6 +343,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       action: 'read',
     }));
     byAda('access.end', 'holderId', f.admin.personId as string, (holderId) => ({ holderId }));
+    // C60: bravo's client named in an alpha privacy change.
+    byAda('client.set_privacy', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      modelEgress: false,
+      providers: [],
+      handlesHealth: false,
+      noAgentEdits: true,
+    }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
     }));
@@ -468,11 +476,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 76 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 77 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(76);
-    expect(names).toHaveLength(76);
+    expect(new Set(names).size, 'distinct operations').toBe(77);
+    expect(names).toHaveLength(77);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
