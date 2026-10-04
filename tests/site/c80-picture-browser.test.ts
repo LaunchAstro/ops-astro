@@ -221,4 +221,19 @@ describe.skipIf(!installed)('C80 capture picture, in a real browser, Sol R1', ()
     expect(observed.ok && Object.keys(observed.value.stylesheets)).toEqual([at('/new/site.css')]);
     expect([RED, 'refused']).toContain(shown);
   }, 60_000);
+
+  it('Sol proof, criterion correctness: picture retains the final stylesheet URL for relative imports', async () => {
+    const { observed, shown } = await both({
+      [ABOUT]: page('<link rel=stylesheet href=/_astro/site.css>'),
+      [at('/_astro/site.css')]: moved('/_astro/v2/site.css'),
+      [at('/_astro/v2/site.css')]: ok('text/css', '@import "theme.css";'),
+      [at('/_astro/v2/theme.css')]: sheet('red'),
+      [at('/_astro/theme.css')]: sheet('blue'),
+    });
+    expect(observed.ok && Object.keys(observed.value.stylesheets)).toEqual([
+      at('/_astro/site.css'),
+      at('/_astro/v2/theme.css'),
+    ]);
+    expect([RED, 'refused']).toContain(shown);
+  }, 60_000);
 });
