@@ -6,7 +6,6 @@
 
 import { describe, expect, it } from 'vitest';
 import { read } from './merge-group-repo.ts';
-import { top } from './workflow-text.ts';
 
 const CI = '.github/workflows/ci.yml';
 const REVIEW = '.github/workflows/review-evidence.yml';
@@ -15,8 +14,20 @@ const required = (
     required_status_checks: { context: string }[];
   }
 ).required_status_checks;
+/**
+ * The `jobs:` block, to the next top-level key. Unlike workflow-text.ts's `top()`, a whole-line
+ * comment in column one does not end it (round 4): YAML allows one there, and a job after it
+ * would go unread.
+ */
+function jobsBlock(text: string): string {
+  const lines = text.split('\n');
+  const start = lines.indexOf('jobs:');
+  expect(start, 'a jobs: key in column one').toBeGreaterThan(-1);
+  const end = lines.findIndex((l, i) => i > start && /^[^\s#]/u.test(l));
+  return lines.slice(start, end === -1 ? undefined : end).join('\n');
+}
 const jobs = (text: string) =>
-  top(text, 'jobs')
+  jobsBlock(text)
     .split(/^(?= {2}[\w-]+:$)/mu)
     .slice(1);
 
@@ -29,7 +40,7 @@ const ALLOWED = new Set([undefined, 'always()', "github.event_name != 'push'"]);
 
 /** Each job of a workflow by its key: its name, its one condition and what it waits on. */
 function jobTable(path: string) {
-  const text = top(read(path), 'jobs');
+  const text = jobsBlock(read(path));
   // The one form these cases read (review3 M7's rule, for jobs): a job key is a bare key alone on
   // its line, and every line at a job's own depth is a bare key with its value or a whole-line
   // comment, so no quoted key, no space before a colon, no merge key and no complex key. `needs`
@@ -71,6 +82,9 @@ describe('merge group: no job skips a group', () => {
     const look = table.find((j) => j.name === LOOKAHEAD)?.key;
     expect(look).toBe('database-lookahead');
     const byKey = new Map(table.map((j) => [j.key, j]));
+    // Every name in `needs` is a job key exactly, so a case or spelling variant cannot hide a wait.
+    for (const { name, needs } of table)
+      for (const n of needs) expect(byKey.has(n), `${name}: needs ${n}`).toBe(true);
     const waitsOn = (key: string) => {
       const seen = new Set<string>();
       const todo = [...(byKey.get(key)?.needs ?? [])];

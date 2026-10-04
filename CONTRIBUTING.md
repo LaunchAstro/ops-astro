@@ -122,7 +122,7 @@ its base, for a conflict, merge it locally and push.
 A newer push, label change or reopen on a pull request cancels its older
 checks still running; a newer run does not cancel a merge group's checks. When
 review sends a pull request back for fixes, add the `sent-back` label: it
-cancels the checks on that head and fails `contamination gate` there, so no
+cancels the ci checks on that head and fails `contamination gate` there, so no
 runner is spent on code about to change. The fix push runs every check in
 full. To run them on the same head instead, remove the label; any other label
 change or a reopen runs them too, so the hold lasts until the next such event.
