@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function -- the review's proof, its body kept as written */
 import { expect, it } from 'vitest';
 import postgres from 'postgres';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
