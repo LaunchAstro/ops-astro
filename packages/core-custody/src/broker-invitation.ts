@@ -12,7 +12,9 @@
 //    Then a fresh enrolment token is minted and kept as its SHA-256 alone,
 //    and the attempt is recorded `asked` against it. A refusal writes nothing.
 // 2. Send, through custody, the adapter's message: the address the invitation
-//    names and one link, the enrolment page carrying the token.
+//    names and one link, the enrolment page carrying the token. A sender that
+//    paused past the fence since its ask (`lapsed`) calls nothing and records
+//    `failed`, evidence `expired`, as the inbox send does.
 // 3. Record what came back as the attempt's next observation, read as the
 //    inbox send reads it; an answer holding anything token-shaped is
 //    malformed. Nothing returned or written holds a token.
@@ -33,7 +35,7 @@ import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import { observed, sendRoute } from './broker-email-route.ts';
 import type { MailSettings } from './broker-email.ts';
 import type { Broker } from './broker-types.ts';
-import { roomFor, type DeliverRefusal } from './email-class.ts';
+import { lapsed, readClocks, roomFor, type DeliverRefusal, type Reading } from './email-class.ts';
 
 /** The acts an invitation's send answers, one email each. */
 export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'invitation.resend'];
@@ -65,6 +67,8 @@ interface Asked {
   readonly tokenId: string;
   readonly to: string;
   readonly token: string;
+  /** The host's clocks just before the `asked` attempt was written: the fence counts from here. */
+  readonly reserved: Reading;
 }
 
 /**
@@ -136,7 +140,14 @@ async function ask(
       invitation.expires_at,
     ],
   );
-  const asked = { invitationId, tokenId: minted?.id ?? '', to: invitation.address, token };
+  const reserved = readClocks();
+  const asked = {
+    invitationId,
+    tokenId: minted?.id ?? '',
+    to: invitation.address,
+    token,
+    reserved,
+  };
   await recordAttempt(tx, asked, { state: 'asked' });
   return asked;
 }
@@ -159,17 +170,21 @@ export async function sendInvitation(
   if (typeof asked === 'string') return { ok: false, code: asked };
   const link = new URL(`${ENROL_PATH}${asked.token}`, mail.appOrigin).href;
   const built = adapter.build({ to: asked.to, from: mail.from, address: link });
-  const outcome = await broker.custody.dispatch(route.credentialRef, {
-    destination: operation.destination,
-    path: built.path,
-    method: built.method,
-    body: built.body,
-    timeoutMs: operation.timeoutMs,
-    maxResponseBytes: operation.maxResponseBytes,
-  });
+  const read = lapsed(asked.reserved)
+    ? ({ state: 'failed', evidence: 'expired' } as const)
+    : observed(
+        await broker.custody.dispatch(route.credentialRef, {
+          destination: operation.destination,
+          path: built.path,
+          method: built.method,
+          body: built.body,
+          timeoutMs: operation.timeoutMs,
+          maxResponseBytes: operation.maxResponseBytes,
+        }),
+        operation,
+      );
   // An answer is evidence about the message, never a place a link's token is kept: this
   // send's, an earlier send's or any other business's, all of one shape.
-  const read = observed(outcome, operation);
   const seen = TOKEN_SHAPED.test(read.evidence)
     ? ({ state: 'failed', evidence: 'malformed' } as const)
     : read;
