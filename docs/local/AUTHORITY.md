@@ -769,8 +769,12 @@ names the person it acts for. Every grant check asks the key within the ticked
 ones and the person's grants as they are now (`subjectsOf`, `askedFor`); the
 credential has no sign-in assurance, so a money step-up is never met. It
 reaches the rows an agent may reach under a delegation that need no lease
-(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.comment`, `task.propose`
-and `session.capabilities`); anything else is `DELEGATION_EXCLUDES_OPERATION`,
+(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.update`, `task.assign`,
+`task.set_scores`, `task.set_adhoc`, `task.set_category`, `task.comment`,
+`task.edit_comment`, `task.delete_comment`, `task.propose`,
+`run.child_handback` and `session.capabilities`), held to a delegated agent's
+limits where the handler has them (`updateTask`, `assignTask`, `commentOnTask`);
+anything else is `DELEGATION_EXCLUDES_OPERATION`,
 `run.revise_state` included by name (`OUTSIDE_REACH`), though a run's delegation
 reaches it.
 A create asks the person's business-wide `task:write` within the ticked keys; it
