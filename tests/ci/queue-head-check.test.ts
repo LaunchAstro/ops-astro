@@ -2,10 +2,11 @@
 //
 // CI-SPEED (#724): a pull request whose head is a merge-queue commit runs no checks, so its
 // results never land beside the group's own. The script cases run the real script, with real
-// git listing a real (local, bare) remote; the wiring case reads ci.yml with the YAML parser.
+// git listing a real (local, bare) remote, or a stub git that prints a listing no git would; the
+// wiring cases read ci.yml and review-evidence.yml with the YAML parser.
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -69,9 +70,19 @@ mkdirSync(broken);
 git(broken, 'init', '-q', '-b', 'main');
 git(broken, 'remote', 'add', 'origin', `http://planted-user:${MARKER}@127.0.0.1:9/${MARKER}.git`);
 
+// A directory whose stub `git`, first on PATH, prints `listing` and exits 0.
+function stubGit(listing: string): string {
+  const bin = mkdtempSync(join(dir, 'stub-git-'));
+  writeFileSync(join(bin, 'listing.txt'), listing);
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\ncat '${join(bin, 'listing.txt')}'\nexit 0\n`);
+  chmodSync(join(bin, 'git'), 0o755);
+  return bin;
+}
+
 /** Runs the check as the gate does, in `cwd`, on `payload` written where GitHub writes the event. */
-function check(eventName: string, payload?: unknown, cwd = work) {
+function check(eventName: string, payload?: unknown, cwd = work, pathFirst?: string) {
   const env: NodeJS.ProcessEnv = { ...GIT_ENV, GITHUB_EVENT_NAME: eventName };
+  if (pathFirst !== undefined) env['PATH'] = `${pathFirst}:${GIT_ENV.PATH ?? ''}`;
   if (payload !== undefined) {
     const path = join(dir, `${Math.random().toString(36).slice(2)}.json`);
     writeFileSync(path, typeof payload === 'string' ? payload : JSON.stringify(payload));
@@ -157,6 +168,20 @@ describe('the queue-head check, on what it cannot read and on other events', () 
   });
 });
 
+describe('the queue-head check, on a listing no git prints', () => {
+  it('fails closed on a pull request when git exits 0 with a listing it cannot read', () => {
+    for (const listing of [
+      `${main}\trefs/heads/gh-readonly-queue/main/pr-1-${main}\r\n`,
+      'garbage\n',
+      `${main}\trefs/heads/main\nnot a listing line\n`,
+    ]) {
+      const run = check('pull_request', pr(main), work, stubGit(listing));
+      expect(run.status, JSON.stringify(listing)).toBe(1);
+      expect(run.out).toMatch(/could not list the merge-queue branches \(unreadable listing\)/u);
+    }
+  });
+});
+
 const tip = 'a'.repeat(39) + 'b';
 const line = (sha: string, ref: string) => `${sha}\t${ref}\n`;
 
@@ -215,14 +240,19 @@ describe('the decision', () => {
   });
 });
 
-describe('the wiring', () => {
-  const ci = parse(readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8')) as {
-    jobs: { gate: { name: string; steps: Record<string, unknown>[] } };
+type Steps = Record<string, unknown>[];
+const STEP = 'A pull request never runs its checks on a merge-queue commit';
+const workflow = (name: string) =>
+  parse(readFileSync(join(ROOT, `.github/workflows/${name}`), 'utf8')) as {
+    on: Record<string, unknown>;
+    jobs: Record<string, { name?: string; steps?: Steps }>;
   };
 
+describe('the wiring', () => {
   it('runs in the contamination gate right after the sent-back hold, unconditionally, before every other check', () => {
-    const steps = ci.jobs.gate.steps;
-    expect(ci.jobs.gate.name).toBe('contamination gate');
+    const gate = workflow('ci.yml').jobs['gate'];
+    const steps = gate?.steps ?? [];
+    expect(gate?.name).toBe('contamination gate');
     const hold = steps.findIndex((s) => s['run'] === 'node scripts/sent-back-hold.mjs');
     const at = steps.findIndex((s) => s['run'] === 'node scripts/queue-head-check.mjs');
     expect(hold).toBeGreaterThan(-1);
@@ -235,5 +265,36 @@ describe('the wiring', () => {
         .slice(0, hold)
         .every((s) => /^actions\/(checkout|setup-node)@/u.test(String(s['uses']))),
     ).toBe(true);
+  });
+});
+
+// `review evidence for this revision` is a required check in a workflow of its own that does not
+// wait on the gate, so its job runs the check itself, before it judges anything.
+describe('the wiring, in the review evidence workflow', () => {
+  const review = workflow('review-evidence.yml');
+  const jobs = Object.values(review.jobs).filter(
+    (j) => j.name === 'review evidence for this revision',
+  );
+  const steps = jobs[0]?.steps ?? [];
+  const find = (match: (s: Record<string, unknown>) => boolean) => steps.findIndex((s) => match(s));
+  const uses = (action: string) => find((s) => String(s['uses']).startsWith(`actions/${action}@`));
+
+  it('runs right after the checkout and the pinned Node, unconditionally, before the evidence is judged', () => {
+    expect(jobs.length).toBe(1);
+    const at = find((s) => s['run'] === 'node scripts/queue-head-check.mjs');
+    const install = find((s) => s['run'] === 'pnpm install --frozen-lockfile');
+    const judged = find((s) => s['name'] === 'The review must cover the head being merged');
+    // No condition, nothing else on it: its origin is the checkout's, and nothing is installed first.
+    expect(steps[at]).toStrictEqual({ name: STEP, run: 'node scripts/queue-head-check.mjs' });
+    expect(uses('checkout')).toBeGreaterThan(-1);
+    expect(uses('checkout')).toBeLessThan(at);
+    expect(uses('setup-node')).toBe(at - 1);
+    expect(install).toBeGreaterThan(at);
+    expect(judged).toBeGreaterThan(at);
+  });
+
+  it('reads the pull request’s own event, on the event’s own checkout', () => {
+    expect(Object.keys(review.on).toSorted()).toStrictEqual(['merge_group', 'pull_request']);
+    expect(steps[uses('checkout')]?.['with']).not.toHaveProperty('ref');
   });
 });
