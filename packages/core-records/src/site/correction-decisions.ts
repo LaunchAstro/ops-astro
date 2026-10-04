@@ -3,11 +3,13 @@
 // C80's decision read over `live_corrections` (0311): one correction's state,
 // who decided it and its version, filtered by the caller's grant at the
 // correction's own party inside the query, as every read in
-// `live-corrections.ts` is.
+// `live-corrections.ts` is. And the approval's two reads of who may decide:
+// the configured approver and their membership.
 
 import { EFFECTIVE } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
+  APPROVER_SETTING,
   COVERED,
   coveringParameters,
   type CorrectionState,
@@ -69,4 +71,30 @@ export async function holdsAnywhere(tx: TenantQuery, covering: Covering): Promis
     coveringParameters(covering),
   );
   return rows[0]?.held === true;
+}
+
+/**
+ * The configured approver's person id, read under a share lock on its setting
+ * row so a concurrent change waits for this decision (or this decision for it).
+ * Undefined when the business has no such row or the value is unset.
+ */
+export async function lockConfiguredApprover(tx: TenantQuery): Promise<string | undefined> {
+  const rows = await tx.query<{ readonly value: unknown }>(
+    `select value from public.business_settings
+      where business_id = $1 and key = $2
+      for share`,
+    [tx.businessId, APPROVER_SETTING],
+  );
+  const value = rows[0]?.value;
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** Whether a person is an active member of this business (an approver must be). */
+export async function isActiveMember(tx: TenantQuery, personId: string): Promise<boolean> {
+  const rows = await tx.query<{ readonly present: boolean }>(
+    `select true as present from public.memberships
+      where business_id = $1 and person_id = $2 and active and ended_at is null`,
+    [tx.businessId, personId],
+  );
+  return rows.length > 0;
 }

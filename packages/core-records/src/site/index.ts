@@ -9,9 +9,7 @@ export {
   GATE_COLLECTION,
   RUN_COLLECTION,
   insertLiveCorrection,
-  isActiveMember,
   listCoveredCorrections,
-  lockConfiguredApprover,
   lockCoveredCorrection,
   writeCorrectionDecision,
   type CorrectionState,
@@ -21,6 +19,8 @@ export {
 } from './live-corrections.ts';
 export {
   holdsAnywhere,
+  isActiveMember,
+  lockConfiguredApprover,
   readCoveredDecision,
   type CorrectionDecision,
 } from './correction-decisions.ts';
