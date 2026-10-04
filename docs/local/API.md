@@ -3066,15 +3066,15 @@ steps waiting on it; a second failure stops the onboarding and says so on the
 task. `task:write` is asked at the step task's own client (`prepare.ts`, the
 `target` lookup), and only while the task is still on the onboarding's client,
 so a holder scoped to one client writes that client's steps and no other's; an
-agent writes the step on the task it is delegated on. A step of any kind takes
-a result from either: the kind (agent-run, needs a person, waits on the client)
-says whose move it is, not who records it. An agent reaches a person or
-client-wait step only on a delegation a person approved for that task, and its
-result withdraws the step's open item, naming nobody, where a person's clears
-it (`closeStepMove`). Source: the C41-A draft (`b0/SL13`), whose agent row
-serves every step and whose `closeStepMove` withdraws the item "when an agent
-did", and the ticket's `C41-A step result on its task` line, which names no
-actor per kind. It answers `{ step, outcome, opened, stopped }`;
+agent writes the step on the task it is delegated on. An agent records agent
+steps only: a person or client-wait step is a person's checkpoint, so an
+agent's result on one is `DELEGATION_EXCLUDES_OPERATION` 403 naming `kind`,
+asked under the locks before anything is written (ORCH79 P12STEPACTOR). A
+person records a step of any kind. A person's result clears the step's open
+item (`closeStepMove`); an agent's withdraws it, naming nobody, which is
+reached only by an agent step's task carrying an ordinary `task.assign` item,
+since the step's own items are raised on person and client-wait steps alone.
+It answers `{ step, outcome, opened, stopped }`;
 `FIELD_VALUE_INVALID` 422 names `recordId`, `outcome` or `result`; a task that
 is no step here, or is in the trash, is `NOT_FOUND` 404, as `task.comment`
 answers a trashed task; a step of a stopped or finished onboarding is
