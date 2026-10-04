@@ -72,8 +72,8 @@ function placeOf(keys: readonly string[], held: Held | null): number | null {
  * is over it; focus shows it too, and the arrow keys, Home and End move focus
  * along the points. Hovering never moves the tab stop, and the pointer leaving
  * hands the tip back to the point that holds focus now. The shown point is held
- * by its place and its key: a render that removes or reorders points finds it by
- * key or shows none, and two points sharing a key each show their own.
+ * by its place and its key: a render that reorders points finds it by key, and
+ * one that removes it lets it go. Keys are the points' React keys, so unique.
  */
 export function usePoints(keys: readonly string[]): {
   readonly shown: number | null;
@@ -84,16 +84,16 @@ export function usePoints(keys: readonly string[]): {
   const [stop, setStop] = useState(0);
   const [shown, setShown] = useState<Held | null>(null);
   const nodes = useRef<(SVGElement | null)[]>([]);
-  const count = keys.length;
   const live = placeOf(keys, shown);
+  if (shown !== null && live === null) setShown(null);
   const show = (index: number): void => {
     setShown({ at: index, key: keys[index] ?? '' });
   };
   const move = (event: KeyboardEvent, index: number): void => {
-    const next = stepFor(event.key, index, count);
+    const next = stepFor(event.key, index, keys.length);
     if (next === null) return;
     event.preventDefault();
-    const target = Math.max(0, Math.min(count - 1, next));
+    const target = Math.max(0, Math.min(keys.length - 1, next));
     setStop(target);
     nodes.current[target]?.focus();
   };
@@ -104,7 +104,7 @@ export function usePoints(keys: readonly string[]): {
     role: 'img',
     'aria-label': tipLabel(tip),
     'aria-describedby': live === index ? tipId : undefined,
-    tabIndex: index === Math.min(stop, count - 1) ? 0 : -1,
+    tabIndex: index === Math.min(stop, keys.length - 1) ? 0 : -1,
     onMouseEnter: () => {
       show(index);
     },
