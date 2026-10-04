@@ -20,7 +20,7 @@
 // **Assignment starts nothing.** It records who holds the task; a run still
 // needs its own commands.
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { DELEGATION_STANDS, type TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
@@ -78,11 +78,10 @@ async function refuseAgent(
     readonly purpose_scope_id: string;
     readonly live: boolean;
   }>(
-    `select delegate_person_id, purpose_scope_id,
-            (revoked_at is null and settled_at is null and expires_at > now()) as live
-       from public.delegations
-      where business_id = $1 and id = $2
-      for share`,
+    `select d.delegate_person_id, d.purpose_scope_id, ${DELEGATION_STANDS} as live
+       from public.delegations d
+      where d.business_id = $1 and d.id = $2
+      for share of d`,
     [tx.businessId, delegationId],
   );
   const found = rows[0];
@@ -100,7 +99,9 @@ async function refuseAgent(
     return refuseCommand(
       'DELEGATION_NOT_LIVE',
       ['agent'],
-      ['This delegation is revoked, settled or expired, so it holds no task.'],
+      [
+        'This delegation, or the one it was minted under, is revoked, settled or expired, so it holds no task.',
+      ],
     );
   }
   if (found.purpose_scope_id !== context.target?.id) {

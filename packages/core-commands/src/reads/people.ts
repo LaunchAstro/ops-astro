@@ -14,6 +14,7 @@
 
 import {
   asksMoneyStepUp,
+  DELEGATION_STANDS,
   heldPermissions,
   listAllClients,
   listClientPrivacy,
@@ -117,14 +118,7 @@ async function standingDelegations(tx: TenantQuery): Promise<readonly Delegation
          on a.business_id = d.business_id and a.id = d.agent_actor_id and a.active
        join public.people p
          on p.business_id = d.business_id and p.id = d.delegate_person_id
-      where d.business_id = $1
-        and d.revoked_at is null and d.settled_at is null and d.expires_at > now()
-        and (d.parent_delegation_id is null
-             or exists (select 1 from public.delegations parent
-                         where parent.business_id = d.business_id
-                           and parent.id = d.parent_delegation_id
-                           and parent.revoked_at is null and parent.settled_at is null
-                           and parent.expires_at > now()))
+      where d.business_id = $1 and ${DELEGATION_STANDS}
       order by d.granted_at, d.id`,
     [tx.businessId],
   );
