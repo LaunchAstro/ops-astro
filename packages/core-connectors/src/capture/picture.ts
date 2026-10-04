@@ -7,7 +7,9 @@
 //
 // - the page's own document, fetched by the fence as a document once (a reload
 //   is refused), served with a policy that runs no script, loads no frame,
-//   object or worker, whatever the browser was told;
+//   object or worker, whatever the browser was told; where the fence followed a
+//   redirect, the browser is redirected too and served the copy at the final
+//   address, so it resolves the page's addresses as the page observation does;
 // - its stylesheets, fetched by the fence as stylesheets of that page, each
 //   once (a repeat is answered from the first fetch), a few at a time and no
 //   more distinct ones than the page observation allows; one that cannot be
@@ -42,7 +44,11 @@ export interface PictureRequest {
 }
 
 export interface PictureAnswer {
-  readonly status: 200;
+  /**
+   * 200 with the body, or 302 (the body empty) to the address the fence's fetch ended at: the
+   * port follows it, handing that request to the route too.
+   */
+  readonly status: 200 | 302;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
 }
@@ -80,13 +86,31 @@ export const PICTURE_POLICY: string =
   "object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'";
 
 const originOf = (url: string): string => (URL.canParse(url) ? new URL(url).origin : '');
+const DOCUMENT = {
+  'content-type': 'text/html; charset=utf-8',
+  'content-security-policy': PICTURE_POLICY,
+};
 
 interface RouteState {
   readonly refused: FenceRefusal[];
   /** Each sheet's fenced answer, by address: a repeat is answered from it. */
   readonly sheets: Map<string, Promise<Fenced<Fetched>>>;
+  /** Fetched answers the browser was redirected to, by kind and final address. */
+  readonly moved: Map<string, Fetched>;
   served: boolean;
   failed: FenceCode | undefined;
+}
+
+/** The fetched copy, served where it was fetched; if it moved, the browser is sent there first. */
+function answered(
+  state: RouteState,
+  request: PictureRequest,
+  fetched: Fetched,
+  headers: Readonly<Record<string, string>>,
+): PictureAnswer {
+  if (fetched.url === request.url) return { status: 200, headers, body: fetched.body };
+  state.moved.set(`${request.kind} ${fetched.url}`, fetched);
+  return { status: 302, headers: { location: fetched.url }, body: '' };
 }
 
 function pictureRoute(page: string, options: CaptureOptions, state: RouteState): PictureRoute {
@@ -97,6 +121,12 @@ function pictureRoute(page: string, options: CaptureOptions, state: RouteState):
   const fenced = { ...options, record };
   const run = limiter(SHEETS_AT_ONCE);
   return async (request) => {
+    const key = `${request.kind} ${request.url}`;
+    const landed = state.moved.get(key);
+    if (request.kind === 'document' && request.mainFrame && landed !== undefined) {
+      state.moved.delete(key);
+      return answered(state, request, landed, DOCUMENT);
+    }
     if (request.kind === 'document' && request.mainFrame && request.url === page) {
       if (state.served) {
         record({ code: 'CAPTURE_KIND_REFUSED', hop: 0, origin: originOf(page) });
@@ -108,11 +138,7 @@ function pictureRoute(page: string, options: CaptureOptions, state: RouteState):
         state.failed ??= fetched.code;
         return null;
       }
-      const headers = {
-        'content-type': 'text/html; charset=utf-8',
-        'content-security-policy': PICTURE_POLICY,
-      };
-      return { status: 200, headers, body: fetched.value.body };
+      return answered(state, request, fetched.value, DOCUMENT);
     }
     if (request.kind === 'stylesheet') {
       if (!state.sheets.has(request.url) && state.sheets.size >= MAX_STYLESHEETS) {
@@ -143,7 +169,13 @@ export async function capturePicture(
   options: CaptureOptions,
   browser: PictureBrowser,
 ): Promise<Fenced<Picture>> {
-  const state: RouteState = { refused: [], sheets: new Map(), served: false, failed: undefined };
+  const state: RouteState = {
+    refused: [],
+    sheets: new Map(),
+    moved: new Map(),
+    served: false,
+    failed: undefined,
+  };
   let png: Uint8Array;
   try {
     png = await browser(url, pictureRoute(url, options, state));
