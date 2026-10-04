@@ -79,7 +79,7 @@ function publishPorts(sent: string[], overrides: Partial<PublishPorts> = {}): Pu
   return ports;
 }
 
-it('Sol R1 2: approval for one publish reference cannot authorise another', async () => {
+it('approval for one publish reference cannot authorise another', async () => {
   const sent: string[] = [];
   const approved = approvedJob('request-17');
   const outcome = await publishCorrection(
@@ -92,7 +92,7 @@ it('Sol R1 2: approval for one publish reference cannot authorise another', asyn
   });
 });
 
-it('Sol R1 3: cancellation during the drift read prevents dispatch', async () => {
+it('cancellation during the drift read prevents dispatch', async () => {
   const sent: string[] = [];
   let cancelled = false;
   const ports = publishPorts(sent, {
@@ -109,7 +109,7 @@ it('Sol R1 3: cancellation during the drift read prevents dispatch', async () =>
   });
 });
 
-it('Sol R1 4: an unknown publish is not dispatched blind on retry', async () => {
+it('an unknown publish is not dispatched blind on retry', async () => {
   const sent: string[] = [];
   let landed = false;
   const ports = {
@@ -171,7 +171,7 @@ function revertPorts(sent: string[], overrides: Partial<RevertPorts> = {}): Reve
   return ports;
 }
 
-it('Sol R1 5: an unknown revert is not dispatched blind on retry', async () => {
+it('an unknown revert is not dispatched blind on retry', async () => {
   const sent: string[] = [];
   let landed = false;
   const ports = {
@@ -200,7 +200,7 @@ it('Sol R1 5: an unknown revert is not dispatched blind on retry', async () => {
   expect(sent).toHaveLength(1);
 });
 
-it('Sol R1 8: a pending revert keeps the original decision time until observation', async () => {
+it('a pending revert keeps the original decision time until observation', async () => {
   let now = T0;
   let served = false;
   const ports = revertPorts([], {
@@ -221,7 +221,7 @@ it('Sol R1 8: a pending revert keeps the original decision time until observatio
   });
 });
 
-it('Sol R1 9: a replacement decoy does not establish that the target word landed', async () => {
+it('a replacement decoy does not establish that the target word landed', async () => {
   const accepted = await publishCorrection(approvedJob(), publishPorts([]));
   if (accepted.state !== 'accepted') throw new Error(`not accepted: ${accepted.state}`);
   const observe = (text: string) =>
@@ -237,7 +237,7 @@ it('Sol R1 9: a replacement decoy does not establish that the target word landed
   expect((await observe('Parking beside the clinic. We walk beside you.')).state).toBe('live');
 });
 
-it('Sol R1 10: an unrelated replacement word does not prevent observing a correct revert', async () => {
+it('an unrelated replacement word does not prevent observing a correct revert', async () => {
   // The target holds the original word again; the replacement stands only in other copy.
   const reverted = page('We walk alongside you. Parking beside the clinic.');
   const outcome = await revertCorrection(revertInput, revertPorts([], { capture: reverted }));
@@ -261,7 +261,7 @@ const raced = <T>(value: T, proof: string) => {
   };
 };
 
-it('Rebind 2 L2: a resend refused because a late landing beat it records landed, not failed', async () => {
+it('a resend refused because a late landing beat it records landed, not failed', async () => {
   const revert = raced(REVERTED, 'sha_mismatch');
   const reverted = await revertCorrection(
     revertInput,
