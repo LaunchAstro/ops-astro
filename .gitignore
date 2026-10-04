@@ -13,3 +13,7 @@ replacements.txt
 
 # Local working-slice resources: env files, synthetic credentials, receipts.
 .local/
+
+# The quota mutation proofs write a suite here while they run; one left by a
+# killed run mocks the quota and must never be committed.
+tests/api/api-2-quota-mutant-*.test.ts
