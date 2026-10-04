@@ -131,8 +131,8 @@ describe('CQ-8 runtime structure', () => {
       // before reading the register, inside the handler's transaction.
       'packages/core-records/src/operations/overseas-services.ts',
       // Catalogue #463: the settings install lock (`<business id>:business_settings`),
-      // exclusive for the install and shared for the launch gate's sign-off read,
-      // so a first settings row cannot commit past a dispatch that found none.
+      // exclusive for the install and shared for the sign-off and four-eyes reads,
+      // so a first settings row cannot commit past a decision that found none.
       'packages/core-records/src/records/business-settings.ts',
       'packages/core-records/src/tasks/placement.ts',
       'packages/core-records/src/tenancy/database.ts',

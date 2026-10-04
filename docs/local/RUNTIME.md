@@ -1833,7 +1833,9 @@ or delete.
   is the core's one rule (`four-eyes.ts`), the one T2e's top-up and T3c's
   write-off use: the band is `four_eyes_threshold` in the envelope currency's
   major unit, read `for share` under the locks, null is off and no stored row
-  is the shipped 500. Above it the first approval is recorded and applies
+  is the shipped 500; the settings install lock (`lockSettingsInstall`,
+  advisory key `<business id>:business_settings`) is held shared first, so a
+  first row cannot commit under a decision that read none. Above it the first approval is recorded and applies
   nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
   threshold, a different amount is `FIELD_VALUE_INVALID`, and a second,
   distinct holder approving the same amount completes it, but only while the

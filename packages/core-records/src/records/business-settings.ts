@@ -192,8 +192,8 @@ function settingFrom(row: SettingRow): BusinessSetting {
 /**
  * The business's settings install lock, the advisory key
  * `<business id>:business_settings`. A reader that must not miss a setting's
- * first row holds it `shared` before reading (the launch gate,
- * `holdSignOffSetting`); the install holds it exclusive, so a row a reader
+ * first row holds it `shared` before reading (the launch gate's
+ * `holdSignOffSetting`, the four-eyes band's `fourEyesBandMinor`); the install holds it exclusive, so a row a reader
  * found absent cannot appear and commit until that reader's transaction ends.
  * A row that exists is held by its own row lock instead (`writeBusinessSetting`).
  */

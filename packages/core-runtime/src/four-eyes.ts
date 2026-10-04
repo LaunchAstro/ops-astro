@@ -17,7 +17,11 @@
 // Each caller keeps what is its own: where first approvals are stored, what
 // figure they must match, and the words of its refusals.
 
-import type { Subject, TenantQuery } from '../../core-records/src/index.ts';
+import {
+  lockSettingsInstall,
+  type Subject,
+  type TenantQuery,
+} from '../../core-records/src/index.ts';
 import { minorDigits as iso4217Digits } from '../../core-wire/src/index.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
 import { holdCoveringGrants } from './recovery/classifier.ts';
@@ -41,6 +45,8 @@ export function minorDigits(currency: string): number {
 
 /** The band in the currency's minor units, read under the caller's locks; null is off. */
 export async function fourEyesBandMinor(tx: TenantQuery, currency: string): Promise<bigint | null> {
+  // A missing row locks nothing: the settings install lock, shared, keeps a first row out (#463).
+  await lockSettingsInstall(tx, 'shared');
   const [row] = await tx.query<{ readonly value: unknown }>(
     `select value from public.business_settings
       where business_id = $1 and key = 'four_eyes_threshold'
