@@ -5,7 +5,8 @@
 // it, whether the task is still on the onboarding's client. Raced both ways
 // against `task.set_party`, each held at the audit-chain lock uncommitted.
 // A task read in the trash under that lock is no step's, as `task.comment`
-// answers a trashed task.
+// answers a trashed task. An agent records agent steps only: a person or
+// client-wait step is a person's checkpoint (ORCH79 P12STEPACTOR).
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
@@ -16,7 +17,7 @@ const serverUrl = databaseUrlFromEnvironment();
 
 // eslint-disable-next-line max-lines-per-function -- one world, the races that share it
 describe.skipIf(serverUrl === undefined)('C41-A a step result under its task lock', () => {
-  const { the, as, onboard, revisionOf, race } = useMoveWorld('c41alock');
+  const { the, as, onboard, done, revisionOf, race } = useMoveWorld('c41alock');
 
   /** The step's failures and how many comments its task holds, read past row security. */
   const resultsOn = async (taskId: string): Promise<readonly [number, number]> => {
@@ -82,6 +83,75 @@ describe.skipIf(serverUrl === undefined)('C41-A a step result under its task loc
       [404, 'NOT_FOUND'],
     ]);
     expect(await world()).toStrictEqual(before);
+  });
+
+  // A delegated agent on one step's task, under a purpose of its own (one live
+  // delegation per purpose): its proposal, approval and pickup write rows of
+  // their own, so it is picked up before anything is compared.
+  const delegated = async (taskId: string, key: string): Promise<string> => {
+    const { controls } = the;
+    const purpose = `step_${key.replaceAll('-', '_')}`;
+    const proposal = await controls.propose(taskId, await revisionOf(taskId), purpose);
+    return String((await controls.pickup(await controls.approve(proposal)))['credential']);
+  };
+
+  const byAgent = async (taskId: string, credential: string): Promise<readonly unknown[]> => {
+    const operationId = randomUUID();
+    const answer = await the.controls.asAgent(
+      'onboarding.step_result',
+      { operationId, recordId: taskId, outcome: 'done', result: 'recorded by an agent' },
+      credential,
+    );
+    return [answer.status, answer.body['code'], operationId];
+  };
+
+  /** Every step, its onboarding and comments, the inbox items on them and the audit count. */
+  const stepWorld = async (tasks: readonly string[]): Promise<readonly unknown[]> => {
+    const { admin } = the.controls.fixture.db;
+    return [
+      await admin.execute(
+        `select s.step_key, s.state, s.failures, o.state as onboarding, o.revision::text,
+                (select count(*) from public.records c where c.data ->> 'task' = s.task_id::text)::text as comments
+           from public.onboarding_steps s join public.onboardings o on o.id = s.onboarding_id
+          where s.task_id = any($1::uuid[]) order by s.position`,
+        [tasks],
+      ),
+      await admin.execute(
+        `select id, recipient_person_id, work_state, closed_by_person_id, closed_at
+           from public.inbox_items where subject_record_id = any($1::uuid[]) order by id`,
+        [tasks],
+      ),
+      await the.controls.count('select count(*) as n from public.audit_events', []),
+    ];
+  };
+
+  it('C41-A step actor: a delegated agent is refused a person step and a client-wait step, writing nothing, and still records an agent step', async () => {
+    const steps = await onboard('Made-up Client Step Actor');
+    const tasks = [...steps.values()];
+    const on = (key: string): string => String(steps.get(key));
+    const refusedOnly = async (key: string): Promise<void> => {
+      const credential = await delegated(on(key), key);
+      const [rows, items, audits] = await stepWorld(tasks);
+      const [status, code, operationId] = await byAgent(on(key), credential);
+      expect([status, code], key).toStrictEqual([403, 'DELEGATION_EXCLUDES_OPERATION']);
+      // Nothing written but the one refused row the envelope audits.
+      expect(await stepWorld(tasks), key).toStrictEqual([rows, items, Number(audits) + 1]);
+      const audited = await the.controls.fixture.db.admin.execute(
+        'select outcome, refusal_code from public.audit_events where operation_id = $1',
+        [operationId],
+      );
+      expect(audited).toEqual([
+        { outcome: 'refused', refusal_code: 'DELEGATION_EXCLUDES_OPERATION' },
+      ]);
+    };
+    const agentStep = async (key: string): Promise<unknown> =>
+      (await byAgent(on(key), await delegated(on(key), key)))[0];
+    expect(await agentStep('welcome-email')).toBe(200);
+    await refusedOnly('kickoff-call');
+    await done(steps, 'kickoff-call');
+    await refusedOnly('access-grant');
+    await done(steps, 'access-grant');
+    expect(await agentStep('access-check')).toBe(200);
   });
 
   it('S0-5 lock order: a step result racing its task moving to another client is refused under the task lock, writing nothing', async () => {
