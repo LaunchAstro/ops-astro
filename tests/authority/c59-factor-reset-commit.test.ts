@@ -166,6 +166,59 @@ async function sessionRevocationDeclared(): Promise<void> {
   expect(undeclared('access.reset_factor', written)).toEqual([]);
 }
 
+/**
+ * The same race as `revokedBeforeLockRefused`, by the clock: a grant that
+ * lapses while the reset waits for the access lock, with nobody revoking it.
+ * The envelope admits it at the transaction's start; under the lock it has
+ * expired, so the reset refuses and writes nothing.
+ */
+async function expiredBeforeLockRefused(): Promise<void> {
+  const { db, alpha } = harness.world;
+  const caller = await enrol(db.app, alpha, 'reset-lapsing-caller');
+  const target = await enrol(db.app, alpha, 'reset-lapsing-target');
+  await withFactor(target);
+  const grantId = await db.app.withBusiness(
+    alpha,
+    async (tx) => await grantTo(tx, caller, 'manage', WHOLE_BUSINESS, false, 'settings'),
+  );
+  await db.admin.execute(
+    "update public.grants set expires_at = clock_timestamp() + interval '1 second' where id = $1",
+    [grantId],
+  );
+  const before = await resetState(target);
+  const reached = latch();
+  const paused: Database = {
+    log: db.app.log,
+    close: async () => {},
+    withBusiness: async (businessId, run) =>
+      await db.app.withBusiness(
+        businessId,
+        async (tx) =>
+          await run({
+            ...tx,
+            query: async (sql, parameters = []) => {
+              if (sql.includes('pg_advisory_xact_lock') && parameters[0] === `access:${alpha}`) {
+                reached.open();
+                await new Promise<void>((resolve) => {
+                  setTimeout(resolve, 2000);
+                });
+              }
+              return await tx.query(sql, parameters);
+            },
+          }),
+      ),
+  };
+  const pending = executeCommand(paused, alpha, caller.presented, 'api', {
+    command: 'access.reset_factor',
+    operationId: randomUUID(),
+    holderId: target.personId,
+  });
+  await reached.promise;
+  const answer = await pending;
+  expect(isCommandRefusal(answer) ? answer.code : 'ok').toBe('SCOPE_NOT_GRANTED');
+  expect(await resetState(target)).toEqual(before);
+}
+
 describe.skipIf(serverUrl === undefined)(
   'C59 factor reset: what the reset commits and what stays owed',
   () => {
@@ -184,6 +237,10 @@ describe.skipIf(serverUrl === undefined)(
     it(
       'the reset effect declaration covers the session revocation path its positive recipe omits',
       sessionRevocationDeclared,
+    );
+    it(
+      'a settings grant that expires while the reset waits for its access lock prevents the write',
+      expiredBeforeLockRefused,
     );
   },
 );
