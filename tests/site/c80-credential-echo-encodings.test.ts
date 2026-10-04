@@ -47,7 +47,7 @@ const answering =
       body: new TextEncoder().encode(JSON.stringify({ ...body, encoding: 'base64' })),
     });
 
-it('Rebind 2 L1: a credential echoed encoded or split across fields cannot escape', async () => {
+it('a credential echoed encoded or split across fields cannot escape', async () => {
   const recorded: string[] = [];
   const results = Object.fromEntries(
     await Promise.all(

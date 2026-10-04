@@ -186,10 +186,10 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
   });
 });
 
-describe('C80 Sol R1 proofs (the guarded provider call)', () => {
+describe('C80 the guarded provider call', () => {
   const canary = 'canary-token-C80-never-shown';
 
-  it('Sol R1 1: a credential echoed in a declared string field cannot escape', async () => {
+  it('a credential echoed in a declared string field cannot escape', async () => {
     const recorded: string[] = [];
     const transport = httpOf(json({ merged: true, sha: canary }));
     const result = await callConnector(publishRegistration, params, deps(transport, recorded));
@@ -201,7 +201,7 @@ describe('C80 Sol R1 proofs (the guarded provider call)', () => {
     expect(recorded).toEqual(['PROVIDER_CREDENTIAL_ECHOED']);
   });
 
-  it('Sol R1 6: the provider deadline also bounds DNS preparation', async () => {
+  it('the provider deadline also bounds DNS preparation', async () => {
     const { timeoutMs } = publishRegistration.connector;
     vi.useFakeTimers();
     try {
@@ -234,8 +234,8 @@ describe('C80 Sol R1 proofs (the guarded provider call)', () => {
   });
 });
 
-describe('C80 Sol R1 proofs (the guarded provider call)', () => {
-  it('Sol R1 7: source reads send the declared pinned ref', async () => {
+describe('C80 the guarded provider call', () => {
+  it('source reads send the declared pinned ref', async () => {
     const read = SITE_OPERATIONS.find(
       (entry) => entry.declaration.operation_name === 'site.source.read',
     )!;

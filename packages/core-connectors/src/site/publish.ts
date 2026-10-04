@@ -23,6 +23,7 @@
 import type { ProviderResult } from '../call.ts';
 import { checkEnvelope, type CorrectionTarget, type ProposedChange } from './envelope.ts';
 import {
+  claimed,
   occurrenceOf,
   proven,
   reconciled,
@@ -111,10 +112,11 @@ export type PublishOutcome =
 
 const refused = (code: PublishRefusal): PublishOutcome => ({ state: 'refused', code });
 
-/** Every check that must hold before the one dispatch, in order. */
+/** Every check before the one dispatch, in order; drift counts only while nothing has landed. */
 async function beforeDispatch(
   job: PublishJob,
   ports: PublishPorts,
+  back: ReadBack<Published>,
 ): Promise<PublishOutcome | undefined> {
   const { decision } = job;
   if (decision === undefined || decision.decision !== 'approve') return refused('APPROVAL_MISSING');
@@ -124,6 +126,7 @@ async function beforeDispatch(
     versionDigestOf(job) === job.version.digest;
   if (!bound) return refused('PROPOSAL_SUPERSEDED');
   if (!checkEnvelope(job.change, job.target).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
+  if (back.state !== 'absent') return undefined;
   const current = await ports.readSource();
   if (current.kind !== 'ok') return refused('CONTENT_DRIFT_UNCHECKED');
   const pinned = contentDigest(job.change.files[0]?.before ?? null);
@@ -133,28 +136,23 @@ async function beforeDispatch(
   ) {
     return { state: 'refused', code: 'CONTENT_DRIFTED', waitsOn: 'person' };
   }
-  return undefined;
+  // Last, after every awaited read: a cancellation that arrived during one still stops the send.
+  return (await ports.cancellation()) === 'requested' ? refused('CANCELLED') : undefined;
 }
 
 export async function publishCorrection(
   job: PublishJob,
   ports: PublishPorts,
 ): Promise<PublishOutcome> {
-  const stopped = await beforeDispatch(job, ports);
-  if (stopped !== undefined) return stopped;
   const token = dispatchToken('site.publish', job.version.digest);
   const readBack = () => ports.readBack({ seam: job.seam, dispatchToken: token });
-  const back = await readBack();
-  // Last, after every awaited read: a cancellation that arrived during one still stops the send.
-  if (back.state === 'absent' && (await ports.cancellation()) === 'requested') {
-    return refused('CANCELLED');
-  }
-  const answer = await reconciled(
-    back,
-    () =>
-      ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest }),
-    readBack,
-  );
+  const send = () =>
+    ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest });
+  const answer = await claimed(job.seam, token, async () => {
+    const back = await readBack();
+    return (await beforeDispatch(job, ports, back)) ?? (await reconciled(back, send, readBack));
+  });
+  if ('state' in answer) return answer;
   const unknown = async (code: string): Promise<PublishOutcome> => {
     await ports.raiseTask(code);
     return { state: 'unknown', code, reference: job.seam, dispatchToken: token };
@@ -261,10 +259,9 @@ export async function revertCorrection(
   // One token per published revision, and a retry is read back before it is ever sent again.
   const token = dispatchToken('site.source.revert', input.publishedRevision);
   const readBack = () => ports.readBack({ seam: input.seam, dispatchToken: token });
-  const reverted = await reconciled(
-    await readBack(),
-    () => ports.revert({ seam: input.seam, dispatchToken: token }),
-    readBack,
+  const send = () => ports.revert({ seam: input.seam, dispatchToken: token });
+  const reverted = await claimed(input.seam, token, async () =>
+    reconciled(await readBack(), send, readBack),
   );
   if (reverted.kind !== 'ok') {
     const state = proven('site.source.revert', reverted) ? 'failed' : 'unknown';

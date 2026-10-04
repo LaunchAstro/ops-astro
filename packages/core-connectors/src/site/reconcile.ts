@@ -19,11 +19,9 @@ export type ReadBack<T> =
 const ALSO_IF_LANDED: ReadonlySet<string> = new Set(['not_mergeable', 'sha_mismatch']);
 
 /**
- * A send that may repeat an earlier one. Landed is the effect's answer; only
- * positive proof that nothing landed lets `send` go; anything else stays
- * unknown and is never resent. A refusal that a late landing also explains is
- * read back again: landed is the answer, absent keeps the refusal, anything
- * else is unknown.
+ * A send that may repeat an earlier one: landed is the answer, only proof that nothing landed
+ * lets `send` go, anything else stays unknown. A refusal a late landing also explains is read
+ * back again: landed is the answer, absent keeps the refusal, anything else is unknown.
  */
 export async function reconciled<T>(
   back: ReadBack<T>,
@@ -40,6 +38,20 @@ export async function reconciled<T>(
   return after.state === 'absent' ? answer : unproven;
 }
 
+const claims = new Map<string, Promise<unknown>>();
+
+/** One caller per seam and token in this process holds the read back through the send (across runners, the lease). */
+export async function claimed<T>(seam: string, token: string, work: () => Promise<T>): Promise<T> {
+  const key = `${seam} ${token}`;
+  const mine = (claims.get(key) ?? Promise.resolve()).then(work, work);
+  claims.set(key, mine);
+  try {
+    return await mine;
+  } finally {
+    if (claims.get(key) === mine) claims.delete(key);
+  }
+}
+
 type Proven = { readonly kind: 'refused'; readonly code: string; readonly proof: string };
 
 /** A refusal carrying one of the operation's declared nothing-happened proofs. */
@@ -48,13 +60,30 @@ export function proven(operation: string, answer: ProviderResult<unknown>): answ
   return answer.kind === 'refused' && answer.proof !== undefined && proofs.includes(answer.proof);
 }
 
-/** Where the approved word sits: its text node's copy either side of it, whitespace collapsed. */
+/** Where the approved word sits: its rendered block either side, and its place among equal matches. */
 export interface Occurrence {
   readonly left: string;
   readonly right: string;
+  readonly index?: number;
 }
 
-const collapse = (text = ''): string => text.replaceAll(/\s+/gu, ' ');
+const BLOCK =
+  /<\/?(?:address|article|aside|blockquote|br|dd|div|dt|figcaption|footer|h[1-6]|header|hr|li|main|nav|p|section|td|th)\b[^>]*>/giu;
+const ENTITY = /&(?:#(\d{1,6})|#x([\da-f]{1,5})|(\w+));/giu;
+const NAMED: Record<string, string> = { amp: '&', apos: "'", gt: '>', lt: '<', quot: '"' };
+const MARK = '\u0000';
+
+/** Markup as the page shows it, block by block: inline tags dropped, entities decoded. */
+const rendered = (html: string): string[] =>
+  html.split(BLOCK).map((block) =>
+    block
+      .replaceAll(/<[^>]*>/gu, '')
+      .replaceAll(ENTITY, (all, dec, hex, name) =>
+        name === undefined ? String.fromCodePoint(Number(dec ?? `0x${hex}`)) : (NAMED[name] ?? all),
+      )
+      .replaceAll(/\s+/gu, ' ')
+      .trim(),
+  );
 
 /** The approved occurrence's place, read from the one line the envelope let change. */
 export function occurrenceOf(
@@ -72,13 +101,18 @@ export function occurrenceOf(
       line.slice(0, offset) + target.replacement + line.slice(end(offset)) === after[index],
   );
   if (at === undefined) return undefined;
-  return {
-    left: collapse(line.slice(0, at).split('>').at(-1)).trimStart(),
-    right: collapse(line.slice(end(at)).split('<')[0]).trimEnd(),
-  };
+  before[index] = line.slice(0, at) + MARK + line.slice(end(at));
+  const page = rendered(before.join('\n'));
+  const block = page.findIndex((text) => text.includes(MARK));
+  const [left = '', right = ''] = page[block]?.split(MARK) ?? [];
+  const prior = page.slice(0, block).join(' ');
+  const earlier = [target.word, target.replacement].flatMap((word) =>
+    wordOffsets(prior, left + word + right),
+  );
+  return { left, right, index: earlier.length };
 }
 
-/** The page shows the approved occurrence holding `shown`, and not holding `gone`. */
+/** The page's match of the approved occurrence, counted among its equals, holds `shown`. */
 export function showsAt(
   text: string,
   where: Occurrence | undefined,
@@ -86,6 +120,8 @@ export function showsAt(
   gone: string,
 ): boolean {
   if (where === undefined) return false;
-  const at = (word: string) => wordOffsets(text, `${where.left}${word}${where.right}`).length > 0;
-  return at(shown) && !at(gone);
+  const found = [shown, gone].flatMap((word) =>
+    wordOffsets(text, where.left + word + where.right).map((at) => ({ at, word })),
+  );
+  return found.toSorted((a, b) => a.at - b.at)[where.index ?? 0]?.word === shown;
 }
