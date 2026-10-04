@@ -74,8 +74,9 @@ order by 1`;
 /**
  * The database as the server holds it: its privileges, settings, owner,
  * encoding, comment and whether it takes connections, and the harness's two
- * login roles for it with their memberships. Role names carry the database's
- * own name, so they come back as `<login>` and `<restricted>`.
+ * login roles for it with their memberships and each membership's ADMIN,
+ * INHERIT and SET options. Role names carry the database's own name, so they
+ * come back as `<login>` and `<restricted>`.
  */
 const DATABASE_FACTS = `
 with db as (select * from pg_database where datname = $1),
@@ -96,7 +97,8 @@ select format('role %s login=%s super=%s createdb=%s createrole=%s bypassrls=%s 
               rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolbypassrls, rolinherit)
   from pg_roles where oid in (select oid from mine)
 union all
-select format('member %s of %s', pg_get_userbyid(m.member), m.roleid::regrole)
+select format('member %s of %s admin=%s inherit=%s set=%s', pg_get_userbyid(m.member), m.roleid::regrole,
+              m.admin_option, m.inherit_option, m.set_option)
   from pg_auth_members m where m.member in (select oid from mine)
 order by 1`;
 
