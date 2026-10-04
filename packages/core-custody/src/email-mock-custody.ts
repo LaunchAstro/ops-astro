@@ -11,7 +11,7 @@
 // configuration alone never turns a real provider into the mock one. A
 // loopback origin proves where the provider is, not what listens there: a
 // local proxy to a real provider, or a real key in the credentials file, is
-// outside this guard (SEC28 F4).
+// outside this guard.
 //
 // A send over this custody is recorded `mock:<id>`, never `provider:<id>`
 // (`isLoopbackMock`), so a mock acceptance never reads as a provider's.

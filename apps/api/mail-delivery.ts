@@ -18,7 +18,7 @@
 // Mock records each send `accepted` (as `mock:<id>`), so it runs only where
 // `OPS_ENVIRONMENT`, the deployment's own marker, is unset or exactly `staging`;
 // any other value, empty or misspelt, refuses it: over real people's items it
-// would mark mail sent that no one received (SEC28 F3, SEC29 N1).
+// would mark mail sent that no one received.
 //
 // **Delivery is custody's egress**, as the trace export's is: a custody
 // process of its own holds the provider key for the one `email` destination,
@@ -26,7 +26,7 @@
 // The settings are read like the trace export's: on with one missing or
 // malformed, the server stops naming the setting and never its value. The
 // sender check is run again at every pass, so a later real sender source that
-// stops verifying stops the next pass's sends (SEC28 F2).
+// stops verifying stops the next pass's sends.
 
 import {
   catalogue,
@@ -132,7 +132,7 @@ export function mailDeliverySettings(
   if (toggle !== 'mock') {
     return invalid(`${MAIL_DELIVERY_SWITCH} is neither off nor mock (no provider account yet)`);
   }
-  // An allowlist (SEC29 N1): an empty or misspelt marker may be production, so it refuses mock.
+  // An allowlist: an empty or misspelt marker may be production, so it refuses mock.
   const where = environment[DEPLOYMENT_MARKER];
   if (where !== undefined && where !== 'staging') {
     return invalid(

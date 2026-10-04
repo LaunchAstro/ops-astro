@@ -151,12 +151,12 @@ export const AT_ONCE_EVERY_MS = 15_000;
  * Run both passes on their intervals over `targets`, one of each kind at a
  * time: a pass still running when its next is due is skipped, not stacked.
  * `timing` is read at the start of every pass, so a sending subdomain whose
- * setup check stops verifying stops the next pass's sends (SEC28 F2). A business
+ * setup check stops verifying stops the next pass's sends. A business
  * whose pass fails is logged by its kind of pass only (never an address, a
  * link or the fault's text) and the next tick tries it again. `stop` starts
  * no pass and no business after it, and resolves once a pass already running
  * ends, so custody and the pool outlive every send in flight. Within a
- * business it starts no send after it either (SEC28 F5).
+ * business it starts no send after it either.
  */
 export function startMailWorker(
   database: Database,
