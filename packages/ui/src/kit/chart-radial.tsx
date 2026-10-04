@@ -67,7 +67,7 @@ export function DonutChart(props: {
 }): ReactElement {
   const size = props.size ?? 150;
   const r = size / 2;
-  const points = usePoints(props.slices.length);
+  const points = usePoints(props.slices.map((slice) => slice.label));
   const arcs = arcsOf(props.slices, r, r * 0.62, props.unit);
   const shown = points.shown === null ? undefined : arcs[points.shown];
   return (

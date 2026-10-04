@@ -59,19 +59,21 @@ function stepFor(key: string, index: number, count: number): number | null {
  * One tab stop over a chart's points. The pointer shows a point's tip while it
  * is over it; focus shows it too, and the arrow keys, Home and End move focus
  * along the points. Hovering never moves the tab stop, and the pointer leaving
- * hands the tip back to the point that holds focus now, so a focused point a
- * render removed hands it to nothing. A point past `count` is never shown.
+ * hands the tip back to the point that holds focus now. The shown point is held
+ * by its key, so a render that removes or reorders points never shows another.
  */
-export function usePoints(count: number): {
+export function usePoints(keys: readonly string[]): {
   readonly shown: number | null;
   readonly props: (index: number, tip: Tip) => Record<string, unknown>;
   readonly tipId: string;
 } {
   const tipId = useId();
   const [stop, setStop] = useState(0);
-  const [shown, setShown] = useState<number | null>(null);
+  const [shown, setShown] = useState<string | null>(null);
   const nodes = useRef<(SVGElement | null)[]>([]);
-  const live = shown !== null && shown < count ? shown : null;
+  const count = keys.length;
+  const at = shown === null ? -1 : keys.indexOf(shown);
+  const live = at === -1 ? null : at;
   const move = (event: KeyboardEvent, index: number): void => {
     const next = stepFor(event.key, index, count);
     if (next === null) return;
@@ -89,15 +91,15 @@ export function usePoints(count: number): {
     'aria-describedby': live === index ? tipId : undefined,
     tabIndex: index === Math.min(stop, count - 1) ? 0 : -1,
     onMouseEnter: () => {
-      setShown(index);
+      setShown(keys[index] ?? null);
     },
     onMouseLeave: () => {
       const held = nodes.current.findIndex((node) => node?.ownerDocument.activeElement === node);
-      setShown(held === -1 ? null : held);
+      setShown(held === -1 ? null : (keys[held] ?? null));
     },
     onFocus: () => {
       setStop(index);
-      setShown(index);
+      setShown(keys[index] ?? null);
     },
     onBlur: () => {
       setShown(null);
