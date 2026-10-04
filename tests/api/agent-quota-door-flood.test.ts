@@ -6,7 +6,12 @@
 // window still running, and a lapsed window must still go.
 
 import { describe, expect, it } from 'vitest';
-import { createAgentQuota, DEFAULT_AGENT_LIMITS } from '../../apps/api/auth/agent-quota.ts';
+import {
+  createAgentQuota,
+  DEFAULT_AGENT_LIMITS,
+  windowsOf,
+  type Window,
+} from '../../apps/api/auth/agent-quota.ts';
 
 const FLOOD = 60_000;
 
@@ -57,5 +62,17 @@ describe('the agent door under a flood of unheld keys', () => {
     expect(quota.knock('held'), 'a fresh window after a minute').toBeDefined();
     quota.knock('newer');
     expect(quota.knock('held'), 'its renewed window is full').toBeUndefined();
+  });
+});
+
+describe('the door windows under a flood of unheld keys', () => {
+  it('a flood that outlasts the window keeps only the last minute of doors', () => {
+    const windows = new Map<string, Window>();
+    const windowOf = windowsOf(windows);
+    for (let key = 0; key < 960_000; key += 1) windowOf(`unheld:${key}`, Math.floor(key / 8));
+    expect(windows.has('unheld:0'), 'the first door, two minutes old').toBe(false);
+    expect(windows.has('unheld:959999'), 'the newest door').toBe(true);
+    // The last sweep ran at most a second ago: a minute and a second of doors.
+    expect(windows.size).toBeLessThanOrEqual(8 * 61_000);
   });
 });

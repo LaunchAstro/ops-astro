@@ -43,7 +43,7 @@ const WINDOW_MS = 60_000;
 const SWEEP_MS = 1000;
 const LEVELS = ['credential', 'person', 'business'] as const;
 
-interface Window {
+export interface Window {
   start: number;
   requests: number;
   exports: number;
@@ -53,10 +53,12 @@ interface Window {
  * Windows by key, each the one running or a fresh one. A new window goes to
  * the back, so the map runs oldest first, and at most once a second the lapsed
  * ones go from the front, the pass stopping at the first live one: a flood of
- * new keys (a made-up business key each) costs each one the same.
+ * new keys (a made-up business key each) costs each one the same. The map
+ * may be handed in, so a test can watch the lapsed ones go.
  */
-function windowsOf(): (key: string, at: number) => Window {
-  const windows = new Map<string, Window>();
+export function windowsOf(
+  windows: Map<string, Window> = new Map(),
+): (key: string, at: number) => Window {
   let swept = Number.NEGATIVE_INFINITY;
   return (key, at) => {
     const held = windows.get(key);

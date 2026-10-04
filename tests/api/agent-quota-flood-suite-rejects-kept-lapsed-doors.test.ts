@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+// eslint-disable-next-line max-lines-per-function -- the review's mutation check, kept as given
 it('the flood suite rejects a quota that keeps every lapsed door', () => {
   const root = resolve(import.meta.dirname, '../..');
   const scratch = mkdtempSync(join(tmpdir(), 'sol-prv-oa-815-r1-cleanup-'));
