@@ -20,7 +20,9 @@ name: review evidence
 # It does not wait for ci.yml's contamination gate, which no other workflow
 # can name in `needs`. The gate is not what keeps head code from running: its
 # own steps run scripts from the head. The token here is read-only, no secret
-# reaches the job, and a failed gate still blocks the merge.
+# reaches the job, and a failed gate still blocks the merge. It runs the
+# gate's queue-head check itself (scripts/queue-head-check.mjs), so a pull
+# request on a merge-queue commit fails here too.
 #
 # The trigger is `pull_request`, never its `_target` form: the token stays
 # read-only and no secret reaches the pull request's code.
@@ -83,6 +85,13 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+      # CI-SPEED (#724): this job waits on no gate, so it runs the queue-head
+      # check itself, as ci.yml's gate does: a pull request whose head is a
+      # merge-queue commit fails here before anything is judged. git lists the
+      # checkout's origin, the public repository, with no credential; a merge
+      # group passes without listing (scripts/queue-head-check.mjs).
+      - name: A pull request never runs its checks on a merge-queue commit
+        run: node scripts/queue-head-check.mjs
       - run: pnpm install --frozen-lockfile
       - name: The checker's own cases
         run: bash tests/ci/review-evidence-cases.sh

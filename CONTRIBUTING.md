@@ -147,8 +147,10 @@ from the queue as well.
 
 A pull request whose head commit is a merge-queue commit, the tip of a
 `gh-readonly-queue/` branch, fails `contamination gate` whatever its branch is
-called, so no ci check that waits on the gate runs there and reports a light
-pass beside the group's own (#724). The gate lists the queue branches on every
+called, so no light pass lands beside the group's own (#724): every ci check
+that waits on the gate is skipped, and `database conformance`, which runs
+always(), fails. `review evidence for this revision` waits on no gate, so it
+runs the same check and fails too. Each lists the queue branches on every
 pull request run; when it cannot, or cannot read the head commit, it fails,
 and a re-run tries again.
 

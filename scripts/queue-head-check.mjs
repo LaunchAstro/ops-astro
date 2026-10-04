@@ -5,9 +5,12 @@
 // `gh-readonly-queue/<base>/pr-<n>-<sha>`. A pull request whose head is that
 // branch's tip would report its checks on the group's own commit, beside the
 // group's `merge_group` results; a pull request runs the light set, so its
-// pass could land there before the group's full jobs report. This step, in
-// the gate right after the sent-back hold, fails such a run, so every job that
-// waits on the gate is skipped.
+// pass could land there before the group's full jobs report. It runs in two
+// places. In ci.yml's gate, right after the sent-back hold, it fails the gate:
+// every job that waits on the gate is skipped, and the `database conformance`
+// aggregate, which runs always(), fails. In review-evidence.yml, a required
+// check that waits on no gate, it runs before the evidence is judged and fails
+// that job.
 //
 // It matches by commit, not by name: a fork can push the queue's commit under
 // any branch name. It lists the queue branches' tips with
