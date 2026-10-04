@@ -203,3 +203,20 @@ it('the clone catalogue comparison sees a foreign key stop being enforced', asyn
     await db.drop();
   }
 });
+
+it('the clone catalogue comparison sees a disabled event trigger', async () => {
+  const db = await createFreshDatabase({ part: 'evtdisabled' });
+  try {
+    await db.admin.execute(
+      `create function public.ddl_noted() returns event_trigger language plpgsql as $$ begin end $$`,
+    );
+    await db.admin.execute(
+      'create event trigger ddl_noted on ddl_command_end execute function public.ddl_noted()',
+    );
+    const before = await catalogueOf(db.admin);
+    await db.admin.execute('alter event trigger ddl_noted disable');
+    expect(await catalogueOf(db.admin)).not.toStrictEqual(before);
+  } finally {
+    await db.drop();
+  }
+});
