@@ -50,10 +50,11 @@ export default defineConfig({
     ],
     // The browser proofs build `apps/web/dist`, which other suites rebuild (an
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
-    // BROWSER_PROOFS=1. Sol's leaked-client proof and Sol's two PR-345 web proofs
-    // on c59-factor-routes-world, kept byte for byte but for one cookie-jar
-    // split CQ-11 asks for, open their world with no skip; without a database
-    // they are left out here, and the manifests run them where there is one.
+    // BROWSER_PROOFS=1. Sol's leaked-client proof, Sol's two PR-345 web proofs
+    // and Sol's F1-FIX1 other-tab enrolment proof on c59-factor-routes-world,
+    // kept byte for byte but for one cookie-jar split CQ-11 asks for, open their
+    // world with no skip; without a database they are left out here, and the
+    // manifests run them where there is one.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
@@ -63,6 +64,7 @@ export default defineConfig({
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
             'tests/web/authenticator-cancelled-enrol-lands-late.test.tsx',
             'tests/web/sign-in-code-after-enrolment.test.tsx',
+            'tests/web/authenticator-other-tab-enrol-lands-late.test.tsx',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
