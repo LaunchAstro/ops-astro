@@ -10,9 +10,10 @@
 // task rather than asking again on the reader's behalf. The code entered after
 // that must not send the held decision, nor may a code that passed before
 // then once the new sign-in lands. A prompt held for another command,
-// a top-up at a budget stop, is not a decision and stays open.
+// a top-up at a budget stop, is not a decision and stays open; a top-up
+// started while a passed decision waits on the new sign-in replaces it.
 
-import { useState } from 'react';
+import { act, useState } from 'react';
 import { expect, it } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -54,10 +55,13 @@ const NOT_GRANTED = (): Response => refused('SCOPE_NOT_GRANTED', 403);
 const done = (): Response => json({ recordId: null, revision: null, detail: {} });
 
 /** Each decide and top-up answered in turn, then accepted; every gate decided and top-up sent is kept. */
-function server(decides: readonly (() => Response)[], topUps: readonly (() => Response)[] = []) {
+function server(
+  decides: readonly (() => Response | Promise<Response>)[],
+  topUps: readonly (() => Response)[] = [],
+) {
   const decided: string[] = [];
   let toppedUp = 0;
-  const answer = (url: string | URL, init?: RequestInit): Response => {
+  const answer = (url: string | URL, init?: RequestInit): Response | Promise<Response> => {
     const at = String(url);
     if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
     if (at.endsWith('/task/read')) return json({ ok: true, task: twoGateTask() });
@@ -167,6 +171,88 @@ it('a code passed before the decide controls closed sends nothing once the new s
       'g-1',
       'g-2',
     ]);
+  } finally {
+    await page.unmount();
+  }
+});
+
+it('a closed refusal and the new sign-in landing in one render send no held decision', async () => {
+  let release: (() => void) | undefined;
+  const heldRefusal = (): Promise<Response> =>
+    new Promise((resolve) => {
+      release = () => {
+        resolve(NOT_GRANTED());
+      };
+    });
+  const api = server([STEP_UP, heldRefusal]);
+  let land: (() => void) | undefined;
+  const page = await stepUpPage(
+    api,
+    new Promise((resolve) => {
+      land = resolve;
+    }),
+  );
+  try {
+    await page.click('[data-gate-action="approve"]');
+    await tick();
+    await page.type('[data-step-up="code"]', '123456');
+    await page.click('[data-step-up="confirm"]');
+    await tick();
+    await page.click('[data-proposals="list"] > :last-child [data-decide="approve"]');
+    await tick();
+    expect(api.decided).toEqual(['g-1', 'g-2']);
+
+    await act(async () => {
+      release?.();
+      land?.();
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    });
+    await tick();
+    expect(page.find('[data-agent="gate-actions"] [data-gate="closed"]')).not.toBeNull();
+    expect(api.decided, 'the held decision on g-1 must not go out once decide is closed').toEqual([
+      'g-1',
+      'g-2',
+    ]);
+  } finally {
+    await page.unmount();
+  }
+});
+
+it('a decision whose code passed is dropped by a later top-up, whose prompt then outlasts a closed refusal', async () => {
+  const api = server([STEP_UP, NOT_GRANTED], [STEP_UP]);
+  let land: (() => void) | undefined;
+  const page = await stepUpPage(
+    api,
+    new Promise((resolve) => {
+      land = resolve;
+    }),
+  );
+  try {
+    await page.click('[data-gate-action="approve"]');
+    await tick();
+    await page.type('[data-step-up="code"]', '123456');
+    await page.click('[data-step-up="confirm"]');
+    await tick();
+    expect(api.decided).toEqual(['g-1']);
+
+    await page.type('[data-section="agent"] [data-stop="amount"]', '2.50');
+    await page.click('[data-section="agent"] [data-stop="top-up"]');
+    await tick();
+    expect(api.toppedUp()).toBe(1);
+    land?.();
+    await tick();
+    expect(api.decided, 'the decision the top-up replaced must not go out behind it').toEqual([
+      'g-1',
+    ]);
+
+    await refuseOtherGate(page);
+    expect(api.decided).toEqual(['g-1', 'g-2']);
+    expect(
+      page.find('[data-step-up="prompt"]'),
+      'the top-up still waits on its code',
+    ).not.toBeNull();
   } finally {
     await page.unmount();
   }
