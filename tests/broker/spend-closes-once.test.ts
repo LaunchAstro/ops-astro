@@ -112,8 +112,9 @@ it("a call closed by the provider's proof ignores its own late answer: one give-
 });
 
 // The late answer and the provider's proof race on a call a top-up counted at
-// its maximum and the sweep then held unknown: whichever closes it first, the
-// call's row lock lets one close and one give-back through.
+// its maximum and the sweep then held unknown: both take the envelope lock
+// first, so whichever closes it second finds no open call, and one close and
+// one give-back go through.
 it("a counted unknown call's late answer racing the provider's proof gives back once", async () => {
   const work = await liveWork(s, `closes once raced ${randomUUID()}`, 900);
   world.provider.mode('answer');
