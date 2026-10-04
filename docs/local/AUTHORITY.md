@@ -572,11 +572,13 @@ Within a conversation, its members only. Every conversation read
 (`chat.conversations`, `chat.messages`) filters by the reader's own member row
 inside the query (`core-records/src/team/conversations.ts`), so the owner and
 administrators read only their own. A member reads nothing written before they
-joined or after they left. The read marker (`chat.mark_read`) is the reader's
+joined or after they left. The same query asks again that the reader is staff
+holding `chat:comment`, so a revocation committed after the door serves nothing
+written or renamed since. The read marker (`chat.mark_read`) is the reader's
 own member row, self-scoped like `inbox.seen`, and not audited (CS-7.25). The
 client projection refuses a `direct` comment, as it refuses an internal note.
-`tests/api/c71-d-direct-messages.test.ts` and `tests/api/c71-d-isolation.test.ts`
-hold it.
+`tests/api/c71-d-direct-messages.test.ts`, `tests/api/c71-d-isolation.test.ts` and
+`tests/api/c71-c-chat-messages-after-revocation.test.ts` hold it.
 
 ### Group conversations (C71-G)
 
