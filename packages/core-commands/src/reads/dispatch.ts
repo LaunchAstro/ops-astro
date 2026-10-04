@@ -217,12 +217,14 @@ async function admit<K extends ReadName>(
       authorised.ok || recordId === undefined || asked.collection !== 'task'
         ? null
         : ((await wayfinderFacts(tx, recordId))?.mapId ?? null);
-    if (!authorised.ok && map !== null && map !== recordId) {
+    if (!authorised.ok && map !== null && recordId !== undefined && map !== recordId) {
       const again = await checkAuthority(tx, subjectsOf(session), {
         ...asked,
         scope: { kind: 'record', id: map },
       });
-      if (again.ok) authorised = again;
+      // Read again, held until the read is served: a move that committed
+      // since is seen, and none can commit before the answer is read.
+      if (again.ok && (await wayfinderFacts(tx, recordId, true))?.mapId === map) authorised = again;
     }
     if (!authorised.ok) {
       // An external party is a session with no membership (`ReadRow.outsiderNotFound`).

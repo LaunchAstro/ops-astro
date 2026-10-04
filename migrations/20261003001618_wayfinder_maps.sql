@@ -219,6 +219,10 @@ declare
   v_business uuid := public.app_business_id();
   v_task_type uuid;
 begin
+  -- One refresh of a map at a time, to the end of the transaction: each
+  -- statement below then counts what an earlier writer committed, so two
+  -- concurrent writes cannot each upsert a count missing the other's.
+  perform pg_advisory_xact_lock(hashtextextended('map.summary:' || v_business || ':' || p_map, 0));
   select t.id into v_task_type
     from public.record_types t where t.business_id = v_business and t.key = 'task';
   if v_task_type is null then return; end if;
@@ -284,8 +288,10 @@ $$;
 
 revoke all on function public.map_summary_refresh(uuid) from public;
 
--- A record write touches at most four maps: itself, and its parent before
--- and after. Each candidate that is not a live map is a no-op in the refresh.
+-- A record write touches itself, its parent before and after, and the map of
+-- every ticket it blocks, filed under its own map or not: a blocker's
+-- completion moves that map's frontier. Each candidate that is not a live map
+-- is a no-op in the refresh.
 create or replace function public.map_summary_on_record()
   returns trigger
   language plpgsql
@@ -296,12 +302,20 @@ declare
   v_map uuid;
 begin
   for v_map in
-    select distinct m from unnest(array[
+    select m from unnest(array[
       case when tg_op <> 'DELETE' then new.id end,
       case when tg_op <> 'DELETE' then new.uuid_4 end,
       case when tg_op <> 'INSERT' then old.id end,
       case when tg_op <> 'INSERT' then old.uuid_4 end
     ]) as m where m is not null
+    union
+    select t.uuid_4 from public.record_links l
+      join public.records t on t.business_id = l.business_id and t.id = l.to_record_id
+     where l.business_id = public.app_business_id() and l.link_type = 'blocks'
+       and t.uuid_4 is not null
+       and l.from_record_id in (
+         case when tg_op <> 'DELETE' then new.id end,
+         case when tg_op <> 'INSERT' then old.id end)
   loop
     perform public.map_summary_refresh(v_map);
   end loop;

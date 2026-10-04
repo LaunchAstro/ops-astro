@@ -29,6 +29,7 @@ import {
   readTaskTime,
   tagsOfTask,
   isWayfinderRecord,
+  INTERNAL_ROLE_KEYS,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
@@ -190,7 +191,7 @@ export async function resolveTaskId(
  * nobody classified sees everything, which is how the leak arrives with the
  * next kind of member rather than with this one.
  */
-const INTERNAL_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'member']);
+const INTERNAL_ROLES: ReadonlySet<string> = new Set(INTERNAL_ROLE_KEYS);
 
 export function isInternalReader(roleKey: string | null): boolean {
   return roleKey !== null && INTERNAL_ROLES.has(roleKey);

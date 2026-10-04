@@ -577,6 +577,9 @@ export async function prepareCommand(
   if (!admitsSelfWrite(session.roleKey !== null, declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
+  // The map whose grant admitted this, and the refusal that stands if the
+  // target has left it by the time it is locked.
+  let viaMap: { readonly id: string; readonly refusal: Refused } | undefined;
   // A `self` row asks no grant: its handler reaches the caller's own rows only.
   if (declaration.authorisedOn !== 'self') {
     const asked = {
@@ -595,7 +598,10 @@ export async function prepareCommand(
           ...asked,
           scope: { kind: 'record', id: map },
         });
-        if (again.ok) authorised = again;
+        if (again.ok) {
+          viaMap = { id: map, refusal: refused(authorised.refusal) };
+          authorised = again;
+        }
       }
     }
     if (!authorised.ok) return refused(authorised.refusal);
@@ -639,6 +645,12 @@ export async function prepareCommand(
     if (target === undefined) {
       // Not there, or there in another business: one answer, deliberately.
       return refused(refuseNotFound());
+    }
+    // Admitted by its map's grant: read the target's map again now it is held,
+    // so a move that committed while this waited for the lock is refused. A
+    // runtime-locked target is asked again at record scope under those locks.
+    if (viaMap !== undefined && (await coveringMap(tx, request, declaration)) !== viaMap.id) {
+      return viaMap.refusal;
     }
     // A comment on a trashed task is answered as one on a missing task, before
     // the revision: the trash bumped it, and naming the current revision would

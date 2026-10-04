@@ -176,11 +176,12 @@ async function refuseShare(
   );
   if (found[0]?.record !== true || found[0]?.person !== true) return notFound();
   // A map, its tickets and their threads never reach a client surface (WF-1).
-  // A new share only: withdrawing one that exists stays open.
+  // A new share only: withdrawing one that exists stays open. Held, so a
+  // parent's retype to map, which locks its children, is seen or waits.
   if (
     record === 'live' &&
     request.collection === 'task' &&
-    (await isWayfinderRecord(tx, request.recordId))
+    (await isWayfinderRecord(tx, request.recordId, true))
   ) {
     return notFound();
   }
