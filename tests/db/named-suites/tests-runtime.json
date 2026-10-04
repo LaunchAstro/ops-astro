@@ -54,6 +54,7 @@
     "tests/runtime/decided-gate-upgrade-race.test.ts",
     "tests/runtime/decision-abort.test.ts",
     "tests/runtime/decision-seq-race.test.ts",
+    "tests/runtime/four-eyes-threshold-first-install-race.test.ts",
     "tests/runtime/gate-negatives.test.ts",
     "tests/runtime/gate-pack-binding.test.ts",
     "tests/runtime/gate.test.ts",
