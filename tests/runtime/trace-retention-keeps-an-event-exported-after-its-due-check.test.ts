@@ -10,7 +10,7 @@ import { expect, it } from 'vitest';
 import { exportDeployment, retainDeployment } from '../../apps/api/trace-exporter.ts';
 import { derivedId, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
 import { asAgent, codeOf, handbackBody, liveWork, type Work } from './schedules-harness.ts';
-import { age } from './aw-13-retention-world.ts';
+import { age, batchesOf } from './aw-13-retention-world.ts';
 import { drain, noDatabase, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
 
 function latch(): { promise: Promise<void>; resolve: () => void } {
@@ -88,5 +88,27 @@ it.skipIf(noDatabase)(
     expect(t.target.stored.has(traceId), 'the fresh exported event must remain retrievable').toBe(
       true,
     );
+  },
+);
+
+it.skipIf(noDatabase)(
+  'a run that took an event during its delete is not confirmed, and a later pass deletes it again',
+  async () => {
+    const work = await liveWork(t.alpha, 'retention holds back a run with a fresh event', 1000);
+    const runId = String(work.picked['runId']);
+    const traceId = derivedId(TRACE_KEY, ['trace', t.alpha.business, runId], 32);
+    await drain(t.alpha);
+    await age(runId, TRACE_WINDOW_DAYS + 1);
+    await exportDuringDelete(work, traceId);
+    await drain(t.alpha);
+    expect(t.target.stored.has(traceId), 'the fresh event is exported again').toBe(true);
+    const confirmed = (await batchesOf(t.alpha)).flatMap((batch) => batch.expired_run_ids);
+    expect(confirmed, 'a run whose trace took a fresh event is not confirmed').not.toContain(runId);
+    // Once the fresh event is past the window too, the run is due again.
+    await age(runId, TRACE_WINDOW_DAYS + 1);
+    await retainDeployment(t.alpha.db.app, alphaOnly, TRACE_KEY, t.target.expiry);
+    expect(t.target.stored.has(traceId), 'the run is deleted again').toBe(false);
+    const later = (await batchesOf(t.alpha)).flatMap((batch) => batch.expired_run_ids);
+    expect(later).toContain(runId);
   },
 );
