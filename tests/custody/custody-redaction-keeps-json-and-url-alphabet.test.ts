@@ -205,3 +205,18 @@ it('valid nested provider metadata preserves the answer and usage', async () => 
   expect(readReplayAnswer(JSON.parse(body))).toEqual(readReplayAnswer(JSON.parse(answer)));
   expect(body === answer, 'innocent metadata must preserve the answer').toBe(true);
 });
+
+it.each([
+  ['objects', (depth: number) => `${'{"a":'.repeat(depth)}0${'}'.repeat(depth)}`],
+  ['arrays', (depth: number) => `${'['.repeat(depth)}0${']'.repeat(depth)}`],
+] as const)(
+  'an answer whose metadata nests 5,000 %s is kept whole, as the parse and write-back keep it',
+  async (_shape, nest) => {
+    const answer = `{"text":"ok","model":"replay-1","usage":{"input":1,"output":1},"metadata":${nest(5_000)}}`;
+    const body = await returnedAnswer(answer, 'synthetic-canary-key');
+    expect({ length: body.length, same: body === answer }).toEqual({
+      length: answer.length,
+      same: true,
+    });
+  },
+);
