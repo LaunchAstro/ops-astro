@@ -21,8 +21,11 @@
 // fails, fails the run, and a re-run tries again. No queue branch at all is
 // fine; there is nothing to match. Every other event passes without listing.
 //
-// It passes no token to git and prints none: on a failed listing it reports
-// only git's exit status, not what git wrote.
+// It hands git no token of its own. git uses whatever the checkout left: the
+// gate's checkout keeps the read-only workflow token, and review evidence's
+// keeps none, so only that listing needs the repository public. It prints no
+// token: on a failed listing it reports only git's exit status, not what git
+// wrote.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
