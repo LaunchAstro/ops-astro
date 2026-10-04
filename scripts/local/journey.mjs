@@ -40,6 +40,7 @@ import {
 import { builtCases, protectedVerdicts } from './journey-proofs.ts';
 import { emptyMeasures, takeMeasure } from './journey-measure.ts';
 import { runTestSide } from './journey-process.ts';
+import { readNamedSuites } from '../named-suites.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 /**
@@ -195,7 +196,7 @@ function afterJourney() {
     );
     const tail = named.out.trim().split('\n').slice(-3).join(' / ');
     record(suites, named.ok ? 'pass' : 'fail', tail);
-    const manifest = JSON.parse(readFileSync(join(ROOT, 'tests/db/named-suites.json'), 'utf8'));
+    const manifest = readNamedSuites(ROOT);
     for (const line of [...protectedVerdicts(named.out, manifest), ...builtCases()]) {
       record(line.case, line.status, line.detail);
     }

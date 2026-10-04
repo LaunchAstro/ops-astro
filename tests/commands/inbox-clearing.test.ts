@@ -104,7 +104,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 clearing', () => {
     ]);
   }, 60_000);
 
-  it('INB-1 cleared names the decider: the second w.reviewer decides and the other w.reviewer item closes naming them', async () => {
+  it('INB-1 cleared names the decider: the second reviewer decides and the other reviewer’s item closes naming them', async () => {
     for (const decision of ['approve', 'reject', 'request_changes']) {
       // oxlint-disable-next-line no-await-in-loop
       const gate = await w.proposed(`second w.reviewer ${decision}`);

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// FR1-DBTEST #49: every database-bound suite is named in
-// tests/db/named-suites.json, or is listed below as deliberately unnamed with
-// the variable it waits for.
+// FR1-DBTEST #49: every database-bound suite is named in the manifest
+// (tests/db/named-suites.json, or the per-area tests/db/named-suites/ once
+// split), or is listed below as deliberately unnamed with the variable it
+// waits for.
 //
 // The `local checks` job runs `pnpm test` with no DATABASE_URL, so a
 // database-bound suite skips there and vitest exits 0. The `database
@@ -17,6 +18,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readNamedSuites } from '../../scripts/named-suites.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const HARNESS = 'tests/support/fresh-database.ts';
@@ -56,15 +58,7 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
     'pure: the function handler with no database, counter 0',
 };
 
-interface Manifest {
-  readonly comment: readonly string[];
-  readonly invariant: readonly string[];
-  readonly conformance: readonly string[];
-}
-
-const manifest = JSON.parse(
-  readFileSync(join(root, 'tests/db/named-suites.json'), 'utf8'),
-) as Manifest;
+const manifest = readNamedSuites(root);
 
 function walk(directory: string, out: string[] = []): string[] {
   for (const entry of readdirSync(directory)) {

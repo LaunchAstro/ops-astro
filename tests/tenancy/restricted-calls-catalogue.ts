@@ -18,6 +18,11 @@ const COLUMN_UPDATES: Readonly<
   'public.planned_runs': { from: '0086', columns: ['state'] },
   // C40B: a reset token is spent by `spent_at` alone.
   'public.password_reset_tokens': { from: '20261004005844', columns: ['spent_at'] },
+  // C60: a client's four privacy settings, by `client.set_privacy` alone.
+  'public.clients': {
+    from: '20261003000423',
+    columns: ['handles_health', 'model_egress', 'model_providers', 'no_agent_edits'],
+  },
 };
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
@@ -111,7 +116,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
 ];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {
-  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
+  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at >= grant.from)
     .map((grant) => grant.line)
     .toSorted();
 }
