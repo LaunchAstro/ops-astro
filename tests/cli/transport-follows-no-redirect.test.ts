@@ -58,6 +58,13 @@ const SETTINGS = {
   OPS_ASTRO_AGENT: '1',
 };
 
+const printed: string[] = [];
+const io = {
+  out: (line: string) => printed.push(line),
+  err: (line: string) => printed.push(line),
+  stdin: async () => await Promise.resolve(''),
+};
+
 function expectNothingElsewhere(): void {
   const sent = JSON.stringify(received);
   expect(sent).not.toContain(DELEGATION);
@@ -72,7 +79,7 @@ describe('a redirect to another origin receives no credential', () => {
     const code = await cli(
       ['task.create', '--json', '{"fields":{"title":"t"}}'],
       { ...SETTINGS, OPS_ASTRO_API_URL: address },
-      { out: () => undefined, err: () => undefined, stdin: () => Promise.resolve('') },
+      io,
     );
     expectNothingElsewhere();
     expect(code).toBe(4);
@@ -100,7 +107,7 @@ describe('a redirect to another origin receives no credential', () => {
         OPS_ASTRO_PASSWORD: PASSWORD,
         OPS_ASTRO_TOKEN_FILE: join(folder, 'token'),
       },
-      { out: () => undefined, err: () => undefined, stdin: () => Promise.resolve('') },
+      io,
     ).finally(() => {
       rmSync(folder, { recursive: true, force: true });
     });
