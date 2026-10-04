@@ -38,8 +38,8 @@ afterAll(async () => {
 const fixed = (n: number) => async (): Promise<number> => await Promise.resolve(n);
 
 /** A second backend on the same database. */
-function backend(): Database {
-  const db = racer(alpha);
+function backend(url?: string): Database {
+  const db = racer(alpha, url);
   racers.push(db);
   return db;
 }
@@ -113,6 +113,49 @@ it('AW-01 durable limit: two transactions of one business at the limit admit exa
   expect(await alpha.db.app.withBusiness(alpha.business, agents)).toBe(before + 1);
   // A fresh backend, as after a restart, reads the same count and the limit holds.
   expect(await attempt(backend())).toBe(false);
+});
+
+/** A promise the test opens by hand. */
+function handGate(): { readonly opened: Promise<void>; readonly open: () => void } {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { opened, open };
+}
+
+it('AW-01 durable limit: a connection that defaults to repeatable read still admits one past the last slot, not two', async () => {
+  // The count after the lock must see the lock's last holder's commit. A
+  // connection whose default is repeatable read would freeze the snapshot at
+  // the transaction's first read, before the lock, so the tenant transaction
+  // states its own level rather than inheriting one.
+  const url = new URL(alpha.db.appUrl);
+  url.searchParams.set('default_transaction_isolation', 'repeatable read');
+  const [first, second] = [backend(url.toString()), backend(url.toString())];
+  const [counted, commitFirst, readEarly] = [handGate(), handGate(), handGate()];
+  const before = await alpha.db.app.withBusiness(alpha.business, agents);
+  const limits = [{ name: `rr-${randomUUID()}`, limit: before + 1, count: agents }];
+  const winner = first.withBusiness(alpha.business, async (tx) => {
+    const room = await hasRoom(tx, limits);
+    counted.open();
+    await commitFirst.opened;
+    if (room) await addAgent(tx);
+    return room;
+  });
+  await counted.opened;
+  const contender = second.withBusiness(alpha.business, async (tx) => {
+    // A read before the limit, as a handler's own checks make.
+    await agents(tx);
+    readEarly.open();
+    const room = await hasRoom(tx, limits);
+    if (room) await addAgent(tx);
+    return room;
+  });
+  await readEarly.opened;
+  commitFirst.open();
+  const admitted = await Promise.all([winner, contender]);
+  expect(admitted.filter(Boolean)).toHaveLength(1);
+  expect(await alpha.db.app.withBusiness(alpha.business, agents)).toBe(before + 1);
 });
 
 it('AW-01 durable limit: a business at its limit never delays another business on the same limit', async () => {
