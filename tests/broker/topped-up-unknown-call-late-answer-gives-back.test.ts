@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { sweepDeployment } from '../../apps/api/recovery-entry.ts';
 import { topUpAtBudgetStop } from '../../packages/core-runtime/src/index.ts';
-import { liveWork } from '../runtime/schedules-harness.ts';
+import { liveWork, type Work } from '../runtime/schedules-harness.ts';
 import { call, gated, s, useBrokerWorld, world } from './broker-world.ts';
 import { dispatched, envelopeActual } from './give-back-world.ts';
 import { as, one, people, setThreshold, usePeople } from './budget-answers-world.ts';
@@ -10,6 +10,32 @@ import { as, one, people, setThreshold, usePeople } from './budget-answers-world
 // Deliberately no database skip: a missing database is not a review proof.
 useBrokerWorld('solow047');
 usePeople();
+
+/** The approver's top-up of 1,000 on the work's budget ask. */
+const topUp = async (work: Work) => {
+  const { run_id: runId, id: askId } = await one<{ run_id: string; id: string }>(
+    'select run_id, id from public.budget_asks where lease_id = $1',
+    [work.picked['leaseId']],
+  );
+  return await s.db.app.withBusiness(
+    s.business,
+    async (tx) =>
+      await topUpAtBudgetStop(tx, {
+        ...as(people.approver, runId),
+        askId,
+        amountMinor: 1000,
+        currency: 'AUD',
+      }),
+  );
+};
+
+/** The real deployment sweep over the one home business. */
+const sweep = async () =>
+  await sweepDeployment(
+    s.db.app,
+    (key) => Promise.resolve(key === 'home' ? s.business : undefined),
+    ['home'],
+  );
 
 it('criterion 4: a late answer gives back the counted maximum after the sweep marks it unknown', async () => {
   await setThreshold(null);
@@ -21,28 +47,9 @@ it('criterion 4: a late answer gives back the counted maximum after the sweep ma
   try {
     await dispatched(work);
     expect(await call(work)).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
-    const { run_id: runId, id: askId } = await one<{ run_id: string; id: string }>(
-      'select run_id, id from public.budget_asks where lease_id = $1',
-      [work.picked['leaseId']],
-    );
-    expect(
-      await s.db.app.withBusiness(
-        s.business,
-        async (tx) =>
-          await topUpAtBudgetStop(tx, {
-            ...as(people.approver, runId),
-            askId,
-            amountMinor: 1000,
-            currency: 'AUD',
-          }),
-      ),
-    ).toMatchObject({ ok: true, value: { state: 'applied' } });
+    expect(await topUp(work)).toMatchObject({ ok: true, value: { state: 'applied' } });
     expect(await envelopeActual(work)).toBe(before + 500);
-    expect(
-      await sweepDeployment(s.db.app, async (key) => (key === 'home' ? s.business : undefined), [
-        'home',
-      ]),
-    ).toMatchObject({ ok: true });
+    expect(await sweep()).toMatchObject({ ok: true });
     const { state } = await one<{ state: string }>(
       `select state from public.model_calls where reservation_id = $1 and state <> 'refused'`,
       [work.decision['reservationId']],
