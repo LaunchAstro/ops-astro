@@ -41,6 +41,7 @@
     "tests/api/cli-reach.test.ts",
     "tests/api/controls-revoke.test.ts",
     "tests/api/controls-work.test.ts",
+    "tests/api/conversation-list-keeps-unreadable-subject-in-database.test.ts",
     "tests/api/conversation-page-hides-unreadable-task-any-spelling.test.ts",
     "tests/api/cq-1.test.ts",
     "tests/api/cq-2-start-up-keys.test.ts",
