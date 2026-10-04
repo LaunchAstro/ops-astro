@@ -7,7 +7,9 @@
     "tests/review/ow066-export-revocation-proof.test.ts",
     "tests/review/stop-production-installation-gate-proof.test.ts",
     "tests/review/export-session-ended-after-part-gate-proof.test.ts",
-    "tests/review/revocation-during-part-read-refuses-part.test.ts"
+    "tests/review/revocation-during-part-read-refuses-part.test.ts",
+    "tests/review/store-hands-out-no-part-after-session-end-proof.test.ts",
+    "tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts"
   ],
   "conformance": [
     "tests/review/column-grants-name-batch-1.test.ts",
@@ -18,6 +20,7 @@
     "tests/review/staging-logins-group-race-proof.test.ts",
     "tests/review/staging-reset-encoded-user-proof.test.ts",
     "tests/review/staging-reset-write-after-admission-proof.test.ts",
-    "tests/review/staging-reset-keeps-revoked-session-proof.test.ts"
+    "tests/review/staging-reset-keeps-revoked-session-proof.test.ts",
+    "tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts"
   ]
 }

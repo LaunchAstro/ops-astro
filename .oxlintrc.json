@@ -105,7 +105,9 @@
       "files": [
         "tests/review/backup-read-part-appointment-proof.test.ts",
         "tests/review/ow-063-export-revocation-proof.test.ts",
-        "tests/review/export-session-ended-after-part-gate-proof.test.ts"
+        "tests/review/export-session-ended-after-part-gate-proof.test.ts",
+        "tests/review/store-hands-out-no-part-after-session-end-proof.test.ts",
+        "tests/operations/scan-login-cleanup-subject-race.proof.test.ts"
       ],
       "rules": { "max-lines-per-function": "off" }
     },
@@ -114,13 +116,19 @@
       "rules": { "require-await": "off" }
     },
     {
-      "files": ["tests/review/ow066-export-revocation-proof.test.ts"],
+      "files": [
+        "tests/review/ow066-export-revocation-proof.test.ts",
+        "tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts"
+      ],
       "rules": { "unicorn/no-useless-undefined": "off" }
     },
     {
       "files": [
         "tests/ci/restore-check-barrier-and-logs.proof.test.mjs",
-        "tests/ci/restore-refuses-permissive-barrier.proof.test.mjs"
+        "tests/ci/restore-refuses-permissive-barrier.proof.test.mjs",
+        "tests/ci/restore-refuses-permissive-partitioned-barrier.proof.test.mjs",
+        "tests/operations/scan-login-cleanup-subject-race.proof.test.ts",
+        "tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts"
       ],
       "rules": {
         "no-await-in-loop": "off",

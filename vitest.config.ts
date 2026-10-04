@@ -82,6 +82,9 @@ export default defineConfig({
             'tests/review/backup-read-part-appointment-proof.test.ts',
             'tests/review/backup-restore-revocation-proof.test.ts',
             'tests/review/ow066-export-revocation-proof.test.ts',
+            'tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts',
+            'tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts',
+            'tests/operations/scan-login-cleanup-subject-race.proof.test.ts',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
