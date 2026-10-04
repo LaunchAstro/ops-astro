@@ -12,7 +12,7 @@
 // throws deeper than the console reads, the console's own writing stands, so
 // the rest of the call is never lost.
 
-import { formatWithOptions, inspect } from 'node:util';
+import { formatWithOptions, inspect, types } from 'node:util';
 
 const whole = {
   depth: Infinity,
@@ -30,10 +30,14 @@ const consoleHidden = { showHidden: true, showProxy: true, depth: 4 } as const;
 /** How `%s` writes an object it inspects, rather than one with its own toString. */
 const shallow = { ...whole, depth: 0, colors: false, compact: 3 } as const;
 
-/** A Buffer; a value whose prototype walk throws, as a revoked proxy's does, is not one. */
+/**
+ * A Buffer. A proxy is never one, since its traps can claim Buffer's
+ * prototype for anything, and a value whose prototype walk throws is not one;
+ * the console looks through both instead.
+ */
 function isBuffer(part: unknown): part is Buffer {
   try {
-    return Buffer.isBuffer(part);
+    return !types.isProxy(part) && Buffer.isBuffer(part);
   } catch {
     return false;
   }

@@ -77,6 +77,15 @@ it('keeps the rest of a call that also logs a revoked proxy', () => {
   expect(consoleLine('%s', planted, deep)).toContain(planted);
 });
 
+it('writes a proxy that claims to be a Buffer as the console does, through to its target', () => {
+  const claiming = new Proxy({ token: planted }, { getPrototypeOf: () => Buffer.prototype });
+  expect(consoleLine(claiming)).toContain(planted);
+  expect(consoleLine('%s', claiming)).toContain(planted);
+  expect(consoleLine('%O', claiming)).toContain(planted);
+  expect(consoleLine('x', claiming)).toContain(planted);
+  expect(() => consoleLine('%o', new Proxy(Buffer.from(planted), {}))).not.toThrow();
+});
+
 it('writes an error with its stack', () => {
   const error = new Error(planted);
   expect(consoleLine(error)).toContain(String(error.stack));
