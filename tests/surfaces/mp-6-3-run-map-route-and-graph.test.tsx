@@ -12,7 +12,7 @@ import { DETAIL } from '../visual/made-up-rows.ts';
 import { mount } from './mount.tsx';
 import { gate, mountMap, run, step, tick } from './mp-6-3-fixture.tsx';
 
-it('Sol proof, criterion 2: client to client on the task page never commits the preceding execution map', async () => {
+it('client to client on the task page never commits the preceding execution map', async () => {
   const destination = { ...DETAIL, key: 'T-2', client: 'c-meridian' };
   expect(DETAIL.client).toBe('c-harbour');
   expect(destination.client).not.toBe(DETAIL.client);
@@ -61,7 +61,7 @@ it('Sol proof, criterion 2: client to client on the task page never commits the 
   }
 });
 
-it('Sol proof, criterion 5: a newer superseded run cannot satisfy dependencies using an older approved gate', async () => {
+it('a newer superseded run cannot satisfy dependencies using an older approved gate', async () => {
   const page = await mountMap(
     {
       plan: 'bound',
@@ -92,7 +92,7 @@ class Boundary extends Component<{ readonly children: ReactNode }, { readonly cr
   }
 }
 
-it('Sol proof, criterion correctness: a malformed successful execution graph remains a section error', async () => {
+it('a malformed successful execution graph remains a section error', async () => {
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
