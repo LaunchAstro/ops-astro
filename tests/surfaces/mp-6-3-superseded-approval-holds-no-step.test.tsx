@@ -55,7 +55,39 @@ const changes: readonly { readonly change: string; readonly revised: readonly Pr
   },
 ];
 
-// eslint-disable-next-line max-lines-per-function -- one mounted section and its pending reread
+// The run as the first read answers it: planned on draft, which send waits on.
+const firstRead = {
+  execution: {
+    outcome: 'ready',
+    runs: [
+      {
+        runId: 'run-2',
+        lineageId: lineage.lineageId,
+        versionId: version.versionId,
+        state: 'planned',
+        taskRevisionAtRequest: 1,
+        createdAt: '2026-10-04T00:00:00.000Z',
+      },
+    ],
+    events: [],
+    complete: true,
+    next: null,
+    graph: {
+      plan: 'bound',
+      sourceRevision: 1,
+      complete: true,
+      steps: [step('draft', [], ['run-2']), step('review', []), step('send', ['draft'])],
+      nodes: [
+        {
+          ...run('run-2', 'not_started'),
+          planned: { key: 'draft', title: 'The draft step' },
+          observed: { ...run('run-2', 'not_started').observed, attemptId: null },
+        },
+      ],
+    },
+  },
+};
+
 it.each(changes)(
   'MP-6-3 a newer task read $change leaves its held graph dependency waiting',
   async ({ revised }) => {
@@ -71,39 +103,7 @@ it.each(changes)(
           return new Promise<Response>((resolve) => {
             release = resolve;
           });
-        return Promise.resolve(
-          Response.json({
-            execution: {
-              outcome: 'ready',
-              runs: [
-                {
-                  runId: 'run-2',
-                  lineageId: lineage.lineageId,
-                  versionId: version.versionId,
-                  state: 'planned',
-                  taskRevisionAtRequest: 1,
-                  createdAt: '2026-10-04T00:00:00.000Z',
-                },
-              ],
-              events: [],
-              complete: true,
-              next: null,
-              graph: {
-                plan: 'bound',
-                sourceRevision: 1,
-                complete: true,
-                steps: [step('draft', [], ['run-2']), step('review', []), step('send', ['draft'])],
-                nodes: [
-                  {
-                    ...run('run-2', 'not_started'),
-                    planned: { key: 'draft', title: 'The draft step' },
-                    observed: { ...run('run-2', 'not_started').observed, attemptId: null },
-                  },
-                ],
-              },
-            },
-          }),
-        );
+        return Promise.resolve(Response.json(firstRead));
       },
     });
     const draw = (readOf: number, proposals: readonly ProposalView[]) => (
