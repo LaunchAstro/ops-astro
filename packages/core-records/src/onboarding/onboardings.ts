@@ -160,8 +160,8 @@ export async function insertSteps(
  * The step on this task, with its onboarding locked first, then every step of
  * it, so two results on one onboarding serialise and each sees the other's
  * closed dependencies, and then the step's own task (S0-5: a step's result is
- * content on it). Undefined when no step is on the task, or when the task, read
- * again under its row lock, is no longer on the onboarding's client.
+ * content on it). Undefined when no step is on the task, or when the task, read again
+ * under its row lock, is in the trash (as `task.comment` answers it) or off the client.
  */
 export async function lockStepOfTask(
   tx: TenantQuery,
@@ -195,11 +195,11 @@ export async function lockStepOfTask(
       where business_id = $1 and onboarding_id = $2 order by position for update`,
     [tx.businessId, onboardingId],
   );
-  // A client change holding the task's lock is waited on here, and the
-  // client it committed is the one read: `task.set_party` takes this lock
+  // A client change or a trash holding the task's lock is waited on here, and
+  // the row it committed is the one read: `task.set_party` takes this lock
   // first and no onboarding lock, so the order cannot cross.
   const task = await tx.query<{ readonly client_id: string | null }>(
-    'select uuid_7 as client_id from public.records where business_id = $1 and id = $2 for update',
+    'select uuid_7 as client_id from public.records where business_id = $1 and id = $2 and deleted_at is null for update',
     [tx.businessId, taskId],
   );
   const all = steps.map((row) => stepOf(row));

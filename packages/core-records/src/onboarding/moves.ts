@@ -10,7 +10,7 @@ import type { OnboardingStepRow } from './onboardings.ts';
 
 /**
  * Each ready person or client-wait step of a running onboarding, on its own
- * client's task, and whoever owns its move: the step task's assignee, else the
+ * client's task out of the trash, and whoever owns its move: the step task's assignee, else the
  * person who started the onboarding (CS-15.4). The task row is locked, so an
  * assignment being written is waited on and its assignee read.
  */
@@ -20,7 +20,7 @@ const MOVES = `select s.task_id, coalesce(r.uuid_2, a.person_id) as owner
      join public.actors a on a.business_id = o.business_id and a.id = o.started_by_actor_id
      join public.records r on r.business_id = s.business_id and r.id = s.task_id
     where s.business_id = $1 and s.kind in ('person', 'client') and s.state = 'ready'
-      and o.state = 'running' and r.uuid_7 = o.client_id and`;
+      and o.state = 'running' and r.uuid_7 = o.client_id and r.deleted_at is null and`;
 
 async function park(
   tx: TenantQuery,
