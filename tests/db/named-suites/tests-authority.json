@@ -11,6 +11,7 @@
     "tests/authority/c58-endings-loop.test.ts",
     "tests/authority/c58-shared-login.test.ts",
     "tests/authority/c59-factor-reset-claim.test.ts",
+    "tests/authority/c59-factor-reset-commit.test.ts",
     "tests/authority/c59-factor-reset-rank.test.ts",
     "tests/authority/c59-factor-reset-settle.test.ts",
     "tests/authority/c59-factor-reset.test.ts",
