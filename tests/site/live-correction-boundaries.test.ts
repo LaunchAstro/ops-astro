@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { grantTo } from '../commands/fixture.ts';
@@ -11,6 +11,7 @@ import {
   recordObservedResult,
   type ObservedResult,
 } from '../../packages/core-records/src/site/index.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { describeWorld, file, filed, inBusiness, lows } from './live-correction-lows.ts';
 
 // The mutation cases below match the child run's plain 'FAIL  tests/...' line. CI sets CI=true,
@@ -153,33 +154,40 @@ describeWorld('the live correction boundaries on a real database', 'sol365r1', (
   }
 });
 
-for (const boundary of ['client', 'person'] as const) {
-  it(`named P26 tests detect removed ${boundary} to ${boundary} filtering`, () => {
-    const run = spawnSync(
-      process.execPath,
-      [
-        'node_modules/vitest/vitest.mjs',
-        'run',
-        '--config',
-        'tests/site/covered-read-isolation-mutant.config.mjs',
-        '--reporter',
-        'verbose',
-      ],
-      {
-        env: { ...process.env, SOL_ISOLATION_MUTANT: boundary },
-        encoding: 'utf8',
-        timeout: 90_000,
-      },
-    );
-    expect(run.error).toBeUndefined();
-    expect(run.stdout + run.stderr).toContain('Tests');
-    expect(run.stdout + run.stderr).toContain('Sol mutant positive control');
-    expect(run.stdout + run.stderr).toContain(
-      `FAIL  tests/site/covered-read-isolation-mutant.ts > P26 Sol R1: the live correction records > Sol R1 ${boundary === 'client' ? '4: a client crossing' : '5: a person crossing'}`,
-    );
-    expect(
-      run.status,
-      `Isolation guard removed, named tests still green:\n${run.stdout}\n${run.stderr}`,
-    ).not.toBe(0);
-  }, 120_000);
-}
+// The mutant suite it runs needs a database, as the named suites do; without one it is skipped,
+// so these cases run only where it can fail.
+describe.skipIf(databaseUrlFromEnvironment() === undefined)(
+  'the isolation mutant fails the named suites',
+  () => {
+    for (const boundary of ['client', 'person'] as const) {
+      it(`named P26 tests detect removed ${boundary} to ${boundary} filtering`, () => {
+        const run = spawnSync(
+          process.execPath,
+          [
+            'node_modules/vitest/vitest.mjs',
+            'run',
+            '--config',
+            'tests/site/covered-read-isolation-mutant.config.mjs',
+            '--reporter',
+            'verbose',
+          ],
+          {
+            env: { ...process.env, SOL_ISOLATION_MUTANT: boundary },
+            encoding: 'utf8',
+            timeout: 90_000,
+          },
+        );
+        expect(run.error).toBeUndefined();
+        expect(run.stdout + run.stderr).toContain('Tests');
+        expect(run.stdout + run.stderr).toContain('Sol mutant positive control');
+        expect(run.stdout + run.stderr).toContain(
+          `FAIL  tests/site/covered-read-isolation-mutant.ts > P26 Sol R1: the live correction records > Sol R1 ${boundary === 'client' ? '4: a client crossing' : '5: a person crossing'}`,
+        );
+        expect(
+          run.status,
+          `Isolation guard removed, named tests still green:\n${run.stdout}\n${run.stderr}`,
+        ).not.toBe(0);
+      }, 120_000);
+    }
+  },
+);
