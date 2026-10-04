@@ -20,7 +20,7 @@
 // read again with each new task read, as the run's own section reads them; a
 // refused or failed read draws no log, and the run's section says why.
 
-import { useEffect, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import {
   AgentPane,
   type GateDecision,
@@ -38,6 +38,7 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import type { Settlement } from '../records/use-command.ts';
+import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
 import { StepUpPrompt } from './step-up-prompt.tsx';
 import { wholeExecution } from './run-progress.tsx';
@@ -111,18 +112,6 @@ const AWAITING =
   'Your write-off is recorded. Above the four-eyes threshold a second person approves it too.';
 const STOP_AWAITING =
   'Your top-up is recorded. Above the four-eyes threshold it applies when a second person approves the same amount.';
-
-/** Holds the page under its reread while the step-up prompt is open, told as the refusal settles. */
-function useStepUpHold(props: AgentSectionProps, open: boolean): (settled: Settlement) => void {
-  useEffect(() => {
-    if (!open) props.onStepUp?.(null);
-  });
-  useEffect(() => () => props.onStepUp?.(null), []);
-  return (settled) => {
-    if (settled.kind === 'failed' && settled.refusal.code === 'STEP_UP_REQUIRED')
-      props.onStepUp?.(true);
-  };
-}
 
 /** The pane's controls on the real commands, each ending in a reread. */
 function useAgentControls(props: AgentSectionProps): AgentControls {
