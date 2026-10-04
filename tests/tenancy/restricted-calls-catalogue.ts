@@ -16,14 +16,19 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
+  // C40B: a reset token is spent by `spent_at` alone.
+  'public.password_reset_tokens': { from: '20261004005844', columns: ['spent_at'] },
 };
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
 export function columnUpdatesAt(at?: string): readonly string[] {
-  return Object.entries(COLUMN_UPDATES)
-    .filter(([, grant]) => at === undefined || at.slice(0, 4) >= grant.from)
-    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
-    .toSorted();
+  return (
+    Object.entries(COLUMN_UPDATES)
+      // The migration's ID, four digits or a UTC timestamp, which sorts after them all.
+      .filter(([, grant]) => at === undefined || (at.split('_')[0] ?? '') >= grant.from)
+      .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
+      .toSorted()
+  );
 }
 
 /**
