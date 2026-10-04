@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 -- A UTC timestamp ID (docs/local/DATA.md, "What the schema is").
 --
--- 20261003173600 the backup and lookup identities hold no other role.
+-- 20261004102910 the backup and lookup identities hold no other role.
 -- 0045 and 0046 make each identity, or repair the attributes of one made
 -- earlier by hand, and grant it only what it reads. Neither took away a role
 -- the identity was already a member of, and each reads past row security: a

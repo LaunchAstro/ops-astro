@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// 20261003173600: the backup and lookup identities hold no other role. The
+// 20261004102910: the backup and lookup identities hold no other role. The
 // repair is the cluster's, so two databases migrating at once can both find
 // the same stale membership: the second must wait for the first and then
 // accept the repaired role, never abort its whole run. Run alone on a
@@ -20,7 +20,7 @@ const url = databaseUrlFromEnvironment();
 const IDENTITIES = ['ops_astro_backup', 'ops_astro_lookup'];
 const REPAIR =
   readMigrations('migrations')
-    .find((m) => m.version === '20261003173600_identity_roles_hold_no_membership')
+    .find((m) => m.version === '20261004102910_identity_roles_hold_no_membership')
     ?.statements.find((s) => s.includes('pg_auth_members')) ?? '';
 
 function unopened(): never {

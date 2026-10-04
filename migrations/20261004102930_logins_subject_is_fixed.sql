@@ -1,8 +1,8 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 -- A UTC timestamp ID (docs/local/DATA.md, "What the schema is").
 --
--- 20261004075600 a login's provider and subject are fixed once written.
--- The login subject lock (20261004005736) guards writes to person_logins
+-- 20261004102930 a login's provider and subject are fixed once written.
+-- The login subject lock (20261004102920) guards writes to person_logins
 -- only. Changing a mapped login's subject took no lock and fired no mapping
 -- trigger, so another business could point a live login at the subject
 -- scan-login was removing, after its check, and keep a mapping to a deleted

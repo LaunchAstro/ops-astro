@@ -248,7 +248,7 @@ async function remove() {
   if (found.status === 200 && typeof providerEmail !== 'string')
     stop('the admin API answered for the sign-in with no address; nothing was removed');
 
-  // The login subject lock (migrations/20261004005736_login_subject_lock.sql),
+  // The login subject lock (migrations/20261004102920_login_subject_lock.sql),
   // held from the check through the provider delete: a mapping already being
   // written commits first and the check finds it; one begun after is refused.
   // The businesses are read again once it is held, so one made while the lock

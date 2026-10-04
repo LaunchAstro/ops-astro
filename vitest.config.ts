@@ -17,7 +17,7 @@ const containerSuites: string[] = (
 // These suites change the backup and lookup identities, which are the cluster's
 // and shared by every database on it: one grants them a role, the others drop
 // their row-security bypass. Any file migrating beside them reads or repairs
-// the same rows (0045, 0046, 20261003173600) and fails with "tuple concurrently
+// the same rows (0045, 0046, 20261004102910) and fails with "tuple concurrently
 // updated" or finds the membership mid-test. So a whole-suite run with a
 // database leaves them out; scripts/db-conformance.mjs, which runs the named
 // suites one at a time and sets SUITE_PART for each, runs them.

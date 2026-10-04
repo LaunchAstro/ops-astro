@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 -- A UTC timestamp ID (docs/local/DATA.md, "What the schema is").
 --
--- 20261004005736 no sign-in is mapped to a person while its cleanup runs.
+-- 20261004102920 no sign-in is mapped to a person while its cleanup runs.
 -- `scripts/security/scan-login.mjs remove` deletes the scan sign-in at the
 -- provider once no other business maps it to a person (OW-069.1). A mapping
 -- committed between that check and the delete was left live against a
