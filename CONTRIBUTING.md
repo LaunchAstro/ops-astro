@@ -145,6 +145,15 @@ To send back a later head, remove the label and add it again. A held head
 cannot enter the merge queue, but one already queued is not stopped: remove it
 from the queue as well.
 
+A pull request whose head commit is a merge-queue commit, the tip of a
+`gh-readonly-queue/` branch, fails `contamination gate` whatever its branch is
+called, so no light pass lands beside the group's own (#724): every ci check
+that waits on the gate is skipped, and `database conformance`, which runs
+always(), fails. `review evidence for this revision` waits on no gate, so it
+runs the same check and fails too. Each lists the queue branches on every
+pull request run; when it cannot, or cannot read the head commit, it fails,
+and a re-run tries again.
+
 A conformance proof is a separate condition. For changes to the domain
 model, tenancy wrapper, queue and delivery contracts, gate engine, credential
 broker, egress control, sandbox launcher, or migration system, that
