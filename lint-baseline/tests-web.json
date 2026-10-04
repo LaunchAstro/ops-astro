@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "eslint(require-await)": 1,
+    "eslint(require-unicode-regexp)": 6,
+    "unicorn(prefer-dom-node-dataset)": 2,
+    "unicorn(prefer-string-replace-all)": 2
+  }
+}
