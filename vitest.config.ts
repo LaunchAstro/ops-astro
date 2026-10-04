@@ -96,6 +96,8 @@ export default defineConfig({
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
             'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
+            'tests/commands/mention-refusal-replay-name.test.ts',
+            'tests/commands/mention-refusal-staff-name.test.ts',
             'tests/broker/counted-call-closes-give-back-once.test.ts',
             'tests/broker/late-answer-after-sweep-gives-back-once.test.ts',
             'tests/broker/late-planning-settlement-keeps-owner-release.test.ts',

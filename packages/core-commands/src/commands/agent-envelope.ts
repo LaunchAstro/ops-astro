@@ -278,8 +278,8 @@ async function runRow<O extends object>(
 
   const outcome = await inSavepoint(tx, async () => await authorised.run(operands));
   if (isRefused(outcome)) {
-    const { refusal, attempted } = outcome;
-    return await settle(tx, session, request, digest, refusal, 'register', attempted);
+    const { refusal, attempted, kept } = outcome;
+    return await settle(tx, session, request, digest, refusal, 'register', attempted, kept);
   }
 
   return await recordApplied(tx, session, request, digest, outcome);
