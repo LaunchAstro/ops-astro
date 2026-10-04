@@ -23,8 +23,10 @@
 // field but the identity, so a retry carrying a newer revision after a reread
 // would be refused `OPERATION_ID_REUSED` rather than replayed. If the first
 // attempt was never stored, that old revision is the server's `VERSION_STALE`,
-// which the stale path below handles. Changing the text, the audience or the
-// kind is a different comment and gets a new one.
+// which the stale path below handles. Changing the text, the audience, the
+// kind or the message replied to is a different comment and gets a new one.
+// Choosing a reply, a tab or Cancel keeps the attempt, so going back to the
+// same reply and posting the unchanged box is still that attempt.
 //
 // **The conversation is three tabs** (MP-4-5, DT-14, DT-21): Internal and
 // Client with their counts, and All activity with none. It opens on Internal
@@ -164,7 +166,7 @@ export function Comments(props: CommentsProps): ReactElement {
   const picking = tab === 'all' && parentId === null;
   const locked = busy || closed || picking;
   const rows = useRowActions(props, (commentId) => {
-    put({ replyTo: commentId, pending: null });
+    put({ replyTo: commentId });
   });
   const because = command.because ?? props.refusal;
   const run = command.run;
@@ -231,7 +233,7 @@ export function Comments(props: CommentsProps): ReactElement {
         actions={rows.actions}
         onTab={(next) => {
           const keeps = parent === undefined || next === 'all' || parent.audience === next;
-          put(keeps ? { tab: next } : { tab: next, replyTo: null, pending: null });
+          put(keeps ? { tab: next } : { tab: next, replyTo: null });
         }}
       />
       <RowRefusal because={rows.because} />
@@ -251,7 +253,7 @@ export function Comments(props: CommentsProps): ReactElement {
           <ReplyingTo
             body={parent.body}
             onCancel={() => {
-              put({ replyTo: null, pending: null });
+              put({ replyTo: null });
             }}
           />
         )}
