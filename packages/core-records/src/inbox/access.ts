@@ -40,12 +40,16 @@ export const chatsNow = (person: string): string => `(exists (select 1 from publ
    and exists (${EFFECTIVE}
      select 1 from effective e
       where e.business_id = r.business_id and e.collection = 'chat' and e.action = 'comment'
-        and e.scope_kind = 'business'
-        and ((e.subject_kind = 'person' and e.subject_id = ${person})
-             or (e.subject_kind = 'actor' and e.subject_id in (
-                   select a.id from public.actors a
-                    where a.business_id = r.business_id and a.person_id = ${person}
-                      and a.kind = 'person' and a.active)))))`;
+        and e.scope_kind = 'business' and ${heldBy(person)}))`;
+
+/** Whether grant `e` names `person` (an SQL expression) or one of their active acting identities. */
+const heldBy = (
+  person: string,
+): string => `((e.subject_kind = 'person' and e.subject_id = ${person})
+   or (e.subject_kind = 'actor' and e.subject_id in (
+         select a.id from public.actors a
+          where a.business_id = r.business_id and a.person_id = ${person}
+            and a.kind = 'person' and a.active)))`;
 
 /**
  * Whether `person` (an SQL expression) is a current member of conversation `r`
@@ -59,6 +63,21 @@ export const inConversation = (person: string, since?: string): string =>
      and cm.person_id = ${person} and cm.left_at is null${
        since === undefined ? '' : ` and cm.joined_at <= ${since}`
      }) and ${chatsNow(person)})`;
+
+/**
+ * Whether `person` reads live record `r` now, as `taskAccess` answers
+ * `readable`, asked in the statement that acts on it so a revocation committed
+ * before it reaches nothing: a conversation by a member since `since` who may
+ * chat, a task by a live `task:read` across the business, on it or its client.
+ */
+export const readableNow = (person: string, since: string): string => `(r.deleted_at is null
+  and case when ${IS_CONVERSATION} then ${inConversation(person, since)}
+   else exists (${EFFECTIVE}
+     select 1 from effective e
+      where e.business_id = r.business_id and e.collection = 'task' and e.action = 'read'
+        and (e.scope_kind = 'business' or (e.scope_kind = 'record' and e.scope_id = r.id)
+             or (e.scope_kind = 'party' and e.scope_id = r.uuid_7))
+        and ${heldBy(person)}) end)`;
 
 /**
  * One person's access to one task, or to one conversation, derived as every

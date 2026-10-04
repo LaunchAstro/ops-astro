@@ -22,8 +22,8 @@
 
 import {
   hasRoom,
+  readableNow,
   recordDeliveryAttempt,
-  taskAccess,
   type BusinessId,
   type Database,
   type TenantQuery,
@@ -123,16 +123,18 @@ async function ask(
     [tx.businessId, itemId],
   );
   if (item === undefined) return 'ITEM_NOT_OPEN';
-  if ((await taskAccess(tx, item.recipient, item.subject, item.raisedAt)) !== 'readable') {
-    return 'ITEM_WITHHELD';
-  }
-  const [address] = await tx.query<{ readonly value: string }>(
-    `select value from public.person_identifiers
-      where business_id = $1 and person_id = $2 and kind = 'email' and review_state = 'confirmed'
-      order by last_observed_at desc, id limit 1`,
-    [tx.businessId, item.recipient],
+  // Access and the address in one statement, so access ended before it sends nothing.
+  const [address] = await tx.query<{ readonly value: string | null }>(
+    `select (select value from public.person_identifiers
+              where business_id = $1 and person_id = $2 and kind = 'email'
+                and review_state = 'confirmed'
+              order by last_observed_at desc, id limit 1) as value
+       from public.records r
+      where r.business_id = $1 and r.id = $3 and ${readableNow('$2::uuid', '$4::timestamptz')}`,
+    [tx.businessId, item.recipient, item.subject, item.raisedAt],
   );
-  if (address === undefined) return 'NO_ADDRESS';
+  if (address === undefined) return 'ITEM_WITHHELD';
+  if (address.value === null) return 'NO_ADDRESS';
   if (!(await mayStillSend(tx, itemId))) return 'EMAIL_MAY_HAVE_GONE';
   // The catalogued concurrency, as a durable limit: an ask counts until its outcome is kept.
   const limit = {
