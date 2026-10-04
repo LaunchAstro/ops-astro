@@ -12,7 +12,6 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
@@ -244,13 +243,19 @@ REAL('a pinned GoTrue sign-in after reset is served in the same second', async (
   const token = await mintToken(subject);
   const freshPassword = `new-password-${randomUUID()}`;
   const api = realApi();
-  await delay(1000 - (Date.now() % 1000) + 25);
-  const second = Math.floor(Date.now() / 1000);
   const reset = await call(api, '/api/password/set', { token, password: freshPassword });
   expect({ status: reset.status, body: reset.body }).toEqual({
     status: 200,
     body: { passwordSet: true },
   });
+  // A set password settles in the database's whole second after the provider's
+  // answer; the sign-in below is stamped with the settle's own second.
+  const [settled] = await world.db.admin.execute<{ second: string }>(
+    `select floor(extract(epoch from settled_at))::bigint::text as second from ops.subject_resets
+      where subject_digest = encode(sha256(convert_to($1, 'UTF8')), 'hex')`,
+    [subject],
+  );
+  const second = Number(settled?.second);
   // The actual new password signs in at the actual pinned provider after reset.
   const access = field(await signIn(email, freshPassword, 200), 'access_token');
   const encoded = access.split('.')[1] ?? '';
@@ -259,7 +264,7 @@ REAL('a pinned GoTrue sign-in after reset is served in the same second', async (
   };
   expect(
     claims.amr.find((entry) => entry.method === 'password')?.timestamp,
-    'reset and real provider sign-in must complete in the same second',
+    'the real provider sign-in after reset must share the second the reset settled in',
   ).toBe(second);
   const door = await call(api, personPath('alpha', '/session/capabilities'), {}, bearer(access));
   expect({ status: door.status, code: door.body['code'] }).toEqual({
