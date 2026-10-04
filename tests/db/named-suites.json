@@ -292,7 +292,7 @@
     "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
     "SL06 (Clients row door) adds board-row-client (each task.board row carries its client by id and name only where the reader's grants reach it, read back against task.read and client.list; the crossings: another business names none of alpha's clients, a reader of client A is never sent B, a task holder without the client reads null beside clientSet, the agent under a live delegation is refused).",
     "PORT-A P09 (C33, b0/SL13 ported onto main) adds c33-versions (a released version never changes, an activation always pins one of its own definition's versions in a mode that version permits, and the registry reads back one business's definitions, versions and activations) and c33-occurrences (one occurrence per due time or event however often it comes, none started without a standing approval, records isolation) as invariants.",
-    "Sol's PR #371 round 1 proofs (tests/automations/sol-prv-oa-371-r1.test.ts) are an invariant: the registry reads its versions and activations as one snapshot, and claims on independent connections commit one occurrence per cause."
+    "C33's registry snapshot and claim races (tests/automations/c33-registry-snapshot-and-claim-races.test.ts) are an invariant: the registry reads its versions and activations as one snapshot, and claims on independent connections commit one occurrence per cause."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -852,7 +852,7 @@
     "tests/operations/c81-gate-evidence.test.ts",
     "tests/automations/c33-versions.test.ts",
     "tests/automations/c33-occurrences.test.ts",
-    "tests/automations/sol-prv-oa-371-r1.test.ts"
+    "tests/automations/c33-registry-snapshot-and-claim-races.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

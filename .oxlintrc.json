@@ -19,7 +19,7 @@
     },
     { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } },
     {
-      "files": ["tests/automations/sol-prv-oa-371-r1.test.ts"],
+      "files": ["tests/automations/c33-registry-snapshot-and-claim-races.test.ts"],
       "rules": {
         "consistent-function-scoping": "off",
         "max-lines-per-function": "off",

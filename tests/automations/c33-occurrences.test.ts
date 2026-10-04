@@ -172,8 +172,8 @@ describe.skipIf(serverUrl === undefined)('C33 occurrences', () => {
   });
 
   // The race itself, claims overlapping on independent connections behind a
-  // barrier, is Sol's proof in sol-prv-oa-371-r1.test.ts; this case is the
-  // database's own refusal of a second row for one cause or one run.
+  // barrier, is c33-registry-snapshot-and-claim-races.test.ts; this case is
+  // the database's own refusal of a second row for one cause or one run.
   it('C33 concurrent claim: one occurrence per cause or run is held by the database', async () => {
     const version = await w.release(['scheduled', 'event']);
     const scheduled = await w.activate(version, 'scheduled');

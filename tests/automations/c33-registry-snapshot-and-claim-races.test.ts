@@ -22,7 +22,7 @@ function deferred(): { readonly promise: Promise<void>; readonly resolve: () => 
   return { promise, resolve };
 }
 
-it('Sol proof, criterion 5: a concurrent release and re-pin cannot leave a registry activation without its version', async () => {
+it('a concurrent release and re-pin cannot leave a registry activation without its version', async () => {
   const w = await createAutomationWorld('sol371registry');
   const writer = connect(w.db.appUrl);
   try {
@@ -76,7 +76,7 @@ it('Sol proof, criterion 5: a concurrent release and re-pin cannot leave a regis
   }
 });
 
-it('Sol proof, criterion 5: independent schedulers and event deliveries commit one occurrence per cause', async () => {
+it('independent schedulers and event deliveries commit one occurrence per cause', async () => {
   const w = await createAutomationWorld('sol371claims');
   const workers = connect(w.db.appUrl, { max: 4 });
   const ready = deferred();
@@ -134,7 +134,7 @@ it('Sol proof, criterion 5: independent schedulers and event deliveries commit o
   }
 });
 
-it('Sol proof, criterion 7: the occurrence race fixture permits claim transactions to overlap', async () => {
+it('the occurrence race fixture permits claim transactions to overlap', async () => {
   const w = await createAutomationWorld('sol371race');
   const blocker = connect(w.db.appUrl);
   const locked = deferred();
