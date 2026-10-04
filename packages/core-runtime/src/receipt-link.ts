@@ -24,6 +24,7 @@
 import {
   deriveAgentCredential,
   DERIVED_SCHEME,
+  digestOf,
   type DelegationCredentialKeys,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
@@ -68,10 +69,17 @@ const spellingsOf = (credential: string): readonly string[] => {
   ];
 };
 
+/** Each percent escape decoded to its byte; a '%' that starts no escape stays as it is. */
+const unescaped = (text: string): string =>
+  text.replaceAll(/%([0-9A-Fa-f]{2})/gu, (_escape, hex: string) =>
+    String.fromCodePoint(Number.parseInt(hex, 16)),
+  );
+
 /**
  * Whether the link, as sent or decoded, holds a credential-length run or one
  * of the observing agent's credentials. Each decode that changes the text
- * shortens it, so the loop ends; an escape that does not decode is refused.
+ * shortens it, so the loop ends. A stray '%' neither refuses a link nor hides
+ * an escaped credential beside it.
  */
 function carriesCredential(link: string, held: readonly string[]): boolean {
   const own = held.flatMap((credential) => spellingsOf(credential));
@@ -83,12 +91,7 @@ function carriesCredential(link: string, held: readonly string[]): boolean {
     if (own.some((spelling) => letters.includes(spelling) || lower.includes(spelling))) {
       return true;
     }
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(text);
-    } catch {
-      return true;
-    }
+    const decoded = unescaped(text);
     if (decoded === text) return false;
     text = decoded;
   }
@@ -129,6 +132,7 @@ interface HeldRow {
   readonly agent_actor_id: string;
   readonly credential_key_id: string | null;
   readonly credential_scheme: string;
+  readonly credential_hash: string;
   readonly login: boolean;
 }
 
@@ -138,26 +142,31 @@ async function heldRows(tx: TenantQuery, delegationId: string): Promise<readonly
     `with observer as (
        select agent_actor_id from public.delegations where business_id = $1 and id = $2
      ), own as (
-       select d.id, d.agent_actor_id, d.credential_key_id, d.credential_scheme
+       select d.id, d.agent_actor_id, d.credential_key_id, d.credential_scheme, d.credential_hash
          from public.delegations d join observer o on o.agent_actor_id = d.agent_actor_id
         where d.business_id = $1 and d.revoked_at is null and d.settled_at is null
           and d.expires_at > now()
      )
-     select id, agent_actor_id, credential_key_id, credential_scheme, false as login from own
+     select id, agent_actor_id, credential_key_id, credential_scheme, credential_hash, false as login
+       from own
      union all
-     select c.id, c.agent_actor_id, c.credential_key_id, c.credential_scheme, false
+     select c.id, c.agent_actor_id, c.credential_key_id, c.credential_scheme, c.credential_hash, false
        from public.delegations c
       where c.business_id = $1 and c.parent_delegation_id in (select id from own)
         and c.revoked_at is null and c.settled_at is null and c.expires_at > now()
      union all
-     select a.id, a.agent_actor_id, a.credential_key_id, a.credential_scheme, true
+     select a.id, a.agent_actor_id, a.credential_key_id, a.credential_scheme, a.credential_hash, true
        from public.agent_credentials a join observer o on o.agent_actor_id = a.agent_actor_id
       where a.business_id = $1 and a.revoked_at is null and a.expires_at > now()`,
     [tx.businessId, delegationId],
   );
 }
 
-/** One row's credential, derived again under the key it names, or undefined without it. */
+/**
+ * One row's credential, derived again under the key it names, or undefined
+ * without that key or when what it derives is not the credential the row's
+ * digest names (other key bytes under the same key id).
+ */
 function derivedFrom(
   keys: DelegationCredentialKeys,
   businessId: string,
@@ -165,13 +174,15 @@ function derivedFrom(
 ): string | undefined {
   const keyId = row.credential_key_id;
   if (row.credential_scheme !== DERIVED_SCHEME || keyId === null) return undefined;
-  if (row.login) {
-    return deriveAgentCredential(keys, keyId, businessId, {
-      id: row.id,
-      agentActorId: row.agent_actor_id,
-    });
-  }
-  return keys.derive(keyId, { businessId, agentActorId: row.agent_actor_id, delegationId: row.id });
+  const credential = row.login
+    ? deriveAgentCredential(keys, keyId, businessId, {
+        id: row.id,
+        agentActorId: row.agent_actor_id,
+      })
+    : keys.derive(keyId, { businessId, agentActorId: row.agent_actor_id, delegationId: row.id });
+  return credential !== undefined && digestOf(credential) === row.credential_hash
+    ? credential
+    : undefined;
 }
 
 /**
@@ -179,8 +190,9 @@ function derivedFrom(
  * business: its own delegations (its pickup's and its purpose's), the child
  * delegations they minted for helpers, and its login credentials. Each is
  * derived again from its row's fixed identity under the key it names, as a
- * pickup replay does (`agent-replay.ts`). None for a person's observation;
- * `undefined` when one cannot be derived here, and then no link is kept.
+ * pickup replay does (`agent-replay.ts`), and must match the row's stored
+ * digest. None for a person's observation; `undefined` when one cannot be
+ * derived here or does not match, and then no link is kept.
  */
 export async function agentCredentials(
   tx: TenantQuery,

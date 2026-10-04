@@ -79,3 +79,19 @@ it("a receipt link without the observer's credential is kept when it is checked 
   const link = `https://${HOST}/effects/0b6f3c9e-2f4a-4c1e-9d7b-5a8e2c1f0a3d`;
   expect(receiptLinkOf(link, 'synthetic_comment', [credential])).toBe(link);
 });
+
+it.each([
+  ['a credential-length run', escaped(credential, (h) => h), []],
+  [
+    "the observer's own credential split by a dot",
+    escaped(`${credential.slice(0, 20)}.${credential.slice(20)}`, (h) => h),
+    [credential],
+  ],
+] as const)(
+  'a receipt link carrying %s in escapes beside a stray percent is recorded absent',
+  (_case, path, held) => {
+    const link = `https://${HOST}/effects/%zz${path}`;
+    expect(new URL(link).href).toBe(link);
+    expect(receiptLinkOf(link, 'synthetic_comment', held)).toBeNull();
+  },
+);
