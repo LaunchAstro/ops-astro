@@ -52,8 +52,13 @@ function refused(files: Record<string, unknown>, file: string, reason: RegExp): 
 
 const sorted = (list: readonly string[]) => list.toSorted();
 
-/** Main when the suites got their own files (2f3cd92, #387): the last commit with the lists. */
-const LISTS_PARENT = '2f3cd927d8fbbced8b02e8653eb5007446ba2e47';
+/**
+ * Main when the suites got their own files (81e60ec): the last commit with the lists. The
+ * converter is proven on its lists here; that the committed files lost nothing against main is
+ * the database gate's `kept` step on every change (named-suites-kept.test.ts), so this case
+ * does not compare the live tree, which grows with every new suite.
+ */
+const LISTS_PARENT = '81e60ec5c8bf22abaad5c10fa93220388711ebd1';
 const git = (...args: string[]) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' });
 
 /** A root holding the lists exactly as the parent commit had them. */
@@ -67,14 +72,10 @@ function listsRoot(): string {
   return root;
 }
 
-it('converts the lists the parent commit had into the files committed here, losing nothing', () => {
+it('converts the lists the parent commit had into one file per suite, losing nothing', () => {
   const lists = listsRoot();
   const before = readNamedSuites(lists);
   const isolationBefore = readIsolationSuites(lists);
-  expect(readNamedSuites(ROOT)).toStrictEqual(before);
-  expect(readIsolationSuites(ROOT).invariant.toSorted()).toStrictEqual(
-    isolationBefore.invariant.toSorted(),
-  );
   const root = listsRoot();
   suitesToFiles(root);
   expect(existsSync(join(root, AREAS))).toBe(false);
