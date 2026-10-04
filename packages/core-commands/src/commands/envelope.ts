@@ -27,7 +27,7 @@
 // asks and reports. No authority check lives only here, and none lives only in
 // the transport above it.
 
-import { withSession } from '../../../core-records/src/index.ts';
+import { advisoryLock, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -125,6 +125,13 @@ export async function enter(
     const refusal = refuseCommand('OPERATION_ID_REQUIRED', [], IDENTITY_FIXES);
     return await settle(tx, caller, request, digest, refusal, 'none');
   }
+  // One request per identity at a time, before any lock the command takes: a
+  // second waits here, then reads the first's record, so nothing the first
+  // does can wait on the second's (#932).
+  await advisoryLock(
+    tx,
+    `operation:${tx.businessId.toLowerCase()}:${caller.actorId}:${request.operationId}`,
+  );
   // One register for both prefixes, keyed on the caller's own actor, so a
   // pickup retried after a lost response replays the lease it already holds.
   const seen = await lookupAttempt(tx, caller.actorId, request.operationId);
