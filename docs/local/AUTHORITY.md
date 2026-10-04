@@ -766,12 +766,16 @@ names the person it acts for. Every grant check asks the key within the ticked
 ones and the person's grants as they are now (`subjectsOf`, `askedFor`); the
 credential has no sign-in assurance, so a money step-up is never met. It
 reaches the rows an agent may reach under a delegation that need no lease
-(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.comment`, `task.propose`
-and `session.capabilities`); anything else is `DELEGATION_EXCLUDES_OPERATION`,
+(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.comment`, `task.propose`,
+`onboarding.step_result` and `session.capabilities`); anything else is
+`DELEGATION_EXCLUDES_OPERATION`,
 `run.revise_state` included by name (`OUTSIDE_REACH`), though a run's delegation
 reaches it.
 A create asks the person's business-wide `task:write` within the ticked keys; it
 is audited against the agent and the task's `source` is `agent:api`.
+A step result is the agent's, so it records agent steps only: a person or
+client-wait step answers `DELEGATION_EXCLUDES_OPERATION` naming `kind`, and the
+step's comment has `source` `agent:api` (C41-A in API.md).
 `session.capabilities` answers the ticked keys the person's grants still cover,
 so a key the person holds and did not tick, or one revoked from them since, is
 not listed; `agentActorId` is the acting identity and `personId` the person it
