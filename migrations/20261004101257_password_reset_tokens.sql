@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 20261004005844 a password reset on our own one-time token (C40, ORCH77-C40B).
+-- 20261004101257 a password reset on our own one-time token (C40, ORCH77-C40B).
 --
 -- The reset no longer trusts the login provider's recovery session. Its link
 -- carries a token of ours: 32 random bytes, kept here as its SHA-256 alone,

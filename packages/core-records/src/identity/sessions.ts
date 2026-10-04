@@ -114,7 +114,7 @@ export async function endSeenSessions(
 }
 
 /**
- * Open a reset's window (C40, 20261004005844): every session of the login, in
+ * Open a reset's window (C40, 20261004101257): every session of the login, in
  * every business, is ended up to the moment the window settles, and until
  * then up to its bound, so a session opened while the reset is in flight is
  * ended even when the reset's last transaction never commits. Answers its id.

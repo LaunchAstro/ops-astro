@@ -388,6 +388,13 @@
     top: 0;
     z-index: 30;
   }
+  /* A menu open in the chrome lifts it over the dock (DS-TOK-99), which
+     would otherwise cover the menu's lower items (OW-127). The lift lands
+     with the menu: reduced motion's reset would ease it in a frame late. */
+  .chrome:has(.menu) {
+    z-index: 65;
+    transition-property: none;
+  }
   .topbar__meta {
     min-height: 34px;
   }

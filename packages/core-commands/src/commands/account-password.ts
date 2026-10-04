@@ -27,7 +27,7 @@
 //    again (spent or past its life is `RESET_LINK_INVALID`) and so is the
 //    login's factor (one verified meanwhile is `RESET_NEEDS_SUPPORT`, nothing
 //    spent). Then every live token of the login is spent and the reset's
-//    window opens (20261004005844): every session of the login, in every
+//    window opens (20261004101257): every session of the login, in every
 //    business, ends up to the moment the window settles, and until then up
 //    to its bound. Of any requests carrying the token at once, only the one
 //    that spent it goes on.

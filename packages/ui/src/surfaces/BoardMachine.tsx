@@ -105,8 +105,10 @@ function BoardBody<Row>(
   const keep = mode?.narrow;
   const moded = keep === undefined ? narrowed : narrowed.filter((row) => keep(row));
   const sorted = sortRows(moded, view.sort, props.columns);
-  const line = readingLine(view, props.facets, narrowed.length, props.withheld);
   const surface = mode?.render;
+  // The line counts what is drawn: a mode's surface takes the narrowed rows, the table its own.
+  const shown = surface ? narrowed : moded;
+  const line = readingLine(view, props.facets, shown.length, props.withheld);
   const empty = mode?.empty ?? props.empty;
   return (
     <>
