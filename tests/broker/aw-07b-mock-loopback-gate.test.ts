@@ -91,12 +91,9 @@ it('AW-07b mock gate: a mock report over a provider not on this machine is refus
   }
 });
 
-vitestIt(
-  'AW-07b mock gate: the loopback mock custody starts for no provider off this machine',
-  async () => {
-    for (const origin of [NOT_HERE, 'http://localhost:9', 'https://127.0.0.1.example.test']) {
-      // oxlint-disable-next-line no-await-in-loop
-      await expect(custodyOver(origin, true), origin).rejects.toThrow('not on this machine');
-    }
-  },
-);
+it('AW-07b mock gate: the loopback mock custody starts for no provider off this machine', async () => {
+  for (const origin of [NOT_HERE, 'http://localhost:9', 'https://127.0.0.1.example.test']) {
+    // oxlint-disable-next-line no-await-in-loop
+    await expect(custodyOver(origin, true), origin).rejects.toThrow('not on this machine');
+  }
+});
