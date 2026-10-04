@@ -11,6 +11,7 @@
 //      the one whose transaction started last.
 //   3. Criterion 2: a worker on client A's lease meets one answer for client
 //      B's correction and for an id that names none.
+//   4. Criterion 2: a client A scoped grant reaches no correction of client B.
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionSolRoundOne` after round 2.
@@ -27,8 +28,10 @@ import {
   waitPast,
 } from '../runtime/schedules-harness.ts';
 import {
+  listCoveredCorrections,
   lockCoveredCorrection,
   readCorrectionForRun,
+  readCoveredDecision,
   recordObservedResult,
 } from '../../packages/core-records/src/site/index.ts';
 import type { Scope, Subject } from '../../packages/core-records/src/authority/grants.ts';
@@ -188,11 +191,38 @@ function findingThree(): void {
   });
 }
 
+/** Whether `subjects` reach correction `id` by each covered read: list, lock and decision read. */
+const reach = async (id: string, subjects: readonly Subject[]) =>
+  await inBusiness(async (tx) => ({
+    listed: (await listCoveredCorrections(tx, subjects)).some((c) => c.id === id),
+    locked:
+      (await lockCoveredCorrection(tx, id, { subjects, collection: 'gate', action: 'decide' })) !==
+      undefined,
+    read:
+      (await readCoveredDecision(tx, id, { subjects, collection: 'run', action: 'write' })) !==
+      undefined,
+  }));
+
+const ALL = { listed: true, locked: true, read: true };
+const NONE = { listed: false, locked: false, read: false };
+
+function findingFour(): void {
+  it('Sol R1 4: named P26 tests detect removed client to client filtering', async () => {
+    const { taskA, taskB, clientA, clientB } = lows();
+    const { member } = await holder('client-a', { kind: 'party', id: clientA });
+    const [ofA, ofB] = [await stored(taskA, clientA), await stored(taskB, clientB)];
+    // The control: the same party grant reaches client A's correction.
+    expect(await reach(ofA, subjectsOf(member))).toStrictEqual(ALL);
+    expect(await reach(ofB, subjectsOf(member))).toStrictEqual(NONE);
+  });
+}
+
 /** Sol's first review's findings, each its own block over one world. */
 export function describeLiveCorrectionSolRoundOne(): void {
   describeWorld('P26 Sol R1: the live correction records', 'p26sol1', () => {
     describe('Sol R1 1: authority judged after the lock', findingOne);
     describe('Sol R1 2: receipts in write order', findingTwo);
     describe('Sol R1 3: one refusal for another client’s correction', findingThree);
+    describe('Sol R1 4: a client crossing in the covered reads', findingFour);
   });
 }
