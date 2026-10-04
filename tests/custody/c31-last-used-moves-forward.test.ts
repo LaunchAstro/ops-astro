@@ -31,7 +31,7 @@ afterAll(async () => {
   await controls?.drop();
 });
 
-it('Sol proof, criterion 5: an older transaction using a secret later must not move its last-used time backwards', async () => {
+it('an older transaction using a secret later must not move its last-used time backwards', async () => {
   const { db, business } = controls.fixture;
   const secret = await db.app.withBusiness(
     business,

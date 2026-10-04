@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function -- Sol's proof, kept as written */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createControls, type Controls } from '../api/controls-fixture.ts';
@@ -30,7 +31,7 @@ afterAll(async () => {
   await controls?.drop();
 });
 
-it('Sol proof, criterion 5: a person cannot list client secrets created after their custody grant is revoked', async () => {
+it('a person cannot list client secrets created after their custody grant is revoked', async () => {
   const { db, business } = controls.fixture;
   const seeded = await db.app.withBusiness(business, async (tx) => {
     const client = await createClient(tx, 'Sol revocation client', controls.manager.actorId);
@@ -111,7 +112,7 @@ it('Sol proof, criterion 5: a person cannot list client secrets created after th
   ).not.toContain(name);
 });
 
-it('Sol proof, criterion correctness: an out-of-range expectedRevision is refused by field instead of faulting', async () => {
+it('an out-of-range expectedRevision is refused by field instead of faulting', async () => {
   const { db, business } = controls.fixture;
   await db.app.withBusiness(business, async (tx) => {
     await grantTo(tx, controls.manager, 'manage', { kind: 'business', id: null }, false, 'custody');
