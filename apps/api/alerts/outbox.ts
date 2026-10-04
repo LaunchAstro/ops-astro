@@ -10,6 +10,7 @@
 // instance holding the same key writes one digest for one scope. An error is
 // its bounded event (`errorEvent`), exactly what the sink would have been sent.
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHmac } from 'node:crypto';
 import type { ApiEvent, Outbox } from '../../../packages/core-records/src/index.ts';
 import { scopeOf } from './detect.ts';
@@ -26,10 +27,18 @@ export function scopeKey(value: string): Uint8Array {
   return Buffer.from(value, 'hex');
 }
 
+/** Outbox alerts, and a way to answer once only the events one run raised are in. */
+export interface OutboxAlerts extends Alerts {
+  /** `run`'s result, once every event raised inside it is in the outbox or dropped. */
+  readonly raisedBy: <T>(run: () => Promise<T>) => Promise<T>;
+}
+
 export function createOutboxAlerts(
   options: Place & { readonly outbox: Outbox; readonly key: Uint8Array },
-): Alerts {
+): OutboxAlerts {
   const pending = new Set<Promise<void>>();
+  // Each run's own events, so a run waits for its own and never for another's.
+  const raised = new AsyncLocalStorage<Set<Promise<void>>>();
   function append(event: ApiEvent): Promise<void> {
     const sent = options.outbox.append(event).catch(() => {
       console.error(
@@ -37,10 +46,17 @@ export function createOutboxAlerts(
       );
     });
     pending.add(sent);
+    raised.getStore()?.add(sent);
     void sent.finally(() => pending.delete(sent));
     return sent;
   }
   return {
+    raisedBy: async (run) => {
+      const own = new Set<Promise<void>>();
+      const result = await raised.run(own, run);
+      await Promise.all(own);
+      return result;
+    },
     observe: (signal) => {
       const weight = signal.kind === 'export' ? signal.items : 1;
       if (weight < 1) return;

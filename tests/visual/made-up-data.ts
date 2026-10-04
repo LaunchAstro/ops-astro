@@ -44,6 +44,7 @@ export const EXECUTION: TaskExecutionResult = {
     complete: true,
     next: null,
     graph: { plan: 'unbound', sourceRevision: 1, complete: true, nodes: [] },
+    plans: [],
   },
 };
 

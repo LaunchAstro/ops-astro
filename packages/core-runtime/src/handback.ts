@@ -52,6 +52,7 @@ import { AffectedSetChanged } from './rediscovery.ts';
 import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
 import { modelCallsOn } from './model-calls-on.ts';
 import { recordDrop, type DropCause } from './recovery/drop.ts';
+import { readProjectedPlan } from './plan-binding.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { markReviewedOutput } from './reviewed-output.ts';
@@ -546,6 +547,8 @@ async function writeSuccessor(
   locks: LockSet,
 ): Promise<RuntimeResult<Successor> | null> {
   if (successor === undefined) return null;
+  // The successor's step keeps the plan bound now, as a proposal's does (20261003001115).
+  const plan = await readProjectedPlan(tx, found.task_id);
   const written = await writeProposal(
     tx,
     {
@@ -559,6 +562,7 @@ async function writeSuccessor(
       currency: successor.currency,
       payload: successor.payload,
       step: successor.step,
+      planRecordId: plan?.planRecordId ?? null,
       expiresAt: successor.expiresAt,
     },
     locks,

@@ -334,7 +334,6 @@
 }
 .sb__k,
 .sb__meta,
-.tpr__crumb [data-crumb='key'],
 .sb__steplist [data-step-count] {
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
