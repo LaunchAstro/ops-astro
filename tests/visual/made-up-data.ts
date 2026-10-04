@@ -106,6 +106,7 @@ export const EXECUTION: TaskExecutionResult = {
     complete: true,
     next: null,
     graph: GRAPH,
+    plans: [],
   },
 };
 

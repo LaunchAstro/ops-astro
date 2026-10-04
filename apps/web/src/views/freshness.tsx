@@ -20,6 +20,7 @@ import {
 import { FreshnessMarker, freshnessOf, type Freshness } from '@launchastro/ui';
 import type { ReadState } from '../data/authorised-read.ts';
 import type { LiveHub } from '../data/live.ts';
+import { opensRead } from '../data/use-read.ts';
 
 /** How often the marker's words age ("2 min ago") and its grace runs out. */
 const TICK_MS = 15_000;
@@ -79,8 +80,11 @@ function timesAfter(times: ReadTimes, state: ReadState<unknown>, now: number): R
     // The old read's time is about data a refused reader no longer sees.
     case 'denied':
       return { state, lastReadAt: null, failingSince: null };
+    // Another record's first read: the last one's time is about that record.
     case 'loading':
-      return { ...times, state };
+      return opensRead(state)
+        ? { state, lastReadAt: null, failingSince: null }
+        : { ...times, state };
   }
 }
 

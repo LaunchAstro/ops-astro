@@ -878,7 +878,13 @@ function AgentHead({
   return (
     <AgentSection
       client={client}
+      grantKey={props.grantKey}
       recordId={task.id}
+      title={task.title === null || task.title === '' ? task.key : task.title}
+      clientId={task.client}
+      clientUnseen={task.clientSet && task.client === null}
+      taskKey={task.key}
+      readOf={task}
       proposals={task.proposals}
       people={persons}
       ledger={task.ledger}

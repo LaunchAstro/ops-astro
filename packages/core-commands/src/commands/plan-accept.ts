@@ -4,7 +4,8 @@
 //
 // Everything the body carries is checked before any row is written: the
 // words and the structured plan record (`boundPlanOf`), the instruction paths'
-// shape, and the origin conversation, which is the caller's own or
+// shape, the ceiling the card drew (both halves or neither; `decide` refuses
+// it under its locks unless it is the version's), and the origin conversation, which is the caller's own or
 // `NOT_FOUND`. The files are read from the server's instruction root, never
 // from the body; a deployment with none configured cannot accept. Then
 // `acceptPlan` approves, pins and binds in this one transaction, and the gate's
@@ -21,6 +22,7 @@ import {
   INSTRUCTION_ROOT_VARIABLE,
   type BoundPlan,
   type PlanAccepted,
+  type PlanAcceptRequest,
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -37,7 +39,20 @@ export interface AcceptFields {
   readonly plan: unknown;
   readonly entryPath: unknown;
   readonly paths: unknown;
+  /** The ceiling the card drew. Absent from callers that drew none (the API's own tests). */
+  readonly ceilingMinor?: number;
+  readonly currency?: string;
   readonly conversationId?: string | null;
+}
+
+type Ceiling = NonNullable<PlanAcceptRequest['ceiling']>;
+
+/** The ceiling the card drew: both halves, whole minor units, or neither (undefined); null otherwise. */
+function ceilingOf(fields: AcceptFields): Ceiling | undefined | null {
+  const { ceilingMinor: minor, currency } = fields;
+  if (minor === undefined && currency === undefined) return undefined;
+  const whole = minor !== undefined && Number.isSafeInteger(minor) && minor >= 0;
+  return whole && currency !== undefined ? { minor, currency } : null;
 }
 
 const PATH_LIMIT = 50;
@@ -51,10 +66,13 @@ const isPathList = (value: unknown): value is readonly string[] =>
   value.every((path) => typeof path === 'string');
 
 /** The body's plan and paths, checked by value, or the refusal naming the first bad field. */
-function checked(
-  fields: AcceptFields,
-):
-  | { readonly plan: BoundPlan; readonly entryPath: string; readonly paths: readonly string[] }
+function checked(fields: AcceptFields):
+  | {
+      readonly plan: BoundPlan;
+      readonly entryPath: string;
+      readonly paths: readonly string[];
+      readonly ceiling?: Ceiling;
+    }
   | HandlerOutcome {
   const plan = boundPlanOf(fields.planText, fields.plan);
   if ('field' in plan) return invalid(plan.field, plan.reason);
@@ -64,7 +82,15 @@ function checked(
   if (!isPathList(fields.paths)) {
     return invalid('paths', `Name up to ${String(PATH_LIMIT)} other files as relative paths.`);
   }
-  return { plan, entryPath: fields.entryPath, paths: fields.paths };
+  const ceiling = ceilingOf(fields);
+  if (ceiling === null) {
+    return invalid(
+      'ceilingMinor',
+      'Name the ceiling the card showed in minor units, with currency.',
+    );
+  }
+  const shown = ceiling === undefined ? {} : { ceiling };
+  return { plan, entryPath: fields.entryPath, paths: fields.paths, ...shown };
 }
 
 const NO_ROOT: HandlerOutcome = refused(
