@@ -42,10 +42,13 @@ interface FactsRow {
 /**
  * The facts for one live or trashed task of this business, or undefined when
  * the id names no task here. One query, reading the task and its parent.
+ * `hold` reads the task `for share`, so no write moves it until the
+ * transaction ends.
  */
 export async function wayfinderFacts(
   tx: TenantQuery,
   recordId: string,
+  hold = false,
 ): Promise<WayfinderFacts | undefined> {
   const rows = await tx.query<FactsRow>(
     `select r.data ->> 'type' as type, r.data ->> 'map_owner' as owner,
@@ -56,7 +59,7 @@ export async function wayfinderFacts(
          on t.business_id = r.business_id and t.id = r.record_type_id and t.key = $3
        left join public.records p
          on p.business_id = r.business_id and p.id = r.uuid_4 and p.record_type_id = r.record_type_id
-      where r.business_id = $1 and r.id = $2`,
+      where r.business_id = $1 and r.id = $2${hold ? ' for share of r' : ''}`,
     [tx.businessId, recordId, TASK_TYPE_KEY],
   );
   const row = rows[0];
