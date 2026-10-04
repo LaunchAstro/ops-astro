@@ -118,7 +118,10 @@
       "rules": { "unicorn/no-useless-undefined": "off" }
     },
     {
-      "files": ["tests/ci/restore-check-barrier-and-logs.proof.test.mjs"],
+      "files": [
+        "tests/ci/restore-check-barrier-and-logs.proof.test.mjs",
+        "tests/ci/sol-d1-restore-policy.test.mjs"
+      ],
       "rules": {
         "no-await-in-loop": "off",
         "require-await": "off",
