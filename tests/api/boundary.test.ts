@@ -275,9 +275,15 @@ describe('an unknown business is refused before the body is read (N7)', () => {
   it('refuses before it reads the body, so a bad body cannot tell you a business exists', async () => {
     const seen: Seen[] = [];
     const token = await tokenFor(MIA);
-    const answer = await post(build({}, seen), '/api/b/nowhere/task/create', {}, authorised(token));
-    expect(answer.body['code']).toBe('AUTH_NO_MEMBERSHIP');
+    const request = new Request('http://api.test/api/b/nowhere/task/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...authorised(token) },
+      body: '{}',
+    });
+    const response = await build({}, seen).fetch(request);
+    expect(((await response.json()) as Record<string, unknown>)['code']).toBe('AUTH_NO_MEMBERSHIP');
     expect(seen).toHaveLength(0);
+    expect(request.bodyUsed, 'the body was read').toBe(false);
   });
 });
 
