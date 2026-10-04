@@ -168,8 +168,32 @@ it.each([
   ],
 ] as const)('the key in %s is redacted from the answer', async (_case, spell) => {
   const text = await answered(spell(KEY), KEY);
-  expect(
-    Buffer.from(text, 'base64').toString('utf8').includes(KEY),
-    'decoded answer must not hold the key',
-  ).toBe(false);
+  // Every character of the key's encoding that depends on the key alone, at each offset.
+  const bytes = Buffer.from(KEY);
+  const stable = [0, 1, 2].flatMap((offset) => {
+    const encoded = Buffer.concat([Buffer.alloc(offset), bytes]).toString('base64');
+    const slice = encoded.slice(
+      Math.ceil((8 * offset) / 6),
+      Math.floor((8 * (offset + bytes.length)) / 6),
+    );
+    return [slice, slice.replaceAll('+', '-').replaceAll('/', '_')];
+  });
+  expect({
+    decodes: Buffer.from(text, 'base64').toString('utf8').includes(KEY),
+    // The longest stable run of each slice that is left, so a slice cut short fails here.
+    left: stable.some(
+      (slice) => text.includes(slice.slice(0, slice.length - 1)) || text.includes(slice.slice(1)),
+    ),
+  }).toEqual({ decodes: false, left: false });
+});
+
+it('a key holding a run of backslashes is redacted from a long run of them without stalling', async () => {
+  const key = `synthetic${'\\'.repeat(40)}canary`;
+  const started = Date.now();
+  // The near miss first: the key's prefix, then a backslash run that never reaches its end.
+  const text = await answered(`synthetic${'\\'.repeat(1_000)}x ${key}`, key);
+  expect({ held: text.includes(key), fast: Date.now() - started < 4_000 }).toEqual({
+    held: false,
+    fast: true,
+  });
 });

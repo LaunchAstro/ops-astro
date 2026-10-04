@@ -87,15 +87,17 @@ const literal = (text: string): string => text.replaceAll(SYNTAX, '\\$&');
 /**
  * The secret with any of its characters percent-escaped, in either hex case
  * or a mix, or written as JSON text writes it: one pattern for every spelling
- * a JSON parse and a URL decoder turn back into it. Each character is a fixed
- * alternation, so matching stays linear.
+ * a JSON parse and a URL decoder turn back into it. Each character is an
+ * atomic group, so matching stays linear.
  */
 function escapedSpelling(secret: string): RegExp {
-  const characters = [...secret].map((character) => {
+  const characters = [...secret].map((character, at) => {
     const escaped = [...Buffer.from(character, 'utf8')].map((byte) => `%${hex(byte)}`).join('');
     const json = JSON.stringify(character).slice(1, -1);
-    const spellings = json === character ? [character] : [character, json];
-    return `(?:${[...spellings.map((spelling) => literal(spelling)), escaped].join('|')})`;
+    const spellings = json === character ? [character] : [json, character];
+    // Atomic: the lookahead takes one spelling, longest first, and the
+    // backreference consumes it, so a run of one character never backtracks.
+    return `(?=(${[...spellings.map((spelling) => literal(spelling)), escaped].join('|')}))\\${String(at + 1)}`;
   });
   return new RegExp(characters.join(''), 'gu');
 }
