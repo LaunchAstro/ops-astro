@@ -33,10 +33,11 @@ function suiteOf(files: readonly string[]): string {
 
 describe('every_invariant_bites: a part’s declared dependents', () => {
   it('declares as dependents only other parts whose suite reaches code the part added', () => {
-    for (const part of PARTS) {
-      const added = part.commits
-        .map((commit) => git(['show', '--format=', commit, '--', '.', ':!tests']))
-        .join('\n')
+    // Only the parts that declare dependents need their added lines: one `git
+    // show` for all of a part's commits. Showing all 171 commits one by one,
+    // for every part, ran 3.4 s alone and past the 5 s budget under load.
+    for (const part of PARTS.filter((each) => (each.dependents ?? []).length > 0)) {
+      const added = git(['show', '--format=', ...part.commits, '--', '.', ':!tests'])
         .split('\n')
         .filter((line) => line.startsWith('+'));
       for (const { part: id, reaches, via, why } of part.dependents ?? []) {

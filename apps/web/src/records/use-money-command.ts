@@ -8,9 +8,15 @@
 // sign-in: the work is handed a client rather than closing over one, and the
 // latest client is held here for the resend.
 //
+// A client, who may have no second factor, is refused naming `sign_in` (Q1):
+// the prompt asks for their password instead, and a good one signs the tab in
+// again (`session/sign-in-again.ts`, through `SignInAgainContext`) before the
+// same one resend. The password passes through here to that call and is kept
+// nowhere.
+//
 // Once, and only then: a resend refused again is drawn as any refusal is, with
-// no second prompt queued behind it, and a session ended while the code was
-// checked (`sessionGeneration`) sends nothing.
+// no second prompt queued behind it, and a session ended while the code or the
+// password was checked (`sessionGeneration`) sends nothing.
 
 import { createContext, useContext, useEffect, useRef, useState, type RefObject } from 'react';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
@@ -21,12 +27,20 @@ import { useCommand, type Command, type Settlement } from './use-command.ts';
 /** The application's step-up of this tab's sign-in, or null where there is no session to step up. */
 export const StepUpContext = createContext<((code: string) => Promise<StepUpResult>) | null>(null);
 
-/** The prompt's state: open while a refused write waits on a code. */
+/** The application's password sign-in again, for a client's step-up, or null without a session. */
+export const SignInAgainContext = createContext<
+  ((password: string) => Promise<StepUpResult>) | null
+>(null);
+
+/** The prompt's state: open while a refused write waits on a code or a password. */
 export interface StepUpAsk {
   readonly checking: boolean;
-  /** The last code's refusal, in the server's words, or null. */
+  /** The last code's or password's refusal, in the server's or the provider's words, or null. */
   readonly because: string | null;
   readonly submit: (code: string) => void;
+  /** A password where the refusal named `sign_in` and the tab can sign in again; else a code. */
+  readonly way: 'code' | 'password';
+  readonly submitPassword: (password: string) => void;
   readonly cancel: () => void;
 }
 
@@ -56,17 +70,20 @@ function resend(pending: RefObject<Pending | null>, held: Pending, next: Operati
 }
 
 interface Prompt {
-  /** Hold a refused write for the code; null where nothing can step up. */
-  readonly hold: ((send: Send) => void) | null;
+  /** Hold a refused write for a code or a password; null where nothing can step up. */
+  readonly hold: ((send: Send, names: readonly string[]) => void) | null;
   readonly ask: StepUpAsk | null;
 }
 
-/** The prompt: the write it holds, the code's check, and the resend once the new client lands. */
-function usePrompt(client: OperationsClient): Prompt {
-  const stepUp = useContext(StepUpContext);
+interface Asked {
+  readonly send: Send;
+  readonly way: StepUpAsk['way'];
+}
+
+/** The check in flight, and the one resend it earns once the new sign-in's client lands. */
+function useResend(client: OperationsClient) {
   const latest = useRef(client);
   latest.current = client;
-  const [asked, setAsked] = useState<Send | null>(null);
   const [checking, setChecking] = useState(false);
   const [because, setBecause] = useState<string | null>(null);
   const pending = useRef<Pending | null>(null);
@@ -75,29 +92,57 @@ function usePrompt(client: OperationsClient): Prompt {
     const held = pending.current;
     if (held !== null && client !== held.from) resend(pending, held, client);
   }, [client]);
-  const open = (send: Send | null): void => {
-    setBecause(null);
-    setAsked(() => send);
-  };
-  const submit = (code: string): void => {
-    if (asked === null || stepUp === null || checking) return;
-    const held = { send: asked, from: latest.current, generation: sessionGeneration() };
+  const check = (send: Send, attempt: () => Promise<StepUpResult>, passed: () => void): void => {
+    if (checking) return;
+    const held = { send, from: latest.current, generation: sessionGeneration() };
     setChecking(true);
     setBecause(null);
-    void stepUp(code).then((result) => {
+    void attempt().then((result) => {
       setChecking(false);
       if (!result.ok) {
         setBecause(result.because);
         return result;
       }
-      open(null);
+      passed();
       if (latest.current === held.from) pending.current = held;
       else resend(pending, held, latest.current);
       return result;
     });
   };
-  const ask = { checking, because, submit, cancel: () => open(null) };
-  return { hold: stepUp === null ? null : open, ask: asked === null ? null : ask };
+  return { checking, because, setBecause, check };
+}
+
+/** The prompt: the write it holds, and which way it is met, a code or a password. */
+function usePrompt(client: OperationsClient): Prompt {
+  const stepUp = useContext(StepUpContext);
+  const signInAgain = useContext(SignInAgainContext);
+  const [asked, setAsked] = useState<Asked | null>(null);
+  const { checking, because, setBecause, check } = useResend(client);
+  const open = (next: Asked | null): void => {
+    setBecause(null);
+    setAsked(next);
+  };
+  const by = (way: StepUpAsk['way'], attempt: () => Promise<StepUpResult>): void => {
+    if (asked?.way === way) check(asked.send, attempt, () => open(null));
+  };
+  const ask: StepUpAsk = {
+    checking,
+    because,
+    way: asked?.way ?? 'code',
+    submit: (code) => {
+      if (stepUp !== null) by('code', async () => await stepUp(code));
+    },
+    submitPassword: (password) => {
+      if (signInAgain !== null) by('password', async () => await signInAgain(password));
+    },
+    cancel: () => open(null),
+  };
+  const hold = (send: Send, names: readonly string[]): void => {
+    const way = names.includes('sign_in') && signInAgain !== null ? 'password' : 'code';
+    if (way === 'password' || stepUp !== null) open({ send, way });
+  };
+  const none = stepUp === null && signInAgain === null;
+  return { hold: none ? null : hold, ask: asked === null ? null : ask };
 }
 
 export function useMoneyCommand(client: OperationsClient): MoneyCommand {
@@ -114,7 +159,7 @@ export function useMoneyCommand(client: OperationsClient): MoneyCommand {
       () => work(latest.current.client),
       (settlement) => {
         const refusal = settlement.kind === 'failed' ? settlement.refusal : null;
-        if (refusal?.code === 'STEP_UP_REQUIRED') prompt.hold?.(send);
+        if (refusal?.code === 'STEP_UP_REQUIRED') prompt.hold?.(send, refusal.names);
         then?.(settlement);
       },
     );

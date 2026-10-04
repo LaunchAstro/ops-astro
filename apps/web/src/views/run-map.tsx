@@ -15,7 +15,11 @@
 
 import { useRef, type ReactElement } from 'react';
 import { ExecutionMap, type MapGate } from '@launchastro/ui';
-import type { ProposalView, TaskExecution } from '../../../../packages/core-wire/src/index.ts';
+import type {
+  ExecutionGraph,
+  ProposalView,
+  TaskExecution,
+} from '../../../../packages/core-wire/src/index.ts';
 
 export function gatesOf(proposals: readonly ProposalView[]): readonly MapGate[] {
   return proposals.flatMap((lineage) =>
@@ -56,4 +60,70 @@ export function RunMap(props: {
   // Drawn only from a read this page could read; the run section says why otherwise.
   if (graph === undefined) return null;
   return <ExecutionMap graph={graph} gates={gatesOf(props.proposals)} />;
+}
+
+type Fields = Readonly<Record<string, unknown>>;
+
+const isFields = (value: unknown): value is Fields =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+const isText = (value: unknown): value is string => typeof value === 'string';
+const isTextOrNull = (value: unknown): boolean => value === null || isText(value);
+const isMinor = (value: unknown): boolean => value === null || Number.isSafeInteger(value);
+const isTexts = (value: unknown): boolean =>
+  Array.isArray(value) && value.every((each) => isText(each));
+
+function isObserved(value: unknown): boolean {
+  if (!isFields(value)) return false;
+  const { whoseMove, lease } = value;
+  return (
+    isText(value['condition']) &&
+    isText(value['runState']) &&
+    isTextOrNull(value['outcome']) &&
+    isTextOrNull(value['fault']) &&
+    (whoseMove === null ||
+      (isFields(whoseMove) && isText(whoseMove['kind']) && isTextOrNull(whoseMove['actorId']))) &&
+    (lease === null || (isFields(lease) && isText(lease['state']) && isText(lease['expiresAt']))) &&
+    typeof value['effectObserved'] === 'boolean' &&
+    isMinor(value['heldMinor']) &&
+    isMinor(value['spentMinor']) &&
+    isText(value['currency'])
+  );
+}
+
+function isNode(value: unknown): boolean {
+  if (!isFields(value)) return false;
+  const { planned } = value;
+  return (
+    isText(value['nodeId']) &&
+    isText(value['condition']) &&
+    (planned === null ||
+      (isFields(planned) && isText(planned['key']) && isText(planned['title']))) &&
+    isObserved(value['observed'])
+  );
+}
+
+function isStep(value: unknown): boolean {
+  return (
+    isFields(value) &&
+    isText(value['key']) &&
+    isText(value['title']) &&
+    isTexts(value['after']) &&
+    isTexts(value['runIds'])
+  );
+}
+
+/**
+ * Whether a successful answer's graph has every field the map and the run
+ * list read, all the way down. A graph that does not is a section error the
+ * run section says, never a drawing that throws in render (MP-6-3).
+ */
+export function isExecutionGraph(value: unknown): value is ExecutionGraph {
+  if (!isFields(value)) return false;
+  const { steps, nodes } = value;
+  return (
+    (value['plan'] === 'bound' || value['plan'] === 'unbound') &&
+    (steps === undefined || (Array.isArray(steps) && steps.every((each) => isStep(each)))) &&
+    Array.isArray(nodes) &&
+    nodes.every((each) => isNode(each))
+  );
 }

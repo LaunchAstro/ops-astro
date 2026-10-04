@@ -24,7 +24,7 @@ const refused = () =>
   );
 
 for (const boundary of ['business to business', 'client to client', 'person to person']) {
-  it(`Sol proof, criterion 2: ${boundary} never inherits the preceding execution map while its own read is pending`, async () => {
+  it(`${boundary} never inherits the preceding execution map while its own read is pending`, async () => {
     const original = clientFor('alpha', (input) =>
       Promise.resolve(String(input).endsWith('/task/receipt') ? Response.json(RECEIPT) : success()),
     );
@@ -60,7 +60,7 @@ for (const boundary of ['business to business', 'client to client', 'person to p
   });
 }
 
-it('Sol proof, criterion 3: a denied execution read discards its graph before a subsequent reread', async () => {
+it('a denied execution read discards its graph before a subsequent reread', async () => {
   let phase = 0;
   const client = clientFor('alpha', (input) =>
     String(input).endsWith('/task/receipt')
@@ -92,7 +92,7 @@ it('Sol proof, criterion 3: a denied execution read discards its graph before a 
   }
 });
 
-it('Sol proof, criterion 5: a completed execution read does not ask for approval from an older pending gate snapshot', async () => {
+it('a completed execution read does not ask for approval from an older pending gate snapshot', async () => {
   // task.read finishes before another caller approves and completes the run;
   // task.execution then finishes with the newer observed layer.
   const page = await mount(
@@ -117,7 +117,7 @@ it('Sol proof, criterion 5: a completed execution read does not ask for approval
 });
 
 // eslint-disable-next-line max-lines-per-function -- one mounted task page, the reread and release on it
-it('Sol proof, criterion 1: the real task page keeps its execution map and selected card through a live task reread', async () => {
+it('the real task page keeps its execution map and selected card through a live task reread', async () => {
   let reread = false;
   let release: ((response: Response) => void) | undefined;
   let stream: ReadableStreamDefaultController<Uint8Array> | undefined;

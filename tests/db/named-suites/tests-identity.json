@@ -1,0 +1,31 @@
+{
+  "invariant": [
+    "tests/identity/agent-delegation.test.ts",
+    "tests/identity/authentication-attempts.test.ts",
+    "tests/identity/c59-enrol-race.test.ts",
+    "tests/identity/c59-factor-every-business.test.ts",
+    "tests/identity/c59-factor-orphan-kept.test.ts",
+    "tests/identity/c59-factor-orphan-reported.test.ts",
+    "tests/identity/c59-factor-orphan.test.ts",
+    "tests/identity/c59-second-factor-commands.test.ts",
+    "tests/identity/c59-step-up-client-sign-in.test.ts",
+    "tests/identity/c59-step-up-person.test.ts",
+    "tests/identity/c59-wrong-code-lock-concurrent.test.ts",
+    "tests/identity/c59-wrong-code-lock-subject.test.ts",
+    "tests/identity/c59-wrong-code-provider-fault.test.ts",
+    "tests/identity/external-party.test.ts",
+    "tests/identity/login-kind-race.test.ts",
+    "tests/identity/mp-2-11-recent-sign-in.test.ts",
+    "tests/identity/restricted-role.test.ts"
+  ],
+  "conformance": [
+    "tests/identity/agent-deactivation.test.ts",
+    "tests/identity/c59-second-factor-attempts.test.ts",
+    "tests/identity/identifier-resolution.test.ts",
+    "tests/identity/login-resolution-before-0061.test.ts",
+    "tests/identity/login-resolution.test.ts",
+    "tests/identity/merge-cycle.test.ts",
+    "tests/identity/review-main-2b1-4-double-refusal.test.ts",
+    "tests/identity/run-write-ceiling.test.ts"
+  ]
+}

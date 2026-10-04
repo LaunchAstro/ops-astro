@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /// <reference lib="dom" />
-/* oxlint-disable no-await-in-loop -- widths, themes and pages run one at a time,
-   in order: one browser context at a time, so each page is measured alone. */
 //
 // MP-1-4's visual match on the drawn pages: every page the app registers, in
 // the pinned headless shell at 1480, 900 and 390 in light and dark, served
@@ -14,27 +12,14 @@
 // (the census's own, with its ruling) is counted apart, never refused. No
 // browser: the launch throws, so the test on this report fails.
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { Page } from 'playwright';
-import { launchChromium } from '../support/chromium.ts';
-import { MADE_UP_PARAMS, madeUpSession, screenOf, serveApp } from '../visual/app-pages.ts';
-import { load, openSide, type Side } from '../visual/capture.ts';
+import { eachBuiltPage, screenOf, withSignedInApp } from '../visual/app-pages.ts';
 import { scrollMetrics } from '../visual/drift.ts';
 import { WIDTHS } from '../visual/gallery-views.ts';
-import {
-  fetchAssets,
-  MODE,
-  readAssets,
-  readPacket,
-  themesOf,
-  type Packet,
-  type Theme,
-} from '../visual/packet.ts';
-import { addressOf, builtPages, needsSession, overflowOf } from '../visual/report.ts';
+import { themesOf } from '../visual/packet.ts';
+import { overflowOf } from '../visual/report.ts';
 
-export type PageCensus = {
+type PageCensus = {
   /** `<page>@<width>-<theme>`. */
   name: string;
   /** The address the page was loaded at, and the one it drew at once it settled. */
@@ -58,7 +43,7 @@ type Look = string[];
 type Drawn = { what: string; look: Look; select: boolean; exception: string | undefined };
 
 /** Runs in the page: each named type style as the page resolves it, on a probe. */
-export function looksOfStyles(names: string[]): Look[] {
+function looksOfStyles(names: string[]): Look[] {
   // A transition still running (a size settling as the sheets arrive) is
   // finished first: the census reads the page as it rests.
   for (const animation of document.getAnimations()) animation.finish();
@@ -84,7 +69,7 @@ export function looksOfStyles(names: string[]): Look[] {
 }
 
 /** Runs in the page: every drawn element that draws text, with its computed look. */
-export function drawnText(exceptions: string[]): Drawn[] {
+function drawnText(exceptions: string[]): Drawn[] {
   const inputs = new Set(['text', 'email', 'search', 'password', 'number', 'url', 'tel', 'date']);
   const drawn: Drawn[] = [];
   for (const element of document.body.querySelectorAll('*')) {
@@ -123,7 +108,7 @@ const keyOf = (look: Look, select: boolean): string =>
   (select ? look.with(3, 'normal') : look).join(' | ');
 
 /** Each drawn element matched to the styles it draws in, an exception, or a stray. */
-export function matchStyles(
+function matchStyles(
   names: string[],
   looks: Look[],
   drawn: Drawn[],
@@ -157,64 +142,19 @@ async function measure(
   return { landed, drew, sideways, ...matchStyles(given.names, looks, drawn) };
 }
 
-/** Every built page at one width in one theme, each on the side its route asks for. */
-async function eachPage(
-  sides: { signedOut: Side; signedIn: Side },
-  at: { packet: Packet; app: URL; width: number; theme: Theme },
-  given: { names: string[]; exceptions: string[] },
-): Promise<PageCensus[]> {
-  const out: PageCensus[] = [];
-  for (const id of builtPages()) {
-    const side = needsSession(id) ? sides.signedIn : sides.signedOut;
-    const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
-    const page = await load(side, at.packet, new URL(address, at.app).href).catch(
-      (error: unknown) => {
-        throw new Error(`MP-1-4 census: ${id} (${address}) drew nothing into #app`, {
-          cause: error,
-        });
-      },
-    );
-    const name = `${id}@${String(at.width)}-${at.theme}`;
-    out.push({ name, address, ...(await measure(page, given)) });
-    await page.close();
-  }
-  return out;
-}
-
 /** The census over every built page at each width in each theme. */
-export async function pageCensus(given: {
+export function pageCensus(given: {
   names: string[];
   exceptions: string[];
 }): Promise<PageCensus[]> {
-  const packet = readPacket();
-  await fetchAssets(readAssets(), packet);
-  const browser = await launchChromium(MODE);
-  const { app, close } = await serveApp();
-  const dir = mkdtempSync(join(tmpdir(), 'page-census-'));
-  const out: PageCensus[] = [];
-  try {
-    const session = madeUpSession(app, dir);
-    for (const width of WIDTHS) {
-      for (const theme of themesOf(packet)) {
-        const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
-        const signedIn = await openSide(browser, packet, width, {
-          app,
-          session,
-          colorScheme: theme,
-        });
-        try {
-          out.push(
-            ...(await eachPage({ signedOut, signedIn }, { packet, app, width, theme }, given)),
-          );
-        } finally {
-          await Promise.all([signedOut.context.close(), signedIn.context.close()]);
-        }
-      }
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-    await browser.close();
-    await close();
-  }
-  return out;
+  return withSignedInApp((at) =>
+    eachBuiltPage(
+      { ...at, widths: WIDTHS, themes: themesOf(at.packet) },
+      async ({ name, address, page }) => ({
+        name,
+        address,
+        ...(await measure(page, given)),
+      }),
+    ),
+  );
 }
