@@ -57,6 +57,9 @@ import {
   type Callers,
 } from './restricted-calls-callers.ts';
 import { columnUpdateFindings } from './restricted-calls-columns.ts';
+import { describeLiveCorrectionLows } from '../site/live-correction-lows.ts';
+import { describeLiveCorrectionLowsRoundTwo } from '../site/live-correction-lows-2.ts';
+import { describeLiveCorrectionSolRoundOne } from '../site/live-correction-lows-sol.ts';
 
 /**
  * One owner-written row per business in the tables the journey leaves
@@ -70,6 +73,17 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // actor, its message and its wrap-up on that conversation, where the business
   // has them. Bravo's rows name ids that key nothing, written with foreign keys
   // off, as every seed here is.
+  // WF-1: a map's body rows. Any record stands in for the map; the read-model
+  // triggers find it is not one and write nothing.
+  'public.map_components': `insert into public.map_components
+       (business_id, id, map_id, kind, body, position, created_version)
+     select business_id, gen_random_uuid(), id, 'fog', 'restricted calls seed', 0, 1
+       from public.records where business_id = $1 order by id limit 1 returning 1`,
+  'public.map_versions': `insert into public.map_versions
+       (business_id, id, map_id, version, changed, actor_id)
+     select r.business_id, gen_random_uuid(), r.id, 1, array[r.id], a.id
+       from public.records r join public.actors a on a.business_id = r.business_id
+      where r.business_id = $1 order by r.id, a.id limit 1 returning 1`,
   'public.conversations': `insert into public.conversations
        (business_id, id, owner_actor_id, owner_person_id, title)
      select $1, gen_random_uuid(), coalesce(a.id, gen_random_uuid()),
@@ -223,6 +237,27 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+  // C80's two tables: the journey requests no live correction. The receipt
+  // follows the correction, on a lease the journey left in the same business.
+  'public.live_corrections': `insert into public.live_corrections
+       (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
+        target_path, word, replacement, page_url, pre_image_digest, base_revision, seam,
+        version_id, version_digest)
+     select p.business_id, gen_random_uuid(), gen_random_uuid(), r.id, a.id, p.id,
+            'src/pages/about.md', 'friendly', 'welcoming', 'https://agency.example/about/',
+            'sha256:seed', 'rev-1', 'seam-seed', gen_random_uuid(), 'sha256:seed'
+       from public.people p
+       join public.actors a on a.business_id = p.business_id
+       join public.records r on r.business_id = p.business_id
+      where p.business_id = $1 order by p.id, a.id, r.id limit 1 returning 1`,
+  'public.live_correction_receipts': `insert into public.live_correction_receipts
+       (business_id, id, correction_id, lease_id, fence, step, outcome, observations)
+     select c.business_id, gen_random_uuid(), c.id, coalesce(l.id, gen_random_uuid()),
+            coalesce(l.fence, 1), 'publish', 'live', '{}'::jsonb
+       from public.live_corrections c
+       left join lateral (select id, fence from public.leases
+                           where business_id = c.business_id order by id limit 1) l on true
+      where c.business_id = $1 order by c.id limit 1 returning 1`,
   // AW-01: the copy register, which the journey never reaches.
   'public.copy_registrations': `insert into public.copy_registrations
        (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
@@ -467,6 +502,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_forwarder' then 'forwarder'
                  when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
                  when r.rolname = 'ops_astro_upkeep' then 'upkeep'
+                 when r.rolname = 'ops_astro_lease_path' then 'lease path'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -477,6 +513,24 @@ async function roleClasses(
   for (const row of rows) (classes[row.class] ??= []).push(row.rolname);
   return classes;
 }
+
+/**
+ * The security definer functions, by signature. WF-1 added the map read
+ * models' four writers, so the summary and frontier tables have one writer and
+ * the application only reads them.
+ */
+const DEFINERS: readonly string[] = [
+  'handback_reports_append_only()',
+  'map_summary_on_link()',
+  'map_summary_on_map_part()',
+  'map_summary_on_record()',
+  'map_summary_refresh(uuid)',
+  'model_route_room(text,integer)',
+  'ops.ended_subject_sessions_at_commit()',
+  'ops.expire_second_factor_codes()',
+  'ops.record_tested_restore()',
+  'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
+];
 
 describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full schema', () => {
   let world: World;
@@ -559,6 +613,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // 20261002105957: the daily upkeep deletes second-factor codes past their horizon through
     // ops.expire_second_factor_codes(), proved in tests/db/second-factor-codes-retention.test.ts.
     expect(classes['upkeep']).toStrictEqual(['ops_astro_upkeep']);
+    // 20261004040200: the pickup path's role owns public.take_lease and inserts leases under row security,
+    // proved in tests/db/take-lease-path.test.ts.
+    expect(classes['lease path']).toStrictEqual(['ops_astro_lease_path']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -703,7 +760,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted three run', async () => {
+  it('calls every function as every caller, and only the granted four run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -724,7 +781,8 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Exactly four, each for a named reason. The append-only trigger refuses
+  // Ten, each for a named reason. The map read models' four (WF-1) and the
+  // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
   // the installation's, which a tenant transaction cannot count under row
@@ -732,19 +790,17 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
-  // upkeep identity runs it.
+  // upkeep identity runs it. The ending's commit time (20261004181806) is a
+  // trigger on the subject-wide endings that only moves a new row's time later.
+  // The pickup path (SL11-30, 20261004040200) is the one way a lease is
+  // written, in the caller's own business (tests/db/take-lease-path.test.ts).
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly four, each with its search path pinned', () => {
-      expect(definers().map((fn) => fn.signature)).toStrictEqual([
-        'handback_reports_append_only()',
-        'model_route_room(text,integer)',
-        'ops.expire_second_factor_codes()',
-        'ops.record_tested_restore()',
-      ]);
+    it('are exactly ten, each with its search path pinned', () => {
+      expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
     it('the first is a trigger on handback_reports', () => {
@@ -763,7 +819,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.firedBy).toStrictEqual([]);
     });
 
-    it('the third is the codes expiry, taking no argument', () => {
+    it('the fourth is the codes expiry, taking no argument', () => {
       // 20261002105957: no argument, so it deletes only rows past its fixed horizon; only the
       // upkeep identity executes it (second-factor-codes-retention).
       const expiry = definer('ops.expire_second_factor_codes()');
@@ -772,13 +828,59 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(expiry?.config).toStrictEqual(['search_path=pg_catalog']);
     });
 
-    it('the fourth is the drill stamp, taking no argument', () => {
+    it('the fifth is the drill stamp, taking no argument', () => {
       // 0070 (C55): no argument, so it writes only now(); only the drill's
       // identity executes it (c55-last-tested-restore), refused above to every caller here.
       const stamp = definer('ops.record_tested_restore()');
       expect(stamp?.trigger).toBe(false);
       expect(stamp?.argumentTypes).toStrictEqual([]);
       expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
+    });
+  });
+
+  describe('the third security definer function', () => {
+    it("is the ending's commit time, a trigger fired only by an insert of an ending", () => {
+      // 20261004181806 (Sol OW-001-FIX2): it sets a new subject-wide ending's time at commit.
+      const fn = functions.find(
+        (one) => one.signature === 'ops.ended_subject_sessions_at_commit()',
+      );
+      expect(fn?.definer).toBe(true);
+      expect(fn?.trigger).toBe(true);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog']);
+      expect(fn?.firedBy).toStrictEqual([
+        { table: 'ops.ended_subject_sessions', events: 'insert' },
+      ]);
+    });
+  });
+
+  // WF-1: the map read models' writers. Three fire on a map's parts, links and
+  // records; the refresh they call takes the map's id. Each pins its search path.
+  describe("the map read models' security definer functions", () => {
+    const definer = (signature: string): CatalogueFunction | undefined =>
+      functions.find((fn) => fn.definer && fn.signature === signature);
+
+    it.each([
+      ['map_summary_on_link()', true],
+      ['map_summary_on_map_part()', true],
+      ['map_summary_on_record()', true],
+      ['map_summary_refresh(uuid)', false],
+    ])('%s pins its search path (a trigger: %s)', (signature, trigger) => {
+      const fn = definer(signature);
+      expect(fn?.trigger).toBe(trigger);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
+    });
+  });
+
+  describe('the sixth security definer function', () => {
+    it('is the pickup path, fired by nothing and under row security', () => {
+      const fn = functions.find(
+        (each) =>
+          each.definer &&
+          each.signature === 'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
+      );
+      expect(fn?.trigger).toBe(false);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, pg_temp']);
+      expect(fn?.firedBy).toStrictEqual([]);
     });
   });
 
@@ -826,3 +928,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     });
   });
 });
+
+// C80's live correction records, held on a world of their own after the cases
+// above: P26's four findings, each its own block (`../site/live-correction-lows.ts`),
+// then the re-bind review's round 2 on a second world (`../site/live-correction-lows-2.ts`),
+// then Sol's first review on a third (`../site/live-correction-lows-sol.ts`).
+describeLiveCorrectionLows();
+describeLiveCorrectionLowsRoundTwo();
+describeLiveCorrectionSolRoundOne();

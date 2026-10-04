@@ -254,9 +254,11 @@ end $$;
 revoke execute on function backups.read_latest(uuid, text) from public;
 
 -- One part of a complete archive, with the digest the store took of it; only
+-- for a login the installation still appoints (backups.appointed), and only
 -- of an archive whose read the store logged for this same login inside the
--- freshness window. Every part it hands out leaves a receipt of its own, as
--- the header read does, committed before the part is returned.
+-- freshness window: an appointment removed ends the reads its earlier receipts
+-- allowed. Every part it hands out leaves a receipt of its own, as the header
+-- read does, committed before the part is returned.
 create function backups.read_part(archive uuid, seq integer)
   returns table (part_sha256 text, part bytea)
   language plpgsql security definer set search_path = pg_catalog as $$
@@ -264,6 +266,9 @@ declare
   found_part backups.archive_parts;
   owner backups.archives;
 begin
+  if not exists (select from backups.appointed p where p.login = session_user) then
+    raise exception 'not the installation''s appointed operator' using errcode = '42501';
+  end if;
   if not exists (
     select from backups.receipts r
     where r.action = 'backup read' and r.archive_id = $1 and r.part is null and r.actor = session_user

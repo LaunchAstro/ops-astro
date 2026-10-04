@@ -8,9 +8,9 @@
 // reread shows which happened.
 //
 // **An edit keeps its words until it is stored.** The edit is held above the
-// read with the words sent, so a stale refusal's reread, which remounts the
-// thread, still finds the box open with them and the server's reason under
-// it. Only a stored edit closes the box.
+// read with the words typed, so a reread that remounts the thread, a stale
+// refusal's among them, still finds the box open with them and the server's
+// reason under it. Only a stored edit closes the box.
 
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand, type Settlement } from '../../records/use-command.ts';

@@ -22,13 +22,14 @@ import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice } from './held-address.tsx';
 import { shellDock, useDockShell } from './dock/dock-props.tsx';
+import { useAskOpensAgent } from './dock/agent-dock.ts';
 import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, sessionGeneration, type Session } from './session/token.ts';
 import { useSignedIn, type HeldNotice } from './session/use-signed-in.ts';
 import { stepUpSession, type StepUpResult } from './session/step-up.ts';
 import { signInAgainSession } from './session/sign-in-again.ts';
-import { SignInAgainContext, StepUpContext } from './records/use-money-command.ts';
+import { StepUpProviders } from './records/step-up-providers.tsx';
 import { SignIn } from './screens/SignIn.tsx';
 import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
@@ -117,6 +118,7 @@ export function App(props: AppProps): ReactElement {
   const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
   const agency = face === 'agency';
   const docked = useDockShell(client, session, props.storage, props, taskDock.panel, agency);
+  useAskOpensAgent(docked.dock.change);
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:
@@ -226,65 +228,70 @@ export function App(props: AppProps): ReactElement {
   // person or session drops every tab and a late reply has nowhere to land.
   const agent =
     dockScreen === null || match === null ? null : (
-      <AssistantView key={grantKey} client={client} route={match.id} here={here} entry={null} />
+      <AssistantView
+        key={grantKey}
+        grantKey={grantKey}
+        client={client}
+        route={match.id}
+        here={here}
+        entry={null}
+      />
     );
   return (
-    <SignedInName value={personName}>
-      <PageFreshnessProvider>
-        <PagePresenceProvider>
-          <Shell
-            face={face}
-            build={buildStamp()}
-            rail={rail}
-            here={bare}
-            strip={
-              <FrameStrip
-                face={face}
-                identity={identity}
-                clientSlug={at?.client ?? null}
-                steps={props.steps}
-                onSearch={searchable ? search.open : null}
-                searchRef={search.box}
-                session={session}
-                personName={personName}
-                navigate={navigate}
-                onSignOut={onSignOut}
-              />
-            }
-            tabs={tabs}
-            nav={{ open: navOpen, onToggle: setNavOpen }}
-            onNavigate={navigate}
-            meta={
-              <>
-                <StripFreshness
-                  fallback={
-                    offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
-                  }
+    <StepUpProviders on={session !== null} stepUp={stepUp} signInAgain={signInAgain}>
+      <SignedInName value={personName}>
+        <PageFreshnessProvider>
+          <PagePresenceProvider>
+            <Shell
+              face={face}
+              build={buildStamp()}
+              rail={rail}
+              here={bare}
+              strip={
+                <FrameStrip
+                  face={face}
+                  identity={identity}
+                  clientSlug={at?.client ?? null}
+                  steps={props.steps}
+                  onSearch={searchable ? search.open : null}
+                  searchRef={search.box}
+                  session={session}
+                  personName={personName}
+                  navigate={navigate}
+                  onSignOut={onSignOut}
                 />
-                {session === null ? null : <StripPresence />}
-              </>
-            }
-            title={title}
-            {...shellDock(docked, dockScreen, agent)}
-          >
-            <StepUpContext.Provider value={session === null ? null : stepUp}>
-              <SignInAgainContext.Provider value={session === null ? null : signInAgain}>
-                <FaceProvider face={face}>{content}</FaceProvider>
-              </SignInAgainContext.Provider>
-            </StepUpContext.Provider>
-          </Shell>
-          {search.showing && searchable ? (
-            <SearchPalette
-              client={client}
-              onOpen={(address) => {
-                search.dismiss();
-                navigate(address);
-              }}
-              onClose={search.close}
-            />
-          ) : null}
-        </PagePresenceProvider>
-      </PageFreshnessProvider>
-    </SignedInName>
+              }
+              tabs={tabs}
+              nav={{ open: navOpen, onToggle: setNavOpen }}
+              onNavigate={navigate}
+              meta={
+                <>
+                  <StripFreshness
+                    fallback={
+                      offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
+                    }
+                  />
+                  {session === null ? null : <StripPresence />}
+                </>
+              }
+              title={title}
+              {...shellDock(docked, dockScreen, agent)}
+            >
+              <FaceProvider face={face}>{content}</FaceProvider>
+            </Shell>
+            {search.showing && searchable ? (
+              <SearchPalette
+                client={client}
+                onOpen={(address) => {
+                  search.dismiss();
+                  navigate(address);
+                }}
+                onClose={search.close}
+              />
+            ) : null}
+          </PagePresenceProvider>
+        </PageFreshnessProvider>
+      </SignedInName>
+    </StepUpProviders>
   );
 }
