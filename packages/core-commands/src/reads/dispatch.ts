@@ -138,7 +138,10 @@ export async function admitRead(
   request: ReadRequest,
 ): Promise<{ readonly recordId: string | undefined } | CommandRefusal> {
   const admission = await admit(tx, session, request);
-  return 'serve' in admission ? { recordId: admission.recordId } : admission.outcome;
+  if (!('serve' in admission)) return admission.outcome;
+  // A list read decides a member's admission in its `serve` (catalogue #415):
+  // asked here without serving, so this refuses what the read refuses.
+  return (await admission.listRefusal?.()) ?? { recordId: admission.recordId };
 }
 
 /** Everything before the read is served: a refusal, with what its audit row names, or the way to serve it. */
@@ -230,6 +233,8 @@ interface Readied {
   readonly recordId: string | undefined;
   /** The row's own gate after the grant (`SpineRow.admits`); no gate admits. */
   readonly admits: () => Promise<boolean>;
+  /** A list read's own admission (`SpineRow.listRefusal`); absent, it refuses nothing. */
+  readonly listRefusal?: () => Promise<CommandRefusal | undefined>;
   readonly serve: () => Promise<ReadResult | CommandRefusal>;
 }
 
@@ -255,10 +260,14 @@ async function ready<K extends ReadName>(
   const spine = await readTaskSpine(tx);
   const recordId =
     spineRow.subject === undefined ? undefined : await spineRow.subject(tx, spine, operands);
-  const { admits } = spineRow;
+  const { admits, listRefusal } = spineRow;
   return {
     recordId,
     admits: async () => admits === undefined || (await admits(tx, session, { spine, recordId })),
+    listRefusal: async () =>
+      listRefusal === undefined
+        ? undefined
+        : await listRefusal(tx, session, operands, { spine, recordId }),
     serve: async () => await spineRow.serve(tx, session, operands, { spine, recordId }),
   };
 }
