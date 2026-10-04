@@ -6,7 +6,8 @@
 // and otherwise as written; the second holds the other side, so hiding every
 // name could not pass for the fix; the third and fourth are the security
 // reviews': a staff member's client-scoped read does not make them one of
-// that client's people, and a member refused the directory is told no names.
+// that client's people, and a member refused the directory is told no names,
+// a business-wide task reader included (the fifth).
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
@@ -140,6 +141,29 @@ it('a staff author refused the people directory is not told a staff name either'
       await grantTo(tx, author, action, { kind: 'record', id: task });
     }
   });
+  const answer = await as(alpha, author, {
+    command: 'task.comment',
+    recordId: task,
+    expectedRevision: await revisionOf(task),
+    body: 'note',
+    audience: 'internal',
+    mentions: [unread.personId],
+  });
+  expect(outcomeOf(answer)).toMatchObject({ code: 'MENTION_NOT_READABLE' });
+  expect(JSON.stringify(answer)).not.toContain(canary);
+});
+
+it('a business-wide task reader refused the people directory is not told a staff name', async () => {
+  const canary = `biz-reader-staff-${randomUUID()}`;
+  const unread = await person(canary);
+  const task = await taskFor(alpha, owner, 'team task', clientA);
+  const author = await person('biz-reader-no-directory');
+  await db.app.withBusiness(alpha, async (tx) => {
+    await grantTo(tx, author, 'read');
+    await grantTo(tx, author, 'comment', { kind: 'record', id: task });
+  });
+  const directory = await executeRead(db.app, alpha, author.presented, { read: 'person.list' });
+  expect(directory).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
   const answer = await as(alpha, author, {
     command: 'task.comment',
     recordId: task,
