@@ -63,11 +63,14 @@ export function shownAddress(api: string): string {
  * The transport over HTTP to the API at `api`: the bearer as a bearer, the
  * delegation in its own header when there is one. The command line and the
  * worker both post through this one (T2b, RN-04), so there is one client.
+ * A redirect is never followed: fetch would resend the delegation header to
+ * whatever origin it names (#780). It comes back as a non-success answer.
  */
 export function httpTransport(api: string): Transport {
   return async (path, sent, bearer, held) =>
     await fetch(`${api}${path}`, {
       method: 'POST',
+      redirect: 'manual',
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${bearer}`,

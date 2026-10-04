@@ -220,6 +220,10 @@ interface Io {
   readonly stdin: () => Promise<string>;
 }
 
+/** Fetch that never follows a redirect: a followed 307 resends the password (#780). */
+const unredirected: typeof globalThis.fetch = async (input, init) =>
+  await globalThis.fetch(input, { ...init, redirect: 'manual' });
+
 async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string) {
   const email = text(parsed.flags, 'email') ?? env['OPS_ASTRO_EMAIL'];
   if (email === undefined || email === '') throw new UsageError('login needs --email');
@@ -228,7 +232,7 @@ async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string
   const gotrueUrl = text(parsed.flags, 'gotrue') ?? env['OPS_ASTRO_GOTRUE_URL'] ?? DEFAULTS.gotrue;
   assertWritable(tokenFile, 'the login token');
   // The web sign-in's own function: the same password grant, the same endpoint.
-  const result = await signIn({ gotrueUrl, email, password, fetch: globalThis.fetch });
+  const result = await signIn({ gotrueUrl, email, password, fetch: unredirected });
   if (!result.ok) {
     io.err(`login: ${result.because}`);
     return EXIT.refused;
