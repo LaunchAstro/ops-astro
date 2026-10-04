@@ -215,4 +215,70 @@ describe('identifier resolution contract', () => {
     );
     expect(Number(rows[0]?.n)).toBe(1);
   });
+  it('batches mixing an existing attachment and distinct first sightings both commit', async () => {
+    const existing = 'mixed-existing@example.com';
+    const observe = (tx: TenantQuery, value: string) =>
+      resolveIdentifier(tx, { kind: 'email', value, sourceSystem: 'import' });
+    await db.app.withBusiness(business, (tx) => observe(tx, existing));
+    const ready = signal();
+    let arrived = 0;
+    const rendezvous = async () => {
+      arrived += 1;
+      if (arrived === 2) ready.resolve();
+      await ready.promise;
+    };
+    const results = await Promise.allSettled([
+      db.app.withBusiness(business, async (tx) => {
+        await observe(tx, 'mixed-new-a@example.com');
+        await rendezvous();
+        await observe(tx, existing);
+      }),
+      second.withBusiness(business, async (tx) => {
+        await observe(tx, existing);
+        await rendezvous();
+        await observe(tx, 'mixed-new-b@example.com');
+      }),
+    ]);
+    expect(
+      results.map((result) =>
+        result.status === 'fulfilled'
+          ? 'committed'
+          : result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason),
+      ),
+    ).toEqual(['committed', 'committed']);
+  }, 30_000);
+
+  it('person to person resolution preserves rejection evidence and only updates the confirmed person', async () => {
+    const value = 'person-boundary@example.com';
+    const [rejecter, confirmed] = await db.app.withBusiness(business, async (tx) => {
+      const a = await insertPerson(tx, 'Rejecter');
+      const b = await insertPerson(tx, 'Confirmed');
+      await insertIdentifier(tx, a, value);
+      await insertIdentifier(tx, b, value);
+      await tx.query(
+        "update person_identifiers set review_state = case person_id when $1 then 'rejected' else 'confirmed' end where value = $2",
+        [a, value],
+      );
+      return [a, b];
+    });
+    const state = () =>
+      db.app.withBusiness(business, (tx) =>
+        tx.query('select * from person_identifiers where person_id = $1', [rejecter]),
+      );
+    const before = await state();
+    const result = await db.app.withBusiness(business, (tx) =>
+      resolveIdentifier(tx, { kind: 'email', value, sourceSystem: 'new-source' }),
+    );
+    expect(result).toMatchObject({ outcome: 'attached', personId: confirmed, person: 'existing' });
+    expect(await state()).toStrictEqual(before);
+    const updated = await db.app.withBusiness(business, (tx) =>
+      tx.query<{ source_system: string }>(
+        'select source_system from person_identifiers where person_id = $1',
+        [confirmed],
+      ),
+    );
+    expect(updated[0]?.source_system).toBe('new-source');
+  });
 });
