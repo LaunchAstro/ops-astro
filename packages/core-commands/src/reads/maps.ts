@@ -119,15 +119,16 @@ async function readMapTickets(
             s.data ->> 'key' as state, s.data ->> 'machine_category' as category,
             c.data ->> 'gist' as gist, c.data ->> 'closed_as' as closed_as,
             c.ts_2 as closed_at, c.revision::text as revision,
-            -- Its blockers: only live tickets of this same map (a blocks link
-            -- from any other record is never shown under a task grant).
+            -- Its blockers: only live non-map tickets of this same map (a blocks
+            -- link from any other record, a nested map included, is never shown).
             coalesce((select array_agg(l.from_record_id::text order by l.from_record_id)
                         from public.record_links l
                         join public.records o on o.business_id = l.business_id
                          and o.id = l.from_record_id
                        where l.business_id = c.business_id and l.to_record_id = c.id
                          and l.link_type = 'blocks' and o.record_type_id = c.record_type_id
-                         and o.uuid_4 = c.uuid_4 and o.deleted_at is null), '{}') as blocked_by
+                         and o.uuid_4 = c.uuid_4 and o.deleted_at is null
+                         and coalesce(o.data ->> 'type', 'task') <> 'map'), '{}') as blocked_by
        from public.records c
        left join public.records s on s.business_id = c.business_id and s.id = c.uuid_1
       where c.business_id = $1 and c.uuid_4 = $2 and c.record_type_id = $3
