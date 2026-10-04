@@ -173,8 +173,9 @@ function ColumnPlot(props: {
 export function ColumnChart(props: ColumnProps): ReactElement {
   const height = props.height ?? 220;
   const [holder, width] = useWidth();
-  const points = usePoints(props.labels);
   const at = columnGeometry(props, width, height);
+  // No points drawn (no width, or no series to place them): nothing is held.
+  const points = usePoints(width > 0 && at.left !== null ? props.labels : []);
   const all = props.line === undefined ? props.bars : [...props.bars, props.line];
   const tipAt = (i: number): Tip => ({
     title: props.labels[i] ?? '',

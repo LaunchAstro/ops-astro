@@ -142,8 +142,9 @@ export function LineChart(
 ): ReactElement {
   const height = props.height ?? 240;
   const [holder, width] = useWidth();
-  const points = usePoints(props.labels);
   const at = lineGeometry(props.series, props.labels.length, width, height);
+  // No points drawn (no width, or no series to place them): nothing is held.
+  const points = usePoints(width > 0 && at.left !== null ? props.labels : []);
   const tipAt = (i: number): Tip => ({
     title: props.labels[i] ?? '',
     rows: rowsAt(props.series, i),
