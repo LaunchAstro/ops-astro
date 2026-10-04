@@ -12,8 +12,9 @@
 // fresh database is a copy of it (`create database ... template ...`). The
 // template is still the migrations' own output from empty, which is the point
 // fresh-database.ts makes about schemas nobody can install; it is just made
-// once. A clone does not carry the database's own privileges, so
-// fresh-database.ts copies them from the template, as 0031's revokes need.
+// once. A clone does not carry the database's own privileges; fresh-database.ts
+// revokes TEMP from PUBLIC on every database it makes, which leaves a clone the
+// privileges 0031 leaves, and migrated-template.test.ts holds the two equal.
 //
 // The template is finished when it carries its migration result as its
 // comment and takes no connections. Anything else under its name, a builder

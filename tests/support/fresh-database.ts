@@ -117,9 +117,11 @@ export async function createEmptyDatabase(
 
 /**
  * A new database, empty or a copy of `template`. A copy starts with the
- * default database privileges, PUBLIC's TEMP among them, whatever the
- * template's were (0031 revokes it), so it is given the template's own, entry
- * for entry, before anything else here is granted.
+ * default database privileges, whatever the template's were, and the revoke
+ * below gives it the ones 0031 leaves: no TEMP for PUBLIC, the application
+ * role or its logins. migrated-template.test.ts holds a copy's privileges
+ * equal to a database migrated from empty, so a migration that changes a
+ * database privilege some other way fails there before it reaches a suite.
  */
 async function createDatabase(
   options: FreshDatabaseOptions,
@@ -165,7 +167,6 @@ async function createDatabase(
       await server.execute(`create database ${identifier(name)}`);
     } else {
       await server.execute(`create database ${identifier(name)} template ${identifier(template)}`);
-      await copyPrivileges(server, template, name);
     }
     // PostgreSQL grants TEMPORARY on a new database to PUBLIC. A temporary
     // table is created in `pg_temp`, outside every schema the application is
@@ -235,23 +236,6 @@ async function createDatabase(
       }
     },
   };
-}
-
-async function copyPrivileges(server: AdminConnection, from: string, to: string): Promise<void> {
-  await server.execute(`revoke all on database ${identifier(to)} from public`);
-  const entries = await server.execute<{ grantee: string | null; privilege: string }>(
-    `select case when a.grantee = 0 then null else pg_get_userbyid(a.grantee) end grantee,
-            a.privilege_type privilege
-       from pg_database d, aclexplode(coalesce(d.datacl, acldefault('d', d.datdba))) a
-      where d.datname = $1`,
-    [from],
-  );
-  for (const { grantee, privilege } of entries) {
-    if (!/^[A-Z]+$/u.test(privilege)) throw new Error(`unexpected privilege ${privilege}`);
-    const who = grantee === null ? 'public' : `"${grantee.replaceAll('"', '""')}"`;
-    // eslint-disable-next-line no-await-in-loop -- in order
-    await server.execute(`grant ${privilege} on database ${identifier(to)} to ${who}`);
-  }
 }
 
 /**

@@ -96,7 +96,7 @@ Each shard also starts from one migrated template rather than migrating every
 database from empty: `tests/support/migrated-template.ts` migrates
 `migrated_<digest>` from empty once (the global setup builds it, through the
 database beside the configured one, so rule 7's counter is not moved), and
-`createFreshDatabase` clones it and copies its database privileges.
+`createFreshDatabase` clones it.
 `tests/support/migrated-template.test.ts` proves a clone equals a database
 migrated from empty, catalogue and privileges alike. A suite that must migrate
 itself passes `fromEmpty` or its own `migrationsDirectory`, and
