@@ -70,10 +70,10 @@ const HARNESS = [
 
 /**
  * `migrated_` and 16 hex digits of a digest of every migration file, by name
- * and content, and of the harness that applies them. A changed file names a
- * new template, so a stale one is never cloned.
+ * and content, and of the harness that applies them, read under `root`. A
+ * changed file names a new template, so a stale one is never cloned.
  */
-export function templateName(migrationsDirectory = 'migrations'): string {
+export function templateName(migrationsDirectory = 'migrations', root = '.'): string {
   const hash = createHash('sha256');
   const files = readdirSync(migrationsDirectory)
     .filter((name) => name.endsWith('.sql'))
@@ -84,7 +84,12 @@ export function templateName(migrationsDirectory = 'migrations'): string {
       .update(readFileSync(join(migrationsDirectory, file)))
       .update('\0');
   }
-  for (const file of HARNESS) hash.update(`${file}\0`).update(readFileSync(file)).update('\0');
+  for (const file of HARNESS) {
+    hash
+      .update(`${file}\0`)
+      .update(readFileSync(join(root, file)))
+      .update('\0');
+  }
   return `migrated_${hash.digest('hex').slice(0, 16)}`;
 }
 
