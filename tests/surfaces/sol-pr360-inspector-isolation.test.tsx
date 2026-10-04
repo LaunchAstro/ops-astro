@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable unicorn/prefer-dom-node-dataset -- the assertion reads its data- attribute by the DOM name */
 import { expect, it } from 'vitest';
 import { RunProgress } from '../../apps/web/src/views/run-progress.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
