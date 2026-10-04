@@ -940,7 +940,7 @@ describe.skipIf(serverUrl === undefined)(
 
     // Sol round 1 proofs for PR #722 at 0f78988 (R/sol/PRV-oa-722-R1.md), assertions and interleavings as written.
     it('WF-1 an upgrade repairs frontier rows for tickets cancelled before the migration', async () => {
-      const old = readFileSync('migrations/20261003001618_wayfinder_maps.sql', 'utf8');
+      const old = readFileSync('migrations/20261004091449_wayfinder_maps.sql', 'utf8');
       const start = old.indexOf(
         'create or replace function public.map_summary_refresh(p_map uuid)',
       );
