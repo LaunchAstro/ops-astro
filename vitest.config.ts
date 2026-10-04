@@ -69,6 +69,7 @@ export default defineConfig({
             'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
             'tests/acceptance/credential-comment-represented-person.test.ts',
             'tests/commands/agent-comment-represented-person.test.ts',
+            'tests/commands/comment-change-revoked-before-write.test.ts',
             'tests/commands/comment-change-revoked-while-waiting.test.ts',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
