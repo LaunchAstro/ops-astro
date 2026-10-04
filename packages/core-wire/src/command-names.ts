@@ -127,6 +127,8 @@ export type CommandName =
   // and the lease owner's heartbeat. None is a new actor power; each asks for
   // authority the caller already holds (see each row below).
   | 'client.create'
+  // C60: a client's privacy settings, on its record.
+  | 'client.set_privacy'
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'
