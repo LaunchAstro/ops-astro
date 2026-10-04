@@ -17,7 +17,8 @@
 // Once, and only then: a resend refused again is drawn as any refusal is, with
 // no second prompt queued behind it, and a session ended while the code or the
 // password was checked (`sessionGeneration`) sends nothing. Nor does one
-// cancelled while it was checked, whatever the check answers after.
+// cancelled while it was checked, whatever the check answers after, nor one a
+// new write replaced before the new sign-in's client landed.
 
 import { createContext, useContext, useEffect, useRef, useState, type RefObject } from 'react';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
@@ -169,7 +170,7 @@ export function useMoneyCommand(client: OperationsClient): MoneyCommand {
   const latest = useRef({ client, command });
   latest.current = { client, command };
   const run: MoneyCommand['run'] = (work, then) => {
-    prompt.ask?.cancel();
+    prompt.withdraw();
     const send: Send = (to) => {
       latest.current.command.run(() => work(to), then);
     };
