@@ -40,11 +40,22 @@ type ItemRow = InboxItemAxes &
 const CLIENT_SAFE = `((select internal from reach) or not ${wayfinderCondition('r')})`;
 
 /**
+ * A ticket of a map the recipient reads (W12): a map grant covers its tickets,
+ * never a nested map, as `task.read` admits them. Read with the row, so the
+ * placement and the name come from one snapshot.
+ */
+const MAP_TICKET = `(coalesce(r.data ->> 'type', 'task') <> 'map'
+         and r.uuid_4 = any((select records from reach)::uuid[])
+         and exists (select 1 from public.records mp
+                      where mp.business_id = r.business_id and mp.id = r.uuid_4
+                        and mp.record_type_id = r.record_type_id and mp.data ->> 'type' = 'map'))`;
+
+/**
  * Whether the recipient reads the row's task now, from the statement's own
  * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every row.
  */
 const HELD = `(((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
-         or r.uuid_7 = any((select parties from reach)::uuid[])) and ${CLIENT_SAFE})`;
+         or r.uuid_7 = any((select parties from reach)::uuid[]) or ${MAP_TICKET}) and ${CLIENT_SAFE})`;
 
 /** An item's own columns, as `shown` carries them before trashed and held. */
 const COLUMNS = `i.id, i.business_id, i.recipient_person_id, i.subject_record_id, i.reason,
@@ -90,7 +101,8 @@ const PAGE = `select * from (
                order by i.closed_at desc, i.id desc
                limit $3) h
            where not (select business from reach) and r.business_id = $1
-             and (r.id = any((select records from reach)::uuid[]) or r.uuid_7 = any((select parties from reach)::uuid[]))
+             and (r.id = any((select records from reach)::uuid[]) or r.uuid_7 = any((select parties from reach)::uuid[])
+                  or ${MAP_TICKET})
              and ${CLIENT_SAFE}
            order by h.closed_at desc, h.id desc
            limit $3)

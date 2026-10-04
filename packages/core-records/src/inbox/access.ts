@@ -10,7 +10,7 @@ import {
   type Subject,
 } from '../authority/grants.ts';
 import { grantedScopes } from '../authority/grant-reach.ts';
-import { isWayfinderRecord } from '../tasks/wayfinder.ts';
+import { isWayfinderRecord, wayfinderFacts } from '../tasks/wayfinder.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /**
@@ -49,11 +49,30 @@ export async function taskAccess(
   // A business grant, a grant on this task, or a party grant on the task's
   // own client: a party grant on another client reaches nothing here, which
   // is the client separation.
-  if (!(await holdsOnTask(tx, personId, { id: taskId, clientId: task.clientId }, 'read'))) {
+  if (
+    !(await holdsOnTask(tx, personId, { id: taskId, clientId: task.clientId }, 'read')) &&
+    !(await readsThroughMap(tx, personId, taskId))
+  ) {
     return 'withheld';
   }
   if ((await isWayfinderRecord(tx, taskId)) && !(await isInternal(tx, personId))) return 'withheld';
   return task.trashed ? 'gone' : 'readable';
+}
+
+/**
+ * A read grant on the task's map covers it (W12), never a nested map, as
+ * `task.read` admits it. The task is then held `for share` and read again, as
+ * that read holds it, so no move commits before the caller has used the answer.
+ */
+async function readsThroughMap(
+  tx: TenantQuery,
+  personId: string,
+  taskId: string,
+): Promise<boolean> {
+  const map = (await wayfinderFacts(tx, taskId))?.mapId ?? null;
+  if (map === null || map === taskId) return false;
+  if (!(await holdsOnTask(tx, personId, { id: map, clientId: null }, 'read'))) return false;
+  return (await wayfinderFacts(tx, taskId, true))?.mapId === map;
 }
 
 async function isInternal(tx: TenantQuery, personId: string): Promise<boolean> {
