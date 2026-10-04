@@ -35,7 +35,7 @@ const digest = (text: string) =>
 // hostile page are refused as oversized past: MAX_ATTRIBUTES on a tag, or on an <html> or <body>
 // later tags merge theirs onto; MAX_DEPTH open elements or formatting entries; WORK times the
 // page's length of siblings moves scan and shift (found from the end); and the page's length and
-// IMPLIED of nodes made (a run of text rebuilds each formatting element closed but still listed).
+// IMPLIED of nodes and attributes made (text rebuilds each formatting element closed but listed).
 const [MAX_ATTRIBUTES, MAX_DEPTH, WORK, IMPLIED] = [256, 256, 64, 64];
 const PAST_BOUND = new Error('past a bound');
 class BoundedTokenizer extends Tokenizer {
@@ -49,8 +49,8 @@ class BoundedTokenizer extends Tokenizer {
 
 function moves(length: number) {
   let [left, nodes] = [WORK * length, length + IMPLIED];
-  const made = <Made>(node: Made): Made => {
-    if (--nodes < 0) throw PAST_BOUND;
+  const made = <Made>(node: Made, attributes = 0): Made => {
+    if ((nodes -= 1 + attributes) < 0) throw PAST_BOUND;
     return node;
   };
   const at = (parent: Tree.ParentNode, node: Tree.ChildNode): number => {
@@ -60,7 +60,8 @@ function moves(length: number) {
     return index;
   };
   const adapter = {
-    createElement: (tag, space, attrs) => made(defaultTreeAdapter.createElement(tag, space, attrs)),
+    createElement: (tag, space, attrs) =>
+      made(defaultTreeAdapter.createElement(tag, space, attrs), attrs.length),
     createCommentNode: (data) => made(defaultTreeAdapter.createCommentNode(data)),
     createDocumentFragment: () => made(defaultTreeAdapter.createDocumentFragment()),
     insertText: (parent, text) => defaultTreeAdapter.insertText(made(parent), text),
@@ -115,7 +116,6 @@ function parsed(html: string): Tree.Document | undefined {
     throw error;
   }
 }
-
 // The bounds lean on parse5's internals. If a release drops a member they override, or stops
 // honouring one, the capture refuses to load rather than read pages unbounded.
 const names = Array.from({ length: MAX_ATTRIBUTES }, (_, at) => ` a${at}`).join('');
