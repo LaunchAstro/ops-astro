@@ -189,7 +189,7 @@ async function build(serverUrl: string, name: string): Promise<MigratedTemplate>
     } finally {
       // Closing the session releases the lock too, so a failed unlock must not
       // hide the build's own error.
-      await lock.execute(UNLOCK).catch(() => undefined);
+      await lock.execute(UNLOCK).catch(() => {});
     }
   } finally {
     await lock.close();
