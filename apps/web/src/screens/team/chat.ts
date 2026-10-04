@@ -87,13 +87,31 @@ function topicsOf(list: Listed): string {
     .join(' ');
 }
 
-/** The list read, while `current`: only the newest lands, never undone by an older answer. */
+/** A reader who has left a group: the server withholds its name and members from them. */
+const departed = (view: ChatConversationView): boolean => view.members.length === 0;
+
+/** What may stay held once `now` shows the reader back in a group `was` showed them gone from. */
+function sameWindows(was: readonly ChatConversationView[], now: readonly ChatConversationView[]) {
+  const gone = new Set(was.filter((view) => departed(view)).map((view) => view.conversationId));
+  const back = now.filter((view) => gone.has(view.conversationId) && !departed(view));
+  const fresh = new Set(back.map((view) => view.conversationId));
+  return (held: Held): Held =>
+    Object.fromEntries(Object.entries(held).filter(([id]) => !fresh.has(id)));
+}
+
+/**
+ * The list read, while `current`: only the newest lands, never undone by an
+ * older answer. A group rejoined is a new membership window: what was held
+ * from the old one is let go as the list lands, whatever its fresh read answers.
+ */
 function newestList(
   client: OperationsClient,
   setList: (update: (was: Listed) => Listed) => void,
+  setHeld: (update: (was: Held) => Held) => void,
   current: () => boolean,
 ): () => void {
   let lists = 0;
+  let last: readonly ChatConversationView[] = [];
   return () => {
     lists += 1;
     const generation = lists;
@@ -101,8 +119,11 @@ function newestList(
       if (!current() || lists !== generation) return answer;
       const listed = 'value' in answer ? answer.value.conversations : undefined;
       // A body with no list is read as no conversations, never drawn.
-      if (Array.isArray(listed)) setList(() => listed);
-      else setList((was) => (isUnavailable(answer) ? was : 'none'));
+      if (Array.isArray(listed)) {
+        setHeld(sameWindows(last, listed));
+        last = listed;
+        setList(() => listed);
+      } else setList((was) => (isUnavailable(answer) ? was : 'none'));
       return answer;
     });
   };
@@ -118,7 +139,7 @@ function useReads(
   useEffect(() => {
     let current = true;
     const asked = new Map<string, number>();
-    const list = newestList(client, setList, () => current);
+    const list = newestList(client, setList, setHeld, () => current);
     const messages = (id: string): void => {
       const generation = (asked.get(id) ?? 0) + 1;
       asked.set(id, generation);
