@@ -63,6 +63,7 @@ const MIGRATIONS = new URL('../../migrations', import.meta.url).pathname;
 const env = process.env;
 
 const EMPTY = [
+  'select ops_astro_reset.carry_ended_sessions()',
   'drop schema if exists ops cascade',
   'drop schema if exists public cascade',
   'create schema public authorization pg_database_owner',
