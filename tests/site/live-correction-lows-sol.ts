@@ -12,6 +12,7 @@
 //   3. Criterion 2: a worker on client A's lease meets one answer for client
 //      B's correction and for an id that names none.
 //   4. Criterion 2: a client A scoped grant reaches no correction of client B.
+//   5. Criterion 2: one person's grants reach nothing for another person.
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionSolRoundOne` after round 2.
@@ -217,6 +218,18 @@ function findingFour(): void {
   });
 }
 
+function findingFive(): void {
+  it('Sol R1 5: named P26 tests detect removed person to person filtering', async () => {
+    const { s } = lows();
+    const { member } = await holder('grantee', WHOLE_BUSINESS);
+    const bystander = await enrol(s.db.app, s.business, 'bystander');
+    const { id } = await filed();
+    // The control: the grantee's own grants reach it.
+    expect(await reach(id, subjectsOf(member))).toStrictEqual(ALL);
+    expect(await reach(id, subjectsOf(bystander))).toStrictEqual(NONE);
+  });
+}
+
 /** Sol's first review's findings, each its own block over one world. */
 export function describeLiveCorrectionSolRoundOne(): void {
   describeWorld('P26 Sol R1: the live correction records', 'p26sol1', () => {
@@ -224,5 +237,6 @@ export function describeLiveCorrectionSolRoundOne(): void {
     describe('Sol R1 2: receipts in write order', findingTwo);
     describe('Sol R1 3: one refusal for another client’s correction', findingThree);
     describe('Sol R1 4: a client crossing in the covered reads', findingFour);
+    describe('Sol R1 5: a person crossing in the covered reads', findingFive);
   });
 }
