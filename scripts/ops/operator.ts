@@ -40,7 +40,7 @@ import {
 import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
 import { createBusinessResolver } from '../../apps/api/server.ts';
 import { oneHost } from './one-host.ts';
-import { holdingOperations, recordSignIn } from './operator-runtime.ts';
+import { recordSignIn } from './operator-runtime.ts';
 import { recordTestedRestore } from './tested-restore.ts';
 
 /** The person an operator act runs as, and the business it was checked in. */
@@ -60,8 +60,6 @@ export type Gate =
       readonly recordTestedRestore: () => Promise<string>;
       /** Asks the gate again, now; rejects unless it admits the same person (store reads). */
       readonly stillOperator: () => Promise<void>;
-      /** Runs `during` with the business's `operations:manage` grants held: a revocation waits. */
-      readonly holdingOperations: <T>(during: () => Promise<T>) => Promise<T>;
     }
   | { readonly ok: false; readonly reason: string };
 
@@ -193,8 +191,6 @@ function afterTheAct(
       const now = await ask();
       if (!now.ok || now.operator.personId !== held.personId) throw new Error(NO_LONGER);
     },
-    holdingOperations: async (during) =>
-      await holdingOperations(env['DATABASE_URL']!, held.businessId, during),
   };
 }
 
