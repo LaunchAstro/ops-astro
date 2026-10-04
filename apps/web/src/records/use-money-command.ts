@@ -16,7 +16,8 @@
 //
 // Once, and only then: a resend refused again is drawn as any refusal is, with
 // no second prompt queued behind it, and a session ended while the code or the
-// password was checked (`sessionGeneration`) sends nothing.
+// password was checked (`sessionGeneration`) sends nothing. Nor does one
+// cancelled while it was checked, whatever the check answers after.
 
 import { createContext, useContext, useEffect, useRef, useState, type RefObject } from 'react';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
@@ -87,6 +88,9 @@ function useResend(client: OperationsClient) {
   const [checking, setChecking] = useState(false);
   const [because, setBecause] = useState<string | null>(null);
   const pending = useRef<Pending | null>(null);
+  // Each cancel moves the round on: a check from an earlier round, however it
+  // ends, holds and sends nothing.
+  const round = useRef(0);
   // The resend waits for the client the application builds for the new sign-in.
   useEffect(() => {
     const held = pending.current;
@@ -95,9 +99,11 @@ function useResend(client: OperationsClient) {
   const check = (send: Send, attempt: () => Promise<StepUpResult>, passed: () => void): void => {
     if (checking) return;
     const held = { send, from: latest.current, generation: sessionGeneration() };
+    const mine = round.current;
     setChecking(true);
     setBecause(null);
     void attempt().then((result) => {
+      if (round.current !== mine) return result;
       setChecking(false);
       if (!result.ok) {
         setBecause(result.because);
@@ -109,7 +115,12 @@ function useResend(client: OperationsClient) {
       return result;
     });
   };
-  return { checking, because, setBecause, check };
+  const withdraw = (): void => {
+    round.current += 1;
+    pending.current = null;
+    setChecking(false);
+  };
+  return { checking, because, setBecause, check, withdraw };
 }
 
 /** The prompt: the write it holds, and which way it is met, a code or a password. */
@@ -117,7 +128,7 @@ function usePrompt(client: OperationsClient): Prompt {
   const stepUp = useContext(StepUpContext);
   const signInAgain = useContext(SignInAgainContext);
   const [asked, setAsked] = useState<Asked | null>(null);
-  const { checking, because, setBecause, check } = useResend(client);
+  const { checking, because, setBecause, check, withdraw } = useResend(client);
   const open = (next: Asked | null): void => {
     setBecause(null);
     setAsked(next);
@@ -135,7 +146,10 @@ function usePrompt(client: OperationsClient): Prompt {
     submitPassword: (password) => {
       if (signInAgain !== null) by('password', async () => await signInAgain(password));
     },
-    cancel: () => open(null),
+    cancel: () => {
+      withdraw();
+      open(null);
+    },
   };
   const hold = (send: Send, names: readonly string[]): void => {
     const way = names.includes('sign_in') && signInAgain !== null ? 'password' : 'code';

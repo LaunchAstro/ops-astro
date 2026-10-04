@@ -8,7 +8,12 @@
 // the stream was admitted to. A seat is named by an id the stream alone was
 // handed, and only its own person may mark or read through it.
 
-import { refuseCommand, type CommandRefusal } from '../../packages/core-commands/src/index.ts';
+import { randomUUID } from 'node:crypto';
+import {
+  refuseCommand,
+  type CommandRefusal,
+  type Viewer,
+} from '../../packages/core-commands/src/index.ts';
 import { TASK_SPINE } from '../../packages/core-records/src/index.ts';
 import { PresenceBook, type PresenceSession, type PresenceView } from './presence.ts';
 import { TOPIC } from './live.ts';
@@ -127,4 +132,28 @@ function seatAskOf(
   const taskId = typeof topic === 'string' ? TOPIC.exec(topic)?.[1] : undefined;
   if (taskId === undefined) return refuseCommand('FIELD_VALUE_INVALID', ['topic'], [fix]);
   return { seat, taskId };
+}
+
+/** Who a seat is held for: the person the bearer resolves to, without the seat's id. */
+export type Sitter = Omit<PresenceSession, 'sessionId'>;
+
+/** A stream's seat in the presence book (C2): its id is handed to the tab alone. */
+export interface Seated {
+  readonly session: PresenceSession;
+  readonly presence: LivePresence;
+  /** Who the bearer resolves to now, asked before each delivery; undefined when no one. */
+  sitter(): Promise<Sitter | undefined>;
+}
+
+/** A stream's seat for whoever `viewer` resolves to now, under a new id; none when no one. */
+export async function seatFor(
+  presence: LivePresence,
+  viewer: () => Promise<Viewer | undefined>,
+): Promise<Seated | undefined> {
+  const sitter = async (): Promise<Sitter | undefined> => {
+    const now = await viewer();
+    return now && { personId: now.personId, name: now.name, side: now.staff ? 'staff' : 'client' };
+  };
+  const now = await sitter();
+  return now && { presence, session: { ...now, sessionId: randomUUID() }, sitter };
 }

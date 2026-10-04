@@ -96,6 +96,14 @@ export interface ExecutionEvent {
   /** The attempt the event is about; its receipt is read by this. */
   readonly attemptId: string;
   readonly at: string;
+  /** The plan its run was proposed under, as recorded (MP-6-2); absent from an older read. */
+  readonly placement?: {
+    /** The bound plan record, or null when the run was proposed under none. */
+    readonly planRecordId: string | null;
+    readonly stepKey: string | null;
+    /** The plan's own run, or a run of its lineage. */
+    readonly planRun: boolean;
+  };
 }
 
 /** `task.execution`'s answer, under `execution`; `denied`, `unavailable` and `loading` are the read's own. */
@@ -113,24 +121,40 @@ export interface TaskExecution {
   readonly next: number | null;
   /** Planned and observed per run (AW-06); every reader who may see the task gets the same one. */
   readonly graph: ExecutionGraph;
+  /** The steps of each bound plan record a run of the task was proposed under (MP-6-2). */
+  readonly plans?: readonly {
+    readonly planRecordId: string;
+    readonly steps: readonly { readonly key: string; readonly title: string }[];
+  }[];
 }
 
 /**
- * One run's node (AW-06). `planned` stays null until AW-04's bound plan record
- * is read, and `plan` says `unbound` meanwhile, so no node is called unplanned
- * against a plan nobody read. The observed layer is the run's own record.
+ * Planned and observed per run (AW-06). With AW-04's plan record bound to its
+ * approval, `plan` is `bound` and `steps` lists the plan's steps with the runs
+ * proposed under each; unbound, `steps` is empty and no node is planned.
  */
 export interface ExecutionGraph {
-  readonly plan: 'unbound';
+  readonly plan: 'bound' | 'unbound';
+  /** Absent on a read made before AW-04's plan was projected. */
+  readonly steps?: readonly ExecutionStep[];
   readonly sourceRevision: number;
   readonly complete: boolean;
   readonly nodes: readonly ExecutionNode[];
 }
 
+/** A step of the bound plan, with the runs proposed under it. */
+export interface ExecutionStep {
+  readonly key: string;
+  readonly title: string;
+  readonly after: readonly string[];
+  readonly runIds: readonly string[];
+}
+
 export interface ExecutionNode {
   readonly nodeId: string;
   readonly condition: 'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised';
-  readonly planned: null;
+  /** The bound plan's step this run was proposed under, or null. */
+  readonly planned: { readonly key: string; readonly title: string } | null;
   readonly observed: {
     readonly condition: ExecutionNode['condition'];
     readonly runState: string;

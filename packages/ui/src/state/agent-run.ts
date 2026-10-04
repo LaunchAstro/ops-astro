@@ -35,12 +35,13 @@ const WORDS: Readonly<Record<RunState, { word: string; tone: RunTone }>> = {
 };
 
 function stateOf(lineage: RunLineage, head: RunVersion): RunState {
-  if (lineage.state === 'rejected') return 'rejected';
-  if (lineage.state === 'cancelled') return 'cancelled';
   const reservation = headReservation(lineage, head);
   if (reservation?.state === 'quarantined') return 'unknown-outcome';
-  // T3b's unknown effect: held until a person records what happened (C54).
+  // T3b's unknown effect: held until a person records what happened (C54),
+  // which a rejection or cancellation leaves outstanding, so it decides first.
   if (reservation?.attempt?.state === 'liability_unknown') return 'unknown-outcome';
+  if (lineage.state === 'rejected') return 'rejected';
+  if (lineage.state === 'cancelled') return 'cancelled';
   // A hand-back's classifier abandons the hold under `handback_completed` and
   // leaves the lineage live; a dropped hand-back also marks its attempt dropped.
   if (reservation?.state === 'abandoned') {

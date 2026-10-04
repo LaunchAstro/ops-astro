@@ -50,11 +50,14 @@ export default defineConfig({
     ],
     // The browser proofs build `apps/web/dist`, which other suites rebuild (an
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
-    // BROWSER_PROOFS=1. Sol's leaked-client proof and C31's Sol proof files,
-    // kept as Sol wrote them, open their world with no skip; without a database
-    // they are left out here, and the manifests run them where there is one.
-    // C31's corrupted audit chain fails by design: only the proof that spawns
-    // it from inside a test worker collects it.
+    // BROWSER_PROOFS=1. Sol's proofs kept byte for byte (the leaked-client
+    // proof and OW-002's), the OW-002 proofs written beside them, Sol's two
+    // PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
+    // c59-factor-routes-world (byte for byte but for one cookie-jar split CQ-11
+    // asks for), and C31's Sol proof files open their worlds with no skip;
+    // without a database they are left out here, and the manifests run them
+    // where there is one. C31's corrupted audit chain fails by design: only the
+    // proof that spawns it from inside a test worker collects it.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
@@ -70,6 +73,15 @@ export default defineConfig({
             'tests/custody/c31-revoked-list-and-revision-range.test.ts',
             'tests/custody/c31-secret-set-guards.test.ts',
             'tests/custody/c31-two-setters-overlap.test.ts',
+            'tests/api/function-outbox-before-response.test.ts',
+            'tests/api/function-outbox-waits-for-own-events.test.ts',
+            'tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts',
+            'tests/api/live-presence-remap-drops-previous-person.test.ts',
+            'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
+            'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
+            'tests/web/authenticator-cancelled-enrol-lands-late.test.tsx',
+            'tests/web/sign-in-code-after-enrolment.test.tsx',
+            'tests/web/authenticator-other-tab-enrol-lands-late.test.tsx',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
