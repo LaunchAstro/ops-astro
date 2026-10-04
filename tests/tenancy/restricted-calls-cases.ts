@@ -113,11 +113,14 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0054 (API-2): an agent credential is issued by insert and revoked by
   // update; never deleted.
   ['siu', 'agent_credentials'],
-  // 0055 (C32): a client is written once; never updated or deleted.
+  // 0055 (C32): a client is written once and never deleted; C60 updates its
+  // four privacy settings alone, by the column grant in COLUMN_UPDATES.
   ['si', 'clients'],
   // 20261003172353 (C41-A): an onboarding and its steps are laid out once and
   // never deleted; each moves on by the column grants in COLUMN_UPDATES.
   ['si', 'onboarding_steps onboardings'],
+  // C60: a client's written request for model use is kept as written.
+  ['si', 'client_model_requests'],
   // 0056 (C58): an access ending is written, then its provider steps are
   // stamped by update; never deleted.
   ['siu', 'access_endings'],
@@ -176,7 +179,7 @@ const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: 
 export function applicationGrantsAt(qualified: string, at?: string): string | undefined {
   const granted = APPLICATION_GRANTS[qualified];
   if (granted === undefined || at === undefined) return granted;
-  const version = at.slice(0, 4);
+  const version = at;
   const revoked = REVOKED[qualified];
   const added = ADDED[qualified];
   if (revoked !== undefined && version < revoked.from) return granted + revoked.letters;

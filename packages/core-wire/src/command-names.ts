@@ -131,6 +131,8 @@ export type CommandName =
   | 'record.create'
   | 'onboarding.start'
   | 'onboarding.step_result'
+  // C60: a client's privacy settings, on its record.
+  | 'client.set_privacy'
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'
