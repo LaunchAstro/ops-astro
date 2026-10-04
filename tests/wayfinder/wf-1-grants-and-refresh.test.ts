@@ -11,11 +11,66 @@ import { shareRecord } from '../../packages/core-records/src/authority/shares.ts
 import { insertPerson } from '../identity/fixture.ts';
 import { executeCommand, runCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { catalogue, EMAIL_SEND, emailAdapter } from '../../packages/core-connectors/src/index.ts';
+import { sendInboxEmail, type Broker } from '../../packages/core-custody/src/index.ts';
 import { codeOf, must, wayfinderWorld, type Decider, type WayfinderWorld } from './world.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const noop = (): void => undefined;
+
+/** A pool whose every query runs `after` once it has answered, so a test can pause there. */
+function interceptOn(
+  pool: Database,
+  after: (sql: string, parameters: readonly unknown[]) => Promise<void>,
+): Database {
+  return {
+    ...pool,
+    async withBusiness(businessId, run) {
+      return await pool.withBusiness(businessId, async (tx) => {
+        const wrapped: typeof tx = {
+          ...tx,
+          async query<Row>(sql: string, parameters: readonly unknown[] = []) {
+            const rows = await tx.query<Row>(sql, parameters);
+            await after(sql, parameters);
+            return rows;
+          },
+        };
+        return await run(wrapped);
+      });
+    },
+  };
+}
+
+const unreached = (): Promise<never> =>
+  Promise.reject(new Error('custody not reached by an addressless recipient'));
+
+// No address is installed, so a successful access check refuses NO_ADDRESS before custody.
+const broker: Broker = {
+  custody: {
+    pid: 0,
+    stderr: () => '',
+    kill: noop,
+    stop: () => Promise.resolve(),
+    raw: unreached,
+    dispatch: unreached,
+  },
+  operations: catalogue([EMAIL_SEND]),
+  providers: new Map([['resend', { build: emailAdapter, price: () => 0 }]]),
+  routes: [
+    {
+      key: 'email',
+      reach: 'cloud',
+      provider: 'resend',
+      credentialRef: 'unused',
+      credentialKind: 'api_key',
+      installation: 'here',
+      ceiling: 4,
+    },
+  ],
+  installation: 'here',
+  audit: () => Promise.resolve(),
+};
 
 describe.skipIf(serverUrl === undefined)(
   'WF-1 map grants, inbox reach and map refresh under concurrency',
@@ -428,22 +483,7 @@ describe.skipIf(serverUrl === undefined)(
     function intercept(
       after: (sql: string, parameters: readonly unknown[]) => Promise<void>,
     ): Database {
-      return {
-        ...w.db.app,
-        async withBusiness(businessId, run) {
-          return await w.db.app.withBusiness(businessId, async (tx) => {
-            const wrapped: typeof tx = {
-              ...tx,
-              async query<Row>(sql: string, parameters: readonly unknown[] = []) {
-                const rows = await tx.query<Row>(sql, parameters);
-                await after(sql, parameters);
-                return rows;
-              },
-            };
-            return await run(wrapped);
-          });
-        },
-      };
+      return interceptOn(w.db.app, after);
     }
 
     it('WF-1 person to person map grant cannot read content written after a ticket moves outside that grant', async () => {
@@ -569,6 +609,91 @@ describe.skipIf(serverUrl === undefined)(
       expect(JSON.stringify(await w.read(reader, { read: 'inbox.read' }))).toContain(
         'MAP-GRANT-ASSIGNMENT',
       );
+    });
+
+    // Sol round 3 proof for PR #355 at 3c1de14 (R/sol/P14-FIX2.md, criterion 5), assertions and interleaving as written.
+    it('WF-1 a map-only assignee email check cannot deadlock against a concurrent reassignment', async () => {
+      await w.grant(owner, 'assign');
+      const map = await w.create(owner, { title: 'mail lock map' }, { taskType: 'map' });
+      const ticket = await w.create(owner, { title: 'mail lock ticket' }, { parentId: map.id });
+      const recipient = await w.member('mail-map-recipient', ['read'], {
+        kind: 'record',
+        id: map.id,
+      });
+      const replacement = await w.member('mail-map-replacement', ['read'], {
+        kind: 'record',
+        id: map.id,
+      });
+      must(
+        await w.as(owner, {
+          command: 'task.assign',
+          recordId: ticket.id,
+          expectedRevision: await w.revisionOf(ticket.id),
+          fields: { assignee: recipient.personId },
+        }),
+        'initial assignment',
+      );
+      const [item] = await w.db.admin.execute<{ id: string }>(
+        "select id from inbox_items where business_id = $1 and subject_record_id = $2 and recipient_person_id = $3 and work_state = 'open'",
+        [w.business, ticket.id, recipient.personId],
+      );
+      expect(item).toBeDefined();
+      const taskHeld = latch();
+      const resumeAssign = latch();
+      const itemHeld = latch();
+      const resumeMail = latch();
+      let assignPaused = false;
+      let mailPaused = false;
+      const assignmentDb = intercept(async (sql, parameters) => {
+        if (
+          assignPaused ||
+          !sql.includes('select id, revision::text as revision, data') ||
+          !sql.includes('for update') ||
+          parameters[2] !== ticket.id
+        )
+          return;
+        assignPaused = true;
+        taskHeld.release();
+        await resumeAssign.promise;
+      });
+      const mailDb = interceptOn(second, async (sql, parameters) => {
+        if (
+          mailPaused ||
+          !sql.includes('recipient_person_id as recipient') ||
+          !sql.includes('for update') ||
+          parameters[1] !== item?.id
+        )
+          return;
+        mailPaused = true;
+        itemHeld.release();
+        await resumeMail.promise;
+      });
+      const assigning = executeCommand(assignmentDb, w.business, owner.presented, 'api', {
+        command: 'task.assign',
+        operationId: randomUUID(),
+        recordId: ticket.id,
+        expectedRevision: await w.revisionOf(ticket.id),
+        fields: { assignee: replacement.personId },
+      });
+      await taskHeld.promise;
+      const mailing = sendInboxEmail(mailDb, w.business, item?.id ?? '', broker, {
+        appOrigin: 'https://ops.example.test',
+        from: 'hello@example.test',
+      });
+      const outcomes = Promise.allSettled([assigning, mailing]);
+      await itemHeld.promise;
+      try {
+        resumeMail.release();
+        await waitForBlockedQuery();
+      } finally {
+        resumeAssign.release();
+      }
+      const settled = await outcomes;
+      const faults = settled.flatMap((result) =>
+        result.status === 'rejected' ? [String(result.reason.code)] : [],
+      );
+      expect(assignPaused && mailPaused).toBe(true);
+      expect(faults).toStrictEqual([]);
     });
   },
 );
