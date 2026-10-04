@@ -8,7 +8,8 @@
 // open under the prompt. Meanwhile a decision on another gate in the proposals
 // is refused for want of the grant, which closes every decide control on the
 // task rather than asking again on the reader's behalf. The code entered after
-// that must not send the held decision. A prompt held for another command,
+// that must not send the held decision, nor may a code that passed before
+// then once the new sign-in lands. A prompt held for another command,
 // a top-up at a budget stop, is not a decision and stays open.
 
 import { useState } from 'react';
@@ -78,15 +79,19 @@ function server(decides: readonly (() => Response)[], topUps: readonly (() => Re
   return { decided, toppedUp: () => toppedUp, first: signIn(), steppedUp: signIn() };
 }
 
-/** The task page under a sign-in a good code steps up, on to the stepped-up client. */
-async function stepUpPage(api: ReturnType<typeof server>): Promise<Mounted> {
+/** The task page under a sign-in a good code steps up, on to the stepped-up client once `landing` settles. */
+async function stepUpPage(
+  api: ReturnType<typeof server>,
+  landing?: Promise<void>,
+): Promise<Mounted> {
   function Screen() {
     const [client, setClient] = useState(api.first);
     return (
       <StepUpContext.Provider
         value={async () => {
           await Promise.resolve();
-          setClient(api.steppedUp);
+          if (landing === undefined) setClient(api.steppedUp);
+          else void landing.then(() => setClient(api.steppedUp));
           return { ok: true, sessionId: 'stepped-up' };
         }}
       >
@@ -131,6 +136,37 @@ it('a code entered after the decide controls closed does not send the held decis
       'g-2',
     ]);
     expect(page.find('[data-step-up="prompt"]')).toBeNull();
+  } finally {
+    await page.unmount();
+  }
+});
+
+it('a code passed before the decide controls closed sends nothing once the new sign-in lands', async () => {
+  const api = server([STEP_UP, NOT_GRANTED]);
+  let land: (() => void) | undefined;
+  const page = await stepUpPage(
+    api,
+    new Promise((resolve) => {
+      land = resolve;
+    }),
+  );
+  try {
+    await page.click('[data-gate-action="approve"]');
+    await tick();
+    await page.type('[data-step-up="code"]', '123456');
+    await page.click('[data-step-up="confirm"]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).toBeNull();
+    expect(api.decided).toEqual(['g-1']);
+
+    await refuseOtherGate(page);
+    land?.();
+    await tick();
+    await tick();
+    expect(api.decided, 'the held decision on g-1 must not go out once decide is closed').toEqual([
+      'g-1',
+      'g-2',
+    ]);
   } finally {
     await page.unmount();
   }
