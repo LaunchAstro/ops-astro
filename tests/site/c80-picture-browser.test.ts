@@ -20,9 +20,11 @@ import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   PICTURE_BROWSER_ARGS,
+  capturePage,
   capturePicture,
   type PictureBrowser,
   type Transport,
+  type TransportAnswer,
 } from '../../packages/core-connectors/src/index.ts';
 import { launchChromium } from '../support/chromium.ts';
 import { ABOUT, PAGE, POOL, SHEET, publicResolver, site } from './c80-picture-world.ts';
@@ -68,8 +70,14 @@ async function profiled(args: readonly string[]): Promise<Opened> {
   return { context, close };
 }
 
+interface Probe {
+  ran?: string | null;
+  /** The first paragraph's text colour, as the browser computed it. */
+  colour?: string;
+}
+
 /** The worker's browser port, as a real one: every request goes to the route. */
-function chromiumPort(probe: { ran?: string | null }, open = fresh): PictureBrowser {
+function chromiumPort(probe: Probe, open = fresh): PictureBrowser {
   return async (url, route) => {
     const { context, close } = await open();
     try {
@@ -91,6 +99,10 @@ function chromiumPort(probe: { ran?: string | null }, open = fresh): PictureBrow
       });
       await page.goto(url, { waitUntil: 'load' });
       probe.ran = await page.getAttribute('html', 'data-ran');
+      probe.colour = await page
+        .locator('p')
+        .first()
+        .evaluate((p) => getComputedStyle(p).color);
       return new Uint8Array(await page.screenshot({ fullPage: true }));
     } finally {
       await close();
@@ -101,7 +113,7 @@ function chromiumPort(probe: { ran?: string | null }, open = fresh): PictureBrow
 describe.skipIf(!installed)('C80 capture picture, in a real browser', () => {
   it('renders through the fence alone, and the page runs no script', async () => {
     const transport = site();
-    const probe: { ran?: string | null } = {};
+    const probe: Probe = {};
     const picture = await capturePicture(
       ABOUT,
       { pool: POOL, resolve: publicResolver, transport },
@@ -162,5 +174,51 @@ describe.skipIf(!installed)('C80 capture picture, in a real browser, no network 
     } finally {
       server.close();
     }
+  }, 60_000);
+});
+
+// Sol's first review of PR 364, three correctness findings: the picture must load the sheets the
+// page observation read. Each site below serves a red sheet where the observation resolves the
+// page's addresses and a blue one where a browser that lost the final address or the base would.
+const RED = 'rgb(255, 0, 0)';
+const MOVED = 'https://www.example.com/new/about';
+const at = (path: string) => `https://www.example.com${path}`;
+const ok = (type: string, body: string): TransportAnswer => ({
+  kind: 'answer',
+  status: 200,
+  headers: { 'content-type': type },
+  body: new TextEncoder().encode(body),
+});
+const moved = (path: string): TransportAnswer => ({
+  kind: 'answer',
+  status: 302,
+  headers: { location: path },
+  body: new Uint8Array(),
+});
+const page = (head: string) => ok('text/html; charset=utf-8', `${head}<p>Hello</p>`);
+const sheet = (colour: string) => ok('text/css', `p { color: ${colour}; }`);
+
+/** The observation and the picture of ABOUT on one site, and the colour the picture showed. */
+async function both(pages: Record<string, TransportAnswer>) {
+  const transport: Transport = (request) =>
+    Promise.resolve(pages[request.url.href] ?? ok('text/plain', 'missing'));
+  const pool = { ...POOL, agencyPages: [ABOUT, MOVED] };
+  const options = { pool, resolve: publicResolver, transport };
+  const observed = await capturePage(ABOUT, options);
+  const probe: Probe = {};
+  const picture = await capturePicture(ABOUT, options, chromiumPort(probe));
+  return { observed, shown: picture.ok ? probe.colour : 'refused' };
+}
+
+describe.skipIf(!installed)('C80 capture picture, in a real browser, Sol R1', () => {
+  it('Sol proof, criterion correctness: picture retains the final document URL after a fenced redirect', async () => {
+    const { observed, shown } = await both({
+      [ABOUT]: moved('/new/about'),
+      [MOVED]: page('<link rel=stylesheet href=site.css>'),
+      [at('/new/site.css')]: sheet('red'),
+      [at('/site.css')]: sheet('blue'),
+    });
+    expect(observed.ok && Object.keys(observed.value.stylesheets)).toEqual([at('/new/site.css')]);
+    expect([RED, 'refused']).toContain(shown);
   }, 60_000);
 });
