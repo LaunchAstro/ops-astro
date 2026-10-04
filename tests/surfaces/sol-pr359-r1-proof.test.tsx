@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name */
 
 import { act } from 'react';
 import { expect, it } from 'vitest';
@@ -115,6 +116,7 @@ it('Sol proof, criterion 5: a completed execution read does not ask for approval
   }
 });
 
+// eslint-disable-next-line max-lines-per-function -- one mounted task page, the reread and release on it
 it('Sol proof, criterion 1: the real task page keeps its execution map and selected card through a live task reread', async () => {
   let reread = false;
   let release: ((response: Response) => void) | undefined;
@@ -157,6 +159,7 @@ it('Sol proof, criterion 1: the real task page keeps its execution map and selec
     reread = true;
     expect(stream).toBeDefined();
     expect(topic).not.toBeNull();
+    // eslint-disable-next-line require-await -- act's async form flushes the stream's effects
     await act(async () => {
       stream?.enqueue(new TextEncoder().encode(`event: invalidate\ndata: ${topic}\n\n`));
     });
@@ -166,6 +169,7 @@ it('Sol proof, criterion 1: the real task page keeps its execution map and selec
     const stayedDrawn = page.find('[data-execution-map="bound"]') !== null;
     const answer = madeUpAnswer('/api/b/alpha/task/read');
     if (answer === undefined || !('json' in answer)) throw new Error('no task fixture');
+    // eslint-disable-next-line require-await -- act's async form flushes the release's effects
     await act(async () => {
       release?.(Response.json(answer.json, { status: answer.status }));
     });
