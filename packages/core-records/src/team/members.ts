@@ -8,6 +8,7 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
+import { inConversation } from '../inbox/access.ts';
 import type { Mentioned } from '../inbox/mentions.ts';
 
 /**
@@ -38,7 +39,8 @@ export async function currentConversations(
 
 /**
  * Who a message names, and whether each can read it: a current member of its
- * conversation, as `readMentions` asks a task comment's. A person of another
+ * conversation who may chat now (`inConversation`), as `readMentions` asks a
+ * task comment's. A person of another
  * business is not found here and is named back only by the identifier sent.
  */
 export async function readConversationMentions(
@@ -56,9 +58,9 @@ export async function readConversationMentions(
             exists (select 1 from public.memberships m
                      where m.business_id = p.business_id and m.person_id = p.id and m.active)
               as member,
-            exists (select 1 from public.team_conversation_members c
-                     where c.business_id = p.business_id and c.conversation_id = $3
-                       and c.person_id = p.id and c.left_at is null) as inside
+            exists (select 1 from public.records r
+                     where r.business_id = p.business_id and r.id = $3
+                       and ${inConversation('p.id')}) as inside
        from public.people p where p.business_id = $1 and p.id = any($2::uuid[])`,
     [tx.businessId, personIds, conversationId],
   );
