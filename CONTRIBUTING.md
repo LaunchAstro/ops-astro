@@ -119,6 +119,14 @@ with its base to merge: `strict_required_status_checks_policy` is off and the
 merge queue tests each pull request on top of `main`. When a branch does need
 its base, for a conflict, merge it locally and push.
 
+A newer push to a pull request cancels its older checks still running; a
+merge group's checks are never cancelled. When review sends a pull request
+back for fixes, add the `sent-back` label: it cancels the checks on that head
+and fails `contamination gate` there, so no runner is spent on code about to
+change. The fix push runs every check in full. To run them on the same head
+instead, remove the label. To send back a later head, remove the label and add
+it again.
+
 A conformance proof is a separate condition. For changes to the domain
 model, tenancy wrapper, queue and delivery contracts, gate engine, credential
 broker, egress control, sandbox launcher, or migration system, that

@@ -17,7 +17,7 @@ const dir = mkdtempSync(join(tmpdir(), 'sent-back-hold-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 /** Runs the hold as the gate does, on `payload` written where GitHub writes the event. */
-function hold(eventName: string, payload: unknown) {
+function hold(eventName: string, payload?: unknown) {
   const env: NodeJS.ProcessEnv = { PATH: process.env['PATH'], GITHUB_EVENT_NAME: eventName };
   if (payload !== undefined) {
     const path = join(dir, `${Math.random().toString(36).slice(2)}.json`);
@@ -65,7 +65,7 @@ describe('the sent-back hold', () => {
   });
 
   it('runs every check when it cannot read the event, so a mistake costs time, never a check', () => {
-    expect(hold('pull_request', undefined).status).toBe(0);
+    expect(hold('pull_request').status).toBe(0);
     expect(hold('pull_request', '{not json').status).toBe(0);
     expect(hold('pull_request', null).status).toBe(0);
     expect(hold('pull_request', { action: 'labeled', label: 'sent-back' }).status).toBe(0);

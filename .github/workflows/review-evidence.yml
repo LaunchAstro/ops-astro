@@ -49,7 +49,8 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Never a merge group (CI-SPEED); see ci.yml.
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   review-evidence:
