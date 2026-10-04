@@ -20,9 +20,20 @@
 // the first slice has no table for one, and it does not record who observed
 // what — the audit event per attempt is T1f's, and it will wrap these calls
 // rather than replace them.
+//
+// A link a human rejected is not evidence. It stays on the person as the record
+// of that decision, but matching reads only observed and confirmed links, so a
+// rejected one neither attaches a new observation nor makes it ambiguous.
+//
+// Match and create are one step. Two first observations of one identifier
+// would otherwise both find nobody and both create a person (the unique index
+// includes the person, so nothing conflicts), and every later observation would
+// then be unresolved between the two. The business's lock on the identifier is
+// taken before the lookup and held to commit; the lookup runs after it, so under
+// read committed it sees what the lock's last holder committed.
 
-import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../tenancy/database.ts';
+import { createHash, randomUUID } from 'node:crypto';
+import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 
 export type IdentifierKind = 'email' | 'phone';
 
@@ -162,8 +173,12 @@ export async function resolveIdentifier(
   observation: Observation,
 ): Promise<IdentifierResolution> {
   const value = normaliseIdentifier(observation.kind, observation.value);
+  // A digest, so the address itself is not the lock's key.
+  const digest = createHash('sha256').update(`${observation.kind}:${value}`).digest('hex');
+  await advisoryLock(tx, `person-identifier:${tx.businessId}:${digest}`);
   const matched = await tx.query<{ readonly person_id: string }>(
-    `select distinct person_id from public.person_identifiers where kind = $1 and value = $2`,
+    `select distinct person_id from public.person_identifiers
+      where kind = $1 and value = $2 and review_state <> 'rejected'`,
     [observation.kind, value],
   );
   const survivors = await survivingPersonIds(

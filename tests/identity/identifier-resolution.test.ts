@@ -61,7 +61,7 @@ const WITHIN = 10_000;
 
 // The lookup `resolveIdentifier` matches on. A call is held right after it,
 // which is the window two first observations race through.
-const LOOKUP = /from public\.person_identifiers where kind/u;
+const LOOKUP = /from public\.person_identifiers\s+where kind/u;
 
 /**
  * A gate both calls stop at after their lookup. It opens once both have
@@ -71,6 +71,7 @@ const LOOKUP = /from public\.person_identifiers where kind/u;
  */
 function lookupGate(db: FreshDatabase): {
   readonly held: (tx: TenantQuery) => TenantQuery;
+  readonly lookups: () => number;
 } {
   let arrived = 0;
   let open: Promise<void> | undefined;
@@ -88,6 +89,7 @@ function lookupGate(db: FreshDatabase): {
     await watch(deadline);
   };
   return {
+    lookups: () => arrived,
     held: (tx) => ({
       businessId: tx.businessId,
       async query<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]> {
@@ -313,6 +315,8 @@ describe.skipIf(serverUrl === undefined)('login_resolution: the identifier', () 
         db.app.withBusiness(business, (tx) => resolveIdentifier(gate.held(tx), observation)),
         second.withBusiness(business, (tx) => resolveIdentifier(gate.held(tx), observation)),
       ]);
+      // Both calls went through the gate, so the window was held open.
+      expect(gate.lookups()).toBe(2);
       expect(personOf(two)).toBe(personOf(one));
       expect(await people()).toBe(before + 1);
       expect(personOf(await observe(value))).toBe(personOf(one));
