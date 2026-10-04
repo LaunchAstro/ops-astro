@@ -175,7 +175,19 @@ interface SaveAttempt {
   readonly generation: number;
 }
 
+/**
+ * The page, mounted afresh for each task under each grant. Every answer below
+ * belongs to the task and grant it was read for, so a route to another task
+ * (another client, person or business) starts with nothing drawn: React would
+ * otherwise render the new route once over the old read before the read
+ * resets, and commit the preceding task's run map, receipts and inspector
+ * under it. The key is the route's identity, never anything from an answer.
+ */
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
+  return <TaskPage key={`${props.grantKey}\u0000${props.taskKey}`} {...props} />;
+}
+
+function TaskPage(props: TaskDetailProps): ReactElement {
   const client = props.client;
   const hub = hubOf(client);
   const [draft, setDraft] = useState<Draft | null>(null);
