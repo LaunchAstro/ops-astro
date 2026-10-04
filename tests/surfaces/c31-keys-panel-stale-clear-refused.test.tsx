@@ -15,7 +15,7 @@ const tick = async () => {
   });
 };
 
-it('Sol proof, criterion 5: stale Clear does not erase a key replaced by another administrator', async () => {
+it('stale Clear does not erase a key replaced by another administrator', async () => {
   const controls = await createControls('sol374', { custody: generateSealingPair('sol374').key });
   let page: Awaited<ReturnType<typeof mount>> | undefined;
   try {

@@ -15,8 +15,8 @@
   "overrides": [
     {
       "files": [
-        "tests/surfaces/sol-pr374-r1.test.tsx",
-        "tests/surfaces/sol-pr374-r1-stale-clear.test.tsx"
+        "tests/surfaces/c31-keys-panel-latest-read-and-settings-harness.test.tsx",
+        "tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx"
       ],
       "rules": {
         "require-await": "off",

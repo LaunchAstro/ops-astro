@@ -21,7 +21,7 @@ const spy = vi.spyOn(OperationsClient.prototype, 'read').mockImplementation(asyn
   return result;
 });
 
-it('Sol proof, criterion 7: the submitted read-only test exercises a set row whose Clear control must be absent', () => {
+it('the submitted read-only test exercises a set row whose Clear control must be absent', () => {
   try {
     expect(readonlyLists.length).toBeGreaterThan(0);
     expect(

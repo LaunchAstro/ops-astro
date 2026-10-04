@@ -25,7 +25,7 @@ const denied = () =>
 const clientOf = (fetcher: typeof globalThis.fetch) =>
   new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch: fetcher });
 
-it('Sol proof, criterion 5: an older authorised list cannot restore keys after a newer denial', async () => {
+it('an older authorised list cannot restore keys after a newer denial', async () => {
   let reads = 0;
   let release = (_response: Response): void => {};
   const held = new Promise<Response>((resolve) => {
@@ -59,7 +59,7 @@ it('Sol proof, criterion 5: an older authorised list cannot restore keys after a
   }
 });
 
-it('Sol proof, criterion 1: the width-and-theme Settings harness actually draws its custody keys', async () => {
+it('the width-and-theme Settings harness actually draws its custody keys', async () => {
   const fetcher: typeof fetch = async (url) => {
     const answer = madeUpAnswer(String(url));
     if (answer === undefined || 'pending' in answer) return json({}, 404);
