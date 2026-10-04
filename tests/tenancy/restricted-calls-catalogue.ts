@@ -17,6 +17,11 @@ const COLUMN_UPDATES: Readonly<
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
   'public.leases': { from: '20261002235700', columns: ['expires_at', 'released_at', 'state'] },
+  // C60: a client's four privacy settings, by `client.set_privacy` alone.
+  'public.clients': {
+    from: '20261003000423',
+    columns: ['handles_health', 'model_egress', 'model_providers', 'no_agent_edits'],
+  },
 };
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */

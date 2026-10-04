@@ -114,8 +114,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0054 (API-2): an agent credential is issued by insert and revoked by
   // update; never deleted.
   ['siu', 'agent_credentials'],
-  // 0055 (C32): a client is written once; never updated or deleted.
+  // 0055 (C32): a client is written once and never deleted; C60 updates its
+  // four privacy settings alone, by the column grant in COLUMN_UPDATES.
   ['si', 'clients'],
+  // C60: a client's written request for model use is kept as written.
+  ['si', 'client_model_requests'],
   // 0056 (C58): an access ending is written, then its provider steps are
   // stamped by update; never deleted.
   ['siu', 'access_endings'],
