@@ -87,6 +87,27 @@ function topicsOf(list: Listed): string {
     .join(' ');
 }
 
+/** The list read, while `current`: only the newest lands, never undone by an older answer. */
+function newestList(
+  client: OperationsClient,
+  setList: (update: (was: Listed) => Listed) => void,
+  current: () => boolean,
+): () => void {
+  let lists = 0;
+  return () => {
+    lists += 1;
+    const generation = lists;
+    void client.read<ChatConversationsResult>('chat.conversations', {}).then((answer) => {
+      if (!current() || lists !== generation) return answer;
+      const listed = 'value' in answer ? answer.value.conversations : undefined;
+      // A body with no list is read as no conversations, never drawn.
+      if (Array.isArray(listed)) setList(() => listed);
+      else setList((was) => (isUnavailable(answer) ? was : 'none'));
+      return answer;
+    });
+  };
+}
+
 function useReads(
   client: OperationsClient,
   grantKey: string,
@@ -97,20 +118,7 @@ function useReads(
   useEffect(() => {
     let current = true;
     const asked = new Map<string, number>();
-    // Only the newest list read lands: an older answer never undoes a newer one.
-    let lists = 0;
-    const list = (): void => {
-      lists += 1;
-      const generation = lists;
-      void client.read<ChatConversationsResult>('chat.conversations', {}).then((answer) => {
-        if (!current || lists !== generation) return answer;
-        const listed = 'value' in answer ? answer.value.conversations : undefined;
-        // A body with no list is read as no conversations, never drawn.
-        if (Array.isArray(listed)) setList(() => listed);
-        else setList((was) => (isUnavailable(answer) ? was : 'none'));
-        return answer;
-      });
-    };
+    const list = newestList(client, setList, () => current);
     const messages = (id: string): void => {
       const generation = (asked.get(id) ?? 0) + 1;
       asked.set(id, generation);
