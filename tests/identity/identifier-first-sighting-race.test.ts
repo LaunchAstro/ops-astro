@@ -124,8 +124,9 @@ describe.skipIf(serverUrl === undefined)('two first observations of one identifi
       db.app.withBusiness(business, (tx) => resolveIdentifier(gate.held(tx), observation)),
       second.withBusiness(business, (tx) => resolveIdentifier(gate.held(tx), observation)),
     ]);
-    // Both calls went through the gate, so the window was held open.
-    expect(gate.lookups()).toBe(2);
+    // Both calls went through the gate, so the window was held open; each
+    // looks again under the lock, and the create's guard reads the same table.
+    expect(gate.lookups()).toBeGreaterThanOrEqual(2);
     expect(personOf(two)).toBe(personOf(one));
     expect(await people()).toBe(before + 1);
     expect(personOf(await observe(value))).toBe(personOf(one));
