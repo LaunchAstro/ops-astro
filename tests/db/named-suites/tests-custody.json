@@ -1,0 +1,8 @@
+{
+  "invariant": [],
+  "conformance": [
+    "tests/custody/c31-credentials.test.ts",
+    "tests/custody/c31-secret-set-guards.test.ts",
+    "tests/custody/c31-two-setters-overlap.test.ts"
+  ]
+}
