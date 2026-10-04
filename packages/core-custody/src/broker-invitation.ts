@@ -33,7 +33,8 @@
 // refused under the invitation's lock. Once every check has passed, the send
 // also claims the message id installation-wide, before its token: a second
 // send of one message, from any business or hook process, finds the claim
-// and is refused, writing nothing.
+// and is refused, writing nothing. A claim that waited on another send's is
+// judged against the invitation's lifetime again once held.
 
 import { createHash, randomBytes } from 'node:crypto';
 import {
@@ -103,9 +104,9 @@ async function recordAttempt(
 
 /**
  * Whether the invitation's lifetime is still running, judged by a statement of its own after each
- * lock the send waits on (the invitation's row, then the email limit): a send that waited is
- * judged when it got the lock, never when its transaction began, and never by a lock statement's
- * own reading taken before the wait.
+ * lock the send waits on (the invitation's row, the email limit, then a hook message's claim): a
+ * send that waited is judged when it got the lock, never when its transaction began, and never by
+ * a lock statement's own reading taken before the wait.
  */
 async function liveNow(tx: TenantQuery, invitationId: string): Promise<boolean> {
   const [row] = await tx.query<{ live: boolean }>(
@@ -147,17 +148,30 @@ async function pendingAct(
 }
 
 /**
- * The hook message's one claim, installation-wide (20261004103712): false when
- * any business's send already holds it. A claim another transaction has not
- * committed yet is waited on, then refused.
+ * The hook message's one claim, installation-wide (20261004103712), taken last, after every other
+ * check. A claim another transaction has not committed yet is waited on: refused if that one
+ * commits, `REPLAYED`. If it rolls back, this send holds the claim, but the wait may have outlived
+ * the invitation, so its lifetime is judged again once the claim is held. A lapsed invitation
+ * takes the claim back with its savepoint and answers as every other expiry here does, so the
+ * refusal writes nothing, the claim included.
  */
-async function claimHookMessage(tx: TenantQuery, hookId: string): Promise<boolean> {
+async function claimHookMessage(
+  tx: TenantQuery,
+  invitationId: string,
+  hookId: string,
+): Promise<InvitationSendRefusal | undefined> {
+  await tx.query('savepoint hook_message_claim');
   const claimed = await tx.query(
     `insert into ops.auth_hook_messages (message_digest) values ($1)
      on conflict (message_digest) do nothing returning 1`,
     [createHash('sha256').update(hookId).digest('hex')],
   );
-  return claimed.length === 1;
+  if (claimed.length === 1 && (await liveNow(tx, invitationId))) {
+    await tx.query('release savepoint hook_message_claim');
+    return undefined;
+  }
+  await tx.query('rollback to savepoint hook_message_claim');
+  return claimed.length === 1 ? 'INVITATION_NOT_PENDING' : 'REPLAYED';
 }
 
 /** Step 1: every check, the hook message's claim, the minted token's hash and the `asked` observation. */
@@ -171,7 +185,9 @@ async function ask(
   if (typeof act === 'string') return act;
   if (!(await roomFor(tx, operation)())) return 'EMAIL_AT_CEILING';
   if (!(await liveNow(tx, invitationId))) return 'INVITATION_NOT_PENDING';
-  if (hookId !== undefined && !(await claimHookMessage(tx, hookId))) return 'REPLAYED';
+  const unclaimed =
+    hookId === undefined ? undefined : await claimHookMessage(tx, invitationId, hookId);
+  if (unclaimed !== undefined) return unclaimed;
   const token = randomBytes(32).toString('base64url');
   const [minted] = await tx.query<{ id: string }>(
     `insert into enrolment_tokens (business_id, id, invitation_id, token_hash, expires_at)
