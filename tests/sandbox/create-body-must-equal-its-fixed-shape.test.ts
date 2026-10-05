@@ -77,9 +77,10 @@ it('builds the site.build body exactly as the appendix writes it', () => {
   expect(Object.keys(fixedCreateBody(S1, IMAGE) as object)).toEqual(Object.keys(APPENDIX_S1));
 });
 
-it('builds site.prepare from it with only the appendix differences', () => {
+/** The appendix's site.prepare differences, applied by hand to the site.build body. */
+const appendixS2 = (cmd: string[]): Mutable => {
   const expected = copy();
-  expected['Cmd'] = ['prepare'];
+  expected['Cmd'] = cmd;
   expected['Env'] = S2_ENV;
   expected.HostConfig['Memory'] = 4294967296;
   expected.HostConfig['MemorySwap'] = 4294967296;
@@ -87,7 +88,11 @@ it('builds site.prepare from it with only the appendix differences', () => {
     '/work': 'rw,nosuid,nodev,size=2147483648',
     '/tmp': 'rw,nosuid,nodev,size=1073741824',
   };
-  expect(fixedCreateBody(S2, IMAGE)).toEqual(expected);
+  return expected;
+};
+
+it('builds site.prepare from it with only the appendix differences', () => {
+  expect(fixedCreateBody(S2, IMAGE)).toEqual(appendixS2(['prepare']));
 });
 
 it('builds a probe body as its probed class with the probe command', () => {
@@ -95,7 +100,7 @@ it('builds a probe body as its probed class with the probe command', () => {
   expected['Cmd'] = ['probe', 'site.build', 'wall'];
   expect(fixedCreateBody(WALL, IMAGE)).toEqual(expected);
   const inRun = { runClass: 'probe', probed: 'site.prepare', env: S2_ENV } as const;
-  expect((fixedCreateBody(inRun, IMAGE) as { Cmd: Json }).Cmd).toEqual(['probe', 'site.prepare']);
+  expect(fixedCreateBody(inRun, IMAGE)).toEqual(appendixS2(['probe', 'site.prepare']));
 });
 
 it('matches the appendix body and returns its image', () => {

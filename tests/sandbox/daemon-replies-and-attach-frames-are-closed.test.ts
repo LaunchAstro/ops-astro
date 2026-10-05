@@ -169,12 +169,13 @@ it('takes stdout up to its cap exactly and refuses one byte more as output refus
 });
 
 it('keeps the first 64 KiB of stderr and discards the rest without refusing', () => {
+  const kept = new Uint8Array(64 * 1024).fill(0x61);
   const frames = new AttachFrames(16);
-  frames.push(frame(2, new Uint8Array(64 * 1024 + 10).fill(0x61)), frame(1, bytes('ok')));
+  frames.push(frame(2, Buffer.concat([kept, bytes('0123456789')])), frame(1, bytes('ok')));
   const end = frames.end();
   expect(end).toMatchObject({ ok: true, stderrDiscarded: 10 });
   if (!end.ok) return;
-  expect(end.stderr.length).toBe(64 * 1024);
+  expect(end.stderr).toEqual(kept);
   expect(joined(end.stdout)).toBe('ok');
 });
 
