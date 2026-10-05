@@ -2,7 +2,7 @@
 // The pre-ready gate (scripts/pre-ready.mjs) admits only committed work on a
 // branch of its own, and the checks it runs see none of the caller's tokens.
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -72,21 +72,34 @@ describe('admission', () => {
   });
 });
 
-/** Sets GH_TOKEN for the length of `use`, as a caller's shell would. */
-function withToken<T>(use: () => T): T {
-  const before = process.env['GH_TOKEN'];
-  process.env['GH_TOKEN'] = 'caller-token-marker';
+/** Sets `vars` for the length of `use`, as a caller's shell would. */
+function withEnv<T>(vars: Record<string, string>, use: () => T): T {
+  const before = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, vars);
   try {
     return use();
   } finally {
-    if (before === undefined) delete process.env['GH_TOKEN'];
-    else process.env['GH_TOKEN'] = before;
+    for (const [key, value] of Object.entries(before)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 }
 
+/** A test file that fails when it sees the caller's token or database address. */
+const SEES_NO_CALLER_ENV = [
+  "import { expect, it } from 'vitest';",
+  '',
+  "it('sees no token or database', () => {",
+  "  expect(process.env['GH_TOKEN']).toBeUndefined();",
+  "  expect(process.env['DATABASE_URL']).toBeUndefined();",
+  '});',
+  '',
+].join('\n');
+
 describe('the checks the gate runs see none of the caller’s tokens', () => {
   it(
-    'keeps GH_TOKEN from pnpm check',
+    'keeps GH_TOKEN and CHECK_SCOPE from pnpm check',
     () => {
       const dir = mkdtempSync(join(tmpdir(), 'pre-ready-env-'));
       try {
@@ -96,11 +109,14 @@ describe('the checks the gate runs see none of the caller’s tokens', () => {
             name: 'gate-case',
             private: true,
             scripts: {
-              check: 'node -e "process.exit(process.env.GH_TOKEN === undefined ? 0 : 1)"',
+              check:
+                'node -e "const e = process.env; process.exit(e.GH_TOKEN === undefined && e.CHECK_SCOPE === undefined ? 0 : 1)"',
             },
           }),
         );
-        const result = withToken(() => wholeCheck({ cwd: dir, skip: false }));
+        const result = withEnv({ GH_TOKEN: 'caller-token-marker', CHECK_SCOPE: 'light' }, () =>
+          wholeCheck({ cwd: dir, skip: false }),
+        );
         expect(result.ok, result.message).toBe(true);
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -110,17 +126,17 @@ describe('the checks the gate runs see none of the caller’s tokens', () => {
   );
 
   it(
-    'keeps GH_TOKEN from the test files it runs',
+    'keeps GH_TOKEN and the database address from the test files it runs',
     () => {
       const dir = mkdtempSync(join(tmpdir(), 'pre-ready-env-'));
       try {
         symlinkSync(join(root, 'node_modules'), join(dir, 'node_modules'));
         mkdirSync(join(dir, 'tests', 'db'), { recursive: true });
-        writeFileSync(
-          join(dir, 'tests', 'db', 'named-suite-manifest.test.ts'),
-          "import { expect, it } from 'vitest';\n\nit('sees no token', () => {\n  expect(process.env['GH_TOKEN']).toBeUndefined();\n});\n",
+        writeFileSync(join(dir, 'tests', 'db', 'named-suite-manifest.test.ts'), SEES_NO_CALLER_ENV);
+        const result = withEnv(
+          { GH_TOKEN: 'caller-token-marker', DATABASE_URL: 'postgres://caller.invalid/db' },
+          () => suiteRegistration({ cwd: dir, tools: root }),
         );
-        const result = withToken(() => suiteRegistration({ cwd: dir, tools: root }));
         expect(result.ok, result.message).toBe(true);
       } finally {
         rmSync(join(dir, 'node_modules'), { force: true });
@@ -129,4 +145,23 @@ describe('the checks the gate runs see none of the caller’s tokens', () => {
     },
     SLOW,
   );
+});
+
+describe('the command line', () => {
+  it('runs when called through a symlinked path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pre-ready-link-'));
+    try {
+      symlinkSync(root, join(dir, 'repo'));
+      const result = spawnSync(
+        process.execPath,
+        [join(dir, 'repo', 'scripts', 'pre-ready.mjs'), '--not-a-flag'],
+        { encoding: 'utf8' },
+      );
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('unknown argument');
+    } finally {
+      rmSync(join(dir, 'repo'), { force: true });
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
