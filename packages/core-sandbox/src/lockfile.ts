@@ -25,6 +25,9 @@ const NESTED = '/node_modules/';
 const REGISTRY = 'https://registry.npmjs.org/';
 const GITHUB = 'https://npm.pkg.github.com/download/';
 
+/** The lockfile's own cap, in bytes (decimal, inside S1's 50 MB input cap). */
+export const LOCKFILE_CAP = 16_000_000;
+
 const refusal = (why: Why): Refused => ({ ok: false, reason: 'lockfile refused', why });
 
 type JsonObject = { readonly [key: string]: Json };

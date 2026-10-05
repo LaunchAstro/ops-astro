@@ -10,7 +10,7 @@
 // (`name` field), a `link` entry or any other form is a refusal.
 
 import { expect, it } from 'vitest';
-import { checkLockfile } from '../../packages/core-sandbox/src/lockfile.ts';
+import { checkLockfile, LOCKFILE_CAP } from '../../packages/core-sandbox/src/lockfile.ts';
 
 type Entry = Record<string, unknown>;
 const refused = (why: string) => ({ ok: false, reason: 'lockfile refused', why });
@@ -154,4 +154,20 @@ it('refuses an entry with no version, or a version that is not a plain string', 
       refused('lockfile entry'),
     );
   }
+});
+
+it('reads a lockfile up to 16 MB, past the 1 MiB that holds other JSON, and refuses one byte more', () => {
+  const root = PACKAGES[''] ?? {};
+  const padded = (size: number) => {
+    const bare = lock({ ...PACKAGES, '': { ...root, description: '' } }).length;
+    return lock({ ...PACKAGES, '': { ...root, description: 'a'.repeat(size - bare) } });
+  };
+  expect(LOCKFILE_CAP).toBe(16_000_000);
+  expect(checkLockfile(PACKAGE_JSON, padded(2_000_000), ['@agency'])).toEqual({ ok: true });
+  expect(checkLockfile(PACKAGE_JSON, padded(LOCKFILE_CAP), ['@agency'])).toEqual({ ok: true });
+  expect(checkLockfile(PACKAGE_JSON, padded(LOCKFILE_CAP + 1), ['@agency'])).toEqual(
+    refused('too large'),
+  );
+  const manifest = JSON.stringify({ name: 'site', description: 'a'.repeat(1024 * 1024) });
+  expect(checkLockfile(manifest, lock(), ['@agency'])).toEqual(refused('too large'));
 });

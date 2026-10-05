@@ -198,7 +198,7 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 export function parseStrictJson(
   bytes: Uint8Array,
-  options: { readonly foldCase?: boolean } = {},
+  options: { readonly foldCase?: boolean; readonly maxBytes?: number } = {},
 ): SandboxResult<{ value: Json }> {
   if (bytes.length > MAX_JSON_BYTES) return fault('too large');
   let text: string;
