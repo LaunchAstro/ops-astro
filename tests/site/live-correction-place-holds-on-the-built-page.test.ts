@@ -23,8 +23,8 @@ function read(html: string): string {
 
 /**
  * Whether the check reads `served` as showing `replacement` at the approved place of `word`,
- * calibrated on `preImage`, the page served before the change. The two always differ: the check
- * never reads an unchanged page live, so a crossing serves a page that changed.
+ * calibrated on `preImage`, the page served before the change. The two always read differently:
+ * the check never reads an unchanged page live, so a crossing serves a page that changed.
  */
 function readsLive(
   before: string,
@@ -34,11 +34,12 @@ function readsLive(
   served: string,
   preImage: string,
 ) {
-  if (served === preImage) throw new Error('a crossing serves a page that changed');
+  const [now, then] = [read(served), read(preImage)];
+  if (now === then) throw new Error('a crossing serves a page that reads differently');
   const correction = { path: target.path, word, replacement };
   const change = { files: [{ path: target.path, before, after }] };
-  const where = calibrated(change, correction, read(preImage));
-  return typeof flipped(read(served), where, word, replacement) === 'object';
+  const where = calibrated(change, correction, then);
+  return typeof flipped(now, where, word, replacement) === 'object';
 }
 
 it('a word inside a character reference has no place, so a decoy block never reads live', () => {
@@ -55,7 +56,11 @@ it.each([
   ['a bogus comment', '<? typo >\n<p>Hello &#57344; world</p>\n<p>Hello fixed world</p>\n'],
 ])('a hidden word in %s cannot borrow a visible marker character as its place', (_, before) => {
   const after = before.replace('typo', 'fixed');
-  expect(readsLive(before, after, 'typo', 'fixed', after, before)).toBe(false);
+  // A served page showing the typo where the source shows the marker character: a borrowed place
+  // would calibrate on it and read its correction as the hidden word's.
+  const shown = '<p>Hello typo world</p>\n<p>Hello fixed world</p>\n';
+  const changed = shown.replace('typo', 'fixed');
+  expect(readsLive(before, after, 'typo', 'fixed', changed, shown)).toBe(false);
 });
 
 it('a match spanning a block boundary is counted as the live page counts it', () => {
@@ -97,33 +102,34 @@ it('a page of one repeated word is matched in time linear in its length', () => 
 });
 
 // A built page carries text its source file never shows (a layout's title and nav) and drops
-// text the source holds (frontmatter); a match in either cannot move the approved place.
+// text the source holds (frontmatter); a match in either cannot move the approved place. Each
+// pre-image puts a copy of the word ahead of the heading, and only that copy is corrected.
 it.each([
   [
     'a title in the layout',
     '---\nimport Layout from \'../layouts/Layout.astro\';\n---\n<Layout title="Contact us">\n<h1>Contcat us</h1>\n<p>Call 07 5555 0100.</p>\n</Layout>\n',
-    '<html><head><title>Contact us</title></head><body><h1>Contcat us</h1><p>Call 07 5555 0100.</p></body></html>',
+    '<html><head><title>Contcat us</title></head><body><h1>Contcat us</h1><p>Call 07 5555 0100.</p></body></html>',
   ],
   [
     'a nav link in the layout',
     "---\nimport Layout from '../layouts/Layout.astro';\n---\n<Layout>\n<h1>Contcat</h1>\n<p>Call us.</p>\n</Layout>\n",
-    '<nav><a href="/">Home</a><a href="/contact">Contact</a></nav><h1>Contcat</h1><p>Call us.</p>',
+    '<nav><a href="/">Home</a><a href="/contact">Contcat</a></nav><h1>Contcat</h1><p>Call us.</p>',
   ],
   [
     'frontmatter the build never serves',
     "---\nconst heading = 'Contact';\n---\n<h1>Contcat</h1>\n<p>Contact</p>\n",
-    '<h1>Contcat</h1>\n<p>Contact</p>',
+    '<header>Contcat</header><h1>Contcat</h1>\n<p>Contact</p>',
   ],
   [
     'frontmatter dropped and a footer added',
     "---\nconst old = 'Contcat';\n---\n<h1>Contcat</h1>\n",
-    '<h1>Contcat</h1><footer>Contact</footer>',
+    '<header>Contcat</header><h1>Contcat</h1>',
   ],
-])('%s cannot make a page that changed another word read live', (_, before, served) => {
+])('%s cannot lend its own correction to the unchanged heading', (_, before, preImage) => {
   const after = before.replace('<h1>Contcat', '<h1>Contact');
-  // The heading stays as approved; the other equal (the layout's, or the page's own) changes.
-  const elsewhere = served.replace('Contact', 'Contcat');
-  expect(readsLive(before, after, 'Contcat', 'Contact', elsewhere, served)).toBe(false);
+  // The copy ahead of the heading is corrected; the approved heading is not.
+  const elsewhere = preImage.replace('Contcat', 'Contact');
+  expect(readsLive(before, after, 'Contcat', 'Contact', elsewhere, preImage)).toBe(false);
 });
 
 it('finding the changed word in one long line is linear in its length', () => {
