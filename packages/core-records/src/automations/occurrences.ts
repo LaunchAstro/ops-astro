@@ -75,7 +75,11 @@ const occurrenceOf = (row: OccurrenceDbRow): OccurrenceRow => ({
   runId: row.run_id,
 });
 
-/** A rate's count: this business's occurrences let through in the last hour, read under its lock. */
+/**
+ * A rate's count: this business's occurrences let through in the last hour,
+ * read under its lock. The hour ends at this statement's time, after the lock
+ * wait, never the transaction's start.
+ */
 function firedLastHour(name: string, limit: number, activationId: string | null): DurableLimit {
   return {
     name,
@@ -84,7 +88,7 @@ function firedLastHour(name: string, limit: number, activationId: string | null)
       const rows = await tx.query<{ readonly n: number }>(
         `select count(*)::int as n from public.activation_occurrences
           where business_id = $1 and outcome in ('approved', 'started')
-            and recorded_at > now() - interval '60 minutes'
+            and recorded_at > statement_timestamp() - interval '60 minutes'
             and ($2::uuid is null or activation_id = $2)`,
         [tx.businessId, activationId],
       );
