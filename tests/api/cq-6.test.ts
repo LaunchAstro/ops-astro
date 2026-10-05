@@ -23,6 +23,7 @@ import {
   type RawAnswer,
 } from '../acceptance/ident-audit-cases.ts';
 import { auditMark, auditSince } from '../acceptance/ident-audit-rows.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const CANARY = `cq6-canary-${randomUUID()}`;
 
@@ -364,11 +365,7 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
       const logged: string[] = [];
       const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
         vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
-          logged.push(
-            args
-              .map((arg) => (arg instanceof Error ? `${arg.message} ${arg.stack}` : String(arg)))
-              .join(' '),
-          );
+          logged.push(consoleLine(...args));
         }),
       );
       try {

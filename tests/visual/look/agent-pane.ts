@@ -42,6 +42,19 @@ const EYEBROW = (['light', 'dark'] as const).map((theme) => ({
 // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
 const MUTED_DARK = [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }];
 
+// DS-TASK-13 and DS-TASK-14 snap the map's titles to the scale (TASK-PAGE.md
+// S7): the card title to DS-TOK-121 (500, the mockup drew 600), the
+// inspector's to DS-TOK-119 (Sans 15 600, the mockup drew 16 400).
+const SMALL_STRONG = (['light', 'dark'] as const).map((theme) => ({
+  at: `font-weight@${theme}`,
+  want: '500',
+  why: 'DS-TOK-121',
+}));
+const CARD_TITLE = (['light', 'dark'] as const).flatMap((theme) => [
+  { at: `font-weight@${theme}`, want: '600', why: 'DS-TOK-119' },
+  { at: `font-size@${theme}`, want: '15px', why: 'DS-TOK-119' },
+]);
+
 const same = (selector: string): { mockup: string; app: string } => ({
   mockup: selector,
   app: selector,
@@ -81,6 +94,18 @@ export const AGENT_PANE: LookScreen = {
     ),
     probe('mp-6-2.hero-n', same('.tph__n'), TYPE),
     probe('mp-6-2.side', same('.tpg__side'), ['box.width'], [1480]),
+    // MP-6-3: the execution map's card (the first, a done step: the quiet
+    // left rule), its title, the inspector's title and the legend's line.
+    probe('mp-6-3.node', same('.tg__node'), [
+      'background-color',
+      'border-top-color',
+      'border-left-color',
+      'border-left-width',
+    ]),
+    probe('mp-6-3.node-box', same('.tg__node'), ['box.width', 'box.height'], [1480]),
+    probe('mp-6-3.node-title', same('.tg__nt'), TYPE, ALL, SMALL_STRONG),
+    probe('mp-6-3.inspector-title', same('.tg__insp__t'), TYPE, ALL, CARD_TITLE),
+    probe('mp-6-3.legend-line', same('.tg__lline'), ['border-top-color', 'border-top-width']),
     // MP-6-5: the token panel's per-run figures and the allowance bar.
     probe('mp-6-5.run-n', same('.tokrun__n'), TYPE),
     probe('mp-6-5.bar', same('.tt__bar'), ['background-color', 'box.height']),

@@ -30,6 +30,7 @@ import {
   slowApi,
   world,
 } from './c59-factor-routes-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 let replies: Record<string, Reply> = { ...GOOD };
 let seen: Seen[] = [];
@@ -136,7 +137,7 @@ describe.skipIf(serverUrl === undefined)(
       const written: string[] = [];
       const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
         vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
-          written.push(args.map(String).join(' '));
+          written.push(consoleLine(...args));
         }),
       );
       try {

@@ -13,7 +13,9 @@
     "tests/ci/staging-no-production-data-guard.test.ts",
     "tests/ci/staging-no-production-data.test.ts",
     "tests/ci/upgrade-drill-declared.test.ts",
-    "tests/ci/upgrade-drill.test.ts"
+    "tests/ci/upgrade-drill.test.ts",
+    "tests/ci/operator-installation-gate.test.ts",
+    "tests/ci/drill-fetch-asks-again.test.ts"
   ],
   "conformance": [
     "tests/ci/cq-15-security-gate.test.ts",
@@ -32,6 +34,7 @@
     "tests/ci/staging-reset-refuses-unvouched-sign-in.test.ts",
     "tests/ci/staging-reset-refuses-unwritable-record-before-emptying.test.ts",
     "tests/ci/staging-reset-seeds-beside-provider-sign-ins.test.ts",
-    "tests/ci/staging-special-objects.test.ts"
+    "tests/ci/staging-special-objects.test.ts",
+    "tests/ci/staging-reset-agent-signs-in.test.ts"
   ]
 }
