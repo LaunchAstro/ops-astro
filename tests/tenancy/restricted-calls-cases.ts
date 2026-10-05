@@ -56,7 +56,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.ended_subject_sessions'],
   // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
   ['si', 'ops.second_factor_subjects'],
-  // 20261005061303 (C40): a reset in flight, by subject digest; settled by its column grant alone.
+  // 20261005074054 (C40): a reset in flight, by subject digest; settled by its column grant alone.
   ['si', 'ops.subject_resets'],
   // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
   ['si', 'ops.second_factor_codes'],
@@ -97,7 +97,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // AW-13: a retention batch is a fact, never rewritten.
   ['si', 'trace_expiry_batches'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
-  // 20261005061303 (C40B): a reset token is written once, then spent by its column grant alone.
+  // 20261005074054 (C40B): a reset token is written once, then spent by its column grant alone.
   ['si', 'inbox_attention inbox_delivery_attempts password_reset_tokens'],
   ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
@@ -212,7 +212,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_event_hash',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
-  // 20261005061303 (C40B): the reset's token lookup, two ids for one hash.
+  // 20261005074054 (C40B): the reset's token lookup, two ids for one hash.
   'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
