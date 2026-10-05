@@ -27,12 +27,22 @@ export async function holdAutomationAuthority(
   tx: TenantQuery,
   context: CommandContext,
 ): Promise<HandlerOutcome | null> {
+  await holdCoveringGrants(tx, subjectsOf(context.session), context.declaration.collection);
+  return await askAutomationAuthority(tx, context);
+}
+
+/**
+ * The declaration's own key over the business at the clock now, holding
+ * nothing new: for a write whose grants are already held, after a later wait.
+ */
+export async function askAutomationAuthority(
+  tx: TenantQuery,
+  context: CommandContext,
+): Promise<HandlerOutcome | null> {
   const { collection, action } = context.declaration;
-  const subjects = subjectsOf(context.session);
-  await holdCoveringGrants(tx, subjects, collection);
   const current = await checkAuthorityAt(
     tx,
-    subjects,
+    subjectsOf(context.session),
     { collection, action, scope: { kind: 'business', id: null } },
     await lockedInstant(tx),
   );

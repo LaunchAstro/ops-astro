@@ -22,8 +22,7 @@ import type { Action } from '../../packages/core-records/src/authority/grants.ts
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { DELEGATION_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
-import { bravoAutomation, bravoRecords } from './ident-audit-bravo-rows.ts';
-import type { SeededAutomation } from '../automations/seed.ts';
+import { bravoAutomation, bravoRecords, type BravoAutomation } from './ident-audit-bravo-rows.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import {
@@ -84,13 +83,12 @@ export interface IdentWorld {
     legalVersionId: string;
     credentialId: string;
     clientId: string;
-    automation: SeededAutomation;
-    alphaVersionId: string;
     /** A custody key of bravo's (C31). */
     secretId: string;
     /** A broken connection of bravo's, owner-written (MP-14-7a). */
     connectionId: string;
-  }>;
+  }> &
+    BravoAutomation;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
   /** A member of alpha holding task grants on `rheaTask` and nothing else. */

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Settings ▸ Workflow triggers' made-up registry (C33) for the width-and-theme
-// harness: one automation on a schedule pinned to its second version, and one
-// skill run by hand. Test side only, like the rest of `made-up-*.ts`.
+// harness: one automation on a schedule pinned to its second version under a
+// standing approval (C52-A), and one skill run by hand with none. Test side
+// only, like the rest of `made-up-*.ts`.
 
 import type { AutomationRegistryResult } from '../../packages/core-wire/src/index.ts';
 import { NATHAN } from './made-up-access.ts';
@@ -44,6 +45,13 @@ export const AUTOMATION_REGISTRY: AutomationRegistryResult = {
           changedBy: NATHAN.personId,
           changedAt: '2026-09-24T02:00:00.000Z',
           revision: 2,
+          approval: {
+            id: 'ap-weekly-2',
+            versionId: 'v-weekly-2',
+            act: 'adopted',
+            decidedBy: NATHAN.personId,
+            revoked: false,
+          },
         },
       ],
     },
@@ -64,6 +72,7 @@ export const AUTOMATION_REGISTRY: AutomationRegistryResult = {
           changedBy: NATHAN.personId,
           changedAt: '2026-09-21T03:00:00.000Z',
           revision: 1,
+          approval: null,
         },
       ],
     },

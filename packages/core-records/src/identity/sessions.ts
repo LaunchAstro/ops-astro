@@ -10,9 +10,13 @@
 // ends their own sessions and nobody else's. `sessionEnded`, which login
 // resolution asks, is the one exception: an ending holds in every business,
 // so it names only the token's session and its subject's digest.
+//
+// An ending and a write's last ask after its session (`sessionEndedHeld`)
+// take the same keys in one order (`ending-keys.ts`, C52-A).
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../tenancy/database.ts';
+import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
+import { holdEnding, sessionKey, subjectKey } from './ending-keys.ts';
 import {
   SESSION_ABSOLUTE_SECONDS,
   SIGN_IN_CLOCK_SKEW_SECONDS,
@@ -102,6 +106,7 @@ export async function endOtherSeenSessions(
   /** The login's provider subject: the ending holds in every business (0063). */
   subject: string,
 ): Promise<number> {
+  await holdEnding(tx, subject, []);
   await tx.query(
     `insert into ops.ended_subject_sessions (subject_digest, kept_session)
      values (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2::uuid)`,
@@ -140,6 +145,9 @@ export async function endSeenSessions(
  * ended even when the reset's last transaction never commits. Answers its id.
  */
 export async function openResetWindow(tx: TenantQuery, subject: string): Promise<string> {
+  // The subject's ending key: a write that read the login's sessions live
+  // commits first. Not the audit chain: the token's spend writes no event.
+  await advisoryLock(tx, subjectKey(subject));
   const id = randomUUID();
   await tx.query(
     `insert into ops.subject_resets (id, subject_digest)
@@ -229,6 +237,9 @@ export async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject):
  * sign-out the business no longer admits still ends its verified session.
  */
 export async function endProviderSession(tx: TenantQuery, sessionId: string): Promise<void> {
+  // Only the session's key: this ending writes no audit event, and a caller the
+  // business refuses must not hold its audit chain (security re-bind R3 LOW-1).
+  await advisoryLock(tx, sessionKey(sessionId));
   await tx.query(END_PROVIDER_SESSIONS, [[sessionId]]);
 }
 
@@ -248,6 +259,7 @@ async function endSessions(
   reason: SessionEndReason,
 ): Promise<number> {
   if (sessionIds.length === 0) return 0;
+  await holdEnding(tx, undefined, sessionIds);
   const rows = await tx.query(
     `insert into public.ended_sessions (business_id, person_id, session_id, reason)
      select $1, $2, ids.id, $4 from unnest($3::uuid[]) as ids (id) order by ids.id
@@ -259,4 +271,19 @@ async function endSessions(
   // insert takes its ids in order, so two enders at once cannot deadlock.
   await tx.query(END_PROVIDER_SESSIONS, [sessionIds]);
   return rows.length;
+}
+
+/**
+ * `sessionEnded`, asked by a write after its last wait, with its business's audit
+ * chain already held: the subject's and the session's ending keys are taken
+ * shared first, so no ending commits between this read and the write's commit.
+ */
+export async function sessionEndedHeld(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+): Promise<boolean> {
+  if (presented.sessionId === undefined) return false;
+  await advisoryLock(tx, subjectKey(presented.subject), 'shared');
+  await advisoryLock(tx, sessionKey(presented.sessionId), 'shared');
+  return await sessionEnded(tx, presented);
 }
