@@ -9,7 +9,8 @@
 // The reader judges each byte as it arrives and keeps its first refusal,
 // so a refusal for the size cap means every earlier byte passed and one
 // byte went past the cap (F1's `output` crossing). A file's bytes are kept
-// as they arrive, never booked from its declared size. Every header byte is
+// in one buffer that doubles as they arrive, never booked from its
+// declared size, and copied, so the caller may reuse its chunk. Every header byte is
 // read: the pad and device fields hold only zeros or octal, and a name
 // field is never empty, so an entry's last segment fits the name field. Mode, owner and time are never read, except a
 // `prepare` file's owner-execute bit, which O2's layer rewrite keeps.
@@ -43,6 +44,8 @@ const RULES = {
 } as const;
 
 const BLOCK = 512;
+/** A file's first buffer; it doubles as bytes arrive, never past the declared size. */
+const FIRST_BUFFER = 64 * 1024;
 const MAX_NAME = 255;
 const SEGMENT = /^[A-Za-z0-9._~@+-]+$/u;
 // `ustar\0` then `00`.
@@ -71,18 +74,6 @@ function readText(field: Uint8Array): string | null {
 const isDevice = (field: Uint8Array): boolean =>
   field.every((byte) => byte === 0) || readOctal(field) !== null;
 
-/** A file's bytes, kept as they arrived, in one array. */
-function joined(chunks: readonly Uint8Array[], size: number): Uint8Array {
-  if (chunks.length === 1 && chunks[0] !== undefined) return chunks[0];
-  const data = new Uint8Array(size);
-  let at = 0;
-  for (const chunk of chunks) {
-    data.set(chunk, at);
-    at += chunk.length;
-  }
-  return data;
-}
-
 const plain = (segment: string): boolean =>
   SEGMENT.test(segment) && segment !== '.' && segment !== '..';
 
@@ -92,7 +83,7 @@ type State =
       readonly at: 'data';
       readonly entry: Omit<Extract<TarEntry, { type: 'file' }>, 'data'>;
       readonly size: number;
-      readonly chunks: Uint8Array[];
+      data: Uint8Array;
       fill: number;
       padding: number;
     }
@@ -155,10 +146,15 @@ export class UstarReader {
       return null;
     }
     if (state.at === 'data') {
-      state.chunks.push(new Uint8Array(bytes));
+      if (state.fill + bytes.length > state.data.length) {
+        const grown = new Uint8Array(Math.min(state.size, 2 * (state.fill + bytes.length)));
+        grown.set(state.data.subarray(0, state.fill));
+        state.data = grown;
+      }
+      state.data.set(bytes, state.fill);
       state.fill += bytes.length;
       if (state.fill === state.size) {
-        this.entries.push({ ...state.entry, data: joined(state.chunks, state.size) });
+        this.entries.push({ ...state.entry, data: state.data });
         this.afterData(state.padding);
       }
       return null;
@@ -226,7 +222,8 @@ export class UstarReader {
       this.afterData(padding);
     } else {
       const entry = { type, name, executable } as const;
-      this.state = { at: 'data', entry, size, chunks: [], fill: 0, padding };
+      const data = new Uint8Array(Math.min(size, FIRST_BUFFER));
+      this.state = { at: 'data', entry, size, data, fill: 0, padding };
     }
     return null;
   }
