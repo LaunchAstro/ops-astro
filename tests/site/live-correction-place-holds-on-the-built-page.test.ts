@@ -2,7 +2,8 @@
 // The approved occurrence's place holds on the page the build serves, not only on its source:
 // the marker stands for a word the page shows, a match spanning blocks or added by a layout
 // (its title, its nav) or dropped by the build (frontmatter) cannot move the place onto
-// another, and finding and counting it stays linear. Each crossing serves the unchanged page.
+// another, and finding and counting it stays linear. Each crossing calibrates on the page served
+// before the change and reads a page that changed: the approved word with no place, or another word.
 import { expect, it } from 'vitest';
 import { readDocument } from '../../packages/core-connectors/src/capture/page.ts';
 import {
@@ -22,7 +23,8 @@ function read(html: string): string {
 
 /**
  * Whether the check reads `served` as showing `replacement` at the approved place of `word`,
- * calibrated on `preImage`, the page served before the change (by default `served` itself).
+ * calibrated on `preImage`, the page served before the change. The two always differ: the check
+ * never reads an unchanged page live, so a crossing serves a page that changed.
  */
 function readsLive(
   before: string,
@@ -30,8 +32,9 @@ function readsLive(
   word: string,
   replacement: string,
   served: string,
-  preImage = served,
+  preImage: string,
 ) {
+  if (served === preImage) throw new Error('a crossing serves a page that changed');
   const correction = { path: target.path, word, replacement };
   const change = { files: [{ path: target.path, before, after }] };
   const where = calibrated(change, correction, read(preImage));
@@ -41,7 +44,7 @@ function readsLive(
 it('a word inside a character reference has no place, so a decoy block never reads live', () => {
   const before = '<p>A &amp; B</p>\n<p>A &amp;lt; B</p>\n';
   const after = '<p>A &lt; B</p>\n<p>A &amp;lt; B</p>\n';
-  expect(readsLive(before, after, 'amp', 'lt', before)).toBe(false);
+  expect(readsLive(before, after, 'amp', 'lt', after, before)).toBe(false);
 });
 
 it.each([
@@ -52,13 +55,15 @@ it.each([
   ['a bogus comment', '<? typo >\n<p>Hello &#57344; world</p>\n<p>Hello fixed world</p>\n'],
 ])('a hidden word in %s cannot borrow a visible marker character as its place', (_, before) => {
   const after = before.replace('typo', 'fixed');
-  expect(readsLive(before, after, 'typo', 'fixed', before)).toBe(false);
+  expect(readsLive(before, after, 'typo', 'fixed', after, before)).toBe(false);
 });
 
 it('a match spanning a block boundary is counted as the live page counts it', () => {
   const before = '<p>fixed x</p>\n<p>fixed x typo</p>\n';
   const after = '<p>fixed x</p>\n<p>fixed x fixed</p>\n';
-  expect(readsLive(before, after, 'typo', 'fixed', before)).toBe(false);
+  // The straddling match changes, not the approved word.
+  const straddle = '<p>fixed x</p>\n<p>typo x typo</p>\n';
+  expect(readsLive(before, after, 'typo', 'fixed', straddle, before)).toBe(false);
   expect(readsLive(before, after, 'typo', 'fixed', after, before)).toBe(true);
 });
 
@@ -74,7 +79,9 @@ it('a correction in a long paragraph reads live, its place bounded either side',
     Math.max(where?.left.length ?? Infinity, where?.right.length ?? Infinity),
   ).toBeLessThanOrEqual(128);
   expect(readsLive(before, after, 'typo', 'fixed', after, before)).toBe(true);
-  expect(readsLive(before, after, 'typo', 'fixed', before)).toBe(false);
+  // A word in the place's left context changes, not the approved word.
+  const context = before.replace('word399 typo', 'fixed typo');
+  expect(readsLive(before, after, 'typo', 'fixed', context, before)).toBe(false);
 });
 
 it('a page of one repeated word is matched in time linear in its length', () => {
@@ -82,7 +89,7 @@ it('a page of one repeated word is matched in time linear in its length', () => 
     const before = `<p>${'a '.repeat(2 * count)}</p>\n<p>${'a '.repeat(count)}a</p>\n`;
     const after = before.replace(/a<\/p>\n$/u, 'b</p>\n');
     const started = performance.now();
-    readsLive(before, after, 'a', 'b', before);
+    readsLive(before, after, 'a', 'b', after, before);
     return performance.now() - started;
   };
   run(2_000);
@@ -112,9 +119,11 @@ it.each([
     "---\nconst old = 'Contcat';\n---\n<h1>Contcat</h1>\n",
     '<h1>Contcat</h1><footer>Contact</footer>',
   ],
-])('%s cannot make the unchanged page read live', (_, before, served) => {
+])('%s cannot make a page that changed another word read live', (_, before, served) => {
   const after = before.replace('<h1>Contcat', '<h1>Contact');
-  expect(readsLive(before, after, 'Contcat', 'Contact', served)).toBe(false);
+  // The heading stays as approved; the other equal (the layout's, or the page's own) changes.
+  const elsewhere = served.replace('Contact', 'Contcat');
+  expect(readsLive(before, after, 'Contcat', 'Contact', elsewhere, served)).toBe(false);
 });
 
 it('finding the changed word in one long line is linear in its length', () => {
@@ -156,7 +165,14 @@ it.each(Object.entries(fenced))(
     const before = `${frontmatter}<h1>Contcat</h1>\n`;
     const after = before.replace('<h1>Contcat', '<h1>Contact');
     expect(
-      readsLive(before, after, 'Contcat', 'Contact', '<h1>Contcat</h1><footer>Contact</footer>'),
+      readsLive(
+        before,
+        after,
+        'Contcat',
+        'Contact',
+        '<h1>Contcat</h1><footer>Contact</footer>',
+        '<h1>Contcat</h1><footer>Contcat</footer>',
+      ),
     ).toBe(false);
     expect(
       readsLive(before, after, 'Contcat', 'Contact', '<h1>Contact</h1>', '<h1>Contcat</h1>'),
@@ -207,7 +223,14 @@ it.each([
   const before = `${frontmatter}<h1>Contcat</h1>\n`;
   const after = before.replace('<h1>Contcat', '<h1>Contact');
   expect(
-    readsLive(before, after, 'Contcat', 'Contact', '<h1>Contcat</h1><footer>Contact</footer>'),
+    readsLive(
+      before,
+      after,
+      'Contcat',
+      'Contact',
+      '<h1>Contcat</h1><footer>Contact</footer>',
+      '<h1>Contcat</h1><footer>Contcat</footer>',
+    ),
   ).toBe(false);
   const where = occurrenceOf(
     { files: [{ path: target.path, before, after }] },
@@ -247,5 +270,6 @@ it('a reference name as the word cannot borrow a layout that shows references as
   const before = '<p>A &amp; B</p>\n<p>A &amp;amp; B</p>\n';
   const after = before.replace('<p>A &amp; B', '<p>A &lt; B');
   const served = '<header>A &amp;lt; B</header><p>A &amp; B</p><p>A &amp;amp; B</p>';
-  expect(readsLive(before, after, 'amp', 'lt', served)).toBe(false);
+  const corrected = served.replace('<p>A &amp; B', '<p>A &lt; B');
+  expect(readsLive(before, after, 'amp', 'lt', corrected, served)).toBe(false);
 });
