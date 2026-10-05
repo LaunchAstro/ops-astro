@@ -478,7 +478,7 @@ fields and client-audience comments only".
   and no membership and no business grant (`:164-167`, `:317-319`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:760-789`, `:928-938`).
+  (`:774-803`, `:942-952`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
