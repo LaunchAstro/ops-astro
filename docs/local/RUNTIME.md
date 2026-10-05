@@ -1887,8 +1887,9 @@ and codes, never a sentence, to a trace target an operator reads.
   the advance are separate transactions and no transaction is open while the
   target is asked. Anything short of a 2xx JSON reply is a gap with a fixed
   code (`target_unreachable`, `target_redirect`, `target_timeout`,
-  `target_oversized_reply`, `target_malformed_reply`, `target_refused`,
-  `target_forbidden`) and the cursor stays. The gap names the cursor the
+  `target_oversized_reply`, `target_oversized_body` for a 413,
+  `target_malformed_reply`, `target_refused`, `target_forbidden`) and the
+  cursor stays. The gap names the cursor the
   batch was read after, read once in the read's transaction, never the row as
   it is when the gap is written: another export may have moved it while this
   one waited on the target. No run reads either table and no run waits on the
@@ -1914,9 +1915,10 @@ and codes, never a sentence, to a trace target an operator reads.
   this machine's loopback address; the trace key is read by the exporter from its
   own file. The destination (`traceDestination`) also names a fixed header,
   `x-langfuse-ingestion-version: 4` (the contract wants it on every request;
-  the value is the vendor's documented one), and two routes beyond the
-  export's POST: `DELETE /api/public/traces` and `GET /api/public/traces/*`
-  (one id segment). Custody (`core-custody/src/egress-routes.ts`) adds the
+  the value is the vendor's documented one), and three routes beyond the
+  export's POST: `DELETE /api/public/traces`, `GET /api/public/traces/*` and
+  `GET /api/public/observations/*` (one id segment each; the target keeps an
+  OpenTelemetry span as an observation of the span's id). Custody (`core-custody/src/egress-routes.ts`) adds the
   header itself and answers any other method or path with `bad_path`; a
   request naming a header, or any key beyond its six, is refused whole; a
   header that is reserved (the credential, framing, host), not lower case, or
@@ -1957,16 +1959,24 @@ and codes, never a sentence, to a trace target an operator reads.
   while the run has an event after that place inside the window: a
   confirmation proves one delete landed, never that no other is still
   queued. Each pass reads back every owed ask it did not just make, page
-  after page by run; a run found gone has
+  after page; a run the export has sent an event of since its place (one
+  the window still holds) is read by its earliest such event's span, so a
+  delete that landed between two bodies of a resend counts as gone. Three
+  reads in a row the store does not answer end the pass, and the runs it
+  did not answer go on a batch row (`unanswered_run_ids`, code
+  `expiry_unconfirmed`, nothing confirmed): the next pass reads every other
+  owed run before them. A run found gone has
   its events after its place sent again, in the transaction that confirms
   it, and a run that has such events is held back with its ask still owed
   (`expiry_unconfirmed`): the cursor steps back to just before the earliest such event (or
   stays, if already behind it) under its row lock, the lock the export's
   advance takes, and its version changes, so an export that read before
   the step never advances. While a run's ask is owed, an export that sends
-  one of its events sends all of them since the place inside the window, in
-  one body and with no cap, so a delete landing
-  between two exports leaves the trace whole. A confirmation covers only
+  one of its events sends all of them since the place inside the window,
+  earliest first, in bodies of at most 100 with the export's own events in
+  the last, so a delete landing between two exports leaves the trace whole
+  and one landing between two bodies takes the earliest span the read looks
+  for. A confirmation covers only
   the events up to its place: a run with a later event, even one committed
   after the pass, is due again once that event is past the window. Two
   passes at once are harmless: deletion by derived id is idempotent, and a

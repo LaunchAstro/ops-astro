@@ -6,7 +6,8 @@
 // inside the window: a confirmation proves one delete landed, never that no
 // other is still queued, and a queued delete takes whatever the trace holds
 // when it lands. Retention reads the owed asks back each pass; the export
-// sends a run with one whole.
+// sends a run with one whole, its earliest event first, so retention reads
+// that event's span: a delete that lands partway through the sending takes it.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 
@@ -33,21 +34,48 @@ interface Place {
   readonly id: string | null;
 }
 
-/** One owed ask: its run and its place. */
-export type Owed = { readonly runId: string } & Place;
+/**
+ * One owed ask: its run, its place, the run's earliest event after the place
+ * that the export has sent and the window still holds, and its turn: when a
+ * read of it last went unanswered, as text, or `-infinity`.
+ */
+export type Owed = {
+  readonly runId: string;
+  readonly first: string | null;
+  readonly turn: string;
+} & Place;
 
-/** One page of the owed asks, one per run at its latest place, the runs after `after`. */
+/** Where a page of the owed asks starts: after this turn and run. */
+export type OwedFrom = Pick<Owed, 'turn' | 'runId'>;
+
+/**
+ * One page of the owed asks, one per run at its latest place, after `after`
+ * in turn order: a run whose read went unanswered waits behind every run
+ * read since, so a few traces that never answer hide no other.
+ */
 export async function owedAsks(
   tx: TenantQuery,
   windowDays: number,
-  after: string | null,
+  after: OwedFrom | null,
   page: number,
 ): Promise<readonly Owed[]> {
   return await tx.query<Owed>(
-    `select run_id as "runId", after_tx::text as tx, after_id as id from (${OWED_ASKS}) owed
-      where $4::uuid is null or run_id > $4::uuid
-      order by run_id limit $5`,
-    [tx.businessId, null, windowDays, after, page],
+    `select run_id as "runId", after_tx::text as tx, after_id as id, first, turn::text as turn from (
+       select o.*,
+              (select ev.id from public.run_events ev
+                 join public.trace_export_cursors cur on cur.business_id = $1
+                where ev.business_id = $1 and ev.run_id = o.run_id
+                  and (ev.tx, ev.id) > (o.after_tx, o.after_id)
+                  and (ev.tx, ev.id) <= (cur.after_tx, cur.after_id)
+                  and ev.created_at >= now() - make_interval(days => $3)
+                order by ev.tx, ev.id limit 1) as first,
+              coalesce((select max(b.recorded_at) from public.trace_expiry_batches b
+                         where b.business_id = $1 and b.unanswered_run_ids @> array[o.run_id]),
+                       '-infinity') as turn
+         from (${OWED_ASKS}) o) owed
+      where $4::timestamptz is null or (turn, run_id) > ($4::timestamptz, $5::uuid)
+      order by turn, run_id limit $6`,
+    [tx.businessId, null, windowDays, after?.turn ?? null, after?.runId ?? null, page],
   );
 }
 

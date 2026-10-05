@@ -12,11 +12,12 @@
 // **Delivery is a port** (`Deliver`): the composition root hands the exporter
 // custody's egress, which names the target's origin itself, refuses redirects
 // and bounds the reply by time and bytes. Anything short of a 2xx JSON reply
-// is recorded as a gap with a fixed code and the cursor stays where it was;
-// an export with no reachable target is never reported as success.
+// to every body is recorded as a gap with a fixed code and the cursor stays
+// where it was; an export with no reachable target is never reported as success.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
+import { gapOf, type Deliver, type GapCode } from './trace-delivery.ts';
 import { owedSince } from './trace-owed.ts';
 import {
   TRACE_ERRORS,
@@ -29,28 +30,12 @@ import {
   type TraceSpan,
 } from './trace-span.ts';
 
-/** What delivery answers: custody's `Outbound`, narrowed to what the exporter reads. */
-export type Delivered =
-  | { readonly ok: true; readonly status: number; readonly body: string }
-  | { readonly ok: false; readonly fault: string; readonly status: number | null };
-
-export type Deliver = (body: string) => Promise<Delivered>;
-
-export type GapCode =
-  | 'target_unreachable'
-  | 'target_redirect'
-  | 'target_timeout'
-  | 'target_oversized_reply'
-  | 'target_malformed_reply'
-  | 'target_refused'
-  | 'target_forbidden';
-
 export type ExportOutcome =
   | { readonly kind: 'idle' }
   | { readonly kind: 'delivered'; readonly spans: number }
   | { readonly kind: 'gap'; readonly code: GapCode; readonly spans: number };
 
-/** The most events one export sends. */
+/** The most events one export reads, and the most owed events one body sends again. */
 export const TRACE_BATCH = 100;
 
 /** The trace window, in days (contract 7.5): an event older than it when read is never sent. */
@@ -77,7 +62,10 @@ export interface TraceDatabase {
  * One export for one business: read a batch after the cursor, register each
  * run's copy, deliver, then advance the cursor or record the gap. The read
  * and the advance are separate transactions and delivery is between them, so
- * no transaction is open while the target is asked.
+ * no transaction is open while the target is asked. The events owed again
+ * (`owedSince`) go first, in bodies of at most `TRACE_BATCH` in the cursor's
+ * order, the batch's own events with the last; one refused body stops the
+ * rest, and the next export sends them all again.
  *
  * The read takes only events whose writing transaction is below its
  * snapshot's horizon, in transaction order (0090): every transaction below
@@ -99,19 +87,34 @@ export async function exportOnce(
       await registerTraceCopy(tx, runId);
     }
     const owed = await owedSince<Row>(tx, EVENT_CELLS, rows, cursor, TRACE_WINDOW_DAYS);
-    return { from: cursor, batch: rows, sent: [...owed, ...rows.filter((row) => !row.past)] };
+    const fresh = rows.filter((row) => !row.past);
+    return { from: cursor, batch: rows, sent: bodiesOf(owed, fresh) };
   });
   const last = batch.at(-1);
   if (last === undefined) return { kind: 'idle' };
-  const spans = sent.map((row) => spanOf(key, businessId, row));
-  const code = spans.length === 0 ? null : gapOf(await deliver(otlp(spans)));
+  let code: GapCode | null = null;
+  let spans = 0;
+  for (const body of sent) {
+    spans += body.length;
+    // eslint-disable-next-line no-await-in-loop -- one body after another, in the cursor's order
+    code = gapOf(await deliver(otlp(body.map((row) => spanOf(key, businessId, row)))));
+    if (code !== null) break;
+  }
   await database.withBusiness(businessId, async (tx) => {
     if (code === null) await advance(tx, last, from.version);
     else await recordGap(tx, code, from, batch.length);
   });
-  return code === null
-    ? { kind: 'delivered', spans: spans.length }
-    : { kind: 'gap', code, spans: spans.length };
+  return code === null ? { kind: 'delivered', spans } : { kind: 'gap', code, spans };
+}
+
+/** The owed events in bodies of `TRACE_BATCH`, the batch's own with the last; none when both are empty. */
+function bodiesOf(owed: readonly Row[], fresh: readonly Row[]): readonly (readonly Row[])[] {
+  const bodies: (readonly Row[])[] = [];
+  for (let at = 0; at < owed.length; at += TRACE_BATCH) {
+    bodies.push(owed.slice(at, at + TRACE_BATCH));
+  }
+  const tail = [...(bodies.pop() ?? []), ...fresh];
+  return tail.length === 0 ? bodies : [...bodies, tail];
 }
 
 /** What a span is made of, per event `ev`: the export's read and `trace.read`'s. */
@@ -225,31 +228,6 @@ export async function readTaskTrace(
       ),
     complete: rows.length <= TRACE_READ_LIMIT,
   };
-}
-
-const FAULT_GAP: Readonly<Record<string, GapCode>> = {
-  redirect: 'target_redirect',
-  timeout: 'target_timeout',
-  too_large: 'target_oversized_reply',
-  forbidden: 'target_forbidden',
-  unlisted: 'target_forbidden',
-  bad_path: 'target_forbidden',
-  status: 'target_refused',
-  network: 'target_unreachable',
-};
-
-/** Null for a landed delivery; otherwise the gap's fixed code. Retention reads its deletes the same way. */
-export function gapOf(answer: Delivered): GapCode | null {
-  if (!answer.ok) return FAULT_GAP[answer.fault] ?? 'target_unreachable';
-  if (answer.status < 200 || answer.status > 299) return 'target_refused';
-  try {
-    const parsed: unknown = JSON.parse(answer.body);
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? null
-      : 'target_malformed_reply';
-  } catch {
-    return 'target_malformed_reply';
-  }
 }
 
 async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> {

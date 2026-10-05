@@ -24,7 +24,8 @@
 // not queued. So an ask stays owed until a batch confirms its run at its
 // place or later, and while the run has an event after that place inside the
 // window (`trace-owed.ts`); every pass reads back every owed ask it did not
-// just make, page after page.
+// just make, page after page; how a run is read, and what ends the reading,
+// is `trace-store.ts`.
 // A run found gone has its events after its place sent again (`sendAgain`)
 // in the transaction that confirms it, or, when it has such events, holds
 // it back with its ask still owed. The export sends a run with an owed ask
@@ -38,28 +39,20 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
+import { gapOf, type GapCode } from './trace-delivery.ts';
+import { TRACE_WINDOW_DAYS, type Cursor, type TraceDatabase } from './trace-export.ts';
+import { byPlace, owedAsks, type Owed, type OwedFrom } from './trace-owed.ts';
 import {
-  gapOf,
-  TRACE_WINDOW_DAYS,
-  type Cursor,
-  type Delivered,
-  type GapCode,
-  type TraceDatabase,
-} from './trace-export.ts';
-import { byPlace, owedAsks, type Owed } from './trace-owed.ts';
-import { derivedId } from './trace-span.ts';
+  readBack,
+  traceOf,
+  unanswered,
+  UNANSWERED,
+  type ExpiryPorts,
+  type Reading,
+} from './trace-store.ts';
 
 /** The deletion endpoint's cap on ids per call. */
 export const EXPIRY_PAGE = 1_000;
-
-/** Unanswered reads in a row that end a pass's owed read-back: the store is not answering. */
-const UNANSWERED = 3;
-
-/** The trace store as retention asks it: delete ids, then read one back. */
-export interface ExpiryPorts {
-  expire(traceIds: readonly string[]): Promise<Delivered>;
-  present(traceId: string): Promise<'absent' | 'present' | 'unknown'>;
-}
 
 export type ExpiryCode = GapCode | 'expiry_unconfirmed';
 
@@ -95,24 +88,31 @@ export async function expireOnce(
     // A finished batch confirmed every run it asked, so the next page is new runs.
     if (batch.code !== null || ask.runs.length < page) break;
   }
-  // Every owed run, page after page by run: a page that stays present does not hide the next.
-  // Reads the store does not answer, one after another, end it for the pass.
-  const silence = { reads: 0 };
-  let after: string | null = null;
-  while (silence.reads < UNANSWERED) {
-    const from: string | null = after;
+  // Every owed run, page after page in turn order: a page that stays present does not hide the next.
+  const reading: Reading = { firsts: new Map(), unanswered: [], quiet: 0 };
+  let after: OwedFrom | null = null;
+  while (reading.quiet < UNANSWERED) {
+    const from: OwedFrom | null = after;
     // eslint-disable-next-line no-await-in-loop -- one page after another
     const owed: readonly Owed[] = await database.withBusiness(
       businessId,
       async (tx) => await owedAsks(tx, windowDays, from, page),
     );
+    for (const row of owed) if (row.first !== null) reading.firsts.set(row.runId, row.first);
     for (const ask of byPlace(owed.filter((row) => !asked.has(row.runId)))) {
       // eslint-disable-next-line no-await-in-loop -- one ask after another; the store is not hurried
-      const batch = await recheck(database, businessId, key, ports, ask, windowDays, silence);
+      const batch = await recheck(database, businessId, key, ports, ask, windowDays, reading);
       if (batch !== null) batches.push(batch);
     }
-    if (owed.length < page) break;
-    after = owed.at(-1)?.runId ?? null;
+    const end = owed.at(-1);
+    if (owed.length < page || end === undefined) break;
+    after = { turn: end.turn, runId: end.runId };
+  }
+  if (reading.unanswered.length > 0) {
+    await database.withBusiness(
+      businessId,
+      async (tx) => await unanswered(tx, reading, windowDays),
+    );
   }
   return batches;
 }
@@ -124,9 +124,6 @@ interface Ask {
   readonly runs: readonly string[];
   readonly place: Place;
 }
-
-const traceOf = (key: Buffer, businessId: string, runId: string): string =>
-  derivedId(key, ['trace', businessId, runId], 32);
 
 /** The due runs, and an ask for each written before anything is deleted. */
 async function askDue(tx: TenantQuery, windowDays: number, page: number): Promise<Ask> {
@@ -192,9 +189,9 @@ async function recheck(
   ports: ExpiryPorts,
   ask: Ask,
   windowDays: number,
-  silence: { reads: number },
+  reading: Reading,
 ): Promise<RetentionBatch | null> {
-  const gone = await readBack(key, businessId, ports, ask.runs, silence);
+  const gone = await readBack(key, businessId, ports, ask.runs, reading);
   if (gone.length === 0) return null;
   return await confirm(
     database,
@@ -204,25 +201,6 @@ async function recheck(
     null,
     windowDays,
   );
-}
-
-/** The runs a read finds gone; with `silence`, until `UNANSWERED` unanswered reads in a row. */
-async function readBack(
-  key: Buffer,
-  businessId: string,
-  ports: ExpiryPorts,
-  runs: readonly string[],
-  silence?: { reads: number },
-): Promise<readonly string[]> {
-  const gone: string[] = [];
-  for (const runId of runs) {
-    if (silence !== undefined && silence.reads >= UNANSWERED) break;
-    // eslint-disable-next-line no-await-in-loop -- one read at a time; the store is not hurried
-    const read = await ports.present(traceOf(key, businessId, runId));
-    if (silence !== undefined) silence.reads = read === 'unknown' ? silence.reads + 1 : 0;
-    if (read === 'absent') gone.push(runId);
-  }
-  return gone;
 }
 
 /** One transaction: the gone runs' later events sent again, and the batch confirming them at the ask's place. */

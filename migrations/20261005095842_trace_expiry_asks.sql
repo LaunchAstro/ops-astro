@@ -64,12 +64,32 @@ grant select, insert on public.trace_expiry_asks to ops_astro_app;
 -- run up to it is gone from the store. A batch from before this migration
 -- has no place and confirms nothing: its runs are asked once more, a delete
 -- of what is already gone, and confirmed at a place. The owed check looks a
--- run up in the batches' runs, so they get an index.
+-- run up in the batches' runs, so they get an index. A pass whose owed reads
+-- the store did not answer records those runs, and the next pass reads them
+-- after the rest.
 alter table public.trace_expiry_batches
   add column after_tx xid8,
   add column after_id uuid,
+  add column unanswered_run_ids uuid[] not null default '{}',
   add constraint trace_expiry_batches_place_whole
     check ((after_tx is null) = (after_id is null));
 
 create index trace_expiry_batches_runs_idx
   on public.trace_expiry_batches using gin (expired_run_ids);
+
+create index trace_expiry_batches_unanswered_idx
+  on public.trace_expiry_batches using gin (unanswered_run_ids);
+
+-- A body the target refuses as too large (413) is a gap of its own.
+alter table public.trace_export_gaps
+  drop constraint trace_export_gaps_code_known,
+  add constraint trace_export_gaps_code_known check (code in (
+    'target_unreachable', 'target_redirect', 'target_timeout', 'target_oversized_reply',
+    'target_oversized_body', 'target_malformed_reply', 'target_refused', 'target_forbidden'));
+
+alter table public.trace_expiry_batches
+  drop constraint trace_expiry_batches_code_known,
+  add constraint trace_expiry_batches_code_known check (code is null or code in (
+    'target_unreachable', 'target_redirect', 'target_timeout', 'target_oversized_reply',
+    'target_oversized_body', 'target_malformed_reply', 'target_refused', 'target_forbidden',
+    'expiry_unconfirmed'));

@@ -59,6 +59,8 @@ export const TRACE_CREDENTIAL = 'trace_key';
 export const TRACE_PATH = '/api/public/otel/v1/traces';
 /** The target's trace deletion (a list of ids), and one trace read back by id beneath it. */
 export const TRACE_EXPIRY_PATH = '/api/public/traces';
+/** One span read back by its id: the target keeps an OpenTelemetry span as an observation of that id. */
+export const TRACE_OBSERVATION_PATH = '/api/public/observations';
 /**
  * The ingestion-version header the contract wants on every request (Langfuse
  * CONTRACT line 375); the value is the vendor's documented one for its v4
@@ -143,7 +145,7 @@ function keyFrom(file: string): Buffer | undefined {
 
 /**
  * The trace destination as custody lists it: the origin, the fixed header,
- * and the two routes beyond the export's POST that retention needs.
+ * and the three routes beyond the export's POST that retention needs.
  */
 export function traceDestination(origin: string): Destination {
   return {
@@ -153,6 +155,7 @@ export function traceDestination(origin: string): Destination {
     routes: [
       { method: 'DELETE', path: TRACE_EXPIRY_PATH },
       { method: 'GET', path: `${TRACE_EXPIRY_PATH}/*` },
+      { method: 'GET', path: `${TRACE_OBSERVATION_PATH}/*` },
     ],
   };
 }
@@ -179,9 +182,10 @@ export function deliverThrough(custody: Custody, timeoutMs = 5_000): Deliver {
 }
 
 /**
- * Retention's delete and read-back through the same custody. A read that
- * answers 404 is the one proof of absence; any 2xx, even one too large to
- * read whole, is a trace still there; anything else proves nothing.
+ * Retention's delete and read-back through the same custody: a trace by its
+ * id, or one span of it by the span's. A read that answers 404 is the one
+ * proof of absence; any 2xx, even one too large to read whole, is still
+ * there; anything else proves nothing.
  */
 export function expiryThrough(custody: Custody, timeoutMs = 5_000): ExpiryPorts {
   const ask = async (method: 'DELETE' | 'GET', path: string, body: string): Promise<Delivered> =>
@@ -198,8 +202,12 @@ export function expiryThrough(custody: Custody, timeoutMs = 5_000): ExpiryPorts 
   return {
     expire: async (traceIds) =>
       await ask('DELETE', TRACE_EXPIRY_PATH, JSON.stringify({ traceIds })),
-    present: async (traceId) => {
-      const read = await ask('GET', `${TRACE_EXPIRY_PATH}/${traceId}`, '');
+    present: async (traceId, spanId) => {
+      const path =
+        spanId === undefined
+          ? `${TRACE_EXPIRY_PATH}/${traceId}`
+          : `${TRACE_OBSERVATION_PATH}/${spanId}`;
+      const read = await ask('GET', path, '');
       if (read.status === 404) return 'absent';
       return read.status !== null && read.status >= 200 && read.status < 300
         ? 'present'
