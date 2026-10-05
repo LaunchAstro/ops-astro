@@ -156,7 +156,10 @@ export async function verifySecondFactor(
     settled = await recordVerify(tx, session, caller, target);
     return settled.refusal;
   });
-  const { ended, unrecorded = false } = settled;
+  // A session ended during the record step's waits undoes what it decided
+  // (`judged`): no losing enrolment was removed, so none goes at the provider.
+  const { ended, unrecorded = false }: VerifyRecord =
+    recorded?.code === 'AUTH_SESSION_EXPIRED' ? {} : settled;
   // No other refusal removes at the provider. A good code for an unverified factor
   // refused here leaves it verified there, reported orphaned; reconcile is #300.
   // An enrolment replaced by a newer one (enrolSecondFactor) is not reported.

@@ -72,11 +72,15 @@ export async function judged(
       await tx.query('savepoint factor_act');
       const refusal = await settle(await check(tx, session));
       // The session asked again after the act's last wait (the factor lock,
-      // the audit chain): one signed out meanwhile undoes the act, and the
-      // refusal is recorded in its place (#443).
-      if (refusal !== undefined || stage === 'before') return refusal;
-      if (!(await sessionEnded(tx, caller.presented))) return;
+      // the audit chain): one signed out meanwhile undoes the act, whatever
+      // it decided (a refusal can change records too: a verify's losing
+      // enrolment is removed), and the refusal is recorded in its place (#443).
+      if (stage === 'before') return refusal;
+      if (!(await sessionEnded(tx, caller.presented))) return refusal;
       await tx.query('rollback to savepoint factor_act');
+      // The rollback also takes back the ending `sessionEnded` records for a
+      // session refused while a reset is open; asked again, it stands.
+      await sessionEnded(tx, caller.presented);
       return await settle(refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES));
     },
     'enrolling',
