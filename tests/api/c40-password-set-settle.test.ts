@@ -10,6 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it } from 'vitest';
+import { connect } from '../../packages/core-records/src/index.ts';
 import {
   sessionEnded,
   sessionEndedHeld,
@@ -77,6 +78,9 @@ it.skipIf(serverUrl === undefined)(
     };
     const read = gate();
     const release = gate();
+    // The held read on a connection of its own: on the route's pool it would
+    // keep the reset's next transaction waiting for a connection, not a lock.
+    const own = connect(world.db.appUrl, { source: 'runtime', max: 1 });
     let holder: Promise<boolean> | undefined;
     answerWith((request, response) => {
       void (async () => {
@@ -90,7 +94,7 @@ it.skipIf(serverUrl === undefined)(
             [subject],
           );
         });
-        holder = world.db.app.withBusiness(world.bravo, async (tx) => {
+        holder = own.withBusiness(world.bravo, async (tx) => {
           const ended = await sessionEndedHeld(tx, presented);
           read.open();
           await release.promise;
@@ -112,6 +116,7 @@ it.skipIf(serverUrl === undefined)(
       release.open();
     }
     const liveWhenRead = !(await holder);
+    await own.close();
     const answer = await pending;
     const endedAfter = await world.db.app.withBusiness(
       world.bravo,
