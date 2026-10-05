@@ -276,22 +276,25 @@ export async function drain(s: Schedules): Promise<void> {
 
 /**
  * Runs out the business's export lease now, as time would (#963). The drain
- * runs out only the hold a gap whose body may have landed keeps, and only
- * when that gap is the business's last: any other lease left behind still
- * fails it.
+ * runs out only the hold a gap whose body may have landed keeps: the
+ * business's last gap has such a code and the lease is the one that gap's
+ * own transaction wrote. Any other lease left behind still fails it.
  */
 export async function ageLease(s: Schedules, onlyAfter?: string): Promise<void> {
   await rows(
     s,
-    `update public.trace_export_cursors set lease_until = clock_timestamp() - interval '1 second'
-      where business_id = $1 and lease_holder is not null
-        and ($2::text[] is null or (select g.code from public.trace_export_gaps g
-                                   where g.business_id = $1
-                                   order by g.recorded_at desc limit 1) = any($2::text[]))`,
+    `update public.trace_export_cursors c
+        set lease_until = clock_timestamp() - interval '1 second'
+      where c.business_id = $1 and c.lease_holder is not null
+        and ($2::text[] is null or exists (
+              select 1 from (select g.code, g.recorded_at from public.trace_export_gaps g
+                              where g.business_id = $1
+                              order by g.recorded_at desc limit 1) last
+               where last.code = any($2::text[])
+                 and c.lease_until < last.recorded_at + interval '61 seconds'))`,
     [s.business, onlyAfter === undefined ? null : `{${onlyAfter}}`],
   );
 }
-
 
 async function ahead(s: Schedules, due = ''): Promise<number> {
   const found = await rows<{ n: string }>(

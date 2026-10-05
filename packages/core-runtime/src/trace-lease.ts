@@ -96,11 +96,7 @@ const MAYBE_STORED: ReadonlySet<GapCode> = new Set<GapCode>([
  * still has the lease, whatever the version: a retention step meanwhile
  * gave the row a new one, and the stepped-back resend must still wait.
  */
-export async function letGo(
-  tx: TenantQuery,
-  holder: string,
-  code: GapCode | null,
-): Promise<void> {
+export async function letGo(tx: TenantQuery, holder: string, code: GapCode | null): Promise<void> {
   if (code === null || !MAYBE_STORED.has(code)) {
     await release(tx, holder);
     return;

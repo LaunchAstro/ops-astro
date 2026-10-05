@@ -56,9 +56,10 @@ it.skipIf(noDatabase)(
     try {
       for (const [code, delivered] of MAYBE_STORED) {
         // eslint-disable-next-line no-await-in-loop -- one answer after another
-        expect(await exportOnce(s.db.app, s.business, TRACE_KEY, answer(delivered))).toMatchObject(
-          { kind: 'gap', code },
-        );
+        expect(await exportOnce(s.db.app, s.business, TRACE_KEY, answer(delivered))).toMatchObject({
+          kind: 'gap',
+          code,
+        });
         expect(
           // eslint-disable-next-line no-await-in-loop -- one answer after another
           await exportOnce(rival, s.business, TRACE_KEY, t.target.deliver),
@@ -69,9 +70,10 @@ it.skipIf(noDatabase)(
       }
       for (const [code, delivered] of STORED_NOTHING) {
         // eslint-disable-next-line no-await-in-loop -- one answer after another
-        expect(await exportOnce(s.db.app, s.business, TRACE_KEY, answer(delivered))).toMatchObject(
-          { kind: 'gap', code },
-        );
+        expect(await exportOnce(s.db.app, s.business, TRACE_KEY, answer(delivered))).toMatchObject({
+          kind: 'gap',
+          code,
+        });
         expect(
           // eslint-disable-next-line no-await-in-loop -- one answer after another
           await exportOnce(rival, s.business, TRACE_KEY, t.target.deliver),

@@ -16,7 +16,15 @@ import { derivedId, exportOnce, TRACE_WINDOW_DAYS } from '../../packages/core-ru
 import { liveWork } from './schedules-harness.ts';
 import { age, append, eventIds } from './aw-13-retention-world.ts';
 import { behind, gate, queuedAsk } from './aw-13-race-world.ts';
-import { ageLease, awaitDue, drain, noDatabase, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
+import {
+  ageLease,
+  awaitDue,
+  drain,
+  noDatabase,
+  t,
+  TRACE_KEY,
+  useAw13World,
+} from './aw-13-world.ts';
 
 useAw13World('trexp_failing_exporter');
 
@@ -59,7 +67,10 @@ it.skipIf(noDatabase)(
         const a = exportOnce(s.db.app, s.business, TRACE_KEY, failing);
         try {
           // eslint-disable-next-line no-await-in-loop -- A waits on its first body, or has none
-          const waiting = await Promise.race([paused.reached.then(() => true), a.then(() => false)]);
+          const waiting = await Promise.race([
+            paused.reached.then(() => true),
+            a.then(() => false),
+          ]);
           // eslint-disable-next-line no-await-in-loop -- A's lease runs out while it waits
           if (waiting) await ageLease(s);
           // eslint-disable-next-line no-await-in-loop -- B's whole tick while A waits
