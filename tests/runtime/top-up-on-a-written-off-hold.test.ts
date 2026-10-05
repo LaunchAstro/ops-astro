@@ -9,9 +9,13 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { catalogue, REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
+import type { Broker } from '../../packages/core-custody/src/index.ts';
 import { COUNTED_CAUSES, countedHold } from '../../packages/core-custody/src/broker-give-back.ts';
+import { settle } from '../../packages/core-custody/src/broker-settle.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { CLOUD } from '../broker/broker-world.ts';
 import { grantTo } from '../commands/fixture.ts';
 import {
   appliedDetail,
@@ -22,11 +26,16 @@ import {
   pickup,
   rows,
   type Schedules,
+  type Work,
 } from './schedules-harness.ts';
 import { writeOffBody } from './t3c-harness.ts';
 import {
   askOf,
   callState,
+  committed,
+  dispatchedCall,
+  envelopeOf,
+  holdsOf,
   moneyOf,
   roomyWork,
   spend,
@@ -61,22 +70,50 @@ afterAll(async () => {
   await s?.db.drop();
 });
 
-/** A model call the broker sent on the hold under its lease, never answered; its id. */
-async function dispatchedCall(reservationId: unknown, reserved: number): Promise<string> {
-  const id = randomUUID();
-  await s.db.admin.execute(
-    `insert into public.model_calls
-       (business_id, id, run_id, step_id, lease_id, version_id, reservation_id, operation_key,
-        route_key, route_reach, credential_kind, state, reserved_minor, started_at)
-     select r.business_id, $2, r.run_id, a.step_id, r.lease_id, r.version_id, r.id,
-            'written_off_dispatched', 'replay', 'local', 'replay', 'dispatched', $3,
-            clock_timestamp()
-       from public.reservations r
-       join public.attempts a on a.business_id = r.business_id and a.reservation_id = r.id
-      where r.id = $1`,
-    [reservationId, id, reserved],
+const UNUSED = (): never => {
+  throw new Error('the late settle dispatches nothing');
+};
+const LATE_BROKER: Broker = {
+  custody: { pid: 0, dispatch: UNUSED, stderr: () => '', raw: UNUSED, kill: UNUSED, stop: UNUSED },
+  operations: catalogue([REPLAY_COMPOSE]),
+  providers: new Map(),
+  routes: [CLOUD],
+  installation: 'here',
+  audit: async () => await Promise.resolve(),
+};
+const LATE_ANSWER = { text: 'late', model: null, usage: { inputUnits: 1, outputUnits: 1 } };
+
+/** The broker's own settle of the written-off call, priced at `cost` by its late answer. */
+async function settleLate(work: Work, callId: string, cost: number): Promise<void> {
+  const operation = LATE_BROKER.operations.get(REPLAY_COMPOSE.key);
+  const [call] = await rows<{ reserved: string }>(
+    s,
+    'select reserved_minor::text as reserved from public.model_calls where id = $1',
+    [callId],
   );
-  return id;
+  if (operation === undefined || call === undefined) throw new Error('settleLate: no call');
+  const { leaseId, fence, delegationId } = work.picked;
+  await settle(
+    s.db.app,
+    s.business,
+    { actorId: s.agentActorId, delegationId: String(delegationId), attendedByPersonId: null },
+    {
+      leaseId: String(leaseId),
+      fence: Number(fence),
+      stepId: '',
+      operation: operation.key,
+      fields: [],
+    },
+    { callId, operation, route: CLOUD, reservedMinor: Number(call.reserved) },
+    {
+      kind: 'priced',
+      answer: { ...LATE_ANSWER, providerCode: null },
+      costMinor: cost,
+      account: null,
+      credentialKind: 'replay',
+    },
+    LATE_BROKER,
+  );
 }
 
 async function attemptOf(reservationId: unknown): Promise<string> {
@@ -118,7 +155,7 @@ async function answersOn(runId: string): Promise<number> {
 async function stopOnWrittenOff() {
   const { work, versionId, first } = await roomyWork(s);
   await spend(s, first, 300);
-  const c2 = await dispatchedCall(first, 200);
+  const c2 = await dispatchedCall(s, first, 200);
   // The worker's authority goes: its lease is fenced and, with c2 open, the
   // step is held unknown at the whole hold. The sweep holds c2 unknown.
   await stopWorker(s, work.picked);
@@ -171,6 +208,46 @@ describe.skipIf(serverUrl === undefined)('a top-up on a stop raised on a written
       runId,
       askId,
     });
-    expect(codeOf(ended)).toBe('applied');
+    expect({
+      code: codeOf(ended),
+      money: await moneyOf(s, work, versionId),
+      counted: await counted(first),
+    }).toEqual({ code: 'applied', money: before, counted: false });
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('a top-up after the written-off call settles late', () => {
+  it("tops up once the written-off call settles late, the settle leaving the envelope alone and the version room counting the hold at the write-off's 300", async () => {
+    const { work, versionId, first, c2, stopped } = await stopOnWrittenOff();
+    const before = await envelopeOf(s, work);
+    await settleLate(work, c2, 150);
+    const settled = { call: await callState(s, c2), envelope: await envelopeOf(s, work) };
+    const topped = await topUp(s, work, first, 100);
+    // The top-up's fresh hold, picked up and stopped unspent: its replacement
+    // holds what the version has left, 600 less 300, 200 and nothing.
+    const fresh = (await holdsOf(s, versionId)).find((hold) => hold.state === 'held');
+    await stopWorker(s, await pickup(s, fresh?.id));
+    const again = await asAgent(s, {
+      command: 'task.pickup',
+      operationId: randomUUID(),
+      reservationId: fresh?.id,
+      leaseSeconds: 600,
+    });
+    const holds = await holdsOf(s, versionId);
+    expect({
+      stopped: codeOf(stopped),
+      settled,
+      topped: codeOf(topped),
+      again: codeOf(again),
+      live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
+      committed: committed(holds),
+    }).toEqual({
+      stopped: 'BUDGET_UNAVAILABLE',
+      settled: { call: 'settled', envelope: before },
+      topped: 'applied',
+      again: 'applied',
+      live: ['100'],
+      committed: 600,
+    });
   });
 });
