@@ -59,7 +59,10 @@ function GrantRow(props: { readonly grant: GrantView; readonly now: number }): R
             Fleet · every client
           </span>
         ) : (
-          <bdi data-grant-client>{grant.client.label ?? 'Client (no name)'}</bdi>
+          <>
+            <span className="visually-hidden">Client: </span>
+            <bdi data-grant-client>{grant.client.label ?? 'Client (no name)'}</bdi>
+          </>
         )}{' '}
         · {grant.collections.join(', ')}{' '}
         <span className="tag" data-grant-access title={access}>
