@@ -66,6 +66,7 @@ export {
   type EmailHookVerdict,
 } from './email-hook.ts';
 export {
+  checkableSender,
   checkSender,
   dmarcPolicy,
   type DmarcPolicy,

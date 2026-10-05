@@ -205,6 +205,7 @@ export { purgeTrashedRecords, restoreBatch, trashSubtree } from './tasks/trash.t
 export {
   isTaskType,
   isWayfinderRecord,
+  mapTicketCondition,
   OWNER_TYPES,
   TASK_TYPES,
   wayfinderFacts,
