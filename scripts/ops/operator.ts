@@ -38,9 +38,8 @@ import {
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
 import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
-import { createBusinessResolver } from '../../apps/api/server.ts';
 import { oneHost } from './one-host.ts';
-import { holdingGrant, recordSignIn } from './operator-runtime.ts';
+import { businessOf, holdingGrant, recordSignIn } from './operator-runtime.ts';
 import { recordTestedRestore } from './tested-restore.ts';
 
 /** The person an operator act runs as, and the business it was checked in. */
@@ -102,19 +101,8 @@ const NO_OPERATING_BUSINESS =
   'the installation has no operating business: it is written once, at installation, from the restore runbook';
 const NOT_OPERATING = "this act belongs to the installation's operating business alone";
 const NO_LONGER = `the operator no longer holds ${KEY} with this sign-in: stopped part way`;
-const CANNOT_TAKE_LOOKUP =
-  "DATABASE_ADMIN_URL's login may not take the business lookup identity (ops_astro_lookup), " +
-  'so the sign-in cannot be checked: migration 20261005063514 grants it, with set true and inherit false';
 /** The person a gate admitted, and the business it was checked in. */
 type Held = { readonly personId: string; readonly businessId: BusinessId };
-
-/** Whether the admin login may take the lookup identity (0046) by name. */
-async function mayTakeLookup(admin: AdminConnection): Promise<boolean> {
-  const [row] = await admin.execute<{ may: boolean }>(
-    "select pg_has_role('ops_astro_lookup', 'SET') as may",
-  );
-  return row?.may === true;
-}
 
 /**
  * Inside the check's own transaction, on the database the permission is
@@ -150,15 +138,8 @@ async function personHolding(
     return { why: 'DATABASE_URL or DATABASE_ADMIN_URL not set or unreadable' };
   }
   try {
-    let businessId: string | undefined;
-    try {
-      businessId = await createBusinessResolver(admin)(business);
-    } catch (error) {
-      if ((error as { code?: unknown }).code !== '42501') throw error;
-      // A database the lookup identity (0046) may not read holds no business;
-      // an admin login that may not take the identity is not the operator's fault.
-      if (!(await mayTakeLookup(admin))) return { why: CANNOT_TAKE_LOOKUP };
-    }
+    const businessId = await businessOf(admin, business);
+    if (typeof businessId === 'object') return businessId;
     if (businessId === undefined) return undefined;
     try {
       await database.withBusiness(businessId, async (tx) => {
