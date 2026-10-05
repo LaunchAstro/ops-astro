@@ -100,6 +100,7 @@ const DECLARED_READS = [
   'automation.registry',
   'client.list',
   'connection.fleet',
+  'connection.signal',
   'conversation.allowance',
   'conversation.list',
   'conversation.read',

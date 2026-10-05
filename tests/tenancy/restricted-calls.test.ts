@@ -260,6 +260,16 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join lateral (
          select id from public.actors where business_id = $1 order by id limit 1) a on true
      returning 1`,
+  // Tripwires and the night round (MP-14-8): nothing the journey does writes
+  // one, so each is written here.
+  'public.tripwires': `insert into public.tripwires
+       (business_id, id, what, rule, watching, state)
+     values ($1, gen_random_uuid(), 'restricted calls', 'restricted calls', 'restricted calls',
+             'armed') returning 1`,
+  'public.night_round_steps': `insert into public.night_round_steps
+       (business_id, id, round_on, at, tone, what, who, say)
+     values ($1, gen_random_uuid(), '2026-09-29', '2026-09-28T23:00:00Z', 'plain',
+             'restricted calls', 'restricted calls', 'restricted calls') returning 1`,
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
   // C80's two tables: the journey requests no live correction. The receipt

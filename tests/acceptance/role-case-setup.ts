@@ -46,7 +46,7 @@ export async function tableBody(name: CommandName, context: SetupContext): Promi
   const fixed = FIXED_BODIES[name];
   if (fixed !== undefined) return { body: { ...fixed } };
   // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
-  if (name === 'connection.fleet') return { body: {} };
+  if (name === 'connection.fleet' || name === 'connection.signal') return { body: {} };
   if (name === 'connector.repair') {
     return { body: { connectionId: (await context.brokenConnection?.()) ?? randomUUID() } };
   }

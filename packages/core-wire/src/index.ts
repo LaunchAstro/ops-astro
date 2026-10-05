@@ -181,6 +181,14 @@ export type {
   SecretListResult,
   SecretView,
 } from './connection-views.ts';
+// Grants, tripwires and the night round on the same page (MP-14-8).
+export type {
+  ConnectionSignalResult,
+  GrantView,
+  NightStepView,
+  RosterView,
+  TripwireView,
+} from './signal-views.ts';
 // AW-04: a plan version as a planning reply offers it in the chat
 export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
 // the command catalogue and its parity check (API-1)
