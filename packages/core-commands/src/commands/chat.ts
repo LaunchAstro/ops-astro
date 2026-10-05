@@ -34,6 +34,7 @@ import {
   isStaff,
   lockConversation,
   moveReadMarker,
+  readPositionOf,
   NO_MEMBERSHIP_FIXES,
   readConversationTypes,
   shareAccessLock,
@@ -48,7 +49,7 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { commentBodyOf, NO_COMMENT_TYPE_FIXES } from './tasks-comment.ts';
 
 const UP_TO_FIXES: readonly string[] = [
-  'Send upTo as the time of the newest message you read, as ISO text.',
+  'Send upTo as the newest message you read, its `at` exactly as chat.messages gave it.',
 ];
 
 export async function sendDirect(
@@ -102,8 +103,8 @@ export async function markOwnRead(
   upTo: unknown,
 ): Promise<HandlerOutcome> {
   if (!isInternalReader(context.session.roleKey)) return refused(refuseNotFound());
-  const at = typeof upTo === 'string' ? new Date(upTo) : undefined;
-  if (at === undefined || Number.isNaN(at.getTime())) {
+  const position = readPositionOf(upTo);
+  if (position === undefined) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['upTo'], UP_TO_FIXES));
   }
   // The key in the form a send takes it: one conversation, one lock.
@@ -111,7 +112,7 @@ export async function markOwnRead(
   await lockConversation(tx, key);
   const lost = await standsNow(tx, context, null);
   if (lost !== undefined) return refused(lost);
-  return (await moveReadMarker(tx, key, context.session.personId, at))
+  return (await moveReadMarker(tx, key, context.session.personId, position))
     ? applied(null, null, { conversationId })
     : refused(refuseNotFound());
 }

@@ -12,6 +12,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import type { ChatConversationView, ChatMessageView } from '../../packages/core-wire/src/index.ts';
 import { createChatWorld, type ChatWorld } from './c71-d-world.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { enrolCaller } from '../acceptance/cast.ts';
 import {
   CHAT,
@@ -236,33 +237,36 @@ async function seededMember(chat: ChatWorld): Promise<void> {
   ).toEqual([200, 200, 200]);
 }
 
-describe('C71-D direct messages under concurrent change', () => {
-  let chat: ChatWorld;
-  beforeAll(async () => {
-    chat = await createChatWorld('solc71review');
-  }, 600_000);
-  afterAll(async () => {
-    await chat?.harness.close();
-  });
-  it('criterion 5: marking the first of two messages in one millisecond leaves the unseen second unread', async () => {
-    await tieSnapshot(chat);
-  });
-  it('criterion 5: a real message written after a read marker remains unread when both wall clocks fall in one millisecond', async () => {
-    await realClockTie(chat);
-  });
-  it('criterion 3: blocked chat writes cannot commit after their grant or membership revocation commits', async () => {
-    await revokedWrites(chat);
-  });
-  it('criterion 5: a send waiting on the pair lock cannot add a recipient whose staff membership has ended', async () => {
-    await endedRecipient(chat);
-  });
-  it('criterion 5: retrying one send operation creates one message and replays the same identifiers', async () => {
-    await replayedSend(chat);
-  });
-  it('criterion 2: person to person, an administrator cannot read or list another pair conversation', async () => {
-    await administratorExcluded(chat);
-  });
-  it('criterion 1: a seeded agency member can read and reply to a direct message without a manual grant top-up', async () => {
-    await seededMember(chat);
-  });
-});
+describe.skipIf(databaseUrlFromEnvironment() === undefined)(
+  'C71-D direct messages under concurrent change',
+  () => {
+    let chat: ChatWorld;
+    beforeAll(async () => {
+      chat = await createChatWorld('solc71review');
+    }, 600_000);
+    afterAll(async () => {
+      await chat?.harness.close();
+    });
+    it('criterion 5: marking the first of two messages in one millisecond leaves the unseen second unread', async () => {
+      await tieSnapshot(chat);
+    });
+    it('criterion 5: a real message written after a read marker remains unread when both wall clocks fall in one millisecond', async () => {
+      await realClockTie(chat);
+    });
+    it('criterion 3: blocked chat writes cannot commit after their grant or membership revocation commits', async () => {
+      await revokedWrites(chat);
+    });
+    it('criterion 5: a send waiting on the pair lock cannot add a recipient whose staff membership has ended', async () => {
+      await endedRecipient(chat);
+    });
+    it('criterion 5: retrying one send operation creates one message and replays the same identifiers', async () => {
+      await replayedSend(chat);
+    });
+    it('criterion 2: person to person, an administrator cannot read or list another pair conversation', async () => {
+      await administratorExcluded(chat);
+    });
+    it('criterion 1: a seeded agency member can read and reply to a direct message without a manual grant top-up', async () => {
+      await seededMember(chat);
+    });
+  },
+);

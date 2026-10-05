@@ -17,3 +17,4 @@ export {
   type ConversationSummary,
   type ConversationTypes,
 } from './conversations.ts';
+export { readPositionOf, type ReadPosition } from './read-position.ts';

@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import type { SpineField } from '../tasks/spine.ts';
+import { shownAt, type ReadPosition } from './read-position.ts';
 
 /** The conversation type's key, beside `task_comment`. */
 export const CONVERSATION_TYPE_KEY = 'team_conversation';
@@ -30,10 +31,9 @@ export type ConversationKind = 'direct' | 'group';
 const SYSTEM = { writeMode: 'system', owningOperations: [], escalatingOperation: null } as const;
 
 /**
- * Every field is the server's: the command that starts a conversation writes
- * them. Prefixed, because an installed system key is refused at the top level
- * of every request body (`prepare.ts`), and `name` there is a tag's and a
- * client's.
+ * Every field is the server's: the command that starts a conversation writes them. Prefixed,
+ * because an installed system key is refused at the top level of every request body
+ * (`prepare.ts`), and `name` there is a tag's and a client's.
  */
 export const CONVERSATION_SPINE: readonly SpineField[] = [
   { key: 'chat_kind', label: 'Kind', valueType: 'text', slot: 'txt_1', ...SYSTEM },
@@ -97,9 +97,8 @@ export async function lockConversation(tx: TenantQuery, conversationId: string):
 }
 
 /**
- * The one direct conversation between two people, found or started, with its
- * lock held for the message about to be written. A lock on the pair
- * serialises two first messages, so the pair never has two.
+ * The one direct conversation between two people, found or started, with its lock held for
+ * the message about to be written. A lock on the pair serialises two first messages.
  */
 export async function directConversation(
   tx: TenantQuery,
@@ -135,10 +134,9 @@ export async function directConversation(
 }
 
 /**
- * A message's position, which a read marker is compared with: its millisecond
- * (`ts_1`) plus, in microseconds, its rank among that millisecond's messages in
- * write order (`created_at`, `tasks/comments.ts`), live ones on the indexes (no
- * command trashes a message). No conversation writes a thousand in one millisecond.
+ * A message's position, which a read marker is compared with: its millisecond (`ts_1`) plus, in
+ * microseconds, its rank among that millisecond's live messages in write order (`created_at`,
+ * `tasks/comments.ts`); no command trashes one, and none writes a thousand in one millisecond.
  */
 const POSITION = `c.ts_1 + interval '1 microsecond' * (select count(*) from public.records s
    where s.business_id = c.business_id and s.record_type_id = c.record_type_id
@@ -146,19 +144,19 @@ const POSITION = `c.ts_1 + interval '1 microsecond' * (select count(*) from publ
      and (s.created_at, s.id) <= (c.created_at, c.id))`;
 
 /**
- * Move a member's own read marker to `upTo`, never back and never past now;
- * false, moving nothing, when the person is not a current member. A marker is a
- * position: the millisecond plus how many of its messages were seen. `now` has
- * seen all of them, counted before the clock is read. A sent time names the
- * newest message seen, and counts only the first of its millisecond's.
+ * Move a member's own read marker to `upTo`, never back and never past now; false when the
+ * person is not a current member. A marker is a position: the millisecond plus how many of
+ * its messages were seen; `now` has seen all, counted before the clock is read, and a read
+ * position the ones its reading showed (never more than exist; only the first if past now).
  */
 export async function moveReadMarker(
   tx: TenantQuery,
   conversationId: string,
   personId: string,
-  upTo: Date | 'now',
+  upTo: ReadPosition | 'now',
 ): Promise<boolean> {
   await lockConversation(tx, conversationId);
+  const [at, seen] = upTo === 'now' ? [null, 0] : [upTo.at.toISOString(), upTo.seen];
   const moved = await tx.query(
     `with mine as (
        select c.ts_1 from public.records c where c.business_id = $1 and c.uuid_4 = $2::uuid and c.deleted_at is null
@@ -168,12 +166,13 @@ export async function moveReadMarker(
      )
      update public.team_conversation_members
         set last_read_at = greatest(coalesce(last_read_at, '-infinity'), (
-              select ms + interval '1 microsecond' * (select case when $4::timestamptz is null
-                       then count(*) else least(count(*), 1) end from mine where ts_1 = upto.ms)
+              select ms + interval '1 microsecond' * (select least(count(*), case when $4::timestamptz
+                       is null then count(*) when upto.ms = date_trunc('milliseconds', $4::timestamptz)
+                       then $5::int else 1 end) from mine where ts_1 = upto.ms)
                 from upto), case when $4::timestamptz is null then ${CLOCK_MS} end)
       where business_id = $1 and conversation_id = $2 and person_id = $3 and left_at is null
       returning 1`,
-    [tx.businessId, conversationId, personId, upTo === 'now' ? null : upTo.toISOString()],
+    [tx.businessId, conversationId, personId, at, seen],
   );
   return moved.length > 0;
 }
@@ -243,15 +242,14 @@ export interface ConversationMessage {
   /** The author's person id. */
   readonly authorId: string;
   readonly author: string;
-  /** When it was written, as ISO text. */
+  /** When it was written, as ISO text; tied messages carry a count (`shownAt`). */
   readonly at: string;
   readonly body: string;
 }
 
 /**
- * One conversation's messages, oldest first, and the reader's marker; or
- * undefined when the reader is not a member of it, which is every other
- * person's conversation and every other business's.
+ * One conversation's messages, oldest first, and the reader's marker; or undefined when the
+ * reader is not a member of it, which is every other person's conversation and business's.
  */
 export async function readConversation(
   tx: TenantQuery,
@@ -276,9 +274,11 @@ export async function readConversation(
     readonly author_id: string;
     readonly author: string;
     readonly at: Date;
+    readonly tied: string;
     readonly body: string;
   }>(
-    `select c.id, p.id as author_id, p.display_name as author, c.ts_1 as at, c.data ->> 'body' as body
+    `select c.id, p.id as author_id, p.display_name as author, c.ts_1 as at,
+            count(*) over (partition by c.ts_1) as tied, c.data ->> 'body' as body
        from public.team_conversation_members m
        join public.records c on ${MEMBER_READS}
        join public.actors a on a.business_id = c.business_id and a.id = c.uuid_2
@@ -293,7 +293,7 @@ export async function readConversation(
       id: row.id,
       authorId: row.author_id,
       author: row.author,
-      at: row.at.toISOString(),
+      at: shownAt(row.at, Number(row.tied)),
       body: row.body,
     })),
   };
