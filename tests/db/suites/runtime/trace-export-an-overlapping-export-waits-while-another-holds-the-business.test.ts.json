@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#475): an overlapping export that stores only the first body of an owed resend leaves no in-window span missing."
+}

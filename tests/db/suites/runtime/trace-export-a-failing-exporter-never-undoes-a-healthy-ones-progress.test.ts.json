@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#963): with two exporters on separate connections, a failing one's gap never moves the cursor behind a healthy one's progress, and a later run is delivered."
+}

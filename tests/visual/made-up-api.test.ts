@@ -22,8 +22,6 @@ const NOT_DRAWN = new Set([
   // WF-1: no screen draws a map until the WF-3/4 map views (P20).
   'map.view',
   'map.frontier',
-  // MP-14-7a: the fleet data lands before the screen that draws it (next piece).
-  'connection.fleet',
   // MP-14-8: grants, tripwires and the night round land before their screens (P04b).
   'connection.signal',
 ]);
