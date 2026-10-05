@@ -35,7 +35,8 @@ it('grows a file buffer only toward what the cap still lets arrive, whatever siz
   const reader = new UstarReader('build', cap);
   reader.push(dir('dist'), header({ name: 'dist/big', size: 0o77777777777 }));
   const piece = new Uint8Array(2_900_000).fill(0x61);
-  expect(largestMade(() => reader.push(piece))).toBeLessThanOrEqual(cap);
+  // The two header blocks already took 1,024 bytes of the cap.
+  expect(largestMade(() => reader.push(piece))).toBeLessThanOrEqual(cap - 1024);
   reader.push(new Uint8Array(cap));
   expect(reader.end()).toEqual({ ok: false, reason: 'output refused', why: 'too large' });
 });
@@ -43,5 +44,5 @@ it('grows a file buffer only toward what the cap still lets arrive, whatever siz
 it('books a first buffer no larger than the cap still lets arrive', () => {
   const reader = new UstarReader('build', 4096);
   const head = Buffer.concat([dir('dist'), header({ name: 'dist/big', size: 1_000_000 })]);
-  expect(largestMade(() => reader.push(head))).toBeLessThanOrEqual(4096);
+  expect(largestMade(() => reader.push(head))).toBeLessThanOrEqual(4096 - 1024);
 });
