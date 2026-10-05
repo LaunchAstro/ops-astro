@@ -484,15 +484,44 @@ async function claimHold(
       where business_id = $1 and id = $2`,
     [tx.businessId, reservationId],
   );
-  const heldMinor = BigInt(state.held_minor) - BigInt(old?.spent ?? '0');
-  if (heldMinor <= 0n) return await stopSpentWhole(tx, reservationId, found);
+  const left = BigInt(state.held_minor) - BigInt(old?.spent ?? '0');
+  if (left <= 0n) return await stopSpentWhole(tx, reservationId, found);
+  const room = await versionRoom(tx, found);
+  if (room <= 0n) return refuse('RESERVATION_NOT_CLAIMABLE', NO_ROOM, NOT_CLAIMABLE_FIX);
   return await reserve(tx, {
     envelopeId: found.envelope_id,
     versionId: found.version_id,
     runId: found.run_id,
     stepId: found.step_id,
-    heldMinor,
+    heldMinor: left < room ? left : room,
   });
+}
+
+const NO_ROOM = "this run's spend and holds already fill the version's approved ceiling";
+
+/**
+ * What the run may still hold under its version: the approved ceiling, raised
+ * by the run's applied top-ups, less what its reservations of the version
+ * committed (a live hold whole, a closed one at its spend). Read under the run
+ * lock. A replacement is held at most this, whatever the newest-hold order
+ * says of rows written before replacements were stamped at insertion.
+ */
+async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
+  const [row] = await tx.query<{ readonly room: string }>(
+    `select (ver.maximum_minor
+             + coalesce((select sum(a.amount_minor) from public.budget_answers a
+                          where a.business_id = ver.business_id and a.run_id = $3
+                            and a.kind = 'top_up'), 0)
+             - coalesce((select sum(case when r.state in ('held', 'quarantined') then r.held_minor
+                                         else coalesce(r.actual_minor, 0) end)
+                           from public.reservations r
+                          where r.business_id = ver.business_id and r.version_id = ver.id
+                            and r.run_id = $3), 0))::text as room
+       from public.proposal_versions ver
+      where ver.business_id = $1 and ver.id = $2`,
+    [tx.businessId, found.version_id, found.run_id],
+  );
+  return BigInt(row?.room ?? '0');
 }
 
 const SPENT_WHOLE_HOLD =
