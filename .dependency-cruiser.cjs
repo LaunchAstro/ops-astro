@@ -81,6 +81,15 @@ module.exports = {
       to: { path: '^packages/', pathNot: '^packages/core-digest/' },
     },
     {
+      name: 'sandbox-imports-no-package',
+      severity: 'error',
+      comment:
+        "The sandbox's grammars decide what reaches the Docker daemon, so they read only " +
+        'their own modules: no record, credential or connector code can widen them.',
+      from: { path: '^packages/core-sandbox/' },
+      to: { path: '^packages/', pathNot: '^packages/core-sandbox/' },
+    },
+    {
       name: 'custody-process-imports-no-package',
       severity: 'error',
       comment:

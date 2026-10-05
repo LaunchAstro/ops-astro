@@ -60,6 +60,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.subject_resets'],
   // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
   ['si', 'ops.second_factor_codes'],
+  // 20261005190651 (C39-T): a Send Email hook message claimed by its send, by
+  // id digest, for every business; the application inserts and reads it only.
+  ['si', 'ops.auth_hook_messages'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // A map's versions are history; its components are retired by version, never deleted.
@@ -96,6 +99,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'trace_export_gaps'],
   // AW-13: a retention batch is a fact, never rewritten.
   ['si', 'trace_expiry_batches'],
+  // #475: a retention ask is a fact, never rewritten.
+  ['si', 'trace_expiry_asks'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
   // 20261005144947 (C40B): a reset token is written once, then spent by its column grant alone.
   ['si', 'inbox_attention inbox_delivery_attempts password_reset_tokens'],

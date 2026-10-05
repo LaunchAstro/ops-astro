@@ -32,6 +32,8 @@ const seenLive = {
   right: ' studio.',
   index: 0,
   observed: ['welcoming'],
+  // Read from 'Welcome to our welcoming team. We are a welcoming studio.'
+  offsets: [31],
   liveAt: published.liveUrl,
 };
 
@@ -279,7 +281,10 @@ it('a pending revert keeps the original decision time until observation', async 
     },
     capture: async () => ({
       ok: true as const,
-      value: { text: 'We are a friendly studio.', url: published.liveUrl },
+      value: {
+        text: 'Welcome to our welcoming team. We are a friendly studio.',
+        url: published.liveUrl,
+      },
     }),
     raiseTask: async () => {},
   };
@@ -309,7 +314,13 @@ it('a replacement decoy does not establish that the target word landed', async (
     state: 'accepted' as const,
     ...published,
     dispatchToken: 'publish-token',
-    occurrence: { left: 'We are a ', right: ' studio.', index: 0, observed: ['friendly'] },
+    occurrence: {
+      left: 'We are a ',
+      right: ' studio.',
+      index: 0,
+      observed: ['friendly'],
+      offsets: [0],
+    },
   };
   const result = await observeLanded(accepted, target, {
     raiseTask: async () => {},

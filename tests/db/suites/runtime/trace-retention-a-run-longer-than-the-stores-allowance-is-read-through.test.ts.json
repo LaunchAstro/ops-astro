@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#963): a run with more sent spans than the store answers in a pass is read through across passes."
+}
