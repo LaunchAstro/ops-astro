@@ -12,8 +12,9 @@
 -- The server stamps the end on every change of state, whatever the statement
 -- supplies: `now()` into handed_back or cancelled, cleared on a claim after a
 -- hand-back, and unchanged by any write that leaves the state alone. Rows
--- already written take their derived end, or this migration's instant for a
--- cancel with a live lineage (later than the true end, never earlier).
+-- already written: a hand-back takes its run event's time; a cancel, whose
+-- time was never stored, takes this migration's instant (later than the true
+-- end, never earlier, so no body is purged early).
 
 alter table public.planned_runs add column ended_at timestamptz;
 
@@ -24,10 +25,7 @@ update public.planned_runs run
              where e.business_id = run.business_id and e.run_id = run.id
                and e.kind = 'handed_back'),
            now())
-         else coalesce(
-           (select lin.terminal_at from public.proposal_lineages lin
-             where lin.business_id = run.business_id and lin.id = run.lineage_id),
-           now())
+         else now()
        end
  where run.state in ('handed_back', 'cancelled');
 
