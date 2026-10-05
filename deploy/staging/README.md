@@ -39,6 +39,11 @@ Staging shares a machine with live services, so it is confined (ticket S0-1,
   process limit and rotated logs (three files of 10 MB). The only places a
   service can write are sized tmpfs mounts inside its memory limit, so staging
   cannot fill the machine's disk.
+- The backup dump and every reach of the store run in throwaway containers
+  that are removed when they end (`scripts/ops/container-run.mjs`). Their
+  login goes in by environment name, so Docker holds it in that container's
+  settings while it runs; the machine's Docker daemon runs without debug
+  logging, which would write it to the daemon's log.
 
 The staging worker and its outbox forwarder (`worker`, `forwarder`) are one
 unit: the same pinned Node image, running the checkout the runbook copies into
@@ -64,9 +69,13 @@ unset, so the backup's env must set `OPS_EGRESS_POOLER_HOST` and
 `OPS_EGRESS_POOLER_PORT`. The relay picks the destination from the TLS hello's
 server name on 443, or from the pooler's port. It hands the bytes over an
 internal link to `egress-out`, the one service on a routed network (`egress`),
-which checks the list again. Neither hop ends TLS, so the worker, the
-forwarder and the backup dump still check each host's own certificate.
-Anything else is closed with nothing sent on.
+which checks the list again. Neither hop ends TLS, so the worker and the
+forwarder still check each host's own certificate. The backup dump and the
+upkeep purge require TLS at the mode their address names: `sslmode=require`,
+as `staging-logins.mjs` writes it, encrypts without checking the pooler's
+certificate, and `verify-full` checks it once the runbook gives their
+containers the pooler's root certificate. Anything else is closed with
+nothing sent on.
 
 Staging's database holds made-up data only (`S0-1 no production data`).
 `scripts/local-seed.mjs` decides from what it installed itself, never from a

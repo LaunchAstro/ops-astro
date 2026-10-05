@@ -64,21 +64,23 @@ export function runContainer(role, network, env, command, { stdin = false } = {}
     env: { ...process.env, ...env },
     stdio: [stdin ? 'pipe' : 'ignore', 'pipe', 'ignore'],
   });
+  const name = args.find((arg) => arg.startsWith('--name=')).slice('--name='.length);
   const closed = new Promise((resolve) => {
     child.once('error', () => resolve(false));
     child.once('close', (code, signal) => resolve(code === 0 && !signal));
   });
-  let removal;
-  const remove = () => (removal ??= removeContainer(cidfile, folder));
+  // Once the client has closed, nothing of the run is left: a failed run's
+  // container goes by the id docker wrote, or by the run's own name when
+  // docker had not written it yet (a stop during create).
   const exited = closed.then(async (succeeded) => {
-    if (succeeded) rmSync(folder, { recursive: true, force: true });
-    else await remove();
+    if (!succeeded) await removeContainer(cidfile, name);
+    rmSync(folder, { recursive: true, force: true });
     return succeeded;
   });
-  // The container goes first, by its id; then the client, which may not have made one
-  // yet: asked to end, and killed if it has not within `GRACE_MS`.
+  // A running container goes first, by its id, so the client sees it end;
+  // then the client is asked to end, and killed if it has not within `GRACE_MS`.
   async function stop() {
-    await remove();
+    await removeContainer(cidfile);
     child.kill('SIGTERM');
     const kill = setTimeout(() => child.kill('SIGKILL'), GRACE_MS);
     await exited;
@@ -87,18 +89,25 @@ export function runContainer(role, network, env, command, { stdin = false } = {}
   return { child, exited, stop };
 }
 
-/** Removes the container `cidfile` names, if docker made one, and the run's folder. */
-async function removeContainer(cidfile, folder) {
-  let id = '';
+/**
+ * Removes the container whose id docker wrote to `cidfile`. Docker opens the
+ * file empty before it asks the daemon to make the container and writes the
+ * id once it has: with `name`, an empty file means a create under way, and the
+ * container of that name goes. A run's name is its own (64 random bits), so it
+ * is never another run's container. No file means docker made nothing.
+ */
+async function removeContainer(cidfile, name) {
+  let id;
   try {
     id = readFileSync(cidfile, 'utf8').trim();
   } catch {
-    // Docker made no container: nothing of this run is running.
+    return;
   }
-  if (/^[0-9a-f]{64}$/u.test(id)) {
-    await new Promise((resolve) => {
-      execFile('docker', ['rm', '--force', '--volumes', id], { timeout: STOP_MS }, () => resolve());
-    });
-  }
-  rmSync(folder, { recursive: true, force: true });
+  const target = /^[0-9a-f]{64}$/u.test(id) ? id : name;
+  if (target === undefined) return;
+  await new Promise((resolve) => {
+    execFile('docker', ['rm', '--force', '--volumes', target], { timeout: STOP_MS }, () =>
+      resolve(),
+    );
+  });
 }

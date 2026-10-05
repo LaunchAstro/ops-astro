@@ -34,12 +34,19 @@ const TYPES = new Set(['text', 'uuid', 'timestamptz', 'integer', 'bigint', 'json
 const PSQL = ['psql', '-X', '-q', '-At', '-v', 'ON_ERROR_STOP=1', '-f', '-'];
 const REFUSED = 'a database address is not of the one shape a login takes';
 
+// The TLS modes an address may ask for: none weaker than the reach's own.
+const SSLMODES = new Set(['require', 'verify-ca', 'verify-full']);
+// One host name or IPv4 address; never a libpq host list or an escape.
+const HOST = /^[A-Za-z0-9.-]+$/u;
+
 /**
  * A login address, read whole by the URL parser into the parts psql is
  * given, and refused unless it is exactly `postgres[ql]://user[:password]@
- * host[:port]/database`: no query, fragment or second path segment, since
- * psql is handed the parts alone and would drop anything else unseen (#408).
- * The refusal carries no part of the address (#446).
+ * host[:port]/database`, with at most one query parameter, `sslmode`, of a
+ * mode in `SSLMODES` (staging-logins.ts writes `sslmode=require`). No other
+ * parameter, fragment, host list or second path segment, since psql is
+ * handed the parts alone and would drop anything else unseen (#408). The
+ * refusal carries no part of the address (#446).
  */
 function loginParts(address) {
   let parsed;
@@ -49,11 +56,14 @@ function loginParts(address) {
     throw new Error(REFUSED);
   }
   const path = parsed.pathname.slice(1);
+  const query = [...parsed.searchParams];
+  const sslmode = query[0]?.[1] ?? 'require';
   const shaped =
     (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') &&
-    parsed.search === '' &&
+    (query.length === 0 || (query.length === 1 && query[0][0] === 'sslmode')) &&
+    SSLMODES.has(sslmode) &&
     parsed.hash === '' &&
-    parsed.hostname !== '' &&
+    HOST.test(parsed.hostname) &&
     parsed.username !== '' &&
     parsed.pathname.startsWith('/') &&
     path !== '' &&
@@ -67,6 +77,7 @@ function loginParts(address) {
       user: decodeURIComponent(parsed.username),
       password: decodeURIComponent(parsed.password),
       database: decodeURIComponent(path),
+      sslmode,
     };
   } catch {
     throw new Error(REFUSED);
@@ -76,7 +87,8 @@ function loginParts(address) {
 }
 
 /**
- * The psql environment for a login address (`loginParts`): TLS required, and
+ * The psql environment for a login address (`loginParts`): TLS required, at
+ * the address's own mode when it names a stricter one, and
  * a connect bound in seconds only when one is given. pg_dump takes the same.
  */
 export function reachEnv(url, connectSeconds) {
@@ -88,7 +100,7 @@ export function reachEnv(url, connectSeconds) {
     PGUSER: login.user,
     PGPASSWORD: login.password,
     PGDATABASE: login.database,
-    PGSSLMODE: 'require',
+    PGSSLMODE: login.sslmode,
     ...limit,
   };
 }

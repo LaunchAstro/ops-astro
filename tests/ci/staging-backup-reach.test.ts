@@ -40,6 +40,7 @@ describe('S0-3 store reach', () => {
   reachCases1();
   reachCases2();
   reachCases3();
+  reachCases4();
 });
 
 function reachCases1() {
@@ -115,6 +116,10 @@ function reachCases3() {
       'postgres://job:s3cret@backups/',
       'postgres://:s3cret@backups/store',
       'postgres://job:s3cret@[backups/store',
+      'postgres://job:s3cret@backups,other/store',
+      'postgres://job:s3cret@backups/store?sslmode=prefer',
+      'postgres://job:s3cret@backups/store?sslmode=require&sslmode=disable',
+      'postgres://job:s3cret@backups/store?sslmode=require&target_session_attrs=any',
     ]) {
       let message = 'accepted';
       try {
@@ -138,5 +143,26 @@ function reachCases3() {
     );
     expect(() => param(1, 'text; drop')).toThrow();
     expect(() => bound('select 1', [Symbol('x')])).toThrow();
+  });
+}
+
+function reachCases4() {
+  it('every address staging-logins writes is one a reach takes, at its TLS mode', async () => {
+    const { reachEnv } = await importOps<ReachModule>('backup-store-reach.mjs');
+    const { loginAddresses } = await importOps<{
+      loginAddresses: (admin: string, staging: string, step: string) => { address: string }[];
+    }>('staging-logins.ts');
+    const admin =
+      'postgresql://postgres.stagingref:example@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres';
+    const addresses = ['before-reset', 'after-reset'].flatMap((step) =>
+      loginAddresses(admin, 'stagingref', step).map(({ address }) => address),
+    );
+    expect(addresses.length).toBeGreaterThan(0);
+    for (const address of addresses) {
+      expect(reachEnv(address)['PGSSLMODE'], 'its TLS mode').toBe('require');
+    }
+    expect(reachEnv('postgres://job:pw@backups/store?sslmode=verify-full')['PGSSLMODE']).toBe(
+      'verify-full',
+    );
   });
 }
