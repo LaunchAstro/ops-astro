@@ -10,6 +10,7 @@
     "tests/db/backup-store-drills.test.ts",
     "tests/db/backup-store-encryption.test.ts",
     "tests/db/backup-store-parts.test.ts",
+    "tests/db/backup-store-pass-needs-restore-facts.test.ts",
     "tests/db/backup-store-read-binding.test.ts",
     "tests/db/backup-store.test.ts",
     "tests/db/business-lookup.test.ts",

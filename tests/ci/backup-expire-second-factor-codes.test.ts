@@ -137,7 +137,7 @@ it('refuses an upkeep login off the listed pooler as that step only, before reac
       PATH: bin,
       BACKUP_RETENTION_URL: STORE,
       DATABASE_UPKEEP_URL: 'postgres://elsewhere.example.test:5432/postgres',
-      OPS_EGRESS_POOLER_HOST: 'pooler.example.test',
+      OPS_EGRESS_POOLER_HOST: 'example.test',
       OPS_EGRESS_POOLER_PORT: '5432',
     },
   });
@@ -216,7 +216,7 @@ it('the job reaches the store unbounded as before, then the purge with its conne
       PATH: bin,
       BACKUP_RETENTION_URL: STORE,
       DATABASE_UPKEEP_URL: UPKEEP,
-      OPS_EGRESS_POOLER_HOST: 'pooler.example.test',
+      OPS_EGRESS_POOLER_HOST: 'example.test',
       OPS_EGRESS_POOLER_PORT: '5432',
     },
   });

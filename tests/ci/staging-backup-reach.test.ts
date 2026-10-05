@@ -19,6 +19,8 @@ type ReachModule = {
   reachArgs: (network: string) => string[];
   reachEnv: (url: string) => Record<string, string>;
   value: (v: unknown, type: string) => string;
+  bound: (sql: string, params: unknown[]) => string;
+  param: (n: number, type: string) => string;
 };
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 const load = () =>
@@ -37,6 +39,7 @@ const importOps = async <T>(name: string): Promise<T> => {
 describe('S0-3 store reach', () => {
   reachCases1();
   reachCases2();
+  reachCases3();
 });
 
 function reachCases1() {
@@ -97,5 +100,43 @@ function reachCases2() {
     );
     expect(value(null, 'uuid')).toBe('null::uuid');
     expect(() => value('1', 'text; drop')).toThrow();
+  });
+}
+
+function reachCases3() {
+  it('a login address outside the one shape psql is given is refused, and the refusal holds no part of it', async () => {
+    const { reachEnv } = await importOps<ReachModule>('backup-store-reach.mjs');
+    for (const address of [
+      'postgres://job:s3cret@backups/store?sslmode=disable',
+      'postgres://job:s3cret@backups/store?options=-c%20role%3Dpostgres',
+      'postgres://job:s3cret@backups/store#x',
+      'mysql://job:s3cret@backups/store',
+      'postgres://job:s3cret@backups/store/extra',
+      'postgres://job:s3cret@backups/',
+      'postgres://:s3cret@backups/store',
+      'postgres://job:s3cret@[backups/store',
+    ]) {
+      let message = 'accepted';
+      try {
+        reachEnv(address);
+      } catch (error) {
+        message = `${(error as Error).message} ${JSON.stringify(error)}`;
+      }
+      expect(message, address).not.toBe('accepted');
+      expect(message, address).not.toMatch(/s3cret|job|backups/u);
+    }
+  });
+
+  it('a bound value goes to psql as hex, so no quoting, newline or meta-command can end it', async () => {
+    const { bound, param } = await importOps<ReachModule>('backup-store-reach.mjs');
+    const hostile = `x' \\g\n\\! touch /tmp/owned\r`;
+    const line = bound(`select ${param(1, 'text')}, ${param(2, 'integer')}`, [hostile, null]);
+    expect(line).toBe(
+      `select nullif(convert_from(decode($1, 'hex'), 'UTF8'), '')::text, ` +
+        `nullif(convert_from(decode($2, 'hex'), 'UTF8'), '')::integer ` +
+        `\\bind '${Buffer.from(hostile).toString('hex')}' '' \\g\n`,
+    );
+    expect(() => param(1, 'text; drop')).toThrow();
+    expect(() => bound('select 1', [Symbol('x')])).toThrow();
   });
 }
