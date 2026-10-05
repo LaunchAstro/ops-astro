@@ -1,0 +1,232 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The map view (WF-1): a map task's sections, its tickets, Decisions so far
+// and its versions. Decisions so far is rendered here from the map's resolved
+// tickets in closing order, never stored on the map, so a decision lives once,
+// on its ticket (W2).
+
+import { clientsReached, type Subject, type TenantQuery } from '../../../core-records/src/index.ts';
+import type { MapComponentView, MapFrontierResult, MapView } from '../../../core-wire/src/index.ts';
+
+interface MapRow {
+  readonly key: string | null;
+  readonly title: string | null;
+  readonly owner: string | null;
+  readonly client: string | null;
+  readonly version: number | null;
+  readonly revision: string;
+}
+
+interface ComponentRow {
+  readonly id: string;
+  readonly kind: MapComponentView['kind'];
+  readonly body: string;
+  readonly ticket_id: string | null;
+}
+
+interface TicketRow {
+  readonly id: string;
+  readonly key: string | null;
+  readonly title: string | null;
+  readonly type: string | null;
+  readonly state: string | null;
+  readonly category: string | null;
+  readonly gist: string | null;
+  readonly closed_as: string | null;
+  readonly closed_at: Date | null;
+  readonly revision: string;
+  readonly blocked_by: readonly string[];
+}
+
+interface VersionRow {
+  readonly version: number;
+  readonly changed: readonly string[];
+  readonly actor_id: string;
+  readonly created_at: Date;
+}
+
+function componentView(row: ComponentRow): MapComponentView {
+  return { id: row.id, kind: row.kind, text: row.body, ticketId: row.ticket_id };
+}
+
+/** Decisions so far: the map's completed tickets in closing order, rendered, never stored. */
+// One ruled out of scope is an Out of scope item and stays out (the wayfinder skill; CS-15.6).
+function decisionsSoFar(tickets: readonly TicketRow[]): MapView['decisions'] {
+  return tickets
+    .filter((ticket) => ticket.category === 'completed' && ticket.closed_as !== 'out_of_scope')
+    .toSorted(
+      (a, b) =>
+        (a.closed_at?.getTime() ?? 0) - (b.closed_at?.getTime() ?? 0) || a.id.localeCompare(b.id),
+    )
+    .map((ticket) => ({
+      ticketId: ticket.id,
+      key: ticket.key,
+      title: ticket.title,
+      gist: ticket.gist,
+      closedAt: ticket.closed_at?.toISOString() ?? null,
+    }));
+}
+
+function mapView(
+  mapId: string,
+  map: MapRow & { readonly reached: string | null },
+  components: readonly ComponentRow[],
+  tickets: readonly TicketRow[],
+  versions: readonly VersionRow[],
+): MapView {
+  const of = (kind: MapComponentView['kind']) =>
+    components.filter((row) => row.kind === kind).map((row) => componentView(row));
+  return {
+    id: mapId,
+    key: map.key,
+    title: map.title,
+    type: 'map',
+    owner: map.owner,
+    client: map.reached,
+    clientSet: map.client !== null,
+    version: map.version ?? 0,
+    revision: Number(map.revision),
+    destination: of('destination')[0] ?? null,
+    notes: of('notes')[0] ?? null,
+    fog: of('fog'),
+    outOfScope: of('out_of_scope'),
+    decisions: decisionsSoFar(tickets),
+    tickets: tickets.map((ticket) => ({
+      id: ticket.id,
+      key: ticket.key,
+      title: ticket.title,
+      type: ticket.type ?? 'task',
+      state: ticket.state,
+      revision: Number(ticket.revision),
+      blockedBy: ticket.blocked_by,
+    })),
+    versions: versions.map((row) => ({
+      version: row.version,
+      changed: row.changed,
+      actorId: row.actor_id,
+      at: row.created_at.toISOString(),
+    })),
+  };
+}
+
+async function readMapTickets(
+  tx: TenantQuery,
+  taskTypeId: string,
+  mapId: string,
+): Promise<readonly TicketRow[]> {
+  return await tx.query<TicketRow>(
+    `select c.id, c.txt_1 as key, c.txt_4 as title, coalesce(c.data ->> 'type', 'task') as type,
+            s.data ->> 'key' as state, s.data ->> 'machine_category' as category,
+            c.data ->> 'gist' as gist, c.data ->> 'closed_as' as closed_as,
+            c.ts_2 as closed_at, c.revision::text as revision,
+            -- Its blockers: only live non-map tickets of this same map (a blocks
+            -- link from any other record, a nested map included, is never shown).
+            coalesce((select array_agg(l.from_record_id::text order by l.from_record_id)
+                        from public.record_links l
+                        join public.records o on o.business_id = l.business_id
+                         and o.id = l.from_record_id
+                       where l.business_id = c.business_id and l.to_record_id = c.id
+                         and l.link_type = 'blocks' and o.record_type_id = c.record_type_id
+                         and o.uuid_4 = c.uuid_4 and o.deleted_at is null
+                         and coalesce(o.data ->> 'type', 'task') <> 'map'), '{}') as blocked_by
+       from public.records c
+       left join public.records s on s.business_id = c.business_id and s.id = c.uuid_1
+      where c.business_id = $1 and c.uuid_4 = $2 and c.record_type_id = $3
+        and c.deleted_at is null
+        -- A map filed under this one is a map of its own, outside this map's grant.
+        and coalesce(c.data ->> 'type', 'task') <> 'map'
+      order by c.num_2 nulls last, c.created_at, c.id`,
+    [tx.businessId, mapId, taskTypeId],
+  );
+}
+
+/**
+ * The map, or undefined when the id names no live map of this business. Its
+ * client goes by `readClientFacts`' rule: the id only where the reader's
+ * grants reach that client, so a grant on the map alone reads null.
+ */
+export async function readMapView(
+  tx: TenantQuery,
+  taskTypeId: string,
+  mapId: string,
+  subjects: readonly Subject[],
+): Promise<MapView | undefined> {
+  const maps = await tx.query<MapRow>(
+    `select r.txt_1 as key, r.txt_4 as title, r.data ->> 'map_owner' as owner,
+            r.uuid_7::text as client, s.version, r.revision::text as revision
+       from public.records r
+       left join public.map_summaries s on s.business_id = r.business_id and s.map_id = r.id
+      where r.business_id = $1 and r.id = $2 and r.record_type_id = $3
+        and r.deleted_at is null and r.data ->> 'type' = 'map'`,
+    [tx.businessId, mapId, taskTypeId],
+  );
+  const map = maps[0];
+  if (map === undefined) return undefined;
+  // The components and versions as of the version read with the map, so a
+  // revision committed since is not mixed into this one. A linked ticket's id
+  // shows only while it is still a live non-map ticket of this map.
+  const components = await tx.query<ComponentRow>(
+    `select c.id, c.kind, c.body, t.id as ticket_id
+       from public.map_components c
+       left join public.records t on t.business_id = c.business_id and t.id = c.ticket_id
+        and t.uuid_4 = c.map_id and t.record_type_id = $4 and t.deleted_at is null
+        and coalesce(t.data ->> 'type', 'task') <> 'map'
+      where c.business_id = $1 and c.map_id = $2 and c.created_version <= $3
+        and (c.retired_version is null or c.retired_version > $3)
+      order by c.kind, c.position`,
+    [tx.businessId, mapId, map.version ?? 0, taskTypeId],
+  );
+  const tickets = await readMapTickets(tx, taskTypeId, mapId);
+  const versions = await tx.query<VersionRow>(
+    `select version, changed, actor_id, created_at from public.map_versions
+      where business_id = $1 and map_id = $2 and version <= $3 order by version`,
+    [tx.businessId, mapId, map.version ?? 0],
+  );
+  const reached =
+    map.client === null ? [] : ((await clientsReached(tx, subjects, [map.client])) ?? []);
+  const client = reached.some((one) => one.clientId === map.client) ? map.client : null;
+  return mapView(mapId, { ...map, reached: client }, components, tickets, versions);
+}
+
+/**
+ * The frontier and the fog, one query each on their read models, or undefined
+ * when the id names no live map here.
+ */
+export async function readMapFrontier(
+  tx: TenantQuery,
+  taskTypeId: string,
+  mapId: string,
+): Promise<MapFrontierResult | undefined> {
+  const frontier = await tx.query<{
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+    readonly type: string;
+  }>(
+    `select t.id as id, t.txt_1 as key, t.txt_4 as title,
+            coalesce(t.data ->> 'type', 'task') as type
+       from public.records m
+       left join public.map_frontier f on f.business_id = m.business_id and f.map_id = m.id
+       left join public.records t on t.business_id = f.business_id and t.id = f.ticket_id
+        and coalesce(t.data ->> 'type', 'task') <> 'map'
+      where m.business_id = $1 and m.id = $2 and m.record_type_id = $3
+        and m.deleted_at is null and m.data ->> 'type' = 'map'
+      order by f.position`,
+    [tx.businessId, mapId, taskTypeId],
+  );
+  if (frontier.length === 0) return undefined;
+  const fog = await tx.query<{ readonly id: string; readonly body: string }>(
+    `select id, body from public.map_components
+      where business_id = $1 and map_id = $2 and kind = 'fog' and retired_version is null
+      order by position`,
+    [tx.businessId, mapId],
+  );
+  return {
+    ok: true,
+    // A nested map joins no ticket, so its row carries no id: it is not this map's.
+    frontier: frontier
+      .filter((row) => row.id !== null)
+      .map((row) => ({ id: row.id, key: row.key, title: row.title, type: row.type })),
+    fog: fog.map((row) => ({ id: row.id, text: row.body })),
+  };
+}
