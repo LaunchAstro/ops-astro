@@ -162,8 +162,9 @@ async function holdPlanning(
   await tx.query(
     `insert into public.model_calls
        (business_id, id, conversation_id, planning_envelope_id, operation_key, state,
-        reserved_minor, route_key, route_reach, credential_kind, started_at)
-     values ($1, $2, $3, $4, $5, 'dispatched', $6, $7, $8, $9, clock_timestamp())`,
+        reserved_minor, route_key, route_reach, credential_kind, provider, credential_ref,
+        started_at)
+     values ($1, $2, $3, $4, $5, 'dispatched', $6, $7, $8, $9, $10, $11, clock_timestamp())`,
     [
       tx.businessId,
       callId,
@@ -174,6 +175,8 @@ async function holdPlanning(
       route.key,
       route.reach,
       route.credentialKind,
+      route.provider,
+      route.credentialRef,
     ],
   );
   await registerPromptCopy(tx, callId);
@@ -207,13 +210,14 @@ async function sendPlanning(
   });
   const settlement = settlementOf(outcome, operation, adapter);
   return await database.withBusiness(businessId, async (tx) => {
-    if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
+    if (settlement.kind === 'unknown')
+      return await hold(tx, reserved, null, settlement, broker, settlement.account);
     if (settlement.kind === 'nothing')
       return await release(tx, reserved, settlement.reason, broker);
     const { costMinor } = settlement;
     if (!Number.isSafeInteger(costMinor) || costMinor < 0 || costMinor > reservedMinor) {
       const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
-      return await hold(tx, reserved, observed, null, broker);
+      return await hold(tx, reserved, observed, null, broker, settlement.account);
     }
     await settlePriced(tx, reserved, settlement, broker);
     return {

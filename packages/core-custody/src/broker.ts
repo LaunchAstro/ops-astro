@@ -109,7 +109,8 @@ async function markStarted(
   broker: Broker,
 ): Promise<{ readonly fields: readonly ResolvedField[] } | BrokerRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
-    const route = [reserved.route.key, reserved.route.reach, reserved.route.credentialKind];
+    const { key, reach, credentialKind, provider, credentialRef } = reserved.route;
+    const route = [key, reach, credentialKind, provider, credentialRef];
     await lockEnvelope(tx, reserved.callId);
     const facts = await lockFacts(tx, caller, request);
     const unknown = facts.ok && (await heldUnknown(tx, facts.facts.reservationId));
@@ -118,7 +119,8 @@ async function markStarted(
       const released = await tx.query(
         `update public.model_calls
             set state = 'released', ended_at = clock_timestamp(),
-                route_key = $3, route_reach = $4, credential_kind = $5
+                route_key = $3, route_reach = $4, credential_kind = $5,
+                provider = $6, credential_ref = $7
           where business_id = $1 and id = $2 and state = 'reserved'
           returning id`,
         [tx.businessId, reserved.callId, ...route],
@@ -137,7 +139,8 @@ async function markStarted(
     const started = await tx.query(
       `update public.model_calls
           set state = 'dispatched', started_at = clock_timestamp(),
-              route_key = $3, route_reach = $4, credential_kind = $5
+              route_key = $3, route_reach = $4, credential_kind = $5,
+              provider = $6, credential_ref = $7
         where business_id = $1 and id = $2 and state = 'reserved'
         returning id`,
       [tx.businessId, reserved.callId, ...route],

@@ -265,8 +265,8 @@ async function insertHold(
   const callId = randomUUID();
   await tx.query(
     `insert into public.model_calls (${CALL_COLUMNS}, operation_key, state, reserved_minor,
-        route_key, route_reach, credential_kind)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'reserved', $11, $12, $13, $14)`,
+        route_key, route_reach, credential_kind, provider, credential_ref)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'reserved', $11, $12, $13, $14, $15, $16)`,
     [
       tx.businessId,
       callId,
@@ -276,6 +276,8 @@ async function insertHold(
       route.key,
       route.reach,
       route.credentialKind,
+      route.provider,
+      route.credentialRef,
     ],
   );
   return callId;

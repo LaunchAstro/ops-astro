@@ -113,8 +113,8 @@ async function insertStarted(
   await tx.query(
     `insert into public.model_calls
        (business_id, id, conversation_id, operation_key, state, reserved_minor,
-        route_key, route_reach, credential_kind, started_at)
-     values ($1, $2, $3, $4, 'dispatched', 0, $5, $6, $7, clock_timestamp())`,
+        route_key, route_reach, credential_kind, provider, credential_ref, started_at)
+     values ($1, $2, $3, $4, 'dispatched', 0, $5, $6, $7, $8, $9, clock_timestamp())`,
     [
       tx.businessId,
       callId,
@@ -123,6 +123,8 @@ async function insertStarted(
       route.key,
       route.reach,
       route.credentialKind,
+      route.provider,
+      route.credentialRef,
     ],
   );
   await registerPromptCopy(tx, callId);
@@ -153,11 +155,12 @@ async function sendAndSettle(
   });
   const settlement = settlementOf(outcome, operation, adapter);
   return await database.withBusiness(businessId, async (tx) => {
-    if (settlement.kind === 'unknown') return await hold(tx, called, null, settlement, broker);
+    if (settlement.kind === 'unknown')
+      return await hold(tx, called, null, settlement, broker, settlement.account);
     if (settlement.kind === 'nothing') return await release(tx, called, settlement.reason, broker);
     if (settlement.costMinor !== 0) {
       const observed = Number.isSafeInteger(settlement.costMinor) ? settlement.costMinor : null;
-      return await hold(tx, called, observed, null, broker);
+      return await hold(tx, called, observed, null, broker, settlement.account);
     }
     await settlePriced(tx, called, settlement, broker);
     const { text } = settlement.answer;

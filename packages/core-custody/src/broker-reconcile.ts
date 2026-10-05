@@ -37,6 +37,7 @@ import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
 import { giveBack, lockEnvelope } from './broker-give-back.ts';
 import { atCeiling } from './broker-reserve.ts';
 import type { Broker, BrokerRoute } from './broker-types.ts';
+import type { CustodyOutcome } from './custody.ts';
 
 /** The most a lookup answer is read: one short code. */
 const LOOKUP_BYTES = 4 * 1024;
@@ -66,6 +67,9 @@ interface Asked {
   readonly route_key: string | null;
   readonly route_reach: string | null;
   readonly credential_kind: string | null;
+  readonly provider: string | null;
+  readonly credential_ref: string | null;
+  readonly account: string | null;
   readonly reserved_minor: string;
 }
 
@@ -83,26 +87,39 @@ function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
 }
 
 /**
- * The configured route matching what the call's row records: key, reach,
- * credential kind and provider, never another that shares only its key
- * (catalogue #439). The row records no credential, so when two configured
- * routes match, either account could have carried it and an absence on one
- * proves nothing: the reason a person records the outcome instead. One match
- * may still be a route re-pointed to another credential since (catalogue #943).
+ * The configured route that carried the call, as its row records it: key,
+ * reach, credential kind, provider and credential (catalogue #439, #943),
+ * and only while the operation still goes to that provider. A row with no
+ * provider or credential (written before 20261005025000), or with no account
+ * custody reported for a credential that has one, cannot name the account
+ * that carried it, and an absence elsewhere proves nothing: a person records
+ * the outcome.
  */
 function carryingRoute(broker: Broker, call: Asked, provider: string): BrokerRoute | string {
-  const matching = broker.routes.filter(
+  if (call.provider === null || call.credential_ref === null) {
+    return 'its row names no provider or credential that carried it; a person records the outcome';
+  }
+  if (call.credential_kind !== 'replay' && call.account === null) {
+    return 'custody reported no account carrying it; a person records the outcome';
+  }
+  if (call.provider !== provider) {
+    return 'its operation now goes to another provider; a person records the outcome';
+  }
+  const carrying = broker.routes.find(
     (one) =>
       one.key === call.route_key &&
       one.reach === call.route_reach &&
       one.credentialKind === call.credential_kind &&
-      one.provider === provider,
+      one.provider === call.provider &&
+      one.credentialRef === call.credential_ref,
   );
-  if (matching.length > 1) {
-    return 'more than one configured route matches its route; a person records the outcome';
-  }
-  return matching[0] ?? 'no configured route reaches its provider';
+  return carrying ?? 'no configured route is the one that carried it';
 }
+
+/** The lookup went out on the account and credential kind that carried the call. */
+const sameCarrier = (outcome: CustodyOutcome, call: Asked): boolean =>
+  outcome.kind !== 'answered' ||
+  (outcome.credentialKind === call.credential_kind && outcome.account === call.account);
 
 /**
  * Ask the call's provider whether it began the call, or `waits` when the
@@ -141,6 +158,9 @@ async function ask(
       timeoutMs: operation.timeoutMs,
       maxResponseBytes: LOOKUP_BYTES,
     });
+    if (!sameCarrier(outcome, call)) {
+      return nothing('custody asked through another account than the one that carried it');
+    }
     return proofOf(outcome, operation, adapter);
   } catch {
     return { proved: false, reason: 'custody could not ask the provider', silent: true };
@@ -233,7 +253,7 @@ export async function reconcileProviderCalls(
     async (tx) =>
       await tx.query<Asked>(
         `select c.id, c.operation_key, c.route_key, c.route_reach, c.credential_kind,
-                c.reserved_minor::text as reserved_minor
+                c.provider, c.credential_ref, c.account, c.reserved_minor::text as reserved_minor
            from public.model_calls c
            left join public.attempts att
              on att.business_id = c.business_id and att.reservation_id = c.reservation_id
