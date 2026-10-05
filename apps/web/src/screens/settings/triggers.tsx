@@ -109,11 +109,13 @@ function useRegistry(client: OperationsClient): Registry {
     const answer = await client.mutate(command, body, { operationId });
     if (current.current !== client) return;
     if (!isUnavailable(answer)) held.current.delete(key);
-    setBusy(false);
     if (isUnavailable(answer)) setBecause(answer.because);
     else if (isRefusal(answer)) setBecause(`${answer.code}: ${answer.names.join(', ')}`);
     else setBecause(null);
+    // The controls stay held until the reload shows what the change did, so no
+    // press names a row, revision or approval the change has just replaced.
     await load();
+    if (current.current === client) setBusy(false);
   };
 
   return { listing, because, busy, change };
