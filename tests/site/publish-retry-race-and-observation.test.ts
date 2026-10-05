@@ -124,6 +124,7 @@ it('concurrent absent reads cannot dispatch the same revert twice', async () => 
       right: ' you.',
       index: 0,
       observed: ['beside'],
+      offsets: [0],
       liveAt: published.liveUrl,
     },
     seam: 'revert-1',

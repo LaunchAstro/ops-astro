@@ -71,6 +71,8 @@ export interface Occurrence {
    * once seen live. Only a place calibrated on that page has it, and only such a place is observed.
    */
   readonly observed?: readonly string[];
+  /** Where each observed match starts in the text it was read from: a match that moves is not it. */
+  readonly offsets?: readonly number[];
   /** Seen live at this address: the page changed here when the correction landed, so it tracks the target. */
   readonly liveAt?: string;
 }
@@ -201,18 +203,21 @@ export function calibrated(
 ): Occurrence | undefined {
   const source = sourcePlace(change, target);
   if (source === undefined || preImage === undefined) return undefined;
-  const observed = equalsOf(preImage, source.where, [target.word, target.replacement]);
+  const found = equals(preImage, source.where, [target.word, target.replacement]);
+  const observed = found.map((one) => one.word);
   const same =
     observed[source.where.index ?? 0] === target.word &&
     observed.length === source.words.length &&
     observed.every((word, at) => word === source.words[at]);
-  return same ? { ...source.where, observed } : undefined;
+  return same ? { ...source.where, observed, offsets: found.map((one) => one.at) } : undefined;
 }
 
 /**
- * The calibrated place read again. The change: the place holds `to` where it held `from`, every
- * other equal match as observed (the place as now read). Unchanged: not yet (undefined). Any other
- * page changed in a way no reading can tie to the target: `'unconfirmable'`, for a person.
+ * The calibrated place read again, each equal match at the offset it was observed at (those after
+ * the approved one moved by the change's length). The change: the place holds `to` where it held
+ * `from`, every other equal match as observed (the place as now read). Unchanged: not yet
+ * (undefined). Any other page changed in a way no reading can tie to the target, a match that
+ * moved included: `'unconfirmable'`, for a person.
  */
 export function flipped(
   text: string,
@@ -220,14 +225,25 @@ export function flipped(
   from: string,
   to: string,
 ): Occurrence | 'unconfirmable' | undefined {
-  const observed = where?.observed;
-  if (where === undefined || observed === undefined) return undefined;
+  const { observed, offsets } = where ?? {};
+  if (where === undefined || observed === undefined || offsets === undefined) return undefined;
   const index = where.index ?? 0;
-  const found = equalsOf(text, where, [from, to]);
-  const as = (expected: (at: number) => string | undefined) =>
-    found.length === observed.length && found.every((word, at) => word === expected(at));
-  if (observed[index] === from && as((at) => (at === index ? to : observed[at]))) {
-    return { ...where, observed: found };
+  const found = equals(text, where, [from, to]);
+  const as = (expected: (at: number) => string | undefined, shift: number) =>
+    found.length === observed.length &&
+    found.every(
+      (one, at) =>
+        one.word === expected(at) && one.at === (offsets[at] ?? NaN) + (at > index ? shift : 0),
+    );
+  if (
+    observed[index] === from &&
+    as((at) => (at === index ? to : observed[at]), to.length - from.length)
+  ) {
+    return {
+      ...where,
+      observed: found.map((one) => one.word),
+      offsets: found.map((one) => one.at),
+    };
   }
-  return as((at) => observed[at]) ? undefined : 'unconfirmable';
+  return as((at) => observed[at], 0) ? undefined : 'unconfirmable';
 }
