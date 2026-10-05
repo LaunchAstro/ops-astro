@@ -7,10 +7,11 @@ name: structural
 # a pull request it reads main as it stood at the push, and the light set
 # selects the two test files only by import (scripts/structural-checks.ts).
 #
-# The check is not required: the orchestrator's scripts read it by name, from
-# the check runs on a pull request's head. A push to main re-runs it on every
-# open pull request, so a head that main has moved under reads red before it
-# reaches the queue. Every action is pinned to the hash ci.yml pins.
+# The check is not required, and nothing here keeps a red head out of the
+# queue: that is for the ruleset or for the orchestrator's queue scripts,
+# outside this repository, reading it by name from the check runs on a pull
+# request's head. A push to main re-runs it on every open pull request, so a
+# head that main has moved under reads red before it reaches the queue. Every action is pinned to the hash ci.yml pins.
 
 on:
   pull_request:
@@ -84,12 +85,11 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # Ready (not draft) pull requests into main from this repository; a
-          # fork's branch is not here to dispatch on. A head sent back for
-          # fixes is skipped: its fix push runs the check.
+          # Every open pull request into main from this repository, a draft or
+          # a head sent back included, so none turns ready on a stale result
+          # (Sol PRV-oa-976-R1). A fork's branch is not here to dispatch on.
           gh api --paginate "repos/$REPO/pulls?state=open&base=main&per_page=100" \
-            --jq '.[] | select(.draft | not) | select(.head.repo.full_name == env.REPO)
-              | select(all(.labels[]; .name != "sent-back")) | .head.ref' \
+            --jq '.[] | select(.head.repo.full_name == env.REPO) | .head.ref' \
             > "$RUNNER_TEMP/branches"
           while IFS= read -r branch; do
             # A branch from before this workflow has no copy of it to run.

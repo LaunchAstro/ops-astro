@@ -198,8 +198,35 @@ describe('CI-STRUCT the workflow', () => {
       '    permissions:\n      actions: write\n      pull-requests: read\n',
     );
     expect(recheck).toContain("if: github.event_name == 'push'");
-    expect(recheck).toContain('select(all(.labels[]; .name != "sent-back"))');
     expect(recheck).not.toMatch(/uses:|node |pnpm /u);
     expect(WORKFLOW.match(/: write$/gmu)).toHaveLength(1);
+  });
+});
+
+/** An open pull request as the REST list reads it. */
+const openPull = (ref: string, repo: string | null, draft: boolean, labels: string[]) => ({
+  draft,
+  head: { ref, repo: repo === null ? null : { full_name: repo } },
+  labels: labels.map((name) => ({ name })),
+});
+
+describe('CI-STRUCT the re-check', () => {
+  it('every open pull request from this repository is re-checked when main moves, draft or sent back too', () => {
+    // Sol PRV-oa-976-R1 finding 1: a head skipped while draft or sent back turned ready on a stale green.
+    const filter = /--jq '([^']+)'/u.exec(block(WORKFLOW, 'recheck', 2))?.[1] ?? '';
+    const pulls = [
+      openPull('ready', 'L/o', false, []),
+      openPull('draft', 'L/o', true, []),
+      openPull('sent', 'L/o', false, ['sent-back']),
+      openPull('fork', 'someone/o', false, []),
+      openPull('gone', null, false, []),
+    ];
+    const jq = spawnSync('jq', ['-r', filter], {
+      input: JSON.stringify(pulls),
+      env: { ...process.env, REPO: 'L/o' },
+      encoding: 'utf8',
+    });
+    expect(jq.status, jq.stderr).toBe(0);
+    expect(jq.stdout.split('\n').filter(Boolean)).toEqual(['ready', 'draft', 'sent']);
   });
 });
