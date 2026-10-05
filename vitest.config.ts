@@ -116,6 +116,7 @@ export default defineConfig({
             'tests/api/receipt-link-literal-percent-and-held-digests.test.ts',
             'tests/api/held-attempt-calls-provider-once.test.ts',
             'tests/api/held-answer-sign-off.proof.test.ts',
+            'tests/api/applied-comment-settles-after-sign-off.proof.test.ts',
             'tests/web/authenticator-cancelled-enrol-lands-late.test.tsx',
             'tests/web/sign-in-code-after-enrolment.test.tsx',
             'tests/surfaces/incident-retry-once-and-task-draft-stays-with-business.test.tsx',

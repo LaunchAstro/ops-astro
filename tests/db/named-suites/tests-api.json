@@ -20,6 +20,7 @@
     "tests/api/api-2-agent-credential.test.ts",
     "tests/api/api-2-review.test.ts",
     "tests/api/api-answers-never-cached.test.ts",
+    "tests/api/applied-comment-settles-after-sign-off.proof.test.ts",
     "tests/api/aw-03-address.test.ts",
     "tests/api/aw-03-isolation.test.ts",
     "tests/api/aw-08-receipt-provider.test.ts",
