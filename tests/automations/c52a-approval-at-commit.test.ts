@@ -6,18 +6,27 @@
 // A change's last waits are the activation's lock and the business's audit
 // chain, which every audited write takes. A session signed out while the
 // change waits on the activation refuses it (C58: an ended session is over
-// from that commit), and a grant that runs out while the change waits on the
-// audit chain refuses it too. Each of the four writes, nothing applied.
+// from that commit), and so does one signed out in another business its login
+// reaches while the change waits on the audit chain (0061); the same attempt
+// sent again from a new sign-in is kept as a scope refusal, not a sign-out. A
+// grant that runs out while the change waits on the audit chain refuses it
+// too. Each of the four writes, nothing applied.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { signOutSession, type FactorProvider } from '../../packages/core-commands/src/index.ts';
 import { ISSUER, type Answer } from '../api/fixture.ts';
+import {
+  insertActor,
+  insertLogin,
+  insertMapping,
+  insertMembership,
+  insertPerson,
+} from '../identity/fixture.ts';
 import { signBearer } from '../support/sign-in.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   expiringGrant,
-  heldWhile,
   pinnedFirstOf,
   sentWhileHeld,
   untilExpired,
@@ -36,12 +45,26 @@ const provider: FactorProvider = {
   signOut: () => done,
 };
 
+/** The owner's hold on one activation's row. */
+const holdingActivation =
+  (activationId: string) =>
+  async (execute: Execute): Promise<unknown> =>
+    await execute('select 1 from public.activations where id = $1 for update', [activationId]);
+
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
   let w: RegistryWorld;
 
   beforeAll(async () => {
     w = await createRegistryWorld('c52m');
+    // automationOnly's login reaches bravo too, so a sign-out there ends its session here (0061).
+    await w.controls.fixture.db.app.withBusiness(w.bravo, async (tx) => {
+      const personId = await insertPerson(tx, 'automationonly-bravo');
+      const actorId = await insertActor(tx, personId);
+      await insertMembership(tx, personId);
+      const loginId = await insertLogin(tx, w.automationOnly.presented.subject);
+      await insertMapping(tx, loginId, personId, actorId);
+    });
     // Each wide connection opened before the race: one opened while the lock is polled can stall.
     await Promise.all(
       [1, 2, 3, 4].map(async () => await w.asWide(w.admin, 'automation.registry', {})),
@@ -118,8 +141,8 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
 
   type Send = Awaited<ReturnType<typeof fourCases>>[number];
 
-  /** One case sent on a session of its own, signed out while it waits on the activation; then the next call. */
-  const signedOutWhile = async ([activationId, name, body]: Send) => {
+  /** A new sign-in of automationOnly's: its own provider session, and the token it verifies to. */
+  const signedIn = async () => {
     const sessionId = randomUUID();
     const presented = { ...w.automationOnly.presented, sessionId };
     const bearer = await signBearer({
@@ -130,15 +153,35 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
       exp: Math.floor(Date.now() / 1000) + 600,
       session_id: sessionId,
     });
+    return { presented, bearer };
+  };
+
+  /** The owner's hold on alpha's audit chain: the key `audit_events_chain` takes. */
+  const holdingChain = async (execute: Execute): Promise<unknown> =>
+    await execute('select pg_advisory_xact_lock(hashtextextended($1, 0))', [w.alpha.toLowerCase()]);
+
+  /**
+   * One case sent on a sign-in of its own while the owner holds `hold`, that
+   * session signed out through business `via` while the case waits. Then the
+   * next call on it, and the same attempt sent again from a new sign-in.
+   */
+  const signedOutWhile = async (
+    one: Send,
+    hold: (execute: Execute) => Promise<unknown>,
+    via: string,
+  ) => {
+    const [, name, body] = one;
+    const sent = { ...body, operationId: randomUUID() };
+    const { presented, bearer } = await signedIn();
     let ended: unknown;
-    const answer = await heldWhile(
+    const answer = await sentWhileHeld(
       w,
-      activationId,
-      async () => await w.asWide(w.automationOnly, name, body, bearer),
+      hold,
+      async () => await w.asWide(w.automationOnly, name, sent, bearer),
       async () => {
         const caller = {
           database: w.controls.fixture.db.app,
-          businessId: w.alpha,
+          businessId: via,
           presented,
           accessToken: bearer,
         };
@@ -146,35 +189,39 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
       },
     );
     const later = await w.asWide(w.automationOnly, 'automation.registry', {}, bearer);
-    return { answer, ended, later };
+    const again = await w.asWide(w.automationOnly, name, sent, (await signedIn()).bearer);
+    return [ended, ...[answer, later, again].map((reply) => [reply.status, reply.body['code']])];
   };
+
+  /** Each case refused as its session's ending, the ended session refused next, the attempt kept as a scope refusal. */
+  const SIGNED_OUT = Array.from({ length: 4 }, () => [
+    { ended: 1, signedOutAtProvider: true },
+    [401, 'AUTH_SESSION_EXPIRED'],
+    [401, 'AUTH_SESSION_EXPIRED'],
+    [403, 'SCOPE_NOT_GRANTED'],
+  ]);
 
   it('C52-A signed out while waiting: no change applies after the session that sent it was signed out', async () => {
     const sends = await fourCases();
-    const raced: Awaited<ReturnType<typeof signedOutWhile>>[] = [];
+    const raced: unknown[] = [];
     for (const one of sends) {
       // eslint-disable-next-line no-await-in-loop -- one race at a time
-      raced.push(await signedOutWhile(one));
+      raced.push(await signedOutWhile(one, holdingActivation(one[0]), w.alpha));
     }
-    const answers = raced.map((one) => one.answer);
-    const ended = raced.map((one) => one.ended);
-    const later = raced.map((one) => one.later);
-    expect(ended).toStrictEqual(
-      Array.from({ length: 4 }, () => ({ ended: 1, signedOutAtProvider: true })),
-    );
-    expect(
-      answers.map((one) => [one.status, one.body['code']]),
-      JSON.stringify(answers.map((one) => one.body)),
-    ).toStrictEqual(Array.from({ length: 4 }, () => [401, 'AUTH_SESSION_EXPIRED']));
-    expect(later.map((one) => [one.status, one.body['code']])).toStrictEqual(
-      Array.from({ length: 4 }, () => [401, 'AUTH_SESSION_EXPIRED']),
-    );
+    expect(raced).toStrictEqual(SIGNED_OUT);
     expect(await stateOf(sends)).toStrictEqual(untouched);
   }, 120_000);
 
-  /** The owner's hold on the business's audit chain: the key `audit_events_chain` takes. */
-  const holdingChain = async (execute: Execute): Promise<unknown> =>
-    await execute('select pg_advisory_xact_lock(hashtextextended($1, 0))', [w.alpha.toLowerCase()]);
+  it('C52-A signed out elsewhere while waiting on the audit chain: no change applies after its session ended in another business', async () => {
+    const sends = await fourCases();
+    const raced: unknown[] = [];
+    for (const one of sends) {
+      // eslint-disable-next-line no-await-in-loop -- one race at a time
+      raced.push(await signedOutWhile(one, holdingChain, w.bravo));
+    }
+    expect(raced).toStrictEqual(SIGNED_OUT);
+    expect(await stateOf(sends)).toStrictEqual(untouched);
+  }, 120_000);
 
   /** One case sent while the owner holds the audit chain, let go once its grant has run out. */
   const expiredWhile = async ([, name, body]: Send): Promise<Answer> => {
@@ -183,7 +230,15 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
       w,
       holdingChain,
       async () => await w.asWide(w.plain, name, body),
-      untilExpired(grantId),
+      async (execute) => {
+        // Seen waiting while its grant still held: past the handler's checks, not refused early.
+        const [row] = (await execute(
+          'select clock_timestamp() < expires_at as live from public.grants where id = $1',
+          [grantId],
+        )) as readonly { readonly live: boolean }[];
+        expect(row?.live).toBe(true);
+        await untilExpired(grantId)(execute);
+      },
     );
   };
 
