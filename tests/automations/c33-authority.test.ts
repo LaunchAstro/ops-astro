@@ -137,8 +137,13 @@ describe.skipIf(serverUrl === undefined)('C33 registry authority', () => {
       // eslint-disable-next-line no-await-in-loop -- one crossing at a time
       const answer = await w.controls.asAgent(name, body, credential);
       w.answers.push(answer);
-      expect(answer.status, name).toBe(403);
-      expect(String(answer.body['code'])).toMatch(/^(DELEGATION_|AUTH_)/u);
+      // Outside every agent's reach (`agent: 'never'`), not merely outside
+      // this delegation's collections, which would answer another code.
+      expect([answer.status, answer.body['code'], answer.body['names']], name).toStrictEqual([
+        403,
+        'DELEGATION_EXCLUDES_OPERATION',
+        [name],
+      ]);
       expect(answer.body['definitions']).toBeUndefined();
     }
     expect(await w.changes()).toStrictEqual(before);
