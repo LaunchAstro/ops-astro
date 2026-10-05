@@ -5,6 +5,8 @@
 // neither built, so a suite that needs a connection to repair seeds one here.
 
 import { randomUUID } from 'node:crypto';
+import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
+import type { TransactionQuery } from '../../packages/core-records/src/tenancy/transaction.ts';
 
 export interface OwnerConnection {
   execute(sql: string, params?: readonly unknown[]): Promise<unknown>;
@@ -22,4 +24,40 @@ export async function seedBrokenConnection(
     [business, id, label],
   );
   return id;
+}
+
+/**
+ * The same database, its transactions paused once after the first statement
+ * whose text holds `statement`: a race case lets a second request (on another
+ * connection) land at exactly that point, then lets the first go on.
+ */
+export function pausingAfter(
+  database: Database,
+  statement: string,
+  paused: () => Promise<void>,
+): Database {
+  const pausing = (tx: TransactionQuery, state: { met: boolean }): TransactionQuery => ({
+    businessId: tx.businessId,
+    async query<Row>(text: string, parameters?: readonly unknown[]) {
+      const rows = await tx.query<Row>(text, parameters);
+      if (!state.met && text.includes(statement)) {
+        state.met = true;
+        await paused();
+      }
+      return rows;
+    },
+    async savepoint(work) {
+      return await tx.savepoint(async (inner) => {
+        await work(pausing(inner, state));
+      });
+    },
+  });
+  return {
+    log: database.log,
+    close: async () => {
+      await database.close();
+    },
+    withBusiness: async (businessId, run) =>
+      await database.withBusiness(businessId, async (tx) => await run(pausing(tx, { met: false }))),
+  };
 }
