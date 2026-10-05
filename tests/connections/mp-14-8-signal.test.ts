@@ -18,11 +18,22 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
-import { createControls, type Controls } from '../api/controls-fixture.ts';
-import { createClient } from '../../packages/core-records/src/index.ts';
+import { insertLogin } from '../identity/fixture.ts';
+import { authorised, ISSUER, post, tokenFor, type Answer } from '../api/fixture.ts';
+import { agentPath, createControls, type Controls } from '../api/controls-fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
+import {
+  createClient,
+  mintChildDelegation,
+  resolveDelegation,
+} from '../../packages/core-records/src/index.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import type { ConnectionSignalResult, GrantView } from '../../packages/core-wire/src/index.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
+import { composeApi } from '../../apps/api/server.ts';
+import type { SecuritySignal } from '../../apps/api/alerts/detect.ts';
+import { recordsIn } from '../../apps/api/records-in.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const RECORD_CANARY = `record-canary-${randomUUID()}`;
@@ -315,6 +326,9 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     expect(live?.agentId).toMatch(/^[0-9a-f-]{36}$/u);
     expect(live?.purpose).toBe('live_for_a');
     expect(live?.client).toStrictEqual({ id: clientA, label: clientAName });
+    // Sol PRV-oa-1006-R1.4: the pickup minted read, comment and write on the
+    // task (pickup.ts), so the access is exec, stated as a value.
+    expect([live?.access, live?.collections]).toStrictEqual(['exec', ['task']]);
     expect(Date.parse(live?.expiresAt ?? '')).toBeGreaterThan(Date.now());
     const filed = result.tripwires.find((one) => one.what === 'Lease died waiting');
     expect([filed?.firedCount, filed?.filedItem]).toStrictEqual([2, 'AT-10']);
@@ -333,13 +347,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     const ranks = result.grants.map((one) => order[one.state]);
     expect(ranks).toStrictEqual(ranks.toSorted((a, b) => a - b));
     expect(new Set(ranks)).toStrictEqual(new Set([0, 1, 2]));
-    const rows = result.grants;
-    expect(result.grantCounts).toStrictEqual({
-      live: rows.filter((one) => one.state === 'live').length,
-      ranOut: rows.filter((one) => one.state === 'ran_out').length,
-      takenBack: rows.filter((one) => one.state === 'taken_back').length,
-      liveExec: rows.filter((one) => one.state === 'live' && one.access === 'exec').length,
-    });
+    // Sol PRV-oa-1006-R1.4: the world's numbers, not ones taken from the
+    // returned access. Live: live_for_a, live_for_b and the map, ticket and
+    // trashed grants, every one a pickup's read, comment and write.
+    expect(result.grantCounts).toStrictEqual({ live: 5, ranOut: 1, takenBack: 1, liveExec: 5 });
   });
 
   it('MP-14-8 a business-wide reader sees every grant, on a map or a trashed task included', async () => {
@@ -353,6 +364,58 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     const result = await signal(admin);
     expect(grantOf(result, grants.liveA)?.redemptions).toBe(1);
     expect(grantOf(result, grants.ranOutB)?.redemptions).toBe(0);
+    // CR-P04A.2: the same agent picked these up and called on live_for_a's
+    // task only, so a call on another task is never theirs.
+    for (const id of [grants.mapA, grants.ticketA, grants.trashedA]) {
+      expect(grantOf(result, id)?.redemptions).toBe(0);
+    }
+  });
+
+  it('MP-14-8 grant reads count only the calls made inside the grant window', async () => {
+    // CR-P04A.2: the one task.read falls outside a window that opens after it
+    // or closes before it.
+    const was = await controls.fixture.db.admin.execute<{
+      readonly granted_at: Date;
+      readonly expires_at: Date;
+    }>(`select granted_at, expires_at from public.delegations where id = $1`, [grants.liveA]);
+    try {
+      await owner(`update public.delegations set granted_at = now() where id = $1`, [grants.liveA]);
+      expect(grantOf(await signal(admin), grants.liveA)?.redemptions).toBe(0);
+      await owner(
+        `update public.delegations
+            set granted_at = $2, expires_at = $2::timestamptz + interval '1 millisecond'
+          where id = $1`,
+        [grants.liveA, was[0]?.granted_at],
+      );
+      expect(grantOf(await signal(admin), grants.liveA)?.redemptions).toBe(0);
+    } finally {
+      await owner(`update public.delegations set granted_at = $2, expires_at = $3 where id = $1`, [
+        grants.liveA,
+        was[0]?.granted_at,
+        was[0]?.expires_at,
+      ]);
+    }
+    expect(grantOf(await signal(admin), grants.liveA)?.redemptions).toBe(1);
+  });
+
+  it('MP-14-8 a grant whose client has no clients row keeps its client id, never reads as fleet', async () => {
+    // CR-P04A.3: records.uuid_7 has no foreign key to clients (0055).
+    const ghost = randomUUID();
+    const task = `select purpose_scope_id from public.delegations where id = $1`;
+    await owner(
+      `update public.records set data = data || jsonb_build_object('client', $2::text)
+        where id = (${task})`,
+      [grants.takenBackFleet, ghost],
+    );
+    try {
+      const shown = grantOf(await signal(admin), grants.takenBackFleet);
+      expect(shown?.client).toStrictEqual({ id: ghost, label: null });
+    } finally {
+      await owner(`update public.records set data = data - 'client' where id = (${task})`, [
+        grants.takenBackFleet,
+      ]);
+    }
+    expect(grantOf(await signal(admin), grants.takenBackFleet)?.client).toBeNull();
   });
 
   it('MP-14-8 grants never carry the credential the pickup returned', async () => {
@@ -371,6 +434,9 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       armed: result.tripwires.filter((one) => one.state === 'armed').length,
       cannotBeArmed: 1,
     });
+    // CR-P04A.9: armed first.
+    expect(result.tripwires.at(-1)?.state).toBe('cannot_be_armed');
+    expect(result.tripwires[0]?.state).toBe('armed');
     await expect(
       owner(
         `insert into public.tripwires (business_id, id, what, rule, watching, state, blocked_reason,
@@ -440,6 +506,12 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   });
 
   it('MP-14-8 the night round is the latest round, in time order, with its cites', async () => {
+    // CR-P04A.9: a business-wide reader's latest round is the 30th's.
+    const latest = (await signal(admin)).nightRound;
+    expect([latest?.roundOn, latest?.steps.map((one) => one.what)]).toStrictEqual([
+      '2026-09-30',
+      [stepB],
+    ]);
     await owner(`delete from public.night_round_steps where round_on = '2026-09-30'`, []);
     try {
       const round = (await signal(admin)).nightRound;
@@ -469,14 +541,158 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     expect(result.roster.find((one) => one.agentId === agentB)?.liveGrants).toBe(1);
   });
 
-  it('MP-14-8 the read writes nothing beyond its own operation row', async () => {
-    const count = async (): Promise<number> =>
-      await controls.count(`select count(*) as n from public.audit_events where actor_id = $1`, [
-        admin.actorId,
+  it('MP-14-8 a child grant stops counting live once its parent is taken back', async () => {
+    // Sol PRV-oa-1006-R1.1: a child delegation's own lifecycle fields stay
+    // open when its parent ends, and the child can no longer act.
+    const { db, business, agentActorId } = controls.fixture;
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, admin, 'write', undefined, true, 'run');
+    });
+    const [parentId, parentCredential] = await delegate('parent_fleet', null);
+    const helper = randomUUID();
+    const subject = `mp148-helper-${randomUUID()}`;
+    const child = await db.app.withBusiness(business, async (tx) => {
+      await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
+        business,
+        helper,
       ]);
-    const before = await count();
+      await tx.query(
+        `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
+         values ($1, $2, $3, $4, $5)`,
+        [business, randomUUID(), await insertLogin(tx, subject), helper, admin.actorId],
+      );
+      const parent = await resolveDelegation(tx, agentActorId, parentCredential);
+      if (!parent.ok) throw new Error(`mp-14-8: the parent did not resolve`);
+      const minted = await mintChildDelegation(tx, parent.value, {
+        agentActorId: helper,
+        purpose: 'child_fleet',
+        collections: ['task'],
+        actions: ['read', 'write'],
+        expiresAt: new Date(Date.now() + 3_600_000),
+      });
+      if (!minted.ok) throw new Error(`mp-14-8: the child was refused: ${minted.refusal.code}`);
+      return minted.value;
+    });
+    const recordId = (
+      await controls.fixture.db.admin.execute<{ readonly id: string }>(
+        `select purpose_scope_id as id from public.delegations where id = $1`,
+        [parentId],
+      )
+    )[0]?.id;
+    const readAsChild = async (): Promise<Answer> =>
+      await post(
+        controls.api,
+        agentPath('task.read'),
+        { operationId: randomUUID(), recordId },
+        {
+          ...authorised(await tokenFor(subject)),
+          'x-agent-delegation': child.credential,
+        },
+      );
+    expect((await readAsChild()).status).toBe(200);
+    const before = await signal(admin);
+    expect(grantOf(before, child.delegation.id)?.state).toBe('live');
+
+    const revoked = await controls.asPerson('delegation.revoke', { delegationId: parentId });
+    expect(revoked.status).toBe(200);
+    const refused = await readAsChild();
+    expect([refused.status, refused.body['code']]).toStrictEqual([403, 'DELEGATION_REVOKED']);
+
+    const after = await signal(admin);
+    expect(grantOf(after, parentId)?.state).toBe('taken_back');
+    expect(grantOf(after, child.delegation.id)?.state).toBe('taken_back');
+    expect(after.grantCounts).toStrictEqual({
+      live: before.grantCounts.live - 2,
+      ranOut: before.grantCounts.ranOut,
+      takenBack: before.grantCounts.takenBack + 2,
+      liveExec: before.grantCounts.liveExec - 2,
+    });
+    expect(after.roster.find((one) => one.agentId === helper)?.liveGrants).toBe(0);
+  });
+
+  it('MP-14-8 the read writes nothing beyond its own operation row', async () => {
+    // Sol PRV-oa-1006-R1.3: every row the read selects from, and every audit
+    // row already written, is the same after it; the one new row is its own.
+    const snapshot = async (): Promise<readonly string[]> => {
+      const rows = await controls.fixture.db.admin.execute<{ readonly h: string }>(
+        `select md5(coalesce(string_agg(t::text, E'\\n' order by t::text), '')) as h
+           from public.delegations t
+         union all select md5(coalesce(string_agg(t::text, E'\\n' order by t::text), ''))
+           from public.records t
+         union all select md5(coalesce(string_agg(t::text, E'\\n' order by t::text), ''))
+           from public.tripwires t
+         union all select md5(coalesce(string_agg(t::text, E'\\n' order by t::text), ''))
+           from public.night_round_steps t
+         union all select md5(coalesce(string_agg(t::text, E'\\n' order by t::text), ''))
+           from public.actors t
+         union all select md5(coalesce(string_agg(t::text, E'\\n' order by t::text), ''))
+           from public.clients t
+         union all select md5(coalesce(string_agg(t::text, E'\\n' order by t::text), ''))
+           from public.grants t`,
+      );
+      return rows.map((row) => row.h);
+    };
+    const audit = async (): Promise<readonly { readonly id: string; readonly row: string }[]> =>
+      await controls.fixture.db.admin.execute(
+        `select id, t::text as row from public.audit_events t order by id`,
+      );
+    const tables = await snapshot();
+    const events = await audit();
     await signal(admin);
-    expect(await count()).toBe(before + 1);
+    expect(await snapshot()).toStrictEqual(tables);
+    const known = new Set(events.map((one) => one.id));
+    const now = await audit();
+    expect(now.filter((one) => known.has(one.id))).toStrictEqual(events);
+    const added = await controls.fixture.db.admin.execute<{
+      readonly actor_id: string;
+      readonly command: string;
+    }>(`select actor_id, command from public.audit_events where not (id = any($1::uuid[]))`, [
+      [...known],
+    ]);
+    expect(added).toStrictEqual([{ actor_id: admin.actorId, command: 'connection.signal' }]);
+  });
+
+  it('MP-14-8 the read feeds the export-volume detector one item per row it hands out', async () => {
+    // Sol PRV-oa-1006-R1.2: the server's own composition, its alerts
+    // observed, as the fleet's case; a business-wide reader of alpha.
+    const { fixture } = controls;
+    const signals: SecuritySignal[] = [];
+    const observed = composeApi({
+      keys: runtimeKeys({ ...fixture.environment }),
+      database: fixture.db.app,
+      admin: fixture.db.admin,
+      signIn: testSignIn(ISSUER),
+      executeRead,
+      alerts: {
+        observe: (one) => signals.push(one),
+        fault: async () => await Promise.resolve(),
+        settled: async () => await Promise.resolve(),
+      },
+    }).app;
+    const answer = await post(
+      observed,
+      path('alpha', 'connection.signal'),
+      { operationId: randomUUID() },
+      authorised(await tokenFor(admin.presented.subject)),
+    );
+    answers.push(answer);
+    expect(answer.status).toBe(200);
+    const shown = answer.body as unknown as ConnectionSignalResult;
+    const items =
+      shown.grants.length +
+      shown.tripwires.length +
+      (shown.nightRound?.steps.length ?? 0) +
+      shown.roster.length;
+    expect(shown.tripwires.length).toBeGreaterThan(0);
+    expect(recordsIn(shown)).toBe(items);
+    expect(signals.filter((one) => one.kind === 'export')).toStrictEqual([
+      {
+        kind: 'export',
+        business: 'alpha',
+        who: `${admin.presented.provider}${cp(0)}${admin.presented.subject}`,
+        items,
+      },
+    ]);
   });
 
   it('MP-14-8 refusal connection:read: a member without it is refused and shown nothing', async () => {
@@ -520,12 +736,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   it('MP-14-8 isolation: a client-scoped reader sees that client only, in rows, counts and roster', async () => {
     const result = await signal(clientReader);
     expect(result.grants.map((one) => one.id)).toStrictEqual([grants.liveA]);
-    expect(result.grantCounts).toStrictEqual({
-      live: 1,
-      ranOut: 0,
-      takenBack: 0,
-      liveExec: result.grants.filter((one) => one.access === 'exec').length,
-    });
+    expect(result.grantCounts).toStrictEqual({ live: 1, ranOut: 0, takenBack: 0, liveExec: 1 });
     expect(result.tripwires.map((one) => one.what)).toStrictEqual(['Quota near its ceiling']);
     expect(result.tripwireCounts).toStrictEqual({ armed: 1, cannotBeArmed: 0 });
     expect(result.nightRound?.roundOn).toBe('2026-09-29');
