@@ -12,7 +12,13 @@
 // change the caller cannot read moves nothing they are shown, and says nothing.
 
 import { createHash } from 'node:crypto';
-import { readScopes, subjectsOf, withSession } from '../../../core-records/src/index.ts';
+import {
+  mapTicketCondition,
+  REACH,
+  readScopes,
+  subjectsOf,
+  withSession,
+} from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
 import {
   asCallerVisible,
@@ -61,10 +67,11 @@ export async function shownInbox(
 
 /**
  * A digest of the tasks `personId` reads now, as `inbox.read` and `taskAccess`
- * ask their read scopes, with each one's activity: its own row and the rows
- * about it (comments), its planned runs and their events. Any change the
- * reader can see moves it, and so does a task revoked, trashed or moved to
- * another client; undefined unless the bearer still resolves to that person.
+ * ask their read scopes (a map's grant covering its tickets, W12), with each
+ * one's activity: its own row and the rows about it (comments), its planned
+ * runs and their events. Any change the reader can see moves it, and so does
+ * a task revoked, trashed or moved to another client; undefined unless the
+ * bearer still resolves to that person.
  */
 export async function boardReach(
   database: Database,
@@ -79,6 +86,7 @@ export async function boardReach(
     const { business, records, parties } = await readScopes(tx, personId);
     const rows = await tx.query<{ readonly seen: string }>(SEEN, [
       tx.businessId,
+      personId,
       (await readTaskSpine(tx)).taskTypeId,
       business,
       records,
@@ -89,10 +97,14 @@ export async function boardReach(
   return typeof outcome === 'string' ? outcome : undefined;
 }
 
-const SEEN = `with seen as (
-         select id from public.records
-          where business_id = $1 and record_type_id = $2 and deleted_at is null
-            and ($3::boolean or id = any($4::uuid[]) or uuid_7 = any($5::uuid[])))
+/** A map's tickets by its grants walked here (`REACH`), so a revoked map grant moves nothing. */
+const SEEN = `${REACH},
+       seen as (
+         select t.id from public.records t
+          where t.business_id = $1 and t.record_type_id = $3 and t.deleted_at is null
+            and ($4::boolean or t.id = any($5::uuid[]) or t.uuid_7 = any($6::uuid[])
+                 or (t.uuid_4 = any((select records from reach)::uuid[])
+                     and ${mapTicketCondition('t')})))
        select encode(sha256(convert_to(coalesce(string_agg(part, ',' order by part), ''),
                 'UTF8')), 'hex') as seen
          from (select r.id::text || ':' || r.revision::text from public.records r
