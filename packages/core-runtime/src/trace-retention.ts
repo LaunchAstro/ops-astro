@@ -43,12 +43,13 @@ import { gapOf, type GapCode } from './trace-delivery.ts';
 import { TRACE_WINDOW_DAYS, type Cursor, type TraceDatabase } from './trace-export.ts';
 import { byPlace, owedAsks, type Owed, type OwedFrom } from './trace-owed.ts';
 import {
+  freshReading,
   readBack,
   recordReading,
   traceOf,
   UNANSWERED,
+  unsettled,
   type ExpiryPorts,
-  type Reading,
 } from './trace-store.ts';
 
 /** The deletion endpoint's cap on ids per call. */
@@ -107,14 +108,7 @@ async function readOwed(
   page: number,
 ): Promise<readonly RetentionBatch[]> {
   const batches: RetentionBatch[] = [];
-  const reading: Reading = {
-    sent: new Map(),
-    resume: new Map(),
-    answered: [],
-    unanswered: [],
-    resumes: [],
-    quiet: 0,
-  };
+  const reading = freshReading();
   let after: OwedFrom | null = null;
   while (reading.quiet < UNANSWERED) {
     const from: OwedFrom | null = after;
@@ -139,7 +133,7 @@ async function readOwed(
     if (owed.length < page || end === undefined) break;
     after = { turn: end.turn, answered: end.answered, runId: end.runId };
   }
-  if (reading.unanswered.length > 0) {
+  if (unsettled(reading)) {
     await database.withBusiness(
       businessId,
       async (tx) => await recordReading(tx, reading, windowDays),

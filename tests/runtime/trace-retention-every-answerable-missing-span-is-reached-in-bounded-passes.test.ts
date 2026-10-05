@@ -64,6 +64,8 @@ async function passesToGone(world: World, limit: number): Promise<number | null>
       answered: [],
       unanswered: [],
       resumes: [],
+      left: [],
+      reads: 0,
       quiet: 0,
     };
     // eslint-disable-next-line no-await-in-loop -- one pass after another
