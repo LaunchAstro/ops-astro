@@ -10,7 +10,11 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it } from 'vitest';
-import { connect } from '../../packages/core-records/src/index.ts';
+import {
+  connect,
+  type Database,
+  type VerifiedSubject,
+} from '../../packages/core-records/src/index.ts';
 import {
   sessionEnded,
   sessionEndedHeld,
@@ -62,6 +66,42 @@ async function waitsBeforeFinished(finished: () => boolean): Promise<boolean> {
   }
 }
 
+/**
+ * The provider's stand-in for one reset that ran past its window's bound: it
+ * moves `open_until` ten seconds behind now, then holds a `sessionEndedHeld`
+ * read in bravo on `own` (a connection of its own: on the route's pool the
+ * reset's next transaction would wait for a connection, not a lock) and
+ * answers once that read is in. The read commits on `release`.
+ */
+function heldWhileAnswering(own: Database, presented: VerifiedSubject) {
+  const read = gate();
+  const release = gate();
+  let holder: Promise<boolean> | undefined;
+  answerWith((request, response) => {
+    void (async () => {
+      await world.db.admin.transaction(async (query) => {
+        await query('set local session_replication_role = replica', []);
+        await query(
+          `update ops.subject_resets set open_until = clock_timestamp() - interval '10 seconds'
+            where subject_digest = encode(sha256(convert_to($1, 'UTF8')), 'hex')
+              and settled_at is null`,
+          [presented.subject],
+        );
+      });
+      holder = own.withBusiness(world.bravo, async (tx) => {
+        const ended = await sessionEndedHeld(tx, presented);
+        read.open();
+        await release.promise;
+        return ended;
+      });
+      await read.promise;
+      const id = (request.url ?? '').split('/').at(-1) ?? '';
+      json(200, { id, email: 'x@example.test', aud: 'authenticated' })(request, response);
+    })();
+  });
+  return { release: release.open, ended: async () => await holder };
+}
+
 it.skipIf(serverUrl === undefined)(
   "a reset settled past its window's bound waits for a write that read the login's session live",
   async () => {
@@ -76,35 +116,8 @@ it.skipIf(serverUrl === undefined)(
       sessionId: randomUUID(),
       assurance: { level: 'aal1' as const, signedInAt: now() - 5, factorAt: null },
     };
-    const read = gate();
-    const release = gate();
-    // The held read on a connection of its own: on the route's pool it would
-    // keep the reset's next transaction waiting for a connection, not a lock.
     const own = connect(world.db.appUrl, { source: 'runtime', max: 1 });
-    let holder: Promise<boolean> | undefined;
-    answerWith((request, response) => {
-      void (async () => {
-        // The reset ran past its bound: the window ends sign-ins up to ten seconds ago.
-        await world.db.admin.transaction(async (query) => {
-          await query('set local session_replication_role = replica', []);
-          await query(
-            `update ops.subject_resets set open_until = clock_timestamp() - interval '10 seconds'
-              where subject_digest = encode(sha256(convert_to($1, 'UTF8')), 'hex')
-                and settled_at is null`,
-            [subject],
-          );
-        });
-        holder = own.withBusiness(world.bravo, async (tx) => {
-          const ended = await sessionEndedHeld(tx, presented);
-          read.open();
-          await release.promise;
-          return ended;
-        });
-        await read.promise;
-        const id = (request.url ?? '').split('/').at(-1) ?? '';
-        json(200, { id, email: 'x@example.test', aud: 'authenticated' })(request, response);
-      })();
-    });
+    const held = heldWhileAnswering(own, presented);
     let finished = false;
     const pending = setPassword(token, 'a reset slower than its bound').finally(() => {
       finished = true;
@@ -113,9 +126,9 @@ it.skipIf(serverUrl === undefined)(
     try {
       waited = await waitsBeforeFinished(() => finished);
     } finally {
-      release.open();
+      held.release();
     }
-    const liveWhenRead = !(await holder);
+    const liveWhenRead = !(await held.ended());
     await own.close();
     const answer = await pending;
     const endedAfter = await world.db.app.withBusiness(

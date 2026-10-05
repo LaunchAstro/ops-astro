@@ -47,8 +47,6 @@
 
 import { createHash } from 'node:crypto';
 import {
-  endOtherSeenSessions,
-  endSeenSessions,
   holdSubjectEnding,
   lockLoginFactors,
   loginHasVerifiedFactor,
@@ -68,14 +66,12 @@ import {
   type Broker,
   type LoginPasswordSet,
 } from '../../../core-custody/src/index.ts';
-import { payloadDigest } from '../../../core-digest/src/index.ts';
-import { writeAuditEvent } from './audit.ts';
+import { audited, endIn } from './account-password-steps.ts';
+
+export { RESET_COMMAND } from './account-password-steps.ts';
 
 /** A password's bounds in UTF-8 bytes (C40). */
 export const PASSWORD_BYTES = { least: 12, most: 72 } as const;
-
-/** The audit command a reset's password set records. */
-export const RESET_COMMAND = 'account.password_changed';
 
 /** How long a reset token lives; the table's check holds the same bound. */
 export const RESET_TOKEN_MINUTES = 30;
@@ -197,26 +193,6 @@ async function spend(
   );
   return { window: await openResetWindow(tx, found.subject) };
 }
-
-/**
- * Step 6: the sessions seen in a business end; given the `subject` (a reset
- * that set nothing), every session signed in until now too, to the instant
- * (0063), as the settle's second is not.
- */
-const endIn = async (tx: TenantQuery, session: Session, subject?: string) =>
-  await (subject === undefined
-    ? endSeenSessions(tx, session.personId, undefined, 'end_others')
-    : endOtherSeenSessions(tx, session.personId, undefined, 'end_others', subject));
-
-/** Step 6's one audit row, in the token's business. */
-const audited = async (tx: TenantQuery, session: Session) =>
-  await writeAuditEvent(tx, {
-    actorId: session.actorId,
-    command: RESET_COMMAND,
-    outcome: 'applied',
-    refusalCode: null,
-    payloadDigest: payloadDigest({ command: RESET_COMMAND, person: session.personId }),
-  });
 
 /** What steps 5 and 6 need once the token is spent. */
 interface Spent {
