@@ -175,9 +175,9 @@ const ROLLUP_PATIENCE = 3;
 /**
  * Re-read on the rollup floor (C4 CS-1.2). A tick waits for the read in flight
  * rather than superseding it: a newer read would retire its answer, so reads
- * slower than the floor would never land (PRV-oa-980-R2.1). Reads have no
- * transport timeout, so after `ROLLUP_PATIENCE` ticks a read that has not
- * answered is superseded, and a revoke still draws (SEC-P03-RB5 L1).
+ * slower than the floor would never land. Reads have no transport timeout, so
+ * after `ROLLUP_PATIENCE` ticks a read that has not answered is superseded,
+ * and a revoke still draws.
  */
 function useRollup<T>(
   rollup: RollupFloor | undefined,
