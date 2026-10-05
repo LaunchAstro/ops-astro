@@ -16,19 +16,20 @@
 -- privileges otherwise. Only where it holds ADMIN OPTION directly and may not
 -- yet take the role, so a superuser, a login without ADMIN OPTION and a
 -- second run change nothing. No other role and no other login is granted
--- (tests/db/admin-login-takes-identity-roles.test.ts).
+-- (tests/db/admin-login-takes-identity-roles.test.ts). Catalogue names are
+-- qualified, so no schema on the migrator's search path can stand in for them.
 
 do $$
 declare
   identity text;
 begin
   foreach identity in array array['ops_astro_lookup', 'ops_astro_restore_drill'] loop
-    if exists (select from pg_auth_members
-                where roleid = identity::regrole
-                  and member = (select oid from pg_roles where rolname = current_user)
+    if exists (select from pg_catalog.pg_auth_members
+                where roleid = identity::pg_catalog.regrole
+                  and member = (select oid from pg_catalog.pg_roles where rolname = current_user)
                   and admin_option)
-       and not pg_has_role(current_user, identity, 'SET') then
-      execute format('grant %I to %I with inherit false, set true', identity, current_user);
+       and not pg_catalog.pg_has_role(current_user, identity, 'SET') then
+      execute pg_catalog.format('grant %I to %I with inherit false, set true', identity, current_user);
     end if;
   end loop;
 end $$;
