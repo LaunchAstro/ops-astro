@@ -130,7 +130,8 @@
         "tests/runtime/trace-retention-a-present-run-cannot-spend-every-read-before-a-gone-one.test.ts",
         "tests/runtime/trace-retention-an-unanswered-newer-span-hides-no-older-missing-one.test.ts",
         "tests/runtime/trace-retention-a-run-longer-than-the-stores-allowance-is-read-through.test.ts",
-        "tests/runtime/trace-retention-three-unanswered-newer-spans-hide-no-older-missing-one.test.ts"
+        "tests/runtime/trace-retention-three-unanswered-newer-spans-hide-no-older-missing-one.test.ts",
+        "tests/runtime/trace-retention-a-run-read-in-fixed-steps-reaches-every-missing-span.test.ts"
       ],
       "rules": {
         "max-lines-per-function": "off",
