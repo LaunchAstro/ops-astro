@@ -51,3 +51,24 @@ it('refuses a non-zero byte in the second end block as it arrives, before the ca
   expect(readOutput('build', OUTPUT_CAP.S0, stream)).toEqual(refused('tar end'));
   expect(readOutput('build', stream.length, stream)).toEqual(refused('tar end'));
 });
+
+it('judges a block the cap cuts as a larger cap would, and refuses a valid one for the cap', () => {
+  const cap = 512 + 100;
+  const cases: [Uint8Array, string][] = [
+    [file('dist/a', 'x', { checksumField: ascii('0000000\0') }), 'tar checksum'],
+    [file('dist/a', 'x', { magic: 'ustaR\0' }), 'tar magic'],
+    [header({ name: 'dist/a', type: '1' }), 'tar type'],
+    [file('dist/a b', 'x'), 'tar name'],
+    [file('dist/a', 'x', { poke: [[511, Uint8Array.of(1)]] }), 'tar block'],
+  ];
+  for (const [entry, why] of cases) {
+    const stream = tar(dir('dist'), entry);
+    expect(readOutput('build', cap, stream)).toEqual(refused(why));
+    expect(readOutput('build', stream.length, stream)).toEqual(refused(why));
+  }
+  const valid = tar(dir('dist'), file('dist/a', 'x'));
+  expect(readOutput('build', cap, valid)).toEqual(refused('too large'));
+  expect(readOutput('build', valid.length - 100, valid)).toEqual(refused('too large'));
+  expect(readOutput('build', cap, valid.subarray(0, 700))).toEqual(refused('tar end'));
+  expect(readOutput('build', 700, valid.subarray(0, 700))).toEqual(refused('tar end'));
+});
