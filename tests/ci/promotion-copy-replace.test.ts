@@ -192,6 +192,19 @@ it('a fresh copy that cannot take its served name leaves the earlier copy in pla
   expect(readFileSync(join(copy, 'static', 'index.html'), 'utf8')).toBe('the earlier copy');
 });
 
+it('a refused replacement leaves the earlier copy with its own modes, so it reads as before', () => {
+  const { store, current, hex } = world();
+  const copy = earlier(current, hex, 'the earlier copy');
+  for (const folder of [copy, join(copy, 'static')]) fs.chmodSync(folder, 0o755);
+  fs.chmodSync(join(copy, 'static', 'index.html'), 0o644);
+  fault.renameIn = true;
+  const { outcome, calls } = promoted(store, current);
+  expect(outcome.kind).toBe('refused');
+  expect(calls).toEqual([]);
+  expect(fs.statSync(copy).mode & 0o7777).toBe(0o755);
+  expect(fs.statSync(join(copy, 'static')).mode & 0o7777).toBe(0o755);
+});
+
 it('a cleanup that fails after the copy is in place still promotes', () => {
   const { store, current } = world();
   fault.remove = true;
