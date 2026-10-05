@@ -13,13 +13,24 @@ import * as gate from '../../scripts/pre-ready-steps.mjs';
 const { wholeCheck } = gate;
 const STAND_INS = { GH_TOKEN: 'stand-in-gh-marker', GITHUB_TOKEN: 'stand-in-github-marker' };
 
-/** Puts a `pnpm` launcher for `pnpm` first on PATH. */
-function pnpmOnPath(dir: string, pnpm: string, path: string | undefined): void {
+/** `value` as one single-quoted word for /bin/sh. */
+const quoted = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
+
+/**
+ * Puts a `pnpm` launcher first on PATH: the pnpm running this run, or, with
+ * none (`pnpm exec` sets no npm_execpath), one that runs the package's check
+ * script with this node, so no pnpm found on PATH runs out of the timeout's reach.
+ */
+function pnpmOnPath(dir: string, pnpm: string | undefined, path: string | undefined): void {
   const bin = join(dir, 'bin');
   mkdirSync(bin);
-  const target = ['.js', '.cjs', '.mjs'].includes(extname(pnpm))
-    ? `"${process.execPath}" "${pnpm}"`
-    : `"${pnpm}"`;
+  const node = quoted(process.execPath);
+  let target = `${node} check.cjs #`;
+  if (pnpm !== undefined) {
+    target = ['.js', '.cjs', '.mjs'].includes(extname(pnpm))
+      ? `${node} ${quoted(pnpm)}`
+      : quoted(pnpm);
+  }
   writeFileSync(join(bin, 'pnpm'), `#!/bin/sh\nexec ${target} "$@"\n`, { mode: 0o755 });
   process.env['PATH'] = `${bin}${delimiter}${path ?? ''}`;
 }
@@ -54,9 +65,9 @@ it('the whole check launches pnpm check without the caller’s tokens', () => {
     GITHUB_TOKEN: process.env['GITHUB_TOKEN'],
   };
   try {
-    // An available pnpm on PATH: the one running this run, so npm_execpath can be unset.
+    // A pnpm on PATH, so npm_execpath can be unset.
     const pnpm = saved.npm_execpath;
-    if (pnpm !== undefined) pnpmOnPath(dir, pnpm, saved.PATH);
+    pnpmOnPath(dir, pnpm, saved.PATH);
     delete process.env['npm_execpath'];
     Object.assign(process.env, STAND_INS);
 

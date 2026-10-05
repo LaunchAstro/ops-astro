@@ -10,7 +10,7 @@
 // oxlint with a FIFO handshake, so no tracked file of the gate changes and no
 // sleep orders the steps.
 
-import { execFileSync, spawn } from 'node:child_process';
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -26,6 +26,9 @@ let work = '';
 let tree = '';
 let pause = '';
 let head = '';
+let gate: ChildProcess | undefined;
+/** `value` as one single-quoted word for /bin/sh. */
+const quoted = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
 const git = (...args: string[]): string =>
   execFileSync(
     'git',
@@ -51,7 +54,8 @@ function pausingModules(): void {
   const modules = join(tree, 'node_modules');
   mkdirSync(join(modules, '.bin'), { recursive: true });
   for (const name of readdirSync(join(root, 'node_modules'))) {
-    if (name === '.bin' || name === '.cache') continue;
+    // Dot entries (.bin, .cache, .pnpm, .vite, .vite-temp) stay out: nested runs write caches there.
+    if (name.startsWith('.')) continue;
     symlinkSync(join(root, 'node_modules', name), join(modules, name));
   }
   for (const name of readdirSync(join(root, 'node_modules', '.bin'))) {
@@ -63,11 +67,11 @@ function pausingModules(): void {
     join(modules, '.bin', 'oxlint'),
     [
       '#!/bin/sh',
-      `if mkdir '${join(pause, 'once')}' 2>/dev/null; then`,
-      `  echo paused > '${join(pause, 'paused')}'`,
-      `  cat '${join(pause, 'release')}' > /dev/null`,
+      `if mkdir ${quoted(join(pause, 'once'))} 2>/dev/null; then`,
+      `  echo paused > ${quoted(join(pause, 'paused'))}`,
+      `  cat ${quoted(join(pause, 'release'))} > /dev/null`,
       'fi',
-      `exec '${join(root, 'node_modules', '.bin', 'oxlint')}' "$@"`,
+      `exec ${quoted(join(root, 'node_modules', '.bin', 'oxlint'))} "$@"`,
       '',
     ].join('\n'),
     { mode: 0o755 },
@@ -101,6 +105,48 @@ function stubsAndBody(): void {
   );
 }
 
+/** Each live process and its parent, from ps. */
+function parents(): [number, number][] {
+  return execFileSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' })
+    .trim()
+    .split('\n')
+    .map((row) => {
+      const [child = 0, parent = 0] = row.trim().split(/\s+/u).map(Number);
+      return [child, parent];
+    });
+}
+
+const signal = (pid: number, name: NodeJS.Signals): void => {
+  try {
+    process.kill(pid, name);
+  } catch {
+    // Already gone.
+  }
+};
+
+/**
+ * Ends `pid` and everything under it in the caller's process group, so Ctrl-C
+ * still reaches them: each is stopped first, so none starts another, then
+ * killed. Whatever was stopped is killed even if listing the rest fails.
+ */
+function endTree(pid: number): void {
+  const stopped = new Set<number>();
+  let found = [pid];
+  try {
+    while (found.length > 0) {
+      for (const each of found) {
+        stopped.add(each);
+        signal(each, 'SIGSTOP');
+      }
+      found = parents()
+        .filter(([child, parent]) => stopped.has(parent) && !stopped.has(child))
+        .map(([child]) => child);
+    }
+  } finally {
+    for (const each of stopped) signal(each, 'SIGKILL');
+  }
+}
+
 beforeAll(() => {
   work = mkdtempSync(join(tmpdir(), 'pre-ready-race-'));
   tree = join(work, 'tree');
@@ -122,7 +168,15 @@ beforeAll(() => {
 }, SLOW);
 
 afterAll(() => {
-  if (work !== '') rmSync(work, { recursive: true, force: true });
+  // A failed or timed-out case leaves the gate and what it started (the
+  // launcher's shell and `cat` on the FIFO, or a step's tool) running.
+  try {
+    if (gate?.pid !== undefined && gate.exitCode === null && gate.signalCode === null) {
+      endTree(gate.pid);
+    }
+  } finally {
+    if (work !== '') rmSync(work, { recursive: true, force: true });
+  }
 });
 
 it(
@@ -134,7 +188,7 @@ it(
     };
     delete env['DATABASE_URL'];
     delete env['DATABASE_ADMIN_URL'];
-    const child = spawn(
+    const child = (gate = spawn(
       process.execPath,
       [
         join(tree, 'scripts', 'pre-ready.mjs'),
@@ -143,7 +197,7 @@ it(
         '--skip-check',
       ],
       { cwd: tree, env, stdio: ['ignore', 'pipe', 'pipe'] },
-    );
+    ));
     let output = '';
     child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString()));
     child.stderr.on('data', (chunk: Buffer) => (output += chunk.toString()));
