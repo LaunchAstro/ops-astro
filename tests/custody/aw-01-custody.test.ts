@@ -13,11 +13,18 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { startCustody } from '../../packages/core-custody/src/index.ts';
 import { openCustodyWorld, plantedKey, type CustodyWorld } from './custody-world.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
+const CRUISE = createRequire(import.meta.url)(join(ROOT, '.dependency-cruiser.cjs')) as {
+  readonly forbidden: readonly {
+    readonly name: string;
+    readonly from: { readonly path?: string };
+  }[];
+};
 
 /** Tracked files naming a string, sorted; none is an empty list, not a failure. */
 function gitGrep(needle: string, ...paths: string[]): readonly string[] {
@@ -250,6 +257,13 @@ it('AW-01 custody 9: adapter, connector and database code never load in the key-
       /core-connectors|core-records|core-runtime|core-commands|apps\/|pg/u,
     );
   }
+  // The dependency cruise holds the same line on every module that process loads.
+  const rule = CRUISE.forbidden.find(
+    (entry) => entry.name === 'custody-process-imports-no-package',
+  );
+  const held = new RegExp(rule?.from.path ?? '^$', 'u');
+  const loaded = graph.filter((module) => module.startsWith('packages/'));
+  expect(loaded.filter((module) => !held.test(module))).toEqual([]);
 });
 
 it('AW-01 custody 10: no key is reachable from a worker or a configuration file loaded outside custody', () => {
