@@ -14,9 +14,11 @@ import { settle } from './mount.tsx';
 import {
   ADA,
   MANAGE_AND_SHARE,
+  ACME,
   MIA,
   SHARE_ONLY,
   access,
+  choose,
   heldAnswer,
   json,
   open,
@@ -176,5 +178,40 @@ describe('C39-T invitations on Settings ▸ Access', () => {
     const view = await open(api.fetch);
     expect(view.find('[data-access="invitations"]')).toBeNull();
     expect(api.lists).toEqual([]);
+  });
+
+  it('C39-T invite a team member: an invitation act keeps the unsent Give access proposal', async () => {
+    // Sol PRV-oa-1018-R1.4: the resend's access.read refresh must not unmount
+    // the access list's forms.
+    const resent = heldAnswer();
+    const reread = heldAnswer();
+    const api = server([json(access([ADA, MIA]))], () => resent.promise, MANAGE_AND_SHARE, LISTED);
+    let reads = 0;
+    const fetch = ((url: string | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/access/read') && (reads += 1) === 2) {
+        void api.fetch(url, init);
+        return reread.promise;
+      }
+      return api.fetch(url, init);
+    }) as typeof globalThis.fetch;
+    const view = await open(fetch);
+    await view.click('[data-invitation-acts="i-pending"] [data-act="resend"] button');
+    await choose(view, 'holder', MIA.name);
+    await choose(view, 'key', 'task:read');
+    await choose(view, 'scope', ACME.name);
+    resent.resolve(json({ recordId: 'i-pending', revision: 2 }));
+    await settle();
+    await settle();
+    expect(reads, 'the resend reread the access list').toBe(2);
+    reread.resolve(json(access([ADA, MIA])));
+    await settle();
+    await settle();
+    const chosen = (field: string): string | undefined =>
+      view.find(`[data-field="${field}"] button.sel__btn`)?.textContent ?? undefined;
+    expect([chosen('holder'), chosen('key'), chosen('scope')]).toEqual([
+      MIA.name,
+      'task:read',
+      ACME.name,
+    ]);
   });
 });
