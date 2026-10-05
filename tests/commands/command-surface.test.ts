@@ -89,8 +89,7 @@ describe('the surface as a table', () => {
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
     // `tag` is MP-4-11's: the business's tag vocabulary.
-    // `map` is the wayfinder's (WF-1); `automation` and `activation` C33's;
-    // `approval` C52-A's standing approvals.
+    // `map` is WF-1's; `automation` and `activation` C33's; `approval` C52-A's.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
