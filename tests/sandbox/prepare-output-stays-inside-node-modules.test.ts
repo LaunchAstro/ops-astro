@@ -294,7 +294,7 @@ it('keeps a file sent in one-byte pieces in one buffer, not one object per piece
   expect(used() - before).toBeLessThan(16_000_000);
   reader.push(byte, new Uint8Array(448), END);
   const read = reader.end();
-  expect(read.ok && read.entries[1]?.type === 'file' && read.entries[1].data).toEqual(
-    new Uint8Array(size).fill(0x61),
-  );
+  // Compared as bytes: a failing deep diff of a million elements runs for minutes.
+  const data = read.ok && read.entries[1]?.type === 'file' ? read.entries[1].data : null;
+  expect(data && Buffer.compare(data, Buffer.alloc(size, 0x61))).toBe(0);
 }, 30_000);
