@@ -9,8 +9,9 @@
 //
 // The people are seeded from the business's own rows: a person whose name, or
 // an identifier not rejected, holds the text as whole words (Anna names no
-// Joanna), and each --id as given. Their ids follow to their actors, the
-// logins they still hold and the agent of each credential they issued. A row
+// Joanna), anyone a merge not reversed joined them to, and each --id as given.
+// Their ids follow to their actors, the logins they still hold and the agent
+// of each credential they issued. A row
 // is a copy when one of its values, at any depth, holds the text anywhere or
 // one of those ids in any letter case; a column's or a JSON field's name never
 // counts ("granted_at" names no Grant). Letters are folded by the database,
@@ -19,20 +20,27 @@
 // One read-only snapshot answers every query, with the owner's connection from
 // DATABASE_ADMIN_URL and row security off, so a row committed mid-search is in
 // all of the list or none of it, and a table the connection cannot read in
-// full is an error rather than a silent gap. Every query names the business,
-// and a table with no business column is an error.
+// full is an error rather than a silent gap. Every query names the business;
+// a table with no business column, a materialised view and a foreign table
+// are errors.
 //
 // Each hit is one JSON line: the table, the row's id (or its physical address
 // when the table has no id), the columns holding the text or an id, and the
-// people whose ids it holds. The row itself is printed only with --export. The
-// summary on stderr ends with the --id flags that find the same people after
-// their own rows are erased. The connection string is never printed.
+// people whose ids it holds. The row itself is printed only with --export, a
+// credential's hash withheld. The summary on stderr ends with a line per
+// person of the --id flags that find them after their own rows are erased.
+// The list is printed once the search has finished; the connection string is
+// never printed.
 
-import { argv, env, exit, stderr, stdout } from 'node:process';
+import process from 'node:process';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 
+const { argv, env, stderr, stdout } = process;
 const SAFE = /^[a-z_][a-z0-9_]{0,62}$/u;
 const HEX = '0123456789abcdef';
+
+/** Columns an export never carries: the business's security material, not the person's data. */
+const WITHHELD = new Map([['agent_credentials', ['credential_hash']]]);
 
 /** A failure the operator is told about in words; any other is reported without its detail. */
 class Refusal extends Error {}
@@ -62,7 +70,7 @@ function parse(args) {
     }
     index += 1;
     const value = args[index];
-    if (value === undefined) return { error: `${arg} needs a value` };
+    if (value === undefined || value.startsWith('--')) return { error: `${arg} needs a value` };
     if (arg === '--id') {
       const id = uuid(value);
       if (id === null) return { error: `--id needs a UUID, not ${JSON.stringify(value)}` };
@@ -70,10 +78,10 @@ function parse(args) {
     } else {
       const key = arg === '--text' ? 'text' : 'business';
       if (options[key] !== undefined) return { error: `${arg} is given twice` };
-      options[key] = value;
+      options[key] = key === 'text' ? value.trim() : value;
     }
   }
-  if (options.text !== undefined && options.text.trim().length < 4) {
+  if (options.text !== undefined && options.text.length < 4) {
     return { error: '--text needs at least 4 characters that name the person' };
   }
   if (options.text === undefined && options.ids.length === 0) {
@@ -100,11 +108,12 @@ const NAMES = (value) => `to_tsvector('simple', ${value}) @@ phraseto_tsquery('s
 /**
  * The seeds ($2 the text or null, $3 the given ids, in business $1): each id
  * standing for a person the request names, with that person. A person is
- * named by their name or an identifier not rejected; their actors, the logins
- * they still hold and the agent actor of each credential they issued stand for
+ * named by their name or an identifier not rejected, and is one person with
+ * anyone a merge not reversed joined them to; their actors, the logins they
+ * still hold and the agent actor of each credential they issued stand for
  * them. None of these leads to another person, so the set is closed.
  */
-const SEEDS = `with persons as (
+const SEEDS = `with recursive named as (
     select p.id from public.people p
      where p.business_id = $1 and $2::text is not null and ${NAMES('p.display_name')}
     union
@@ -112,7 +121,16 @@ const SEEDS = `with persons as (
      where i.business_id = $1 and $2::text is not null and i.review_state <> 'rejected'
        and (${NAMES('i.value')} or ${NAMES('i.observed_value')})
     union
-    select unnest($3::uuid[]))
+    select unnest($3::uuid[])),
+  persons(id) as (
+    select id from named
+    union
+    select case when m.surviving_person_id = p.id
+                then m.absorbed_person_id else m.surviving_person_id end
+      from persons p
+      join public.person_merges m
+        on m.business_id = $1 and m.reversed_at is null
+       and p.id in (m.surviving_person_id, m.absorbed_person_id))
   select id::text as id, id::text as person from persons
   union
   select a.id::text, a.person_id::text from public.actors a
@@ -147,9 +165,15 @@ const copies = (table) => `select t.ctid::text as address, to_jsonb(t) as row,
      and exists (select from ${values('to_jsonb(t)')} where ${HOLDS})
    order by t.ctid`;
 
+/** The row as an export carries it, with the table's withheld columns marked. */
+function exported(table, row) {
+  const withheld = (WITHHELD.get(table) ?? []).filter((column) => column in row);
+  return { ...row, ...Object.fromEntries(withheld.map((column) => [column, 'withheld'])) };
+}
+
 /**
- * The business's copies as JSON lines, and the seed ids; null when no
- * business has the key.
+ * The business's copies as JSON lines, and the seeds by person; null when
+ * no business has the key.
  */
 async function scan(admin, { business, text, ids, exportRows }) {
   return await admin.transaction(async (execute) => {
@@ -159,18 +183,23 @@ async function scan(admin, { business, text, ids, exportRows }) {
     if (owner === undefined) return null;
     const seeds = await execute(SEEDS, [owner.id, text ?? null, ids]);
     const tables = await execute(
-      `select c.relname as name,
+      `select c.relname as name, c.relkind as kind,
               exists (select 1 from pg_attribute a
                        where a.attrelid = c.oid and a.attname = 'business_id'
                          and not a.attisdropped) as scoped
          from pg_class c
          join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relispartition
+        where n.nspname = 'public' and c.relkind in ('r', 'p', 'm', 'f') and not c.relispartition
         order by c.relname`,
     );
     const lines = [];
-    for (const { name, scoped } of tables) {
+    for (const { name, kind, scoped } of tables) {
       if (!SAFE.test(name)) throw new Refusal(`unexpected table name ${JSON.stringify(name)}`);
+      if (kind === 'm' || kind === 'f') {
+        throw new Refusal(
+          `${name} is a materialised view or foreign table, which it cannot vouch for`,
+        );
+      }
       if (!scoped) throw new Refusal(`table ${name} has no business_id`);
       // oxlint-disable-next-line no-await-in-loop
       const rows = await execute(copies(name), [
@@ -181,11 +210,12 @@ async function scan(admin, { business, text, ids, exportRows }) {
       ]);
       for (const { address, row, columns, people } of rows) {
         const found = { table: name, id: row.id ?? address, columns, people };
-        if (exportRows) found.row = row;
+        if (exportRows) found.row = exported(name, row);
         lines.push(`${JSON.stringify(found)}\n`);
       }
     }
-    return { lines, seeds: [...new Set(seeds.map((seed) => seed.id))] };
+    const byPerson = Map.groupBy(seeds, (seed) => seed.person);
+    return { lines, byPerson };
   });
 }
 
@@ -210,9 +240,10 @@ async function main() {
     }
     stdout.write(found.lines.join(''));
     stderr.write(`find-copies: ${String(found.lines.length)} row(s) hold the text or an id\n`);
-    if (found.seeds.length > 0) {
-      const flags = found.seeds.map((id) => `--id ${id}`).join(' ');
-      stderr.write(`find-copies: to search again after an erasure, add: ${flags}\n`);
+    // One line per person, so an erasure carries its own person's ids only.
+    for (const [person, seeds] of found.byPerson) {
+      const flags = seeds.map((seed) => `--id ${seed.id}`).join(' ');
+      stderr.write(`find-copies: to search again for ${person} after an erasure, add: ${flags}\n`);
     }
     return 0;
   } catch (error) {
@@ -226,4 +257,5 @@ async function main() {
   }
 }
 
-exit(await main());
+// Not exit(): the list is one large write, and exiting can cut a piped one short.
+process.exitCode = await main();
