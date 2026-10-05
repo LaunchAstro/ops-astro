@@ -886,7 +886,7 @@ run (unique per run), or `activation_off`, `approval_revoked` or
 update `activations.approval_id` by column grant; nothing changes or deletes an
 approval, revocation or dispatch. Tenancy-keyed with the restrictive policy.
 
-## Occurrence intake (20261005185354, C33)
+## Occurrence intake (20261005203620, C33)
 
 An occurrence may also be `over_activation_rate`, `over_business_rate` or
 `over_intake_bound` (`activation_occurrences_outcome_known`): past its

@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 -- A UTC timestamp ID (docs/local/DATA.md, "What the schema is"): b0/SL13's
 -- 0258, ported onto main after migrations moved to timestamps, with the two
--- rate outcomes 20261005184526 left out.
+-- rate outcomes 20261005193201 left out.
 --
 -- C33's limits on firing (#483 point 4), each read back from the records
 -- under AW-01's durable limit, so no counter lives here. An occurrence past

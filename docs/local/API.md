@@ -3483,7 +3483,7 @@ The business's activation runs in flight (not handed back or cancelled) are at
 most 5: at the ceiling dispatch answers `{ kind: 'waiting' }` and writes
 nothing. Its event intake holds at most 1,000 approved events not yet
 dispatched: past that, the claim records the event `over_intake_bound`
-(migration 20261005185354) and starts nothing. `waitingOccurrences` lists the
+(migration 20261005203620) and starts nothing. `waitingOccurrences` lists the
 approved occurrences with no dispatch, oldest first: the queued events and the
 runs waiting, which the worker dispatches again as runs finish.
 
