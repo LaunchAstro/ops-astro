@@ -5,8 +5,9 @@
 // table it cannot vouch for, a malformed command line and a malformed
 // database address, whose password it never prints.
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as pause } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { findCopies } from './c81-privacy-runbook-finder.ts';
@@ -92,6 +93,47 @@ it('a short name written with combining marks counts its marks as letters', asyn
     const found = await findCopies(world.adminUrl, ['--text', text], 'alpha');
     expect(found.code, text).toBe(0);
   }
+});
+
+it('a name is matched as the database folds its letters, in a row found by its text alone', async () => {
+  const client = randomUUID();
+  const author = await person(world.alpha, `Ola ${word('ola')}`);
+  const tag = word('tag');
+  await world.db.admin.execute(
+    'insert into public.clients (business_id, id, name, created_by_actor_id) values ($1, $2, $3, $4)',
+    [world.alpha, client, `Call İpek ${tag}`, author.actor],
+  );
+  const found = await findCopies(world.adminUrl, ['--text', `İpek ${tag}`], 'alpha');
+  expect(found.code).toBe(0);
+  expect(hitOn(found.hits, 'clients', client)?.text).toBe(true);
+});
+
+it('a large export reaches a reader that is slow to start reading', async () => {
+  const slow = word('slow');
+  await Promise.all(
+    Array.from(
+      { length: 60 },
+      async () => await person(world.alpha, `${slow} ${'y'.repeat(20_000)}`),
+    ),
+  );
+  const child = spawn('node', [FINDER, '--business', 'alpha', '--text', slow, '--export'], {
+    env: { ...process.env, DATABASE_ADMIN_URL: world.adminUrl },
+  });
+  child.stdout.pause();
+  const chunks: Buffer[] = [];
+  child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+  const exited = new Promise<number | null>((resolve) => {
+    child.on('close', resolve);
+  });
+  // The finder finishes its search while nothing reads; an exit() then drops what the pipe still holds.
+  await pause(3000);
+  child.stdout.resume();
+  expect(await exited).toBe(0);
+  const lines = Buffer.concat(chunks)
+    .toString('utf8')
+    .split('\n')
+    .filter((line) => line !== '');
+  expect(lines.filter((line) => line.includes('"table":"people"'))).toHaveLength(60);
 });
 
 it('a large export reaches its reader whole', async () => {
