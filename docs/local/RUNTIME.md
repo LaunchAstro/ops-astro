@@ -1956,7 +1956,8 @@ and codes, never a sentence, to a trace target an operator reads.
   ask is owed until a batch confirms its run at its place or later. Each
   pass reads back the owed asks it did not just make; a run found gone has
   its events after its place sent again, in the transaction that confirms
-  it: the cursor steps back to just before the earliest such event (or
+  it, and a run that has such events is held back with its ask still owed
+  (`expiry_unconfirmed`): the cursor steps back to just before the earliest such event (or
   stays, if already behind it) under its row lock, the lock the export's
   advance takes, and its version changes, so an export that read before
   the step never advances. While a run's ask is owed, an export that sends

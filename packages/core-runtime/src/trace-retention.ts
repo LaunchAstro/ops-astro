@@ -22,9 +22,10 @@
 // pass failed, after a fresh event of the run went out into the trace it
 // takes. So an ask stays owed until a batch confirms its run at its place
 // or later, and every pass reads back the owed asks it did not just make.
-// A run found gone is confirmed in the transaction that sends its events
-// after its place again (`sendAgain`); the export sends a run with an owed
-// ask whole whenever it sends one of its events (`trace-export.ts`). A
+// A run found gone has its events after its place sent again (`sendAgain`)
+// in the transaction that confirms it, or, when it has such events, holds
+// it back with its ask still owed. The export sends a run with an owed ask
+// whole whenever it sends one of its events (`trace-export.ts`). A
 // confirmation covers only the events up to its place, so a run with a later
 // event, even one committed after the pass, is due again once that event is
 // past the window.
@@ -162,8 +163,7 @@ async function expirePage(
 ): Promise<RetentionBatch> {
   const code = gapOf(await ports.expire(ask.runs.map((runId) => traceOf(key, businessId, runId))));
   const gone = code === null ? await readBack(key, businessId, ports, ask.runs) : [];
-  const settled = code ?? (gone.length < ask.runs.length ? 'expiry_unconfirmed' : null);
-  return await confirm(database, businessId, ask, gone, settled, windowDays);
+  return await confirm(database, businessId, ask, gone, code, windowDays);
 }
 
 /** An owed ask read back: the runs found gone confirmed, or null when none is. */
@@ -229,7 +229,9 @@ async function confirm(
   windowDays: number,
 ): Promise<RetentionBatch> {
   return await database.withBusiness(businessId, async (tx) => {
-    if (gone.length > 0) await sendAgain(tx, gone, ask.place);
+    const held = gone.length > 0 ? await sendAgain(tx, gone, ask.place) : new Set<string>();
+    const kept = gone.filter((runId) => !held.has(runId));
+    const settled = code ?? (kept.length < ask.runs.length ? 'expiry_unconfirmed' : null);
     await tx.query(
       `insert into public.trace_expiry_batches
          (business_id, id, window_days, runs, expired_run_ids, code, after_tx, after_id)
@@ -239,13 +241,13 @@ async function confirm(
         randomUUID(),
         windowDays,
         ask.runs.length,
-        gone,
-        code,
+        kept,
+        settled,
         ask.place.tx,
         ask.place.id,
       ],
     );
-    return { runs: ask.runs.length, confirmed: gone.length, code };
+    return { runs: ask.runs.length, confirmed: kept.length, code: settled };
   });
 }
 
@@ -257,11 +259,17 @@ async function confirm(
  * the export's `advance` takes: an export that read before this never
  * advances past them. An event that commits after this statement's snapshot
  * is read after it too, so it is sent after the delete and needs nothing.
+ * Answers the runs it found, which the batch does not confirm: their asks
+ * stay owed, and each is due again once its later event is past the window.
  */
-async function sendAgain(tx: TenantQuery, runs: readonly string[], place: Place): Promise<void> {
-  await tx.query(
+async function sendAgain(
+  tx: TenantQuery,
+  runs: readonly string[],
+  place: Place,
+): Promise<ReadonlySet<string>> {
+  const rows = await tx.query<{ readonly runId: string }>(
     `with fresh as (
-       select ev.tx, ev.id from public.run_events ev
+       select ev.run_id, ev.tx, ev.id from public.run_events ev
         where ev.business_id = $1 and ev.run_id = any($2::uuid[])
           and (ev.tx, ev.id) > ($3::xid8, $4::uuid)
      ), back as (
@@ -269,15 +277,18 @@ async function sendAgain(tx: TenantQuery, runs: readonly string[], place: Place)
         where p.business_id = $1
           and (p.tx, p.id) < (select f.tx, f.id from fresh f order by f.tx, f.id limit 1)
         order by p.tx desc, p.id desc limit 1
+     ), stepped as (
+       update public.trace_export_cursors c
+          set (after_tx, after_id) = (
+                select b.tx, b.id
+                  from (values (c.after_tx, c.after_id),
+                               ((select tx from back), (select id from back))) b(tx, id)
+                 order by b.tx nulls first, b.id nulls first limit 1),
+              updated_at = now()
+        where c.business_id = $1 and exists (select 1 from fresh)
      )
-     update public.trace_export_cursors c
-        set (after_tx, after_id) = (
-              select b.tx, b.id
-                from (values (c.after_tx, c.after_id),
-                             ((select tx from back), (select id from back))) b(tx, id)
-               order by b.tx nulls first, b.id nulls first limit 1),
-            updated_at = now()
-      where c.business_id = $1 and exists (select 1 from fresh)`,
+     select distinct run_id as "runId" from fresh`,
     [tx.businessId, runs, place.tx, place.id],
   );
+  return new Set(rows.map((row) => row.runId));
 }
