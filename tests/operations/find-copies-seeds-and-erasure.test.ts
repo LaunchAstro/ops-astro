@@ -148,6 +148,12 @@ async function plantErasable() {
   }
   // The same name in bravo, so a seed taken across businesses shows in the printed ids.
   const bravoTwin = await person(world.bravo, `Erin ${erin}`);
+  await world.db.admin.execute(
+    `insert into public.person_identifiers
+       (business_id, id, person_id, kind, value, observed_value, source_system)
+     values ($1, $2, $3, 'email', $4, $4, 'dry-run')`,
+    [world.bravo, randomUUID(), bravoTwin.id, `${erin}@example.test`],
+  );
   return { erin, erased, grants, bravoTwin };
 }
 
@@ -191,6 +197,7 @@ it('after an erasure, the id alone in any letter case finds the row naming the p
     const byId = await findCopies(world.adminUrl, ['--id', id], 'alpha');
     expect(byId.code, id).toBe(0);
     expect(pairs(byId.hits), id).toEqual([['grants', grants.alpha]]);
+    expect(byId.stderr, id).toContain(`${erased} (given by --id)`);
   }
 });
 
@@ -219,6 +226,8 @@ it('a person merged into another is the same person: the merge is followed, a re
   expect(found.code).toBe(0);
   expect(pairs(found.hits)).toContainEqual(['memberships', absorbed.membership]);
   expect(hitOn(found.hits, 'memberships', absorbed.membership)?.people).toEqual([absorbed.id]);
+  expect(found.stderr).toContain(`${requested.id} (named by the text)`);
+  expect(found.stderr).toContain(`${absorbed.id} (merged with a person found)`);
   expect(pairs(found.hits), 'the reversed merge joins no one').not.toContainEqual([
     'memberships',
     unmerged.membership,

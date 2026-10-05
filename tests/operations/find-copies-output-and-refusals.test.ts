@@ -33,18 +33,22 @@ afterAll(async () => {
 });
 
 const person = async (business: string, name: string) => await plantPerson(world, business, name);
+const hex = () => randomUUID().replaceAll('-', '');
 
-it('the text is searched without the spaces around it', async () => {
+it('the text is searched without the spaces around it, and a run of spaces in it is one space', async () => {
   const tess = word('tess');
   const client = randomUUID();
   const author = await person(world.alpha, `Ola ${word('ola')}`);
   await world.db.admin.execute(
     'insert into public.clients (business_id, id, name, created_by_actor_id) values ($1, $2, $3, $4)',
-    [world.alpha, client, `Call ${tess}.`, author.actor],
+    [world.alpha, client, `Call ${tess}  Lee.`, author.actor],
   );
-  const found = await findCopies(world.adminUrl, ['--text', `  ${tess}  `], 'alpha');
-  expect(found.code).toBe(0);
-  expect(pairs(found.hits)).toContainEqual(['clients', client]);
+  for (const text of [`  ${tess}  `, `${tess} Lee`, `${tess} \t Lee`]) {
+    // oxlint-disable-next-line no-await-in-loop
+    const found = await findCopies(world.adminUrl, ['--text', text], 'alpha');
+    expect(found.code, text).toBe(0);
+    expect(pairs(found.hits), text).toContainEqual(['clients', client]);
+  }
 });
 
 it('a large export reaches its reader whole', async () => {
@@ -60,15 +64,14 @@ it('a large export reaches its reader whole', async () => {
   expect(found.hits.filter((hit) => hit.table === 'memberships')).toHaveLength(120);
 });
 
-it('an export withholds a credential hash, the security material of the business', async () => {
+it('an export withholds credential hashes, the security material of the business', async () => {
   const kit = word('kit');
   const issuer = await person(world.alpha, `Kit ${kit}`);
   const agent = randomUUID();
   const credential = randomUUID();
-  const hash = `h${randomUUID().replaceAll('-', '')}${randomUUID().replaceAll('-', '')}`.slice(
-    0,
-    64,
-  );
+  const hash = `${hex()}${hex()}`;
+  const delegationHash = `${hex()}${hex()}`;
+  const delegation = randomUUID();
   await world.db.admin.execute(
     "insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')",
     [world.alpha, agent],
@@ -81,12 +84,22 @@ it('an export withholds a credential hash, the security material of the business
              'hmac-sha256-v1', 'k1', now() + interval '1 day')`,
     [world.alpha, credential, agent, issuer.id, issuer.actor, hash],
   );
+  await world.db.admin.execute(
+    `insert into public.delegations
+       (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
+        collections, actions, credential_hash, expires_at, purpose_scope_kind, purpose_scope_id)
+     values ($1, $2, $3, $4, $5, 'triage', array['tasks'], array['read'], $6,
+             now() + interval '1 day', 'record', $7)`,
+    [world.alpha, delegation, agent, issuer.id, issuer.actor, delegationHash, randomUUID()],
+  );
   const found = await findCopies(world.adminUrl, ['--text', kit, '--export'], 'alpha');
   expect(found.code).toBe(0);
   expect(hitOn(found.hits, 'agent_credentials', credential)?.row?.['credential_hash']).toBe(
     'withheld',
   );
+  expect(hitOn(found.hits, 'delegations', delegation)?.row?.['credential_hash']).toBe('withheld');
   expect(found.stdout).not.toContain(hash);
+  expect(found.stdout).not.toContain(delegationHash);
 });
 
 it('a materialised view or foreign table in public is refused, since the finder cannot vouch for its rows', async () => {

@@ -36,6 +36,8 @@ export async function findCopies(
   const scope = business === null ? [] : ['--business', business];
   const done = await run('node', [FINDER, ...scope, ...args], {
     env: { ...process.env, DATABASE_ADMIN_URL: adminUrl },
+    // An export can pass the default 1 MiB; a cut-short read would fail as a lost line.
+    maxBuffer: 64 * 1024 * 1024,
   }).then(
     (out) => ({ code: 0, ...out }),
     (error: { readonly code?: number; readonly stdout?: string; readonly stderr?: string }) => ({
