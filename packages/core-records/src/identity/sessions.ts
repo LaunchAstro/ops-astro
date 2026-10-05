@@ -12,17 +12,11 @@
 // so it names only the token's session and its subject's digest.
 //
 // An ending and a write's last ask after its session (`sessionEndedHeld`)
-// take the same keys in one order: the business's audit chain, the login's
-// subject, then each session, the ending exclusively and the ask shared. An
-// ending through another business so either commits before the ask reads the
-// endings, or waits for the asking write to commit (C52-A, PRV-oa-984-R2.1).
-// A reset's window (C40) is an ending of the subject: its open takes the
-// subject's key alone, as it writes no audit event; its settle, which ends
-// sessions signed in after the window's bound too, takes the keys first
-// (`holdSubjectEnding`).
+// take the same keys in one order (`ending-keys.ts`, C52-A).
 
 import { randomUUID } from 'node:crypto';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
+import { holdEnding, sessionKey, subjectKey } from './ending-keys.ts';
 import {
   SESSION_ABSOLUTE_SECONDS,
   SIGN_IN_CLOCK_SKEW_SECONDS,
@@ -46,33 +40,6 @@ export interface SeenSession {
 const END_PROVIDER_SESSIONS = `insert into ops.ended_provider_sessions (session_id)
   select ids.id from unnest($1::uuid[]) as ids (id) order by ids.id
   on conflict (session_id) do nothing`;
-
-const subjectKey = (subject: string): string => `session-ending:subject:${subject}`;
-const sessionKey = (sessionId: string): string =>
-  `session-ending:session:${sessionId.toLowerCase()}`;
-
-/** An ending's keys, exclusively, in the one order: chain, subject, sessions sorted. */
-async function holdEnding(
-  tx: TenantQuery,
-  subject: string | undefined,
-  sessionIds: readonly string[],
-): Promise<void> {
-  await advisoryLock(tx, tx.businessId.toLowerCase());
-  if (subject !== undefined) await advisoryLock(tx, subjectKey(subject));
-  for (const key of [...new Set(sessionIds.map((id) => sessionKey(id)))].toSorted()) {
-    // eslint-disable-next-line no-await-in-loop -- one key after another, in order
-    await advisoryLock(tx, key);
-  }
-}
-
-/**
- * The subject's ending keys, exclusively, for a transaction that ends the
- * login's sessions as a whole (C40's settle): taken first, before any session
- * key, in `holdEnding`'s order.
- */
-export async function holdSubjectEnding(tx: TenantQuery, subject: string): Promise<void> {
-  await holdEnding(tx, subject, []);
-}
 
 /** The most sessions one list names; a person has a handful, never hundreds. */
 const LISTED = 50;

@@ -46,10 +46,10 @@ export {
   endProviderSession,
   endOwnSession,
   listSeenSessions,
-  holdSubjectEnding,
   openResetWindow,
   settleResetWindow,
   waitForNextSecond,
   type SeenSession,
   type SessionEndReason,
 } from './sessions.ts';
+export { holdSubjectEnding } from './ending-keys.ts';
