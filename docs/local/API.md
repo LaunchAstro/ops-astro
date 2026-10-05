@@ -3469,8 +3469,9 @@ record is not `never` (otherwise `not-graduable`), and only a value within its
 ceiling in the same currency (`over-ceiling`, `other-currency`); anything else
 is left to the ordinary gate (`none`). A malformed class, currency, client or
 value throws before anything is read. A mandate is written once: the
-application role may revoke it, never edit, backdate or revive it; the database
-stamps the revocation's time and moves the revision by one
-(`standing_mandates_written_once`). A class whose record is `never` shows
+application role may revoke it, never edit, backdate or revive it; each update
+must move the revision by exactly one, and the database stamps the revocation's
+time (`standing_mandates_written_once`). A graduation row's revision moves by one
+or not at all. A class whose record is `never` shows
 `never` in the region whatever is filed, as core treats it. No effect names an action class yet
 (AW-01/AW-02), so today no mandate pre-approves anything.

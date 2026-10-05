@@ -41,8 +41,9 @@
 -- the mandate writers take it first. So a revoke, or a refusal filed, either
 -- waits for an effect already checking or is seen by the next one. A mandate
 -- is written once: `standing_mandates_written_once` refuses any change but its
--- revocation, which the database stamps, moves the revision by one, and is
--- never undone.
+-- revocation and a revision step of exactly one; the database stamps the
+-- revocation's time, and a revocation is never undone. A graduation row's
+-- revision moves by one or not at all (`graduation_classes_revision_step`).
 
 -- Each word of a mandate's list, whole: `*`, a family word or an action class
 -- in `graduation_classes_class_shape`'s form.
@@ -193,6 +194,25 @@ revoke execute on function public.standing_mandates_lock_client() from public;
 create trigger standing_mandates_lock_client
   before insert on public.standing_mandates
   for each row execute function public.standing_mandates_lock_client();
+
+create function public.graduation_classes_revision_step() returns trigger
+  language plpgsql
+  as $$
+  begin
+    if new.revision is distinct from old.revision
+       and new.revision is distinct from old.revision + 1 then
+      raise exception 'IMMUTABLE_FIELD: a graduation row''s revision moves by one'
+        using errcode = 'restrict_violation';
+    end if;
+    return new;
+  end;
+  $$;
+
+revoke execute on function public.graduation_classes_revision_step() from public;
+
+create trigger graduation_classes_revision_step
+  before update on public.graduation_classes
+  for each row execute function public.graduation_classes_revision_step();
 
 alter table public.graduation_classes enable row level security;
 alter table public.graduation_classes force row level security;

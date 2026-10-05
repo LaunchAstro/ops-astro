@@ -65,13 +65,15 @@
 // A standing mandate check (MP-14-10a, `standingMandateVerdict`) takes its
 // client's row `for share`, then the class's graduation row `for share`, then
 // the client's not-revoked mandates `for share` (`lockMandateQuestion`): after
-// the command-layer locks and grant rows, before any audit write, and before
-// the effect writes that client's or class's row in the same transaction. A
-// mandate writer takes the client's row `for no key update` first (every
-// mandate's insert takes it too, `standing_mandates_lock_client`), then the
-// graduation row, then the mandate; any transaction writing
-// `graduation_classes` takes the client's row first, and work over several
-// clients takes their rows in id order.
+// the command-layer locks and grant rows, and before any audit write. An
+// effect that will also write that client's row or that class's graduation
+// row takes it `for no key update` before the check (two effects that each
+// took it for share and then wrote it would deadlock). A mandate writer takes
+// the client's row `for no key update` first (every mandate's insert takes it
+// too, `standing_mandates_lock_client`), then the graduation row, then the
+// mandate; any transaction writing `graduation_classes` takes the client's row
+// `for no key update` first, and work over several clients takes their rows in
+// id order.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements
