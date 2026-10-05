@@ -8,7 +8,7 @@
 
 import { expect, it } from 'vitest';
 import type { ExpiryPorts } from '../../packages/core-runtime/src/index.ts';
-import { expireOnce, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
+import { derivedId, expireOnce, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
 import { asAgent, codeOf, handbackBody, liveWork } from './schedules-harness.ts';
 import { age } from './aw-13-retention-world.ts';
 import { drain, noDatabase, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
@@ -134,5 +134,10 @@ it.skipIf(noDatabase)(
     };
     await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, ports, { page: 1 });
     expect(new Set(traces).size, 'no owed run read twice').toBe(traces.length);
+    const traceOf = (runId: string): string =>
+      derivedId(TRACE_KEY, ['trace', t.alpha.business, runId], 32);
+    expect(traces, 'no owed run skipped').toEqual(
+      expect.arrayContaining(works.map((work) => traceOf(String(work.picked['runId'])))),
+    );
   },
 );
