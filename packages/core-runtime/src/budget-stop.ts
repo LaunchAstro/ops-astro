@@ -93,7 +93,11 @@ export async function observedRefusal(
   );
 }
 
-/** A `happened` recorded after the ask (`recovery/outcome.ts`): the step is done, never rerun. */
+/**
+ * A step settled done (`settleAtObserved`) in any transaction but the ask's own: never rerun.
+ * Both stamps are now(), each its transaction's start, which can invert across transactions,
+ * so only equal stamps mark `happened_differently`'s re-ask, whose top-up reopens the step.
+ */
 export async function recordedRefusal(
   tx: TenantQuery,
   stop: { readonly reservation_id: string; readonly ask_id: string },
@@ -101,7 +105,7 @@ export async function recordedRefusal(
   const done = await tx.query(
     `select 1 from public.attempts a join public.budget_asks k on k.business_id = a.business_id
       where a.business_id = $1 and a.reservation_id = $2 and k.id = $3 and a.state = 'settled'
-        and a.outcome = 'completed' and a.settled_at > k.raised_at`,
+        and a.outcome = 'completed' and a.settled_at is distinct from k.raised_at`,
     [tx.businessId, stop.reservation_id, stop.ask_id],
   );
   if (done.length === 0) return null;
