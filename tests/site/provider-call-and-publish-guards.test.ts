@@ -16,7 +16,6 @@ import {
   type TransportAnswer,
   type TransportRequest,
 } from '../../packages/core-connectors/src/index.ts';
-import { calibrated } from '../../packages/core-connectors/src/site/reconcile.ts';
 
 const target = { path: 'src/pages/about.astro', word: 'friendly', replacement: 'welcoming' };
 const before = '<p>We are a friendly studio.</p>\n';
@@ -25,6 +24,15 @@ const published = {
   revision: 'revision-approved',
   deploymentId: 'deployment-approved',
   liveUrl: 'https://agency.example/about/',
+};
+
+/** The approved place as the live check left it: calibrated, and seen to change. */
+const seenLive = {
+  left: 'We are a ',
+  right: ' studio.',
+  index: 0,
+  observed: ['friendly'],
+  tracked: true as const,
 };
 
 function job(): PublishJob {
@@ -239,7 +247,7 @@ it('an unknown revert is not dispatched blind on retry', async () => {
     publishedRevision: published.revision,
     target,
     seam: 'revert-request',
-    occurrence: calibrated(job().change, target, 'We are a friendly studio.'),
+    occurrence: seenLive,
     decidedAt: Date.parse('2026-10-04T00:00:00Z'),
   };
   expect((await revertCorrection(input, p)).state).toBe('unknown');
@@ -268,7 +276,7 @@ it('a pending revert keeps the original decision time until observation', async 
     publishedRevision: published.revision,
     target,
     seam: 'revert-request',
-    occurrence: calibrated(job().change, target, 'We are a friendly studio.'),
+    occurrence: seenLive,
     decidedAt: Date.parse('2026-10-04T00:00:00Z'),
   };
   const pending = await revertCorrection(input, p);
@@ -311,7 +319,7 @@ it('an unrelated replacement word does not prevent observing a correct revert', 
       publishedRevision: published.revision,
       target,
       seam: 'revert-request',
-      occurrence: calibrated(job().change, target, 'We are a friendly studio.'),
+      occurrence: seenLive,
       decidedAt: Date.parse('2026-10-04T00:00:00Z'),
     },
     {

@@ -15,7 +15,6 @@ import {
   type PublishJob,
   type PublishPorts,
 } from '../../packages/core-connectors/src/index.ts';
-import { calibrated } from '../../packages/core-connectors/src/site/reconcile.ts';
 
 type RevertPorts = Parameters<typeof revertCorrection>[1];
 
@@ -146,7 +145,13 @@ const REVERTED = { revision: 'rev789', deploymentId: 'dpl_2' };
 const revertInput = {
   publishedRevision: 'def456',
   target: TARGET,
-  occurrence: calibrated(CHANGE, TARGET, 'We walk alongside you.'),
+  occurrence: {
+    left: 'We walk ',
+    right: ' you.',
+    index: 0,
+    observed: ['alongside'],
+    tracked: true as const,
+  },
   seam: 'revert-of-def456',
   decidedAt: T0,
 };

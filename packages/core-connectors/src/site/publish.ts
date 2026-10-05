@@ -121,7 +121,7 @@ async function beforeDispatch(
   job: PublishJob,
   ports: PublishPorts,
   back: ReadBack<Published>,
-): Promise<PublishOutcome | { readonly captured: Captured }> {
+): Promise<PublishOutcome | { readonly captured: Captured | undefined }> {
   const { decision } = job;
   if (decision === undefined || decision.decision !== 'approve') return refused('APPROVAL_MISSING');
   const bound =
@@ -130,7 +130,8 @@ async function beforeDispatch(
     versionDigestOf(job) === job.version.digest;
   if (!bound) return refused('PROPOSAL_SUPERSEDED');
   if (!checkEnvelope(job.change, job.target).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
-  if (back.state !== 'absent') return { captured: await ports.capture(job.pageUrl) };
+  // After a landing the page may already show the correction: nothing read then is a pre-image.
+  if (back.state !== 'absent') return { captured: undefined };
   const current = await ports.readSource();
   if (current.kind !== 'ok') return refused('CONTENT_DRIFT_UNCHECKED');
   const pinned = contentDigest(job.change.files[0]?.before ?? null);
@@ -140,6 +141,7 @@ async function beforeDispatch(
   ) {
     return { state: 'refused', code: 'CONTENT_DRIFTED', waitsOn: 'person' };
   }
+  if ((await ports.cancellation()) === 'requested') return refused('CANCELLED');
   const cleared = { captured: await ports.capture(job.pageUrl) };
   // Last, after every awaited read: a cancellation that arrived during one still stops the send.
   return (await ports.cancellation()) === 'requested' ? refused('CANCELLED') : cleared;
@@ -167,9 +169,8 @@ export async function publishCorrection(
   };
   if ((await ports.cancellation()) === 'requested') return unknown('CANCELLED_AFTER_DISPATCH');
   if (answer.kind === 'ok') {
-    const preImage = captured.ok ? captured.value.text : undefined;
+    const preImage = captured?.ok ? captured.value.text : undefined;
     const occurrence = calibrated(job.change, job.target, preImage);
-    // No place: the check can never read it live, so a person confirms the page by eye.
     if (occurrence === undefined) await ports.raiseTask('LIVE_CHECK_UNPLACED');
     return { state: 'accepted', ...answer.value, dispatchToken: token, occurrence };
   }
@@ -209,10 +210,9 @@ export async function observeLanded(
   if (!served) return accepted;
   const captured = await ports.capture(accepted.liveUrl);
   const where = accepted.occurrence;
-  if (!captured.ok || !showsAt(captured.value.text, where, target.replacement, target.word)) {
-    return accepted;
-  }
-  return { ...accepted, state: 'live' };
+  const shows = captured.ok && showsAt(captured.value.text, where, target.replacement, target.word);
+  if (!shows || where === undefined) return accepted;
+  return { ...accepted, state: 'live', occurrence: { ...where, tracked: true } };
 }
 
 export interface RevertPorts extends Omit<ObservePorts, 'capture'> {
@@ -286,7 +286,7 @@ export async function revertCorrection(
   if (!served) return pending;
   const captured = await ports.capture();
   const { word, replacement } = input.target;
-  const where = input.occurrence;
+  const where = input.occurrence?.tracked ? input.occurrence : undefined;
   if (!captured.ok || !showsAt(captured.value.text, where, word, replacement)) return pending;
   const observed = ports.now();
   return {

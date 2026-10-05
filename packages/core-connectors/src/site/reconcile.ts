@@ -70,6 +70,8 @@ export interface Occurrence {
    * calibrated on that page has it, and only such a place is ever observed.
    */
   readonly observed?: readonly string[];
+  /** Seen live: the page changed at this place when the correction landed, so it tracks the target. */
+  readonly tracked?: true;
 }
 
 const BLOCK =
@@ -90,8 +92,13 @@ const rendered = (html: string): string[] =>
       .trim(),
   );
 
+/** Text or a place past these is not searched (the search costs their product): no matches. */
+const MOST_TEXT = 256 * 1024;
+const MOST_PLACE = 4096;
+
 /** The words at the place's equal matches in `text`, among `words`, in page order. */
 function equalsOf(text: string, where: Occurrence, words: readonly string[]): string[] {
+  if (text.length > MOST_TEXT || where.left.length + where.right.length > MOST_PLACE) return [];
   const found = words.flatMap((word) =>
     wordOffsets(text, where.left + word + where.right).map((at) => ({ at, word })),
   );
@@ -138,7 +145,7 @@ export function occurrenceOf(
 /**
  * The place, calibrated on the served page captured before the change: kept only when that page
  * shows exactly the source's equal matches, so text the build drops or a layout adds never lines
- * the counts up (catalogue #953). Undefined is no place: the correction is never read live.
+ * the counts up (catalogue #953). Undefined is no place: never read live, so a person checks it.
  */
 export function calibrated(
   change: ProposedChange,

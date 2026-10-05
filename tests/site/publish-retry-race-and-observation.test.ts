@@ -11,7 +11,6 @@ import {
   type PublishJob,
   type PublishPorts,
 } from '../../packages/core-connectors/src/index.ts';
-import { calibrated } from '../../packages/core-connectors/src/site/reconcile.ts';
 
 const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
 const before = '<p>We walk alongside you.</p>\n';
@@ -120,7 +119,13 @@ it('concurrent absent reads cannot dispatch the same revert twice', async () => 
   const input = {
     publishedRevision: published.revision,
     target,
-    occurrence: calibrated(job().change, target, seen(before)),
+    occurrence: {
+      left: 'We walk ',
+      right: ' you.',
+      index: 0,
+      observed: ['alongside'],
+      tracked: true as const,
+    },
     seam: 'revert-1',
     decidedAt,
   };
@@ -167,7 +172,7 @@ it('an isolated text node does not make unrelated words block publish or revert 
     {
       publishedRevision: published.revision,
       target,
-      occurrence: accepted.occurrence,
+      occurrence: live.occurrence,
       seam: 'revert-1',
       decidedAt,
     },

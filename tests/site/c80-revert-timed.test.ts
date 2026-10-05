@@ -9,7 +9,6 @@ import {
   revertCorrection,
   type CorrectionTarget,
 } from '../../packages/core-connectors/src/index.ts';
-import { calibrated } from '../../packages/core-connectors/src/site/reconcile.ts';
 
 const TARGET: CorrectionTarget = {
   path: 'src/pages/throwaway.astro',
@@ -18,20 +17,16 @@ const TARGET: CorrectionTarget = {
 };
 
 const DECIDED = Date.parse('2026-09-29T10:00:00Z');
-const CHANGE = {
-  files: [
-    {
-      path: TARGET.path,
-      before: '<p>We walk alongside you.</p>\n',
-      after: '<p>We walk beside you.</p>\n',
-    },
-  ],
-};
-
 const INPUT = {
   publishedRevision: 'def456',
   target: TARGET,
-  occurrence: calibrated(CHANGE, TARGET, 'We walk alongside you.'),
+  occurrence: {
+    left: 'We walk ',
+    right: ' you.',
+    index: 0,
+    observed: ['alongside'],
+    tracked: true as const,
+  },
   seam: 'revert-of-def456',
   decidedAt: DECIDED,
 };
