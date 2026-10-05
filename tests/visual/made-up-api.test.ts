@@ -22,8 +22,6 @@ const NOT_DRAWN = new Set([
   // WF-1: no screen draws a map until the WF-3/4 map views (P20).
   'map.view',
   'map.frontier',
-  // MP-14-8: grants, tripwires and the night round land before their screens (P04b).
-  'connection.signal',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
