@@ -177,3 +177,32 @@ it('an artefact swapped for a link after selection is refused as changed, not bl
   });
   expect(calls).toEqual([]);
 });
+
+it('a link path already holding a folder, or served in another case, is refused before the migration', () => {
+  for (const [name, make] of [
+    ['current', (at: string) => mkdirSync(at)],
+    ['SERVED', () => {}],
+  ] as const) {
+    const { root, store } = fixture();
+    mkdirSync(join(root, 'prod'));
+    make(join(root, 'prod', name));
+    const { outcome, calls } = promoted(store, join(root, 'prod', name));
+    expect(outcome, name).toMatchObject({ kind: 'refused' });
+    expect(calls, name).toEqual([]);
+  }
+});
+
+it('an artefact swapped for a plain file after selection is refused as changed', () => {
+  const { root, store } = fixture();
+  const artefact = join(store, artefactName(VERSION));
+  mkdirSync(join(root, 'prod'));
+  const { outcome, calls } = promotedAfter(store, join(root, 'prod', 'current'), () => {
+    rmSync(artefact, { recursive: true });
+    writeFileSync(artefact, 'not a release output');
+  });
+  expect(outcome).toMatchObject({
+    kind: 'refused',
+    reason: expect.stringContaining(`${artefactName(VERSION)} changed while it was copied`),
+  });
+  expect(calls).toEqual([]);
+});
