@@ -141,7 +141,7 @@ export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promi
     rule: 'exact',
     changed: 'write-off: the step changed under discovery; roll back and write it off again',
   });
-  const at = await lockedInstant(tx);
+  const at = await lockedInstant(tx, ['four_eyes_threshold']);
   const scope = { kind: 'record', id: request.taskId } as const;
   const ask = { collection: request.collection, action: 'decide', scope } as const;
   const holds: Holds = async (who) => (await checkAuthorityAt(tx, who, ask, at)).ok;
