@@ -158,7 +158,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005023013 (C31): custody's select is a column grant without the sealed
   // columns, proved by name in `tests/custody/c31-credentials.test.ts`.
   ['siu', 'custody_secrets'],
-  // 20261003173525 (MP-14-7a): the fleet is read here and written by MP-13-5 and
+  // 20261005055041 (MP-14-7a): the fleet is read here and written by MP-13-5 and
   // the broker, and a repair is recorded once and never changed.
   ['s', 'connection_clients connections'],
   ['si', 'connection_repairs'],

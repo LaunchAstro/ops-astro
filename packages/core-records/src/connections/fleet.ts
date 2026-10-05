@@ -10,7 +10,7 @@
 // join is on the business as well as the id, beside the tenancy policy. A
 // client's label is its name in `clients`. The credential is a reference: the
 // secret's id and whether custody holds a value for it, never a column that
-// could carry one (20261003001523 refuses those to the application role in
+// could carry one (20261005023013 refuses those to the application role in
 // any case). The reference is shown to a business-wide reader, for a
 // business-wide secret, or for one scoped to one of the caller's clients. A
 // client-scoped `connection:read` reader therefore sees a business-wide
