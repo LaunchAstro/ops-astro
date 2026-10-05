@@ -205,12 +205,27 @@ export function settledAt(heldMinor: bigint, spentMinor: bigint): Settlement {
   };
 }
 
+/** A hold's model calls: what the settled ones cost, and whether one was sent and never settled. */
+export interface HoldCalls {
+  readonly spentMinor: bigint;
+  readonly open: boolean;
+}
+
+const NO_CALLS: HoldCalls = { spentMinor: 0n, open: false };
+
 /**
- * T2d: settle a dispatched attempt at its priced cost, under the caller's step,
- * lease and reservation locks. The step's attempt, the reservation and the
- * envelope move in the caller's one transaction, with the command's audit
- * event after them, so a failure in any rolls back all. The envelope gives
- * back the hold and takes the cost, which releases the difference to the cap.
+ * T2d: settle a dispatched attempt at its priced cost, under the caller's
+ * envelope, step, lease and reservation locks (the envelope first, in the
+ * contract's order). The step's attempt, the reservation and the envelope move
+ * in the caller's one transaction, with the command's audit event after them,
+ * so a failure in any rolls back all.
+ *
+ * The hold spent the attempt's cost and what its settled model calls cost
+ * (`calls`, which an observation passes; a person's outcome and reconcile
+ * settle the attempt alone). A call sent and never settled, or a total above
+ * the hold, keeps the whole hold as `liability_unknown` for a person (O9,
+ * #832). Otherwise the envelope gives back the hold and takes that total,
+ * which releases the difference to the cap; the attempt records its own cost.
  * No lease, run or task state moves: money settles on its own (an expired
  * lease included). Settling, failing or keeping the hold for a person raises
  * the attempt's one alert (T2h).
@@ -224,10 +239,13 @@ export async function settleAtObserved(
     readonly envelopeId: string;
     readonly heldMinor: bigint;
     readonly costMinor: bigint;
+    readonly calls?: HoldCalls;
     readonly outcome: 'completed' | 'failed';
   },
 ): Promise<Settlement> {
-  if (of.costMinor > of.heldMinor) {
+  const calls = of.calls ?? NO_CALLS;
+  const spentMinor = of.costMinor + calls.spentMinor;
+  if (calls.open || spentMinor > of.heldMinor) {
     await tx.query(
       `update public.attempts set state = 'liability_unknown' where business_id = $1 and id = $2`,
       [tx.businessId, of.attemptId],
@@ -240,32 +258,32 @@ export async function settleAtObserved(
     return {
       state: 'liability_unknown',
       heldMinor: Number(of.heldMinor),
-      observedMinor: Number(of.costMinor),
+      observedMinor: Number(spentMinor),
     };
   }
-  const cost = of.costMinor.toString();
   await tx.query(
     `update public.attempts set state = 'settled', actual_minor = $3, outcome = $4, settled_at = now()
       where business_id = $1 and id = $2`,
-    [tx.businessId, of.attemptId, cost, of.outcome],
+    [tx.businessId, of.attemptId, of.costMinor.toString(), of.outcome],
   );
+  const spent = spentMinor.toString();
   await tx.query(
     `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
       where business_id = $1 and id = $2`,
-    [tx.businessId, of.reservationId, cost],
+    [tx.businessId, of.reservationId, spent],
   );
   await tx.query(
     `update public.task_envelopes
         set held_minor = held_minor - $3, actual_minor = actual_minor + $4
       where business_id = $1 and id = $2`,
-    [tx.businessId, of.envelopeId, of.heldMinor.toString(), cost],
+    [tx.businessId, of.envelopeId, of.heldMinor.toString(), spent],
   );
   await raiseAlert(tx, {
     taskId: of.taskId,
     causeId: of.attemptId,
     raised: { kind: of.outcome === 'failed' ? 'failed' : 'settled' },
   });
-  return settledAt(of.heldMinor, of.costMinor);
+  return settledAt(of.heldMinor, spentMinor);
 }
 
 /** What a top-up did (T2e): raised the envelope, or recorded a first approval. */

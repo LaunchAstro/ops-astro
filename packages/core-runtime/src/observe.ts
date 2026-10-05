@@ -31,6 +31,7 @@ import { lockedInstant } from './clock.ts';
 import { fenceCause, holdsLease, readLease, refuseLease } from './lease-ownership.ts';
 import { acquire } from './locks.ts';
 import { settleAtObserved, settledAt, type Settlement } from './budget.ts';
+import { modelCallsOn } from './model-calls-on.ts';
 import { priceAttempt } from './price-book.ts';
 import { agentCredentials, receiptLinkOf } from './receipt-link.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
@@ -76,6 +77,7 @@ interface Found {
   readonly task_id: string;
   readonly step_id: string;
   readonly reservation_id: string;
+  readonly envelope_id: string;
   readonly attempt_id: string;
   readonly delegation_id: string | null;
 }
@@ -163,6 +165,8 @@ async function settlementOf(
   const heldMinor = BigInt(state.held_minor);
   if (state.attempt_state === 'settled')
     return settledAt(heldMinor, BigInt(state.actual_minor ?? 0));
+  // The hold's model calls are part of what it spent, and one sent and never settled keeps
+  // the whole hold for a person, as the classifier closes a hold (#832).
   const cost = priceAttempt(
     { priceBook: state.price_book, currency: state.currency },
     request.usage,
@@ -175,6 +179,7 @@ async function settlementOf(
     envelopeId: state.envelope_id,
     heldMinor,
     costMinor: cost,
+    calls: await modelCallsOn(tx, found.reservation_id),
     outcome,
   });
 }
@@ -182,7 +187,8 @@ async function settlementOf(
 /** Where the lease leads, in this business only, before any lock. */
 async function discover(tx: TenantQuery, leaseId: string): Promise<Found | undefined> {
   const rows = await tx.query<Found>(
-    `select l.task_id, att.step_id, res.id as reservation_id, att.id as attempt_id, l.delegation_id
+    `select l.task_id, att.step_id, res.id as reservation_id, res.envelope_id, att.id as attempt_id,
+            l.delegation_id
        from public.leases l
        join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
@@ -198,7 +204,11 @@ async function ownedUnderLocks(
   request: ObserveRequest,
   found: Found,
 ): Promise<RuntimeResult<never> | { readonly lease: Observed['lease'] }> {
+  // The envelope settlement moves is taken here, in the contract's order before the lease, never
+  // by the settling write after it: a hand-back holds the envelope and waits on the lease (#834).
+  // A reservation's envelope never changes, so discovery's id is the one to lock.
   await acquire(tx, [
+    { lockClass: 'envelope', id: found.envelope_id },
     { lockClass: 'step', id: found.step_id },
     { lockClass: 'lease', id: request.leaseId },
     { lockClass: 'reservation', id: found.reservation_id },
@@ -242,7 +252,7 @@ async function heldState(tx: TenantQuery, attemptId: string, leaseId: string): P
     await tx.query<HeldState>(
       `select (res.lease_id = $3 and (res.state = 'held' or att.state = 'settled')) as held,
               att.dispatch_marker as marked, att.observed, att.state as attempt_state,
-              res.held_minor::text as held_minor, att.actual_minor::text as actual_minor,
+              res.held_minor::text as held_minor, res.actual_minor::text as actual_minor,
               att.price_book, att.envelope_id, env.currency, step.kind as step_kind
          from public.attempts att
          join public.planned_steps step on step.business_id = att.business_id and step.id = att.step_id
