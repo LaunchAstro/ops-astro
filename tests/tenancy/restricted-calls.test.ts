@@ -215,7 +215,7 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select business_id, gen_random_uuid(), id, 'restricted calls seed', current_date,
             'https://files.example.test/seed.pdf', array['replay'], 'applied', created_by_actor_id
        from public.clients where business_id = $1 order by id limit 1 returning 1`,
-  // 20261005163722 (MP-14-10a): no journey graduates a class or files a
+  // 20261005190100 (MP-14-10a): no journey graduates a class or files a
   // mandate, so one of each is written here, on the business's seeded client,
   // the mandate a live refusal by the client's author, so its own insert meets its keys.
   'public.graduation_classes': `insert into public.graduation_classes

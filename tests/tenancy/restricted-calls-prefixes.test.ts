@@ -365,7 +365,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     outcome: 'applied',
     recorded_by_actor: randomUUID(),
   },
-  // 20261005163722 (MP-14-10a): no journey graduates a class or files a mandate.
+  // 20261005190100 (MP-14-10a): no journey graduates a class or files a mandate.
   'public.graduation_classes': {
     client_id: randomUUID(),
     action_class: 'social.post',
