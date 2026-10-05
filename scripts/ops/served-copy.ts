@@ -75,22 +75,8 @@ export function frozenCopy(
     servedModes(copy, uid);
     if (!holds(copy, selected.digest))
       return { why: `${selected.name} changed while it was copied` };
-    const before = mkdtempSync(join(folder, '.before-'));
-    made.push(before);
-    const earlier = join(before, 'copy');
-    if (lexists(path)) {
-      const kept = unmovable(path, uid);
-      if (kept !== undefined) return { why: kept };
-      renameSync(path, earlier);
-    }
-    try {
-      renameSync(copy, path);
-    } catch (error) {
-      // The earlier copy goes back, so a failed promotion changes nothing served.
-      if (lexists(earlier) && !lexists(path)) renameSync(earlier, path);
-      throw error;
-    }
-    return { path };
+    const kept = replaced(path, copy, made, uid);
+    return kept === undefined ? { path } : { why: kept };
   } catch (error) {
     const failure = error as NodeJS.ErrnoException;
     return holds(selected.path, selected.digest)
@@ -160,6 +146,35 @@ function servedModes(root: string, uid: number | undefined): void {
   }
   for (const name of readdirSync(root)) servedModes(join(root, name), uid);
   chmodSync(root, 0o755);
+}
+
+/**
+ * Puts the checked `copy` at `path` in served/, moving anything there before
+ * aside into a temporary folder it adds to `made`; why not, or undefined. A
+ * copy that cannot take the name puts the earlier one back, so a failed
+ * promotion changes nothing served.
+ */
+function replaced(
+  path: string,
+  copy: string,
+  made: string[],
+  uid: number | undefined,
+): string | undefined {
+  const before = mkdtempSync(join(dirname(path), '.before-'));
+  made.push(before);
+  const earlier = join(before, 'copy');
+  if (lexists(path)) {
+    const kept = unmovable(path, uid);
+    if (kept !== undefined) return kept;
+    renameSync(path, earlier);
+  }
+  try {
+    renameSync(copy, path);
+  } catch (error) {
+    if (lexists(earlier) && !lexists(path)) renameSync(earlier, path);
+    throw error;
+  }
+  return undefined;
 }
 
 /**
