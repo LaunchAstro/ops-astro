@@ -9,14 +9,14 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { authorised, tokenFor } from '../api/fixture.ts';
+import { authorised, tokenFor, type Answer } from '../api/fixture.ts';
 import { agentPath, PROPOSAL } from '../api/controls-fixture.ts';
 import { issueBody } from '../api/api-2-agent-credential-world.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { detail, useMoveWorld } from './c41-a-move-world.ts';
-import { lockHold, pause, type Sent } from './c41-a-lock-hold.ts';
+import { byPerson, lockHold, pause, type Sent } from './c41-a-lock-hold.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -25,7 +25,7 @@ const SECONDS = 1000;
 // eslint-disable-next-line max-lines-per-function -- one world, the races that share it
 describe.skipIf(serverUrl === undefined)('C41-A agent step result authority after the lock', () => {
   const { the, as, onboard, revisionOf } = useMoveWorld('c41aagent');
-  const { onboardingOf, stepWorld, whileHeld } = lockHold(the);
+  const { onboardingOf, stepWorld, whileHeld, waiters } = lockHold(the);
 
   beforeAll(async () => {
     const { db, business } = the.controls.fixture;
@@ -34,10 +34,16 @@ describe.skipIf(serverUrl === undefined)('C41-A agent step result authority afte
     });
   });
 
-  /** A person whose task authority is the fixture decider's five grants, each lapsing at `ends`. */
-  const delegator = async (ends: Date): Promise<Member> => {
+  /**
+   * A person whose task authority is the fixture decider's five grants, each
+   * lapsing at `ends` when given; and the id of its `write` grant.
+   */
+  const delegator = async (
+    ends: Date | null,
+  ): Promise<{ readonly member: Member; readonly writeGrantId: string }> => {
     const { db, business } = the.controls.fixture;
     const member = await enrol(db.app, business, 'step-delegator');
+    let writeGrantId = '';
     await db.app.withBusiness(business, async (tx) => {
       for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
         // oxlint-disable-next-line no-await-in-loop -- issueGrant reads the granter's rows
@@ -51,9 +57,10 @@ describe.skipIf(serverUrl === undefined)('C41-A agent step result authority afte
           expiresAt: ends,
         });
         if (!issued.ok) throw new Error(issued.refusal.code);
+        if (action === 'write') writeGrantId = issued.value;
       }
     });
-    return member;
+    return { member, writeGrantId };
   };
 
   /** The agent picked up on a step's task under a delegation `by` decided. */
@@ -94,7 +101,7 @@ describe.skipIf(serverUrl === undefined)('C41-A agent step result authority afte
     const tasks = [...steps.values()];
     const { onboardingId } = await onboardingOf(welcome);
     const ends = new Date(Date.now() + 8 * SECONDS);
-    const credential = await delegatedOn(welcome, await delegator(ends), 'step_lapse');
+    const credential = await delegatedOn(welcome, (await delegator(ends)).member, 'step_lapse');
     const before = await stepWorld(tasks);
     const answer = await whileHeld(onboardingId, await byAgent(welcome, credential), async () => {
       await pause(ends.getTime() - Date.now() + SECONDS);
@@ -102,6 +109,35 @@ describe.skipIf(serverUrl === undefined)('C41-A agent step result authority afte
     expect(answer.body['code'], JSON.stringify(answer.body)).toBe('DELEGATION_NARROWED');
     expect(answer.status).toBeGreaterThanOrEqual(400);
     expect(await stepWorld(tasks)).toStrictEqual(before);
+  }, 60_000);
+
+  it('C41-A races: a revocation of the delegating person’s covering grant, made while the agent’s step result waits on the onboarding lock, waits for that result', async () => {
+    const steps = await onboard('Made-up Client Delegator Revoke');
+    const welcome = String(steps.get('welcome-email'));
+    const { onboardingId } = await onboardingOf(welcome);
+    const { member, writeGrantId } = await delegator(null);
+    const credential = await delegatedOn(welcome, member, 'step_revoke');
+    let revoked: Promise<Answer> | undefined;
+    let raced = '';
+    const answer = await whileHeld(
+      onboardingId,
+      await byAgent(welcome, credential),
+      async (send) => {
+        const revocation = send(
+          await byPerson(the.admin, 'grant.revoke', { grantId: writeGrantId }),
+        );
+        revoked = revocation;
+        // Committed now, or waiting on the grant row the result holds.
+        raced = await Promise.race([
+          revocation.then(() => 'committed'),
+          waiters(2).then((seen) => (seen ? 'waiting' : 'neither')),
+        ]);
+      },
+    );
+    const revocation = await (revoked as Promise<Answer>);
+    expect(raced).toBe('waiting');
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    expect(revocation.status, JSON.stringify(revocation.body)).toBe(200);
   }, 60_000);
 
   it('C41-A races: a delegation revoked for lost authority while its agent’s step result waits on the onboarding lock answers DELEGATION_NARROWED, writing nothing', async () => {
