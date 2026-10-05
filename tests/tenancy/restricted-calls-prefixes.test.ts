@@ -359,7 +359,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
   },
-  // 20261005145717 (C59): no journey resets a factor.
+  // 20261005155002 (C59): no journey resets a factor.
   'public.factor_resets': {
     person_id: randomUUID(),
     login_id: randomUUID(),
@@ -430,6 +430,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     out_of_scope: 0,
   },
   'public.map_frontier': { map_id: randomUUID(), ticket_id: randomUUID(), position: 1 },
+  // C40B: nothing on the journey asks for a password reset.
+  'public.password_reset_tokens': {
+    login_id: randomUUID(),
+    token_hash: '0'.repeat(64),
+    created_at: '2099-01-01T00:00:00Z',
+    expires_at: '2099-01-01T00:10:00Z',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

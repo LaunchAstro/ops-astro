@@ -429,6 +429,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, item_id, channel, state)
      select business_id, gen_random_uuid(), id, 'in_app', 'asked' from public.inbox_items
       where business_id = $1 order by id limit 1 returning 1`,
+  // C40B: nothing on the journey asks for a password reset, so one token for the
+  // business's first login is written here.
+  'public.password_reset_tokens': `insert into public.password_reset_tokens
+       (business_id, id, login_id, token_hash, expires_at)
+     select business_id, gen_random_uuid(), id, encode(sha256(id::text::bytea), 'hex'),
+            now() + interval '30 minutes'
+       from public.logins where business_id = $1 order by id limit 1 returning 1`,
   // Automations (C33): the journey releases and fires none. Each row is made
   // from the one before, so the order here is the order of the chain.
   'public.automation_definitions': `insert into public.automation_definitions
@@ -563,6 +570,7 @@ const DEFINERS: readonly string[] = [
   'ops.ended_subject_sessions_at_commit()',
   'ops.expire_second_factor_codes()',
   'ops.record_tested_restore()',
+  'password_reset_token_find(text)',
   'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
 ];
 
@@ -794,7 +802,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted five run', async () => {
+  it('calls every function as every caller, and only the granted six run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -815,7 +823,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Ten, each for a named reason. The map read models' four (WF-1) and the
+  // Twelve, each for a named reason. The map read models' four (WF-1) and the
   // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
@@ -826,16 +834,18 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
   // upkeep identity runs it. The ending's commit time (20261004181806) is a
   // trigger on the subject-wide endings that only moves a new row's time later.
-  // The pickup path (SL11-30, 20261004040200) is the one way a lease is
-  // written, in the caller's own business (tests/db/take-lease-path.test.ts). The
-  // live-elsewhere check (C59) answers one boolean for a login of the caller's own business,
-  // never a subject.
+  // The reset token lookup (20261005144947, C40B) is the reset's one read
+  // across businesses, made with no business: two ids for a hash exactly one business holds,
+  // nulls otherwise, and only the application group runs it. The pickup path (SL11-30,
+  // 20261004040200) is the one way a lease is written, in the caller's own business
+  // (tests/db/take-lease-path.test.ts). The live-elsewhere check (C59) answers one boolean
+  // for a login of the caller's own business, never a subject.
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly ten, each with its search path pinned', () => {
+    it('are exactly twelve, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -907,6 +917,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     });
   });
 
+  it('the reset token lookup is a definer taking the hash alone, pinned to read every business', () => {
+    const lookup = functions.find((fn) => fn.signature === 'password_reset_token_find(text)');
+    expect(lookup?.definer).toBe(true);
+    expect(lookup?.trigger).toBe(false);
+    expect(lookup?.argumentTypes).toStrictEqual(['text']);
+    expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
+    expect(lookup?.firedBy).toStrictEqual([]);
+  });
+
   describe('the sixth security definer function', () => {
     it('is the pickup path, fired by nothing and under row security', () => {
       const fn = functions.find(
@@ -920,7 +939,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     });
   });
 
-  describe('the live-elsewhere definer (20261005145717, C59)', () => {
+  describe('the live-elsewhere definer (20261005155002, C59)', () => {
     // The sixth definer: one boolean for a login of the caller's own business,
     // never a subject; the application's group may execute it
     // (c59-factor-reset-settle).
