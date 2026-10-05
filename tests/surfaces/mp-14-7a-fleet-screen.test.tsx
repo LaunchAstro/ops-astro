@@ -783,6 +783,32 @@ describe('MP-14-7a Connections & signal fleet', () => {
     }
   });
 
+  it('MP-14-7a after a hung fleet read gives way, the next slow read still lands', async () => {
+    vi.useFakeTimers({ now: NOW });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const stub = server();
+    const reads = (): number =>
+      stub.sent.filter((call) => call.includes('/connection/fleet')).length;
+    const page = await mount(SCREENS['agency:connections'](alphaContext(stub)));
+    try {
+      await pass(1);
+      await page.click('[data-fleet-facet="broken"]');
+      await page.click('[data-connection="c-11"]');
+      // The read asked at 30 s never answers; every later one takes 40 s.
+      stub.holdFleet('alpha');
+      stub.delayFleet(40_000);
+      await someoneElseRepairs(stub, 'c-11');
+      await pass(FLOOR_MS * 5);
+      expect(reads()).toBe(3);
+      // The read asked at 150 s answers at 190 s; the tick at 180 s waits for it.
+      await pass(FLOOR_MS + 11_000);
+      expect(reads()).toBe(3);
+      expect(page.find('[data-connection-detail="c-11"]')?.textContent).toContain('Repair started');
+    } finally {
+      await page.unmount();
+    }
+  });
+
   it('MP-14-7a a re-read on the floor that is refused drops the drawn fleet', async () => {
     vi.useFakeTimers({ now: NOW });
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
