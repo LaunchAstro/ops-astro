@@ -46,9 +46,10 @@ const runAsOccurrenceRole = async (origin: {
   });
 
 const started = async (on: typeof w.s, worker: string) => {
-  const run = await start(on, await occurrence(on), authorityFor(on), worker);
+  const occurrenceId = await occurrence(on);
+  const run = await start(on, occurrenceId, authorityFor(on), worker);
   if (!run.ok) throw new Error(`refused ${run.refusal.code}`);
-  return run.value;
+  return { ...run.value, occurrenceId };
 };
 
 it("AW-01 occurrence run: a run whose origin names no occurrence, or another business's occurrence or definition, is refused by the database", async () => {
@@ -85,20 +86,22 @@ it("AW-01 occurrence run: a run whose origin names no occurrence, or another bus
   ).resolves.toBeUndefined();
 });
 
-/** A started dispatch of a fresh alpha occurrence, naming `runId`. */
-const dispatch = async (runId: string) =>
+/** A started dispatch of an alpha occurrence (a fresh one unless named), naming `runId`. */
+const dispatch = async (runId: string, occurrenceId?: string) =>
   await w.s.db.app.withBusiness(w.s.business, async (tx) => {
     await tx.query(
       `insert into public.occurrence_dispatches (business_id, id, occurrence_id, outcome, run_id)
        values ($1, $2, $3, 'started', $4)`,
-      [w.s.business, randomUUID(), await occurrence(w.s), runId],
+      [w.s.business, randomUUID(), occurrenceId ?? (await occurrence(w.s)), runId],
     );
   });
 
-it("AW-01 occurrence run: a dispatch naming no run, or another business's run, is refused by the database", async () => {
+it("AW-01 occurrence run: a dispatch naming no run, another business's run, or the run of another occurrence, is refused by the database", async () => {
   const bravoRun = await started(w.bravo, w.bravoWorker);
   await expect(dispatch(randomUUID())).rejects.toThrow(/occurrence_dispatches_run_fkey/u);
   await expect(dispatch(bravoRun.runId)).rejects.toThrow(/occurrence_dispatches_run_fkey/u);
   const alphaRun = await started(w.s, w.worker);
-  await expect(dispatch(alphaRun.runId)).resolves.toBeUndefined();
+  // Alpha's own run, named by a dispatch of another alpha occurrence.
+  await expect(dispatch(alphaRun.runId)).rejects.toThrow(/occurrence_dispatches_run_fkey/u);
+  await expect(dispatch(alphaRun.runId, alphaRun.occurrenceId)).resolves.toBeUndefined();
 });
