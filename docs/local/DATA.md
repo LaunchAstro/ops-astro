@@ -285,7 +285,9 @@ each field with a null write mode (`every field has a non-null write mode`,
 ## What the tenancy proofs are
 
 The suites under `tests/tenancy/` each run against a database of their own,
-migrated from empty. With `DATABASE_URL` unset they print that nothing ran
+migrated from empty: a copy of the one database the run migrated from empty
+(`tests/support/migrated-template.ts`), or migrated by the suite itself where it
+asks to be (`fromEmpty`, or `OPS_ASTRO_DB_TEMPLATE=off` for all of them). With `DATABASE_URL` unset they print that nothing ran
 instead of showing a green tick, and `scripts/db-conformance.mjs` fails any run
 in which a named suite skipped.
 
