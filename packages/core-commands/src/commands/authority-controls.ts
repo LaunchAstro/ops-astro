@@ -86,6 +86,25 @@ async function holds(
   return held.length > 0;
 }
 
+/**
+ * The business's access lock, then the caller's business-wide `access:manage`
+ * asked again under it. The command's grant check ran before the wait, so a
+ * revocation that committed meanwhile would leave the caller acting on a right
+ * it no longer holds. The refusal, or undefined while the caller still manages.
+ */
+export async function lockAccessAsManager(
+  tx: TenantQuery,
+  context: CommandContext,
+): Promise<HandlerOutcome | undefined> {
+  await lockAccess(tx);
+  const still = await checkAuthority(tx, subjectsOf(context.session), {
+    collection: 'access',
+    action: 'manage',
+    scope: { kind: 'business', id: null },
+  });
+  return still.ok ? undefined : refused(still.refusal);
+}
+
 /** Manager of the collection and holder of the pair: the revoker's ceiling. */
 async function withinCeiling(
   tx: TenantQuery,
@@ -232,7 +251,14 @@ async function revokeGrantRow(
 ): Promise<HandlerOutcome> {
   if (typeof grantId !== 'string') return absent('grantId');
   if (!isUuid(grantId)) return NOT_FOUND;
-  await lockAccess(tx);
+  // The ceiling is asked under the lock below; the access path asks its
+  // manager again here.
+  if (authority === 'access') {
+    const lost = await lockAccessAsManager(tx, context);
+    if (lost !== undefined) return lost;
+  } else {
+    await lockAccess(tx);
+  }
   const rows = await tx.query<{
     readonly collection: string;
     readonly action: Action;
