@@ -92,13 +92,13 @@ export async function grantsStillHold(tx: TenantQuery, session: Session): Promis
  * A delegated agent's: the delegating person's task grants held for share
  * now, before the onboarding's lock, as the person path holds its own, so a
  * revocation of one comes after the write. Once the lock is held, the
- * delegation is read `for share` (after the task rows, as the lock order puts
- * a delegation) and must be live at the clock, so a `delegation.revoke` after
- * that read waits too; and the person's `task:write` on the step's task is
- * asked at that clock. A revocation for lost authority, or the person's grant
- * lapsing during the wait, is `DELEGATION_NARROWED`, as the agent envelope
- * answers it; any other end is `DELEGATION_NOT_LIVE`. A child's parent row is
- * read, not held at that row, so its revocation may commit after this read.
+ * delegation, and a child's parent with it, is held `for share` (after the
+ * task rows, as the lock order puts a delegation) and must be live at the
+ * clock, so a `delegation.revoke` of either after that read waits too; and the
+ * person's `task:write` on the step's task is asked at that clock. A revocation
+ * for lost authority, or the person's grant lapsing during the wait, is
+ * `DELEGATION_NARROWED`, as the agent envelope answers it; any other end is
+ * `DELEGATION_NOT_LIVE`.
  */
 export async function delegationStillHolds(
   tx: TenantQuery,
@@ -109,9 +109,18 @@ export async function delegationStillHolds(
   return async ({ taskId }) => {
     // Held first, then read in a statement of its own: a locking read
     // computes its columns before it waits, so a row released unchanged would
-    // otherwise answer with the clock from before the wait.
+    // otherwise answer with the clock from before the wait. A child's parent
+    // is held with it, as its liveness is read; the two in id order, as
+    // `acquire` takes a class's rows, so a revocation costing both cannot
+    // hold one while this holds the other.
     await tx.query(
-      'select d.id from public.delegations d where d.business_id = $1 and d.id = $2 for share of d',
+      `select d.id from public.delegations d
+        where d.business_id = $1
+          and (d.id = $2
+               or d.id = (select c.parent_delegation_id from public.delegations c
+                           where c.business_id = $1 and c.id = $2))
+        order by d.id
+          for share of d`,
       [tx.businessId, delegation.id],
     );
     const [row] = await tx.query<{ readonly live: boolean; readonly narrowed: boolean }>(
