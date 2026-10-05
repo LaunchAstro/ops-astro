@@ -86,7 +86,10 @@
         "tests/api/an-agent-run-state-write-whose-delegation-expired-during-the-run-lock-wait-is-refused.test.ts",
         "tests/commands/a-completion-whose-parent-grant-was-revoked-during-the-subtask-lock-wait-is-refused.test.ts",
         "tests/commands/a-ticket-write-whose-direct-grant-was-revoked-during-the-task-lock-wait-stands-on-its-map-grant.test.ts",
-        "tests/identity/a-factor-change-whose-session-was-signed-out-during-the-factor-lock-wait-is-refused.test.ts"
+        "tests/identity/a-factor-act-undone-by-a-sign-out-keeps-the-sessions-ending.test.ts",
+        "tests/identity/a-factor-change-whose-session-was-signed-out-during-the-factor-lock-wait-is-refused.test.ts",
+        "tests/runtime/a-child-agent-write-whose-parent-delegation-expired-during-its-lock-wait-is-refused.test.ts",
+        "tests/runtime/a-handback-that-waited-at-the-operation-door-across-its-delegations-expiry-keeps-its-report.test.ts"
       ],
       "rules": { "max-lines-per-function": "off" }
     },
