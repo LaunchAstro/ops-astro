@@ -42,6 +42,15 @@ const pause = async (ms: number): Promise<void> => {
 
 type Question = Parameters<typeof standingMandateVerdict>[1];
 
+/** A promise and the function that settles it. */
+function deferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandate check', () => {
   let controls: Controls;
@@ -333,12 +342,22 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
       'report.send ',
       'r%',
     ];
-    const ids = await Promise.all(hostile.map(async (word) => await seedMandate({ classes: [word] })));
+    const ids = await Promise.all(
+      hostile.map(async (word) => await seedMandate({ classes: [word] })),
+    );
     expect(await verdict({})).toStrictEqual({ covered: false, reason: 'none' });
     for (const id of ids) {
       // eslint-disable-next-line no-await-in-loop -- one revoke at a time
       await revoke(id);
     }
+    // A family word is the first part only: no deeper word is ever offered,
+    // so none covers a deeper class either.
+    const deeper = await seedMandate({ classes: ['report.send.*'] });
+    expect(await verdict({ actionClass: 'report.send.daily' })).toStrictEqual({
+      covered: false,
+      reason: 'none',
+    });
+    await revoke(deeper);
     for (const word of ['*', 'report.*', 'report.send']) {
       // eslint-disable-next-line no-await-in-loop -- one word at a time
       const id = await seedMandate({ classes: [word] });
@@ -365,24 +384,20 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
 
   it('MP-14-10a core: expiry is judged on the database clock after the lock wait', async () => {
     const mandateId = await seedMandate({ classes: ['email.send'], expires: '1500 milliseconds' });
-    let release: () => void = () => undefined;
-    let locked: () => void = () => undefined;
-    const isLocked = new Promise<void>((resolve) => {
-      locked = resolve;
-    });
+    const locked = deferred();
+    const release = deferred();
+    // The lock is held on the owner's own connection, not the check's.
     const held = controls.fixture.db.admin.transaction(async (execute) => {
       await execute('select id from public.standing_mandates where id = $1 for update', [
         mandateId,
       ]);
-      locked();
-      await new Promise<void>((resolve) => {
-        release = resolve;
-      });
+      locked.resolve();
+      await release.promise;
     });
-    await isLocked;
+    await locked.promise;
     const checking = verdict({ actionClass: 'email.send', valueMinor: 1 });
     await pause(2500);
-    release();
+    release.resolve();
     await held;
     // The check began while the mandate was live and waited on the lock
     // past its expiry: it is judged expired, not covered.
@@ -402,9 +417,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
         currency: 'AUD',
       });
       // The revoke runs on the owner's own connection, not this one.
-      revoking = revoke(mandateId).then(() => {
+      revoking = (async () => {
+        await revoke(mandateId);
         revokeDone = true;
-      });
+      })();
       await pause(400);
       // The revoke waits on the share lock this effect holds.
       expect(revokeDone).toBe(false);
@@ -448,7 +464,11 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     const task = await controls.createTask('agent crossing');
     const proposal = await controls.propose(task.id, task.revision);
     const picked = await controls.pickup(await controls.approve(proposal));
-    const answer = await controls.asAgent('connection.graduation', {}, String(picked['credential']));
+    const answer = await controls.asAgent(
+      'connection.graduation',
+      {},
+      String(picked['credential']),
+    );
     answers.push(answer);
     expect(answer.status).toBe(403);
     expect(String(answer.body['code'])).toMatch(/^(DELEGATION_|AUTH_)/u);

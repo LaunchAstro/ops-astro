@@ -1665,6 +1665,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.set`                               | `setCustodySecret` (`commands/custody-secrets.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.graduation`                    | `readConnectionGraduation` (`reads/graduation.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -3374,3 +3375,34 @@ value, never any part of one. No sealed column is read. It is shown only for a
 secret the caller's scopes reach (a business-wide reader, a business-wide
 secret, or one of the caller's clients'); a secret scoped to another client the
 connection serves shows as `{ secretId: null, state: 'not set' }`.
+
+### Graduation and standing mandates (MP-14-10a)
+
+The per-client region of the same page. `connection.graduation` is
+`connection:read`, filtered in both its statements by the scopes the caller
+holds it at, and answers every client those scopes reach at once, so choosing a
+client on the scope bar asks the server nothing. Each client is a client of this
+business by foreign key, shown by its name, with the scope list a mandate picks
+from: the whole-account word `*`, one family word per class family
+(`social.*`), then each class. A row's `state` is what its class earned
+(`ready`, `short`, `mixed`, `never`, `none`) unless a live mandate changes it:
+a live mandate filed by promoting that class shows `promoted`, and a live
+refusal whose words cover the class holds a `ready` or `promoted` class as
+`held`, naming the refusal in `heldBy`. Live is not revoked and not past
+`expiresAt` on the database's clock. Graduation rows are written by the agent
+loops (AW-01) and mandates by the mandate commands (next piece); this build only
+reads them.
+
+| Operation               | Route                    | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------- | ------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.graduation` | `/connection/graduation` | `{}` | `{ ok: true, clients: [{ id, label, scopes }], rows: [{ id, clientId, actionClass, classLabel, clearance, state, heldBy, neverWhy, promotedAt, approved, edited, rejected, since, note, revision }], mandates: [{ id, clientId, classes, refuses, ceiling: { amountMinor, currency } \| null, expiresAt, expired, label, graduationClass, authoredBy, createdAt, revision }] }`; `SCOPE_NOT_GRANTED` 403 |
+
+Core's check at an effect (`standingMandateVerdict`, core-runtime) share-locks
+the client's not-revoked mandates, so a revoke waits for an effect already past
+its check and the next check no longer sees the mandate, then judges expiry on
+the database's clock after that lock wait. A scope word covers an action class
+only as `*`, the class's own family word or the class itself, compared whole. A
+live matching refusal wins; an approval covers a value only within its ceiling
+in the same currency; anything else is left to the ordinary gate. No effect
+names an action class yet (AW-01/AW-02), so today no mandate pre-approves
+anything.
