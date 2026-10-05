@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it } from 'vitest';
 import { listOwnSessions } from '../../packages/core-commands/src/index.ts';
+import { SIGN_IN_CLOCK_SKEW_SECONDS } from '../../packages/core-records/src/index.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import { json } from './c58-sessions-world.ts';
 import {
@@ -157,6 +158,14 @@ SOL('the live-session list excludes sessions ended by a failed reset', async () 
     503,
   );
   expect(await doorAnswer(old)).toBe('AUTH_SESSION_EXPIRED');
+  // The failed reset's ending refuses a sign-in up to the clock allowance after it, so move it
+  // behind that allowance (as the C58 world's endingsBehind does) before the fresh sign-in.
+  await world.db.admin.execute(
+    `update ops.ended_subject_sessions
+        set ended_before = ended_before - make_interval(secs => $1)
+      where subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')`,
+    [SIGN_IN_CLOCK_SKEW_SECONDS + 5, subject],
+  );
   const freshId = randomUUID();
   const signedInAt = now() + 1;
   const fresh = await tokenFor(subject, freshId, signedInAt);
