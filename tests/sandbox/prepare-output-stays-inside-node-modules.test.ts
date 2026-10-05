@@ -289,9 +289,10 @@ it('keeps a file sent in one-byte pieces in one buffer, not one object per piece
   reader.push(dir('node_modules'), header({ name: 'node_modules/big', size }));
   const before = used();
   const byte = Uint8Array.of(0x61);
-  for (let n = 0; n < size; n += 1) reader.push(byte);
+  // Read one byte short of the end: once the file is whole, its pieces are gone.
+  for (let n = 1; n < size; n += 1) reader.push(byte);
   expect(used() - before).toBeLessThan(16_000_000);
-  reader.push(END);
+  reader.push(byte, new Uint8Array(448), END); // 448 zero bytes pad the last block
   const read = reader.end();
   expect(read.ok && read.entries[1]?.type === 'file' && read.entries[1].data).toEqual(
     new Uint8Array(size).fill(0x61),
