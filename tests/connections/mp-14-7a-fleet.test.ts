@@ -131,6 +131,66 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     business = 'alpha',
   ): Promise<Answer> => await as(who, 'connector.repair', { connectionId, ...extra }, business);
 
+  // SEC-P02-PR.3: one owner-written row with one column set to a case's value,
+  // answered 'ok' (and removed) or the SQLSTATE that refused it.
+  const writeConnection = async (
+    column: 'auth_method' | 'scope' | 'read_components' | 'execute_components' | 'label',
+    value: unknown,
+  ): Promise<string> => {
+    const row: Record<string, unknown> = {
+      label: 'Grammar case',
+      auth_method: 'OAuth 2.0',
+      scope: 'r_ads',
+      read_components: ['campaigns'],
+      execute_components: [],
+      [column]: value,
+    };
+    const id = randomUUID();
+    return await controls.fixture.db.admin
+      .execute(
+        `insert into public.connections
+           (business_id, id, connector_key, label, auth_method, status, scope,
+            read_components, execute_components)
+         values ($1, $2, 'linkedin', $3, $4, 'active', $5, $6, $7)`,
+        [
+          alpha,
+          id,
+          row['label'],
+          row['auth_method'],
+          row['scope'],
+          row['read_components'],
+          row['execute_components'],
+        ],
+      )
+      .then(async () => {
+        await controls.fixture.db.admin.execute(`delete from public.connections where id = $1`, [
+          id,
+        ]);
+        return 'ok';
+      })
+      .catch((error: unknown) => String((error as { code?: string }).code));
+  };
+  const GRAMMAR_ACCEPTED: readonly (readonly [Parameters<typeof writeConnection>[0], unknown])[] = [
+    ['auth_method', 'API key'],
+    ['auth_method', ''],
+    ['scope', 'https://www.googleapis.com/auth/adwords openid'],
+    ['scope', ''],
+    ['read_components', ['campaigns', 'spend_daily']],
+    ['label', 'Café Ads (AU)'],
+  ];
+  const GRAMMAR_REFUSED: readonly (readonly [Parameters<typeof writeConnection>[0], unknown])[] = [
+    ['auth_method', '<img src=x onerror=alert(1)>'],
+    ['auth_method', 'OAuth\n2.0'],
+    ['scope', 'r_ads\nr_organization'],
+    ['scope', 'r_ads  r_organization'],
+    ['scope', 'r_ads <script>'],
+    ['read_components', ['campaigns', 'Spend!']],
+    ['read_components', ['']],
+    ['read_components', ['campaigns', null]],
+    ['execute_components', ['drop table']],
+    ['label', 'LinkedIn\u001B[31m'],
+    ['label', ' padded'],
+  ];
   const repairRows = async (): Promise<number> =>
     await controls.count('select count(*) as n from public.connection_repairs', []);
 
@@ -347,6 +407,24 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     expect(byId(result, linkedin.id)?.custody).toStrictEqual({ secretId, state: 'set' });
     expect(byId(result, xero.id)?.custody).toStrictEqual({ secretId: null, state: 'not set' });
     expect(JSON.stringify(result)).not.toContain(SECRET_CANARY);
+  });
+
+  it("MP-14-7a credential custody: a client-scoped reader sees a business-wide secret's reference, never its value", async () => {
+    const theirs = await fleet(clientReader);
+    expect(byId(theirs, linkedin.id)?.custody).toStrictEqual({ secretId, state: 'set' });
+    expect(JSON.stringify(theirs)).not.toContain(SECRET_CANARY);
+  });
+
+  it('MP-14-7a connection text is a closed grammar: unknown method, scope, component or label shapes are refused', async () => {
+    const seen = [];
+    for (const [column, value] of [...GRAMMAR_ACCEPTED, ...GRAMMAR_REFUSED]) {
+      // eslint-disable-next-line no-await-in-loop -- one row at a time, each removed
+      seen.push(`${column} ${JSON.stringify(value)}: ${await writeConnection(column, value)}`);
+    }
+    expect(seen).toStrictEqual([
+      ...GRAMMAR_ACCEPTED.map(([column, value]) => `${column} ${JSON.stringify(value)}: ok`),
+      ...GRAMMAR_REFUSED.map(([column, value]) => `${column} ${JSON.stringify(value)}: 23514`),
+    ]);
   });
 
   it('MP-14-7a every change is recorded: connector repair started joins the audit chain', async () => {
