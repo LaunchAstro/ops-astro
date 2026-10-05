@@ -21,13 +21,16 @@
 //
 // **What it reaches.** The surface rows an agent may reach under a delegation
 // that need no lease: not a lease's own work (a claim) and not a person-only
-// row. So `task.create`, under the ticked `task:write`, and
-// `session.capabilities`, whose answer is the ticked keys the person's grants
-// still cover (`readCapabilities` asks within them) and the agent actor as the
-// acting identity. `run.revise_state` is excluded by name (`OUTSIDE_REACH`).
+// row (`CREDENTIAL_REACH`: the task reads and writes an agent makes, comment
+// changes, `run.child_handback`). Among them `task.create`, under the ticked
+// `task:write`, and `session.capabilities`, whose answer is the ticked keys the
+// person's grants still cover (`readCapabilities` asks within them) and the
+// agent actor as the acting identity. A shared person handler holds the agent's
+// limits itself (`updateTask`, `assignTask`, `commentOnTask`, #420). `run.revise_state` is excluded by name (`OUTSIDE_REACH`).
 // Anything else is refused `DELEGATION_EXCLUDES_OPERATION`, recorded against
 // the agent.
 
+import { createHash } from 'node:crypto';
 import {
   isAgentCredentialLive,
   NO_ASSURANCE,
@@ -97,9 +100,10 @@ export interface CredentialQuota {
   /**
    * A place at the business's door, taken at once before the bearer is
    * resolved, or undefined when the door is full. A bearer turned away as not
-   * live keeps it; any other answer gives it back.
+   * live keeps it; any other answer gives it back. A key nobody holds has a
+   * door of its own (`atUnheldKey`).
    */
-  knock(businessId: string): DoorPlace | undefined;
+  knock(door: string): DoorPlace | undefined;
 }
 
 /** A place held at a business's door. */
@@ -132,8 +136,22 @@ const LIMITED_FIXES: readonly string[] = [
 const limited = (): CommandRefusal => refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES);
 
 /** The one answer for a credential not served: unknown, revoked, expired, or a key nobody holds. */
-export const credentialNotLive = (): CommandRefusal =>
+const credentialNotLive = (): CommandRefusal =>
   refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
+
+/**
+ * A credential at a business key nobody holds. It takes a place at that key's
+ * own door and keeps it, as a bearer not live at a business does, so past the
+ * door's count it is limited there too: its answers do not tell a key that
+ * exists from one that does not (response time aside: catalogue #784).
+ */
+export function atUnheldKey(businessKey: string, quota?: CredentialQuota): CommandRefusal {
+  // The caller chose the key, so the door holds its digest, never the key, and
+  // is prefixed so that no key's door is a business's (whose door is its id).
+  const door = `unheld:${createHash('sha256').update(businessKey).digest('hex')}`;
+  if (quota !== undefined && quota.knock(door) === undefined) return limited();
+  return credentialNotLive();
+}
 
 export async function executeCredentialCommand(
   database: Database,

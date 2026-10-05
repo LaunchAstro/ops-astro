@@ -10,8 +10,9 @@
 // files starting side by side race and all but one fail on
 // `pg_authid_rolname_index`. A warm cluster never shows it.
 //
-// So this migrates one throwaway database from empty, which creates both roles
-// exactly as the product does, and drops it again. The group roles stay (roles
+// So this migrates one database from empty, which creates both roles exactly as
+// the product does: the migrated template every fresh database is cloned from,
+// or, with OPS_ASTRO_DB_TEMPLATE=off, a throwaway one it drops again. The group roles stay (roles
 // are per cluster, and `drop()` removes only its own login roles). Nothing is
 // duplicated here: a role a later migration adds is made by the same call.
 // With no database configured it does nothing, and the database-bound files
@@ -32,27 +33,22 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
 } from './fresh-database.ts';
+import { besideUrl, ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 
 const SHARED_ROLES = [APPLICATION_ROLE, 'ops_astro_worker'] as const;
 
-/**
- * The same server, connected to a database other than the configured one:
- * `postgres`, or `template1` when the configured database is `postgres`.
- * Both exist on every cluster `initdb` makes. With no database in the URL,
- * the configured one is the user's name, as it is for libpq.
- */
-export function besideUrl(serverUrl: string): string {
-  const url = new URL(serverUrl);
-  const configured =
-    decodeURIComponent(url.pathname.replace(/^\//u, '')) || decodeURIComponent(url.username);
-  url.pathname = configured === 'postgres' ? '/template1' : '/postgres';
-  return url.toString();
-}
+export { besideUrl };
 
 export default async function setup(): Promise<void> {
   const configuredUrl = databaseUrlFromEnvironment();
   if (configuredUrl === undefined) return;
+  // The migrated template (migrated-template.ts) is built from empty here, once,
+  // before any file clones it; building it makes the shared roles too.
+  if (templateEnabled()) {
+    await ensureMigratedTemplate(configuredUrl);
+    return;
+  }
   const serverUrl = besideUrl(configuredUrl);
 
   const server = connectAsAdmin(serverUrl);

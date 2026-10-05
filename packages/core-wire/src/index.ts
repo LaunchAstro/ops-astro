@@ -166,6 +166,15 @@ export type {
   PreReviewAttribution,
   PreReviewRun,
 } from './views-agent.ts';
+// Settings ▸ Workflow triggers' registry (C33).
+export type {
+  ActivationView,
+  AutomationDefinitionView,
+  AutomationRegistryResult,
+  DefinitionVersionView,
+} from './views-automations.ts';
+// Custody's secrets as Settings ▸ Keys reads them (C31).
+export type { SecretListResult, SecretView } from './connection-views.ts';
 // AW-04: a plan version as a planning reply offers it in the chat
 export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
 // the command catalogue and its parity check (API-1)

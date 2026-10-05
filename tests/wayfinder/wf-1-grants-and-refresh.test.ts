@@ -66,6 +66,7 @@ const broker: Broker = {
     stop: () => Promise.resolve(),
     raw: unreached,
     dispatch: unreached,
+    describe: unreached,
   },
   operations: catalogue([EMAIL_SEND]),
   providers: new Map([['resend', { build: emailAdapter, price: () => 0 }]]),
@@ -688,9 +689,17 @@ describe.skipIf(serverUrl === undefined)(
         fields: { assignee: replacement.personId },
       });
       await taskHeld.promise;
+      const subdomain = 'send.example.test';
       const mailing = sendInboxEmail(mailDb, w.business, item?.id ?? '', broker, {
         appOrigin: 'https://ops.example.test',
-        from: 'hello@example.test',
+        from: `hello@${subdomain}`,
+        sender: {
+          subdomain,
+          verified: true,
+          records: { dkim: 'verified', spf: 'verified', returnPathMx: 'verified' },
+          dmarc: 'reject',
+          mock: false,
+        },
       });
       const outcomes = Promise.allSettled([assigning, mailing]);
       await itemHeld.promise;
@@ -952,7 +961,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(end).toBeGreaterThan(start);
       await w.db.admin.execute(old.slice(start, end));
       const migration = readFileSync(
-        'migrations/20261005002824_wayfinder_frontier_cancelled.sql',
+        'migrations/20261005125527_wayfinder_frontier_cancelled.sql',
         'utf8',
       );
       const map = await w.create(

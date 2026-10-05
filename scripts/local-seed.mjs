@@ -107,6 +107,10 @@ const GRANTS_BY_ROLE = {
     // A top-up is a money decision on `billing` (T2e, the permission
     // catalogue's `billing:decide`): the owner and administrators hold it.
     ['billing', 'decide'],
+    // Custody (C31): the key catalogue gives `custody:manage` to the owner and
+    // administrators, never an agent. Without it no seeded identity could set
+    // or clear a key on Settings ▸ Keys.
+    ['custody', 'manage'],
     // A person's own conversations with the agent (AW-03): the owner and
     // administrators hold `conversation:write` (the permission key catalogue).
     // `conversation:read`, the read-any grant, is seeded to nobody: it is given
@@ -142,6 +146,9 @@ const GRANTS_BY_ROLE = {
     // `spend:decide`, so C59's step-up judges it. Client sign-off and the
     // step-up switch stay `settings:manage` above.
     ['spend', 'decide'],
+    // Settings ▸ Workflow triggers (C33): releasing a definition version is
+    // `automation:manage`, the owner's and administrators' and never an agent's.
+    ['automation', 'manage'],
   ],
   member: [
     ['task', 'read'],

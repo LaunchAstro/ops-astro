@@ -53,6 +53,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import type {
   AdminConnection,
+  BusinessId,
   Database,
   QuotaOptions,
 } from '../../packages/core-records/src/index.ts';
@@ -78,6 +79,7 @@ import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { siteCatalogue } from '../../packages/core-connectors/src/index.ts';
 import type { AgentLimits } from './auth/agent-quota.ts';
 import { createGoTrueFactors } from './auth/factors.ts';
+import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink, type ErrorSinkLink } from './health/error-sink-link.ts';
 import { createLangfuseHealth } from './health/tracing.ts';
 import { goTrueLogins, providerAdminKey } from './auth/provider-logins.ts';
@@ -89,7 +91,10 @@ import {
 import { startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
+import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
+import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
+import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
   describeRecovered,
@@ -132,9 +137,15 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
     // Deployment configuration rather than a secret, in a file of its own so the
     // database script that rewrites `db.env` cannot drop it.
     ...readEnvFile(join(ROOT, '.local', 'recovery.env')),
+    // The broker's public key custody seals secrets to (C31). Public: the
+    // private half is the broker's and never in this process's files.
+    ...readEnvFile(join(ROOT, '.local', 'custody.env')),
     ...process.env,
   };
 }
+
+/** The business lookup identity (0046) the resolver takes by name. */
+export const LOOKUP_ROLE = 'ops_astro_lookup';
 
 /**
  * The business key to its identifier, cached after the first answer.
@@ -163,7 +174,7 @@ export function createBusinessResolver(
 
     // As the lookup identity (0046), which reads id and key and nothing else.
     const rows = await admin.transaction(async (execute) => {
-      await execute('set local role ops_astro_lookup');
+      await execute(`set local role ${LOOKUP_ROLE}`);
       return await execute<{ id: string }>(
         'select id from public.businesses where key = $1 limit 2',
         [businessKey],
@@ -217,6 +228,10 @@ export interface ApiConfig {
    * mounted. Its check is `admitReads` unless a test hands in its own to count.
    */
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
+  /** The email provider's delivery hook (AW-07b); absent, the hook route is not mounted. */
+  readonly mailHook?: MailHookOptions;
+  /** C40's `POST /api/password/set` over these businesses and broker; absent, not mounted. */
+  readonly passwordSet?: PasswordSetOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -319,6 +334,12 @@ export function composeApi(config: ApiConfig): ComposedApi {
     });
   }
 
+  // AW-07b: the provider's delivery and bounce events, verified by signature,
+  // as system work with no sign-in (`mail-hook.ts`).
+  if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);
+  // C40: a reset token's password set, mounted when given; `main()` does not yet.
+  if (config.passwordSet !== undefined) mountPasswordSet(server, database, config.passwordSet);
+
   server.route(
     '/',
     createApi({
@@ -348,7 +369,11 @@ export function composeApi(config: ApiConfig): ComposedApi {
         ? {}
         : { answerConversation: config.answerConversation }),
       // The provider GoTrue is: the one destination its factor calls reach.
-      factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
+      // A hosted gateway refuses them without the project's publishable key.
+      factors: createGoTrueFactors({
+        baseUrl: config.signIn.issuer,
+        ...(key === '' ? {} : { projectKey: key }),
+      }),
       logins,
       // Only where a provider key is held (the local server): the Vercel
       // function has none, so it asks the owner nothing and leaves every
@@ -387,6 +412,46 @@ export function composeApi(config: ApiConfig): ComposedApi {
   return { app: server, logins, resolveBusiness };
 }
 
+/** One part of the server to stop, or none where that part is off. */
+type Stopping = (() => Promise<unknown>) | undefined;
+
+/**
+ * The server's shutdown in two stages: the work that may be mid-pass first
+ * (the live streams, the mail worker's running pass), then the pools and
+ * processes that work uses. The second stage starts only once every part of
+ * the first has settled, so a question or a send ends before its pool does.
+ */
+export async function shutDown(
+  working: readonly Stopping[],
+  pools: readonly Stopping[],
+): Promise<void> {
+  await Promise.allSettled(working.map(async (stop) => await stop?.()));
+  await Promise.allSettled(pools.map(async (stop) => await stop?.()));
+}
+
+/** What `main` stops, each a part's stop or none where that part is off. */
+export interface ServerParts {
+  readonly topics: Stopping;
+  readonly mail: Stopping;
+  readonly database: Stopping;
+  readonly admin: Stopping;
+  readonly broker: Stopping;
+  readonly tracer: Stopping;
+}
+
+/**
+ * The two stages `main` hands `shutDown`: the live streams and the mail worker's running pass
+ * first, then the pools and processes they use.
+ */
+export function shutdownStages(
+  parts: ServerParts,
+): readonly [readonly Stopping[], readonly Stopping[]] {
+  return [
+    [parts.topics, parts.mail],
+    [parts.database, parts.admin, parts.broker, parts.tracer],
+  ];
+}
+
 async function main(): Promise<void> {
   // T2c1: the crash seam is test-only, so an armed one outside test mode stops the start.
   const seam = crashSeamProblem(process.env);
@@ -414,6 +479,15 @@ async function main(): Promise<void> {
     console.error(
       'api: SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer.',
     );
+    process.exit(1);
+  }
+  // The hosted provider's public key: the page's sign-in and this server's
+  // own provider calls (factors, sign-out) carry it. Only a public key passes.
+  let providerKey: string;
+  try {
+    providerKey = publishableKey(environment['SUPABASE_PUBLISHABLE_KEY']);
+  } catch (error) {
+    console.error(`api: ${(error as Error).message}`);
     process.exit(1);
   }
   for (const [name, value] of [
@@ -465,6 +539,13 @@ async function main(): Promise<void> {
     console.error(`api: ${traceConfig.problem}`);
     process.exit(1);
   }
+  // AW-07b: the delivery worker, off unless `MAIL_DELIVERY=mock` (no provider
+  // account yet); mock with a setting missing or malformed stops the server here.
+  const mailConfig = mailDeliverySettings(environment);
+  if (mailConfig.kind === 'invalid') {
+    console.error(`api: ${mailConfig.problem}`);
+    process.exit(1);
+  }
   const broker =
     brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
   console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
@@ -476,6 +557,16 @@ async function main(): Promise<void> {
     console.error(`api: ${(error as Error).message}`);
     process.exit(1);
   }
+  // AW-07b: the provider's delivery hook, mounted only with a hook secret in
+  // the provider's form; a malformed one stops the server, naming the setting.
+  const hookConfig = mailHookSettings(environment);
+  if (hookConfig.kind === 'invalid') {
+    console.error(`api: ${hookConfig.problem}`);
+    process.exit(1);
+  }
+  // The hook's events land over the businesses restart recovery resolves, set
+  // below before the port is bound.
+  let hookBusinesses: readonly BusinessId[] = [];
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -485,6 +576,7 @@ async function main(): Promise<void> {
     database,
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
+    providerKey,
     keys,
     live: { topics, presence: createLivePresence() },
     ...(broker === undefined
@@ -494,7 +586,16 @@ async function main(): Promise<void> {
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     errorSink,
     ...(alerts === undefined ? {} : { alerts }),
+    ...(hookConfig.kind === 'configured'
+      ? {
+          mailHook: {
+            secret: hookConfig.secret,
+            businesses: async () => await Promise.resolve(hookBusinesses),
+          },
+        }
+      : {}),
   });
+  console.log(`api: email hook ${hookConfig.kind === 'configured' ? 'mounted' : 'not mounted'}`);
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
   // bound: a process start is the resume entry, and a failure is a failed
@@ -520,11 +621,22 @@ async function main(): Promise<void> {
   // an interval; nothing on the wire reaches it. Started before the port is
   // bound, so a custody that cannot start stops the server first.
   const traced = recovered.businesses.map((business) => business.businessId);
+  hookBusinesses = traced;
   const tracer =
     traceConfig.kind === 'on'
       ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))
       : undefined;
   console.log(`api: trace export ${tracer === undefined ? 'off' : 'on'}`);
+  // AW-07b: the mail worker over the same businesses, started the same way.
+  const mail =
+    mailConfig.kind === 'mock'
+      ? await startMailDelivery(mailConfig, database, async () => await Promise.resolve(traced))
+      : undefined;
+  console.log(
+    mail === undefined
+      ? 'api: mail delivery off'
+      : 'api: mail delivery mock (fake provider, made-up sender check and email choices)',
+  );
 
   serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info) => {
     console.log(`api: listening on http://127.0.0.1:${info.port}`);
@@ -552,18 +664,15 @@ async function main(): Promise<void> {
 
   const stop = (): void => {
     sweeper.stop();
-    // The live streams first: a question one has in flight ends before its pool does.
-    void Promise.allSettled([topics.close()])
-      .then(
-        async () =>
-          await Promise.allSettled([
-            database.close(),
-            admin.close(),
-            broker?.stop(),
-            tracer?.stop(),
-          ]),
-      )
-      .then(() => process.exit(0));
+    const stages = shutdownStages({
+      topics: async () => await topics.close(),
+      mail: mail?.stop,
+      database: async () => await database.close(),
+      admin: async () => await admin.close(),
+      broker: broker?.stop,
+      tracer: tracer?.stop,
+    });
+    void shutDown(...stages).then(() => process.exit(0));
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);

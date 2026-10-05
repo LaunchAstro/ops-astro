@@ -10,6 +10,7 @@ import type { OperationsClient } from '../operations/client.ts';
 import type {
   PersonView as TaskPerson,
   ProposalVersionView as ProposalVersion,
+  ProposalView,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
 
@@ -200,4 +201,25 @@ export function settled(
     lineageId: props.lineageId,
   });
   props.onChanged();
+}
+
+/** The held note a refusal for want of the grant leaves, naming the gate it was about. */
+export function closedNote(
+  proposals: readonly ProposalView[],
+  gateId: string,
+  because: string,
+): DecisionNote {
+  const lineage = proposals.find((each) =>
+    each.versions.some((version) => version.gate?.id === gateId),
+  );
+  return { because, closed: true, gateId, lineageId: lineage?.lineageId ?? '' };
+}
+
+/**
+ * A held closure gives way only to another closure. The views decide
+ * independently, so an older request can settle after the refusal, and its
+ * answer says nothing about this reader's authority now.
+ */
+export function keepsClosure(held: DecisionNote, next: DecisionNote | null): boolean {
+  return held.closed && next?.closed !== true;
 }

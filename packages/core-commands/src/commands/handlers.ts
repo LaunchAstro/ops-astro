@@ -28,6 +28,7 @@ import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
 import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
+import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
 import { recordIncident } from './privacy-write.ts';
 import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { issueCredential, revokeCredential } from './credential-write.ts';
@@ -68,6 +69,7 @@ import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
+import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
 import { reviseMap } from './wayfinder-revision.ts';
 
 /**
@@ -140,6 +142,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'settings.set_money_step_up': setting,
   'settings.set_conversation_window': setting,
   'settings.set_retention_window': setting,
+
+  'secret.set': (tx, context, request) => setCustodySecret(tx, context, request),
+  'secret.clear': (tx, context, request) => clearCustodySecret(tx, context, request),
 
   'privacy.record_incident': recordIncident,
   'legal.draft_version': draftVersion,
@@ -233,6 +238,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
+  // Settings ▸ Workflow triggers (C33), in `automations.ts`.
+  'activation.change': changeActivationAsPerson,
+  'definition.release': releaseDefinitionVersion,
 };
 
 function writeOwned(

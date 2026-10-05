@@ -58,7 +58,7 @@ function fakeDocker(path: string, calls: string): void {
       '  "inspect --format")',
       '    shift 3',
       `    [ -f '${up}' ] && for c in "$@"; do echo "/$c ${pinned}"; done ;;`,
-      '  "ps "*) echo api-id ;;',
+      `  "ps "*) echo ${'a'.repeat(64)} ;;`,
       `  "inspect "*) printf '%s\\n' '[{"Name":"/prod-api","State":{"Running":true,"StartedAt":"t1"},"HostConfig":{}}]' ;;`,
       '  *) exit 2 ;;',
       'esac',

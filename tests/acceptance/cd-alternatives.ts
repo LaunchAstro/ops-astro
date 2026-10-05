@@ -30,7 +30,7 @@ export const CASE = {
 } as const;
 
 /**
- * The thirty-nine operations that name no identifier, each with a minimal valid body.
+ * The forty-seven operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -63,6 +63,9 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
+  // Custody (C31): the list and a set of a business-wide key name no row.
+  ['secret.list', {}],
+  ['secret.set', { name: 'target-free.key', value: 'target-free-value' }],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
   // AW-04: a digest names a file's bytes, not a record of any business.
@@ -144,9 +147,11 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['inbox.count', {}],
   ['inbox.unattended', {}],
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
+  // The Workflow triggers registry (C33) names no row.
+  ['automation.registry', {}],
 ];
 
-/** The forty identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The forty-seven identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -154,6 +159,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.restart': ['lineageId and recordId', 'control'],
   'task.restore': ['batchId', 'control'],
   'grant.revoke': ['grantId', 'control'],
+  'secret.clear': ['secretId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.accept_plan': ['gateId', 'gate'],
@@ -196,6 +202,9 @@ export const IDENTIFIER_BEARING: Readonly<
   'client.set_privacy': ['clientId', 'control'],
   'task.duplicate': ['recordId', 'duplicate'],
   'inbox.seen': ['itemId', 'control'],
+  // C33: a version and an activation, and a definition to release on.
+  'activation.change': ['versionId and activationId', 'control'],
+  'definition.release': ['definitionId', 'control'],
 };
 
 /**

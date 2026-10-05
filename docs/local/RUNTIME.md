@@ -113,8 +113,11 @@ the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 Under those locks, `task.propose` checks the cap's currency and room and the
 open envelope's, T1's "existing budget authority", as the handback's successor
 bound does (`refuseBeyondBudget`, `propose.ts`). The envelope is asked first
-(`refuseBeyondEnvelope`), and each room is less the hold the superseded version
-releases. The cap is the open envelope's, else the one the caller passed, else
+(`refuseBeyondEnvelope`), and each room is less what superseding the live
+versions gives back, by the rule the classifier closes a hold by
+(`releasedOnClosing`, `budget-ledger.ts`, #836): a hold closes at its settled
+model calls' spend, and a marked hold or one with a call still open gives back
+nothing. The cap is the open envelope's, else the one the caller passed, else
 the business cap: with no `capId` passed, which is `task.restart`,
 `lockProposal` reads the business cap (`readBusinessCapId`) and locks it with
 the rest of the set. The check runs
@@ -1460,7 +1463,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:855-866`). With neither setting present, the
+  rewrites it (`local-seed.mjs:862-873`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1540,6 +1543,21 @@ both tenancy-scoped with row security forced, and the fair share's count
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
   account. The application group may select, insert and update.
+- Carrier (`20261005100149_model_call_carrier`, catalogue #439, #943): the
+  route's provider (`provider`) and custody credential (`credential_ref`) are
+  written with the route at every send, and the account custody names for
+  that credential (`describe`) before the send, not only at a priced settle.
+  The reconciliation pass asks only through the route with the row's key,
+  reach, kind, provider and credential, only while the operation still goes
+  to that provider, and releases only when custody's lookup answers on the
+  same credential kind and account. A row missing any of them (written
+  before the migration, or a replay credential, which has no account)
+  releases nothing: a person records its outcome. The account is the
+  credential file's `account` label, and the pass trusts it: it must be the
+  provider's own account or organisation id, never reused for another
+  account's key. A destination's address is not recorded: never re-point a
+  destination at another instance the same key reaches while calls on it are
+  held unknown. Test: `reconcile-releases-nothing-without-its-carrier`.
 - Usage (`0098_model_call_usage`, ORCH37): a settled call records the model
   the provider says answered (`model_id`, null when the answer named none)
   and the units its answer says it used (`input_units`, `output_units`, both
@@ -1600,6 +1618,16 @@ both tenancy-scoped with row security forced, and the fair share's count
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
   update and delete, and the application group may select and insert only.
+
+An observation settles its hold by the same rule (#832): the reservation and
+the envelope close at the attempt's priced cost plus what the hold's settled
+calls cost, and the attempt records its own cost. A call on the hold sent and
+never settled, or a total above the hold, keeps the whole hold as
+`liability_unknown` for a person; `task.observe` refuses `BUDGET_UNAVAILABLE`
+retaining it, in words that name which. Observe locks the envelope with the
+step, lease and reservation, ahead of them in the contract's order, so it never
+waits on the envelope while holding a lease a hand-back is parked on (#834;
+`tests/runtime/observe-counts-the-holds-calls.test.ts`).
 
 The broker (`core-custody/src/broker.ts`, with its steps in the
 `broker-*.ts` files beside it) writes both, and the `model.call`
@@ -1835,7 +1863,14 @@ or delete.
   is the core's one rule (`four-eyes.ts`), the one T2e's top-up and T3c's
   write-off use: the band is `four_eyes_threshold` in the envelope currency's
   major unit, read `for share` under the locks, null is off and no stored row
-  is the shipped 500. Above it the first approval is recorded and applies
+  is the shipped 500; the settings install lock (`lockSettingsInstall`,
+  advisory key `<business id>:business_settings`) is held shared first, so a
+  first row cannot commit under a decision that read none. Both are held
+  before the locked instant is read (`lockedInstant(tx, ['four_eyes_threshold'])`
+  in the top-up, the write-off and the budget-stop answer), so a grant that
+  ends while the decision waits on them no longer counts. Postgres floors the
+  band exactly to whole minor units, so a band of 500.005 makes 500.01 need
+  two people. Above it the first approval is recorded and applies
   nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
   threshold, a different amount is `FIELD_VALUE_INVALID`, and a second,
   distinct holder approving the same amount completes it, but only while the
@@ -1878,22 +1913,31 @@ and codes, never a sentence, to a trace target an operator reads.
 - `core-runtime/src/trace-export.ts`: `exportOnce` reads up to 100 events after
   the business's cursor, registers each run's copy (`diagnostic_trace`,
   `run:<id>`, retained as `trace`) before it is materialised, delivers through
-  the `Deliver` port, then advances the cursor or records a gap. The read and
+  the `Deliver` port, then advances the cursor or records a gap. An event
+  already older than the trace window (30 days, `TRACE_WINDOW_DAYS`) when it
+  is read is passed by the cursor and never sent, and registers no copy:
+  retention would owe it a delete at once, and a run retention confirmed has
+  only such events, so a retention step back that re-reads them brings no
+  trace back. The read and
   the advance are separate transactions and no transaction is open while the
   target is asked. Anything short of a 2xx JSON reply is a gap with a fixed
   code (`target_unreachable`, `target_redirect`, `target_timeout`,
   `target_oversized_reply`, `target_malformed_reply`, `target_refused`,
-  `target_forbidden`) and the cursor stays. No run reads either table and no
-  run waits on the exporter.
+  `target_forbidden`) and the cursor stays. The gap names the cursor the
+  batch was read after, read once in the read's transaction, never the row as
+  it is when the gap is written: another export may have moved it while this
+  one waited on the target. No run reads either table and no run waits on the
+  exporter.
 - `trace_export_cursors`: one row per business, the last delivered event by
   its writing transaction's id and its own, `(tx, id)` (`run_events.tx`,
   `xid8`, 0090). The read takes only events below its snapshot's horizon
   (`pg_snapshot_xmin`): every transaction below it has finished and any later
   write has a higher id, so an event that commits late never lands behind
   the cursor. A long transaction anywhere on the cluster holds the export
-  back until it ends; it never loses an event. The cursor moves forward only: two exports at once may read the
-  same batch, and the slower one never moves it back (the upsert's row lock
-  orders them, the comparison under it keeps the later). `trace_export_gaps`: append only (a trigger refuses
+  back until it ends; it never loses an event. The read also takes the cursor
+  row's version (`xmin`), and the advance lands only on that version, so two
+  exports at once that read the same batch never move it back (the upsert's
+  row lock orders them, the version under it decides). `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and
   insert, and update the cursor.
 - The port is custody's egress (`apps/api/trace-exporter.ts`): a custody
@@ -1939,14 +1983,58 @@ and codes, never a sentence, to a trace target an operator reads.
   group may select and insert): the window, the runs asked, the runs
   confirmed, and the gap code when it did not finish (a delivery code, or
   `expiry_unconfirmed`). A failed delete confirms nothing; an unconfirmed run
-  is due again next pass. Two passes at once are harmless: deletion by
-  derived id is idempotent. The server runs it hourly beside the export.
+  is due again next pass. A run can take a new event after the due check and
+  an export can send it before the delete, so the batch row's transaction
+  rechecks first: when a run asked has an event after the cursor the check
+  read, the cursor steps back to just before the earliest such event (or
+  stays, if already behind it) under its row lock, the lock the export's
+  advance takes, and its version changes. Those events are sent again after
+  the delete, an export that read before the step never advances, and the
+  batch does not confirm those runs (`expiry_unconfirmed`): each is due again
+  once its fresh event is past the window. Two passes at once are harmless: deletion by derived id
+  is idempotent, and a step back re-sends only fresh events onward, never a
+  run the other pass just confirmed (its events sort earlier unless a
+  transaction stayed open longer than the window). The server runs it hourly beside the export.
 - Readers: `trace.read` serves a task's runs' spans from `run_events`
   (`readTaskTrace`), held to the same allowlist without the ids
   (`traceCells`), behind `operations:read` and the task's own read
   ([AUTHORITY.md](AUTHORITY.md#trace-readers-aw-13)). The trace target's own
   logins (the owner, and the second operator after the timed restore
   rehearsal) are the installation's, not the product's.
+
+## The email hook
+
+The provider's delivery and bounce events reach `POST /api/hooks/email`
+(AW-07b, `apps/api/mail-hook.ts`). `main` mounts the route only when
+`EMAIL_HOOK_SECRET` holds a secret in the provider's form (`whsec_` and its
+base64 key); a malformed one stops the server, naming the setting and never
+the value. There is no sign-in on the route: the signature is the authority,
+checked over the raw bytes before the body is parsed
+(`packages/core-connectors/src/email-hook.ts`), within five minutes either side
+of now. A verified event moves only the attempt of the business that sent the
+message (`landEmailEvent`, `core-custody/src/broker-email-hook.ts`):
+`email.delivered` moves an accepted attempt to delivered, and `email.bounced`
+moves an accepted or delivered one to failed, which is final in either arrival
+order (a delivery is the receiving server's acceptance, and a bounce can follow
+it); `sent`, `opened` and `clicked` move
+nothing, and no hook path writes a decision. The hosted function
+(`apps/api/function.ts`) does not mount the hook yet, as it does not wire the
+model broker.
+
+Two parts are Stage 1 only, held for Sol in `stage1/SOL-OWED.md`:
+
+- **The sender check is a mock.** The sending subdomain's setup check (DKIM,
+  SPF, the return-path MX) and the root's DMARC policy are read from the fake
+  source (`email-sender-fake.ts`), and every report from it says `mock: true`.
+  The send refuses `SENDER_NOT_VERIFIED` until the report verified. The real
+  read needs a GET through custody, which is POST-only today; it is its own
+  sensitive piece.
+- **A replay of an event that moved nothing is refused from memory.** A
+  replayed event id that moved an attempt is refused by the database, across
+  processes. One that moved nothing (a `sent`, an `opened`, an event for an
+  attempt already settled) is held only in the process that took it, for
+  twice the timestamp window, so a second process could take it once more.
+  It moves nothing either time, so local and staging accept it.
 
 ## An automation occurrence's run
 
@@ -2129,7 +2217,13 @@ launch of the reviewed output is the only decision an effect waits on.
   and writes nothing), and the dispatch recheck refuses every lease of the
   business with the same code, whatever approved it. The setting's row is held
   `for share` before it is read, so a change in flight is waited for and then
-  seen. The client's own sign-off is MP-11-5's (phase 8); until the portal
+  seen. A missing row locks nothing, so the business's settings install lock
+  (`lockSettingsInstall`, advisory key `<business id>:business_settings`) is
+  held shared first; the install takes it exclusive before adding rows, so a
+  first row cannot commit between the check and the dispatch marker
+  (catalogue #463). Dispatch and the decision hold both before they read the
+  locked instant (`lockedInstant(tx, ['client_sign_off_required'])`), so a
+  lease, delegation or grant that ends during that wait is judged ended. The client's own sign-off is MP-11-5's (phase 8); until the portal
   exists the work stays held, visibly, under that code.
 - **The receipt link.** The worker reads the provider's answer
   (`readProviderAnswer`, `apps/worker/usage.ts`): a status outside 2xx (a

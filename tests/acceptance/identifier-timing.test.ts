@@ -336,6 +336,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       stepNames: [],
     }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('secret.clear', 'secretId', f.secretId, (secretId) => ({ secretId }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
       holderId,
@@ -361,6 +362,20 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('legal.publish_version', 'versionId', f.legalVersionId, (versionId) => ({ versionId }));
     byAda('credential.revoke', 'credentialId', f.credentialId, (credentialId) => ({
       credentialId,
+    }));
+    // C33: bravo's version and definition named in an alpha change and release.
+    byAda('activation.change', 'versionId', f.automation.versionId, (versionId) => ({
+      versionId,
+      mode: 'manual',
+      enabled: false,
+    }));
+    byAda('definition.release', 'definitionId', f.automation.definitionId, (definitionId) => ({
+      definitionId,
+      contentDigest: 'e'.repeat(64),
+      contentSize: 1,
+      inputs: [],
+      operations: [],
+      modes: ['manual'],
     }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
@@ -476,11 +491,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 77 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 80 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(77);
-    expect(names).toHaveLength(77);
+    expect(new Set(names).size, 'distinct operations').toBe(80);
+    expect(names).toHaveLength(80);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

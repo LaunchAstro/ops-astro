@@ -98,6 +98,12 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // T3e2: the journey drops nothing.
   'public.outage_reports': { cause: 'worker_lost' },
+  // A cleared secret, whole with no sealed value (C31).
+  'public.custody_secrets': {
+    name: 'restricted-calls.seed',
+    scope_kind: 'business',
+    scope_id: null,
+  },
   'public.outage_runs': {
     outage_id: randomUUID(),
     attempt_id: randomUUID(),
@@ -366,6 +372,34 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // 0067: nothing in the journey saves a preference yet.
   'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
+  // Automations (C33, 20261005003850): the journey releases and fires none.
+  'public.automation_definitions': {
+    kind: 'automation',
+    name: 'restricted calls',
+    created_by_actor_id: randomUUID(),
+  },
+  'public.definition_versions': {
+    definition_id: randomUUID(),
+    number: 1,
+    content_digest: 'a'.repeat(64),
+    content_size: 0,
+    inputs: [],
+    operations: [],
+    modes: ['manual'],
+    released_by_actor_id: randomUUID(),
+  },
+  'public.activations': {
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    mode: 'manual',
+    changed_by_actor_id: randomUUID(),
+  },
+  'public.activation_occurrences': {
+    activation_id: randomUUID(),
+    version_id: randomUUID(),
+    due_at: '2026-09-29T00:00:00Z',
+    outcome: 'activation_off',
+  },
   // WF-1: the journey charts no map.
   'public.map_components': {
     map_id: randomUUID(),
@@ -389,6 +423,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     out_of_scope: 0,
   },
   'public.map_frontier': { map_id: randomUUID(), ticket_id: randomUUID(), position: 1 },
+  // C40B: nothing on the journey asks for a password reset.
+  'public.password_reset_tokens': {
+    login_id: randomUUID(),
+    token_hash: '0'.repeat(64),
+    created_at: '2099-01-01T00:00:00Z',
+    expires_at: '2099-01-01T00:10:00Z',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

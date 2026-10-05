@@ -35,7 +35,7 @@ describe.skipIf(serverUrl === undefined)('OW-063 deployment isolation', () => {
         `  "image inspect") echo ${pinned} ;;`,
         '  "inspect --format") shift 3',
         `    [ -f '${at.calls}.up' ] && for c in "$@"; do echo "/$c ${pinned}"; done ;;`,
-        '  "ps "*) echo api-id ;;',
+        `  "ps "*) echo ${'a'.repeat(64)} ;;`,
         `  "inspect "*) printf '%s\\n' '[{"Name":"/prod-api","State":{"Running":true,"StartedAt":"t1"},"HostConfig":{}}]' ;;`,
         '  *) exit 2 ;;',
         'esac',

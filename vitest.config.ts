@@ -2,14 +2,15 @@
 import { readFileSync } from 'node:fs';
 import { configDefaults, defineConfig } from 'vitest/config';
 
-// With a database, the database-bound suites run, and every one migrates a
-// fresh database from empty in one transaction. Migration 0008 comments on a
-// cluster-wide role inside that transaction, so each file's migration waits
-// for every other migration on the server to commit, this run's and any other
-// run's sharing it. A loaded machine turned that queue into 5 s test timeouts
-// and 60 s hook timeouts that passed alone (product issue 56). So a database
-// run uses four workers, the hosted runner's cores, and times sized for the
-// queue. Without a database those suites skip and the defaults stand.
+// With a database, the database-bound suites run. Each file's fresh database
+// is a clone of one template the run migrates from empty once
+// (tests/support/migrated-template.ts); the few that migrate from empty still
+// queue on migration 0008, which comments on a cluster-wide role inside the
+// migration transaction, behind every other migration on the server. A loaded
+// machine turned that queue into 5 s test timeouts and 60 s hook timeouts that
+// passed alone (product issue 56). So a database run uses four workers, the
+// hosted runner's cores, and times sized for it. Without a database those
+// suites skip and the defaults stand.
 const database = (process.env['DATABASE_URL'] ?? '') !== '';
 const containerSuites: string[] = (
   JSON.parse(readFileSync('tests/ci/container-suites.json', 'utf8')) as { suites: string[] }
@@ -47,11 +48,12 @@ export default defineConfig({
     // The capture chain's longer timeout, file by file (see the file); a second
     // project would label the `vitest list` lines scripts/db-conformance.mjs reads.
     setupFiles: ['tests/support/capture-chain-timeout.ts'],
-    // Hooks are where every database-bound file migrates a fresh database from
-    // empty (`beforeAll`) and drops it (`afterAll`). That is legitimately slow
-    // work, and with many files and other runs sharing the machine it ran past
-    // the 10 s default while passing alone. The few slow tests name their own
-    // timeout, and a hook or test naming its own keeps it.
+    // Hooks are where every database-bound file makes a fresh database
+    // (`beforeAll`), a clone or a migration from empty, and drops it
+    // (`afterAll`). That is legitimately slow work, and with many files and
+    // other runs sharing the machine it ran past the 10 s default while passing
+    // alone. The few slow tests name their own timeout, and a hook or test
+    // naming its own keeps it.
     hookTimeout: database ? 180_000 : 60_000,
     testTimeout: database ? 30_000 : 5_000,
     ...(database ? { maxWorkers: 4 } : {}),
@@ -64,27 +66,51 @@ export default defineConfig({
     // The browser proofs build `apps/web/dist`, which other suites rebuild (an
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
     // BROWSER_PROOFS=1. Sol's proofs kept byte for byte (the leaked-client
-    // proof, OW-001's two, OW-002's, and the role, staging-login, copy-finder,
+    // proof, OW-001's two, OW-002's, C33's, and the role, staging-login, copy-finder,
     // scan-login and backup revocation proofs), the OW-002 proofs written beside
     // them, Sol's two PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
     // c59-factor-routes-world (byte for byte but for one cookie-jar split CQ-11
-    // asks for), Sol's six F2 lost-answer retry proofs and Sol's two F3
-    // save-order proofs open their worlds with no skip; without a database they
-    // are left out here, and the manifests run them where there is one.
+    // asks for), Sol's six F2 lost-answer retry proofs, Sol's two F3
+    // save-order proofs and Sol's OW-016 route proof open their worlds with no
+    // skip, as do Sol's three template lock and clone catalogue proofs and the
+    // cases written beside them, C31's Sol proof files and the Keys panel's DB
+    // proofs; without a database they are left out here, and the manifests run
+    // them where there is one. C31's corrupted audit chain fails by design: only
+    // the proof that spawns it from inside a test worker collects it.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
+      ...(process.env['VITEST_WORKER_ID'] === undefined
+        ? ['tests/custody/c31-audit-chain-corrupted.test.ts']
+        : []),
       ...(database
         ? []
         : [
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
+            'tests/api/server-entry-hosted-sign-in-key.test.ts',
+            'tests/review/forwarder-replay-time-order.test.ts',
+            'tests/automations/c33-registry-snapshot-and-claim-races.test.ts',
+            'tests/custody/c31-audit-chain-test-catches-corruption.test.ts',
+            'tests/custody/c31-last-used-moves-forward.test.ts',
+            'tests/custody/c31-revoked-list-and-revision-range.test.ts',
+            'tests/custody/c31-secret-set-guards.test.ts',
+            'tests/custody/c31-two-setters-overlap.test.ts',
+            'tests/surfaces/c31-keys-panel-first-set-refused.test.tsx',
+            'tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx',
+            'tests/surfaces/c31-keys-panel-stale-set-refused.test.tsx',
             'tests/api/end-others-provider-clock-skew.test.ts',
             'tests/api/end-others-delayed-ending.test.ts',
             'tests/api/end-others-ended-session-leaves-live-list.test.ts',
+            'tests/api/end-others-leaves-session-list-in-every-business.test.ts',
+            'tests/identity/session-list-subject-wide-ending.test.ts',
             'tests/api/agent-credential-exports-counted.test.ts',
             'tests/review/role-repair-drops-inherited-access-proof.test.ts',
             'tests/review/staging-logins-*-proof.test.ts',
             'tests/operations/find-copies-values-only.proof.test.ts',
+            'tests/operations/find-copies-output-and-refusals.test.ts',
+            'tests/operations/find-copies-seeds-and-erasure.test.ts',
+            'tests/operations/find-copies-stored-names.test.ts',
+            'tests/operations/find-copies-long-values.test.ts',
             'tests/operations/scan-login-token-and-shared-login.proof.test.ts',
             'tests/operations/scan-login-cleanup-mapping-race.test.ts',
             'tests/review/backup-read-part-appointment-proof.test.ts',
@@ -96,6 +122,10 @@ export default defineConfig({
             'tests/operations/scan-login-cleanup-subject-race.proof.test.ts',
             'tests/api/function-outbox-before-response.test.ts',
             'tests/api/function-outbox-waits-for-own-events.test.ts',
+            'tests/api/conversation-retention-work.test.ts',
+            'tests/db/conversation-run-end-retention.test.ts',
+            'tests/db/run-end-stamped-after-lock-wait.test.ts',
+            'tests/db/run-supersede-stamped-after-lock-wait.test.ts',
             'tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts',
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
@@ -110,10 +140,16 @@ export default defineConfig({
             'tests/broker/model-call-concurrent-sends-dispatch-once.test.ts',
             'tests/broker/model-call-retried-send-sends-once.test.ts',
             'tests/broker/model-call-swept-hold-sends-nothing.test.ts',
+            'tests/broker/counted-call-release-races-top-up-and-end.test.ts',
             'tests/harness/reserved-model-call-retry-sends-once.test.ts',
             'tests/api/receipt-link-held-credentials-crossings.test.ts',
             'tests/api/receipt-link-keeps-no-credential.test.ts',
             'tests/api/receipt-link-literal-percent-and-held-digests.test.ts',
+            'tests/broker/reconcile-keeps-call-when-its-carrier-changes.test.ts',
+            'tests/broker/reconcile-uses-carrying-route.test.ts',
+            'tests/api/held-attempt-calls-provider-once.test.ts',
+            'tests/api/held-answer-sign-off.proof.test.ts',
+            'tests/api/applied-comment-settles-after-sign-off.proof.test.ts',
             'tests/web/authenticator-cancelled-enrol-lands-late.test.tsx',
             'tests/web/sign-in-code-after-enrolment.test.tsx',
             'tests/surfaces/incident-retry-once-and-task-draft-stays-with-business.test.tsx',
@@ -125,6 +161,7 @@ export default defineConfig({
             'tests/web/authenticator-other-tab-enrol-lands-late.test.tsx',
             'tests/web/preferences-save-order-api.test.tsx',
             'tests/web/saved-flag-save-order.test.tsx',
+            'tests/support/template-lock-and-clone-catalogue.test.ts',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.

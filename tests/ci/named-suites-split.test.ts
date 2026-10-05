@@ -92,14 +92,36 @@ it('splits the real manifest and reads back the same suites, each once, and ever
   expect(formatted.every(Boolean), 'every file is already prettier-formatted').toBe(true);
 });
 
-it('split, run as a command in the repository, refuses now the folder exists and changes nothing', () => {
-  const before = readdirSync(join(ROOT, FOLDER));
+/** Every file under tests/db, recursively, as its path and its contents. */
+function testsDb(): Map<string, string> {
+  const dir = join(ROOT, 'tests/db');
+  return new Map(
+    readdirSync(dir, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => join(entry.parentPath, entry.name))
+      .toSorted()
+      .map((path) => [path, readFileSync(path, 'utf8')]),
+  );
+}
+
+it('split, run as a command in the repository, refuses now each suite has its own file and changes nothing', () => {
+  const before = testsDb();
+  expect(before.size).toBeGreaterThan(0);
   const script = join(ROOT, 'scripts/named-suites.ts');
   const run = spawnSync(process.execPath, [script, 'split'], { cwd: ROOT, encoding: 'utf8' });
   expect(run.status).toBe(1);
   expect(run.stderr).toMatch(/already exists/u);
-  expect(readdirSync(join(ROOT, FOLDER))).toStrictEqual(before);
+  const after = testsDb();
+  expect([...after.keys()], 'no file under tests/db is added or removed').toStrictEqual([
+    ...before.keys(),
+  ]);
+  const changed = [...after].filter(([path, text]) => before.get(path) !== text);
+  expect(
+    changed.map(([path]) => path),
+    'no file under tests/db is rewritten',
+  ).toStrictEqual([]);
   expect(existsSync(join(ROOT, SINGLE))).toBe(false);
+  expect(existsSync(join(ROOT, FOLDER))).toBe(false);
 }, 60_000);
 
 it('split refuses when the folder already exists, and leaves it alone', async () => {

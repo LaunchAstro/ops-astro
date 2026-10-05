@@ -25,9 +25,14 @@ import {
   type StatementLog,
 } from '../../packages/core-records/src/tenancy/statements.ts';
 import { migrate, type MigrationOutcome } from '../../packages/core-records/src/tenancy/migrate.ts';
+import {
+  APPLICATION_ROLE,
+  ENSURE_APPLICATION_ROLE,
+  ensureMigratedTemplate,
+  templateEnabled,
+} from './migrated-template.ts';
 
-/** The group role the migrations grant to. Members are per-installation logins. */
-export const APPLICATION_ROLE = 'ops_astro_app';
+export { APPLICATION_ROLE };
 
 export interface EmptyDatabase {
   readonly name: string;
@@ -71,6 +76,8 @@ export interface FreshDatabaseOptions {
   /** The part this run belongs to, so a database name says who left it behind. */
   readonly part?: string;
   readonly migrationsDirectory?: string;
+  /** Migrate this database from empty itself rather than clone the migrated template. */
+  readonly fromEmpty?: boolean;
 }
 
 function identifier(name: string): string {
@@ -109,6 +116,21 @@ export function databaseUrlFromEnvironment(): string | undefined {
 export async function createEmptyDatabase(
   options: FreshDatabaseOptions = {},
 ): Promise<EmptyDatabase> {
+  return await createDatabase(options);
+}
+
+/**
+ * A new database, empty or a copy of `template`. A copy starts with the
+ * default database privileges, whatever the template's were, and the revoke
+ * below gives it the ones 0031 leaves: no TEMP for PUBLIC, the application
+ * role or its logins. migrated-template.test.ts holds a copy's privileges
+ * equal to a database migrated from empty, so a migration that changes a
+ * database privilege some other way fails there before it reaches a suite.
+ */
+async function createDatabase(
+  options: FreshDatabaseOptions,
+  template?: string,
+): Promise<EmptyDatabase> {
   const serverUrl = options.serverUrl ?? databaseUrlFromEnvironment();
   if (serverUrl === undefined) {
     throw new Error('createEmptyDatabase: no DATABASE_URL and no serverUrl given');
@@ -138,14 +160,12 @@ export async function createEmptyDatabase(
   try {
     // The group role is cluster-wide and shared; the login roles are this
     // run's alone, so two runs on one server never share a credential.
-    await server.execute(
-      `do $$ begin
-         if not exists (select 1 from pg_roles where rolname = '${APPLICATION_ROLE}') then
-           create role ${APPLICATION_ROLE} nologin;
-         end if;
-       end $$`,
-    );
-    await server.execute(`create database ${identifier(name)}`);
+    await server.execute(ENSURE_APPLICATION_ROLE);
+    if (template === undefined) {
+      await server.execute(`create database ${identifier(name)}`);
+    } else {
+      await server.execute(`create database ${identifier(name)} template ${identifier(template)}`);
+    }
     // PostgreSQL grants TEMPORARY on a new database to PUBLIC. A temporary
     // table is created in `pg_temp`, outside every schema the application is
     // refused CREATE in, and on a pooled backend it outlives the transaction
@@ -216,9 +236,24 @@ export async function createEmptyDatabase(
   };
 }
 
+/**
+ * A database holding every migration. A clone of the migrated template
+ * (migrated-template.ts) unless the caller names its own migrations, asks for
+ * `fromEmpty`, or OPS_ASTRO_DB_TEMPLATE=off; then migrated from empty here.
+ */
 export async function createFreshDatabase(
   options: FreshDatabaseOptions = {},
 ): Promise<FreshDatabase> {
+  const serverUrl = options.serverUrl ?? databaseUrlFromEnvironment();
+  if (
+    serverUrl !== undefined &&
+    options.migrationsDirectory === undefined &&
+    options.fromEmpty !== true &&
+    templateEnabled()
+  ) {
+    const template = await ensureMigratedTemplate(serverUrl);
+    return { ...(await createDatabase(options, template.name)), migration: template.migration };
+  }
   const empty = await createEmptyDatabase(options);
   try {
     const migration = await migrate(empty.admin, options.migrationsDirectory ?? 'migrations');

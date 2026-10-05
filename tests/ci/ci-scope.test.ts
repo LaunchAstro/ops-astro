@@ -23,7 +23,7 @@ import {
   suitesInScope,
   type ScopeMap,
 } from '../../scripts/ci-scope.ts';
-import { readNamedSuites } from '../../scripts/named-suites.ts';
+import { readIsolationSuites, readNamedSuites } from '../../scripts/named-suites.ts';
 import { dependenciesOf } from '../../scripts/import-closure.ts';
 
 const root = new URL('../..', import.meta.url).pathname;
@@ -112,7 +112,7 @@ describe('a pull request outside the scopable paths', () => {
       ['README.md'],
       ['apps/api/server.ts'],
       ['migrations/0001_x.sql'],
-      ['tests/db/named-suites.json'],
+      ['tests/db/suites/api/new.test.ts.json'],
       ['a-new-top-level/thing.ts'],
       ['tests/support/fresh-database.ts'],
       ['pnpm-lock.yaml'],
@@ -235,13 +235,10 @@ describe('the wrapper as a process', () => {
   }, 60_000);
 
   it('every isolation suite is a named suite, so its area is read like theirs', () => {
-    const isolation = JSON.parse(read('tests/db/isolation-suites.json')) as Record<string, unknown>;
-    const lists = Object.entries(isolation).filter(([key]) => key !== 'comment');
-    expect(lists.map(([key]) => key)).toEqual(['invariant']);
+    const { invariant } = readIsolationSuites(root);
+    expect(invariant.length).toBeGreaterThan(0);
     const all = new Set(named);
-    for (const [, list] of lists) {
-      expect((list as string[]).filter((s) => !all.has(s))).toEqual([]);
-    }
+    expect(invariant.filter((s) => !all.has(s))).toEqual([]);
   });
 });
 

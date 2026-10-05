@@ -16,7 +16,7 @@ withDatabase(
     const root = resolve(import.meta.dirname, '../..');
     const copy = mkdtempSync(join(tmpdir(), 'sol379-frontier-'));
     try {
-      for (const directory of ['apps', 'packages', 'tests']) {
+      for (const directory of ['apps', 'packages', 'scripts', 'tests']) {
         cpSync(join(root, directory), join(copy, directory), { recursive: true });
       }
       for (const file of ['package.json', 'vitest.config.ts']) {

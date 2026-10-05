@@ -15,12 +15,11 @@
 // that could name its own entry point could claim a provenance it does not
 // have without ever mentioning `source`.
 //
-// `expectedRevision` is optional even on the commands that require it. A
-// required property would make the refusal unreachable, and
-// `EXPECTED_REVISION_REQUIRED` has to be reachable: an HTTP body is untyped,
-// the command line parses text, and T1g proves the same refusal on all three
-// surfaces. A type that hides a refusal from the surfaces that need to raise
-// it is a type protecting the wrong reader.
+// `expectedRevision` is optional even on the commands that require it. A required
+// property would make the refusal unreachable, and `EXPECTED_REVISION_REQUIRED`
+// has to be reachable: an HTTP body is untyped, the command line parses text,
+// and T1g proves the same refusal on all three surfaces. A type that hides a
+// refusal from the surfaces that need to raise it protects the wrong reader.
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
@@ -36,6 +35,8 @@ import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
 import type { PrivacyRequest } from './requests-privacy.ts';
 import type { SelfRequest } from './requests-self.ts';
+import type { AutomationRequest } from './automation-requests.ts';
+import type { ConnectionsRequest } from './requests-connections.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -291,7 +292,8 @@ export type CommandRequest =
   | ({ readonly command: 'model.call' } & Envelope)
   | RunRequest
   | SelfRequest<Envelope>
-  // Time tracking (MP-4-6), in `requests-time.ts`.
+  | ConnectionsRequest<Envelope>
+  // Time tracking (MP-4-6) and tags (MP-4-11), in `requests-time.ts` and `requests-tags.ts`.
   | TimeRequest<Envelope>
-  // Tags (MP-4-11), in `requests-tags.ts`.
-  | TagRequest<Envelope>;
+  | TagRequest<Envelope>
+  | AutomationRequest<Envelope>;

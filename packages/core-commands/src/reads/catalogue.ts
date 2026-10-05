@@ -20,7 +20,6 @@ import {
   planPresetSync,
   isUuid,
   listTags,
-  readableScope,
   readPreferences,
   subjectsOf,
   taskAccess,
@@ -38,6 +37,7 @@ import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import { isInternalReader, readSharedTask, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
 import { readMapFrontier, readMapView } from './maps.ts';
+import { boardAdmission, boardOf, liveTask } from './board-admission.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
 import { readQueue } from './queue.ts';
@@ -45,6 +45,7 @@ import { readTaskExecution } from './execution.ts';
 import { readAwaitingReview } from './awaiting-review.ts';
 import { readPlanningCap } from '../../../core-custody/src/index.ts';
 import { readSettings } from './settings.ts';
+import { listCustodySecrets } from './custody.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
@@ -54,10 +55,11 @@ import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { readHarnessTrigger } from './harness-trigger.ts';
+import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
-import { boardOf, boardPage, liveTask } from './board-rows.ts';
+import { boardPage } from './board-rows.ts';
 import { blockersFor, isRefusal, parsePaging, taskAt } from './detail.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -122,14 +124,6 @@ interface RowBase<K extends ReadName> {
   readonly outsiderNotFound: boolean;
 }
 
-/** The grant check's own refusal, for a list read that decides in its `serve`. */
-const refuseScope = (): CommandRefusal =>
-  refuseCommand(
-    'SCOPE_NOT_GRANTED',
-    [],
-    ['no live grant covers it', 'ask a holder who may delegate'],
-  );
-
 /**
  * A read that needs the installed task type's identifiers. The pipeline reads
  * them before the grant check, and `subject` and `serve` are handed them, so
@@ -153,6 +147,18 @@ export interface SpineRow<K extends ReadName> extends RowBase<K> {
    * nothing can ask it without serving (`admitRead`).
    */
   readonly admits?: (tx: TenantQuery, session: Session, found: Found) => Promise<boolean>;
+  /**
+   * A list read's admission (`declared-within`), which its `serve` decides
+   * from the read of the caller's grants: the refusal `serve` would answer,
+   * or none. Apart from `serve` so `admitRead` refuses what the read refuses
+   * without serving it.
+   */
+  readonly listRefusal?: (
+    tx: TenantQuery,
+    session: Session,
+    operands: ReadOperands[K],
+    found: Found,
+  ) => Promise<CommandRefusal | undefined>;
   readonly serve: (
     tx: TenantQuery,
     session: Session,
@@ -386,34 +392,35 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         );
         return sharedTask === undefined ? refuseNotFound() : { ok: true, sharedTask };
       }
+      // An agent credential's call stands as its person but is an agent's
+      // (API-2, I09): it reads what the agent prefix reads, never as an
+      // internal reader, its rank pool the one task, no one's time and no
+      // Client field facts (catalogue #418).
+      const agent = session.credentialScope !== undefined;
       const task = await readTaskDetail(
         tx,
         spine.taskTypeId,
         recordId,
-        {
-          commentTypeId: spine.taskCommentTypeId,
-          internal: true,
-          actorId: session.actorId,
-        },
-        // The rank's pool is every open task this reader's grants reach.
-        { kind: 'grants', subjects: subjectsOf(session) },
+        agent
+          ? { commentTypeId: spine.taskCommentTypeId, internal: false }
+          : { commentTypeId: spine.taskCommentTypeId, internal: true, actorId: session.actorId },
+        // A member's rank pool is every open task their grants reach.
+        agent ? { kind: 'task' } : { kind: 'grants', subjects: subjectsOf(session) },
         // A member reads their own time on the task (RS-VAULT-9).
-        session.personId,
+        agent ? null : session.personId,
       );
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
       // The Client field's facts (MP-4-8) go to a member alone: an agent's
-      // detail and the shared view are built apart and carry neither.
-      const member = { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) };
+      // detail and the shared view carry neither, at any detail level.
+      const shown = agent
+        ? task
+        : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) };
       if (operands.detail !== undefined) {
         const blockers = await blockersFor(tx, subjectsOf(session), recordId);
-        return {
-          ok: true,
-          detail: operands.detail,
-          view: taskAt(operands.detail, member, blockers),
-        };
+        return { ok: true, detail: operands.detail, view: taskAt(operands.detail, shown, blockers) };
       }
-      return { ok: true, task: member, states: await readStateChoices(tx, spine.taskStateTypeId) };
+      return { ok: true, task: shown, states: await readStateChoices(tx, spine.taskStateTypeId) };
     },
   },
   'task.board': {
@@ -441,32 +448,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     // carries time, rank and comment counts, and anyone else reads a task's
     // shared view through `task.read`. Asked here, so `admitRead` refuses too.
     admits: async (_tx, session) => await Promise.resolve(isInternalReader(session.roleKey)),
+    listRefusal: async (tx, session, operands, { spine }) => {
+      const admitted = await boardAdmission(tx, session, operands.board, spine);
+      return 'refusal' in admitted ? admitted.refusal : undefined;
+    },
     async serve(tx, session, operands, { spine }) {
-      // The one read of the caller's grants: it admits, and it filters, so no
-      // grant changes between the decision and the answer. It comes before
-      // any lookup, so a member holding nothing learns nothing about which
-      // boards exist, and it is refused as the grant check refuses, never
-      // answered with an empty list (`declared-within`).
-      const scope = await readableScope(tx, subjectsOf(session), 'task', 'read');
-      const unreadable = (board: string | null): boolean =>
-        !scope.business &&
-        (board === null ? scope.records.length === 0 : !scope.records.includes(board));
-      if (unreadable(null)) return refuseScope();
-      // A board is a task record, so one that is not alpha's is refused the
-      // way `task.move` refuses it, and never listed as a board with nothing
-      // on it: minimum contract 8.2 case 1 asks `NOT_FOUND` for another
-      // business's identifier and case 3 says a denied list is never an empty
-      // success. Foreign, fabricated, malformed and trashed all get the one
-      // answer. `null` is the list of tasks on no board and is not a lookup.
-      if (
-        typeof operands.board === 'string' &&
-        !(await liveTask(tx, spine.taskTypeId, operands.board))
-      ) {
-        return refuseNotFound();
-      }
-      // A named board is itself a task: one the caller cannot read is refused
-      // as `task.read` refuses it, in-tenant (I05).
-      if (unreadable(operands.board)) return refuseScope();
+      const admitted = await boardAdmission(tx, session, operands.board, spine);
+      if ('refusal' in admitted) return admitted.refusal;
+      const { scope } = admitted;
       const { tasks, changedAt } = await boardOf(
         tx,
         session,
@@ -741,6 +730,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, plan: planned.value };
     },
   },
+  // Asked per row by the scopes the caller holds `custody:manage` at (C31): a
+  // caller holding it nowhere is refused inside the read, never shown an
+  // empty list.
+  'secret.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await listCustodySecrets(tx, session),
+  },
   // No subject record, for the reason `task.queue` gives: the settings are
   // the business's own configuration rather than one record, and there is no
   // `settings` row in `records` to name in the column even if there were.
@@ -953,6 +953,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const harness = await readHarnessTrigger(tx, session, runId);
       return 'refused' in harness ? harness : { ok: true, harness };
     },
+  },
+  // The business's definitions, versions and activations (C33): asked like
+  // `settings.read`, at the business, since no row carries a client.
+  'automation.registry': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => await readAutomationRegistry(tx),
   },
 };
 

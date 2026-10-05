@@ -67,7 +67,8 @@ describe('RUNTIME.md on grants judged at the locked instant', () => {
     );
     for (const file of ['decide.ts', 'pickup.ts', 'heartbeat.ts', 'handback.ts']) {
       const source = read(`${RUNTIME_SRC}/${file}`);
-      expect(source, file).toContain('const lockedAt = await lockedInstant(tx);');
+      // decide also holds the settings it reads at that instant (#801).
+      expect(source, file).toMatch(/const lockedAt = await lockedInstant\(tx(?:, \[[^\]]*\])?\);/u);
       // A person's own write goes through the one lease path (CQ-8).
       expect(source, file).toMatch(
         /(?:checkAuthorityAt|personWriteLive)\([\s\S]{0,300}?lockedAt[,)]/u,
