@@ -211,7 +211,8 @@ export const ROUTES = {
 
 export type RouteId = keyof typeof ROUTES;
 
-/** A route's parameters, its bare-linkable ids, and a resolved address, over this registry. */
+// A route's parameters, the ids linked to bare, and a resolved address, each
+// typed over this registry (the shapes are in `route-params.ts`).
 export type ParamsOf<Id extends RouteId> = ParamsIn<typeof ROUTES, Id>;
 export type StaticRouteId = StaticIn<typeof ROUTES>;
 export type RouteMatch<Id extends RouteId = RouteId> = MatchIn<typeof ROUTES, Id>;

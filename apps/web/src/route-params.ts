@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A route's parameters and its resolved address, typed off a route table.
-// `routes.ts` names them over its registry and re-exports them. The table is a
-// type parameter, so this file imports nothing and the two never form a cycle.
+// `routes.ts` names them over its own registry. The table is a type
+// parameter, so this file imports nothing and the two never form a cycle.
 // Types only, so nothing here runs.
 
 /** A route table: each id's route, with at least its path. */
