@@ -55,6 +55,7 @@ import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { readHarnessTrigger } from './harness-trigger.ts';
+import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
@@ -937,6 +938,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const harness = await readHarnessTrigger(tx, session, runId);
       return 'refused' in harness ? harness : { ok: true, harness };
     },
+  },
+  // The business's definitions, versions and activations (C33): asked like
+  // `settings.read`, at the business, since no row carries a client.
+  'automation.registry': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => await readAutomationRegistry(tx),
   },
 };
 

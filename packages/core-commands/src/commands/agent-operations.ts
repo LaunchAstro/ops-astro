@@ -35,7 +35,7 @@ import { checkLease } from './tasks-check.ts';
 import { reviseRunState } from './run-state.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
-import { writeTaskComment } from './tasks-comment.ts';
+import { AGENT_AUDIENCES, writeTaskComment } from './tasks-comment.ts';
 import { proposeFor, type ProposeFields } from './tasks-propose.ts';
 import { deleteTaskComment, editTaskComment, type CommentChange } from './tasks-comment-edit.ts';
 import { setScores } from './tasks-scores.ts';
@@ -184,9 +184,6 @@ export function isOperandRefusal<O extends object>(parsed: O | Refused): parsed 
 
 /** The operands of a row that reads none beyond its identifiers. */
 const NONE = (): NoOperands => ({});
-
-/** What a delegated agent may write a comment in: its team's notes, not the client's thread. */
-const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);
 
 /**
  * The operands' shape rules. A present operand of the wrong shape is refused
