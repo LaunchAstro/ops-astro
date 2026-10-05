@@ -65,15 +65,20 @@ const stateOf = async (tx: TenantQuery): Promise<State> => ({
   ),
 });
 
-/** Waits until some other backend waits on a lock of this kind (`transactionid`, `advisory`). */
-async function waitingOn(world: World, event: string): Promise<void> {
+/**
+ * Waits until a backend of this world's own database waits on a lock of this
+ * kind (`transactionid`, `advisory`) in a statement containing `statement`:
+ * Ada's grant row read, or Noah's access lock.
+ */
+async function waitingOn(world: World, event: string, statement: string): Promise<void> {
   for (let attempt = 0; attempt < 500; attempt += 1) {
     // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
     const rows = await world.db.admin.execute<{ waiting: boolean }>(
       `select exists (select 1 from pg_stat_activity
         where datname = current_database() and pid <> pg_backend_pid()
-          and wait_event_type = 'Lock' and wait_event = $1) as waiting`,
-      [event],
+          and wait_event_type = 'Lock' and wait_event = $1
+          and strpos(query, $2) > 0) as waiting`,
+      [event, statement],
     );
     if (rows[0]?.waiting === true) return;
     // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
@@ -151,9 +156,9 @@ async function raceNoah(
         operationId: randomUUID(),
         grantId: noahGrant,
       });
-      await waitingOn(world, 'transactionid');
+      await waitingOn(world, 'transactionid', 'from public.grants');
       acting = executeCommand(noahDb, world.alpha, world.noah.presented, 'api', act());
-      await waitingOn(world, 'advisory');
+      await waitingOn(world, 'advisory', 'pg_advisory_xact_lock');
     } finally {
       await blocker.letGo();
     }
