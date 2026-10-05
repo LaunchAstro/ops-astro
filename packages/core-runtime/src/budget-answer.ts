@@ -38,7 +38,7 @@ import {
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
-import { releaseUncounted, spentOn } from './budget-stop.ts';
+import { openCallOn, releaseUncounted, spentOn } from './budget-stop.ts';
 import { giveBackReleased } from '../../core-custody/src/index.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
@@ -132,6 +132,13 @@ async function topUpRefusal(
       'TRANSITION_NOT_PERMITTED',
       'this run holds no reservation to raise',
       NOT_WAITING_FIX,
+    );
+  }
+  if (CLOSED_STOPS.includes(locked.reservation_state) && (await openCallOn(tx, locked))) {
+    return refuse(
+      'TRANSITION_NOT_PERMITTED',
+      "a call on this run's stopped hold is still unresolved",
+      "End the run instead; a top-up cannot count a call that a person's write-off or outcome already closed.",
     );
   }
   if (request.currency !== locked.currency) {
