@@ -219,7 +219,7 @@ export function createVerbCli(options: CliOptions & { readonly address?: string 
       }
       // The caller's only way to replay a write whose answer never arrived.
       const { operationId } = request;
-      const replay = typeof operationId === 'string' ? `; operationId ${operationId}${REPLAY}` : '';
+      const replay = typeof operationId === 'string' ? `\noperationId ${operationId}${REPLAY}` : '';
       let answer;
       try {
         answer = await cli.run(row.command, request);
