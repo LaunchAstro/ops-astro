@@ -148,8 +148,9 @@ export async function runBackup({
   let source;
   try {
     source = await dump();
-  } catch {
-    return failed('backup run', 'dump');
+  } catch (error) {
+    // A dump that failed and whose container docker kept names it as `left`.
+    return failed('backup run', error?.left === undefined ? 'dump' : 'container');
   }
   let seal;
   try {

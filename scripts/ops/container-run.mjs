@@ -113,10 +113,11 @@ async function stopRun(run, { child, closed, exited }) {
   const creating = existsSync(run.cidfile);
   if (creating) await idOrClose(run.cidfile, closed);
   const id = idOf(run);
+  let left;
   if (id !== undefined) {
     await docker(['kill', '--signal=INT', id]);
     await settles(closed, GRACE_MS);
-    await removeRun(run);
+    left = await removeRun(run);
   }
   child.kill('SIGTERM');
   const kill = setTimeout(() => child.kill('SIGKILL'), GRACE_MS);
@@ -125,17 +126,22 @@ async function stopRun(run, { child, closed, exited }) {
   } finally {
     clearTimeout(kill);
   }
+  // A client that closes cleanly after the stop says nothing of a refused removal.
+  if (left !== undefined) throw notRemoved(left);
   if (creating && id === undefined) {
     await pause(GRACE_MS);
     if (!(await removed(run.name))) throw notRemoved(run.name);
   }
 }
 
-/** The failure of a run whose container docker would not remove; no part of its login. */
+/** The failure of a run whose container docker would not remove, naming it as `left`; no part of its login. */
 function notRemoved(ref, cidfile) {
   const kept = cidfile === undefined ? '' : ` (the run's id file ${cidfile} is kept)`;
-  return new Error(
-    `docker would not remove container ${ref}: remove it with docker rm --force --volumes ${ref}${kept}`,
+  return Object.assign(
+    new Error(
+      `docker would not remove container ${ref}: remove it with docker rm --force --volumes ${ref}${kept}`,
+    ),
+    { left: ref },
   );
 }
 
