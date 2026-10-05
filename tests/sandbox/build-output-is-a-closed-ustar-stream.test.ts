@@ -62,22 +62,20 @@ it('accepts an empty stream of two zero blocks', () => {
 });
 
 it('joins prefix and name, and holds the joined path to 255 bytes', () => {
-  const deep = `dist/${'d'.repeat(140)}`;
+  const top = `dist/${'d'.repeat(70)}`;
   const leaf = 'f'.repeat(100);
-  expect(deep.length + 1 + leaf.length).toBe(246);
-  const ok = build(tar(dir('dist'), dir(deep), file(leaf, 'x', { prefix: deep })));
+  const under = (last: string) => {
+    const parent = `${top}/${last}`;
+    return build(
+      tar(dir('dist'), dir(top), dir(last, { prefix: top }), file(leaf, 'x', { prefix: parent })),
+    );
+  };
+  const ok = under('e'.repeat(69));
   expect(ok).toMatchObject({ ok: true });
-  expect(ok.ok && ok.entries[2]?.name).toBe(`${deep}/${leaf}`);
-
-  const longest = `dist/${'d'.repeat(149)}`;
-  expect(longest.length + 1 + 100).toBe(255);
-  expect(build(tar(dir('dist'), dir(longest), file(leaf, 'x', { prefix: longest })))).toMatchObject(
-    { ok: true },
-  );
-  const over = `dist/${'d'.repeat(150)}`;
-  expect(build(tar(dir('dist'), dir(over), file(leaf, 'x', { prefix: over })))).toEqual(
-    refused('tar name'),
-  );
+  expect(ok.ok && ok.entries[3]?.name).toBe(`${top}/${'e'.repeat(69)}/${leaf}`);
+  expect(`${top}/${'e'.repeat(78)}/${leaf}`).toHaveLength(255);
+  expect(under('e'.repeat(78))).toMatchObject({ ok: true });
+  expect(under('e'.repeat(79))).toEqual(refused('tar name'));
 });
 
 it('refuses every entry type but a file or a directory', () => {

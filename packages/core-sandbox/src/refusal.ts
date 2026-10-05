@@ -2,8 +2,9 @@
 //
 // A refusal from the sandbox's grammars. `reason` is one of the contract's
 // R1 reasons (docs/plan/sandbox-contract.md, section 9): a launcher request
-// the proxy will not forward is `proxy refused`, and a daemon reply that
-// breaks the preamble's rules is `internal`. `why` names the clause that
+// the proxy will not forward is `proxy refused`, a run's output its grammar
+// refuses is `output refused`, and a daemon reply that breaks the
+// preamble's rules is `internal`. `why` names the clause that
 // refused, for the person reading the refusal and for the corpus tests.
 
 export type Why =
@@ -40,32 +41,34 @@ export type Why =
   | 'tar end'
   | 'too many entries';
 
-/** R1's reasons (section 9). */
-export const REASONS: readonly string[] = [];
+/** R1's reasons (section 9), in the contract's order, `internal` last. */
+export const REASONS = [
+  'unavailable',
+  'preflight failed',
+  'drift',
+  'unknown site',
+  'no pin',
+  'pin mismatch',
+  'input refused',
+  'lockfile refused',
+  'fetch failed',
+  'integrity mismatch',
+  'image load failed',
+  'proxy refused',
+  'queue full',
+  'deadline',
+  'memory',
+  'process limit',
+  'output refused',
+  'non-zero exit',
+  'internal',
+] as const;
 
-export type Reason =
-  | 'unavailable'
-  | 'preflight failed'
-  | 'drift'
-  | 'unknown site'
-  | 'no pin'
-  | 'pin mismatch'
-  | 'input refused'
-  | 'lockfile refused'
-  | 'fetch failed'
-  | 'integrity mismatch'
-  | 'image load failed'
-  | 'proxy refused'
-  | 'queue full'
-  | 'deadline'
-  | 'memory'
-  | 'process limit'
-  | 'output refused'
-  | 'non-zero exit'
-  | 'internal';
+export type Reason = (typeof REASONS)[number];
 
-/** A caller's reading of the reason in an answer: anything not in R1 is `unavailable`. */
-export const readReason = (value: unknown): Reason => value as Reason;
+/** A caller's reading of a refusal's reason: anything not in R1 is `unavailable`. */
+export const readReason = (value: unknown): Reason =>
+  REASONS.find((reason) => reason === value) ?? 'unavailable';
 
 export type Refused = {
   readonly ok: false;

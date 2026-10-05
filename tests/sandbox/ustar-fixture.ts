@@ -31,8 +31,11 @@ export const octal = (value: number, width: number): Uint8Array =>
   ascii(`${value.toString(8).padStart(width - 1, '0')}\0`);
 
 /** The unsigned byte sum with the checksum field read as spaces. */
-export const checksumOf = (block: Uint8Array): number =>
-  block.reduce((sum, byte, at) => sum + (at >= 148 && at < 156 ? 32 : byte), 0);
+export function checksumOf(block: Uint8Array): number {
+  let sum = 8 * 32;
+  for (let at = 0; at < 512; at += 1) if (at < 148 || at >= 156) sum += block[at] ?? 0;
+  return sum;
+}
 
 export function header(fields: Header): Uint8Array {
   const block = new Uint8Array(512);

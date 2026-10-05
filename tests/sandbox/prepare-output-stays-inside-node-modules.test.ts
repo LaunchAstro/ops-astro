@@ -18,20 +18,12 @@ import {
   readOutput,
   UstarReader,
 } from '../../packages/core-sandbox/src/ustar-reader.ts';
-import { dir, END, file, header, symlink, tar } from './ustar-fixture.ts';
+import { dir, file, header, symlink, tar } from './ustar-fixture.ts';
 
 const refused = (why: string) => ({ ok: false, reason: 'output refused', why });
 const prepare = (...chunks: Uint8Array[]) => readOutput('prepare', OUTPUT_CAP.S2, ...chunks);
 const ascii = (text: string): Uint8Array => new TextEncoder().encode(text);
 const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
-
-const countEntries = (entries: number) => {
-  const reader = new UstarReader('prepare', OUTPUT_CAP.S2);
-  reader.push(dir('node_modules'));
-  for (let n = 1; n < entries; n += 1) reader.push(header({ name: `node_modules/${n}` }));
-  reader.push(END);
-  return reader.end();
-};
 
 const MODULES = tar(
   dir('node_modules'),
@@ -177,8 +169,12 @@ it('refuses a whiteout name segment', () => {
 });
 
 it('holds a prepare to 200,000 entries', () => {
-  expect(countEntries(200_000)).toMatchObject({ ok: true });
-  expect(countEntries(200_001)).toEqual(refused('too many entries'));
+  const reader = new UstarReader('prepare', OUTPUT_CAP.S2);
+  reader.push(dir('node_modules'));
+  for (let n = 1; n < 200_000; n += 1) reader.push(header({ name: `node_modules/${n}` }));
+  expect(reader.end()).toEqual(refused('tar end'));
+  reader.push(header({ name: 'node_modules/last' }));
+  expect(reader.end()).toEqual(refused('too many entries'));
 });
 
 it('writes the layer anew: fixed modes, owner 0:0, a fixed time, no extended headers', () => {
