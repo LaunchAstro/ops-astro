@@ -27,7 +27,7 @@ If you are new to this checkout, read this section first.
   `docs/current-decisions.md` and `docs/adr/`. Demonstrated failures that have
   no executable check yet: `docs/TRAPS.md`. The proofs:
   `tests/acceptance/`, described in [PROOFS.md](PROOFS.md). The database suites
-  that conformance must run: `tests/db/named-suites.json`.
+  that conformance must run: one file each under `tests/db/suites/`.
 - **Where state does not live.** Run status, reviews and acceptance records are
   kept with the build run's evidence, outside the tree. A checkout may carry an
   ignored `.local/run-context.json` that points there ([below](#the-optional-local-run-pointer)).

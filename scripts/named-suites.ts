@@ -14,7 +14,8 @@
 // trusted is refused with the file named, rather than read in part: a suite
 // dropped from the manifest is a suite no required check runs.
 //
-// Usage: node scripts/named-suites.ts split [--check]
+// Usage: node scripts/named-suites.ts split [--check] | kept <base-sha>
+//   kept     fails on a suite the base kept that the head drops (keptSuites).
 //   split    writes the folder from the single file, proves the folder reads
 //            back as the same manifest, then removes the single file.
 //   --check  the same round trip in a temp folder; writes nothing here.
@@ -33,6 +34,18 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { areaOf } from './ci-areas.ts';
+import {
+  FOLDER,
+  ISOLATION,
+  keptSuites,
+  message,
+  readSuiteFiles,
+  refuse,
+  SINGLE,
+  SUITES,
+  SUITES_HISTORY,
+  writeSuiteFiles,
+} from './suite-files.ts';
 
 export interface NamedSuites {
   comment: string[];
@@ -45,8 +58,6 @@ export interface SplitSuites {
   areas: Record<string, { invariant: string[]; conformance: string[] }>;
 }
 
-export const SINGLE = 'tests/db/named-suites.json';
-export const FOLDER = 'tests/db/named-suites';
 const HISTORY = '_history.json';
 const KINDS = ['comment', 'invariant', 'conformance'] as const;
 type Kind = (typeof KINDS)[number];
@@ -55,12 +66,30 @@ const repoRoot = resolve(import.meta.dirname, '..');
 
 /** The manifest's path under `root`: the folder when it exists, else the single file. */
 export const manifestPathIn = (root: string): string =>
-  existsSync(join(root, FOLDER)) ? join(root, FOLDER) : join(root, SINGLE);
+  existsSync(join(root, SUITES))
+    ? join(root, SUITES)
+    : existsSync(join(root, FOLDER))
+      ? join(root, FOLDER)
+      : join(root, SINGLE);
 
 const listOf = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : []);
 
 /** The named suites under `root`, from the folder when it exists, else the single file. */
 export function readNamedSuites(root: string): NamedSuites {
+  if (existsSync(join(root, SUITES))) {
+    const files = readSuiteFiles(root, [FOLDER, SINGLE, ISOLATION]);
+    const of = (kind: 'invariant' | 'conformance') =>
+      files.filter((entry) => entry.kind === kind).map((entry) => entry.suite);
+    const history = join(root, SUITES_HISTORY);
+    const comment = existsSync(history)
+      ? listOf((JSON.parse(readFileSync(history, 'utf8')) as Record<string, unknown>)['comment'])
+      : [];
+    return {
+      comment,
+      invariant: of('invariant').toSorted(),
+      conformance: of('conformance').toSorted(),
+    };
+  }
   if (existsSync(join(root, FOLDER))) return readFolder(root);
   const manifest = JSON.parse(readFileSync(join(root, SINGLE), 'utf8')) as Record<string, unknown>;
   return {
@@ -69,13 +98,6 @@ export function readNamedSuites(root: string): NamedSuites {
     conformance: listOf(manifest['conformance']),
   };
 }
-
-function refuse(file: string, why: string): never {
-  throw new Error(`${file} ${why}`);
-}
-
-const message = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 /** One folder file's lists, refused unless it is a .json object of string arrays under known keys. */
 function readFile(root: string, file: string): Record<Kind, string[]> {
@@ -179,6 +201,11 @@ const same = (original: NamedSuites, joined: NamedSuites): boolean =>
 export async function splitToFolder(root: string): Promise<NamedSuites> {
   const folder = join(root, FOLDER);
   if (existsSync(folder)) throw new Error(`${FOLDER} already exists; split reads only ${SINGLE}`);
+  if (existsSync(join(root, SUITES))) {
+    throw new Error(
+      `${SUITES} already exists: each suite has its own file, so there is nothing to split`,
+    );
+  }
   const original = readNamedSuites(root);
   const { history, areas } = splitNamedSuites(original);
   const { format, resolveConfig } = await import('prettier');
@@ -207,9 +234,37 @@ export async function splitToFolder(root: string): Promise<NamedSuites> {
   return original;
 }
 
+/** The isolation suites under `root`: the suite files marked so, or else the isolation list. */
+export function readIsolationSuites(root: string): { invariant: string[] } {
+  if (existsSync(join(root, SUITES))) {
+    const files = readSuiteFiles(root, [FOLDER, SINGLE, ISOLATION]);
+    return { invariant: files.filter((entry) => entry.isolation).map((entry) => entry.suite) };
+  }
+  const manifest = JSON.parse(readFileSync(join(root, ISOLATION), 'utf8')) as Record<
+    string,
+    unknown
+  >;
+  return { invariant: listOf(manifest['invariant']) };
+}
+
+/** Converts the per-area lists and the isolation list to one file per suite, then removes them. */
+export function suitesToFiles(root: string): void {
+  const manifest = readNamedSuites(root);
+  const isolation = readIsolationSuites(root).invariant;
+  const why = `named in ${FOLDER}/ before each suite had its own file; its reason is in ${SUITES_HISTORY}`;
+  writeSuiteFiles(root, manifest, isolation, why);
+  rmSync(join(root, FOLDER), { recursive: true, force: true });
+  rmSync(join(root, ISOLATION), { force: true });
+}
+
 async function main(argv: readonly string[]): Promise<void> {
+  if (argv[0] === 'kept' && argv.length <= 2) {
+    const readers = { readNamedSuites, readIsolationSuites };
+    console.log(`named-suites: ${keptSuites(argv[1], process.env['GITHUB_EVENT_NAME'], readers)}`);
+    return;
+  }
   if (argv[0] !== 'split' || argv.length > 2 || (argv.length === 2 && argv[1] !== '--check')) {
-    throw new Error('usage: node scripts/named-suites.ts split [--check]');
+    throw new Error('usage: node scripts/named-suites.ts split [--check] | kept <base-sha>');
   }
   let root = repoRoot;
   if (argv[1] === '--check') {
