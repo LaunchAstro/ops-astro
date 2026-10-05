@@ -22,13 +22,17 @@ it('a passing mutation check leaves no failure of the door-flood test in a CI lo
     {
       cwd: resolve(import.meta.dirname, '../..'),
       encoding: 'utf8',
-      env: { ...process.env, GITHUB_ACTIONS: 'true' },
+      env: { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_STEP_SUMMARY: '' },
       timeout: 120_000,
     },
   );
   const log = result.stdout + result.stderr;
-  // Shown only on a failure, with no line that the runner would read as an annotation.
-  expect(result.status, log.replaceAll(/^::/gmu, ': :')).toBe(0);
-  expect(log, 'an annotation').not.toMatch(/^::error/mu);
-  expect(log, 'a FAIL line').not.toMatch(/FAIL\s+tests\/api\/agent-quota-door-flood/u);
+  // Shown only on a failure, with no line that the runner would read as a command.
+  const shown = log.replaceAll(/^(\s*)::/gmu, '$1: :');
+  expect(result.status, `the mutation check passed\n${shown}`).toBe(0);
+  expect(/^\s*::error/mu.test(log), `an annotation\n${shown}`).toBe(false);
+  expect(
+    /FAIL\s+tests\/api\/agent-quota-door-flood/u.test(log),
+    `a FAIL line naming the door-flood test\n${shown}`,
+  ).toBe(false);
 }, 120_000);
