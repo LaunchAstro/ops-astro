@@ -144,7 +144,8 @@ async function runMutated(file: string, title: string, final: string): Promise<S
   }
 
   const fresh = (await handedBack()).filter((id) => !handedBefore.has(id));
-  if (fresh.length !== 1) throw new Error(`expected one fresh handback, found ${String(fresh.length)}`);
+  if (fresh.length !== 1)
+    throw new Error(`expected one fresh handback, found ${String(fresh.length)}`);
   const freshSpan = derivedId(TRACE_KEY, ['span', t.alpha.business, fresh[0] ?? ''], 16);
   const deletion = t.target.methods.indexOf('DELETE', from);
   const posts = (keep: (i: number) => boolean): string[] =>
@@ -160,27 +161,30 @@ async function runMutated(file: string, title: string, final: string): Promise<S
   };
 }
 
-it(
-  'Trace retention: the recovery tests fail when only an old span restores the trace',
-  async () => {
-    const seen: Record<string, Seen> = {};
-    for (const c of CASES) {
-      // eslint-disable-next-line no-await-in-loop -- the two cases share one world, in turn
-      seen[c.file] = await runMutated(c.file, c.title, c.final);
-    }
-    for (const c of CASES) {
-      const s = seen[c.file];
-      if (s === undefined) throw new Error('case not run');
-      expect(s.otherFailure, `${c.file}: no unrelated failure`).toBeNull();
-      expect(s.freshBeforeDelete, `${c.file}: the fresh span left before the delete`).toBe(true);
-      expect(s.substituted, `${c.file}: the recovery export substituted the old span`).toBeGreaterThan(0);
-      expect(s.postsAfterDelete, `${c.file}: something was posted after the delete`).toBeGreaterThan(0);
-      expect(s.freshAfterDelete, `${c.file}: the fresh span was not sent after the delete`).toBe(false);
-    }
+it('Trace retention: the recovery tests fail when only an old span restores the trace', async () => {
+  const seen: Record<string, Seen> = {};
+  for (const c of CASES) {
+    // eslint-disable-next-line no-await-in-loop -- the two cases share one world, in turn
+    seen[c.file] = await runMutated(c.file, c.title, c.final);
+  }
+  for (const c of CASES) {
+    const s = seen[c.file];
+    if (s === undefined) throw new Error('case not run');
+    expect(s.otherFailure, `${c.file}: no unrelated failure`).toBeNull();
+    expect(s.freshBeforeDelete, `${c.file}: the fresh span left before the delete`).toBe(true);
     expect(
-      CASES.map((c) => `${c.file}: ${String(seen[c.file]?.rejectedByFinal)}`),
-      'each committed recovery test must fail when the fresh span is lost and only an old span restores the trace id',
-    ).toEqual(CASES.map((c) => `${c.file}: true`));
-  },
-  240_000,
-);
+      s.substituted,
+      `${c.file}: the recovery export substituted the old span`,
+    ).toBeGreaterThan(0);
+    expect(s.postsAfterDelete, `${c.file}: something was posted after the delete`).toBeGreaterThan(
+      0,
+    );
+    expect(s.freshAfterDelete, `${c.file}: the fresh span was not sent after the delete`).toBe(
+      false,
+    );
+  }
+  expect(
+    CASES.map((c) => `${c.file}: ${String(seen[c.file]?.rejectedByFinal)}`),
+    'each committed recovery test must fail when the fresh span is lost and only an old span restores the trace id',
+  ).toEqual(CASES.map((c) => `${c.file}: true`));
+}, 240_000);

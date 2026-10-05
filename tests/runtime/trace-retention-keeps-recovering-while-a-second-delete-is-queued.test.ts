@@ -66,7 +66,11 @@ it.skipIf(noDatabase)(
     expect(await cursorOf(t.alpha)).toBe(c0);
 
     // A fresh handback to R exports to C1.
-    const answer = await asAgent(t.alpha, handbackBody(work.picked), String(work.picked['credential']));
+    const answer = await asAgent(
+      t.alpha,
+      handbackBody(work.picked),
+      String(work.picked['credential']),
+    );
     expect(codeOf(answer)).toBe('applied');
     await drain(t.alpha);
     expect(await cursorOf(t.alpha)).not.toBe(c0);

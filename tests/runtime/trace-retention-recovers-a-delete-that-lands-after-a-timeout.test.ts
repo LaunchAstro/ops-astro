@@ -71,8 +71,19 @@ it.skipIf(noDatabase)(
     await exportFor(t.alpha);
     await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
     await exportFor(t.alpha);
+    // The fresh handback's own span, not only some span under R's trace id.
+    const [fresh] = await t.alpha.db.app.withBusiness(
+      t.alpha.business,
+      async (tx) =>
+        await tx.query<{ readonly id: string }>(
+          `select id from public.run_events
+            where business_id = $1 and run_id = $2 and kind = 'handed_back'`,
+          [tx.businessId, runId],
+        ),
+    );
+    const freshSpan = derivedId(TRACE_KEY, ['span', t.alpha.business, String(fresh?.id)], 16);
     expect(
-      t.target.stored.has(traceId),
+      t.target.spans.get(traceId)?.has(freshSpan) === true,
       'the fresh event must remain retrievable or be exported again after the accepted delete',
     ).toBe(true);
   },

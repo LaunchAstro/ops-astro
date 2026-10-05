@@ -36,8 +36,9 @@ export interface TraceTarget {
   /** Each request's method and fixed ingestion header, in order. */
   readonly methods: string[];
   readonly ingestion: (string | undefined)[];
-  /** Trace ids the target holds: stored by an export, gone by a delete it did not skip. */
+  /** Trace ids the target holds, and their span ids: an export adds, a delete not skipped drops. */
   readonly stored: Set<string>;
+  readonly spans: Map<string, Set<string>>;
   readonly origin: string;
   readonly custody: Custody;
   readonly canary: string;
@@ -49,16 +50,21 @@ export interface TraceTarget {
 export const TRACE_KEY: Buffer = Buffer.from('aw13-test-trace-key-not-a-secret');
 
 /**
- * The trace store's side: an export stores its trace ids; a delete removes
- * them unless the target is `skipping` (a success reply for work its guard
- * skipped); a read of one trace answers 404 once it is gone.
+ * The trace store's side: an export stores spans by trace id; a delete drops whole traces unless
+ * the target is `skipping` (success for work its guard skipped); a read 404s once one is gone.
  */
 function store(target: TraceTarget, method: string, url: string, body: string): number {
   if (method === 'POST') {
-    for (const [, id] of body.matchAll(/"traceId":"([0-9a-f]{32})"/gu)) target.stored.add(id ?? '');
+    const spans = /"traceId":"([0-9a-f]{32})","spanId":"([0-9a-f]{16})"/gu;
+    for (const [, traceId = '', spanId = ''] of body.matchAll(spans)) {
+      target.stored.add(traceId);
+      target.spans.set(traceId, (target.spans.get(traceId) ?? new Set<string>()).add(spanId));
+    }
   } else if (method === 'DELETE' && target.mode !== 'skipping') {
-    for (const id of (JSON.parse(body) as { traceIds: string[] }).traceIds)
+    for (const id of (JSON.parse(body) as { traceIds: string[] }).traceIds) {
       target.stored.delete(id);
+      target.spans.delete(id);
+    }
   } else if (method === 'GET') {
     return target.stored.has(url.split('/').at(-1) ?? '') ? 200 : 404;
   }
@@ -167,6 +173,7 @@ export async function openTraceTarget(): Promise<TraceTarget> {
     methods: [],
     ingestion: [],
     stored: new Set<string>(),
+    spans: new Map<string, Set<string>>(),
   } as unknown as TraceTarget;
   const { server, port } = await listen(target, received);
   const custody = await custodyFor(folder, port, canary);

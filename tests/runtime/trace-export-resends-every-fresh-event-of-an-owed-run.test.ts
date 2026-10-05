@@ -10,7 +10,15 @@ import type { ExpiryPorts } from '../../packages/core-runtime/src/index.ts';
 import { derivedId, expireOnce, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
 import { liveWork, rows } from './schedules-harness.ts';
 import { age, clearSeen } from './aw-13-retention-world.ts';
-import { drain, exportFor, noDatabase, spanIds, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
+import {
+  drain,
+  exportFor,
+  noDatabase,
+  spanIds,
+  t,
+  TRACE_KEY,
+  useAw13World,
+} from './aw-13-world.ts';
 
 useAw13World('trexp_owed_run_whole');
 
@@ -117,7 +125,10 @@ it.skipIf(noDatabase)(
       spanIds(t.target.received.filter((_, at) => t.target.methods[at] === 'POST')),
     );
     const missing = fresh
-      .map((id, at) => ({ event: `E${String(at + 1)}`, span: derivedId(TRACE_KEY, ['span', s.business, id], 16) }))
+      .map((id, at) => ({
+        event: `E${String(at + 1)}`,
+        span: derivedId(TRACE_KEY, ['span', s.business, id], 16),
+      }))
       .filter(({ span }) => !held.has(span))
       .map(({ event }) => event);
     expect(

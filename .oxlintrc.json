@@ -79,7 +79,11 @@
         "tests/runtime/trace-retention-recovers-a-delete-that-lands-after-a-timeout.test.ts",
         "tests/runtime/trace-retention-recovery-for-one-run-keeps-another-confirmed-run-gone.test.ts"
       ],
-      "rules": { "max-lines-per-function": "off", "unicorn/consistent-function-scoping": "off" }
+      "rules": {
+        "max-lines-per-function": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "require-await": "off"
+      }
     },
     {
       "files": ["tests/api/live-board-lost-access.test.ts"],
