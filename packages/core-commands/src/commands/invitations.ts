@@ -27,19 +27,14 @@
 // An address already pending, or confirmed on a member of this business, is
 // refused: the inviter can see the team, so the answer tells them nothing new.
 
-import {
-  checkAuthority,
-  hasRoom,
-  isUuid,
-  subjectsOf,
-  type TenantQuery,
-} from '../../../core-records/src/index.ts';
+import { hasRoom, isUuid, type TenantQuery } from '../../../core-records/src/index.ts';
 import { INVITATION_SEND_ACTS } from '../../../core-custody/src/index.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { expireDue } from './invitation-expiry.ts';
+import { ADMIN_ROLE, noLongerHeld, notManager } from './invitation-authority.ts';
 
 /** How long an invitation, and the link each send mints, stays good. */
 export const INVITATION_LIFETIME_DAYS = 7;
@@ -88,28 +83,6 @@ const notPending = (): HandlerOutcome =>
   );
 
 /** The role an administrator's invitation names: it asks `access:manage` too. */
-const ADMIN_ROLE = 'admin';
-
-/** Refused unless the caller holds `access:manage` on the whole business. */
-async function notManager(
-  tx: TenantQuery,
-  context: CommandContext,
-): Promise<HandlerOutcome | undefined> {
-  const held = await checkAuthority(tx, subjectsOf(context.session), {
-    collection: 'access',
-    action: 'manage',
-    scope: { kind: 'business', id: null },
-  });
-  if (held.ok) return undefined;
-  return refused(
-    refuseCommand(
-      'SCOPE_NOT_GRANTED',
-      ['role'],
-      ['Only a person with access:manage on the whole business invites an administrator.'],
-    ),
-  );
-}
-
 /** Applied acts in the last hour that one of the counts below selects. */
 const ACTS_IN_HOUR = `a.business_id = $1 and a.outcome = 'applied' and a.command = any($2::text[])
    and a.occurred_at > now() - interval '1 hour'`;
@@ -188,6 +161,8 @@ async function create(
   if (unmanaged !== undefined) return unmanaged;
   const limit = await overLimit(tx, address, context.session.actorId);
   if (limit !== undefined) return limit;
+  const gone = await noLongerHeld(tx, context, request.role);
+  if (gone !== undefined) return gone;
   // A pending invitation whose lifetime has passed is expired first, by the worker.
   await expireDue(tx, address);
   if (await addressTaken(tx, address)) return taken();
@@ -261,6 +236,8 @@ async function move(
     // The limit locks may have been waited on: judged again with every lock held.
     if (!(await liveNow(tx, found.id))) return notPending();
   }
+  const gone = await noLongerHeld(tx, context, resend ? found.role_key : '');
+  if (gone !== undefined) return gone;
   const [moved] = resend
     ? await tx.query<{ revision: number; state: string }>(
         `update invitations set expires_at = now() + make_interval(days => $3::int),
