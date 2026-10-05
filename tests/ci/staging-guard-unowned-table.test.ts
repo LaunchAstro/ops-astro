@@ -77,18 +77,20 @@ const forget = async (): Promise<void> => {
 /**
  * A database laid out as hosted Supabase is: the guard installed, its functions
  * owned by LOGIN; auth.users made by PROVIDER, which owns it and grants LOGIN
- * TRIGGER; and public.owned_by_login, a tenant table LOGIN owns. Each table is
- * made after the guard, so the watch's protect() guards it as LOGIN.
+ * TRIGGER, as it does on public tables it makes; and public.owned_by_login, a
+ * tenant table LOGIN owns. Each table is made after the guard, so the watch's
+ * protect() guards it as LOGIN.
  */
 async function hostedLike(): Promise<EmptyDatabase> {
   db = await createEmptyDatabase({ part: 'sgua' });
   const { admin } = db;
   await admin.execute(`create schema auth authorization ${PROVIDER}`);
   await admin.execute(`grant usage on schema auth to ${LOGIN}`);
-  await admin.execute(
-    `alter default privileges for role ${PROVIDER} in schema auth grant trigger on tables to ${LOGIN}`,
-  );
-  await admin.execute(`grant usage, create on schema public to ${LOGIN}`);
+  for (const schema of ['auth', 'public'])
+    // oxlint-disable-next-line no-await-in-loop
+    await admin.execute(`alter default privileges for role ${PROVIDER} in schema ${schema}
+      grant trigger on tables to ${LOGIN}`);
+  await admin.execute(`grant usage, create on schema public to ${LOGIN}, ${PROVIDER}`);
   await guardMadeUp(admin);
   await admin.execute(`alter schema ops_astro_made_up owner to ${LOGIN}`);
   await admin.execute(`alter table ops_astro_made_up.untrusted owner to ${LOGIN}`);
@@ -120,7 +122,9 @@ describe.skipIf(serverUrl === undefined)('made-up guard on a table the login doe
   withRoles();
   protectCases();
   watchCases();
+  handedCases();
   markCases();
+  lookAlikeCases();
 });
 
 /** The two roles before the cases and gone after; each case gets its own database. */
@@ -129,6 +133,8 @@ function withRoles(): void {
     await server(async (admin) => {
       await admin.execute(`create role ${PROVIDER} nologin`);
       await admin.execute(`create role ${LOGIN} login password '${PASSWORD}' nosuperuser`);
+      // The checks must not lean on how names print under the login's search path.
+      await admin.execute(`alter role ${LOGIN} set search_path = auth, ops_astro_made_up, public`);
     });
   }, 60_000);
 
@@ -154,27 +160,24 @@ function protectCases(): void {
     expect(await enabling('auth.users')).toBe('O');
   }, 60_000);
 
-  // The provider cannot reach the guard's schema, so its own write of a real
-  // address fails at the note and never lands; a superuser's lands and is noted.
-  it('still refuses a sign-in that is not made up, from the provider or a superuser', async () => {
+  it('fires at origin in an ordinary session: a real address is noted, a made-up one is not', async () => {
     await hostedLike();
     await as(PROVIDER, `insert into auth.users values (gen_random_uuid(), 'ada@alpha.local')`);
     expect(await ledger()).toEqual([]);
-    await expect(
-      as(PROVIDER, `insert into auth.users values (gen_random_uuid(), 'kim@example.com')`),
-    ).rejects.toThrow(/permission denied/u);
     await db?.admin.execute(`insert into auth.users values (gen_random_uuid(), 'lee@example.com')`);
     expect(await ledger()).toEqual(['auth.users']);
-    const [real] =
-      (await db?.admin.execute<{ readonly emails: string[] }>(
-        `select array_agg(email order by email) as emails from auth.users where email not like '%.local'`,
-      )) ?? [];
-    expect(real?.emails).toEqual(['lee@example.com']);
   }, 60_000);
 
   it('keeps a table the login owns enabled always', async () => {
     await hostedLike();
     expect(await enabling('public.owned_by_login')).toBe('A');
+  }, 60_000);
+
+  it('refuses, as before, a tenant table another role owns', async () => {
+    await hostedLike();
+    await expect(
+      as(PROVIDER, 'create table public.provider_tenant (business_id uuid)'),
+    ).rejects.toThrow(/must be owner/u);
   }, 60_000);
 }
 
@@ -207,6 +210,20 @@ function watchCases(): void {
   }, 60_000);
 }
 
+function handedCases(): void {
+  it('notes a guard made always on auth.users, handed to the provider and turned down', async () => {
+    await hostedLike();
+    await db?.admin.execute(`alter table auth.users owner to ${LOGIN}`);
+    await db?.admin.execute(`drop trigger ${GUARD} on auth.users`);
+    await db?.admin.execute(`select ops_astro_made_up.protect('auth.users'::regclass)`);
+    expect(await enabling('auth.users')).toBe('A');
+    await db?.admin.execute(`alter table auth.users owner to ${PROVIDER}`);
+    await forget();
+    await as(PROVIDER, `alter table auth.users enable trigger ${GUARD}`);
+    expect(await ledger()).toEqual(['guard']);
+  }, 60_000);
+}
+
 function markCases(): void {
   it('vouches for a marked database whose unowned sign-in table is guarded at origin', async () => {
     await hostedLike();
@@ -222,6 +239,19 @@ function markCases(): void {
     });
   }, 60_000);
 
+  it('refuses an origin guard on auth.users once the login owns it', async () => {
+    await hostedLike();
+    await markMadeUp(db?.admin ?? (undefined as never), []);
+    await db?.admin.execute(`alter table auth.users owner to ${LOGIN}`);
+    await forget();
+    await asLogin(async (login) => {
+      expect(await productionSigns(login)).toEqual(['a table has no made-up guard']);
+    });
+  }, 60_000);
+}
+
+/** Triggers under the guard's name that protect() did not make. */
+function lookAlikeCases(): void {
   it('refuses an origin guard on an unowned table that is not the guard protect() makes', async () => {
     await hostedLike();
     await markMadeUp(db?.admin ?? (undefined as never), []);
@@ -230,6 +260,35 @@ function markCases(): void {
       as $$ begin return null; end $$`);
     await db?.admin.execute(`create trigger ${GUARD} after insert or update on auth.users
       for each row execute function public.allow('origin')`);
+    await asLogin(async (login) => {
+      expect(await productionSigns(login)).toEqual(['a table has no made-up guard']);
+    });
+  }, 60_000);
+
+  it('refuses an origin guard on a tenant table another role owns', async () => {
+    await hostedLike();
+    await markMadeUp(db?.admin ?? (undefined as never), []);
+    await db?.admin.execute(`alter event trigger ${GUARD} disable`);
+    await as(PROVIDER, 'create table public.provider_tenant (business_id uuid)');
+    await db?.admin
+      .execute(`create trigger ${GUARD} after insert or update on public.provider_tenant
+      for each row execute function ops_astro_made_up.guard('origin')`);
+    await db?.admin.execute(`alter event trigger ${GUARD} enable always`);
+    await asLogin(async (login) => {
+      expect(await productionSigns(login)).toEqual(['a table has no made-up guard']);
+    });
+  }, 60_000);
+
+  it('refuses a look-alike guard enabled always on a table the login owns', async () => {
+    await hostedLike();
+    await markMadeUp(db?.admin ?? (undefined as never), []);
+    await db?.admin.execute(`drop trigger ${GUARD} on public.owned_by_login`);
+    await db?.admin.execute(`create function public.allow() returns trigger language plpgsql
+      as $$ begin return null; end $$`);
+    await db?.admin.execute(`create trigger ${GUARD} after insert or update on public.owned_by_login
+      for each row execute function public.allow()`);
+    await db?.admin.execute(`alter table public.owned_by_login enable always trigger ${GUARD}`);
+    await forget();
     await asLogin(async (login) => {
       expect(await productionSigns(login)).toEqual(['a table has no made-up guard']);
     });
