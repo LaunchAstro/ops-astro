@@ -612,4 +612,19 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     ]);
     await page.unmount();
   });
+
+  it('MP-14-8 SEC-P04B-RB2 the fleet mark wears the warn tone, and a client named like it reads as a client', async () => {
+    const named: GrantView = {
+      ...grant('named', 'live', 90),
+      client: { id: 'k-n', label: 'Fleet · every client' },
+    };
+    const { page } = await open(signalBody([named, ...LIVE_ONLY]));
+    const mark = page.find('[data-grant="fleetx"] [data-grant-fleet]');
+    expect(mark?.classList.contains('is-warn')).toBe(true);
+    const client = page.find('[data-grant="named"] [data-grant-client]');
+    expect(client?.classList.contains('chip')).toBe(false);
+    expect(page.find('[data-grant="named"] .visually-hidden')?.textContent).toBe('Client: ');
+    expect(page.find('[data-grant="fleetx"] .visually-hidden')).toBeNull();
+    await page.unmount();
+  });
 });
