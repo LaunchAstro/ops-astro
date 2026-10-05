@@ -57,6 +57,9 @@ function approvedJob(seam = 'request-17'): PublishJob {
   };
 }
 
+const page = (text: string) => () =>
+  Promise.resolve({ ok: true as const, value: { text, url: PUBLISHED.liveUrl } });
+
 /** Ports whose seam reads back nothing before the first send and the publish after it. */
 function publishPorts(sent: string[], overrides: Partial<PublishPorts> = {}): PublishPorts {
   const ports = {
@@ -74,6 +77,7 @@ function publishPorts(sent: string[], overrides: Partial<PublishPorts> = {}): Pu
       ),
     cancellation: () => Promise.resolve('none' as const),
     raiseTask: () => Promise.resolve(),
+    capture: page('We walk alongside you.'),
     ...overrides,
   };
   return ports;
@@ -143,11 +147,16 @@ const REVERTED = { revision: 'rev789', deploymentId: 'dpl_2' };
 const revertInput = {
   publishedRevision: 'def456',
   target: TARGET,
-  change: CHANGE,
+  occurrence: {
+    left: 'We walk ',
+    right: ' you.',
+    index: 0,
+    observed: ['beside'],
+    liveAt: PUBLISHED.liveUrl,
+  },
   seam: 'revert-of-def456',
   decidedAt: T0,
 };
-const page = (text: string) => () => Promise.resolve({ ok: true as const, value: { text } });
 
 /** Ports whose seam reads back nothing before the first send and the revert after it, served. */
 function revertPorts(sent: string[], overrides: Partial<RevertPorts> = {}): RevertPorts {
@@ -166,6 +175,7 @@ function revertPorts(sent: string[], overrides: Partial<RevertPorts> = {}): Reve
     readDeployment: () =>
       Promise.resolve({ kind: 'ok' as const, value: { revision: 'rev789', served: true } }),
     capture: page('We walk alongside you.'),
+    raiseTask: () => Promise.resolve(),
     ...overrides,
   };
   return ports;
@@ -226,6 +236,7 @@ it('a replacement decoy does not establish that the target word landed', async (
   if (accepted.state !== 'accepted') throw new Error(`not accepted: ${accepted.state}`);
   const observe = (text: string) =>
     observeLanded(accepted, TARGET, {
+      raiseTask: async () => {},
       readDeployment: () =>
         Promise.resolve({ kind: 'ok', value: { revision: PUBLISHED.revision, served: true } }),
       capture: page(text),
