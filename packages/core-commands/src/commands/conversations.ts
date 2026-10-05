@@ -18,7 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
-import { checkAuthorityAt } from '../../../core-runtime/src/index.ts';
+import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -216,18 +216,18 @@ export async function messageConversation(
   if (conversation.owner_actor_id !== context.session.actorId) return refused(NOT_YOURS);
   if (conversation.body_purged_at !== null) return refused(PURGED);
   const messageId = randomUUID();
-  // Stamped on the clock after the row lock, not the transaction's start, so
-  // the body lists messages in the order they were kept (#444).
+  // Stamped after the row lock, so messages list in the order kept (#444).
+  const at = await lockedInstant(tx);
   await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body, created_at)
-     values ($1, $2, $3, 'person', $4, $5, clock_timestamp())`,
-    [tx.businessId, messageId, fields.conversationId, context.session.actorId, fields.body],
+     values ($1, $2, $3, 'person', $4, $5, $6::timestamptz)`,
+    [tx.businessId, messageId, fields.conversationId, context.session.actorId, fields.body, at],
   );
   await tx.query(
-    `update conversations set last_activity_at = greatest(clock_timestamp(), last_activity_at)
+    `update conversations set last_activity_at = greatest($3::timestamptz, last_activity_at)
       where business_id = $1 and id = $2`,
-    [tx.businessId, fields.conversationId],
+    [tx.businessId, fields.conversationId, at],
   );
   return applied(null, null, {
     conversationId: fields.conversationId,

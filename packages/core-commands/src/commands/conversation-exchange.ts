@@ -165,28 +165,27 @@ async function keep(
   // grant that lapsed while this waited no longer counts, and must rest on a
   // grant held here, so one issued after the hold does not.
   const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
-  if (!(await holdsOwnConversations(tx, session, { at: await lockedInstant(tx), held }))) {
-    return undefined;
-  }
+  const at = await lockedInstant(tx);
+  if (!(await holdsOwnConversations(tx, session, { at, held }))) return undefined;
   const id = randomUUID();
-  // The reply and the activity are stamped on the clock after the locks, so a
-  // reply that waited behind a message is listed and dated after it (#444).
+  // The reply and the activity are stamped at that same instant, so a reply
+  // that waited behind a message is listed and dated after it (#444).
   const inserted = await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body, answers_message_id,
         created_at)
-     values ($1, $2, $3, 'agent', $4, $5, $6, clock_timestamp())
+     values ($1, $2, $3, 'agent', $4, $5, $6, $7::timestamptz)
      on conflict (business_id, conversation_id, answers_message_id)
        where answers_message_id is not null
      do nothing
      returning id`,
-    [tx.businessId, id, asked.conversationId, session.actorId, body, asked.messageId],
+    [tx.businessId, id, asked.conversationId, session.actorId, body, asked.messageId, at],
   );
   if (inserted.length === 0) return await replyTo(tx, asked);
   await tx.query(
-    `update conversations set last_activity_at = greatest(clock_timestamp(), last_activity_at)
+    `update conversations set last_activity_at = greatest($3::timestamptz, last_activity_at)
       where business_id = $1 and id = $2`,
-    [tx.businessId, asked.conversationId],
+    [tx.businessId, asked.conversationId, at],
   );
   return { id, body };
 }

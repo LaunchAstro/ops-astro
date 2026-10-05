@@ -208,8 +208,9 @@ export async function publishLegalVersion(
   if (row.approved_at === null) return 'not-approved';
   const register = await registerRefusal(tx, row);
   if (register !== undefined) return register;
-  // Stamped when the publish runs, not when its transaction began: the last
-  // version published is the current one, whichever transaction started first (#444).
+  // Stamped when the publish is written, not when its transaction began, so a
+  // publication written after another committed is current whichever began
+  // first (#444); two written at once stamp in write order (#1011).
   await tx.query(
     `update public.legal_document_versions
         set published_at = clock_timestamp(), published_by_actor = $3

@@ -5,11 +5,12 @@
 // and the rows the Review mode draws and counts (MP-5-12, CS-5.12).
 //
 // A task waits at a gate when a gate on its live proposal version is pending
-// and has not expired; one decided, expired or superseded waits on nobody. The
-// question is asked only of the tasks the board already serves, so it never
-// names, counts or reads a gate on a task the caller cannot read. Whether the
-// wait is the caller's to end is `awaitingTheReader`'s question, answered by
-// `task.decide`'s own rules.
+// and has not expired (judged at the statement's start, as `gate.pending` is,
+// not the transaction's, #444); one decided, expired or superseded waits on
+// nobody. The question is asked only of the tasks the board already serves, so
+// it never names, counts or reads a gate on a task the caller cannot read.
+// Whether the wait is the caller's to end is `awaitingTheReader`'s question,
+// answered by `task.decide`'s own rules.
 
 import { readableScope, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Session, Subject, TenantQuery } from '../../../core-records/src/index.ts';

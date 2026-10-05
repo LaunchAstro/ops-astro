@@ -52,7 +52,8 @@ export async function resolveAgentCredential(
   // as well as the caller's instant: a credential that expired while this
   // waited for the row is not served (#444).
   const [clock] = await tx.query<{ readonly at: Date }>('select clock_timestamp() as at');
-  const at = clock === undefined || clock.at < now ? now : clock.at;
+  if (clock === undefined) throw new Error('resolveAgentCredential: no database clock');
+  const at = clock.at < now ? now : clock.at;
   if (!liveAt(row, at)) return 'not-live';
   return {
     credentialId: row.id,
