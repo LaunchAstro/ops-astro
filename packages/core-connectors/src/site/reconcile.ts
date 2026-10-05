@@ -98,7 +98,10 @@ const MOST_PLACE = 4096;
 
 /** The words at the place's equal matches in `text`, among `words`, in page order. */
 function equalsOf(text: string, where: Occurrence, words: readonly string[]): string[] {
-  if (text.length > MOST_TEXT || where.left.length + where.right.length > MOST_PLACE) return [];
+  const longest = Math.max(0, ...words.map((word) => word.length));
+  if (text.length > MOST_TEXT || where.left.length + longest + where.right.length > MOST_PLACE) {
+    return [];
+  }
   const found = words.flatMap((word) =>
     wordOffsets(text, where.left + word + where.right).map((at) => ({ at, word })),
   );

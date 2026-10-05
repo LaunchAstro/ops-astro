@@ -114,14 +114,12 @@ export type PublishOutcome =
 
 const refused = (code: PublishRefusal): PublishOutcome => ({ state: 'refused', code });
 
-type Captured = Awaited<ReturnType<ObservePorts['capture']>>;
-
 /** Each check before the dispatch in order, then the served page; drift counts until a landing. */
 async function beforeDispatch(
   job: PublishJob,
   ports: PublishPorts,
   back: ReadBack<Published>,
-): Promise<PublishOutcome | { readonly captured: Captured | undefined }> {
+): Promise<PublishOutcome | { readonly preImage: string | undefined }> {
   const { decision } = job;
   if (decision === undefined || decision.decision !== 'approve') return refused('APPROVAL_MISSING');
   const bound =
@@ -131,7 +129,7 @@ async function beforeDispatch(
   if (!bound) return refused('PROPOSAL_SUPERSEDED');
   if (!checkEnvelope(job.change, job.target).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
   // After a landing the page may already show the correction: nothing read then is a pre-image.
-  if (back.state !== 'absent') return { captured: undefined };
+  if (back.state !== 'absent') return { preImage: undefined };
   const current = await ports.readSource();
   if (current.kind !== 'ok') return refused('CONTENT_DRIFT_UNCHECKED');
   const pinned = contentDigest(job.change.files[0]?.before ?? null);
@@ -142,7 +140,8 @@ async function beforeDispatch(
     return { state: 'refused', code: 'CONTENT_DRIFTED', waitsOn: 'person' };
   }
   if ((await ports.cancellation()) === 'requested') return refused('CANCELLED');
-  const cleared = { captured: await ports.capture(job.pageUrl) };
+  const captured = await ports.capture(job.pageUrl);
+  const cleared = { preImage: captured.ok ? captured.value.text : undefined };
   // Last, after every awaited read: a cancellation that arrived during one still stops the send.
   return (await ports.cancellation()) === 'requested' ? refused('CANCELLED') : cleared;
 }
@@ -162,15 +161,16 @@ export async function publishCorrection(
     return { ...checked, answer: await reconciled(back, send, readBack) };
   });
   if ('state' in sent) return sent;
-  const { captured, answer } = sent;
+  const { preImage, answer } = sent;
   const unknown = async (code: string): Promise<PublishOutcome> => {
     await ports.raiseTask(code);
     return { state: 'unknown', code, reference: job.seam, dispatchToken: token };
   };
   if ((await ports.cancellation()) === 'requested') return unknown('CANCELLED_AFTER_DISPATCH');
   if (answer.kind === 'ok') {
-    const preImage = captured?.ok ? captured.value.text : undefined;
-    const occurrence = calibrated(job.change, job.target, preImage);
+    // Live is read at the provider's address: the place holds only on the page it was read on.
+    const onPage = answer.value.liveUrl === job.pageUrl;
+    const occurrence = onPage ? calibrated(job.change, job.target, preImage) : undefined;
     if (occurrence === undefined) await ports.raiseTask('LIVE_CHECK_UNPLACED');
     return { state: 'accepted', ...answer.value, dispatchToken: token, occurrence };
   }
@@ -258,7 +258,7 @@ export async function revertCorrection(
   input: {
     readonly publishedRevision: string;
     readonly target: CorrectionTarget;
-    /** The accepted outcome's calibrated place: the page must return to what was observed there. */
+    /** The place the live check saw change (the live outcome's): the page must return to it. */
     readonly occurrence: Occurrence | undefined;
     readonly seam: string;
     /** When the revert was decided, kept across every resumed attempt until it is observed. */
