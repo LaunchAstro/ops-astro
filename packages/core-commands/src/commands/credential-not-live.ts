@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The one answer for an API-2 agent credential not served, whichever the
-// reason: the credential envelope's at the door, and a step result's when the
-// credential lapsed while it waited on a lock (`onboarding-authority.ts`).
+// The one answer for an API-2 credential not served, at the door or after a lock wait (`onboarding-authority.ts`).
 
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 

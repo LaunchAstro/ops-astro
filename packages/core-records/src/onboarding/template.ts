@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The onboarding templates (C41-A, CS-15.2). A template is a version in code:
-// laying one out records its key and version on the onboarding, and a change
-// is a new version, never an edit of one already used. Each step is a task on
-// the client, in a phase, marked agent-run, needs a person, or waits on the
-// client, with the steps it waits for. Provisioning the documentation roots is
-// C41-D's, in a Docs phase that template version adds.
+// The onboarding templates (C41-A, CS-15.2): versions in code, never edited once used; C41-D adds a Docs phase.
 
 export type StepKind = 'agent' | 'person' | 'client';
 

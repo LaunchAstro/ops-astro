@@ -156,8 +156,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
   'operations.change_installation_mode': { mode: 'any' },
   'client.create': { name: 'any' },
-  // The record type and the step outcome are checked by value in the command.
-  // `recordId` is `any`: a step result missing it is refused naming the field.
+  // Type and outcome are checked by value in the command; `recordId` is `any` so a missing one is refused by name.
   'record.create': { type: 'any', fields: 'map' },
   'onboarding.start': { clientId: 'id', templateKey: 'any' },
   'onboarding.step_result': { recordId: 'any', outcome: 'any', result: 'any' },

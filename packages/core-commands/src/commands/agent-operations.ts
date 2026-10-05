@@ -775,9 +775,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     }),
   ],
   [
-    // C41-A: the onboarding skill writes an agent step's result onto the task
-    // it is delegated on, and on no other (`authorise` holds the purpose
-    // scope to this record and `task:write` to the delegating person's grant).
+    // C41-A: an agent step's result goes on its delegated task only (purpose scope and the person's `task:write`).
     'onboarding.step_result',
     row({
       authority: 'record',

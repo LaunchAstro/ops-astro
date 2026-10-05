@@ -1,19 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// An onboarding's moves (C41-A, CS-15.4): a person or client-wait step that
-// opens is parked with an inbox item to whoever owns its move, and the item
-// closes when the step's result is recorded, or is withdrawn when the
-// onboarding stops.
+// An onboarding's moves (C41-A, CS-15.4): a person or client-wait step parks with an inbox item to its owner.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { raiseInboxItem } from '../inbox/items.ts';
 
-/**
- * Each ready person or client-wait step of a running onboarding, on its own
- * client's task out of the trash, and whoever owns its move: the step task's assignee, else the
- * person who started the onboarding (CS-15.4). The task row is locked, so an
- * assignment being written is waited on and its assignee read.
- */
+/** Each ready person or client-wait step on its live, own-client task, and its owner: assignee, else the starter. */
 const MOVES = `select s.task_id, coalesce(r.uuid_2, a.person_id) as owner
      from public.onboarding_steps s
      join public.onboardings o on o.business_id = s.business_id and o.id = s.onboarding_id
@@ -27,10 +19,7 @@ async function park(
   steps: string,
   values: readonly unknown[],
 ): Promise<readonly { readonly task_id: string; readonly owner: string | null }[]> {
-  // Lock first, read after. Each named step's task row is locked whatever this
-  // statement's snapshot says of its trash and client, so a restore or a
-  // client move in flight on it is waited on; the moves are then read in a
-  // statement of their own, which sees what that committed.
+  // Lock first, read after: a restore or client move in flight is waited on, then read in a new statement.
   await tx.query(
     `select r.id from public.onboarding_steps s
        join public.records r on r.business_id = s.business_id and r.id = s.task_id
@@ -54,11 +43,7 @@ async function park(
   return moves;
 }
 
-/**
- * Park these steps, now ready (CS-15.4, `inbox item raised (owns_the_move)`).
- * CS-16.8 has no reason of that name; the move is the task's, so it is raised
- * as the task's `assignment`. An agent step parks at its run's gate.
- */
+/** Park these steps, now ready, as the task's `assignment` item (CS-15.4); an agent step parks at its run's gate. */
 export async function raiseStepMoves(
   tx: TenantQuery,
   onboardingId: string,
@@ -68,13 +53,7 @@ export async function raiseStepMoves(
   await park(tx, 's.onboarding_id = $2 and s.step_key = any($3::text[])', [onboardingId, keys]);
 }
 
-/**
- * Tasks back from the trash: a step among them that opened while its task was
- * in the trash was parked with nobody (`MOVES` reads live tasks only), so each
- * ready one is parked now. The restore holds each task's row; a result opening
- * one of these steps meanwhile waits on it in `park` and parks it once the
- * restore commits, and one that committed first is read as ready here.
- */
+/** Tasks back from the trash: each ready step among them, parked with nobody while trashed, is parked now. */
 export async function parkRestoredSteps(
   tx: TenantQuery,
   taskIds: readonly string[],
@@ -83,17 +62,7 @@ export async function parkRestoredSteps(
   await park(tx, 's.task_id = any($2::uuid[])', [taskIds]);
 }
 
-/**
- * The onboarding stopped (its second failure): no step of it takes a result
- * until a person restarts it, so the open move on each step that was owed one
- * (ready, or the one that stopped) is withdrawn (withdrawn names nobody). An
- * ordinary assignment on a blocked or closed step's task is no step's move and
- * stays, as does one on a step task since moved to another client. The caller
- * holds the onboarding's lock; those steps' task rows are locked next
- * (onboarding, steps, then tasks), whatever this snapshot says of their trash
- * and client, so a restore parking one of them, or a client move, is waited on
- * and what it committed is read.
- */
+/** The onboarding stopped: withdraw the open move of each ready or stopped step on its own client, task rows locked first. */
 export async function withdrawStepMoves(tx: TenantQuery, onboardingId: string): Promise<void> {
   const owed = `from public.onboarding_steps s
        join public.onboardings o on o.business_id = s.business_id and o.id = s.onboarding_id
@@ -112,13 +81,7 @@ export async function withdrawStepMoves(tx: TenantQuery, onboardingId: string): 
   );
 }
 
-/**
- * A step task's assignee or client was written, after `raiseAssignment`: its
- * move is parked again under the owner rule, so an unassigned step falls back
- * to the starter and one taken by its assignee is theirs. An item held by
- * anyone but the assignee and the owner is withdrawn, as when the task has
- * moved to another client and is no longer this onboarding's step.
- */
+/** A step task's assignee or client changed: park its move again and withdraw items held by anyone else. */
 export async function reparkStepMove(tx: TenantQuery, taskId: string): Promise<void> {
   const [move] = await park(tx, 's.task_id = $2', [taskId]);
   await tx.query(
@@ -135,13 +98,7 @@ export async function reparkStepMove(tx: TenantQuery, taskId: string): Promise<v
   );
 }
 
-/**
- * The step's move is made: its open item closes, cleared by the person who
- * recorded the result, or withdrawn when an agent did (withdrawn names nobody).
- * The caller holds the task row's lock (`lockStepOfTask`), so an assignment
- * being written, which may park the step again, was waited on and its item is
- * closed too.
- */
+/** The step's move is made: its item is cleared by the person, or withdrawn for an agent; the caller holds the task lock. */
 export async function closeStepMove(
   tx: TenantQuery,
   step: { readonly taskId: string },

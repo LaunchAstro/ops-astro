@@ -1,23 +1,5 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
--- A UTC timestamp ID (docs/local/DATA.md, "What the schema is"): b0/SL13's
--- 0257, ported onto main after migrations moved to timestamps.
---
--- 20261004130802 new client onboarding (C41-A, U38, CS-15.2 and CS-15.4).
---
--- An onboarding is one client laid out as tasks from one template version.
--- The template is versioned in code and never edited in place, so the row
--- names the version it was laid out from. Each step is a task on the client
--- (its `client` link, `records.uuid_7`) plus a step row here: its phase,
--- whether an agent runs it, a person does it or it waits on the client, the
--- steps it depends on, and how many times it failed. Two failures stop the
--- onboarding; the stop is a state, never a deletion.
---
--- One onboarding per client, held by the database. The client is a row of
--- 0055's `clients`, never deleted, so the key to it holds; the tasks are
--- ordinary task records, read, shared and trashed like any other.
---
--- The application inserts and reads both tables and moves them on by column
--- grants alone; nothing deletes either or rewrites a client, task or template.
+-- New client onboarding (C41-A, U38, CS-15.2, CS-15.4), ported from b0/SL13 0257: one onboarding per client, steps as tasks.
 
 create table public.onboardings (
   business_id          uuid        not null,

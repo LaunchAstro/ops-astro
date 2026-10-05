@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A step result's authority, asked again once its onboarding's lock is held
-// (C41-A). `onboarding.step_result` waits on that lock after the envelope or
-// the delegation check has admitted it, so a revocation, or a lapse, during
-// the wait is seen there, and one that comes after it waits for the write.
+// A step result's authority, asked again once its onboarding's lock is held (C41-A).
 
 import {
   DELEGATION_STANDS_AT_CHECK,
@@ -21,10 +18,7 @@ import {
 import { credentialNotLive } from './credential-not-live.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
-/**
- * The caller's authority asked again once the onboarding's lock is held, of
- * the step's task and client as read under it: the refusal, or undefined.
- */
+/** The caller's authority asked again under the onboarding's lock: the refusal, or undefined. */
 export type StillHolds = (step: {
   readonly clientId: string;
   readonly taskId: string;
@@ -57,15 +51,7 @@ async function credentialStandsAt(
   return row?.live === true;
 }
 
-/**
- * The envelope's caller, a person or an API-2 credential: its task grants are
- * held for share now, before the onboarding's lock (grants before records, as
- * `task.decide` holds them), so a revocation that comes second waits for the
- * write; and, at the clock once the lock is held, a credential's own expiry
- * and `task:write` at the step's client are asked again, so a grant revoked
- * first, or a grant or credential that lapsed during the wait, no longer
- * counts. A credential's row is already held for share (its revocation waits).
- */
+/** A person or API-2 caller: task grants held before the lock, then expiry and `task:write` asked at the locked clock. */
 export async function grantsStillHold(tx: TenantQuery, session: Session): Promise<StillHolds> {
   const subjects = subjectsOf(session);
   await holdCoveringGrants(tx, subjects, 'task');
@@ -88,18 +74,7 @@ export async function grantsStillHold(tx: TenantQuery, session: Session): Promis
   };
 }
 
-/**
- * A delegated agent's: the delegating person's task grants held for share
- * now, before the onboarding's lock, as the person path holds its own, so a
- * revocation of one comes after the write. Once the lock is held, the
- * delegation, and a child's parent with it, is held `for share` (after the
- * task rows, as the lock order puts a delegation) and must be live at the
- * clock, so a `delegation.revoke` of either after that read waits too; and the
- * person's `task:write` on the step's task is asked at that clock. A revocation
- * for lost authority, or the person's grant lapsing during the wait, is
- * `DELEGATION_NARROWED`, as the agent envelope answers it; any other end is
- * `DELEGATION_NOT_LIVE`.
- */
+/** A delegated agent: its person's grants held, then the delegation (and parent) held and asked live at the locked clock. */
 export async function delegationStillHolds(
   tx: TenantQuery,
   delegation: Pick<Delegation, 'id' | 'delegatePersonId'>,
@@ -107,12 +82,7 @@ export async function delegationStillHolds(
   const person: readonly Subject[] = [{ kind: 'person', id: delegation.delegatePersonId }];
   await holdCoveringGrants(tx, person, 'task');
   return async ({ taskId }) => {
-    // Held first, then read in a statement of its own: a locking read
-    // computes its columns before it waits, so a row released unchanged would
-    // otherwise answer with the clock from before the wait. A child's parent
-    // is held with it, as its liveness is read; the two in id order, as
-    // `acquire` takes a class's rows, so a revocation costing both cannot
-    // hold one while this holds the other.
+    // Held, then read in its own statement (fresh clock); child and parent in id order, as `acquire` takes them.
     await tx.query(
       `select d.id from public.delegations d
         where d.business_id = $1

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// New client onboarding's requests (C41-A), a member of `CommandRequest`'s
-// union. The type, template and outcome are checked by value in the command.
+// New client onboarding's requests (C41-A); type, template and outcome are checked by value in the command.
 
 export type OnboardingRequest<Envelope> =
   | ({

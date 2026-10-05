@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `record.create` (C41-A, U38's one record-create command, RC-13): a new
-// record of a type this command knows. Only `client` today, with its name,
-// made as `client.create` makes one (0055's `clients`, the row a task's
-// `client` link and a party-scoped grant name); the CRM grows the client's
-// fields and the command the types it creates. The caller's `record:write`
-// across the business was checked by the envelope. The applied detail carries
-// ids alone, so a client's name never reaches the audit chain.
+// `record.create` (C41-A, U38, RC-13): a new client, as `client.create` makes one; the detail carries ids alone.
 
 import {
   CLIENT_NAME_MOST,

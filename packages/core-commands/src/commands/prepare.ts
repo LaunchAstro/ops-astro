@@ -431,11 +431,7 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
     'client',
     (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
   ],
-  // C41-A: an onboarding step's result is asked at the task's own client (its
-  // `client` link), and only while that is still the onboarding's client, so a
-  // holder scoped to one client writes that client's steps and no other's. A
-  // task that is no step, or one moved to another client, falls back to the
-  // business, as a fabricated id does.
+  // C41-A: a step result is asked at its task's client while that is the onboarding's client, else the business.
   'onboarding.step_result': [
     'recordId',
     (tx, id) =>

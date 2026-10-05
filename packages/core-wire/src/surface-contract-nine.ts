@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The contract's nine. Split from `surface.ts`, which re-exports the name, to
-// keep that file under the line limit.
+// The contract's nine, split from `surface.ts` (which re-exports it) for the line cap.
 
 import type { CommandName } from './command-names.ts';
 

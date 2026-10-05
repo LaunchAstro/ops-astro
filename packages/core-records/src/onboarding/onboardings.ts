@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The onboarding and its steps (C41-A, migration 20261005200007). Every statement runs
-// in the caller's tenant transaction, so row-level security keeps another
-// business's rows out of every one of them. A step's state moves only here:
-// ready when every step it depends on is done, stopped with the rest when one
-// step fails twice.
+// The onboarding and its steps (C41-A), in the caller's tenant transaction; a step's state moves only here.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -50,10 +46,7 @@ const stepOf = (row: StepRecord): OnboardingStepRow => ({
   failures: row.failures,
 });
 
-/**
- * One step's task on the client, top level, keyed and ranked the way
- * `task.create` places one; its party slot is the client.
- */
+/** One step's task on the client, placed as `task.create` places one. */
 export async function insertStepTask(
   tx: TenantQuery,
   task: {
@@ -91,12 +84,7 @@ export async function insertStepTask(
   return id;
 }
 
-/**
- * Claim the client's one onboarding, before anything else is written. The
- * unique key is the lock: a second start for the same client waits on the
- * first's row and, once that commits, finds it and claims nothing, so it is
- * refused rather than meeting the key as a fault. Undefined when claimed.
- */
+/** Claim the client's one onboarding first; the unique key makes a second start claim nothing. Undefined when claimed. */
 export async function claimOnboarding(
   tx: TenantQuery,
   onboarding: {
@@ -157,13 +145,7 @@ export async function insertSteps(
   return steps.flatMap((step) => byKey.get(step.key) ?? []);
 }
 
-/**
- * The step on this task, with its onboarding locked first, then every step of
- * it, so two results on one onboarding serialise and each sees the other's
- * closed dependencies, and then the step's own task (S0-5: a step's result is
- * content on it). Undefined when no step is on the task, or when the task, read again
- * under its row lock, is in the trash (as `task.comment` answers it) or off the client.
- */
+/** The step on this task, locking onboarding, steps, then its task; undefined if absent, trashed or off the client. */
 export async function lockStepOfTask(
   tx: TenantQuery,
   taskId: string,
@@ -176,8 +158,7 @@ export async function lockStepOfTask(
     }
   | undefined
 > {
-  // The step's own task must still be on the onboarding's client: a task
-  // moved to another client is no longer this onboarding's step to close.
+  // A task moved to another client is no longer this onboarding's step.
   const found = await tx.query<{ readonly onboarding_id: string }>(
     `select s.onboarding_id
        from public.onboarding_steps s
@@ -197,9 +178,7 @@ export async function lockStepOfTask(
       where business_id = $1 and onboarding_id = $2 order by position for update`,
     [tx.businessId, onboardingId],
   );
-  // A client change or a trash holding the task's lock is waited on here, and
-  // the row it committed is the one read: `task.set_party` takes this lock
-  // first and no onboarding lock, so the order cannot cross.
+  // A client change or trash in flight is waited on and its row read; set_party takes no onboarding lock.
   const task = await tx.query<{ readonly client_id: string | null }>(
     'select uuid_7 as client_id from public.records where business_id = $1 and id = $2 and deleted_at is null for update',
     [tx.businessId, taskId],
@@ -212,10 +191,7 @@ export async function lockStepOfTask(
   return { onboardingState: held.state, clientId: held.client_id, step, siblings: all };
 }
 
-/**
- * Close a step and open every step whose dependencies are now all done. The
- * onboarding is done when no step is left open. Returns the keys it opened.
- */
+/** Close a step, open the steps now unblocked, and finish the onboarding when none is open; returns the opened keys. */
 export async function closeStep(
   tx: TenantQuery,
   step: OnboardingStepRow,
@@ -250,12 +226,7 @@ export async function closeStep(
   return opened;
 }
 
-/**
- * Count one failure. The second stops the step and the whole onboarding, so
- * nothing further runs until a person restarts it (CS-15.4: twice failed, it
- * stops and reports), and withdraws its steps' open moves, which no step takes
- * a result for now. Returns whether it stopped.
- */
+/** Count one failure; the second stops step and onboarding and withdraws its moves (CS-15.4). Returns whether it stopped. */
 export async function failStep(tx: TenantQuery, step: OnboardingStepRow): Promise<boolean> {
   const stops = step.failures + 1 >= 2;
   await tx.query(

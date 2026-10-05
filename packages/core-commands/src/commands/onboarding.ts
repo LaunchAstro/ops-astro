@@ -1,22 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// New client onboarding (C41-A, CS-15.2 and CS-15.4). `onboarding.start` lays
-// a template version out as tasks on a client (`record-create.ts` makes one),
-// each in its phase and marked agent-run, needs a person, or waits on the
-// client, and records the onboarding and its steps in one transaction.
-// `onboarding.step_result` writes a step's result onto its own task as a
-// system comment and moves the onboarding on: a done step opens the steps
-// waiting on it, and a second failure stops the onboarding, says so and
-// withdraws its steps' open moves. A person or client-wait step that opens
-// raises an inbox item to whoever owns its move, closed with the step. The
-// result waits on its onboarding's lock after the envelope asked its
-// authority, so that authority is asked again once the lock is held.
-//
-// Nothing here runs, sends or spends: the agent step's run and gate, and the
-// client email's draft and send, are held by name in
-// `tests/onboarding/c41-a-held.test.ts`. Every refusal comes before the first
-// write, or is the claim that writes nothing (a second start), and none echoes
-// a value the caller sent.
+// New client onboarding (C41-A, CS-15.2, CS-15.4): start lays a template out as tasks; step_result records a step and moves on.
 
 import {
   checkAuthority,
@@ -70,10 +54,7 @@ async function holdsTaskWrite(tx: TenantQuery, session: Session): Promise<boolea
   return held.ok;
 }
 
-/**
- * The template the start names, or the refusal that stops it, each before
- * anything is written.
- */
+/** The template the start names, or the refusal that stops it, before anything is written. */
 async function checkStart(
   tx: TenantQuery,
   context: CommandContext,
@@ -85,8 +66,7 @@ async function checkStart(
       ? ONBOARDING_TEMPLATES[request.templateKey]
       : undefined;
   if (template === undefined) return invalid('templateKey');
-  // Another business's client is not in this transaction's rows (RLS), so it
-  // answers exactly as a fabricated or malformed identifier does.
+  // Another business's client is hidden by RLS, so it answers as a made-up id does.
   if (!isUuid(request.clientId) || !(await isClientHere(tx, request.clientId))) {
     return refused(refuseNotFound());
   }
@@ -170,8 +150,7 @@ function parseResult(
 ):
   | { readonly outcome: 'done' | 'failed'; readonly text: string; readonly commentTypeId: string }
   | Refused {
-  // Absent is a body missing its field; present and not ours is a record
-  // that is not there, answered as a fabricated one is.
+  // Absent is a missing field; present and not ours answers as a made-up record does.
   if (typeof request.recordId !== 'string') return refused(invalidRefusal('recordId'));
   if (!isUuid(request.recordId)) return refused(refuseNotFound());
   const outcome = request.outcome;
@@ -190,12 +169,7 @@ function parseResult(
   return { outcome, text, commentTypeId };
 }
 
-/**
- * A step's result, onto its own task, after the caller's `task:write` on it
- * (the envelope's, the delegation's), asked again under the onboarding's lock
- * (`stillHolds`). An agent, delegated or by its API-2 credential, records
- * agent steps only; the rest are a person's (ORCH79).
- */
+/** A step's result on its own task, authority asked again under the lock; agents record agent steps only (ORCH79). */
 export async function writeStepResult(
   tx: TenantQuery,
   author: {
