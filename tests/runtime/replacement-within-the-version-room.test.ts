@@ -214,45 +214,52 @@ describe.skipIf(serverUrl === undefined)('a replacement holds within the version
       committed: 500,
     });
   });
+});
 
-  it('counts the spend a top-up moved off a held hold, so a replacement sorted before it leaves the version at its approved 600', async () => {
-    const { work, versionId, first } = await roomyWork();
-    await spend(first, 100);
-    // Stopped at its ceiling and topped up by 100: the hold stays held at
-    // 500 + 100 - 100, and the 100 spent moves to the envelope's actual.
-    await stopAndTopUp(work, first, 100);
-    // The pickup after the top-up replaces the hold with one held at 500.
-    const second = await pickup(s, first);
-    await spend(second['reservationId'], 100);
-    await stopWorker(second);
-    await stampBefore(first, second['reservationId']);
+describe.skipIf(serverUrl === undefined)(
+  'a replacement after a top-up holds within the version room',
+  () => {
+    it('counts the spend a top-up moved off a held hold, so a replacement sorted before it leaves the version at its approved 600', async () => {
+      const { work, versionId, first } = await roomyWork();
+      await spend(first, 100);
+      // Stopped at its ceiling and topped up by 100: the hold stays held at
+      // 500 + 100 - 100, and the 100 spent moves to the envelope's actual.
+      await stopAndTopUp(work, first, 100);
+      // The pickup after the top-up replaces the hold with one held at 500.
+      const second = await pickup(s, first);
+      await spend(second['reservationId'], 100);
+      await stopWorker(second);
+      await stampBefore(first, second['reservationId']);
 
-    const again = await asAgent(s, {
-      command: 'task.pickup',
-      operationId: randomUUID(),
-      reservationId: first,
-      leaseSeconds: 600,
-    });
-    const holds = await holdsOf(versionId);
-    const live = holds.filter((hold) => hold.state === 'held').map((hold) => hold.held);
-    // The spend the top-up moved to the envelope's actual: the first hold's calls.
-    const [moved] = await rows<{ minor: string }>(
-      s,
-      `select coalesce(sum(actual_minor), 0)::text as minor from public.model_calls
+      const again = await asAgent(s, {
+        command: 'task.pickup',
+        operationId: randomUUID(),
+        reservationId: first,
+        leaseSeconds: 600,
+      });
+      const holds = await holdsOf(versionId);
+      const live = holds.filter((hold) => hold.state === 'held').map((hold) => hold.held);
+      // The spend the top-up moved to the envelope's actual: the first hold's calls.
+      const [moved] = await rows<{ minor: string }>(
+        s,
+        `select coalesce(sum(actual_minor), 0)::text as minor from public.model_calls
         where business_id = $1 and reservation_id = $2 and state = 'settled'`,
-      [s.business, first],
-    );
-    expect({
-      code: codeOf(again),
-      live,
-      committed: Number(moved?.minor) + committed(holds),
-    }).toEqual({
-      code: 'applied',
-      live: ['400'],
-      committed: 600,
+        [s.business, first],
+      );
+      expect({
+        code: codeOf(again),
+        live,
+        committed: Number(moved?.minor) + committed(holds),
+      }).toEqual({
+        code: 'applied',
+        live: ['400'],
+        committed: 600,
+      });
     });
-  });
+  },
+);
 
+describe.skipIf(serverUrl === undefined)('a replacement with no room left in its version', () => {
   it('stops the run at its budget and asks once when the version has no room left, moving no money', async () => {
     const { work, versionId, first } = await roomyWork();
     await spend(first, 100);
