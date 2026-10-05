@@ -51,6 +51,7 @@
     "tests/api/conversation-hides-task-title-revoked-before-content.test.ts",
     "tests/api/conversation-list-keeps-unreadable-subject-in-database.test.ts",
     "tests/api/conversation-page-hides-unreadable-task-any-spelling.test.ts",
+    "tests/api/conversation-retention-work.test.ts",
     "tests/api/cq-1.test.ts",
     "tests/api/cq-2-start-up-keys.test.ts",
     "tests/api/cq-2.test.ts",

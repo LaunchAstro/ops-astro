@@ -1,0 +1,158 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Review proofs on frozen head 4126931. Product code is unchanged.
+import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  purgeConversation,
+  sweepConversations,
+  writeWrapUp,
+} from '../../packages/core-commands/src/index.ts';
+import {
+  connect,
+  endProviderSession,
+  revokeGrant,
+  type Database,
+  type TenantQuery,
+} from '../../packages/core-records/src/index.ts';
+import {
+  conversationWorld,
+  detail,
+  setConversationWindow,
+  started,
+  type ConversationWorld,
+} from './aw-03-fixture.ts';
+import { localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
+import { authorised, post, tokenFor } from './fixture.ts';
+import { createControls, type Controls } from './controls-fixture.ts';
+import { addClient, enrol, grantTo } from '../commands/fixture.ts';
+
+describe('conversation retention holds for created work, decided gates and an unreadable window', () => {
+  let w: ConversationWorld;
+  let c: Controls;
+  let model: LocalModel;
+  let second: Database;
+  beforeAll(async () => {
+    c = await createControls('solow031');
+    w = await conversationWorld(c);
+    model = await localModel();
+    second = connect(w.fixture.db.appUrl);
+    await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+      await setConversationWindow(tx, 7);
+      await grantTo(tx, w.owner, 'share');
+    });
+  }, 180_000);
+  afterAll(async () => {
+    await model?.close();
+    await second?.close();
+    await w?.drop();
+  });
+  const wrap = async (conversationId: string) =>
+    await w.fixture.db.app.withBusiness(
+      w.fixture.business,
+      async (tx) => await writeWrapUp(tx, { conversationId, codeRevision: '4126931' }),
+    );
+  const purge = async (conversationId: string) =>
+    await w.fixture.db.app.withBusiness(
+      w.fixture.business,
+      async (tx) => await purgeConversation(tx, { conversationId, operationId: randomUUID() }),
+    );
+  const task = async (title: string, conversationId?: string) => {
+    const answer = await w.as(w.owner, 'task.create', {
+      fields: { title },
+      ...(conversationId === undefined ? {} : { conversationId }),
+    });
+    expect(answer.status).toBe(200);
+    return String(answer.body['recordId']);
+  };
+  const messages = async (conversationId: string) =>
+    await w.count(
+      'select count(*) as n from public.conversation_messages where conversation_id = $1',
+      [conversationId],
+    );
+  const setClient = async (taskId: string, clientId: string) => {
+    const read = await w.as(w.owner, 'task.read', { recordId: taskId });
+    expect(read.status).toBe(200);
+    const answer = await w.as(w.owner, 'task.set_party', {
+      operationId: randomUUID(),
+      recordId: taskId,
+      expectedRevision: (read.body['task'] as { revision: number }).revision,
+      fields: { client: clientId },
+    });
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+  };
+
+  it('an open task created by a conversation holds its body and is left open in the wrap-up', async () => {
+    const conversationId = await started(w, w.owner, { body: 'Create the follow-up work' });
+    const taskId = await task('still open created work', conversationId);
+    await w.age(conversationId, 8);
+    expect(await wrap(conversationId)).toMatchObject({ ok: true, written: true });
+    const [row] = await w.fixture.db.admin.execute<{ items: unknown; left_open: unknown }>(
+      'select items, left_open from public.conversation_wrap_ups where conversation_id = $1',
+      [conversationId],
+    );
+    expect(JSON.stringify(row?.items)).toContain(taskId);
+    const outcome = await purge(conversationId);
+    expect({
+      outcome,
+      messages: await messages(conversationId),
+      leftOpen: row?.left_open,
+    }).toMatchObject({
+      outcome: { ok: false, code: 'WORK_OPEN' },
+      messages: 1,
+      leftOpen: [{ kind: 'task', id: taskId }],
+    });
+  });
+
+  it('the sweep reports an unreadable window even with no old body to purge', async () => {
+    // Exclude the other cases' candidates with the clock, then make the
+    // configured window invalid using the real settings writer.
+    await w.fixture.db.admin.execute(
+      'update public.conversations set last_activity_at = now() where business_id = $1 and body_purged_at is null',
+      [w.fixture.business],
+    );
+    await w.fixture.db.app.withBusiness(
+      w.fixture.business,
+      async (tx) => await setConversationWindow(tx, 3),
+    );
+    try {
+      const report = await sweepConversations(w.fixture.db.app, {
+        businessId: w.fixture.business,
+        codeRevision: '4126931',
+      });
+      expect(report).toMatchObject({ windowUnreadable: true, purged: [] });
+    } finally {
+      await w.fixture.db.app.withBusiness(
+        w.fixture.business,
+        async (tx) => await setConversationWindow(tx, 7),
+      );
+    }
+  });
+
+  it('a gate decided today restarts the conversation retention window', async () => {
+    const created = await c.createTask('gate terminal time');
+    const proposal = await c.propose(created.id, created.revision, 'gate_terminal_time');
+    await c.approve(proposal);
+    const conversationId = await started(w, w.owner, { body: 'The gate is conversation work' });
+    // Supply only the origin reference. The gate, decision, timestamps and
+    // resulting terminal state are produced by the shipped commands.
+    await w.fixture.db.admin.execute(
+      'update public.gates set origin_conversation_id = $2 where id = $1',
+      [proposal['gateId'], conversationId],
+    );
+    const [gate] = await w.fixture.db.admin.execute<{ state: string; recent: boolean }>(
+      "select state, decided_at > now() - interval '1 minute' as recent from public.gates where id = $1",
+      [proposal['gateId']],
+    );
+    expect(gate).toEqual({ state: 'approved', recent: true });
+    await w.age(conversationId, 8);
+    expect(await wrap(conversationId)).toMatchObject({ ok: true, written: true });
+    expect({
+      outcome: await purge(conversationId),
+      messages: await messages(conversationId),
+    }).toMatchObject({
+      outcome: { ok: false, code: 'NOT_DUE' },
+      messages: 1,
+    });
+  });
+});
