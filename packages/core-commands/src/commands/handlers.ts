@@ -70,6 +70,7 @@ import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
+import { invitationAct } from './invitations.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
 import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
 import { reviseMap } from './wayfinder-revision.ts';
@@ -242,6 +243,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
+  // C39-T: a person's acts on a team invitation, under `access:share`.
+  'invitation.create': invitationAct,
+  'invitation.resend': invitationAct,
+  'invitation.revoke': invitationAct,
   // Settings ▸ Workflow triggers (C33), in `automations.ts`.
   'activation.change': changeActivationAsPerson,
   'definition.release': releaseDefinitionVersion,

@@ -6,6 +6,8 @@
 // `requests.ts` to keep it under the line limit. `E` is that file's envelope, passed in rather than imported, so the
 // two files do not import each other.
 
+import type { AccessRequest } from './requests-access.ts';
+
 export type PrivacyRequest<E> =
   // C55: a privacy incident record's day-0 facts, each checked by the handler
   // in its own words (`privacy-write.ts`), so every field is `unknown` here.
@@ -99,4 +101,6 @@ export type PrivacyRequest<E> =
       readonly requestLink?: unknown;
     } & E)
   // C58: end a person's access in one act (`access-end.ts`).
-  | ({ readonly command: 'access.end'; readonly holderId: unknown } & E);
+  | ({ readonly command: 'access.end'; readonly holderId: unknown } & E)
+  // C39-T: a team invitation's three acts (`invitations.ts`).
+  | AccessRequest<E>;

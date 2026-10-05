@@ -41,53 +41,27 @@
 // stamp rather than rewriting it under the other tests, and rebuilds any other
 // (tests/ci/web-bundle-build.ts). A build that leaves no stamp this can read
 // names nothing, so that test builds for itself.
+//
+// CI-SHARDS-2. The `local checks` job runs as shards and sets CHECK_SHARD to
+// i/n. Every shard runs the build and its share of the test files (vitest
+// --shard, split by measured time in vitest.config.ts); every other step runs
+// in the one shard scripts/ci-shards.ts gives it, in the order above, and the
+// others say which shard runs it. The required check passes only when every
+// shard did, so a step's cases and the step they prove (the gate's self-test
+// and its sweep, say) may run in different shards and still both hold it.
+// A CHECK_SHARD it cannot read fails the check before any step runs.
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { readStamp } from '../apps/web/build-stamp.ts';
+import { STEPS } from './check-steps.ts';
+import { EVERY_SHARD, localStepShards, readShardPlan } from './ci-shards.ts';
+import { parseShard } from './db-shards.ts';
 
 /** The variable the steps after the build read the bundle's stamp from. */
 const BUILT = 'CHECK_WEB_BUILD';
 /** Where the build writes the bundle, from the directory every step runs in. */
 const BUNDLE = join('apps', 'web', 'dist');
-
-const STEPS = [
-  ['brand:check', 'product name headings'],
-  ['brand:cases', 'the actual product name CLI'],
-  ['typecheck', 'types'],
-  ['lint', 'lint'],
-  ['lint:ratchet', 'no new lint warning, no product source file over 1,000 lines'],
-  ['format:check', 'format'],
-  ['build', 'build'],
-  ['test', 'tests', 'changed'],
-  ['gate:selftest', 'the gate proves itself'],
-  ['gate:cases', 'the gate catches what it must'],
-  ['gate:hooks', 'the hook handles every exit code'],
-  ['commits:cases', 'commit messages and provenance'],
-  ['migrations:cases', 'a changed applied migration fails'],
-  ['provenance:cases', 'the actual commit message hook'],
-  ['candidate:cases', 'candidate snapshots and public-content cases'],
-  ['public:history:cases', 'public policy on outgoing history and metadata'],
-  ['size:cases', 'the size report measures and never blocks'],
-  ['review:cases', 'review evidence binds to a revision'],
-  ['session:cases', 'the session check reads a scope correctly'],
-  ['pins:cases', 'pins-check refuses an unpinned action, image or container'],
-  ['pins', 'actions pinned and recorded'],
-  ['skills:refs', 'every skill reference resolves'],
-  ['merge:policy', 'nothing merges itself'],
-  ['gate', 'the gate sweeps'],
-  ['secrets', 'secrets, over the working tree'],
-  ['public:content:tree', 'public content policy, over the working tree'],
-  ['licences:cases', 'the licence checker refuses what it must'],
-  ['licences', 'licence compatibility'],
-  ['type:census', 'every text style on the declared scale'],
-  ['spdx:cases', 'source licence header rejection cases'],
-  ['spdx', 'source licence headers'],
-  ['deps:cases', 'the dependency cruise refuses a cruise that read nothing'],
-  ['deps:cruise', 'structural dependency rules'],
-  ['db:cases', 'the database gate refuses a skip, a missing suite and an empty run'],
-  ['local:cases', 'the local scripts never reuse a database on another major'],
-];
 
 const execPath = process.env['npm_execpath'];
 const isScript = execPath !== undefined && /\.[cm]?js$/u.test(execPath);
@@ -121,14 +95,43 @@ function lightBase() {
   return base;
 }
 
+/** In a shard (CHECK_SHARD=i/n), the shard and each step's shard number; else null, every step here. */
+function shardOf() {
+  const text = process.env['CHECK_SHARD'];
+  if (text === undefined) return null;
+  try {
+    const shard = parseShard(text, 'CHECK_SHARD');
+    const owners = new Map();
+    localStepShards(readShardPlan(join(import.meta.dirname, '..')), shard.count).forEach(
+      (steps, i) => steps.forEach((step) => owners.set(step, i + 1)),
+    );
+    return { shard, owners };
+  } catch (error) {
+    console.error(`check: ${error instanceof Error ? error.message : String(error)}; nothing ran.`);
+    process.exit(1);
+  }
+}
+
+const sharded = shardOf();
 const base = lightBase();
 const results = [];
 const env = { ...process.env };
 delete env[BUILT];
+// Read above; a step that runs pnpm check again (a test of it, say) runs it whole.
+delete env['CHECK_SHARD'];
 
 for (const [script, label, light] of STEPS) {
+  const owner = EVERY_SHARD.includes(script) ? undefined : sharded?.owners.get(script);
+  if (owner !== undefined && owner !== sharded?.shard.index) {
+    console.log(`\n=== ${label} (pnpm run ${script}): local checks shard ${owner} runs it ===`);
+    results.push({ script, label, ok: true, owner });
+    continue;
+  }
   const changed = base !== null && light === 'changed';
   const args = changed ? ['--changed', base, '--passWithNoTests'] : [];
+  if (script === 'test' && sharded !== null) {
+    args.push('--shard', `${sharded.shard.index}/${sharded.shard.count}`);
+  }
   const note = changed
     ? ': the full run is in the merge queue; here, the tests the change reaches'
     : '';
@@ -144,8 +147,10 @@ for (const [script, label, light] of STEPS) {
 }
 
 console.log('\n=== summary ===');
-for (const { script, label, ok } of results) {
-  console.log(`${ok ? 'pass' : 'FAIL'}  ${label} (${script})`);
+for (const { script, label, ok, owner } of results) {
+  console.log(
+    `${owner === undefined ? (ok ? 'pass' : 'FAIL') : `shard ${owner}`}  ${label} (${script})`,
+  );
 }
 
 const failed = results.find((r) => !r.ok);
@@ -153,8 +158,10 @@ if (failed) {
   console.error(`\ncheck: failed at ${failed.script}. Nothing after it ran.`);
   process.exit(1);
 }
+const where =
+  sharded === null ? '' : `, shard ${sharded.shard.index}/${sharded.shard.count} of local checks`;
 console.log(
   base === null
-    ? '\ncheck: green.'
-    : '\ncheck: green, the light set. The full set runs in the merge queue.',
+    ? `\ncheck: green${where}.`
+    : `\ncheck: green, the light set${where}. The full set runs in the merge queue.`,
 );

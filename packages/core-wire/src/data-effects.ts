@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S0-5: what each command does to data, declared beside its permission key. Its shapes and the
-// class the gate reads, derived from it and never set by hand, are in `data-effects-types.ts`,
-// re-exported here.
+// S0-5: what each command does to data, declared beside its permission key. Its shapes, the class
+// the gate reads (derived from it and never set by hand) and the three constructors below are in
+// `data-effects-types.ts`.
 
 import type { CommandName } from './surface.ts';
 import { business, client, writing, type DataEffects } from './data-effects-types.ts';
@@ -218,6 +218,10 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'definition.attribution': READ,
   'trace.read': READ,
   'harness.read': READ,
+  // C39-T: admits no outsider, sends nothing; a create writes its person, expiring a lapsed one.
+  'invitation.create': writing(business('people', 'invitations', 'actors')),
+  'invitation.resend': writing(business('invitations')),
+  'invitation.revoke': writing(business('invitations')),
   'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
   'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
   'run.child_handback': writing([...client('run_events'), ...business('delegations')]),
@@ -250,15 +254,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   ),
   // C59: a factor cleared here and at the provider, kept by subject and session (0061, 0063, 0064).
   'access.reset_factor': writing(
-    business(
-      'factor_resets',
-      'second_factors',
-      'people',
-      'ended_sessions',
-      'ops.second_factor_subjects',
-      'ops.ended_subject_sessions',
-      'ops.ended_provider_sessions',
-    ),
+    [
+      ...business('factor_resets', 'second_factors', 'people', 'ended_sessions'),
+      ...business('ops.second_factor_subjects', 'ops.ended_subject_sessions'),
+      ...business('ops.ended_provider_sessions'),
+    ],
     [{ provider: 'identity', forClient: false }],
   ),
   'grant.revoke': GRANTS,

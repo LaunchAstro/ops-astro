@@ -371,7 +371,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
   },
-  // 20261005155002 (C59): no journey resets a factor.
+  // 20261005180415 (C59): no journey resets a factor.
   'public.factor_resets': {
     person_id: randomUUID(),
     login_id: randomUUID(),
@@ -442,6 +442,24 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     out_of_scope: 0,
   },
   'public.map_frontier': { map_id: randomUUID(), ticket_id: randomUUID(), position: 1 },
+  // C39-T: nothing on the journey invites anyone.
+  'public.invitations': {
+    person_id: randomUUID(),
+    role_key: 'member',
+    address: 'invitee@example.test',
+    expires_at: '2099-01-01T00:00:00Z',
+    created_by_actor_id: randomUUID(),
+  },
+  'public.enrolment_tokens': {
+    invitation_id: randomUUID(),
+    token_hash: '0'.repeat(64),
+    expires_at: '2099-01-01T00:00:00Z',
+  },
+  'public.invitation_delivery_attempts': {
+    invitation_id: randomUUID(),
+    token_id: randomUUID(),
+    state: 'asked',
+  },
   // C40B: nothing on the journey asks for a password reset.
   'public.password_reset_tokens': {
     login_id: randomUUID(),
