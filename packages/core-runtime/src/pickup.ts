@@ -43,7 +43,7 @@ import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
 import { callsSpentOf, remainingOf, stopAtSpentHold } from './budget-stop.ts';
-import { COUNTED_CAUSES, countedHold } from '../../core-custody/src/broker-give-back.ts';
+import { COUNTED_CAUSES, countedHold } from '../../core-custody/src/index.ts';
 
 export interface QueueEntry {
   readonly reservationId: string;
