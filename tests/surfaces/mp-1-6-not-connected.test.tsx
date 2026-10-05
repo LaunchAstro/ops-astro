@@ -48,6 +48,12 @@ const sources = (): readonly { path: string; text: string }[] => {
   walk(`${root}apps/web/src`);
   return out;
 };
+/** Every sync control a source file draws, as the text that draws it. */
+const syncControls = (text: string): string[] =>
+  [
+    ...text.matchAll(/>\s*(Sync|Sync now|Resync)\s*</gu),
+    ...text.matchAll(/(label|aria-label|busy)="(Sync|Resync)[^"]*"/gu),
+  ].map((m) => m[0]);
 /** The declarations of every rule whose selector list mentions `needle`. */
 const rulesMentioning = (needle: string): readonly string[] =>
   [...sheet.replaceAll(/\/\*[\s\S]*?\*\//gu, '').matchAll(/([^{}]+)\{([^}]*)\}/gu)]
@@ -128,11 +134,18 @@ it('MP-1-6 the header freshness marker is an indicator only, in five states, and
   expect(rulesMentioning('.fresh').filter((r) => /:(hover|focus|active)/u.test(r))).toEqual([]);
   // No page draws a sync control. (The task page's Refresh re-reads after a
   // conflict; whether live updates replace it is the live page kit's to decide.)
-  const offenders = sources().filter(
-    ({ text }) =>
-      />\s*(Sync|Sync now|Resync)\s*</u.test(text) ||
-      /(label|aria-label|busy)="(Sync|Resync)[^"]*"/u.test(text),
-  );
+  // One exception: a fleet connector's Sync now stays as a quiet fallback on a
+  // source that is behind, failed or never synced, never as a headline (owner
+  // register 26-28 Sep, :9 item 3 and :89 AG-C18; MP-14-7,
+  // docs/mockup-inventory/TICKET-PLAN.md:380). The file may draw that one
+  // control and nothing else that syncs.
+  const fallbacks = new Map([
+    ['apps/web/src/screens/connections/fleet-row.tsx', ['label="Sync now"']],
+  ]);
+  const offenders = sources().filter(({ path, text }) => {
+    const drawn = syncControls(text);
+    return drawn.length > 0 && drawn.join('\n') !== (fallbacks.get(path) ?? []).join('\n');
+  });
   expect(offenders.map((o) => o.path)).toEqual([]);
 });
 

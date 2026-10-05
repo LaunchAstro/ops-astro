@@ -106,6 +106,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // C59: a login's one wrong-code lock, keyed by its subject's digest in
   // every business, taken first in a factor route's check transaction.
   'packages/core-commands/src/commands/account-factor-checks.ts',
+  // C52-A: a change's last ask after its session takes the business's audit
+  // chain key before `sessionEndedSince`, so no ending commits between them.
+  'packages/core-commands/src/commands/automation-approvals.ts',
   'packages/core-commands/src/commands/conversation-lifecycle.ts',
   // #932: the operation identity's key, first in every identified call.
   'packages/core-commands/src/commands/envelope.ts',
@@ -126,6 +129,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // who may do what (a grant given, a grant revoked, access ended),
   // inside the handler's transaction.
   'packages/core-records/src/authority/access.ts',
+  // C52-A (PRV-oa-984-R2.1): the session-ending keys, exclusive for an ending,
+  // in one order: the audit chain, the login's subject, each session sorted.
+  'packages/core-records/src/identity/ending-keys.ts',
   // #770: a business's lock on one observed identifier, taken by
   // `resolveIdentifier` only when its lookup finds nobody, so two first
   // observations make one person.
@@ -134,6 +140,10 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // by its subject's digest in every business, taken first in a factor
   // route's record transaction, before the person's row.
   'packages/core-records/src/identity/second-factor.ts',
+  // C52-A and C40: a write's last ask takes the subject's and the session's
+  // ending keys shared; a reset's window open takes the subject's alone, and a
+  // provider sign-out its session's alone, as neither writes an audit event.
+  'packages/core-records/src/identity/sessions.ts',
   // C81: the overseas-services register's one lock per business, taken
   // by a change and by a privacy policy's draft, approval and publication
   // before reading the register, inside the handler's transaction.

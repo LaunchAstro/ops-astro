@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#963, Sol R3.1): a run read in fixed steps under the store's allowance still reaches every missing span."
+}
