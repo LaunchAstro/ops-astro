@@ -72,6 +72,7 @@
     "tests/broker/spend-give-back-late.test.ts",
     "tests/broker/spend-give-back-release.test.ts",
     "tests/broker/spend-give-back.test.ts",
+    "tests/broker/sweep-after-committed-renewal-leaves-call-startable.test.ts",
     "tests/broker/topped-up-unknown-call-late-answer-gives-back.test.ts",
     "tests/broker/unknown-call-settled-lower-gives-back.test.ts"
   ],
