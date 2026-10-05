@@ -14,7 +14,7 @@
 // delegation acting for them, and the agent of each credential they issued or
 // delegation acting for them, with the logins it still holds. An agent that a
 // credential or delegation of anyone outside the person's merges names too is
-// shared, given with --id or not, as is a login given that is linked to an
+// shared, given with --id or not, as is a login given that is or was linked to an
 // agent standing for no one: a shared id stands for no one, and a row holding
 // it is listed for the owner to judge. A row is a
 // copy when one of its values, at any depth, holds the text anywhere, the
@@ -209,8 +209,11 @@ async function main() {
     }
     // A shared agent stands for no one: its rows are listed under `shared`, for the owner to judge.
     for (const { id, person } of found.shared) {
-      const whose = id === person ? 'given with --id' : `acts for ${person} and for others`;
-      stderr.write(`find-copies: agent ${id} ${whose}, so it stands for no one; see shared\n`);
+      stderr.write(
+        id === person
+          ? `find-copies: ${id}, given with --id, is shared (an agent acting for others too, or its login), so it stands for no one; see shared\n`
+          : `find-copies: agent ${id} acts for ${person} and for others, so it stands for no one; see shared\n`,
+      );
     }
     return 0;
   } catch (error) {

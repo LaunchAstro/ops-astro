@@ -74,7 +74,8 @@ by kind. A copy not on the list is a copy the reply missed.
   listed with it under `shared` and outside the people list, so the owner
   judges which of them are the person's work. The same holds at the search
   after an erasure for an agent given back with `--id`, and for a login given
-  back that is linked to an agent no longer standing for the person. It also lists
+  back that is or was linked to an agent no longer standing for the person;
+  the summary names each such id as shared. It also lists
   every row holding the stored name of one of those people as whole words,
   when that name has four letters or digits. Each hit
   names the people whose ids it holds, the shared agents whose ids it holds
@@ -154,8 +155,10 @@ by kind. A copy not on the list is a copy the reply missed.
    kept; an agent id given back that has since come to act for others too is
    shared, and marks no hit `given`. A hit that holds the text or a shared
    agent's id but no given id is the owner's to judge, and the owner records
-   whose it is; a shared agent's row the owner judged to be the person's in
-   step 1 is a copy, so keep its id and add it with `--id` here. Any other hit outside a lawfully kept
+   whose it is. A shared agent's row the owner judged to be the person's in
+   step 1 is a copy: keep its table and id, and check here that it is gone or
+   lawfully kept (never give a row's id with `--id`, which marks every row
+   naming it given, other people's too). Any other hit outside a lawfully kept
    copy means the erasure is not done.
 
 ### Export

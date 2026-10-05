@@ -22,7 +22,7 @@ const NAMES = (value) => `to_tsvector('simple', ${value}) @@ phraseto_tsquery('s
  * it still holds. An agent that a credential or delegation of anyone outside
  * the cluster it was reached from names too (one agent can act for several
  * people), whether reached so or given by --id, is shared, and so is a login
- * given by --id that is linked to an agent not standing for anyone found: a
+ * given by --id that is or was linked to an agent not standing for anyone found: a
  * shared id stands for no one and comes back marked `shared`, with the person
  * it was found for. None of these leads to another person, so the set is
  * closed. Each seed says how its person was found.
@@ -76,7 +76,7 @@ export const SEEDS = `with recursive named(id, root, how) as (
     select id from shared_agents
     union
     select l.login_id from public.actor_logins l
-     where l.business_id = $1 and l.active and l.login_id in (select id from persons)
+     where l.business_id = $1 and l.login_id in (select id from persons)
        and exists (select from public.actors a
                     where a.business_id = $1 and a.id = l.actor_id and a.kind = 'agent'
                       and a.id not in (select id from agents except select id from shared_agents))),
