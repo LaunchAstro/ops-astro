@@ -7,6 +7,7 @@
 import type { CommandName } from './surface.ts';
 import type { DataEffects } from './data-effects-types.ts';
 import { business, client, writing } from './data-effects-types.ts';
+import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 
 export type {
   ClassedEffects,
@@ -183,16 +184,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.set': writing(client('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
   'client.create': writing(client('clients')),
-  // New client onboarding (C41-A): the client row, its tasks laid out from a
-  // template, a step's result as a comment on its task, and the inbox item
-  // that parks a person or client-wait step with whoever owns its move.
-  'record.create': writing(client('clients')),
-  'onboarding.start': writing(
-    client('records', 'record_unique_values', 'onboardings', 'onboarding_steps', 'inbox_items'),
-  ),
-  'onboarding.step_result': writing(
-    client('records', 'onboardings', 'onboarding_steps', 'inbox_items'),
-  ),
+  ...ONBOARDING_EFFECTS,
   'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
   // content once scoped to it, so its rows count as client-scoped.

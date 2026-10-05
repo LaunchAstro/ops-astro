@@ -19,12 +19,12 @@
 import { randomUUID } from 'node:crypto';
 import { grantTo } from '../commands/fixture.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
-import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
 import { bravoAutomation, bravoRecords } from './ident-audit-bravo-rows.ts';
 import { bravoStepTask } from './ident-audit-onboarding.ts';
+import type { AgentCall, Body, PersonCall, RawAnswer } from './ident-audit-calls.ts';
 import type { SeededAutomation } from '../automations/seed.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
@@ -38,7 +38,7 @@ import {
 } from './world.ts';
 import { logTime } from '../../packages/core-records/src/tasks/time.ts';
 
-export type Body = Readonly<Record<string, unknown>>;
+export type { Body, RawAnswer } from './ident-audit-calls.ts';
 
 /** A pickup's answer: the handles an agent operand names. */
 export type Picked = Readonly<
@@ -51,25 +51,6 @@ export type Picked = Readonly<
 export type Proposed = Readonly<
   Record<'gateId' | 'versionId' | 'lineageId', string> & { task: Task }
 >;
-
-/** An answer and the exact bytes it arrived as (root ruling 2 compares those). */
-export interface RawAnswer extends Answer {
-  readonly text: string;
-}
-
-type PersonCall = (
-  caller: { readonly token: string },
-  name: CommandName,
-  body: Body,
-  businessKey?: string,
-) => Promise<RawAnswer>;
-type AgentCall = (
-  identity: AgentIdentity,
-  name: CommandName,
-  body: Body,
-  credential?: string,
-  businessKey?: string,
-) => Promise<RawAnswer>;
 
 export interface IdentWorld {
   readonly h: Harness;
