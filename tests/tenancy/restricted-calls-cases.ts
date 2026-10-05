@@ -56,6 +56,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.ended_subject_sessions'],
   // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
   ['si', 'ops.second_factor_subjects'],
+  // 20261005144947 (C40): a reset in flight, by subject digest; settled by its column grant alone.
+  ['si', 'ops.subject_resets'],
   // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
   ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
@@ -95,7 +97,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // AW-13: a retention batch is a fact, never rewritten.
   ['si', 'trace_expiry_batches'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
-  ['si', 'inbox_attention inbox_delivery_attempts'],
+  // 20261005144947 (C40B): a reset token is written once, then spent by its column grant alone.
+  ['si', 'inbox_attention inbox_delivery_attempts password_reset_tokens'],
   ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'planned_steps proposal_lineages proposal_versions'],
@@ -158,6 +161,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005023013 (C31): custody's select is a column grant without the sealed
   // columns, proved by name in `tests/custody/c31-credentials.test.ts`.
   ['siu', 'custody_secrets'],
+  // 20261005153051 (MP-14-7a): the fleet is read here and written by MP-13-5 and
+  // the broker, and a repair is recorded once and never changed.
+  ['s', 'connection_clients connections'],
+  ['si', 'connection_repairs'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(
@@ -209,6 +216,8 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_event_hash',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
+  // 20261005144947 (C40B): the reset's token lookup, two ids for one hash.
+  'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
 ];

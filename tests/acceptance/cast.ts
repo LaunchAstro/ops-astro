@@ -120,6 +120,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'spend',
   // Custody (C31): `custody:manage` is the owner's and administrators'.
   'custody',
+  // The connector fleet (MP-14-7a): `connection:read`.
+  'connection',
 ];
 
 /**

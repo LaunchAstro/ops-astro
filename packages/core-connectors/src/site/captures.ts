@@ -12,6 +12,8 @@ import { wordOffsets, type CorrectionTarget } from './envelope.ts';
  * word search costs the text's length times the word's.
  */
 const MOST_TEXT = 256 * 1024;
+/** The fence's document cap: a document past it was never captured. */
+const MOST_DOCUMENT = 2 * 1024 * 1024;
 const MOST_WORD = 64;
 
 /** What one fenced capture of a page observed. */
@@ -21,6 +23,8 @@ export interface PageObservation {
   readonly documentDigest: string;
   /** The page's visible text, whitespace collapsed. */
   readonly text: string;
+  /** The served document: a component can render the word as more than text (#782). */
+  readonly html: string;
   /** Every stylesheet the page loads, by address, with its digest. */
   readonly stylesheets: Readonly<Record<string, string>>;
 }
@@ -115,12 +119,15 @@ export function compareCaptures(input: CaptureComparison): ComparisonResult {
   if (after.text === before.text) failed.push('word');
   const sized = (page: PageObservation): boolean =>
     page.text.length <= MOST_TEXT &&
+    page.html.length <= MOST_DOCUMENT &&
     target.word.length <= MOST_WORD &&
     target.replacement.length <= MOST_WORD;
   const comparable = sized(before) && sized(after);
   const moved =
     after.text !== before.text &&
-    (!comparable || replacedAt(before.text, after.text, target) === undefined);
+    (!comparable ||
+      replacedAt(before.text, after.text, target) === undefined ||
+      replacedAt(before.html, after.html, target) === undefined);
   if (moved || !samePage(before, after)) failed.push('page');
   if (!sameStylesheets(before, after)) failed.push('stylesheets');
   const decoyHeld =

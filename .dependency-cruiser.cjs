@@ -85,9 +85,11 @@ module.exports = {
       severity: 'error',
       comment:
         "Custody's process holds every provider credential, so adapter, connector and " +
-        'database code never load in it (AW-01): its entry and the two modules it runs on ' +
+        'database code never load in it (AW-01): its entry and every module it runs on ' +
         'import no other package.',
-      from: { path: '^packages/core-custody/src/(custody-main|egress|credentials)\\.ts$' },
+      from: {
+        path: '^packages/core-custody/src/(custody-main|egress|egress-routes|credentials|secret-spellings)\\.ts$',
+      },
       to: { path: '^packages/', pathNot: '^packages/core-custody/' },
     },
     {

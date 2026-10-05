@@ -186,6 +186,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.list': READ,
   'secret.set': writing(client('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
+  'connection.fleet': READ,
+  'connector.repair': writing(business('connection_repairs')),
   'client.create': writing(client('clients')),
   'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's

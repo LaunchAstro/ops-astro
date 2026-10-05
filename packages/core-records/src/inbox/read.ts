@@ -9,7 +9,7 @@
 // recording are `items.ts`.
 
 import { REACH, type InboxAccess } from './access.ts';
-import { wayfinderCondition } from '../tasks/wayfinder.ts';
+import { mapTicketCondition, wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { Disclosed, InboxAlert, InboxItem, InboxItemAxes } from './items.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
@@ -36,7 +36,10 @@ type ItemRow = InboxItemAxes &
     readonly alertAt: Date | null;
   };
 
-/** A recipient shown the client view reads no map or map ticket (WF-1), as `taskAccess`. */
+/**
+ * A reader shown the client view reads no map or map ticket (WF-1), as
+ * `taskAccess`: on the row `r`, for the person `reach` was walked for.
+ */
 const CLIENT_SAFE = `((select internal from reach) or not ${wayfinderCondition('r')})`;
 
 /**
@@ -44,17 +47,14 @@ const CLIENT_SAFE = `((select internal from reach) or not ${wayfinderCondition('
  * never a nested map, as `task.read` admits them. Read with the row, so the
  * placement and the name come from one snapshot.
  */
-const MAP_TICKET = `(coalesce(r.data ->> 'type', 'task') <> 'map'
-         and r.uuid_4 = any((select records from reach)::uuid[])
-         and exists (select 1 from public.records mp
-                      where mp.business_id = r.business_id and mp.id = r.uuid_4
-                        and mp.record_type_id = r.record_type_id and mp.data ->> 'type' = 'map'))`;
+const MAP_TICKET = `(r.uuid_4 = any((select records from reach)::uuid[]) and ${mapTicketCondition('r')})`;
 
 /**
  * Whether the recipient reads the row's task now, from the statement's own
- * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every row.
+ * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every
+ * row. Item `i`, task `r`; the unattended list asks it of its viewer.
  */
-const HELD = `(((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
+export const HELD: string = `(((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
          or r.uuid_7 = any((select parties from reach)::uuid[]) or ${MAP_TICKET}) and ${CLIENT_SAFE})`;
 
 /** An item's own columns, as `shown` carries them before trashed and held. */

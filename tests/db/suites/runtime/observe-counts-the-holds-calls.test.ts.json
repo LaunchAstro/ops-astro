@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an observation closes a hold at the attempt's cost plus its settled model calls, keeps it whole for an open call, and takes the envelope before the lease so a hand-back on the same lease cannot deadlock it"
+}

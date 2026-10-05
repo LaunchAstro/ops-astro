@@ -239,6 +239,27 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.custody_secrets': `insert into public.custody_secrets
        (business_id, id, name, scope_kind, scope_id)
      values ($1, gen_random_uuid(), 'restricted-calls.seed', 'business', null) returning 1`,
+  // The connector fleet (MP-14-7a): nothing the journey does writes a
+  // connection, so each of the three is written here, foreign keys off. The
+  // repair names the business's own connection, at its revision, and its
+  // first actor, so a copy of the row meets its keys in the own insert.
+  'public.connections': `insert into public.connections
+       (business_id, id, connector_key, label, status)
+     values ($1, gen_random_uuid(), 'restricted-calls', 'restricted calls', 'active') returning 1`,
+  'public.connection_clients': `insert into public.connection_clients
+       (business_id, connection_id, client_id)
+     values ($1, gen_random_uuid(), gen_random_uuid()) returning 1`,
+  'public.connection_repairs': `insert into public.connection_repairs
+       (business_id, id, connection_id, connection_revision, started_by_actor_id)
+     select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), coalesce(c.revision, 1),
+            coalesce(a.id, gen_random_uuid())
+       from (select 1) one
+       left join lateral (
+         select id, revision from public.connections
+          where business_id = $1 order by id limit 1) c on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
   // C80's two tables: the journey requests no live correction. The receipt
@@ -421,6 +442,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, item_id, channel, state)
      select business_id, gen_random_uuid(), id, 'in_app', 'asked' from public.inbox_items
       where business_id = $1 order by id limit 1 returning 1`,
+  // C40B: nothing on the journey asks for a password reset, so one token for the
+  // business's first login is written here.
+  'public.password_reset_tokens': `insert into public.password_reset_tokens
+       (business_id, id, login_id, token_hash, expires_at)
+     select business_id, gen_random_uuid(), id, encode(sha256(id::text::bytea), 'hex'),
+            now() + interval '30 minutes'
+       from public.logins where business_id = $1 order by id limit 1 returning 1`,
   // Automations (C33): the journey releases and fires none. Each row is made
   // from the one before, so the order here is the order of the chain.
   'public.automation_definitions': `insert into public.automation_definitions
@@ -554,6 +582,7 @@ const DEFINERS: readonly string[] = [
   'ops.ended_subject_sessions_at_commit()',
   'ops.expire_second_factor_codes()',
   'ops.record_tested_restore()',
+  'password_reset_token_find(text)',
   'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
 ];
 
@@ -785,7 +814,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted four run', async () => {
+  it('calls every function as every caller, and only the granted five run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -806,7 +835,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Ten, each for a named reason. The map read models' four (WF-1) and the
+  // Eleven, each for a named reason. The map read models' four (WF-1) and the
   // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
@@ -817,14 +846,17 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
   // upkeep identity runs it. The ending's commit time (20261004181806) is a
   // trigger on the subject-wide endings that only moves a new row's time later.
-  // The pickup path (SL11-30, 20261004040200) is the one way a lease is
-  // written, in the caller's own business (tests/db/take-lease-path.test.ts).
+  // The reset token lookup (20261005144947, C40B) is the reset's one read
+  // across businesses, made with no business: two ids for a hash exactly one business holds,
+  // nulls otherwise, and only the application group runs it. The pickup path (SL11-30,
+  // 20261004040200) is the one way a lease is written, in the caller's own business
+  // (tests/db/take-lease-path.test.ts).
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly ten, each with its search path pinned', () => {
+    it('are exactly eleven, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -894,6 +926,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.trigger).toBe(trigger);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
     });
+  });
+
+  it('the reset token lookup is a definer taking the hash alone, pinned to read every business', () => {
+    const lookup = functions.find((fn) => fn.signature === 'password_reset_token_find(text)');
+    expect(lookup?.definer).toBe(true);
+    expect(lookup?.trigger).toBe(false);
+    expect(lookup?.argumentTypes).toStrictEqual(['text']);
+    expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
+    expect(lookup?.firedBy).toStrictEqual([]);
   });
 
   describe('the sixth security definer function', () => {

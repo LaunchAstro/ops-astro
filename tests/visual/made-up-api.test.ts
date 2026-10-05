@@ -24,8 +24,8 @@ const NOT_DRAWN = new Set([
   // WF-1: no screen draws a map until the WF-3/4 map views (P20).
   'map.view',
   'map.frontier',
-  // C31: the Keys panel that draws custody's list is P01b's.
-  'secret.list',
+  // MP-14-7a: the fleet data lands before the screen that draws it (next piece).
+  'connection.fleet',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
