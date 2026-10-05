@@ -20,6 +20,46 @@ const refusalOf = (answer: {
   readonly body: Record<string, unknown>;
 }): readonly unknown[] => [answer.status, answer.body['code'], answer.body['names']];
 
+/** Each malformed release body beside the field it is refused by. */
+const malformedReleases = (definitionId: string) => {
+  const at = { definitionId, modes: ['manual'] };
+  return [
+    ['contentDigest', { ...at, contentDigest: 'B'.repeat(64) }],
+    ['contentDigest', { ...at, contentDigest: 'b'.repeat(63) }],
+    ['contentDigest', { ...at, contentDigest: `${'b'.repeat(64)}\n` }],
+    ['contentSize', { ...at, contentSize: 0 }],
+    ['contentSize', { ...at, contentSize: 1.5 }],
+    ['modes', { definitionId, modes: [] }],
+    ['modes', { definitionId, modes: ['manual', 'manual'] }],
+    ['modes', { definitionId, modes: ['hourly'] }],
+    ['inputs', { ...at, inputs: 'client' }],
+    ['inputs', { ...at, inputs: [{ name: 'a\u0000b' }] }],
+    ['inputs', { ...at, inputs: [{ name: 'a\uD800b' }] }],
+    ['inputs', { ...at, inputs: [{ 'a\uDC00': 'client' }] }],
+    ['inputs', { ...at, inputs: [{ name: 'x'.repeat(201) }] }],
+    ['inputs', { ...at, inputs: [{ name: 'red\u001B[31m' }] }],
+    ['inputs', { ...at, inputs: [{ 'key\u202E': 'client' }] }],
+    ['inputs', { ...at, inputs: [{ name: 1 }] }],
+    ['operations', { ...at, operations: [1] }],
+    ['operations', { ...at, operations: ['report.send', 'report.send'] }],
+    ['operations', { ...at, operations: ['Report.Send'] }],
+    ['name', { name: '', kind: 'automation', modes: ['manual'] }],
+    ['name', { name: 'x\u0000y', kind: 'automation', modes: ['manual'] }],
+    ['name', { name: 'x\uD800y', kind: 'automation', modes: ['manual'] }],
+    ['name', { name: 'x'.repeat(201), kind: 'automation', modes: ['manual'] }],
+    ['name', { name: 'a\u0007b', kind: 'automation', modes: ['manual'] }],
+    ['name', { name: 'a\nb', kind: 'automation', modes: ['manual'] }],
+    ['name', { name: 'a\u007Fb', kind: 'automation', modes: ['manual'] }],
+    ['name', { name: 'a\u009Bb', kind: 'automation', modes: ['manual'] }],
+    ['name', { name: 'x\u202Ey', kind: 'automation', modes: ['manual'] }],
+    ['name', { name: 'x\u2066y', kind: 'automation', modes: ['manual'] }],
+    ['name', { name: 'x\u200Fy', kind: 'automation', modes: ['manual'] }],
+    ['kind', { name: 'A name', kind: 'bootstrap', modes: ['manual'] }],
+    ['name', { definitionId, name: 'renamed', modes: ['manual'] }],
+    ['kind', { definitionId, kind: 'skill', modes: ['manual'] }],
+  ] as const;
+};
+
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('C33 registry commands', () => {
   let w: RegistryWorld;
@@ -82,33 +122,7 @@ describe.skipIf(serverUrl === undefined)('C33 registry commands', () => {
   it('C33 definition.release refuses a malformed pin, mode list, name or kind by its field, and writes nothing', async () => {
     const { definitionId } = await w.define(['manual']);
     const before = await w.changes();
-    const at = { definitionId, modes: ['manual'] };
-    for (const [field, body] of [
-      ['contentDigest', { ...at, contentDigest: 'B'.repeat(64) }],
-      ['contentDigest', { ...at, contentDigest: 'b'.repeat(63) }],
-      ['contentDigest', { ...at, contentDigest: `${'b'.repeat(64)}\n` }],
-      ['contentSize', { ...at, contentSize: 0 }],
-      ['contentSize', { ...at, contentSize: 1.5 }],
-      ['modes', { definitionId, modes: [] }],
-      ['modes', { definitionId, modes: ['manual', 'manual'] }],
-      ['modes', { definitionId, modes: ['hourly'] }],
-      ['inputs', { ...at, inputs: 'client' }],
-      ['inputs', { ...at, inputs: [{ name: 'a\u0000b' }] }],
-      ['inputs', { ...at, inputs: [{ name: 'a\uD800b' }] }],
-      ['inputs', { ...at, inputs: [{ 'a\uDC00': 'client' }] }],
-      ['inputs', { ...at, inputs: [{ name: 'x'.repeat(201) }] }],
-      ['inputs', { ...at, inputs: [{ name: 1 }] }],
-      ['operations', { ...at, operations: [1] }],
-      ['operations', { ...at, operations: ['report.send', 'report.send'] }],
-      ['operations', { ...at, operations: ['Report.Send'] }],
-      ['name', { name: '', kind: 'automation', modes: ['manual'] }],
-      ['name', { name: 'x\u0000y', kind: 'automation', modes: ['manual'] }],
-      ['name', { name: 'x\uD800y', kind: 'automation', modes: ['manual'] }],
-      ['name', { name: 'x'.repeat(201), kind: 'automation', modes: ['manual'] }],
-      ['kind', { name: 'A name', kind: 'bootstrap', modes: ['manual'] }],
-      ['name', { definitionId, name: 'renamed', modes: ['manual'] }],
-      ['kind', { definitionId, kind: 'skill', modes: ['manual'] }],
-    ] as const) {
+    for (const [field, body] of malformedReleases(definitionId)) {
       // eslint-disable-next-line no-await-in-loop -- one malformed body at a time
       const answer = await w.release(body);
       expect(refusalOf(answer), `${field} ${JSON.stringify(body)}`).toStrictEqual([
@@ -120,6 +134,13 @@ describe.skipIf(serverUrl === undefined)('C33 registry commands', () => {
     const unknown = await w.release({ definitionId: randomUUID(), modes: ['manual'] });
     expect([unknown.status, unknown.body['code']]).toStrictEqual([404, 'NOT_FOUND']);
     expect(await w.changes()).toStrictEqual(before);
+    // The grammar keeps ordinary text whole: accents, dashes and a joined emoji.
+    const named = await w.release({
+      name: 'Café — 👩‍💻 invoices',
+      kind: 'automation',
+      modes: ['manual'],
+    });
+    expect(named.status, JSON.stringify(named.body)).toBe(200);
   });
 
   it('C33 mode not permitted refused: activation.change naming a mode its version does not permit changes nothing', async () => {
@@ -191,6 +212,8 @@ describe.skipIf(serverUrl === undefined)('C33 registry commands', () => {
       ['enabled', { enabled: 'yes' }],
       ['expectedRevision', { activationId, expectedRevision: 0 }],
       ['expectedRevision', { activationId, expectedRevision: '1' }],
+      ['expectedRevision', { activationId, expectedRevision: 1e21 }],
+      ['expectedRevision', { activationId, expectedRevision: Number.MAX_SAFE_INTEGER + 1 }],
       ['expectedRevision', { activationId }],
       ['expectedRevision', { expectedRevision: 1 }],
     ] as const) {
