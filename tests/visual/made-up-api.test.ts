@@ -24,7 +24,7 @@ const NOT_DRAWN = new Set([
   'map.frontier',
   // C31: the Keys panel that draws custody's list is P01b's.
   'secret.list',
-  // MP-14-7a: the fleet's data lands before its screen, which draws it next.
+  // MP-14-7a: the fleet data lands before the screen that draws it (next piece).
   'connection.fleet',
 ]);
 
