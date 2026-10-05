@@ -196,7 +196,13 @@ async function effectOnce(
   };
   // The provider answered and the comment's or observe's answer was lost: send
   // those again with its answer, and never call the provider a second time.
-  if (held.effected !== undefined) return await commentAndObserve(held.effected.link);
+  // Dispatch first, as every pass does: it replays the mark and answers its
+  // checks again, so a client sign-off required since refuses the comment.
+  if (held.effected !== undefined) {
+    const again = await call('task.dispatch', lease);
+    if (!('body' in again)) return again;
+    return await commentAndObserve(held.effected.link);
+  }
   // The mark first: a provider call may act and then
   // lose its answer, so it is made only once the step is marked. A fault is
   // then handed back as a drop, and the step's whole hold stays unknown until
