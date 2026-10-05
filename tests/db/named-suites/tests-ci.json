@@ -29,6 +29,7 @@
     "tests/ci/staging-archive-restores-guards.test.ts",
     "tests/ci/staging-hosted-roles.test.ts",
     "tests/ci/staging-guard-unowned-table.test.ts",
+    "tests/ci/staging-guard-look-alikes.test.ts",
     "tests/ci/staging-reset-refuses-discarded-record-before-emptying.test.ts",
     "tests/ci/staging-reset-refuses-invalid-service-key-before-emptying.test.ts",
     "tests/ci/staging-reset-refuses-sign-in-during-first-reset.test.ts",
