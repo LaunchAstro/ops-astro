@@ -23,14 +23,13 @@
 import {
   isUuid,
   lastManager,
-  lockAccess,
   lockAgentCredential,
   otherManagers,
   revokeAgentCredential,
 } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, TenantQuery } from '../../../core-records/src/index.ts';
 import type { ProviderAnswer, ProviderFault } from './account-factor-provider.ts';
-import { endPersonAuthority } from './authority-controls.ts';
+import { endPersonAuthority, lockAccessAsManager } from './authority-controls.ts';
 import type { CommandContext } from './context.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
@@ -83,9 +82,11 @@ export async function endAccessOnSettings(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['holderId'], HOLDER_FIXES));
   }
   const personId = holderId.toLowerCase();
-  // The access lock first, as every change to who may do what takes it; then
-  // the membership row, so two endings of one person serialise here.
-  await lockAccess(tx);
+  // The access lock first, as every change to who may do what takes it, with
+  // the caller's own right asked again under it; then the membership row, so
+  // two endings of one person serialise here.
+  const lost = await lockAccessAsManager(tx, context);
+  if (lost !== undefined) return lost;
   const member = await tx.query<{ readonly id: string }>(
     `select id from public.memberships
       where business_id = $1 and person_id = $2::uuid and active

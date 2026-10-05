@@ -35,23 +35,24 @@ it('the flood suite rejects a quota that keeps every lapsed door', () => {
       {
         cwd: root,
         encoding: 'utf8',
-        env: { ...process.env, TMPDIR: scratch, TMP: scratch, TEMP: scratch },
+        env: { ...process.env, GITHUB_ACTIONS: '', TMPDIR: scratch, TMP: scratch, TEMP: scratch },
         timeout: 120000,
       },
     );
-    process.stdout.write(`Missing-expiry-sweep mutation\n${result.stdout}${result.stderr}`);
-    assert.equal(result.error, undefined, 'the mutation run completed');
-    assert.notEqual(result.status, null, 'the mutation run exited normally');
+    // The mutation's expected red stays out of the job log unless this check fails.
+    const log = `Missing-expiry-sweep mutation\n${result.stdout}${result.stderr}`;
+    assert.equal(result.error, undefined, `the mutation run completed\n${log}`);
+    assert.notEqual(result.status, null, `the mutation run exited normally\n${log}`);
     if (result.status !== 0)
       assert.match(
-        result.stdout + result.stderr,
+        log,
         /AssertionError|expected .+ to /u,
-        'a test assertion rejected the missing sweep',
+        `a test assertion rejected the missing sweep\n${log}`,
       );
     assert.notEqual(
       result.status,
       0,
-      'all three claimed proofs passed after expiry eviction was removed',
+      `all three claimed proofs passed after expiry eviction was removed\n${log}`,
     );
   } finally {
     rmSync(scratch, { recursive: true, force: true });

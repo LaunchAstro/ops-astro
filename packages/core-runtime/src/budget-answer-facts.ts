@@ -136,7 +136,7 @@ export async function openAnswer(
     { lockClass: 'lineage', id: found.lineage_id },
     { lockClass: 'reservation', id: found.reservation_id },
   ]);
-  const lockedAt = await lockedInstant(tx);
+  const lockedAt = await lockedInstant(tx, ['four_eyes_threshold']);
   if (!(await checkAuthorityAt(tx, request.subjects, scope, lockedAt)).ok) {
     return notGranted(collection);
   }
