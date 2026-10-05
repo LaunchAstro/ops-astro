@@ -11,6 +11,7 @@ import type { LoginProvider, ProviderAnswer } from '../../packages/core-commands
 import {
   recordFactorEnrolled,
   recordFactorVerified,
+  SIGN_IN_CLOCK_SKEW_SECONDS,
 } from '../../packages/core-records/src/index.ts';
 import { ACCEPTANCE_ISSUER } from '../acceptance/cast.ts';
 import { bearer, call, personPath, type Answer } from '../acceptance/world.ts';
@@ -164,6 +165,27 @@ export const served = async (
   const answer = await call(apiWith(), personPath(key, '/session/capabilities'), {}, bearer(token));
   return { status: answer.status, code: answer.code };
 };
+
+/**
+ * Two fresh sign-ins with no factor after the subject's ending: one a second
+ * later, inside the clock allowance, which is refused (Sol OW-001); then, with
+ * the subject's endings moved back past the allowance as the C40 window case
+ * does, another, which is served. Answers both.
+ */
+export async function signInsAfterEnding(
+  subject: string,
+): Promise<readonly { readonly status: number; readonly code: string }[]> {
+  const fresh = async () =>
+    await served(await sessionToken(subject, { signedInAt: nowSeconds() + 1, factorAt: null }));
+  const within = await fresh();
+  await harness.world.db.admin.execute(
+    `update ops.ended_subject_sessions
+        set ended_before = ended_before - make_interval(secs => $1)
+      where subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')`,
+    [SIGN_IN_CLOCK_SKEW_SECONDS + 5, subject],
+  );
+  return [within, await fresh()];
+}
 
 export interface ResetRow {
   readonly done: boolean;
