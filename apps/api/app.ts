@@ -45,12 +45,12 @@ import {
 import type { Database, VerifiedSubject } from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
-  credentialNotLive,
   isCommandRefusal,
   isReadName,
   boardReach,
   joinLiveBoard,
   shownInbox,
+  atUnheldKey,
   refuseCommand,
   refuseNotFound,
   setOwnAvailability,
@@ -284,15 +284,16 @@ interface Admitted {
  * An expired bearer is the re-login answer before the key or the body is
  * looked at. A malformed body is refused the same way whether the key names a
  * business or not, and the attempt is recorded only in a business that
- * resolved. A key that names no business answers exactly as the prefix's own
- * login resolution answers a caller the business does not know, so a key that
- * exists and one that does not cannot be told apart.
+ * resolved. A key that names no business answers as the prefix's own login
+ * resolution answers a stranger, and a credential as one not live at that key's
+ * own door (`atUnheldKey`), so a held key and an unheld one answer the same bytes.
  */
 async function admit(
   options: ApiOptions,
   context: Context,
   entry: Entry,
   readsBody = true,
+  quota?: ReturnType<typeof createAgentQuota>,
 ): Promise<Admitted | Response> {
   // A session cookie from another site's page stops here, before the
   // verifier reads it (`auth/session.ts`).
@@ -323,7 +324,8 @@ async function admit(
 
   // The key comes from the path and is resolved by the server.
   const body = readsBody ? await readObject(context) : {};
-  const businessId = await options.resolveBusiness(context.req.param('businessKey') ?? '');
+  const key = context.req.param('businessKey') ?? '';
+  const businessId = await options.resolveBusiness(key);
   if (body === undefined) {
     // An admission refusal: the resolved business, the verified subject (ruling 4).
     if (businessId !== undefined && credential === undefined) {
@@ -331,10 +333,8 @@ async function admit(
     }
     return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
   }
-  // A credential at a key nobody holds answers as one not live, so its answer
-  // cannot tell a key that exists from one that does not.
   if (businessId === undefined) {
-    return refuse(context, credential === undefined ? entry.unresolved() : credentialNotLive());
+    return refuse(context, credential === undefined ? entry.unresolved() : atUnheldKey(key, quota));
   }
   return { presented, businessId, body, ...(credential === undefined ? {} : { credential }) };
 }
@@ -404,7 +404,7 @@ export function createApi(options: ApiOptions): Hono {
     const routes = new Hono();
     for (const declaration of COMMAND_SURFACE) {
       routes.post(pathOf(declaration.name), async (context) => {
-        const admitted = await admit(options, context, entry);
+        const admitted = await admit(options, context, entry, true, quota);
         const response =
           admitted instanceof Response ? admitted : await run(context, declaration, admitted);
         const outcome = outcomeOf(context, declaration);
