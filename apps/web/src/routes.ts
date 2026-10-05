@@ -100,7 +100,16 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
-
+  // Connections & signal, the fleet (MP-14-7a). The mockup's `/connections/`
+  // page; it has no pinned surface letter, so `surface` is `none`. The
+  // manifest places it in the Hub rail.
+  'agency:connections': {
+    namespace: 'agency',
+    path: '/connections/',
+    title: 'Connections & signal',
+    surface: 'none',
+    authenticated: true,
+  },
   // The business's own two operation-classified settings. It draws no pinned
   // surface — the mockup has no settings screen — so `surface` is `none`
   // rather than a letter it would be borrowing. The manifest places it in the

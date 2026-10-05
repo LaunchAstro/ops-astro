@@ -20,6 +20,7 @@ import {
 } from './routes.ts';
 import type { PanelId } from './panels.ts';
 import type { OperationsClient } from './operations/client.ts';
+import { ConnectionsScreen } from './screens/Connections.tsx';
 import { ConversationScreen } from './screens/Conversation.tsx';
 import { AccessScreen } from './screens/Access.tsx';
 import { ClientsScreen } from './screens/Clients.tsx';
@@ -94,6 +95,11 @@ export const SCREENS: {
       grantKey={context.grantKey}
       conversationId={context.params.conversation}
     />
+  ),
+  // Keyed on the grant, so a change of business, person or session starts the
+  // fleet's view state, open rows and repair attempts over.
+  'agency:connections': (context) => (
+    <ConnectionsScreen key={context.grantKey} client={context.client} grantKey={context.grantKey} />
   ),
   'agency:gallery': () => <Gallery />,
   // Settings ▸ General, then the person's own sessions (C58) and authenticator app (C59),
