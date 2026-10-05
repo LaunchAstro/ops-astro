@@ -22,8 +22,8 @@ const NAMES = (value) => `to_tsvector('simple', ${value}) @@ phraseto_tsquery('s
  * it still holds. An agent that a credential or delegation of anyone outside
  * the cluster it was reached from names too (one agent can act for several
  * people), whether reached so or given by --id, is shared, and so is a login
- * given by --id that is or was linked to an agent not standing for anyone found,
- * unless an agent standing for them holds it now: a
+ * given by --id that is or was linked to an agent not standing for the given
+ * ids' cluster, unless that cluster's own agent or person holds it now: a
  * shared id stands for no one and comes back marked `shared`, with the person
  * it was found for. None of these leads to another person, so the set is
  * closed. Each seed says how its person was found.
@@ -73,17 +73,25 @@ export const SEEDS = `with recursive named(id, root, how) as (
         or exists (select from public.delegations d
                     where d.business_id = $1 and d.agent_actor_id = g.id
                       and d.delegate_person_id not in (select k.id from joined k where k.root = g.root))),
+  given_agents(id) as (
+    select id from agents where root = '00000000-0000-0000-0000-000000000000'::uuid
+    except
+    select id from shared_agents),
   shared(id) as (
     select id from shared_agents
     union
     select l.login_id from public.actor_logins l
-     where l.business_id = $1 and l.login_id in (select id from persons)
+     where l.business_id = $1 and l.login_id in (select id from unnest($3::uuid[]) id)
        and exists (select from public.actors a
                     where a.business_id = $1 and a.id = l.actor_id and a.kind = 'agent'
-                      and a.id not in (select id from agents except select id from shared_agents))
+                      and a.id not in (select id from given_agents))
        and not exists (select from public.actor_logins h
                         where h.business_id = $1 and h.login_id = l.login_id and h.active
-                          and h.actor_id in (select id from agents except select id from shared_agents))),
+                          and h.actor_id in (select id from given_agents))
+       and not exists (select from public.person_logins h
+                        where h.business_id = $1 and h.login_id = l.login_id and h.active
+                          and h.person_id in (select k.id from joined k
+                                               where k.root = '00000000-0000-0000-0000-000000000000'::uuid))),
   acting(id, person, how) as (
     select a.id, p.id, p.how from public.actors a join persons p on p.id = a.person_id
      where a.business_id = $1

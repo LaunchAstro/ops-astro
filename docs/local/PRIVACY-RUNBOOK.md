@@ -74,16 +74,16 @@ by kind. A copy not on the list is a copy the reply missed.
   listed with it under `shared` and outside the people list, so the owner
   judges which of them are the person's work. The same holds at the search
   after an erasure for an agent given back with `--id`, and for a login given
-  back that is or was linked to an agent no longer standing for the person
-  (unless an agent standing for them holds it now); the summary names each
-  such id as shared. It also lists
+  back that is or was linked to an agent not standing for the person (unless
+  their own agent, or the person, holds it now); the summary names each such
+  id as shared. It also lists
   every row holding the stored name of one of those people as whole words,
   when that name has four letters or digits. Each hit
-  names the people whose ids it holds, the shared ids it holds (agents acting for others too, and their logins)
+  names the people whose ids it holds, the shared ids it holds (agents acting for others too, and logins given back that such an agent holds or held)
   (`shared`), whether a value of it holds the text or
   such a stored name (`text`) and whether it holds an id given with `--id`
   (`given`); a hit naming no one was found by its text, a stored name or a
-  shared id (a shared agent's or its login's) alone, so the owner checks whose it is. The list ends with
+  shared id alone, so the owner checks whose it is. The list ends with
   one line per person of the `--id` flags that find them, saying every way the
   person was found (named by the text, given by `--id`, or merged with a named
   person), kept for the erasure's re-search. The text is matched with the
@@ -154,7 +154,7 @@ by kind. A copy not on the list is a copy the reply missed.
    person, is that person's row, not a missed copy. A hit that holds an id
    given with `--id` (`given` true) is a missed copy unless it is lawfully
    kept; an agent id given back that has since come to act for others too, or
-   its login, is shared, and marks no hit `given`. A hit that holds the text or a shared
+   a login given back that such an agent holds or held, is shared, and marks no hit `given`. A hit that holds the text or a shared
    id but no given id is the owner's to judge, and the owner records
    whose it is. A row holding only a shared id that the owner judged to be the
    person's in step 1 is a copy: keep its table and id (and, for a table with

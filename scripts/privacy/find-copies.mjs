@@ -14,9 +14,10 @@
 // delegation acting for them, and the agent of each credential they issued or
 // delegation acting for them, with the logins it still holds. An agent that a
 // credential or delegation of anyone outside the person's merges names too is
-// shared, given with --id or not, as is a login given that is or was linked to an
-// agent standing for no one: a shared id stands for no one, and a row holding
-// it is listed for the owner to judge. A row is a
+// shared, given with --id or not, as is a login given that is or was linked to
+// an agent not standing for the given ids, unless their own agent or person
+// holds it now: a shared id stands for no one, and a row holding it is listed
+// for the owner to judge. A row is a
 // copy when one of its values, at any depth, holds the text anywhere, the
 // stored name of one of those people as whole words (when it has four letters
 // or digits, as the text needs), or one of those ids in any letter case; a
@@ -33,13 +34,13 @@
 //
 // Each hit is one JSON line: the table, the row's id (or its physical address
 // when the table has no id), the columns holding the text, a name or an id,
-// the people whose ids it holds, the shared agents whose ids it holds, whether
-// it holds the text or a stored name, and whether it holds an id given with
-// --id (never a shared agent's). The row itself is printed
+// the people whose ids it holds, the shared ids it holds, whether it holds the
+// text or a stored name, and whether it holds an id given with --id (never a
+// shared id). The row itself is printed
 // only with --export, credential hashes withheld. The summary on stderr ends
 // with a line per person, saying every way they were found, of the --id flags
 // that find them after their own rows are erased, then a line per shared
-// agent. The list is printed once
+// id. The list is printed once
 // the search has finished; the connection string is never printed. The
 // command line is read in find-copies-arguments.mjs.
 
