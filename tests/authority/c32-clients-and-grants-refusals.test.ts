@@ -119,7 +119,8 @@ async function c32GrantsAtOnceTwoOfThe(): Promise<void> {
   } finally {
     await pair.close();
   }
-  expect(codes.toSorted()).toEqual(['ACCESS_LAST_MANAGER', 'ok']);
+  // The second, asked again under the access lock, lost its grant to the first.
+  expect(codes.toSorted()).toEqual(['SCOPE_NOT_GRANTED', 'ok']);
   const left = await harness.world.db.app.withBusiness(
     harness.world.alpha,
     async (tx) =>

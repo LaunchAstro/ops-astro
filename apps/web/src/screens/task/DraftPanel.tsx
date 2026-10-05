@@ -13,14 +13,24 @@
 // create's identity for the retry, so the server's replay answers it rather
 // than a second task; an edit to the draft is a different request and starts
 // a new one. The identity is stored with the draft before Create goes out, so
-// a reload or Back while it is out reopens the draft with it. While Create is out, Close, Cancel, Escape and the host's doors
-// wait for it, so the draft is never reopened and created again; a Create that
-// lands after the session changed opens nothing.
+// a reload or Back while it is out reopens the draft with it. While Create is
+// out, the fields, Close, Cancel, Escape and the host's doors wait for it, so
+// the draft is never changed under it, reopened or created again; a Create
+// that lands after the session changed opens nothing. A close the dock refused
+// has already taken the panel out and put it back, which mounts the draft
+// again: the new mount finds the Create still out (`flights`) and waits too.
 //
 // **Timer on the draft.** DN-05's running timer on a draft waits on the dock
 // frame's timer (MP-3-1); time spent is logged here and written at Create.
 
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactElement,
+} from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import { DraftFields } from './DraftFields.tsx';
 import {
@@ -59,6 +69,18 @@ export interface DraftPanelProps {
 
 const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
 
+/** What a Create's answer leaves on the draft's screen. */
+interface Settled {
+  readonly refusal: string | null;
+  readonly missed: { readonly taskKey: string; readonly parts: readonly string[] } | null;
+}
+
+/** Each host's Create still out, by the hold it took; the draft's latest mount shows its answer. */
+const flights = new WeakMap<
+  DraftPanelProps['hold'],
+  { readonly person: string; show: (settled: Settled) => void }
+>();
+
 export function DraftPanel(props: DraftPanelProps): ReactElement {
   const kept = useKeptDraft(props);
   const creating = useCreate(props, kept);
@@ -92,7 +114,7 @@ function DraftBody(
       <p className="card__sub" data-draft-admission>
         New task, filed from {props.scope.from}. Nothing is stored until Create.
       </p>
-      <DraftFields draft={kept.draft} put={kept.put} name={kept.name} />
+      <DraftFields draft={kept.draft} put={kept.put} name={kept.name} locked={creating.busy} />
       {creating.refusal === null ? null : (
         <p className="field__error" role="alert" data-draft-refusal>
           {creating.refusal}
@@ -188,45 +210,68 @@ function useKeptDraft(props: DraftPanelProps) {
     dropDraft(storage, person);
     props.onClose();
   };
-  return { draft, put, name, attempt, begin, progress, settled, cancel };
+  // A Create another mount sent has answered: its identity is as it left it.
+  const reread = (): void => {
+    setAttempt(readAttempt(storage, person));
+  };
+  return { draft, put, name, attempt, begin, progress, settled, cancel, reread };
+}
+
+/** A Create's answer: its identity settled; once created, the draft dropped and the task opened. */
+function land(props: DraftPanelProps, kept: Kept, outcome: CreateOutcome, at: Attempt): Settled {
+  if (outcome.kind !== 'unknown') kept.settled(at.id);
+  if (outcome.kind !== 'created') return { refusal: outcome.because, missed: null };
+  dropDraft(props.storage, props.person);
+  if (outcome.missed.length > 0) {
+    return { refusal: null, missed: { taskKey: outcome.key, parts: outcome.missed } };
+  }
+  props.onCreated(outcome.key);
+  return { refusal: null, missed: null };
 }
 
 /** Create: the refusal for an empty name, the one identity per attempt, and the parts not written. */
 function useCreate(props: DraftPanelProps, kept: Kept) {
-  const [busy, setBusy] = useState(false);
-  const [refusal, setRefusal] = useState<string | null>(null);
-  const [missed, setMissed] = useState<{ taskKey: string; parts: readonly string[] } | null>(null);
+  const [view, setView] = useState<Settled & { readonly busy: boolean }>(() => ({
+    busy: flights.get(props.hold)?.person === props.person,
+    refusal: null,
+    missed: null,
+  }));
+  const show = (settled: Settled): void => {
+    setView({ busy: false, ...settled });
+  };
+  // A Create another mount sent is still out: its answer is shown here.
+  useLayoutEffect(() => {
+    const out = flights.get(props.hold);
+    if (out?.person !== props.person) return;
+    out.show = (settled) => {
+      kept.reread();
+      show(settled);
+    };
+  }, []);
   const create = async (): Promise<void> => {
-    if (busy) return;
+    if (view.busy) return;
     if (kept.draft.title.trim() === '') {
-      setRefusal('Name the new task first.');
+      setView((last) => ({ ...last, refusal: 'Name the new task first.' }));
       kept.name.current?.focus();
       return;
     }
     const attempt = kept.attempt ?? newAttempt(props.client.newOperationId());
     kept.begin(attempt);
     const release = props.hold();
-    setBusy(true);
-    setRefusal(null);
+    const flight = { person: props.person, show };
+    flights.set(props.hold, flight);
+    setView({ busy: true, refusal: null, missed: null });
     let outcome: CreateOutcome | null = null;
     try {
       outcome = await createFromDraft(props.client, kept.draft, attempt, kept.progress);
     } finally {
       // The session changed while it was out: the draft and the panel went with it.
       if (!release()) outcome = null;
+      if (flights.get(props.hold) === flight) flights.delete(props.hold);
     }
-    if (outcome === null) return;
-    setBusy(false);
-    if (outcome.kind !== 'unknown') kept.settled(attempt.id);
-    if (outcome.kind !== 'created') {
-      setRefusal(outcome.because);
-      return;
-    }
-    dropDraft(props.storage, props.person);
-    if (outcome.missed.length === 0) props.onCreated(outcome.key);
-    else setMissed({ taskKey: outcome.key, parts: outcome.missed });
+    if (outcome !== null) flight.show(land(props, kept, outcome, attempt));
   };
-  return { busy, refusal, missed, create };
+  return { ...view, create };
 }
 
 /** A task created with parts refused after it: named, and a door to the task (never a second create). */

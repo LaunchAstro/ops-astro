@@ -18,7 +18,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
-import { readNamedSuites } from '../../scripts/named-suites.ts';
+import { readIsolationSuites, readNamedSuites } from '../../scripts/named-suites.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -179,8 +179,8 @@ describe('CQ-15 security gate', () => {
   it('CQ-15 isolation suites on a real Postgres: the four families, each also named in the manifest', () => {
     const block = job('isolation tests');
     expect(block).toMatch(/image: postgres@sha256:[0-9a-f]{64}/u);
-    expect(block).toContain('scripts/db-conformance.mjs --manifest tests/db/isolation-suites.json');
-    const { invariant } = JSON.parse(read('tests/db/isolation-suites.json')) as { invariant: L };
+    expect(block).toContain('scripts/db-conformance.mjs --isolation');
+    const { invariant } = readIsolationSuites(ROOT);
     const manifest = readNamedSuites(ROOT);
     const named = new Set([...manifest.invariant, ...manifest.conformance]);
     for (const family of 'external-party restricted-calls pooled-crossover role-case-matrix cq-15'.split(

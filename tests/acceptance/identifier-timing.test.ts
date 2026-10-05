@@ -245,6 +245,9 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.reparent': { parentId: null },
       'task.move': { board: null, boardSection: null },
       'task.rank': { afterId: w.h.alphaTask.id },
+      'task.set_type': { taskType: 'build' },
+      'map.scope': { client: randomUUID() },
+      'map.revise': { notes: NOBODY },
     };
     // Named by `recordId` (`targetKeyOf`): task.receipt names its task by
     // `attemptId` and has its own cell below.
@@ -333,6 +336,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       stepNames: [],
     }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('secret.clear', 'secretId', f.secretId, (secretId) => ({ secretId }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
       holderId,
@@ -340,6 +344,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       action: 'read',
     }));
     byAda('access.end', 'holderId', f.admin.personId as string, (holderId) => ({ holderId }));
+    // C60: bravo's client named in an alpha privacy change.
+    byAda('client.set_privacy', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      modelEgress: false,
+      providers: [],
+      handlesHealth: false,
+      noAgentEdits: true,
+    }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
     }));
@@ -465,11 +477,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 71 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 78 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(71);
-    expect(names).toHaveLength(71);
+    expect(new Set(names).size, 'distinct operations').toBe(78);
+    expect(names).toHaveLength(78);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

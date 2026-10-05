@@ -38,9 +38,6 @@
 .statrow--6 {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
-.statrow > .stat {
-  padding: var(--s-4) var(--s-5) var(--s-4) 0;
-}
 .delta--up {
   color: var(--success);
 }
@@ -278,10 +275,5 @@
   .statrow--5,
   .statrow--6 {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .statrow .stat__num {
-    font: var(--type-num-md);
-    letter-spacing: var(--type-num-md-tracking);
-    text-transform: var(--type-num-md-case);
   }
 }

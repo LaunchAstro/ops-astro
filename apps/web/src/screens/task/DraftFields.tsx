@@ -3,7 +3,8 @@
 // The new-task draft's fields (MP-4-13, DN-01, DN-05): the name, due,
 // estimate, tags, subtasks, time spent and a note. Each change goes straight
 // to `put`, which keeps the draft for its person; nothing here writes to the
-// server.
+// server. While Create is out every field is read-only, so the draft its
+// answer settles is the one it sent.
 
 import {
   useState,
@@ -20,6 +21,8 @@ export interface DraftFieldsProps {
   readonly put: (next: Partial<TaskDraft>) => void;
   /** The name field, focused on open and on an empty-name refusal. */
   readonly name: RefObject<HTMLInputElement | null>;
+  /** Create is out: nothing is edited until it answers. */
+  readonly locked: boolean;
 }
 
 export function DraftFields(props: DraftFieldsProps): ReactElement {
@@ -47,7 +50,7 @@ function Field(props: {
 }
 
 /** The task's own fields: the name, due and estimate go out with `task.create`. */
-function DraftFacts({ draft, put, name }: DraftFieldsProps): ReactElement {
+function DraftFacts({ draft, put, name, locked }: DraftFieldsProps): ReactElement {
   return (
     <>
       <Field id="panel-draft-name" label="Name">
@@ -57,6 +60,7 @@ function DraftFacts({ draft, put, name }: DraftFieldsProps): ReactElement {
           className="input"
           type="text"
           placeholder="What needs doing?"
+          readOnly={locked}
           value={draft.title}
           onChange={(event) => {
             put({ title: event.target.value });
@@ -68,6 +72,7 @@ function DraftFacts({ draft, put, name }: DraftFieldsProps): ReactElement {
           id="panel-draft-due"
           className="input"
           type="date"
+          readOnly={locked}
           value={draft.due ?? ''}
           onChange={(event) => {
             put({ due: event.target.value === '' ? null : event.target.value });
@@ -78,6 +83,7 @@ function DraftFacts({ draft, put, name }: DraftFieldsProps): ReactElement {
         <select
           id="panel-draft-estimate"
           className="input"
+          disabled={locked}
           value={draft.estimate === null ? '' : String(draft.estimate)}
           onChange={(event) => {
             put({ estimate: event.target.value === '' ? null : Number(event.target.value) });
@@ -96,7 +102,7 @@ function DraftFacts({ draft, put, name }: DraftFieldsProps): ReactElement {
 }
 
 /** What is written after the task at Create, each by its own command (DN-05). */
-function DraftParts({ draft, put }: DraftFieldsProps): ReactElement {
+function DraftParts({ draft, put, locked }: DraftFieldsProps): ReactElement {
   return (
     <>
       <ListField
@@ -104,6 +110,7 @@ function DraftParts({ draft, put }: DraftFieldsProps): ReactElement {
         label="Tags"
         mark="data-draft-tag"
         items={draft.tags}
+        locked={locked}
         onItems={(tags) => {
           put({ tags });
         }}
@@ -113,6 +120,7 @@ function DraftParts({ draft, put }: DraftFieldsProps): ReactElement {
         label="Subtasks"
         mark="data-draft-step"
         items={draft.steps}
+        locked={locked}
         onItems={(steps) => {
           put({ steps });
         }}
@@ -123,6 +131,7 @@ function DraftParts({ draft, put }: DraftFieldsProps): ReactElement {
           className="input"
           type="text"
           placeholder="30m"
+          readOnly={locked}
           value={draft.time}
           onChange={(event) => {
             put({ time: event.target.value });
@@ -133,6 +142,7 @@ function DraftParts({ draft, put }: DraftFieldsProps): ReactElement {
         <textarea
           id="panel-draft-note"
           className="input"
+          readOnly={locked}
           value={draft.note}
           onChange={(event) => {
             put({ note: event.target.value });
@@ -149,14 +159,17 @@ interface ListFieldProps {
   readonly mark: 'data-draft-tag' | 'data-draft-step';
   readonly items: readonly string[];
   readonly onItems: (items: readonly string[]) => void;
+  readonly locked: boolean;
 }
 
 /** A list the draft holds (tags, subtasks): Enter adds the typed name once, whatever its case; × removes it. */
 function ListField(props: ListFieldProps): ReactElement {
   const [text, setText] = useState('');
   const add = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key !== 'Enter') return;
+    // An Enter that ends an input method's composition is the composition's.
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
     event.preventDefault();
+    if (props.locked) return;
     const wanted = text.trim();
     setText('');
     const held = props.items.some((item) => item.toLowerCase() === wanted.toLowerCase());
@@ -173,6 +186,7 @@ function ListField(props: ListFieldProps): ReactElement {
         id={props.id}
         className="input"
         type="text"
+        readOnly={props.locked}
         value={text}
         onChange={(event) => {
           setText(event.target.value);
@@ -192,6 +206,7 @@ function ListItem(props: ListFieldProps & { readonly item: string }): ReactEleme
         className="btn"
         type="button"
         aria-label={`Remove ${item}`}
+        disabled={props.locked}
         onClick={() => {
           props.onItems(props.items.filter((other) => other !== item));
         }}

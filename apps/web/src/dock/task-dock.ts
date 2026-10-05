@@ -10,7 +10,8 @@
 // back on its door), and the task panel's own close takes `task` out of the
 // dock. While the draft's Create is out the task panel's close refuses
 // (A11-1), and the dock puts `task` back beside what is open, so no close
-// leaves the draft. Storage and the history never bring the id back: they hold no task to
+// leaves the draft. Putting it back mounts the draft again, and the draft
+// finds its Create still out and waits for it (`DraftPanel.tsx`). Storage and the history never bring the id back: they hold no task to
 // draw, so the dock restores only panels with a registration.
 
 import { useLayoutEffect, useRef, type ReactNode } from 'react';

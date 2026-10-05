@@ -10,7 +10,15 @@ import { beforeAll, expect, it as vitestIt } from 'vitest';
 import { landEmailEvent, sendInboxEmail } from '../../packages/core-custody/src/index.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { attemptsOf, itemFor, MAIL, noDatabase, useEmailWorld, w } from './email-world.ts';
-import { eventBody, hook, mountHook, post, sentItem, sign } from './email-hook-world.ts';
+import {
+  eventBody,
+  hook,
+  mountHook,
+  post,
+  secondPerson,
+  sentItem,
+  sign,
+} from './email-hook-world.ts';
 import { heldOpen, stillWaiting } from './email-timing-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -241,4 +249,34 @@ it('AW-07b hook signature: two processes taking the same event at once settle it
     await Promise.all(processes.map(async (database) => await database.close()));
   }
   expect(await states(item)).toEqual(['asked', 'accepted', 'delivered']);
+});
+
+it('AW-07b isolation (hook): in one business, an event on a client A message moves no client B attempt', async () => {
+  const clientA = await sentItem();
+  const clientB = await sentItem({ id: w.alpha, person: await secondPerson(), task: w.otherTask });
+  expect(await post(eventBody('email.bounced', clientA.messageId))).toMatchObject({
+    code: 'BOUNCED',
+  });
+  expect(await states(clientA.item)).toEqual(['asked', 'accepted', 'failed']);
+  expect(await states(clientB.item)).toEqual(['asked', 'accepted']);
+  expect(await post(eventBody('email.delivered', clientB.messageId))).toMatchObject({
+    code: 'DELIVERED',
+  });
+  expect(await states(clientB.item)).toEqual(['asked', 'accepted', 'delivered']);
+  expect(await states(clientA.item)).toEqual(['asked', 'accepted', 'failed']);
+});
+
+it('AW-07b isolation (hook): on one client task, an event on the mail to one person moves nothing sent to another person', async () => {
+  const ada = await sentItem();
+  const other = await sentItem({ id: w.alpha, person: await secondPerson(), task: w.task });
+  expect(await post(eventBody('email.delivered', other.messageId))).toMatchObject({
+    code: 'DELIVERED',
+  });
+  expect(await states(other.item)).toEqual(['asked', 'accepted', 'delivered']);
+  expect(await states(ada.item)).toEqual(['asked', 'accepted']);
+  expect(await post(eventBody('email.bounced', ada.messageId))).toMatchObject({
+    code: 'BOUNCED',
+  });
+  expect(await states(ada.item)).toEqual(['asked', 'accepted', 'failed']);
+  expect(await states(other.item)).toEqual(['asked', 'accepted', 'delivered']);
 });

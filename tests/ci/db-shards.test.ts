@@ -16,6 +16,7 @@ import {
   parseShard,
   planItems,
   readPlan,
+  shardWeight,
   suitePart,
 } from '../../scripts/db-shards.ts';
 import { readNamedSuites } from '../../scripts/named-suites.ts';
@@ -55,6 +56,39 @@ it('the matrix numbers its shards 1 to n, and the runner is told which of n it i
   expect(shardJob).toContain('fail-fast: false');
   expect(shardJob).toMatch(/image: postgres@sha256:[0-9a-f]{64}/u);
   expect(shardJob).toContain('FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}');
+});
+
+/** The heaviest shard's load, and the most it may carry: a tenth over its share, or the one item too long to share. */
+function balance(
+  list: readonly string[],
+  seconds: Readonly<Record<string, number>>,
+  count: number,
+): { heaviest: number; bound: number } {
+  const weight = shardWeight(seconds);
+  const loads = assignShards(list, seconds, count).map((shard) =>
+    shard.reduce((sum, item) => sum + weight(item), 0),
+  );
+  const total = list.reduce((sum, item) => sum + weight(item), 0);
+  const longest = Math.max(...list.map((item) => weight(item)));
+  return { heaviest: Math.max(...loads), bound: Math.max(longest, (total / count) * 1.1) };
+}
+
+// CI-SPEED, the owner's 4 October 2026 decision (NATHAN-CF-RECORD item 1): 16 shards.
+it('the run is split 16 ways, each shard near its share', () => {
+  expect(shardCount).toBe(16);
+  const { heaviest, bound } = balance(items, timings, shardCount);
+  expect(heaviest).toBeLessThanOrEqual(bound);
+});
+
+it('the balance check weighs a suite with no timing as the split does', () => {
+  // Every item weighs 10 to the split (the untimed three at the median), so it puts
+  // three in each shard: 30 and 30. Weighed at 0 s, one shard reads 20 against a share of 15.
+  const { heaviest, bound } = balance(
+    ['a', 'b', 'c', 'u1', 'u2', 'u3'],
+    { a: 10, b: 10, c: 10 },
+    2,
+  );
+  expect(heaviest).toBeLessThanOrEqual(bound);
 });
 
 it('every run item runs in exactly one shard, and the shards together are the manifest', () => {
@@ -134,7 +168,10 @@ it('a shard argument that is not i of n is refused', () => {
 it('the aggregate keeps the name and fails unless every shard succeeded', () => {
   const aggregate = job('database');
   expect(aggregate).toContain('    name: database conformance\n');
-  expect(aggregate).toContain('    needs: [database-shard]\n');
+  // It needs the gate too, and reads its result: a pull request whose gate failed skips the
+  // shards, and that skip must not pass (tests/ci/light-pull-requests-workflow.test.ts).
+  expect(aggregate).toContain('    needs: [gate, database-shard]\n');
+  expect(aggregate).toContain('GATE: ${{ needs.gate.result }}');
   // Without always() a failed or skipped shard would skip this job, and a
   // skipped required check reads as passed.
   expect(aggregate).toContain('    if: always()\n');

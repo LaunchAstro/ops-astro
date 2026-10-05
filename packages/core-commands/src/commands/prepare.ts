@@ -42,6 +42,7 @@ import {
   checkAuthority,
   refuseStaleMoneyStep,
   subjectsOf,
+  wayfinderFacts,
   isUuid,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-records/src/index.ts';
@@ -250,21 +251,27 @@ function refuseMalformedIdentifier(
  * field key it does not know is `FIELD_UNKNOWN`, as before.
  */
 const FREE_OPERANDS: readonly string[] = [
+  'addFog',
+  'addOutOfScope',
   'affected',
   'body',
   'contract',
   'currency',
   'dataClass',
   'deletion',
+  'destination',
   'disclosures',
   'foundBy',
   'name',
   'note',
+  'notes',
   'payload',
   'purpose',
   'reason',
   'receives',
   'report',
+  'requestLink',
+  'requestedBy',
   'retention',
   'service',
   'step',
@@ -424,6 +431,11 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
     'client',
     (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
   ],
+  // C60: a client's privacy settings are asked of that client, at party scope.
+  'client.set_privacy': [
+    'clientId',
+    (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
+  ],
   'delegation.revoke': [
     'delegationId',
     (tx, id) =>
@@ -513,6 +525,33 @@ const SCOPE_OF: Readonly<
   claim: (tx, request) => firstScope(tx, request, CLAIM_LOOKUPS),
 };
 
+/**
+ * The map whose record-scoped grant also covers this request: the map a
+ * targeted ticket belongs to, or the map a new task is filed under. Only a
+ * task collection command, and never the record itself (its own scope was
+ * the first question).
+ */
+async function coveringMap(
+  tx: TenantQuery,
+  request: UncheckedRequest,
+  declaration: CommandDeclaration,
+): Promise<string | undefined> {
+  if (declaration.collection !== 'task') return undefined;
+  const named =
+    declaration.authorisedOn === 'record'
+      ? request['recordId']
+      : declaration.name === 'task.create'
+        ? request['parentId']
+        : undefined;
+  if (!isUuid(named)) return undefined;
+  const id = named.toLowerCase();
+  const facts = await wayfinderFacts(tx, id);
+  if (facts?.mapId === null || facts?.mapId === undefined) return undefined;
+  // A create is covered only when filed under the map itself, never under a ticket.
+  if (declaration.name === 'task.create') return facts.type === 'map' ? facts.mapId : undefined;
+  return facts.mapId === id ? undefined : facts.mapId;
+}
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -545,14 +584,33 @@ export async function prepareCommand(
   if (!admitsSelfWrite(session.roleKey !== null, declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
+  // The map whose grant admitted this, and the refusal that stands if the
+  // target has left it by the time it is locked.
+  let viaMap: { readonly id: string; readonly refusal: Refused } | undefined;
   // A `self` row asks no grant: its handler reaches the caller's own rows only.
   if (declaration.authorisedOn !== 'self') {
-    const authorised = await checkAuthority(tx, subjectsOf(session), {
+    const asked = {
       // From the declaration, never written in here: see `CommandDeclaration`.
       collection: declaration.collection,
       action: declaration.action,
       scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
-    });
+    };
+    let authorised = await checkAuthority(tx, subjectsOf(session), asked);
+    // A grant scoped to a map covers the map and its tickets (W12): asked again
+    // at the map's scope, and the first refusal stands when that fails too.
+    if (!authorised.ok) {
+      const map = await coveringMap(tx, request, declaration);
+      if (map !== undefined) {
+        const again = await checkAuthority(tx, subjectsOf(session), {
+          ...asked,
+          scope: { kind: 'record', id: map },
+        });
+        if (again.ok) {
+          viaMap = { id: map, refusal: refused(authorised.refusal) };
+          authorised = again;
+        }
+      }
+    }
     if (!authorised.ok) return refused(authorised.refusal);
   }
   // The one step-up (C59), inside the grant check and straight after it: only
@@ -594,6 +652,12 @@ export async function prepareCommand(
     if (target === undefined) {
       // Not there, or there in another business: one answer, deliberately.
       return refused(refuseNotFound());
+    }
+    // Admitted by its map's grant: read the target's map again now it is held,
+    // so a move that committed while this waited for the lock is refused. A
+    // runtime-locked target is asked again at record scope under those locks.
+    if (viaMap !== undefined && (await coveringMap(tx, request, declaration)) !== viaMap.id) {
+      return viaMap.refusal;
     }
     // A comment on a trashed task is answered as one on a missing task, before
     // the revision: the trash bumped it, and naming the current revision would

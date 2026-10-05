@@ -6,7 +6,7 @@
 // control offers. Another person's delegations are never listed, counted or
 // hinted, the one holding the task included.
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { DELEGATION_STANDS, type TenantQuery } from '../../../core-records/src/index.ts';
 import type { AgentAssigneeView, AgentOfferView } from '../../../core-wire/src/index.ts';
 
 /** The task's agent when it is the reader's, and the reader's own agents for it; neither for an agent reader. */
@@ -29,7 +29,7 @@ export async function readTaskAgents(
     readonly live: boolean;
   }>(
     `select d.id, d.purpose, d.delegate_person_id as person_id, p.display_name as person_name,
-            (d.revoked_at is null and d.settled_at is null and d.expires_at > now()) as live
+            ${DELEGATION_STANDS} as live
        from public.records r
        join public.delegations d on d.business_id = r.business_id and d.id::text = r.data ->> 'agent'
        left join public.people p on p.business_id = d.business_id and p.id = d.delegate_person_id
@@ -47,10 +47,10 @@ export async function readTaskAgents(
           live: row.live,
         };
   const mine = await tx.query<{ readonly id: string; readonly purpose: string }>(
-    `select id, purpose from public.delegations
-      where business_id = $1 and delegate_person_id = $2 and purpose_scope_id = $3
-        and revoked_at is null and settled_at is null and expires_at > now()
-      order by purpose, id`,
+    `select d.id, d.purpose from public.delegations d
+      where d.business_id = $1 and d.delegate_person_id = $2 and d.purpose_scope_id = $3
+        and ${DELEGATION_STANDS}
+      order by d.purpose, d.id`,
     [tx.businessId, reader, recordId],
   );
   return { agent, myAgents: mine.map((one) => ({ delegationId: one.id, purpose: one.purpose })) };

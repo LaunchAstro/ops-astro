@@ -26,7 +26,7 @@ export {
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
 export { onThisMachine, startLoopbackMockCustody } from './email-mock-custody.ts';
 export { raiseBudgetWait, stopWords } from './broker-wait.ts';
-export { giveBack } from './broker-give-back.ts';
+export { giveBack, giveBackReleased } from './broker-give-back.ts';
 export {
   callModelInConversation,
   type ConversationCallRequest,

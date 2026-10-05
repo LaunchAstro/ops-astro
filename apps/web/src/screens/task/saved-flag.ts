@@ -10,12 +10,18 @@
 //
 // **A choice made before the store answers stands.** The store's late answer
 // does not overwrite it; it is saved then, if the store keeps this reader.
+// Saves leave in click order, each after the last has answered
+// (`preference-saves.ts`), so the store keeps the last click. The read and
+// the saves are tagged for the sign-in that made them (`data/owned.ts`): an
+// answer for a sign-in the screen or the tab has left is dropped (#541).
 //
 // **The caller may hold the value above its read** (`hold`), as the task page
 // holds its other view state, so a reread that remounts the control keeps the
 // choice as the person left it. The store seeds the hold only while it is empty.
 
 import { useEffect, useRef, useState } from 'react';
+import { ownerOfClient, useDesk } from '../../data/owned.ts';
+import { savePreference } from '../../data/preference-saves.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 
 /** The stored choice under `key` in a `preference.read` answer, or null when none is stored. */
@@ -44,15 +50,16 @@ export function useSavedFlag(
   const latest = useRef({ held, setHeld });
   latest.current = { held, setHeld };
 
+  const desk = useDesk(ownerOfClient(client));
   useEffect(() => {
-    let current = true;
+    const tag = desk.read();
     client
       .read<unknown>('preference.read', {})
       .then((answer) => {
-        if (!current || !('value' in answer)) return answer;
+        if (!desk.draws(tag) || !('value' in answer)) return answer;
         setStored(true);
         if (chosen.current !== null) {
-          void client.mutate('preference.save', { preference: key, value: chosen.current });
+          void savePreference(client, key, chosen.current, desk.save());
         } else if (latest.current.held === null) {
           latest.current.setHeld(storedChoice(answer.value, key) ?? false);
         }
@@ -60,13 +67,13 @@ export function useSavedFlag(
       })
       .catch(() => null);
     return () => {
-      current = false;
+      desk.drop();
     };
-  }, [client, key]);
+  }, [client, key, desk]);
 
   const choose = (next: boolean): void => {
     setHeld(next);
-    if (stored) void client.mutate('preference.save', { preference: key, value: next });
+    if (stored) void savePreference(client, key, next, desk.save());
     else chosen.current = next;
   };
   return [held ?? false, choose];

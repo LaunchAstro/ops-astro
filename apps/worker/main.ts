@@ -14,7 +14,7 @@
 // watcher's heartbeat (S0-2): a pass with no answer, a fault or a refusal pings
 // nothing, so a stopped or broken worker goes quiet and the watcher mails.
 
-import { httpTransport } from '../cli/client.ts';
+import { httpTransport, shownAddress } from '../cli/client.ts';
 import { EVERY, heartbeatEvery, offEgress, paced, ping, UNREACHABLE } from './heartbeat.ts';
 import { SYNTHETIC_USAGE } from './usage.ts';
 import { createWorker } from './worker.ts';
@@ -89,7 +89,7 @@ export async function main(
     } catch {
       // The failure's own text is never printed: a transport error can carry
       // the request, and the request carries both credentials (T2 canary token).
-      process.stderr.write(`worker: no answer from ${api}\n`);
+      process.stderr.write(`worker: no answer from ${shownAddress(api)}\n`);
     }
     if (outcome !== undefined) process.stdout.write(`${JSON.stringify(outcome)}\n`);
     if (outcome !== undefined && 'proposed' in outcome) proposedOn = outcome.proposed.taskId;

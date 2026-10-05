@@ -10,6 +10,10 @@ the rest only during an authorised hosted preparation step.
 The primary `main` protection ruleset requires a pull request, passing required
 status checks, signed commits, blocked force pushes, and restricted deletions.
 It also requires the merge queue and carries CodeQL as a code scanning rule.
+That rule gates each pull request. GitHub does not apply it to merge queue
+groups: CodeQL scans a group, but a failed analysis there blocks nothing,
+because no CodeQL check is in the required list. This is an accepted gap
+awaiting the owner (Sol OW-058.1).
 Its bypass list is empty, including for the maintainer.
 
 A separate review ruleset requires an approving review. A solo maintainer may

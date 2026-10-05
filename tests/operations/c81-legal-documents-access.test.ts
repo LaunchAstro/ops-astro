@@ -24,6 +24,7 @@ import {
   released,
   versionRows,
 } from './c81-legal-documents-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 if (serverUrl === undefined) {
   console.warn(
@@ -122,7 +123,7 @@ describe.skipIf(serverUrl === undefined)('C81 the legal documents', () => {
 describe.skipIf(serverUrl === undefined)('C81 the legal documents', () => {
   it('C81 isolation: an unpublished draft reaches no log, audit row, operation register row, refusal or public read', async () => {
     const logged: string[] = [];
-    const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+    const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(capture),
     );
