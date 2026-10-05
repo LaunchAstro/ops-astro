@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The operand table of each write on the command surface, moved whole from
-// `surface.ts` to keep that file under the 1,000-line limit for product source.
-// `surface.ts` reads it into each declaration and re-exports the operand types.
+// The operand table of each write on the command surface, moved whole from `surface.ts` to keep
+// that file under the 1,000-line limit; `surface.ts` reads it in and re-exports the operand types.
 
 import type { CommandName } from './command-names.ts';
 import { SETUP_OPERANDS } from './surface-setup.ts';
@@ -41,8 +40,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'task.reopen': { ...TARGET, reason: 'any' },
   'task.start': TARGET,
   'task.set_state': { ...TARGET, stateId: 'id' },
-  // The old task, the chosen client and the shell the person edited: no
-  // operand for anything else, so nothing else can carry over (MP-4-8).
+  // The old task, the chosen client and the edited shell; nothing else can carry over (MP-4-8).
   'task.duplicate': {
     recordId: 'id',
     client: 'id|null',
@@ -91,8 +89,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     conversationId: 'id?|null',
   },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
-  // A lease call names its task through its lease; a `recordId` beside the
-  // lease is taken and plays no part in the check (API.md, id operands).
+  // A lease call names its task by its lease; a `recordId` beside it plays no part (API.md, ids).
   'task.handback': {
     leaseId: 'any',
     recordId: 'any',
@@ -236,8 +233,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     currency: 'any',
   },
   'run.end_at_budget_stop': { recordId: 'any', runId: 'any', askId: 'any' },
-  // The version the caller read (0 before the first); the two lists are
-  // checked item by item by the handler.
+  // The version the caller read (0 before the first); the handler checks both lists item by item.
   'run.revise_state': {
     recordId: 'any',
     runId: 'any',
@@ -275,8 +271,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'invitation.create': { name: 'text', email: 'text', role: 'text' },
   'invitation.resend': { invitationId: 'id' },
   'invitation.revoke': { invitationId: 'id' },
-  // C33: every value but the identifiers is checked in the command, which names
-  // the field it refuses; a version's modes against the activation's in the database.
+  // C33: the command checks all but the ids, naming the field it refuses (modes: in the database).
   'activation.change': {
     activationId: 'id?',
     versionId: 'id',
