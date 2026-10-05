@@ -2,9 +2,9 @@
 //
 // STAGING42501: on hosted Supabase the reset's admin login holds TRIGGER on
 // auth.users but does not own it (supabase_auth_admin does), so it cannot
-// enable the made-up guard always there. The guard stands at origin on a table
-// the login does not own, and stays enabled always on one it owns; the watch
-// and the mark's check accept origin only on such a table.
+// enable the made-up guard always there. The guard stands at origin on
+// auth.users while the login does not own it, and stays enabled always on every
+// other table it guards; the watch and the mark's check accept origin only there.
 //
 // The hosted layout is staging-guard-unowned-table.fixture.ts; triggers under
 // the guard's name that protect() did not make are staging-guard-look-alikes.
@@ -26,13 +26,16 @@ import {
   withRoles,
 } from './staging-guard-unowned-table.fixture.ts';
 
-describe.skipIf(serverUrl === undefined)('made-up guard on a table the login does not own', () => {
-  withRoles();
-  protectCases();
-  watchCases();
-  handedCases();
-  markCases();
-});
+describe.skipIf(serverUrl === undefined)(
+  'made-up guard on auth.users the login does not own',
+  () => {
+    withRoles();
+    protectCases();
+    watchCases();
+    handedCases();
+    markCases();
+  },
+);
 
 function protectCases(): void {
   it('guards a table it does not own at origin, called by the watch or directly', async () => {
@@ -43,14 +46,23 @@ function protectCases(): void {
     expect(await enabling('auth.users')).toBe('O');
   }, 60_000);
 
-  it('fires at origin in an ordinary session: a real address is noted, a made-up one is not', async () => {
+  // The provider cannot reach the guard's schema (revoked from public), so its
+  // own real address fails at the note and never lands; a superuser's is noted.
+  it('fires at origin in an ordinary session: a real address is refused or noted, a made-up one passes', async () => {
     await hostedLike();
     await as(PROVIDER, `insert into auth.users values (gen_random_uuid(), 'ada@alpha.local')`);
     expect(await ledger()).toEqual([]);
+    await expect(
+      as(PROVIDER, `insert into auth.users values (gen_random_uuid(), 'kim@example.com')`),
+    ).rejects.toThrow(/permission denied for schema ops_astro_made_up/u);
     await caseAdmin().execute(
       `insert into auth.users values (gen_random_uuid(), 'lee@example.com')`,
     );
     expect(await ledger()).toEqual(['auth.users']);
+    const rows = await caseAdmin().execute<{ readonly email: string }>(
+      `select email from auth.users where email not like '%.local'`,
+    );
+    expect(rows.map((row) => row.email)).toEqual(['lee@example.com']);
   }, 60_000);
 
   it('keeps a table the login owns enabled always', async () => {
