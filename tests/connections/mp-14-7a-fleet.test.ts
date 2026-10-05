@@ -195,6 +195,9 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     ['label', 'Linked\u2028In'],
     ['label', '\uFEFFLinkedIn'],
     ['label', 'LinkedIn\u00A0'],
+    ['label', '\u3164'],
+    ['label', 'Linked\u2062In'],
+    ['label', '\u200DLinkedIn'],
   ];
   const repairRows = async (): Promise<number> =>
     await controls.count('select count(*) as n from public.connection_repairs', []);
