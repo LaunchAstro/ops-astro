@@ -5,8 +5,11 @@
 // Usage (the runbook sets the environment, the owner runs it):
 //   node scripts/ops/operator.mjs prepare
 //
-// It asks the operator gate first (`operator.ts`): a person's own sign-in
-// holding `operations:manage`, or it refuses and does nothing. Then it
+// It asks the installation's operator gate first (`operator.ts`,
+// requireOperatingOperator): a person's own sign-in holding
+// `operations:manage` over the installation's operating business, since
+// staging's containers are the installation's, or it refuses and does
+// nothing. Then it
 // allocates staging's own containers, network and volume from
 // deploy/staging/compose.json with `docker compose create`, which starts
 // nothing: nothing is deployed to staging until S0-2 closes, and S0-6 makes
@@ -15,7 +18,7 @@
 // promotion step (`promote.mjs`) asks the same gate and writes the same record.
 
 import { spawnSync } from 'node:child_process';
-import { recordDeployment, requireOperator } from './operator.ts';
+import { recordDeployment, requireOperatingOperator } from './operator.ts';
 
 const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
 
@@ -25,7 +28,7 @@ if (args.length !== 1 || args[0] !== 'prepare') {
   process.exit(2);
 }
 
-const gate = await requireOperator();
+const gate = await requireOperatingOperator();
 if (!gate.ok) {
   console.error(`operator: REFUSED: ${gate.reason}`);
   process.exit(1);

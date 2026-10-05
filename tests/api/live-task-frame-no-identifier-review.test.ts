@@ -2,7 +2,7 @@
 import type { SSEStreamingApi } from 'hono/streaming';
 import { expect, it, vi } from 'vitest';
 import { follow } from '../../apps/api/app.ts';
-import type { LiveTopics } from '../../apps/api/live.ts';
+import type { LiveSignal, LiveTopics } from '../../apps/api/live.ts';
 
 it('a dedicated task stream frame carries no task or client identifier', async () => {
   const taskId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -22,13 +22,23 @@ it('a dedicated task stream frame carries no task or client identifier', async (
       for (const callback of onAbort) callback();
     },
   } as unknown as SSEStreamingApi;
+  let publish: (signal: LiveSignal) => void = () => {};
   const topics = {
-    subscribe: () => () => {},
+    subscribe: (_business: string, _task: string, send: (signal: LiveSignal) => void) => {
+      publish = send;
+      return () => {};
+    },
   } as unknown as LiveTopics;
   const running = follow(stream, { topics, recheckMs: 100_000 }, 'business', taskId,
     () => Promise.resolve(taskId));
   try {
     await vi.waitFor(() => expect(frames.length).toBeGreaterThan(0));
+    // The first frame, then a notification of each kind: none of them names the task.
+    publish('invalidate');
+    await vi.waitFor(() => expect(frames.length).toBeGreaterThan(1));
+    publish('resync');
+    await vi.waitFor(() => expect(frames.length).toBeGreaterThan(2));
+    expect(frames.map((frame) => frame.event)).toStrictEqual(['resync', 'invalidate', 'resync']);
     expect(frames.every((frame) => frame.data === '')).toBe(true);
   } finally {
     stream.abort();

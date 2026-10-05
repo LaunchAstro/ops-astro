@@ -27,7 +27,11 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'task.create': 'the creation itself',
   'task.duplicate': 'creates a new task from the shell; the old task is untouched (MP-4-8)',
   'task.set_party': 'a client change, which the lock allows while the task is empty',
+  // WF-1: `task-content.ts` excludes it from content alongside `task.set_party`.
+  'map.scope': "a map's client change, which the lock allows while the map is empty",
   'client.create': 'writes a client, not a task',
+  'client.set_privacy': "a client's privacy settings, not a task",
+  'secret.set': 'a key held for a client or the business, not a task (C31)',
   'task.share_with_client': 'a share grant: who sees the task, not what it holds',
   'task.purge': 'removes the task; nothing is left to change the client of',
   'inbox.seen': "the caller's own seen stamp on an item, not the task's content",

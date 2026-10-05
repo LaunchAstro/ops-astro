@@ -309,6 +309,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
     }
   }, 300_000);
 
+  const PRIVACY_OFF = { modelEgress: false, providers: [], handlesHealth: false };
+
   /** C32: a person and a client of bravo's, each named in an alpha grant. */
   const accessGrantCells = (
     person: string,
@@ -324,6 +326,11 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       ],
       // C58: bravo's person named in an alpha ending.
       ['access.end', pair('holderId', person, (holderId) => ({ holderId }))],
+      // C60: bravo's client named in an alpha privacy change.
+      [
+        'client.set_privacy',
+        pair('clientId', client, (clientId) => ({ clientId, ...PRIVACY_OFF, noAgentEdits: true })),
+      ],
     ];
   };
 
@@ -344,6 +351,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       cells.push(
         ['task.restore', pair('batchId', f.batchId, (batchId) => ({ batchId }))],
         ['grant.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
+        ['secret.clear', pair('secretId', f.secretId, (secretId) => ({ secretId }))],
         [
           'delegation.revoke',
           pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),

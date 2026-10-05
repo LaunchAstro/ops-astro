@@ -36,6 +36,7 @@ import {
 import type { SenderReport } from '../../core-connectors/src/index.ts';
 import { observed, sendRoute } from './broker-email-route.ts';
 import type { Broker } from './broker-types.ts';
+import { holdItem } from './email-item-lock.ts';
 import {
   classOf,
   type CheckedItem,
@@ -85,14 +86,17 @@ export type EmailResult =
     };
 
 /**
- * Every check on one item, in its business, locking it: open, its recipient can read its task
- * now (so another client's task is never mailed about), they have not seen it in the app, they
- * have a confirmed address, and no earlier email attempt on it might have gone out. Writes nothing.
+ * Every check on one item, in its business, locking it (`holdItem`: its task, then the item): open,
+ * its recipient can read its task now (so another client's task is never mailed about), they have
+ * not seen it in the app, they have a confirmed address, and no earlier email attempt on it might
+ * have gone out. Writes nothing.
  */
 export async function checkItem(
   tx: TenantQuery,
   itemId: string,
 ): Promise<CheckedItem | EmailRefusal> {
+  const held = await holdItem(tx, itemId);
+  if (typeof held === 'string') return held;
   const [item] = await tx.query<{
     readonly recipient: string;
     readonly subject: string;
@@ -108,8 +112,7 @@ export async function checkItem(
                      where a.business_id = i.business_id and a.item_id = i.id) as seen
        from public.inbox_items i
        join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
-      where i.business_id = $1 and i.id = $2 and i.work_state = 'open'
-      for update of i`,
+      where i.business_id = $1 and i.id = $2 and i.work_state = 'open'`,
     [tx.businessId, itemId],
   );
   if (item === undefined) return 'ITEM_NOT_OPEN';

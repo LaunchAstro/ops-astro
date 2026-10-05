@@ -21,6 +21,7 @@ import { parseCredentialKeys } from '../../packages/core-records/src/authority/c
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { consoleLine, streamText } from '../support/console-text.ts';
 
 const [CREATE, READ, UPDATE] = [pathOf('task.create'), pathOf('task.read'), pathOf('task.update')];
 const [BOARD, QUEUE, PEOPLE] = [pathOf('task.board'), pathOf('task.queue'), pathOf('person.list')];
@@ -39,15 +40,16 @@ const ids = (text: string) => [
 ];
 
 async function logged<T>(run: () => Promise<T>): Promise<[T, string]> {
-  const lines: unknown[] = [];
-  const push = (...parts: unknown[]) => lines.push(...parts) > 0;
+  const lines: string[] = [];
+  const push = (...parts: unknown[]) => lines.push(consoleLine(...parts)) > 0;
+  const write = (chunk: unknown) => lines.push(streamText(chunk)) > 0;
   const levels = ['log', 'info', 'warn', 'error', 'debug', 'trace'] as const;
   const spies = [
     ...levels.map((level) => vi.spyOn(console, level).mockImplementation(push)),
-    ...[process.stdout, process.stderr].map((s) => vi.spyOn(s, 'write').mockImplementation(push)),
+    ...[process.stdout, process.stderr].map((s) => vi.spyOn(s, 'write').mockImplementation(write)),
   ];
   const result = await run().finally(() => spies.forEach((spy) => spy.mockRestore()));
-  return [result, lines.map(String).join('\n')];
+  return [result, lines.join('\n')];
 }
 
 const send = async (api: Hono, path: string, body: object, token: string) =>
@@ -243,7 +245,11 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
     };
     const [one, two] = ['cq2/first@1', 'cq2/second@1'].map((id) => {
       const delegation = parseCredentialKeys(id, `${id}:${randomBytes(32).toString('base64url')}`);
-      return composed(noting, { gate: { id, secret: randomUUID() }, delegation });
+      return composed(noting, {
+        gate: { id, secret: randomUUID() },
+        delegation,
+        custody: undefined,
+      });
     }) as [Hono, Hono];
     const read = async (app: Hono) =>
       await send(app, `/api/b/alpha${READ}`, { recordId: randomUUID() }, token);

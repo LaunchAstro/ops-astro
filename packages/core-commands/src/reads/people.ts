@@ -14,8 +14,10 @@
 
 import {
   asksMoneyStepUp,
+  DELEGATION_STANDS,
   heldPermissions,
   listAllClients,
+  listClientPrivacy,
   standsOnShares,
 } from '../../../core-records/src/index.ts';
 import type { HeldPermission, TenantQuery } from '../../../core-records/src/index.ts';
@@ -103,12 +105,33 @@ interface DelegationRow {
 }
 
 /**
+ * The delegations Access lists: live by their own lifetime, their agent
+ * active, and a child's parent live too (not handed back, revoked or
+ * expired), as `checkDelegatedAuthority` asks at each of the child's calls.
+ */
+async function standingDelegations(tx: TenantQuery): Promise<readonly DelegationRow[]> {
+  return await tx.query<DelegationRow>(
+    `select d.id, d.agent_actor_id, p.id as person_id, p.display_name, d.purpose, d.collections,
+            d.actions, d.purpose_scope_kind, d.purpose_scope_id, d.expires_at
+       from public.delegations d
+       join public.actors a
+         on a.business_id = d.business_id and a.id = d.agent_actor_id and a.active
+       join public.people p
+         on p.business_id = d.business_id and p.id = d.delegate_person_id
+      where d.business_id = $1 and ${DELEGATION_STANDS}
+      order by d.granted_at, d.id`,
+    [tx.businessId],
+  );
+}
+
+/**
  * Settings ▸ Access (C32): Team, Clients and Agents, each with what it may do
  * now. One list of people underneath all three (RC-22). Team is `listPeople`
  * itself, not a copy of its query. Clients are the people with no active
  * membership who stand on a share, by `standsOnShares`, the rule sign-in
  * asks. A former member whose grant outlived them is on neither list: sign-in
- * refuses them, so they can do nothing now. An agent carries its person's row.
+ * refuses them, so they can do nothing now. An agent carries its person's row,
+ * listed only while its delegation stands (`standingDelegations`).
  *
  * Each person also carries their live grant rows by id, from the same walk,
  * whether or not sign-in would admit them, so any one can be revoked
@@ -141,19 +164,7 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
       order by display_name, id`,
     [tx.businessId, outside],
   );
-  const delegations = await tx.query<DelegationRow>(
-    `select d.id, d.agent_actor_id, p.id as person_id, p.display_name, d.purpose, d.collections,
-            d.actions, d.purpose_scope_kind, d.purpose_scope_id, d.expires_at
-       from public.delegations d
-       join public.actors a
-         on a.business_id = d.business_id and a.id = d.agent_actor_id and a.active
-       join public.people p
-         on p.business_id = d.business_id and p.id = d.delegate_person_id
-      where d.business_id = $1
-        and d.revoked_at is null and d.settled_at is null and d.expires_at > now()
-      order by d.granted_at, d.id`,
-    [tx.businessId],
-  );
+  const delegations = await standingDelegations(tx);
   const preview = await previewsOf(tx, held);
   const withPreview = (person: PersonView): AccessPerson => ({
     ...person,
@@ -167,6 +178,7 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
     clients: clients.map((row) => withPreview({ personId: row.id, name: row.display_name })),
     agents: delegations.map((row) => agentOf(row, held)),
     clientRecords: await listAllClients(tx),
+    clientPrivacy: await listClientPrivacy(tx),
   };
 }
 

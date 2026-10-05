@@ -246,6 +246,13 @@ code on this head, and where that is shown.
 | `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                                                                                                                                                                                                     |
 | `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                                                                                                                                                                                                     |
 
+**`STEP_UP_REQUIRED`** for a client (no membership) names `sign_in`, fix "Sign
+in again with your password, then retry.", since a client may hold no second
+factor and any sign-in in the last 60 minutes will do; a team member's names
+nothing and asks for the authenticator code (C59, Q1). To replace the
+authenticator app, `/account/factor/remove` takes a code from the old one, and
+`/account/factor/enrol` is refused `FACTOR_ALREADY_ENROLLED` until it has.
+
 `DELEGATION_WIDENS` is off `UNPRODUCED_CODES` (`core-records/src/register.ts`). The
 mint reads the approving person's live grants when the agent picks the work
 up, not when the person approved it (`mintDelegation`,
@@ -267,7 +274,16 @@ over every declaration. It is off `UNPRODUCED_CODES` (`core-records/src/register
 
 It is also the answer to an agent call that presents no delegation credential,
 which is an agent before any pickup (`authorise`). Such a call reaches
-`task.queue` and `task.pickup` (`BEFORE_PICKUP`) and nothing else. `task.decide`
+`task.queue` and `task.pickup` (`BEFORE_PICKUP`) and nothing else. While the
+agent holds a live delegation, credential presented or not, its `task.queue`
+shows only the work of that task's client (#169, `queue` in
+`core-runtime/src/pickup.ts`): the queue never shows it another client's
+reservation, purpose slug or held amount, and a repeated read is served again
+rather than replayed. The narrowing is the queue's alone: `task.pickup` of a
+reservation the agent already knows is not narrowed. A helper delegation
+(AW-11) narrows its helper's queue to the parent's client while it stands, so
+a parent that names another agent as its helper narrows that agent's queue
+while the child stands (at most until the child's expiry). `task.decide`
 without a credential is `DELEGATION_EXCLUDES_DECISION`, so a decision is still
 named as one. `session.capabilities` is in `AGENT_SURFACE` but not in
 `BEFORE_PICKUP`, so before a pickup it is refused the same way. After a pickup
@@ -289,7 +305,7 @@ answers `DELEGATION_EXCLUDES_OPERATION` without receipt content, and a presented
 credential that is not live stays `DELEGATION_NOT_LIVE` (`replaySettledHandback`,
 reached through `releaseReplay` in `commands/agent-replay.ts`). A capabilities
 replay is authorised as a fresh call and projected again for the credential
-presented now (`replayCapabilities`, same file), so a replay under another
+presented now (`serveAgain`, same file), so a replay under another
 delegation never releases the first delegation's `purposeScope`. A pickup replay
 is the one exception to "no credential, no call"
 ([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).
@@ -467,11 +483,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:690-731`, run at `:865-873`). It gets a login and an acting identity,
-  and no membership and no business grant (`:158-161`, `:311-313`). The seed
+  user (`:744-770`, run at `:903-911`). It gets a login and an acting identity,
+  and no membership and no business grant (`:162-165`, `:315-317`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:733-762`, `:902-912`).
+  (`:764-793`, `:932-942`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -774,6 +790,9 @@ its one-task delegation never does: `DELEGATION_OUT_OF_PURPOSE`, nothing written
 person and per business on calls a minute, calls at once and records handed out
 a minute (`apps/api/auth/agent-quota.ts`), answered `AGENT_QUOTA_EXCEEDED` 429.
 A call counts once, retried or not, and a call outside the reach counts too.
+Its records count when its answer is decided, inside its transaction: an
+answer that would pass a records limit is refused and rolls back, so calls
+let in together cannot hand out more between them than the limit.
 The quota is held in each API process, so it multiplies across instances.
 
 ## Settings ▸ Access (C32)
@@ -783,7 +802,9 @@ Giving and revoking a grant on Settings ▸ Access (`access.grant`,
 never an agent's. A grant given here is a root grant, to a person with an
 active membership, over the whole business or over one client of it
 (`scope_kind = 'party'`, `scope_id` the client). Making a client
-(`client.create`) is `record:write`, never an agent's.
+(`client.create`) is `record:write`, never an agent's. Changing a client's
+privacy settings (`client.set_privacy`, C60) is `privacy:manage`, asked at that
+client's party scope, never an agent's.
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a

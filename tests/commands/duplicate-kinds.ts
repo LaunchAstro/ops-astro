@@ -2,7 +2,7 @@
 //
 // The one declaration of what "Duplicate without contents" carries of each
 // task-content kind in the catalogue (S0-5's derivation: every write but
-// task.create and task.set_party), and how the shell case plants a canary in
+// task.create, task.set_party and map.scope), and how the shell case plants a canary in
 // each kind this base can plant. A harness, not a suite.
 
 import { COMMAND_SURFACE, TASK_STAGES } from '../../packages/core-wire/src/index.ts';
@@ -40,6 +40,19 @@ const tagged = async (taskId: string): Promise<CommandResult> => {
   return await as(alpha, owner, { command: 'task.add_tag', recordId: taskId, tagId });
 };
 
+/** The old task retyped to `build` and back to `task`: both writes in its type history. */
+const retypedAndBack = async (taskId: string): Promise<CommandResult> => {
+  const retype = async (taskType: string): Promise<CommandResult> =>
+    await as(alpha, owner, {
+      command: 'task.set_type',
+      recordId: taskId,
+      expectedRevision: await revisionOf(taskId),
+      taskType,
+    });
+  const there = await retype('build');
+  return isCommandRefusal(there) ? there : await retype('task');
+};
+
 /** The old task shared with one of client A's people, who stands on it by a party grant. */
 const shared = async (taskId: string): Promise<CommandResult> => {
   await clientStander(clientA);
@@ -52,7 +65,7 @@ const shared = async (taskId: string): Promise<CommandResult> => {
 
 /**
  * Every task-content kind in the catalogue (S0-5's derivation: each write but
- * task.create, task.duplicate and task.set_party), declared once: what a duplicate carries of
+ * task.create, task.duplicate, task.set_party and map.scope), declared once: what a duplicate carries of
  * it, and how this test plants its canary. A kind this base cannot plant on a
  * plain task says why; a new kind with no row fails the first case.
  */
@@ -91,6 +104,10 @@ export const DECLARED: Readonly<
     carry: 'not carried',
     plant: writeOn('task.set_category', () => ({ category: 'seo' })),
   },
+  // A retype and back (WF-1): the old task keeps `type` and its `type_history`, the shell
+  // neither; it ends untyped, so the share planted below still applies.
+  'task.set_type': { carry: 'not carried', plant: retypedAndBack },
+  'map.revise': { carry: 'not carried', plant: 'revises a map; the duplicated task is none' },
   'task.start': {
     carry: 'not carried',
     plant: async (taskId) =>
@@ -154,6 +171,7 @@ export const DECLARED: Readonly<
   'credential.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'session.end': { carry: 'not carried', plant: 'a sign-in, not task content' },
   'client.create': { carry: 'not carried', plant: 'a client of the business, not task content' },
+  'client.set_privacy': { carry: 'not carried', plant: "a client's settings, not task content" },
   'preference.save': { carry: 'not carried', plant: 'a person’s setting' },
   'preference.dismiss_tip': { carry: 'not carried', plant: 'a person’s setting' },
   'settings.set_money_step_up': { carry: 'not carried', plant: 'a business setting' },
@@ -181,6 +199,9 @@ export const DECLARED: Readonly<
   'budget.set_planning_cap': { carry: 'not carried', plant: 'a business setting' },
   'run.delegate_child': { carry: 'not carried', plant: 'needs a lease' },
   'run.child_handback': { carry: 'not carried', plant: 'needs a child run' },
+  // C31: a business's custody key, never task content.
+  'secret.set': { carry: 'not carried', plant: 'a business key, not task content' },
+  'secret.clear': { carry: 'not carried', plant: 'a business key, not task content' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */
@@ -191,7 +212,7 @@ export const contentKinds = (): readonly string[] =>
   COMMAND_SURFACE.filter(
     (one) =>
       one.kind === 'write' &&
-      !['task.create', 'task.duplicate', 'task.set_party'].includes(one.name),
+      !['task.create', 'task.duplicate', 'task.set_party', 'map.scope'].includes(one.name),
   ).map((one) => one.name);
 
 /** Plant every plantable kind on `taskId`, in order; the kinds planted, each with its answer. */
