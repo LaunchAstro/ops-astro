@@ -98,7 +98,7 @@ export async function grantsStillHold(tx: TenantQuery, session: Session): Promis
  * asked at that clock. A revocation for lost authority, or the person's grant
  * lapsing during the wait, is `DELEGATION_NARROWED`, as the agent envelope
  * answers it; any other end is `DELEGATION_NOT_LIVE`. A child's parent row is
- * read, not held: its revocation after the read is not waited on.
+ * read, not held at that row, so its revocation may commit after this read.
  */
 export async function delegationStillHolds(
   tx: TenantQuery,
