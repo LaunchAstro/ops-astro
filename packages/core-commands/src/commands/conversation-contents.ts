@@ -13,6 +13,7 @@ import type {
   WrapUpView,
 } from '../../../core-wire/src/index.ts';
 import { conversationAddress } from './conversations.ts';
+import { createdTasks, type Work } from './conversation-work.ts';
 
 const QUOTATION_LIMIT = 1_000;
 
@@ -25,102 +26,6 @@ export interface Locked {
   readonly body_purged_at: Date | null;
   readonly purge_operation_id: string | null;
   readonly quiet: boolean;
-}
-
-/** The work the conversation cited or started, each with whether it has ended and when. */
-export interface Work {
-  readonly pointer: ConversationPointerView;
-  readonly terminal: boolean;
-  readonly endedAt: Date | null;
-}
-
-interface TaskRow {
-  readonly id: string;
-  readonly category: string | null;
-  readonly completed_at: Date | null;
-  readonly updated_at: Date;
-  readonly deleted_at: Date | null;
-}
-
-/**
- * The task the conversation was opened on, with its state; a completed task
- * ended at its stamp, and a task trashed before it ended, at its trash.
- */
-async function taskWork(tx: TenantQuery, scopeRecordId: string | null): Promise<readonly Work[]> {
-  if (scopeRecordId === null) return [];
-  const tasks = await tx.query<TaskRow>(
-    `select r.id, s.data ->> 'machine_category' as category, r.ts_2 as completed_at,
-            r.updated_at, r.deleted_at
-       from records r
-       left join records s
-         on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
-      where r.business_id = $1 and r.id = $2`,
-    [tx.businessId, scopeRecordId],
-  );
-  return tasks.map((task) => {
-    const ended = task.category === 'completed' || task.category === 'cancelled';
-    const terminal = ended || task.deleted_at !== null;
-    return {
-      pointer: {
-        kind: 'task',
-        id: task.id,
-        address: `/task/${task.id}`,
-        state: task.category ?? 'unknown',
-      },
-      terminal,
-      endedAt: ended ? (task.completed_at ?? task.updated_at) : task.deleted_at,
-    };
-  });
-}
-
-/** The runs and gates the conversation started, each pointing at its task. */
-async function startedWork(tx: TenantQuery, conversationId: string): Promise<readonly Work[]> {
-  const runs = await tx.query<{ id: string; task_id: string; state: string }>(
-    `select id, task_id, state from planned_runs
-      where business_id = $1 and origin_conversation_id = $2 order by id`,
-    [tx.businessId, conversationId],
-  );
-  const gates = await tx.query<{ id: string; task_id: string; state: string }>(
-    `select g.id, l.task_id, g.state from gates g
-       join proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
-      where g.business_id = $1 and g.origin_conversation_id = $2 order by g.id`,
-    [tx.businessId, conversationId],
-  );
-  return [
-    ...runs.map((run): Work => ({
-      pointer: { kind: 'run', id: run.id, address: `/task/${run.task_id}`, state: run.state },
-      terminal: run.state === 'handed_back' || run.state === 'cancelled',
-      endedAt: null,
-    })),
-    ...gates.map((gate): Work => ({
-      pointer: { kind: 'gate', id: gate.id, address: `/task/${gate.task_id}`, state: gate.state },
-      terminal: gate.state !== 'pending',
-      endedAt: null,
-    })),
-  ];
-}
-
-/** The tasks whose creation audit event names the conversation as its origin. */
-async function createdTasks(
-  tx: TenantQuery,
-  conversationId: string,
-): Promise<readonly ConversationPointerView[]> {
-  const rows = await tx.query<{ readonly id: string }>(
-    `select subject_record_id as id from audit_events
-      where business_id = $1 and origin_conversation_id = $2
-        and command = 'task.create' and outcome = 'applied'
-      order by seq`,
-    [tx.businessId, conversationId],
-  );
-  return rows.map((row) => ({ kind: 'task', id: row.id, address: `/task/${row.id}` }));
-}
-
-export async function workOf(
-  tx: TenantQuery,
-  conversationId: string,
-  scopeRecordId: string | null,
-): Promise<readonly Work[]> {
-  return [...(await taskWork(tx, scopeRecordId)), ...(await startedWork(tx, conversationId))];
 }
 
 const pointersOf = (
@@ -238,7 +143,7 @@ export function wrapUpView(stored: WrapUpRow, reads: ReadsAddress): WrapUpView {
 export async function itemsOf(
   tx: TenantQuery,
   conversationId: string,
-  locked: Pick<Locked, 'created_at' | 'last_activity_at'>,
+  locked: Pick<Locked, 'created_at' | 'last_activity_at' | 'scope_record_id'>,
   work: readonly Work[],
 ): Promise<readonly WrapUpItemView[]> {
   const counts = await tx.query<{ n: string; first: Date; last: Date }>(
@@ -253,7 +158,7 @@ export async function itemsOf(
     id: conversationId,
     address: conversationAddress(conversationId),
   };
-  const tasks = pointersOf(work, 'task');
+  const tasks = pointersOf(work, 'task').filter((pointer) => pointer.id === locked.scope_record_id);
   const runs = pointersOf(work, 'run');
   const gates = pointersOf(work, 'gate');
   return [
