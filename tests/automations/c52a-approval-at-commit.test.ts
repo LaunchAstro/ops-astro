@@ -116,42 +116,49 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
     return shown.map((one) => [one?.revision, one?.enabled, one?.approval?.revoked ?? null]);
   };
 
+  type Send = Awaited<ReturnType<typeof fourCases>>[number];
+
+  /** One case sent on a session of its own, signed out while it waits on the activation; then the next call. */
+  const signedOutWhile = async ([activationId, name, body]: Send) => {
+    const sessionId = randomUUID();
+    const presented = { ...w.automationOnly.presented, sessionId };
+    const bearer = await signBearer({
+      sub: presented.subject,
+      aud: 'authenticated',
+      iss: ISSUER,
+      role: 'authenticated',
+      exp: Math.floor(Date.now() / 1000) + 600,
+      session_id: sessionId,
+    });
+    let ended: unknown;
+    const answer = await heldWhile(
+      w,
+      activationId,
+      async () => await w.asWide(w.automationOnly, name, body, bearer),
+      async () => {
+        const caller = {
+          database: w.controls.fixture.db.app,
+          businessId: w.alpha,
+          presented,
+          accessToken: bearer,
+        };
+        ended = await signOutSession(caller, {}, provider);
+      },
+    );
+    const later = await w.asWide(w.automationOnly, 'automation.registry', {}, bearer);
+    return { answer, ended, later };
+  };
+
   it('C52-A signed out while waiting: no change applies after the session that sent it was signed out', async () => {
     const sends = await fourCases();
-    const answers: Answer[] = [];
-    const ended: unknown[] = [];
-    const later: Answer[] = [];
-    for (const [activationId, name, body] of sends) {
-      const sessionId = randomUUID();
-      const presented = { ...w.automationOnly.presented, sessionId };
-      // eslint-disable-next-line no-await-in-loop -- one session per case
-      const bearer = await signBearer({
-        sub: presented.subject,
-        aud: 'authenticated',
-        iss: ISSUER,
-        role: 'authenticated',
-        exp: Math.floor(Date.now() / 1000) + 600,
-        session_id: sessionId,
-      });
+    const raced: Awaited<ReturnType<typeof signedOutWhile>>[] = [];
+    for (const one of sends) {
       // eslint-disable-next-line no-await-in-loop -- one race at a time
-      const answer = await heldWhile(
-        w,
-        activationId,
-        async () => await w.asWide(w.automationOnly, name, body, bearer),
-        async () => {
-          const caller = {
-            database: w.controls.fixture.db.app,
-            businessId: w.alpha,
-            presented,
-            accessToken: bearer,
-          };
-          ended.push(await signOutSession(caller, {}, provider));
-        },
-      );
-      answers.push(answer);
-      // eslint-disable-next-line no-await-in-loop -- the next call on the ended session
-      later.push(await w.asWide(w.automationOnly, 'automation.registry', {}, bearer));
+      raced.push(await signedOutWhile(one));
     }
+    const answers = raced.map((one) => one.answer);
+    const ended = raced.map((one) => one.ended);
+    const later = raced.map((one) => one.later);
     expect(ended).toStrictEqual(
       Array.from({ length: 4 }, () => ({ ended: 1, signedOutAtProvider: true })),
     );
@@ -169,20 +176,23 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
   const holdingChain = async (execute: Execute): Promise<unknown> =>
     await execute('select pg_advisory_xact_lock(hashtextextended($1, 0))', [w.alpha.toLowerCase()]);
 
+  /** One case sent while the owner holds the audit chain, let go once its grant has run out. */
+  const expiredWhile = async ([, name, body]: Send): Promise<Answer> => {
+    const grantId = await expiringGrant(w);
+    return await sentWhileHeld(
+      w,
+      holdingChain,
+      async () => await w.asWide(w.plain, name, body),
+      untilExpired(grantId),
+    );
+  };
+
   it('C52-A expired while waiting on the audit chain: no change applies after its automation:manage grant ran out', async () => {
     const sends = await fourCases();
     const answers: Answer[] = [];
-    for (const [, name, body] of sends) {
-      // eslint-disable-next-line no-await-in-loop -- one grant per case
-      const grantId = await expiringGrant(w);
+    for (const one of sends) {
       // eslint-disable-next-line no-await-in-loop -- one race at a time
-      const answer = await sentWhileHeld(
-        w,
-        holdingChain,
-        async () => await w.asWide(w.plain, name, body),
-        untilExpired(grantId),
-      );
-      answers.push(answer);
+      answers.push(await expiredWhile(one));
     }
     expect(
       answers.map((one) => [one.status, one.body['code']]),
