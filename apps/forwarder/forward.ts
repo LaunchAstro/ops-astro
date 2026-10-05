@@ -145,13 +145,17 @@ async function replay(execute: Execute, options: ForwarderOptions, now: number, 
   return { handled, spent };
 }
 
-/** The rows after `after`, in time order across every batch, so the replay's clock never runs backwards. */
+/**
+ * One page of the replay: the rows after `$1, $2`, in time order across every
+ * page, so the replay's clock never runs backwards. The index on `(at, id)`
+ * is this order, so a page reads on from the last one, never sorting the table.
+ */
+export const REPLAY_PAGE = `select id, kind, scope, weight, event, at, at::text as at_key
+    from ops.api_events
+   where (at, id) > ($1::text::timestamptz, $2::bigint) order by at, id limit $3`;
+
 async function batchAfter(execute: Execute, after: { readonly at: string; readonly id: string }) {
-  return await execute<Row>(
-    `select id, kind, scope, weight, event, at, at::text as at_key from ops.api_events
-       where (at, id) > ($1::text::timestamptz, $2::bigint) order by at, id limit $3`,
-    [after.at, after.id, BATCH],
-  );
+  return await execute<Row>(REPLAY_PAGE, [after.at, after.id, BATCH]);
 }
 
 /** Every alert kept, in the order raised; each leaves only once the sink took it. */
