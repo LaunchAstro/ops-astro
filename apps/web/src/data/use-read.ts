@@ -169,21 +169,31 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   return { state, reload, live: own && liveRef.current && state.outcome === 'loading' };
 }
 
+/** Floor ticks a read in flight is waited for before a tick asks again. */
+const ROLLUP_PATIENCE = 3;
+
 /**
  * Re-read on the rollup floor (C4 CS-1.2). A tick waits for the read in flight
  * rather than superseding it: a newer read would retire its answer, so reads
- * slower than the floor would never land (PRV-oa-980-R2.1). The next tick
- * after it answers reads again.
+ * slower than the floor would never land (PRV-oa-980-R2.1). Reads have no
+ * transport timeout, so after `ROLLUP_PATIENCE` ticks a read that has not
+ * answered is superseded, and a revoke still draws (SEC-P03-RB5 L1).
  */
 function useRollup<T>(
   rollup: RollupFloor | undefined,
   readRef: { readonly current: AuthorisedRead<T> | null },
   reload: () => void,
 ): void {
+  const waited = useRef(0);
   useEffect(
     () =>
       rollup?.follow(() => {
-        if (readRef.current?.state.outcome !== 'loading') reload();
+        if (readRef.current?.state.outcome === 'loading' && waited.current < ROLLUP_PATIENCE) {
+          waited.current += 1;
+          return;
+        }
+        waited.current = 0;
+        reload();
       }),
     [rollup, readRef, reload],
   );
