@@ -62,7 +62,7 @@ export function proven(operation: string, answer: ProviderResult<unknown>): answ
   return answer.kind === 'refused' && answer.proof !== undefined && proofs.includes(answer.proof);
 }
 
-/** Where the approved word sits: its rendered block either side, and its place among equal matches. */
+/** Where the approved word sits: its rendered block either side (CONTEXT at most), and its rank among equal matches. */
 export interface Occurrence {
   readonly left: string;
   readonly right: string;

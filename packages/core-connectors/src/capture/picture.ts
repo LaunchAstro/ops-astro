@@ -28,10 +28,11 @@
 // the route (a policy in the markup, mixed content) or rejected after it (a failed
 // integrity check) leaves one unasked, and the picture fails. So does an import a
 // browser skips (one after a rule, or under a condition it does not support): the
-// observation read a sheet the picture would lack. A policy in the page's own markup can drop
-// an inline sheet the observation read, with no request to show it, so a page declaring one over
-// an inline sheet is refused. Each copy is served as UTF-8, so a sheet a browser would decode
-// otherwise fails the picture, as it fails the page observation.
+// observation read a sheet the picture would lack. A policy or default set in the
+// page's own markup, a style of another type, or a titled or alternate sheet can leave
+// out a sheet the observation read with no request to show it, so such a page is
+// refused before the browser starts. Each copy is served as UTF-8, so a sheet a browser
+// would decode otherwise fails the picture, as it fails the page observation.
 //
 // No credential reaches the browser: the fence sends none. Nor has the browser
 // a network of its own: a preconnect or DNS prefetch makes no request the
@@ -145,15 +146,39 @@ function readsAsUtf8(css: string): boolean {
   return end > 0 && !label.includes('"') && isUtf8Label(label);
 }
 
-/** Whether the markup declares a policy of its own, which a browser applies over PICTURE_POLICY. */
-function declaresPolicy(document: Tree.Document): boolean {
+const lower = (text: string): string =>
+  text.replaceAll(/[A-Z]/gu, (letter) => letter.toLowerCase());
+// `http-equiv` values a browser honours over which sheets apply: a policy can drop one, and a
+// default set chooses among titled ones.
+const STYLE_EQUIV = new Set(['content-security-policy', 'default-style']);
+
+/**
+ * Whether a browser could leave out a sheet the observation reads, with no request to show it:
+ * a policy or default set in the markup, a style of a type other than CSS, or a titled or
+ * alternate sheet (of titled sets a browser applies only the preferred one). Only the forms a
+ * browser always applies pass.
+ */
+function mayDropSheet(document: Tree.Document): boolean {
   const stack: Tree.Node[] = [document];
   for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
-    if ('attrs' in node && node.tagName === 'meta') {
-      const equiv = node.attrs.find((one) => one.name === 'http-equiv')?.value ?? '';
-      if (equiv.trim().toLowerCase() === 'content-security-policy') return true;
-    }
     if ('childNodes' in node) stack.push(...node.childNodes);
+    if (!('attrs' in node)) continue;
+    const attribute = (name: string) => node.attrs.find((one) => one.name === name)?.value;
+    const titled = (attribute('title') ?? '') !== '';
+    const rel = lower(attribute('rel') ?? '').split(/[\t\n\f\r ]+/u);
+    if (node.tagName === 'meta' && STYLE_EQUIV.has(lower(attribute('http-equiv') ?? '').trim()))
+      return true;
+    if (
+      node.tagName === 'style' &&
+      (titled || !['', 'text/css'].includes(lower(attribute('type') ?? '')))
+    )
+      return true;
+    if (
+      node.tagName === 'link' &&
+      rel.includes('stylesheet') &&
+      (titled || rel.includes('alternate'))
+    )
+      return true;
   }
   return false;
 }
@@ -237,8 +262,7 @@ export async function capturePicture(
   const reading = readDocument(page.value.body);
   if (typeof reading === 'string') return { ok: false, code: reading };
   // The reading held the markup within the capture's bounds, so parse5 may read it once more.
-  if (reading.styles.length > 0 && declaresPolicy(parse(page.value.body)))
-    return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
+  if (mayDropSheet(parse(page.value.body))) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
   state.read.push(...named(reading, page.value.url));
   let png: Uint8Array;
   try {
