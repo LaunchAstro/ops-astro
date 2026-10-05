@@ -180,14 +180,14 @@ async function readOld(
 }
 
 /**
- * The authority, asked with the caller's task grants held for share and then
- * the old task's row (grants before records, as `task.decide` holds them): a
- * revocation that committed first is seen, and one that comes second waits for
- * this transaction. Asked at the clock after both holds, so a grant that
- * lapsed while this waited for either no longer counts (#444); a missing task
- * is answered only after read and write, as before. Share is asked last, of
- * the old task's client as read under its lock, so it cannot move meanwhile.
- * Answers the old task, or the refusal.
+ * The authority, asked with the caller's task grants held for share, before
+ * the old task's row is locked (grants before records, as `task.decide` holds
+ * them): a revocation that committed first is seen, and one that comes second
+ * waits for this transaction. Read and write are asked again at the clock
+ * after the row's lock, so a grant that lapsed while this waited for it no
+ * longer counts (#444). Share is asked last, of the old task's client as read
+ * under its lock, so it cannot move meanwhile. Answers the old task, or the
+ * refusal.
  */
 async function authorise(
   tx: TenantQuery,
@@ -199,17 +199,23 @@ async function authorise(
   const there: Scope =
     client === null ? { kind: 'business', id: null } : { kind: 'party', id: client };
   await holdCoveringGrants(tx, subjects, 'task');
+  const ask = async (action: 'read' | 'write' | 'share', scope: Scope, at: string) =>
+    await checkAuthorityAt(tx, subjects, { collection: 'task', action, scope }, at);
+  const readAndWrite = async (at: string) => {
+    const reads = await ask('read', { kind: 'record', id: oldId }, at);
+    return reads.ok ? await ask('write', there, at) : reads;
+  };
+  // Asked before the old row is locked, so a caller who cannot read it takes
+  // no lock on it, then again at the clock after that lock (#444).
+  const before = await readAndWrite(await lockedInstant(tx));
+  if (!before.ok) return before.refusal;
   const old = await readOld(tx, context.spine.taskTypeId, oldId, client);
   const at = await lockedInstant(tx);
-  const ask = async (action: 'read' | 'write' | 'share', scope: Scope) =>
-    await checkAuthorityAt(tx, subjects, { collection: 'task', action, scope }, at);
-  const reads = await ask('read', { kind: 'record', id: oldId });
-  if (!reads.ok) return reads.refusal;
-  const writes = await ask('write', there);
-  if (!writes.ok) return writes.refusal;
+  const after = await readAndWrite(at);
+  if (!after.ok) return after.refusal;
   if (old === undefined) return refuseNotFound();
   if (old.client === client) return old;
-  const shares = await ask('share', there);
+  const shares = await ask('share', there, at);
   return shares.ok ? old : shares.refusal;
 }
 

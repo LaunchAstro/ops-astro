@@ -12,9 +12,10 @@
 // task's gates, a record-scoped one only its records' gates. A caller holding
 // no `decide` anywhere is refused rather than answered with an empty list,
 // because a denied list is not a success with nothing in it. The deadline is
-// the database's clock as the statement reads it (`clock_timestamp()`, not the
-// transaction's start, #444) with the decide path's inclusive boundary, so the
-// list never offers a gate the decision would refuse `GATE_EXPIRED`.
+// the database's clock when the statement runs (`statement_timestamp()`, one
+// instant for the whole list, not the transaction's start, #444) with the
+// decide path's inclusive boundary, so the list never offers a gate the
+// decision would refuse `GATE_EXPIRED`.
 //
 // Of the gates the grant reaches, it lists only those `task.decide` would let
 // the caller decide, asked with decide's own checks rather than a copy of them:
@@ -61,7 +62,7 @@ const PENDING = `select g.id as gate_id, ver.id as version_id, ver.version::text
         and r.record_type_id = $2
         and r.deleted_at is null
         and g.state = 'pending'
-        and g.expires_at > clock_timestamp()
+        and g.expires_at > statement_timestamp()
         and lin.state = 'live'
         and ver.superseded_at is null
         and ($3::boolean or r.id = any($4::uuid[]))

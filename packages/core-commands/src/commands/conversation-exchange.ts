@@ -181,7 +181,7 @@ async function keep(
   );
   if (inserted.length === 0) return await replyTo(tx, asked);
   await tx.query(
-    `update conversations set last_activity_at = greatest(now(), last_activity_at)
+    `update conversations set last_activity_at = greatest(clock_timestamp(), last_activity_at)
       where business_id = $1 and id = $2`,
     [tx.businessId, asked.conversationId],
   );

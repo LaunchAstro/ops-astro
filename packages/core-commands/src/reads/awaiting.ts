@@ -35,7 +35,7 @@ export async function awaitingApproval(
        join public.proposal_versions ver
          on ver.business_id = g.business_id and ver.id = g.version_id
       where g.business_id = $1
-        and g.state = 'pending' and g.expires_at > clock_timestamp()
+        and g.state = 'pending' and g.expires_at > statement_timestamp()
         and ver.superseded_at is null
         and run.task_id = any($2::uuid[])
       group by run.task_id`,
