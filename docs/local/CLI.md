@@ -209,8 +209,9 @@ pnpm cli map frontier <id>
 - Reads take a detail level. `brief` is id, title and state. `standard` (the
   default) adds the summary, description, blockers and the latest five
   comments. `full` is everything, the whole thread and history included. A
-  blocker the reader may not read is never listed: it is counted as
-  `blockersWithheld`.
+  blocker the reader may not read is never listed. An agent is told how many
+  as `blockersWithheld`; a member reading through record grants (a client
+  login, owner answer 22) is told no count, as on the board.
 - Output is terse text. `--json` prints minimal JSON, and `--fields` keeps only
   the fields named.
 - `task list` pages 20 at a time (at most 100 with `--limit`). A page ends with

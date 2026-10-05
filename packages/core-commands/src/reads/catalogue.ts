@@ -60,7 +60,7 @@ import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
 import { boardPage } from './board-rows.ts';
-import { blockersFor, isRefusal, parsePaging, taskAt } from './detail.ts';
+import { isRefusal, parsePaging, readerBlockers, taskAt } from './detail.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -417,7 +417,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         ? task
         : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) };
       if (operands.detail !== undefined) {
-        const blockers = await blockersFor(tx, subjectsOf(session), recordId);
+        const blockers = await readerBlockers(tx, session, recordId);
         return {
           ok: true,
           detail: operands.detail,

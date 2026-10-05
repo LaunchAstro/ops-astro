@@ -8,8 +8,19 @@
 // projection of what the caller may already read, never a wider read.
 
 import type { TaskDetail, TaskSummary } from '../../../core-wire/src/index.ts';
-import { checkAuthority, QUOTAS, wayfinderFacts } from '../../../core-records/src/index.ts';
-import type { QuotaLimits, Subject, TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  QUOTAS,
+  readableScope,
+  subjectsOf,
+  wayfinderFacts,
+} from '../../../core-records/src/index.ts';
+import type {
+  QuotaLimits,
+  Session,
+  Subject,
+  TenantQuery,
+} from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
 
 export type Detail = 'brief' | 'standard' | 'full';
@@ -96,6 +107,25 @@ export async function blockersFor(
     if (subjects.length > 0 && (await mayRead(tx, subjects, id))) shown.push(id);
   }
   return { blockedBy: shown, withheld: all.length - shown.length };
+}
+
+/**
+ * The blockers a leveled `task.read` shows its caller. An agent credential
+ * reads the agent view (catalogue #418), as the agent prefix does: every
+ * blocker withheld, by count. A member reading through record grants is a
+ * client login under owner answer 22 and is told no count of what it may not
+ * read, as `task.board` tells it none (SL07-B22-ANSWER).
+ */
+export async function readerBlockers(
+  tx: TenantQuery,
+  session: Session,
+  recordId: string,
+): Promise<Blockers> {
+  if (session.credentialScope !== undefined) return await blockersFor(tx, [], recordId);
+  const subjects = subjectsOf(session);
+  const { blockedBy, withheld } = await blockersFor(tx, subjects, recordId);
+  const { business } = await readableScope(tx, subjects, 'task', 'read');
+  return { blockedBy, withheld: business ? withheld : 0 };
 }
 
 /**
