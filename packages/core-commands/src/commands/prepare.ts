@@ -589,9 +589,10 @@ export async function prepareCommand(
   // The map whose grant admitted this, and the refusal that stands if the
   // target has left it by the time it is locked.
   let viaMap: { readonly id: string; readonly refusal: Refused } | undefined;
+  let asked: Parameters<typeof checkAuthority>[2] | undefined;
   // A `self` row asks no grant: its handler reaches the caller's own rows only.
   if (declaration.authorisedOn !== 'self') {
-    const asked = {
+    asked = {
       // From the declaration, never written in here: see `CommandDeclaration`.
       collection: declaration.collection,
       action: declaration.action,
@@ -660,6 +661,13 @@ export async function prepareCommand(
     // runtime-locked target is asked again at record scope under those locks.
     if (viaMap !== undefined && (await coveringMap(tx, request, declaration)) !== viaMap.id) {
       return viaMap.refusal;
+    }
+    // The grant was asked before the wait for the row: asked again now it is
+    // held, so a revocation that committed meanwhile refuses the write (#443).
+    if (asked !== undefined && declaration.targetLock === 'command') {
+      const scope = viaMap === undefined ? asked.scope : { kind: 'record' as const, id: viaMap.id };
+      const still = await checkAuthority(tx, subjectsOf(session), { ...asked, scope });
+      if (!still.ok) return refused(still.refusal);
     }
     // A comment on a trashed task is answered as one on a missing task, before
     // the revision: the trash bumped it, and naming the current revision would

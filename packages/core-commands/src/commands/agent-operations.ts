@@ -882,7 +882,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       operands: recordIdOperand(() => refuseNotFound()),
       // The task checked under the delegation (`run:write`, which the mint
       // grants only where the person holds it); the agent is the recorded actor.
-      serve: async (tx, { session, request }, _operands, _delegation, taskId) => {
+      serve: async (tx, { session, request, declaration }, _operands, delegation, taskId) => {
         const spine = await readTaskSpine(tx);
         return await reviseRunState(
           tx,
@@ -893,7 +893,17 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             knowledge: request['knowledge'],
             unknowns: request['unknowns'],
           },
-          session.actorId,
+          {
+            id: session.actorId,
+            askAgain: async (task) => {
+              const still = await checkDelegatedAuthority(tx, delegation, {
+                collection: declaration.collection,
+                action: declaration.action,
+                scope: { kind: 'record', id: task },
+              });
+              return still.ok ? undefined : refused(still.refusal);
+            },
+          },
         );
       },
     }),

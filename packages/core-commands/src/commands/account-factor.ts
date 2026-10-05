@@ -26,6 +26,7 @@ import {
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,
+  sessionEnded,
 } from '../../../core-records/src/index.ts';
 import type { SecondFactor, Session, TenantQuery } from '../../../core-records/src/index.ts';
 import {
@@ -44,7 +45,7 @@ import {
 import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
 import { codeOf, freshSignIn, wrongCodeLock } from './account-factor-checks.ts';
 import { judged, type FactorCaller } from './account-factor-judged.ts';
-import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { isCommandRefusal, refuseCommand, type CommandRefusal } from './refusal.ts';
 
 export type { FactorCaller } from './account-factor-judged.ts';
 
@@ -59,6 +60,22 @@ const BODY_FIXES: readonly string[] = ['Send only { "code": "<the six digits>" }
 const NEWER_FIXES: readonly string[] = [
   'A newer set-up started while this one was on its way. Use the newest, or start again.',
 ];
+const ENDED_FIXES: readonly string[] = ['Sign in again: this session was signed out.'];
+
+/**
+ * The live factor under the login's lock, with the session asked again after
+ * the wait: one signed out while this waited changes nothing (#443).
+ */
+async function lockedFactor(
+  tx: TenantQuery,
+  session: Session,
+  caller: FactorCaller,
+): Promise<SecondFactor | undefined | CommandRefusal> {
+  const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
+  if (await sessionEnded(tx, caller.presented))
+    return refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES);
+  return live;
+}
 
 /**
  * First enrolment: a person with no factor, after a fresh password sign-in
@@ -94,14 +111,14 @@ export async function enrolSecondFactor(
   const issued = await provider.enrol(caller.accessToken);
   const recorded = await judged(sending, act, async (tx, session) => {
     if (!issued.ok) return providerRefusal(issued.fault, 'answer');
-    const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
+    const live = await lockedFactor(tx, session, caller);
+    if (live !== undefined && isCommandRefusal(live)) return live;
     if (await holdsVerified(tx, caller, live))
       return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
     // A newer one, recorded since that check, stays the target; this one is a stray.
     if (live !== undefined && live.id !== startedFrom)
       return refuseCommand('VERSION_STALE', [], NEWER_FIXES);
-    // An enrolment never completed is replaced, not stacked: the newest
-    // unverified factor is the one the first code completes.
+    // Never completed: replaced, not stacked; the first code completes the newest unverified.
     if (live !== undefined) await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
     await recordFactorEnrolled(tx, {
       personId: session.personId,
@@ -209,7 +226,8 @@ export async function removeSecondFactor(
   let ended = 0;
   const recorded = await judged({ ...sending, proven: proved.ok }, act, async (tx, session) => {
     if (!proved.ok) return providerRefusal(proved.fault, 'code');
-    const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
+    const live = await lockedFactor(tx, session, caller);
+    if (live !== undefined && isCommandRefusal(live)) return live;
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
     ended = await endOthersOnChange(tx, session, caller.presented);
     await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
@@ -245,7 +263,8 @@ async function recordVerify(
   caller: FactorCaller,
   target: SecondFactor,
 ): Promise<VerifyRecord> {
-  const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
+  const live = await lockedFactor(tx, session, caller);
+  if (live !== undefined && isCommandRefusal(live)) return { refusal: live };
   // Removed or replaced by another tab between the two transactions.
   if (live?.id !== target.id)
     return { refusal: refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES) };

@@ -46,6 +46,7 @@ export {
   endOwnSession,
   listSeenSessions,
   openResetWindow,
+  sessionEnded,
   settleResetWindow,
   waitForNextSecond,
   type SeenSession,
