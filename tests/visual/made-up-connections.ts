@@ -166,7 +166,7 @@ export const SIGNAL_READ: ConnectionSignalResult = {
   nightRound: {
     roundOn: '2026-09-24',
     steps: STEPS,
-    notClean: STEPS.filter((step) => step.tone !== 'plain').length,
+    notClean: STEPS.filter((step) => step.tone === 'bad').length,
   },
   roster: [
     {

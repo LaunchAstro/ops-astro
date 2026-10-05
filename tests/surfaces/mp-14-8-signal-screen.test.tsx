@@ -10,6 +10,7 @@
 
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { RollupFloor } from '../../apps/web/src/data/rollup-floor.ts';
 import { ConnectionsScreen } from '../../apps/web/src/screens/Connections.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import type {
@@ -139,6 +140,9 @@ const ALL = [...LIVE_ONLY, grant('unused', 'ran_out', -60), grant('fleet-taken',
 
 /** What the stub answers `connection.signal` with. */
 type Answer = ConnectionSignalResult | 'refused' | 'down';
+
+const clientOf = (businessKey: string, fetch: typeof globalThis.fetch): OperationsClient =>
+  new OperationsClient({ origin: '', businessKey, signedIn: true, fetch });
 
 const opened: Mounted[] = [];
 
@@ -392,6 +396,153 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     expect(outcome(page)).toBe('empty');
     expect(text(page, '[data-signal]')).toContain('No grants, tripwires or night round yet');
     expect(page.find('#grants')).toBeNull();
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B.1 a client label is drawn isolated, and a fleet grant is marked apart from any name', async () => {
+    const label = `${String.fromCodePoint(0x202e)}Acme`;
+    const spoof: GrantView = { ...grant('spoof', 'live', 90), client: { id: 'k-s', label } };
+    const named: GrantView = {
+      ...grant('named', 'live', 90),
+      client: { id: 'k-n', label: 'Fleet · every client' },
+    };
+    const { page } = await open(signalBody([spoof, named, ...LIVE_ONLY]));
+    const isolated = page.find('[data-grant="spoof"] [data-grant-client]');
+    expect(isolated?.tagName).toBe('BDI');
+    expect(isolated?.textContent).toBe(label);
+    expect(page.find('[data-grant="fleetx"] [data-grant-fleet]')).not.toBeNull();
+    expect(page.find('[data-grant="named"] [data-grant-fleet]')).toBeNull();
+    expect(page.find('[data-grant="named"] bdi[data-grant-client]')?.textContent).toBe(
+      'Fleet · every client',
+    );
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B.2 the heads and lede claim no reach the read does not state', async () => {
+    const { page } = await open(signalBody(ALL));
+    for (const right of page.all('[data-signal] .sec__right')) {
+      expect(right.textContent).not.toMatch(/fleet/iu);
+    }
+    expect(text(page, '.grl__lede')).not.toMatch(/across the book/iu);
+    expect(text(page, '.grl__lede')).toContain('you can see');
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B.3 a change of grant draws loading, then only the new grant rows', async () => {
+    const answerOf = (body: ConnectionSignalResult, hold?: Promise<void>) =>
+      (async (url: string | URL): Promise<Response> => {
+        const at = String(url);
+        if (at.endsWith('/connection/signal')) {
+          await hold;
+          return json(body);
+        }
+        return json({
+          ok: true,
+          connections: [],
+          counts: { all: 0, active: 0, degraded: 0, broken: 0, clientConnections: 0 },
+        });
+      }) as typeof fetch;
+    const opener: { release?: () => void } = {};
+    const hold = new Promise<void>((resolve) => {
+      opener.release = resolve;
+    });
+    const alpha = clientOf('alpha', answerOf(signalBody([grant('alpha-only', 'live', 90)])));
+    const bravo = clientOf('bravo', answerOf(signalBody([grant('bravo-only', 'live', 90)]), hold));
+    const page = await mount(
+      <ConnectionsScreen client={alpha} grantKey="alpha:a@x:0" now={() => NOW} />,
+    );
+    opened.push(page);
+    await tick();
+    expect(page.find('[data-grant="alpha-only"]')).not.toBeNull();
+    await page.render(<ConnectionsScreen client={bravo} grantKey="bravo:a@x:0" now={() => NOW} />);
+    await tick();
+    expect(outcome(page)).toBe('loading');
+    expect(page.find('[data-grant="alpha-only"]')).toBeNull();
+    opener.release?.();
+    await tick();
+    expect(page.all('[data-grant]').map((row) => (row as HTMLElement).dataset['grant'])).toEqual([
+      'bravo-only',
+    ]);
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B.3 a re-read refused after a ready answer draws denied and none of the earlier rows', async () => {
+    const answers: (() => Response)[] = [
+      () => json(signalBody(ALL)),
+      () => json({ refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] }, 403),
+    ];
+    const scripted = ((url: string | URL): Promise<Response> =>
+      Promise.resolve(
+        String(url).endsWith('/connection/signal')
+          ? (answers.shift() as () => Response)()
+          : json({
+              ok: true,
+              connections: [],
+              counts: { all: 0, active: 0, degraded: 0, broken: 0, clientConnections: 0 },
+            }),
+      )) as typeof fetch;
+    const refreshers: (() => void)[] = [];
+    const rollup: RollupFloor = {
+      follow: (onRefresh) => {
+        refreshers.push(onRefresh);
+        return () => null;
+      },
+    };
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch: scripted,
+    });
+    const page = await mount(
+      <ConnectionsScreen client={client} grantKey="alpha:a@x:0" now={() => NOW} rollup={rollup} />,
+    );
+    opened.push(page);
+    await tick();
+    expect(page.find('#grants')).not.toBeNull();
+    await act(() => {
+      for (const refresh of refreshers) refresh();
+    });
+    await tick();
+    expect(outcome(page)).toBe('denied');
+    expect(page.find('#grants')).toBeNull();
+    expect(page.all('[data-grant]')).toHaveLength(0);
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B.4 a task cite links only a task key, and a task cite with no key is flat text', async () => {
+    const body = signalBody(ALL);
+    const round = body.nightRound as NonNullable<ConnectionSignalResult['nightRound']>;
+    const steps = [
+      ...round.steps,
+      step('odd', 'plain', { kind: 'task', ref: '../settings', label: 'Odd' }),
+      step('keyless', 'plain', { kind: 'task', ref: null, label: 'Keyless' }),
+    ];
+    const { page } = await open({ ...body, nightRound: { ...round, steps } });
+    for (const id of ['odd', 'keyless']) {
+      const cite = page.find(`[data-night-step="${id}"] [data-night-cite]`) as HTMLElement | null;
+      expect(cite?.tagName).toBe('SPAN');
+      expect(cite?.title).not.toContain('exceptions');
+    }
+    expect(page.find('[data-night-step="bad-0"] [data-night-cite]')?.getAttribute('href')).toBe(
+      '/task/T-7',
+    );
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B.6 a live grant under a minute from its end never reads Ran out', async () => {
+    const closing: GrantView = {
+      ...grant('closing', 'live', 0),
+      expiresAt: new Date(NOW + 30_000).toISOString(),
+    };
+    const passed: GrantView = { ...grant('passed', 'live', 0), expiresAt: minutesFromNow(-2) };
+    const { page } = await open(signalBody([closing, passed, ...LIVE_ONLY]));
+    const ttl = (id: string): HTMLElement | null =>
+      page.find(`[data-grant="${id}"] [data-grant-ttl]`) as HTMLElement | null;
+    expect(ttl('closing')?.textContent).toBe('Under 1m left');
+    expect(ttl('closing')?.dataset['tone']).toBe('warn');
+    expect(ttl('passed')?.textContent).not.toBe('Ran out');
+    expect(ttl('passed')?.dataset['tone']).toBe('warn');
     await page.unmount();
   });
 });
