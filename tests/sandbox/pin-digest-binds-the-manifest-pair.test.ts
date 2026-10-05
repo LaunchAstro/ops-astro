@@ -70,3 +70,14 @@ it('refuses a site whose pin has no image id with no pin, before the digest', ()
     why: 'pin image',
   });
 });
+
+it('refuses a missing file even when the pin was made from an empty one', () => {
+  const empty = new Uint8Array();
+  const mismatch = { ok: false, reason: 'pin mismatch', why: 'pin digest' };
+  expect(checkPin(tree({ 'package-lock.json': LOCK }), entry(pinDigest(empty, LOCK)))).toEqual(
+    mismatch,
+  );
+  expect(checkPin(tree({ 'package.json': MANIFEST }), entry(pinDigest(MANIFEST, empty)))).toEqual(
+    mismatch,
+  );
+});
