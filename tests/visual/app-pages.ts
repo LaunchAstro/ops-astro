@@ -220,7 +220,8 @@ export async function answer(
 
 /** Which screen the app drew: its sign-in form, a gate, its server error, or the page itself. */
 export function screenOf(): string {
-  if (document.querySelector('.signin__form') !== null) return 'the sign-in form';
+  // The enrolment page (C39-T) wears the sign-in form's classes and marks itself `data-enrol`.
+  if (document.querySelector('.signin__form:not([data-enrol])') !== null) return 'the sign-in form';
   // main.tsx draws one bare paragraph when it cannot reach the server.
   const bare = document.querySelector('#app > p:only-child')?.textContent ?? '';
   if (bare.includes('cannot reach its server')) return 'the server error';

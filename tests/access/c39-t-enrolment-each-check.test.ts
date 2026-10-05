@@ -41,9 +41,9 @@ describe.skipIf(noDatabase)('C39-T enrolment, each check alone', () => {
   it('C39-T enrolment: each of the link checks refuses alone, a spent token, one past its lifetime and an invitation no longer pending', async () => {
     e.users.mode('accept');
     const asked = e.users.received.length;
-    for (const [name, plant] of PLANTS) {
+    for (const [index, [name, plant]] of PLANTS.entries()) {
       // oxlint-disable-next-line no-await-in-loop
-      const { id, token } = await invited(c.admin, addressFor(`each-${name}`));
+      const { id, token } = await invited(c.admin, addressFor(`each-check-${String(index)}`));
       // oxlint-disable-next-line no-await-in-loop
       await w.db.admin.execute(plant, [id]);
       // oxlint-disable-next-line no-await-in-loop
