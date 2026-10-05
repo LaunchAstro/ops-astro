@@ -44,6 +44,8 @@ export const READ_NAMES = [
   'task.execution',
   // What an observed effect came from (T2c2); the task page draws it in T2g.
   'task.receipt',
+  // Custody's rows as set or not set (C31).
+  'secret.list',
   // The gates waiting on the caller's decision (MP-6-1).
   'gate.pending',
   // A conversation at its address (AW-03).

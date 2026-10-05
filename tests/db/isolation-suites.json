@@ -13,6 +13,7 @@
     "tests/db/api-events-forwarder.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
+    "tests/custody/c31-credentials.test.ts",
     "tests/api/mp-6-1-isolation.test.ts",
     "tests/api/mp-6-4-isolation.test.ts",
     "tests/api/aw-03-isolation.test.ts",
@@ -196,9 +197,11 @@
     "tests/web/mp-3-1-isolation-api.test.tsx",
     "tests/web/dock-door-isolation-api.test.tsx",
     "tests/api/preference-write-client-user.test.ts",
+    "tests/automations/c33-occurrences.test.ts",
     "tests/wayfinder/wf-1.test.ts",
     "tests/db/take-lease-path.test.ts",
     "tests/broker/aw-10-lookup-slot-isolation.test.ts",
-    "tests/pickup/pickup-stop-at-spent-hold-lease.test.ts"
+    "tests/pickup/pickup-stop-at-spent-hold-lease.test.ts",
+    "tests/commands/agent-queue-under-delegation.test.ts"
   ]
 }

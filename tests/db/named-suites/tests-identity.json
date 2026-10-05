@@ -18,7 +18,8 @@
     "tests/identity/identifier-resolution-contract.test.ts",
     "tests/identity/login-kind-race.test.ts",
     "tests/identity/mp-2-11-recent-sign-in.test.ts",
-    "tests/identity/restricted-role.test.ts"
+    "tests/identity/restricted-role.test.ts",
+    "tests/identity/session-list-subject-wide-ending.test.ts"
   ],
   "conformance": [
     "tests/identity/agent-deactivation.test.ts",

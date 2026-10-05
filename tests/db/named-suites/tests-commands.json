@@ -3,6 +3,7 @@
     "tests/commands/agent-capabilities-intersection.test.ts",
     "tests/commands/agent-operation-id.test.ts",
     "tests/commands/agent-path.test.ts",
+    "tests/commands/agent-queue-under-delegation.test.ts",
     "tests/commands/agent-system-fields.test.ts",
     "tests/commands/audit-origin.test.ts",
     "tests/commands/board-not-found.test.ts",

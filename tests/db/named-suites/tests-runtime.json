@@ -114,6 +114,10 @@
     "tests/runtime/t3e2-outage.test.ts",
     "tests/runtime/t3f-expired-lease.test.ts",
     "tests/runtime/t3f-lease-edges.test.ts",
+    "tests/runtime/trace-export-gap-records-the-cursor-its-batch-read.test.ts",
+    "tests/runtime/trace-retention-fresh-export-test-rejects-a-lost-fresh-span.test.ts",
+    "tests/runtime/trace-retention-keeps-an-event-exported-after-its-due-check.test.ts",
+    "tests/runtime/trace-retention-step-back-cannot-bring-back-a-confirmed-run.test.ts",
     "tests/runtime/upgrade-guards.test.ts"
   ],
   "conformance": [
