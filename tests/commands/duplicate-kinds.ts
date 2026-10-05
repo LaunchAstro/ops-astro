@@ -164,6 +164,9 @@ export const DECLARED: Readonly<
   'access.grant': { carry: 'not carried', plant: 'authority, not task content' },
   'access.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'access.end': { carry: 'not carried', plant: 'authority, not task content' },
+  'invitation.create': { carry: 'not carried', plant: 'a team invitation, not task content' },
+  'invitation.resend': { carry: 'not carried', plant: 'a team invitation, not task content' },
+  'invitation.revoke': { carry: 'not carried', plant: 'a team invitation, not task content' },
   'credential.issue': { carry: 'not carried', plant: 'authority, not task content' },
   'credential.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'session.end': { carry: 'not carried', plant: 'a sign-in, not task content' },
@@ -207,6 +210,8 @@ export const DECLARED: Readonly<
   'activation.roll_back': { carry: 'not carried', plant: 'an automation, not task content' },
   'activation.turn_off': { carry: 'not carried', plant: 'an automation, not task content' },
   'approval.revoke': { carry: 'not carried', plant: 'an automation, not task content' },
+  // MP-14-7a: a repair names a connection, never task content.
+  'connector.repair': { carry: 'not carried', plant: 'a connection, not task content' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

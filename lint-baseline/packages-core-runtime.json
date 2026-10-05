@@ -1,6 +1,6 @@
 {
   "rules": {
-    "eslint(max-lines-per-function)": 22,
+    "eslint(max-lines-per-function)": 21,
     "eslint(max-lines)": 9,
     "eslint(no-negated-condition)": 1,
     "eslint(require-await)": 1,

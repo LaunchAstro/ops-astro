@@ -34,9 +34,10 @@
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
-import { giveBack } from './broker-give-back.ts';
+import { giveBack, lockEnvelope } from './broker-give-back.ts';
 import { atCeiling } from './broker-reserve.ts';
-import type { Broker } from './broker-types.ts';
+import type { Broker, BrokerRoute } from './broker-types.ts';
+import type { CustodyOutcome } from './custody.ts';
 
 /** The most a lookup answer is read: one short code. */
 const LOOKUP_BYTES = 4 * 1024;
@@ -64,6 +65,11 @@ interface Asked {
   readonly id: string;
   readonly operation_key: string;
   readonly route_key: string | null;
+  readonly route_reach: string | null;
+  readonly credential_kind: string | null;
+  readonly provider: string | null;
+  readonly credential_ref: string | null;
+  readonly account: string | null;
   readonly reserved_minor: string;
 }
 
@@ -81,6 +87,42 @@ function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
 }
 
 /**
+ * The configured route that carried the call, as its row records it: key,
+ * reach, credential kind, provider and credential (catalogue #439, #943),
+ * and only while the operation still goes to that provider. The account is
+ * the one custody named for the credential before the send (`describe`). A
+ * row with no provider or credential (written before 20261005100149), or no
+ * account (a `replay` credential has none, so one key cannot be told from
+ * another), cannot name the account that carried it, and an absence elsewhere
+ * proves nothing: a person records the outcome.
+ */
+function carryingRoute(broker: Broker, call: Asked, provider: string): BrokerRoute | string {
+  if (call.provider === null || call.credential_ref === null) {
+    return 'its row names no provider or credential that carried it; a person records the outcome';
+  }
+  if (call.account === null) {
+    return 'custody named no account carrying it; a person records the outcome';
+  }
+  if (call.provider !== provider) {
+    return 'its operation now goes to another provider; a person records the outcome';
+  }
+  const carrying = broker.routes.find(
+    (one) =>
+      one.key === call.route_key &&
+      one.reach === call.route_reach &&
+      one.credentialKind === call.credential_kind &&
+      one.provider === call.provider &&
+      one.credentialRef === call.credential_ref,
+  );
+  return carrying ?? 'no configured route is the one that carried it';
+}
+
+/** The lookup went out on the account and credential kind that carried the call. */
+const sameCarrier = (outcome: CustodyOutcome, call: Asked): boolean =>
+  outcome.kind !== 'answered' ||
+  (outcome.credentialKind === call.credential_kind && outcome.account === call.account);
+
+/**
  * Ask the call's provider whether it began the call, or `waits` when the
  * route has no room for it. A failed lookup is no proof, never a throw.
  */
@@ -95,8 +137,8 @@ async function ask(
   if (operation === undefined || adapter?.lookup === undefined || !adapter.readLookup) {
     return nothing('no lookup is declared for this operation; a person records the outcome');
   }
-  const route = broker.routes.find((one) => one.key === call.route_key);
-  if (route === undefined) return nothing('no configured route reaches its provider');
+  const route = carryingRoute(broker, call, operation.provider);
+  if (typeof route === 'string') return nothing(route);
   // A person's own subscription is never carried by unattended work (AW-01's credential rule).
   if (route.credentialKind === 'subscription') {
     return nothing("the route's credential is a person's own; a person records the outcome");
@@ -117,6 +159,9 @@ async function ask(
       timeoutMs: operation.timeoutMs,
       maxResponseBytes: LOOKUP_BYTES,
     });
+    if (!sameCarrier(outcome, call)) {
+      return nothing('custody asked through another account than the one that carried it');
+    }
     return proofOf(outcome, operation, adapter);
   } catch {
     return { proved: false, reason: 'custody could not ask the provider', silent: true };
@@ -194,17 +239,6 @@ async function record(
   return { callId, proved: proof.proved, reason };
 }
 
-/** The call's envelope, locked before the call's row, in settlement's order (`lockCall`). */
-async function lockEnvelope(tx: TenantQuery, callId: string): Promise<void> {
-  await tx.query(
-    `select 1 from public.model_calls c
-       join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
-       join public.task_envelopes e on e.business_id = r.business_id and e.id = r.envelope_id
-      where c.business_id = $1 and c.id = $2 for update of e`,
-    [tx.businessId, callId],
-  );
-}
-
 /**
  * The provider phase for one business, as system work. `unanswered` is the
  * pass's: the providers that gave a lookup no answer in any business so far.
@@ -219,7 +253,8 @@ export async function reconcileProviderCalls(
     businessId,
     async (tx) =>
       await tx.query<Asked>(
-        `select c.id, c.operation_key, c.route_key, c.reserved_minor::text as reserved_minor
+        `select c.id, c.operation_key, c.route_key, c.route_reach, c.credential_kind,
+                c.provider, c.credential_ref, c.account, c.reserved_minor::text as reserved_minor
            from public.model_calls c
            left join public.attempts att
              on att.business_id = c.business_id and att.reservation_id = c.reservation_id

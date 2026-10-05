@@ -17,16 +17,24 @@
 // The setting's row is held `for share` before the answer is read. The
 // settings write takes it `for update` (`writeBusinessSetting`), so a change in
 // flight is waited for and then seen, and one arriving later waits for this
-// transaction. It sits outside the runtime's lock order, as the grant rows do:
-// the settings write holds no runtime lock, so neither side can wait on the
-// other in a cycle. A business with no row has the default, off.
+// transaction. A business with no row has the default, off, and a missing row
+// locks nothing, so the settings install lock (`lockSettingsInstall`, the
+// advisory key `<business id>:business_settings`) is held shared first: the
+// install takes it exclusive before it adds the row, so the first row cannot
+// commit between this check and the dispatch marker. Both sit outside the
+// runtime's lock order, as the grant rows do: the settings install and write
+// hold no runtime lock, so neither side can wait on the other in a cycle.
 
-import type { TenantQuery } from '../../core-records/src/index.ts';
+import { lockSettingsInstall, type TenantQuery } from '../../core-records/src/index.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { isReviewedOutput, launchNotDecided } from './reviewed-output.ts';
 
-/** The business's `client_sign_off_required`, its row held for share to commit. */
+/**
+ * The business's `client_sign_off_required`, held to commit: the install lock
+ * shared, then the row for share.
+ */
 export async function holdSignOffSetting(tx: TenantQuery): Promise<boolean> {
+  await lockSettingsInstall(tx, 'shared');
   const rows = await tx.query<{ readonly value: unknown }>(
     `select value from public.business_settings
       where business_id = $1 and key = 'client_sign_off_required'

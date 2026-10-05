@@ -102,3 +102,15 @@ export function wayfinderCondition(alias: string): string {
                 where wp.business_id = ${alias}.business_id and wp.id = ${alias}.uuid_4
                   and wp.record_type_id = ${alias}.record_type_id and wp.data ->> 'type' = 'map'))`;
 }
+
+/**
+ * The task row `alias` is a map's ticket: not itself a map, filed under one,
+ * whose map is then `alias.uuid_4`. A grant on that map covers it (W12), never
+ * a nested map.
+ */
+export function mapTicketCondition(alias: string): string {
+  return `(coalesce(${alias}.data ->> 'type', 'task') <> 'map'
+    and exists (select 1 from public.records mp
+                 where mp.business_id = ${alias}.business_id and mp.id = ${alias}.uuid_4
+                   and mp.record_type_id = ${alias}.record_type_id and mp.data ->> 'type' = 'map'))`;
+}

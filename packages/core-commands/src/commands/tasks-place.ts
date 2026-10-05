@@ -25,6 +25,7 @@ import {
   readFieldDefinitions,
   checkAuthority,
   subjectsOf,
+  wayfinderFacts,
 } from '../../../core-records/src/index.ts';
 import { refuseOwnerTicketMove } from './wayfinder.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -80,6 +81,21 @@ async function refuseUnreachedRecord(
     scope: { kind: 'record', id },
   });
   return reached.ok ? undefined : reached.refusal;
+}
+
+/**
+ * A neighbour that is a ticket of the target's own map, under a write grant on
+ * that map (W12), never a nested map. The sibling read below asks again, in one
+ * statement, that it is still filed under that parent.
+ */
+async function reachedThroughMap(
+  tx: TenantQuery,
+  context: CommandContext,
+  id: string,
+  parent: string | null,
+): Promise<boolean> {
+  if (parent === null || (await wayfinderFacts(tx, id))?.mapId !== parent) return false;
+  return (await refuseUnreachedRecord(tx, context, parent)) === undefined;
 }
 
 /**
@@ -420,16 +436,30 @@ export async function rankTask(
       ),
     );
   }
+  const parent = (target.data['parent'] as string | undefined) ?? null;
   const given = [afterId, beforeId].filter((id) => id !== null);
+  // Unreached at its own scope, the target was admitted by its map's grant (W12).
+  let viaMap = await refuseUnreachedRecord(tx, context, target.id);
   for (const id of given) {
     // eslint-disable-next-line no-await-in-loop
     const unreached = await refuseUnreachedRecord(tx, context, id);
-    if (unreached !== undefined) return refused(unreached);
+    if (unreached === undefined) continue;
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await reachedThroughMap(tx, context, id, parent))) return refused(unreached);
+    viaMap ??= unreached;
   }
 
-  const parent = (target.data['parent'] as string | undefined) ?? null;
   const board = parent === null ? ((target.data['board'] as string | undefined) ?? null) : null;
   await lockSiblings(tx, parent, board);
+  // A target or neighbour admitted by the map's grant: the parent is held and read again,
+  // so a retype that committed meanwhile is refused and none commits before the rank.
+  if (
+    viaMap !== undefined &&
+    parent !== null &&
+    (await wayfinderFacts(tx, parent, true))?.type !== 'map'
+  ) {
+    return refused(viaMap);
+  }
 
   const neighbours = await tx.query<{ readonly id: string; readonly rank: string | null }>(
     `select id, ${BOARD_RANK}::text as rank from records

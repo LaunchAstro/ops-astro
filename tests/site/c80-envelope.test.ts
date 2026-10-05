@@ -126,7 +126,7 @@ describe('C80 envelope refusal', () => {
 });
 
 function page(overrides: Partial<PageObservation> = {}): PageObservation {
-  return {
+  const observed = {
     url: 'https://www.example.com/about',
     status: 200,
     documentDigest: 'sha256:doc-before',
@@ -136,6 +136,8 @@ function page(overrides: Partial<PageObservation> = {}): PageObservation {
     },
     ...overrides,
   };
+  // The served document carries what the text shows, and nothing else.
+  return { ...observed, html: `<p>${observed.text}</p>` };
 }
 
 describe('C80 one word only', () => {

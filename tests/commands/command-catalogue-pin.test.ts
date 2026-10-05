@@ -208,6 +208,10 @@ vi.mock('../../packages/core-commands/src/commands/custody-secrets.ts', async (o
   setCustodySecret: recorder('setCustodySecret'),
   clearCustodySecret: recorder('clearCustodySecret'),
 }));
+vi.mock('../../packages/core-commands/src/commands/connector-repair.ts', async (original) => ({
+  ...(await original<object>()),
+  startConnectorRepair: recorder('startConnectorRepair'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -298,6 +302,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-tags.ts', async (origin
   addTagToTask: recorder('addTagToTask'),
   removeTagFromTask: recorder('removeTagFromTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/invitations.ts', async (original) => ({
+  ...(await original<object>()),
+  invitationAct: recorder('invitationAct'),
+}));
 vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (original) => ({
   ...(await original<object>()),
   stampOwnSeen: recorder('stampOwnSeen'),
@@ -378,6 +386,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'grant.revoke': [],
   'secret.clear': ['secretId'],
   'secret.set': ['clientId'],
+  'connector.repair': ['connectionId'],
   'preference.save': [],
   'preference.dismiss_tip': [],
   'session.end': [],
@@ -396,6 +405,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'run.revise_state': ['recordId', 'runId'],
   'run.top_up': ['recordId', 'runId'],
   'inbox.seen': ['itemId'],
+  'invitation.create': [],
+  'invitation.resend': ['invitationId'],
+  'invitation.revoke': ['invitationId'],
   'notifications.set_channel': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
@@ -444,6 +456,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'client.create',
   'client.list',
   'client.set_privacy',
+  'connection.fleet',
+  'connector.repair',
   'conversation.allowance',
   'conversation.list',
   'conversation.message',
@@ -463,6 +477,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'inbox.read',
   'inbox.seen',
   'inbox.unattended',
+  'invitation.create',
+  'invitation.resend',
+  'invitation.revoke',
   'legal.approve_version',
   'legal.draft_version',
   'legal.publish_version',
@@ -725,6 +742,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'access.end', operationId: 'op', holderId: 'person' },
   { command: 'secret.set', operationId: 'op', name: 'n', value: 'v' },
   { command: 'secret.clear', operationId: 'op', secretId: 's' },
+  { command: 'connector.repair', operationId: 'op', connectionId: 'c' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -829,6 +847,9 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
   { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
+  { command: 'invitation.create', operationId: 'op', name: 'N', email: 'e', role: 'member' },
+  { command: 'invitation.resend', operationId: 'op', invitationId: 'i' },
+  { command: 'invitation.revoke', operationId: 'op', invitationId: 'i' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -919,6 +940,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'access.end': ['endAccessOnSettings', 'request'],
   'secret.set': ['setCustodySecret', 'request'],
   'secret.clear': ['clearCustodySecret', 'request'],
+  'connector.repair': ['startConnectorRepair', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -963,6 +985,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'preference.dismiss_tip': ['dismissOwnTip', 'request'],
   'inbox.seen': ['stampOwnSeen', 'item'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
+  'invitation.create': ['invitationAct', 'request'],
+  'invitation.resend': ['invitationAct', 'request'],
+  'invitation.revoke': ['invitationAct', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -1002,7 +1027,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and five from an expected revision', () => {
+  it('exempts the same one hundred and ten from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

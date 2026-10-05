@@ -157,11 +157,26 @@ jobs:
         run: ./gitleaks git --no-banner --redact --config .gitleaks.toml .
 
   check:
-    name: local checks
+    # `local checks` in shards (CI-SHARDS-2). Run whole it took 35 of the merge
+    # queue's 38 minutes, so each shard runs the build, its share of the test
+    # files and its share of every other step below, split by measured time
+    # (scripts/ci-shards.ts, tests/ci/ci-shard-plan.json);
+    # tests/ci/ci-shards*.test.ts prove each step and test file runs in exactly
+    # one shard. It runs on every event the job ran on whole. `local checks`
+    # below is the required check, and it passes only when every shard did.
+    name: local checks shard ${{ matrix.shard }}
     needs: [gate]
     runs-on: ubuntu-latest
-    # Its slowest green run in the day to 1 October 2026: 33.6 min.
-    timeout-minutes: 60
+    # The whole job's slowest green run in the 10 merge groups of 5 October
+    # 2026 was 36.4 min; a third of it is about 12 min.
+    timeout-minutes: 30
+    strategy:
+      # Every shard runs to the end, so one red names all of its failures.
+      fail-fast: false
+      # 3, sized so a shard ends inside the database shards' window; with 16
+      # database shards, each merge group holds 21 jobs while both run.
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -207,25 +222,27 @@ jobs:
           # The suites in tests/ci/container-suites.json run in the next step instead.
           CONTAINER_SUITES: apart
           CHECK_SCOPE: local checks
+          CHECK_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
       # CI-SPEED: every step below is queue-only (`queueOnly`,
       # scripts/ci-scope.json). On a pull request each says it runs in the
-      # merge queue and passes; on a merge group or a push each runs in full.
+      # merge queue and passes; on a merge group or a push each runs in full,
+      # in the one shard scripts/ci-shards.ts gives it; the others say which.
       # They start containers, and a new network interface aborts a browser
       # capture's page load in flight (net::ERR_NETWORK_CHANGED), so they run
       # here, after every capture in `pnpm check`.
       - name: The suites that start containers, after the browser captures
-        run: node scripts/ci-scope.ts 'local checks' -- pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'container suites' -- pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
       # S0-6 content policy: the built page, in the headless shell above,
       # refuses planted scripts. Alone, since it builds apps/web/dist.
       - name: The built page refuses planted scripts in a real browser
-        run: node scripts/ci-scope.ts 'local checks' -- pnpm vitest run tests/browser/
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'browser proofs' -- pnpm vitest run tests/browser/
         env:
           BROWSER_PROOFS: '1'
       - name: Semgrep p/default on the supply-chain settings, image pinned by digest (CQ-3)
-        run: node scripts/ci-scope.ts 'local checks' -- bash scripts/local/semgrep-settings.sh
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'semgrep settings' -- bash scripts/local/semgrep-settings.sh
       # `pnpm check` reads the same policy over the working tree on a pull request too.
       - name: Public content in the actual checked-out snapshot
-        run: node scripts/ci-scope.ts 'local checks' -- node scripts/public-content-check.mjs --repo "$PWD"
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'public content snapshot' -- node scripts/public-content-check.mjs --repo "$PWD"
       # S0-1 promotion same artefact, a dry run in CI: the release step turns
       # the build `pnpm check` just made into the build output (the Vercel
       # re-plan), stored the way staging keeps it, under the name the staging
@@ -240,6 +257,8 @@ jobs:
           set -euo pipefail
           decision="$(node scripts/ci-scope.ts 'local checks' --decide)"
           case "$decision" in run) ;; skip) exit 0 ;; *) exit 1 ;; esac
+          shard="$(node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'promotion dry run' --decide)"
+          case "$shard" in run) ;; skip) exit 0 ;; *) exit 1 ;; esac
           version="$(node -p "JSON.parse(require('node:fs').readFileSync('apps/web/dist/build.json', 'utf8')).build")"
           store="${RUNNER_TEMP}/artefacts"
           mkdir -p "$store"
@@ -253,7 +272,28 @@ jobs:
         env:
           DOCKER: docker
           L5_RUNTIME_PROOFS: '1'
-        run: node scripts/ci-scope.ts 'local checks' -- bash scripts/local/restart-proof.sh --suite tests/acceptance/inbox-worker-restart.test.ts
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'inbox restart' -- bash scripts/local/restart-proof.sh --suite tests/acceptance/inbox-worker-restart.test.ts
+
+  local-checks:
+    # The required check (ruleset 23396133, .github/required-checks.json): one
+    # name over every `local checks` shard, as `database conformance` is over
+    # its shards. `always()` runs it when a shard failed, was skipped or was
+    # cancelled, and each of those fails it on every event; without it this
+    # job would be skipped, and a skipped required check reads as passed. The
+    # shards run on pull requests too, so no skip passes anywhere.
+    name: local checks
+    needs: [gate, check]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Every shard succeeded
+        env:
+          SHARDS: ${{ needs.check.result }}
+          GATE: ${{ needs.gate.result }}
+        run: |
+          echo "local checks shards: $SHARDS, contamination gate: $GATE"
+          test "$SHARDS" = success
 
   database-gate:
     # Proving the gate. These probes start their own throwaway Postgres, run
@@ -540,11 +580,23 @@ jobs:
   isolation:
     # The client-isolation, restricted-call, pooled-crossover and permission
     # refusal suites (also in `database conformance`), named on their own.
-    name: isolation tests
+    # In shards (CI-SHARDS-2): run whole it took 29 of the merge queue's 38
+    # minutes, so each shard runs its share of the suites and of the steps
+    # beside the runner, split by measured time (scripts/ci-shards.ts); every
+    # suite and step runs in exactly one shard (tests/ci/ci-shards*.test.ts).
+    # `isolation tests` below is the required check.
+    name: isolation tests shard ${{ matrix.shard }}
     needs: [gate]
     runs-on: ubuntu-latest
-    # Its slowest green run in the day to 1 October 2026: 21.2 min.
-    timeout-minutes: 40
+    # The whole job's slowest green run in the 10 merge groups of 5 October
+    # 2026 was 30.9 min; half of it is about 15 min.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # 2: one suite alone takes 10 minutes, so a third shard would end barely
+      # sooner and hold another runner in every merge group.
+      matrix:
+        shard: [1, 2]
     services:
       postgres:
         # The same digest and throwaway password as `database conformance`.
@@ -575,7 +627,7 @@ jobs:
       # the merge queue, the only way into main, and passes, so the check
       # still reports under its name; on a merge group or a push each always
       # runs. No step here carries a condition.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard ${{ matrix.shard }}/${{ strategy.job-total }}
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # The T4a fixture suites are named here too; their clone past a
@@ -583,22 +635,39 @@ jobs:
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
       # The named service-stop proof with both addresses a local setup has; it
       # skips without both, and the shard jobs set only one.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'service stop, two addresses' -- pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
       # The seed's boundary proof is a node:test file, so no manifest runs it: it
       # makes and drops its own migrated databases on this service.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- node --test tests/review/seed-boundaries-proof.test.mjs
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'seed boundaries' -- node --test tests/review/seed-boundaries-proof.test.mjs
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
       # So is the proof that an HTTPS redirect cannot carry the seed's key to plaintext HTTP.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- node --test tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'seed redirect' -- node --test tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+
+  isolation-tests:
+    # The required check: one name over every `isolation tests` shard, on the
+    # same terms as `local checks` above.
+    name: isolation tests
+    needs: [gate, isolation]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Every shard succeeded
+        env:
+          SHARDS: ${{ needs.isolation.result }}
+          GATE: ${{ needs.gate.result }}
+        run: |
+          echo "isolation tests shards: $SHARDS, contamination gate: $GATE"
+          test "$SHARDS" = success
 
   parity:
     # API-1: every app action has its API and CLI equivalent; no database.

@@ -296,7 +296,7 @@ function Version(props: VersionProps): ReactElement {
 
       {version.payload === undefined ? null : (
         <pre className="card__body" data-version="payload">
-          {stored(version.payload)}
+          <code>{stored(version.payload)}</code>
         </pre>
       )}
 
@@ -313,7 +313,7 @@ function Version(props: VersionProps): ReactElement {
           {/* As stored. This screen does not re-render evidence, so what a
               decider reads is what the decision was signed over. */}
           <pre className="card__body" data-evidence="body">
-            {stored(version.evidence.body)}
+            <code>{stored(version.evidence.body)}</code>
           </pre>
         </div>
       )}

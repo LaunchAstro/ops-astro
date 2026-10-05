@@ -113,8 +113,11 @@ the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 Under those locks, `task.propose` checks the cap's currency and room and the
 open envelope's, T1's "existing budget authority", as the handback's successor
 bound does (`refuseBeyondBudget`, `propose.ts`). The envelope is asked first
-(`refuseBeyondEnvelope`), and each room is less the hold the superseded version
-releases. The cap is the open envelope's, else the one the caller passed, else
+(`refuseBeyondEnvelope`), and each room is less what superseding the live
+versions gives back, by the rule the classifier closes a hold by
+(`releasedOnClosing`, `budget-ledger.ts`, #836): a hold closes at its settled
+model calls' spend, and a marked hold or one with a call still open gives back
+nothing. The cap is the open envelope's, else the one the caller passed, else
 the business cap: with no `capId` passed, which is `task.restart`,
 `lockProposal` reads the business cap (`readBusinessCapId`) and locks it with
 the rest of the set. The check runs
@@ -1540,6 +1543,21 @@ both tenancy-scoped with row security forced, and the fair share's count
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
   account. The application group may select, insert and update.
+- Carrier (`20261005100149_model_call_carrier`, catalogue #439, #943): the
+  route's provider (`provider`) and custody credential (`credential_ref`) are
+  written with the route at every send, and the account custody names for
+  that credential (`describe`) before the send, not only at a priced settle.
+  The reconciliation pass asks only through the route with the row's key,
+  reach, kind, provider and credential, only while the operation still goes
+  to that provider, and releases only when custody's lookup answers on the
+  same credential kind and account. A row missing any of them (written
+  before the migration, or a replay credential, which has no account)
+  releases nothing: a person records its outcome. The account is the
+  credential file's `account` label, and the pass trusts it: it must be the
+  provider's own account or organisation id, never reused for another
+  account's key. A destination's address is not recorded: never re-point a
+  destination at another instance the same key reaches while calls on it are
+  held unknown. Test: `reconcile-releases-nothing-without-its-carrier`.
 - Usage (`0098_model_call_usage`, ORCH37): a settled call records the model
   the provider says answered (`model_id`, null when the answer named none)
   and the units its answer says it used (`input_units`, `output_units`, both
@@ -1600,6 +1618,16 @@ both tenancy-scoped with row security forced, and the fair share's count
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
   update and delete, and the application group may select and insert only.
+
+An observation settles its hold by the same rule (#832): the reservation and
+the envelope close at the attempt's priced cost plus what the hold's settled
+calls cost, and the attempt records its own cost. A call on the hold sent and
+never settled, or a total above the hold, keeps the whole hold as
+`liability_unknown` for a person; `task.observe` refuses `BUDGET_UNAVAILABLE`
+retaining it, in words that name which. Observe locks the envelope with the
+step, lease and reservation, ahead of them in the contract's order, so it never
+waits on the envelope while holding a lease a hand-back is parked on (#834;
+`tests/runtime/observe-counts-the-holds-calls.test.ts`).
 
 The broker (`core-custody/src/broker.ts`, with its steps in the
 `broker-*.ts` files beside it) writes both, and the `model.call`
@@ -1835,7 +1863,14 @@ or delete.
   is the core's one rule (`four-eyes.ts`), the one T2e's top-up and T3c's
   write-off use: the band is `four_eyes_threshold` in the envelope currency's
   major unit, read `for share` under the locks, null is off and no stored row
-  is the shipped 500. Above it the first approval is recorded and applies
+  is the shipped 500; the settings install lock (`lockSettingsInstall`,
+  advisory key `<business id>:business_settings`) is held shared first, so a
+  first row cannot commit under a decision that read none. Both are held
+  before the locked instant is read (`lockedInstant(tx, ['four_eyes_threshold'])`
+  in the top-up, the write-off and the budget-stop answer), so a grant that
+  ends while the decision waits on them no longer counts. Postgres floors the
+  band exactly to whole minor units, so a band of 500.005 makes 500.01 need
+  two people. Above it the first approval is recorded and applies
   nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
   threshold, a different amount is `FIELD_VALUE_INVALID`, and a second,
   distinct holder approving the same amount completes it, but only while the
@@ -2182,7 +2217,13 @@ launch of the reviewed output is the only decision an effect waits on.
   and writes nothing), and the dispatch recheck refuses every lease of the
   business with the same code, whatever approved it. The setting's row is held
   `for share` before it is read, so a change in flight is waited for and then
-  seen. The client's own sign-off is MP-11-5's (phase 8); until the portal
+  seen. A missing row locks nothing, so the business's settings install lock
+  (`lockSettingsInstall`, advisory key `<business id>:business_settings`) is
+  held shared first; the install takes it exclusive before adding rows, so a
+  first row cannot commit between the check and the dispatch marker
+  (catalogue #463). Dispatch and the decision hold both before they read the
+  locked instant (`lockedInstant(tx, ['client_sign_off_required'])`), so a
+  lease, delegation or grant that ends during that wait is judged ended. The client's own sign-off is MP-11-5's (phase 8); until the portal
   exists the work stays held, visibly, under that code.
 - **The receipt link.** The worker reads the provider's answer
   (`readProviderAnswer`, `apps/worker/usage.ts`): a status outside 2xx (a

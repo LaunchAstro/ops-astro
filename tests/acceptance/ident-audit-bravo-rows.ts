@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Rows of bravo's that the identifier cases hand an alpha caller by id (C81,
-// API-2, C32, C31): written directly, so the alpha caller must not learn they exist.
+// API-2, C32, C31, MP-14-7a): written directly, so the alpha caller must not learn
+// they exist.
 // Split from `ident-audit-cases.ts` to keep that file under the line limit.
 
+import { seedBrokenConnection } from '../connections/fixture.ts';
 import type { World } from './world.ts';
 import { seedAutomation, type SeededAutomation } from '../automations/seed.ts';
 
@@ -23,12 +25,15 @@ export async function bravoAutomation(world: World): Promise<BravoAutomation> {
   return { automation, alphaVersionId: alpha.versionId, alphaActivationId: alpha.activationId };
 }
 
-export async function bravoRecords(world: World): Promise<{
+interface BravoRows {
   readonly legalVersionId: string;
   readonly credentialId: string;
   readonly clientId: string;
   readonly secretId: string;
-}> {
+  readonly connectionId: string;
+}
+
+export async function bravoRecords(world: World): Promise<BravoRows> {
   // A drafted legal document version of bravo's (C81), written directly: the
   // alpha caller is handed its id and must not learn it exists.
   const bravoLegal = await world.db.admin.execute<{ readonly id: string }>(
@@ -70,5 +75,7 @@ export async function bravoRecords(world: World): Promise<{
     credentialId: String(bravoCredential[0]?.id),
     clientId: String(bravoClient[0]?.id),
     secretId: String(bravoSecret[0]?.id),
+    // MP-14-7a: a broken connection of bravo's, the one a repair could name.
+    connectionId: await seedBrokenConnection(world.db.admin, world.bravo, 'a bravo source'),
   };
 }

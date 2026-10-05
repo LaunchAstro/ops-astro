@@ -113,6 +113,12 @@ part's cases (`inPart`), so each case runs once, in one part.
 `tests/acceptance/d06-generated.test.ts`, about 15 minutes whole, runs in six.
 `tests/ci/db-shards.test.ts` proves every item lands in exactly one shard and
 every case of a split suite in exactly one part.
+`isolation tests` runs the same way in two shards (`isolation tests shard
+<i>`), and `local checks` in three, split by measured time
+(`scripts/ci-shards.ts`, `tests/ci/ci-shard-plan.json`); each required name is
+an aggregate that passes only when every shard succeeded, and
+`tests/ci/ci-shards*.test.ts` prove every suite, step and test file runs in
+exactly one shard.
 
 Since CI-SPEED (the owner, 4 October 2026) there are 16 shards, and
 `node scripts/db-census.ts` lists every run item's tests with vitest and shows

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "The copy finder lists an agent acting for more than one person as no one's, at the first search and at the search after an erasure (cases moved from c81-privacy-find-copies-links)."
+}

@@ -410,7 +410,7 @@ async function lockDecision(
     changed:
       'decide: the holds on the rejected lineage changed under discovery; roll back and rediscover rather than extending the lock set',
   });
-  const lockedAt = await lockedInstant(tx);
+  const lockedAt = await lockedInstant(tx, ['client_sign_off_required']);
   return { ok: true, value: { locks, capId, existing, lineageVersions, lockedAt } };
 }
 
