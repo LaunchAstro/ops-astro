@@ -441,6 +441,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     token_id: randomUUID(),
     state: 'asked',
   },
+  // C40B: nothing on the journey asks for a password reset.
+  'public.password_reset_tokens': {
+    login_id: randomUUID(),
+    token_hash: '0'.repeat(64),
+    created_at: '2099-01-01T00:00:00Z',
+    expires_at: '2099-01-01T00:10:00Z',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

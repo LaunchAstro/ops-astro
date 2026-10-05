@@ -34,6 +34,7 @@ const HARNESS = 'tests/support/fresh-database.ts';
 const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/api/server-onerror.test.ts': 'skips without SURFACE_API_PORT',
   'tests/cli/mounted-cli.test.ts': 'skips without SURFACE_API_PORT',
+  'tests/api/c40-password-set-provider.test.ts': 'skips without C40_AUTH_URL (a pinned GoTrue)',
   'tests/runtime/aw-13-local-target.test.ts':
     'skips without TRACE_TARGET_ENV_FILE (a running local trace target)',
   'tests/acceptance/restart-and-expiry.test.ts': 'skips without L5_RESTART_CONTAINER_NAME',
