@@ -20,6 +20,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { signOutSession } from '../../packages/core-commands/src/index.ts';
 import {
   endOtherSeenSessions,
+  openResetWindow,
+  settleResetWindow,
+  waitForNextSecond,
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
 import type { Answer } from '../api/fixture.ts';
@@ -143,11 +146,14 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
   }, 120_000);
 
   /**
-   * Two endings through bravo, each with how many of the four writes it races:
-   * the session's own sign-out (its key) races all four; an end of the login's
-   * other sessions (its subject's: the sessions bravo has seen are already
-   * ended, so it ends none by key) races the first alone, since it ends every
-   * later sign-in of that login inside the clock-skew minute too.
+   * Three endings through bravo, each with how many of the four writes it races:
+   * the session's own sign-out (its key) races all four; a password reset's
+   * window (its subject's, opened as the reset spends its token, C40) races all
+   * four, settled a whole second later as a reset that set the password is, so
+   * the next sign-in is served; an end of the login's other sessions (its
+   * subject's: the sessions bravo has seen are already ended, so it ends none by
+   * key) races the first alone, since it ends every later sign-in of that login
+   * inside the clock-skew minute too.
    */
   const ENDINGS = [
     [
@@ -162,6 +168,22 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
         };
         const ended = await signOutSession(caller, {}, provider);
         return 'ended' in ended && ended.ended === 1;
+      },
+    ],
+    [
+      "a password reset's window",
+      4,
+      async (presented: VerifiedSubject) => {
+        const bravo = w.controls.fixture.db.app;
+        const reset = await bravo.withBusiness(
+          w.bravo,
+          async (tx) => await openResetWindow(tx, presented.subject),
+        );
+        await bravo.withBusiness(w.bravo, async (tx) => {
+          await waitForNextSecond(tx);
+          await settleResetWindow(tx, reset);
+        });
+        return reset.length > 0;
       },
     ],
     [
