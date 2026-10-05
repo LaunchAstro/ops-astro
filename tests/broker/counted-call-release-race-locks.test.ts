@@ -127,7 +127,7 @@ for (const answer of ['top-up', 'end'] as const) {
     const work = await stoppedUnsent();
     const before = await envelopeActual(work);
     const other = racer(s);
-    const paused = pausedAfter('order by id for update');
+    const paused = pausedAfter('id = any($2::uuid[]) order by id');
     const pending = other.withBusiness(
       s.business,
       async (tx) => await answering(answer, paused.wrap(tx), work),
@@ -138,9 +138,10 @@ for (const answer of ['top-up', 'end'] as const) {
       expect(await calls(work), 'skipped: the count holds it').toMatchObject([
         { state: 'reserved' },
       ]);
-      expect(await envelopeActual(work)).toBe(before + 500);
+      expect(await envelopeActual(work), 'nothing given back by the sweep').toBe(before);
       paused.resume();
       expect(await pending).toMatchObject({ ok: true });
+      expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
     } finally {
       paused.resume();
       await pending;
@@ -175,7 +176,7 @@ for (const answer of ['top-up', 'end'] as const) {
       // The figures the answer reports include what it gave back.
       expect(answered).toMatchObject(
         answer === 'end'
-          ? { ok: true, value: { spentMinor: 0 } }
+          ? { ok: true, value: { spentMinor: 0, releasedMinor: 900 } }
           : { ok: true, value: { heldMinor: await holdOf(work) } },
       );
     } finally {
