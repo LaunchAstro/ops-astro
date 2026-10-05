@@ -100,7 +100,7 @@ it('takes an Env list of NAME=value items with unique names after the fixed open
     ['A-B=x'],
     ['A=x', 'A=y'],
     ['A=x\ny'],
-    ['A=caf\u00e9'],
+    ['A=caf\u00E9'],
     [7],
   ])
     expect(withSite({ env: [...S1_OPEN, ...tail] })).toEqual(faulted('pin list'));
@@ -125,7 +125,7 @@ it("holds each Env list to B3: the class's fixed pairs first, in order, then no 
   for (const env of [
     S1_OPEN,
     [...S2_OPEN, 'npm_config_OFFLINE=false'],
-    [...S2_OPEN, 'NODE_ENV=production'],
+    [...S2_OPEN, 'HOME=/root'],
   ]) {
     const base = { 'linux/arm64': { image: ID('d'), env } };
     expect(read({ ...LIST, base })).toEqual(faulted('pin list'));

@@ -242,12 +242,13 @@ it('refuses a name over 255 bytes and a path over 4,096 bytes', async () => {
 });
 
 it('refuses a .git directory in the tree', async () => {
-  const config = blob('[core]\n\tfsmonitor = sh -c id\n');
+  const gitDirectory = level([`100644 ${blob('[core]\n\tfsmonitor = sh -c id\n')} config`]);
+  const page = blob('<h1>Old</h1>\n');
+  const tops = ['.git', 'GIT~1'].map((name) =>
+    commit(level([`040000 ${gitDirectory} ${name}`, `100644 ${page} index.md`])),
+  );
   await allRefused(
-    [
-      assemble([...SITE_FILES, `100644 ${config} .git/config`]),
-      assemble([...SITE_FILES, `100644 ${config} GIT~1/config`]),
-    ],
+    tops.map((top) => assembleTree(read, top, { ...EDIT, path: 'index.md' })),
     'tree config',
   );
 });

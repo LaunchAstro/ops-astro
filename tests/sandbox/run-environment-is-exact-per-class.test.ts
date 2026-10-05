@@ -100,7 +100,7 @@ it('refuses a base variable npm reads as configuration, in any spelling, or that
     '=x',
     'A-B=x',
     'NODE_VERSION=22\n',
-    'NODE_VERSION=caf\u00e9',
+    'NODE_VERSION=caf\u00E9',
   ]) {
     expect(s2Env([...BASE, item])).toEqual(faulted);
     expect(s1Env([item], record([]))).toEqual(faulted);
