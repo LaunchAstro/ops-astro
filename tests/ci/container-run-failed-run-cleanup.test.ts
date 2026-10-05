@@ -236,3 +236,55 @@ it('a backup whose dump container docker will not remove still answers one faile
     expect(record, String(publicKey)).toMatchObject({ outcome: 'failed', stage: 'container' });
   }
 });
+
+it('a backup whose dump fails before any output and keeps its container records stage container', async () => {
+  standIn([`echo ${ID} > "$cid"`, `: > "${containers}/${ID}"`, 'exit 1'], 99);
+  const dumps = '../../scripts/ops/backup-dump.mjs';
+  const { pgDump } = (await import(
+    /* @vite-ignore */
+    dumps
+  )) as { pgDump: (url: string) => Promise<unknown> };
+  const backups = '../../scripts/ops/backup.mjs';
+  const { runBackup } = (await import(
+    /* @vite-ignore */
+    backups
+  )) as { runBackup: (options: Record<string, unknown>) => Promise<Record<string, unknown>> };
+  let kept = '';
+  const record = await runBackup({
+    dump: () =>
+      pgDump('postgres://backup:fixture-only@source/app').catch((error: unknown) => {
+        kept = /id file (\S+) is kept/u.exec((error as Error).message)?.[1] ?? '';
+        throw error;
+      }),
+    storeUrl: 'unused',
+    reach: storeRefused,
+  });
+  expect(record).toMatchObject({ outcome: 'failed', stage: 'container' });
+  expect(kept).not.toBe('');
+  rmSync(join(kept, '..'), { recursive: true, force: true });
+}, 15_000);
+
+it('a stop whose removal by id is refused fails, naming the container, even when the client then closes cleanly', async () => {
+  standIn(
+    [
+      `echo ${ID} > "$cid"`,
+      `: > "${containers}/${ID}"`,
+      '/bin/sleep 30 & s=$!',
+      "trap 'kill $s; exit 0' TERM INT",
+      'wait',
+    ],
+    99,
+  );
+  const { run, arg } = await started();
+  const cidfile = arg('--cidfile=');
+  for (let tries = 0; tries < 200; tries += 1) {
+    if (existsSync(cidfile) && readFileSync(cidfile, 'utf8').trim() === ID) break;
+    // oxlint-disable-next-line no-await-in-loop -- wait for the stand-in to write the id
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+  }
+  await expect(run.stop()).rejects.toThrow(ID);
+  expect(readdirSync(containers)).toEqual([ID]);
+  rmSync(join(cidfile, '..'), { recursive: true, force: true });
+}, 40_000);
