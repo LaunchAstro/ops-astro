@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The agent CLI's compact output (API-3): terse text by default, minimal JSON
-// on request, never a schema or boilerplate. It shapes what the API answered
-// and decides nothing: a refusal is the server's, put in one plain line.
+// The agent CLI's compact output (API-3): terse text, or minimal JSON; it decides nothing.
 
 type Json = Readonly<Record<string, unknown>>;
 
@@ -52,10 +50,7 @@ export function pageText(items: readonly Json[], next: string | null): string {
 /** Codes about who may act, which name the key the caller lacks. */
 const AUTHORITY = /GRANT|PERMIT|DELEGATION|AUTH|AGENT/u;
 
-/**
- * A refusal in one line: the code, the key it needs where it is about
- * authority, and the server's first fix in plain words.
- */
+/** A refusal in one line: its code, the key it needs if about authority, the first fix. */
 export function refusalLine(body: Json, key: string): string {
   const code = typeof body['code'] === 'string' ? body['code'] : 'REFUSED';
   const names = Array.isArray(body['names']) ? (body['names'] as unknown[]) : [];

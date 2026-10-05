@@ -262,11 +262,7 @@ export function isVerbLine(argv: readonly string[]): boolean {
   return group === 'help' || VERB_TABLE.some((row) => row.verb === `${group ?? ''} ${verb ?? ''}`);
 }
 
-/**
- * A verb line (`pnpm cli task get <id>`): the connection is read as for an
- * operation, from `--business`, `--api` and `--agent` or the environment,
- * and the rest of the line goes to the verb CLI (`verbs.ts`) as typed.
- */
+/** A verb line (`pnpm cli task get <id>`): the connection read as an operation's, the rest to `verbs.ts`. */
 async function verbLine(argv: readonly string[], env: Environment, io: Io): Promise<number> {
   const rest: string[] = [];
   const connection: Record<string, string | true> = {};

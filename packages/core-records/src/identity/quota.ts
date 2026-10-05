@@ -1,41 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Quotas (API-3) for a signed-in caller, a person or an agent's login: requests
-// in a window and calls at once, each per credential, per person and per
-// business, and the page size a list read may ask for. `QUOTAS` is the whole
-// table; nothing else holds a number for any of them. An agent credential
-// (API-2) is not a login: its own envelope counts it, records handed out
-// included (`apps/api/auth/agent-quota.ts`), and it never reaches this gate.
-//
-// **Counted after the door, never before it.** A call is charged only once
-// login resolution has admitted it (`withSession`, and the agent envelope
-// after `resolveAgentLogin`), so the business, the credential and the person
-// are verified facts. Charging at the HTTP door would let a caller the
-// business does not admit, holding any valid login, use up a business's
-// quota: the door knows the business key and the bearer, not membership.
-//
-// **One charge per request.** A served request runs inside `withQuotaScope`,
-// which the composition root installs on every request. The first admission
-// in it takes the slot and the request's window entries; the envelope's one
-// bounded retry and its failure record admit again inside the same scope and
-// are not charged twice. Outside a served request (a worker, recovery, a test
-// calling an executor directly) there is no scope and no quota: those are not
-// callers of the API.
-//
-// **No await between the check and the charge.** `take` reads every counter
-// and, only if all of them pass, charges all of them, in one synchronous run
-// of the event loop. Two calls at once in one process cannot both pass on the
-// same last slot. The counters are this process's: a deployment of several
-// API processes gives each its own, which the served installation (one API
-// process) does not have.
-//
-// A refused call is not charged, so a caller retrying into an exhausted
-// window does not push it further out, and it is recorded where every other
-// refusal at the door is: `authentication_attempts`, in the call's own
-// transaction, with the code and no body.
-//
-// Export size and model cost are not here: no operation a login calls exports
-// or spends model cost today. Each joins this table with the first that does.
+// Quotas (API-3): requests in a window and calls at once, per credential, person and business,
+// and list page sizes, from the one table `QUOTAS`; charged once per served request after login
+// resolution admits it, checked and charged with no await between (docs/local/API.md, step 6).
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
@@ -113,8 +80,7 @@ export function createQuotaGate(options: QuotaOptions = {}): QuotaGate {
     limits,
     take(holders) {
       const at = now();
-      // A key nobody has called with for a whole window holds nothing: dropped
-      // here, so callers seen once do not accumulate.
+      // A key unused for a whole window is dropped, so callers seen once do not accumulate.
       if (windows.size > SWEEP_AT) for (const key of windows.keys()) recent(key, at);
       const keys = HOLDERS.map((holder) => [holder, keyOf(holder, holders)] as const);
       for (const [holder, key] of keys) {
@@ -193,11 +159,7 @@ interface Scope {
 
 const scopes = new AsyncLocalStorage<Scope>();
 
-/**
- * One served request, charged at most once. Its slot is given back when the
- * request ends, however it ends: answered, refused or faulted. A request held
- * open past its answer (`holdQuotaSlot`) gives it back when that ends instead.
- */
+/** One served request, charged at most once; its slot comes back when it ends, or its stream does. */
 export async function withQuotaScope<T>(gate: QuotaGate, run: () => Promise<T>): Promise<T> {
   const scope: Scope = { gate, release: undefined, held: false };
   try {
@@ -207,11 +169,7 @@ export async function withQuotaScope<T>(gate: QuotaGate, run: () => Promise<T>):
   }
 }
 
-/**
- * Keep this request's slot past its answer: a live stream answers at once and
- * runs on, and it is one call at once until it ends. The function returned
- * gives the slot back; the stream calls it when it ends, however it ends.
- */
+/** Keeps this request's slot past its answer, for a live stream; the stream calls the release. */
 export function holdQuotaSlot(): () => void {
   const scope = scopes.getStore();
   if (scope === undefined) return nothingHeld;
@@ -226,11 +184,7 @@ export function pageSizes(): QuotaLimits['pageSize'] {
   return scopes.getStore()?.gate.limits.pageSize ?? QUOTAS.pageSize;
 }
 
-/**
- * Charge the call now that login resolution has admitted it, or refuse it
- * `QUOTA_EXCEEDED` and record the refusal in the caller's transaction.
- * Nothing outside a served request, and nothing a second time within one.
- */
+/** Charges an admitted call once per served request, or refuses and records `QUOTA_EXCEEDED`. */
 export async function admitQuota(
   tx: TenantQuery,
   owner: AttemptOwner,

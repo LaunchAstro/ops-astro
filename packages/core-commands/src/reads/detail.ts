@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Detail levels and pages for the task reads (API-3, CS-15.19). Every read
-// the agent CLI makes names a level: `brief` (ids, names, state), `standard`
-// (what most work needs, the CLI's default) or `full` (everything, the whole
-// thread and history included). A read that names none answers `full`, as it
-// did before levels existed, so the app's callers are unchanged. A level is a
-// projection of what the caller may already read, never a wider read.
+// Detail levels (`brief`, `standard`, `full`; none = `full`) and pages for the task reads
+// (API-3, CS-15.19): a projection of what the caller may already read (docs/local/CLI.md).
 
 import { createHash } from 'node:crypto';
 import type { SharedTaskView, TaskDetail, TaskSummary } from '../../../core-wire/src/index.ts';
@@ -37,7 +33,6 @@ const invalid = (field: string, fix: string): CommandRefusal =>
 /** The level, page size and page token a body asks for, each checked; absent ones stay absent. */
 export function parsePaging(body: Readonly<Record<string, unknown>>): Paging | CommandRefusal {
   const { detail, limit, page } = body;
-  // The quota table this request is served under (`identity/quota.ts`), the one place they are set.
   const { most } = pageSizes();
   if (detail !== undefined && (typeof detail !== 'string' || !DETAILS.has(detail))) {
     return invalid('detail', 'Send detail as brief, standard or full.');
@@ -68,11 +63,7 @@ export interface Blockers {
   readonly withheld: number;
 }
 
-/**
- * May these subjects read this task? The read pipeline's own question
- * (`reads/dispatch.ts`): read on the task at its record scope, or at the scope
- * of the map it is a ticket of (W12); a business-wide grant answers both.
- */
+/** May these subjects read this task: at its record scope, or its map's (W12, `reads/dispatch.ts`)? */
 async function mayRead(
   tx: TenantQuery,
   subjects: readonly Subject[],
@@ -85,11 +76,7 @@ async function mayRead(
   return (await checkAuthority(tx, subjects, { ...asked, scope: { kind: 'record', id: map } })).ok;
 }
 
-/**
- * The blockers `subjects` may read, and a count of the rest, which are left
- * out and named as withheld, never listed by id (standing gate 9). No subjects
- * (an agent, whose delegation reaches only its own task) withholds them all.
- */
+/** The blockers `subjects` may read, and a count of the rest, never their ids (gate 9). */
 export async function blockersFor(
   tx: TenantQuery,
   subjects: readonly Subject[],
@@ -104,13 +91,7 @@ export async function blockersFor(
   return { blockedBy: shown, withheld: all.length - shown.length };
 }
 
-/**
- * The blockers a leveled `task.read` shows its caller. An agent credential
- * reads the agent view (catalogue #418), as the agent prefix does: every
- * blocker withheld, by count. A member reading through record grants is a
- * client login under owner answer 22 and is told no count of what it may not
- * read, as `task.board` tells it none (SL07-B22-ANSWER).
- */
+/** A leveled read's blockers: a credential's all withheld (#418); a record-grant reader told no count (answer 22). */
 export async function readerBlockers(
   tx: TenantQuery,
   session: Session,
@@ -123,10 +104,7 @@ export async function readerBlockers(
   return { blockedBy, withheld: business ? withheld : 0 };
 }
 
-/**
- * Every live task this one is blocked by, oldest link first; a link from a
- * record of another type is not a blocker. Never answered as is.
- */
+/** Every live task blocking this one, oldest link first (tasks only); never answered as is. */
 async function blockersOf(tx: TenantQuery, recordId: string): Promise<readonly string[]> {
   const rows = await tx.query<{ readonly id: string }>(
     `select l.from_record_id::text as id from public.record_links l
@@ -182,11 +160,7 @@ export function taskAt(
   };
 }
 
-/**
- * The shared view (`readSharedTask`) at a level, for a reader outside the
- * business: projected from the shared fields and client comments it already
- * carries, never from the detail. `brief` is its id, title and state.
- */
+/** The shared view (`readSharedTask`) at a level, projected from itself, never from the detail. */
 function sharedAt(detail: Detail, shared: SharedTaskView): Readonly<Record<string, unknown>> {
   const { fields, comments } = shared;
   if (detail === 'brief') {
@@ -223,11 +197,7 @@ const HEX: ReadonlySet<string> = new Set('0123456789abcdef');
 const only = (text: string, allowed: ReadonlySet<string>): boolean =>
   [...text].every((char) => allowed.has(char));
 
-/**
- * A page token read by its one grammar, `<count>.<digest>`: how many tasks the
- * pages so far showed (a whole number from 1, no leading zero) and the sha-256
- * of their ids in order (64 lowercase hex). Anything else is no token.
- */
+/** A page token by its one grammar, `<count>.<sha-256 hex of those ids>`; anything else is none. */
 function shownBy(token: string): { readonly count: number; readonly digest: string } | undefined {
   const parts = token.split('.');
   if (parts.length !== 2) return undefined;
@@ -239,14 +209,7 @@ function shownBy(token: string): { readonly count: number; readonly digest: stri
   return { count: Number(count), digest };
 }
 
-/**
- * One page of a list in its order. The token names the tasks the pages so far
- * showed, by count and digest, and the next page is served only while the list
- * still starts with exactly those tasks in that order: none shows twice and
- * none is left out, and a task added after them joins a later page. A list
- * reordered, or a task shown since removed, refuses the token, as does one
- * that names no list; it is never read as the first page.
- */
+/** One page; a token is served only while the list still starts with the tasks it names (CLI.md). */
 export function pageOf(
   tasks: readonly TaskSummary[],
   paging: Paging,

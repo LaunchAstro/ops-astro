@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The agent CLI's small general command set (API-3, CS-15.18, CS-15.19):
-// `task get|list|create|update|comment` and `map view|frontier`, each one row
-// mapping its words onto the owning command. The CLI holds no rule of its own:
-// it builds the owning command's body, posts it once through `createCli` and
-// prints what came back, compactly (`render.ts`). A refusal is the server's.
-// `task link|resolve` join with the WF-2 commands they map onto; *map status*,
-// *work this ticket* (`context`) and *changes* join with API-4's reads.
+// The agent CLI's verbs (API-3, CS-15.18): one row per verb onto its owning command, posted
+// once; the CLI holds no rule of its own and a refusal is the server's (docs/local/CLI.md).
 
 import { randomUUID } from 'node:crypto';
 import { createCli, isRefusal, type CliOptions } from './client.ts';
@@ -168,11 +163,7 @@ const keyOf = (command: CommandName): string => {
   return row === undefined ? '' : `${row.collection}:${row.action}`;
 };
 
-/**
- * The agent prefix answers a read as its command handle, the read's own answer
- * under `detail` (`agentAnswer`); the person prefix answers it flat. One shape
- * out of both, so a person and an agent read the same lines.
- */
+/** The agent prefix's read answer (`detail` under its handle) flattened as the person prefix answers. */
 function unwrap(body: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
   const inner = body['detail'];
   return typeof inner === 'object' && inner !== null && 'command' in body
@@ -200,10 +191,7 @@ function shape(row: VerbRow, answered: Readonly<Record<string, unknown>>, flags:
   return asJson ? JSON.stringify(view) : text(view);
 }
 
-/**
- * One id per intent: a write, or any agent call, carries the one it was given
- * to replay, or a new one; a person's read has nothing to replay.
- */
+/** One id per intent: a write or agent call carries `--operation`'s to replay, or a new one. */
 function operationOf(row: VerbRow, flags: Flags, agent: boolean): Body {
   const given = maybe(flags, 'operation');
   if (isWrite(row.command) || agent) return { operationId: given ?? randomUUID() };
@@ -241,8 +229,7 @@ export function createVerbCli(options: CliOptions & { readonly address?: string 
       try {
         answer = await cli.run(row.command, request);
       } catch {
-        // Never the failure's own text: it can carry the address's secret part
-        // or a bearer the request could not carry (T2 canary token).
+        // Never the failure's own text: it can carry a secret (T2 canary token).
         return {
           exit: EXIT.transport,
           out: `no answer from ${options.address ?? 'the API'}${replay}`,
