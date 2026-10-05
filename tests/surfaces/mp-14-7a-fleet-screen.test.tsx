@@ -90,6 +90,20 @@ const FLEETS: Readonly<Record<string, readonly ConnectionView[]>> = {
   bravo: BRAVO_ROWS,
 };
 
+/** A promise held open until its `release` is called. */
+const gate = (): { readonly wait: Promise<void>; readonly release: () => void } => {
+  const opener: { open?: () => void } = {};
+  const wait = new Promise<void>((resolve) => {
+    opener.open = resolve;
+  });
+  return {
+    wait,
+    release: () => {
+      opener.open?.();
+    },
+  };
+};
+
 interface Stub {
   readonly fetch: typeof globalThis.fetch;
   readonly sent: string[];
@@ -99,6 +113,8 @@ interface Stub {
   readonly holdFleet: (business: string) => () => void;
   /** Answer the next repair with this instead of starting it. */
   readonly nextRepair: (answer: 'lost' | 'stale') => void;
+  /** Hold the next repair's answer until `release` is called. */
+  readonly holdRepair: () => () => void;
 }
 
 function fleetOf(rows: readonly ConnectionView[], repaired: ReadonlySet<string>): unknown {
@@ -125,6 +141,7 @@ function server(): Stub {
   const repairIds: string[] = [];
   const repaired = new Set<string>();
   const held = new Map<string, Promise<void>>();
+  let repairHeld: Promise<void> | undefined;
   const queued: ('lost' | 'stale')[] = [];
   const answer = async (url: string | URL, init?: RequestInit): Promise<Response> => {
     const at = String(url);
@@ -139,6 +156,9 @@ function server(): Stub {
     if (at.endsWith('/connector/repair')) {
       const body = JSON.parse(String(init?.body)) as { connectionId: string; operationId: string };
       repairIds.push(body.operationId);
+      const wait = repairHeld;
+      repairHeld = undefined;
+      await wait;
       const next = queued.shift();
       if (next === 'lost') throw new TypeError('network down');
       if (next === 'stale') {
@@ -162,16 +182,14 @@ function server(): Stub {
     sent,
     repairIds,
     holdFleet: (business) => {
-      const gate: { open?: () => void } = {};
-      held.set(
-        business,
-        new Promise<void>((resolve) => {
-          gate.open = resolve;
-        }),
-      );
-      return () => {
-        gate.open?.();
-      };
+      const { wait, release } = gate();
+      held.set(business, wait);
+      return release;
+    },
+    holdRepair: () => {
+      const { wait, release } = gate();
+      repairHeld = wait;
+      return release;
     },
     nextRepair: (outcome) => {
       queued.push(outcome);
@@ -218,6 +236,8 @@ describe('MP-14-7a Connections & signal fleet', () => {
     expect(detail?.textContent).toContain('Client 11.0');
     const repair = page.find('[data-connection-repair="c-11"]') as HTMLButtonElement | null;
     expect(repair?.disabled).toBe(false);
+    await page.click('[data-connection="c-00"]');
+    expect(page.find('[data-connection-detail="c-00"]')).not.toBeNull();
     expect(page.find('[data-connection-repair="c-00"]')).toBeNull();
     await page.click('[data-connection-repair="c-11"]');
     await tick();
@@ -398,9 +418,11 @@ describe('MP-14-7a Connections & signal fleet', () => {
     expect(page.find('[data-connection-detail="c-11"] [role="alert"]')?.textContent).toContain(
       'network down',
     );
-    const release = stub.holdFleet('alpha');
+    const release = stub.holdRepair();
     await page.click('[data-connection-repair="c-11"]');
     await tick();
+    const button = page.find('[data-connection-repair="c-11"]') as HTMLButtonElement | null;
+    expect(button?.disabled).toBe(true);
     expect(stub.repairIds).toHaveLength(2);
     expect(stub.repairIds[1]).toBe(stub.repairIds[0]);
     release();
@@ -440,16 +462,21 @@ describe('MP-14-7a Connections & signal fleet', () => {
     await page.click('[data-fleet-facet="broken"]');
     await page.click('[data-connection="c-11"]');
     expect(page.find('[data-connection-detail="c-11"]')).not.toBeNull();
-    // Alpha's re-read is still in flight when the business changes to bravo.
-    const release = stub.holdFleet('alpha');
+    // Alpha's repair is still in flight when the business changes to bravo.
+    const release = stub.holdRepair();
     await page.click('[data-connection-repair="c-11"]');
     await page.render(SCREENS['agency:connections'](context('bravo')));
+    await tick();
+    await page.click('[data-connection="b-02"]');
+    const bravoRepair = page.find('[data-connection-repair="b-02"]') as HTMLButtonElement | null;
+    expect(bravoRepair?.disabled).toBe(false);
     release();
     await tick();
+    expect(page.find('[data-connection-detail="b-02"] [role="alert"]')).toBeNull();
     expect(shownIds(page).toSorted()).toStrictEqual(['b-01', 'b-02']);
     expect(page.text()).not.toContain('Source 11');
     expect(page.find('[data-fleet-facet="all"]')?.getAttribute('aria-pressed')).toBe('true');
-    expect(page.all('[data-connection-detail]')).toHaveLength(0);
+    expect(page.find('[data-connection-detail="c-11"]')).toBeNull();
     expect(page.find('[data-fleet-banner]')?.textContent).toContain('Bravo source 02');
     expect(page.find('[data-fleet-banner]')?.textContent).not.toContain('Source 11');
     await page.unmount();
