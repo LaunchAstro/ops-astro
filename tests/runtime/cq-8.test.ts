@@ -116,6 +116,8 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // comes after every wait.
   'packages/core-commands/src/commands/tasks-agent.ts',
   'packages/core-custody/src/broker-reserve.ts',
+  // AW-07b: the mail cap, counted under one lock per business and client or person.
+  'packages/core-custody/src/email-class.ts',
   // C32: the business's one access lock, taken first by every change to
   // who may do what (a grant given, a grant revoked, access ended),
   // inside the handler's transaction.
