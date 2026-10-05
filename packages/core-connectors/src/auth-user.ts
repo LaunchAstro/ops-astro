@@ -19,10 +19,8 @@
 // nothing is made or changed (`AUTH_EMAIL_EXISTS`); an update naming no user
 // is answered 404, and nothing is changed (`AUTH_USER_NOT_FOUND`).
 
+import { AUTH_USERS_PATH } from './auth-password.ts';
 import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';
-
-/** The admin route that makes a user without sending any mail. */
-export const AUTH_USERS_PATH = '/auth/v1/admin/users';
 
 /** The provider's code for an address that already holds a login: nothing was made. */
 export const AUTH_EMAIL_EXISTS = 'email_exists';
