@@ -51,6 +51,8 @@ export interface FakeUsers {
   mode(next: FakeUsersMode): void;
   /** Run `work` when the next request arrives, before it is answered. */
   beforeNext(work: () => Promise<void>): void;
+  /** Hold every answer until the release is called. */
+  hold(): () => void;
   close(): Promise<void>;
 }
 
@@ -81,6 +83,7 @@ interface Kept {
   readonly passwords: Map<string, string>;
   readonly timers: Set<NodeJS.Timeout>;
   next?: (() => Promise<void>) | undefined;
+  gate?: Promise<void> | undefined;
 }
 
 interface Asked {
@@ -162,6 +165,18 @@ function respond(mode: FakeUsersMode, asked: Asked, response: ServerResponse, ke
   }
 }
 
+/** Hold every answer until the release is called. */
+function holdAll(kept: Kept): () => void {
+  let release!: () => void;
+  kept.gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return () => {
+    kept.gate = undefined;
+    release();
+  };
+}
+
 /** Start the stand-in on a loopback port of its own. */
 export async function startFakeUsers(): Promise<FakeUsers> {
   let current: FakeUsersMode = 'accept';
@@ -176,6 +191,7 @@ export async function startFakeUsers(): Promise<FakeUsers> {
       const work = kept.next;
       kept.next = undefined;
       await work?.();
+      await kept.gate;
       respond(current, { method, path, body }, response, kept);
     })();
   });
@@ -194,6 +210,7 @@ export async function startFakeUsers(): Promise<FakeUsers> {
     beforeNext: (work) => {
       kept.next = work;
     },
+    hold: () => holdAll(kept),
     close: async () => {
       for (const timer of kept.timers) clearTimeout(timer);
       server.closeAllConnections();

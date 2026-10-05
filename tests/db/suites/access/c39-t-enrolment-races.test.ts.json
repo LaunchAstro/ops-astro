@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T enrolment races: two accepts of one link never both reach the provider, and the accepts' provider calls stay within the operation's concurrency and the route's ceiling"
+}

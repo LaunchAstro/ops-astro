@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T enrolment login safety: adopting a stranded login ends its sessions, an honest answer's ordinary fields never fault a password, and the secrecy scan reads the identity rows"
+}

@@ -22,6 +22,8 @@ let answer = '';
 let server: Server;
 let custody: Custody;
 let folder: string;
+/** A stored credential spelled as one short lower-case token. */
+const SECRET = `custody_canary_secret_${'abcdefghij'.charAt(randomBytes(1)[0]! % 10)}`;
 
 beforeAll(async () => {
   server = createServer((request, response) => {
@@ -44,7 +46,8 @@ beforeAll(async () => {
     header: 'authorization',
     value: `key-${randomBytes(18).toString('hex')}`,
   };
-  writeFileSync(credentialsFile, JSON.stringify([credential]), { mode: 0o600 });
+  const token = { ...credential, ref: 'token_key', account: 'auth-2', value: SECRET };
+  writeFileSync(credentialsFile, JSON.stringify([credential, token]), { mode: 0o600 });
   custody = await startCustody({ credentialsFile, destinations: [{ key: 'auth', origin }] });
 }, 60_000);
 
@@ -58,9 +61,9 @@ afterAll(async () => {
 });
 
 /** The outbound half of the outcome, as text, so a test can look for the canary in all of it. */
-async function refusedWith(body: string): Promise<string> {
+async function refusedWith(body: string, ref = 'auth_key'): Promise<string> {
   answer = body;
-  const outcome = await custody.dispatch('auth_key', {
+  const outcome = await custody.dispatch(ref, {
     destination: 'auth',
     path: '/auth/v1/admin/users',
     method: 'POST',
@@ -99,5 +102,22 @@ it('C39-T provider refusal: an error_code that is not one short lower-case token
     const text = await refusedWith(body);
     expect(JSON.parse(text), body).toStrictEqual({ ok: false, fault: 'status', status: 422 });
     expect(text).not.toContain(CANARY);
+  }
+});
+
+it('C39-T provider refusal: a code is one the login provider names, so a stored credential spelled as a token never leaves custody as one', async () => {
+  const bodies = [SECRET, 'custody_canary_secret', 'refresh_token_not_found'].map((code) =>
+    JSON.stringify({ code: 422, error_code: code, msg: 'refused' }),
+  );
+  for (const body of bodies) {
+    // oxlint-disable-next-line no-await-in-loop
+    const text = await refusedWith(body, 'token_key');
+    expect(JSON.parse(text), body).toStrictEqual({ ok: false, fault: 'status', status: 422 });
+    expect(text).not.toContain(SECRET);
+  }
+  for (const code of ['email_exists', 'user_not_found', 'weak_password']) {
+    // oxlint-disable-next-line no-await-in-loop
+    const text = await refusedWith(JSON.stringify({ error_code: code }), 'token_key');
+    expect(JSON.parse(text)).toMatchObject({ code });
   }
 });
