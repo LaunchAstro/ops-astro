@@ -410,6 +410,10 @@ async function recheckClaim(
             exists (select 1 from public.reservations o
                      where o.business_id = res.business_id and o.version_id = res.version_id
                        and o.id <> res.id and o.state in ('held', 'quarantined')) as active_elsewhere,
+            exists (select 1 from public.reservations n
+                     where n.business_id = res.business_id and n.version_id = res.version_id
+                       and n.run_id = res.run_id
+                       and (n.created_at, n.id) > (res.created_at, res.id)) as replaced,
             g.state as gate_state, lin.state as lineage_state,
             (ver.superseded_at is not null) as superseded,
             att.id as attempt_id, att.state as attempt_state,
@@ -813,6 +817,8 @@ interface ClaimState {
   readonly run_state: string;
   readonly settled: boolean;
   readonly active_elsewhere: boolean;
+  /** A later hold of the version and run exists: this one is history. */
+  readonly replaced: boolean;
 }
 
 /**
@@ -930,6 +936,7 @@ function replaceable(state: {
   readonly settled: boolean;
   readonly marked: boolean;
   readonly active_elsewhere: boolean;
+  readonly replaced: boolean;
 }): boolean {
   // A hold the classifier settled at its calls' spend ended as one it abandoned:
   // its attempt is `abandoned`, where an observed or written-off cost settled it.
@@ -937,12 +944,15 @@ function replaceable(state: {
     state.state === 'abandoned' ||
     (state.state === 'actual' && state.attempt_state === 'abandoned');
   // One active hold per version (0019): a version already holding elsewhere is
-  // claimed through that hold, from the queue, and not through this one.
+  // claimed through that hold, from the queue, and not through this one. Only
+  // the newest hold is replaced: an older one's remainder ignores the spend on
+  // every hold after it, so holding it again would pass the version's ceiling.
   return (
     ended &&
     !state.settled &&
     !state.marked &&
     !state.active_elsewhere &&
+    !state.replaced &&
     (state.run_state === 'claimed' || state.run_state === 'planned')
   );
 }
