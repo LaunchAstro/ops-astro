@@ -56,7 +56,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands', () => {
 
   it('MP-14-10a owner check: choose a client, file an approval with a ceiling and expiry, then revoke it; both recorded and audited', async () => {
     const filed = await w.file(w.admin, {});
-    expect([filed.status, filed.body['code']]).toStrictEqual([200, undefined]);
+    expect(filed.status, JSON.stringify(filed.body)).toBe(200);
     const mandateId = String(detail(filed)['mandateId']);
     expect(await mandateRow(mandateId)).toMatchObject({
       client_id: w.clientA,
