@@ -139,6 +139,11 @@ it.each([
   ['a content type', '<meta http-equiv="Content-Type" content="text/html; charset=utf-8">'],
   ['a content language', '<meta http-equiv="content-language" content="en-AU">'],
   ['an IE compatibility mode', '<meta http-equiv="X-UA-Compatible" content="IE=edge">'],
+  ['a DNS prefetch control', '<meta http-equiv="x-dns-prefetch-control" content="on">'],
+  [
+    'cache headers a browser ignores in markup',
+    '<meta http-equiv="Cache-Control" content="no-cache"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">',
+  ],
 ])('a page whose markup carries %s still gets its picture', async (_, meta) => {
   const picture = await capturePicture(PAGE, world(`${meta}<p>Hi</p>`), standIn([], []));
   expect(picture.ok).toBe(true);
