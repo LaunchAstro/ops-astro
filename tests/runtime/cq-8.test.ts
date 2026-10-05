@@ -109,6 +109,10 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   'packages/core-commands/src/commands/conversation-lifecycle.ts',
   // #932: the operation identity's key, first in every identified call.
   'packages/core-commands/src/commands/envelope.ts',
+  // C80 (#1002 F3-F6): a correction write takes the audit chain's key after
+  // its row locks, as tasks-agent.ts does, so its authority re-read comes
+  // after every wait.
+  'packages/core-commands/src/commands/live-correction-standing.ts',
   'packages/core-commands/src/commands/occurrence-run.ts',
   'packages/core-commands/src/commands/prepare.ts',
   // #413: an agent assignment takes the audit chain's key after its write,
