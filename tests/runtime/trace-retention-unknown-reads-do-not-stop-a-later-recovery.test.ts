@@ -47,7 +47,7 @@ it.skipIf(noDatabase)(
     };
     const asked = await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, timeout);
     expect(asked.at(-1)).toMatchObject({ runs: 4, code: 'target_timeout' });
-    expect([...queued].sort()).toEqual(runs.map(traceOf).sort());
+    expect([...queued].toSorted()).toEqual(runs.map(traceOf).toSorted());
 
     // A fresh handback for each, committed and exported inside the window.
     for (const work of works) {

@@ -183,10 +183,8 @@ export function deliverThrough(custody: Custody, timeoutMs = 5_000): Deliver {
 }
 
 /**
- * Retention's delete and read-back through the same custody: a trace by its
- * id, or one span of it by the span's. A read that answers 404 is the one
- * proof of absence; any 2xx, even one too large to read whole, is still
- * there; anything else proves nothing.
+ * Retention's delete and read-back through the same custody: a trace by its id, or one span of it
+ * by the span's. Only a 404 proves absence; any 2xx is present; anything else proves nothing.
  */
 export function expiryThrough(custody: Custody, timeoutMs = 5_000): ExpiryPorts {
   const ask = async (method: 'DELETE' | 'GET', path: string, body: string): Promise<Delivered> =>

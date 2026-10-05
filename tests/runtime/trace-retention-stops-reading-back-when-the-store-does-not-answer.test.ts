@@ -134,10 +134,12 @@ it.skipIf(noDatabase)(
     };
     await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, ports, { page: 1 });
     expect(new Set(traces).size, 'no owed run read twice').toBe(traces.length);
-    const traceOf = (runId: string): string =>
-      derivedId(TRACE_KEY, ['trace', t.alpha.business, runId], 32);
     expect(traces, 'no owed run skipped').toEqual(
-      expect.arrayContaining(works.map((work) => traceOf(String(work.picked['runId'])))),
+      expect.arrayContaining(
+        works.map((work) =>
+          derivedId(TRACE_KEY, ['trace', t.alpha.business, String(work.picked['runId'])], 32),
+        ),
+      ),
     );
   },
 );
