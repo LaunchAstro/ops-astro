@@ -15,11 +15,12 @@
 // was lost leaves the container and deletes the empty file). A removal docker
 // refuses is tried again; one it keeps refusing fails the run, naming the
 // container, and keeps the id file.
-// One case is left: a create the daemon still finishes after the run's
-// removal by name (a stalled create past `STOP_MS` more than `GRACE_MS` after
-// a stop, or any late finish after a lost answer with no stop) leaves a
-// container in `Created`, holding its login; the staging README says how to
-// clear it.
+// Two cases are left, each holding its login; the staging README's sweep
+// finds both. A create the daemon still finishes after the run's removal by
+// name (a stalled create past `STOP_MS` more than `GRACE_MS` after a stop, or
+// any late finish after a lost answer with no stop) leaves a container in
+// `Created`. A removal docker answers is already in progress counts as gone
+// (`GONE`); if the daemon's own removal then fails, docker keeps it, dead.
 
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -126,8 +127,10 @@ async function stopRun(run, { child, closed, exited }) {
   } finally {
     clearTimeout(kill);
   }
-  // A client that closes cleanly after the stop says nothing of a refused removal.
-  if (left !== undefined) throw notRemoved(left);
+  // A client that closes cleanly after the stop says nothing of a refused
+  // removal; asked again now the client has closed, a container the daemon
+  // removed under --rm is no failure.
+  if (left !== undefined && !(await removed(left))) throw notRemoved(left);
   if (creating && id === undefined) {
     await pause(GRACE_MS);
     if (!(await removed(run.name))) throw notRemoved(run.name);
