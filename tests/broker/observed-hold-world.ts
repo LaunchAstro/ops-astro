@@ -91,14 +91,28 @@ export const stateOf = async (
   ])),
 });
 
-/** The effect applied and one call settled: the next call stops the run at its ceiling. */
-export async function appliedWithOneCall(): Promise<{ w: PersonWork; lease: Lease }> {
+/** Dispatched, the effect applied when `applied`, and one call settled: the next call stops the run. */
+export async function dispatchedWithOneCall(
+  applied: boolean,
+): Promise<{ w: PersonWork; lease: Lease }> {
   const w = await personWork();
   const lease = { leaseId: w.picked['leaseId'], fence: w.picked['fence'] };
   appliedDetail(
     await asPerson(s, { command: 'task.dispatch', operationId: randomUUID(), ...lease }),
     'task.dispatch',
   );
+  if (applied) await applyEffect(w);
+  world.provider.mode('answer');
+  expect((await personCall(w)).ok).toBe(true);
+  return { w, lease };
+}
+
+/** The effect applied and one call settled: the next call stops the run at its ceiling. */
+export const appliedWithOneCall = async (): Promise<{ w: PersonWork; lease: Lease }> =>
+  await dispatchedWithOneCall(true);
+
+/** The synthetic step's one effect, a comment on its own task. */
+async function applyEffect(w: PersonWork): Promise<void> {
   appliedDetail(
     await asPerson(s, {
       command: 'task.comment',
@@ -110,9 +124,6 @@ export async function appliedWithOneCall(): Promise<{ w: PersonWork; lease: Leas
     }),
     'task.comment',
   );
-  world.provider.mode('answer');
-  expect((await personCall(w)).ok).toBe(true);
-  return { w, lease };
 }
 
 /** The next call stops the run at its ceiling and raises the ask, committed on its own connection. */

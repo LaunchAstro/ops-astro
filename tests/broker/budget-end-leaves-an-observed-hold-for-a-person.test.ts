@@ -16,6 +16,10 @@
 // SEC P3 r4 R1: the same holds when the outcome's transaction began before
 // the stop raised its ask (a person's `happened` that waited on the run's lock
 // while the worker's call stopped the run), so its start time comes first.
+//
+// A worker's report that the step failed, with no effect applied, keeps the
+// hold whole the same way when its priced cost runs above the hold: the end is
+// refused alike, and the person's outcome still answers the hold.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -30,6 +34,7 @@ import {
   appliedWithOneCall,
   holdsOf,
   observeOver,
+  dispatchedWithOneCall,
   ONE_CALL,
   stateOf,
   stopIt,
@@ -84,6 +89,42 @@ it('an end after an observation kept the hold whole is refused, and the hold wai
     reservation: 'actual',
     envelope_actual: String(Number(before.envelope_actual) + ONE_CALL),
   });
+});
+
+it('an end after a failed report kept the hold whole is refused, and the hold waits for a person', async () => {
+  const { w, lease } = await dispatchedWithOneCall(false);
+  const { runId, askId } = await stopIt(w, lease);
+
+  // The step failed with no effect applied, at a priced cost above the hold: it is kept whole.
+  const observed = await asPerson(s, {
+    command: 'task.observe',
+    operationId: randomUUID(),
+    ...lease,
+    attemptId: w.attemptId,
+    outcome: 'failed',
+    usage: PRICED,
+  });
+  expect(codeOf(observed)).toBe('BUDGET_UNAVAILABLE');
+  const before = await stateOf(runId, w.attemptId);
+  expect(before).toMatchObject({
+    run: 'waiting_budget',
+    reservation: 'held',
+    attempt: 'liability_unknown',
+  });
+
+  const end = { command: 'run.end_at_budget_stop', recordId: w.taskId, runId, askId };
+  expect(await answer(people.second, end)).toBe('TRANSITION_NOT_PERMITTED');
+  expect(await stateOf(runId, w.attemptId)).toEqual(before);
+
+  const recorded = await asPerson(s, {
+    command: 'budget.record_outcome',
+    operationId: randomUUID(),
+    recordId: w.taskId,
+    attemptId: w.attemptId,
+    outcome: 'happened',
+  });
+  expect(codeOf(recorded)).toBe('applied');
+  expect(await stateOf(runId, w.attemptId)).toMatchObject({ reservation: 'actual' });
 });
 
 it('a top-up after the stopped step was recorded as happened is refused, and the end still applies', async () => {

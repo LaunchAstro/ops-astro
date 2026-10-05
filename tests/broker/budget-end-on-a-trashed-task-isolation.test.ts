@@ -4,12 +4,13 @@
 // the task in the trash, `run.end_at_budget_stop` through the command entry is
 // refused to a person of this business without `gate:decide` on it; to a
 // second business's decider naming this run under their own task or this one;
-// and to a person naming another task they hold, with the same bytes as a
-// made-up run. No refusal names this run, its task, ask, title or amount, and
-// nothing moves.
+// to a person naming another task they hold; and to a person granted on another
+// client of this business, naming this client's run under their client's task
+// or this one; each with the same bytes as a made-up run. No refusal names this
+// run, its task, ask, title or amount, and neither client's money moves.
 
 import { randomUUID } from 'node:crypto';
-import { expect, it as vitestIt } from 'vitest';
+import { beforeAll, expect, it as vitestIt } from 'vitest';
 import { executeCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import { statusOf } from '../../packages/core-records/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
@@ -21,14 +22,29 @@ import {
   revisionOf,
   seedSchedules,
   type Schedules,
+  type Work,
 } from '../runtime/schedules-harness.ts';
 import { noDatabase, s, useBrokerWorld } from './broker-world.ts';
-import { moneyOf, people, stopped, UNDER_ONE_CALL, usePeople } from './budget-answers-world.ts';
+import {
+  moneyOf,
+  one,
+  people,
+  stopped,
+  UNDER_ONE_CALL,
+  usePeople,
+} from './budget-answers-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('endtrashiso');
 usePeople();
+beforeAll(async () => {
+  if (noDatabase) return;
+  // The decider makes the clients.
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await grantTo(tx, s.decider, 'write', undefined, false, 'record');
+  });
+});
 
 const TITLE = 'a trashed task the crossings aim at';
 
@@ -58,9 +74,37 @@ interface Named {
 
 type Ended = Awaited<ReturnType<typeof endAs>>;
 
-/** A run stopped at its ceiling, its task then trashed. */
+/**
+ * A new client of this business, and `taskId` linked to it as `task.set_party` stores it.
+ * The link is written directly: a task with work refuses a client change (S0-5) and a
+ * client's task makes no model call (C60), so no command reaches a client's stopped run.
+ */
+async function underNewClient(taskId: string): Promise<string> {
+  const made = appliedDetail(
+    await asPerson(s, { command: 'client.create', operationId: randomUUID(), name: randomUUID() }),
+    'client.create',
+  );
+  const client = String(made['clientId']);
+  await s.db.admin.execute(
+    `update public.records set data = data || jsonb_build_object('client', $2::text) where id = $1`,
+    [taskId, client],
+  );
+  return client;
+}
+
+/** The task's client, as the record's spine holds it. */
+const clientOf = async (taskId: string): Promise<string | null> =>
+  (
+    await one<{ client: string | null }>(
+      'select uuid_7::text as client from public.records where id = $1',
+      [taskId],
+    )
+  ).client;
+
+/** A run under client B stopped at its ceiling, its task then trashed. */
 async function stoppedThenTrashed(): Promise<Named> {
   const target = await stopped(TITLE);
+  await underNewClient(target.work.taskId);
   const trashed = await asPerson(s, {
     command: 'task.trash',
     operationId: randomUUID(),
@@ -112,8 +156,49 @@ async function fromAnotherTask(named: Named): Promise<Ended> {
   return crossed;
 }
 
+/** A made-up run and ask under `taskId`. */
+const madeUp = (taskId: string): Named => ({ taskId, runId: randomUUID(), askId: randomUUID() });
+
+/** Client A's own task with a live run, set up before any money is read. */
+async function clientAWork(): Promise<{ readonly theirs: Work; readonly clientA: string }> {
+  const theirs = await liveWork(s, 'client A own work', 2_000);
+  return { theirs, clientA: await underNewClient(theirs.taskId) };
+}
+
+/** Client A's person, granted gate:decide on client A, naming client B's run under each task. */
+async function fromAnotherClient(
+  named: Named,
+  { theirs, clientA }: Awaited<ReturnType<typeof clientAWork>>,
+): Promise<readonly Ended[]> {
+  const clientB = await clientOf(named.taskId);
+  // A real crossing: two clients, both linked, not the same one.
+  expect(clientB).not.toBeNull();
+  expect(await clientOf(theirs.taskId)).toBe(clientA);
+  expect(clientA).not.toBe(clientB);
+  const { run_id: theirRun } = await one<{ run_id: string }>(
+    `select run_id from public.leases where id = $1`,
+    [theirs.picked['leaseId']],
+  );
+  const theirMoney = await moneyOf(theirRun);
+  const onA = await enrol(s.db.app, s.business, 'on-client-a');
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await grantTo(tx, onA, 'decide', { kind: 'party', id: clientA }, false, 'gate');
+  });
+  const underA = await endAs(onA, s.business, s.db, { ...named, taskId: theirs.taskId });
+  const underB = await endAs(onA, s.business, s.db, named);
+  const madeUpA = await endAs(onA, s.business, s.db, madeUp(theirs.taskId));
+  const madeUpB = await endAs(onA, s.business, s.db, madeUp(named.taskId));
+  expect(underA.code).not.toBe('applied');
+  expect(underB.code).not.toBe('applied');
+  expect(underA.bytes, 'the same bytes as a made-up run').toBe(madeUpA.bytes);
+  expect(underB.bytes, 'the same bytes as a made-up run').toBe(madeUpB.bytes);
+  expect(await moneyOf(theirRun), "client A's money").toStrictEqual(theirMoney);
+  return [underA, underB];
+}
+
 it('ending a budget-stopped run on a trashed task is refused across every boundary', async () => {
   const named = await stoppedThenTrashed();
+  const clientA = await clientAWork();
   const before = await moneyOf(named.runId);
   expect(before).toMatchObject({ run: 'waiting_budget', reservation: 'held' });
 
@@ -124,7 +209,12 @@ it('ending a budget-stopped run on a trashed task is refused across every bounda
 
   // (b) and (c): no refusal names this run, its task, ask, title or amount.
   const foreign = [named.taskId, named.runId, named.askId, TITLE, String(UNDER_ONE_CALL)];
-  for (const answer of [...(await fromAnotherBusiness(named)), await fromAnotherTask(named)]) {
+  const crossings = [
+    ...(await fromAnotherBusiness(named)),
+    await fromAnotherTask(named),
+    ...(await fromAnotherClient(named, clientA)),
+  ];
+  for (const answer of crossings) {
     expect(foreign.filter((value) => answer.bytes.includes(value))).toEqual([]);
   }
   expect(await moneyOf(named.runId)).toStrictEqual(before);
