@@ -706,6 +706,24 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     ]);
   });
 
+  it('MP-14-7a connection:read is a grantable key: access.grant gives it at one client', async () => {
+    const granted = await enrol(controls.fixture.db.app, alpha, 'grantedreader');
+    const given = await as(admin, 'access.grant', {
+      holderId: granted.personId,
+      collection: 'connection',
+      action: 'read',
+      clientId: clientB,
+    });
+    expect(given.status).toBe(200);
+    const theirs = await fleet(granted);
+    expect(theirs.connections.map((one) => one.id).toSorted()).toStrictEqual(
+      [linkedin.id, onlyB.id].toSorted(),
+    );
+    for (const one of theirs.connections) {
+      expect(one.clients).toStrictEqual([{ id: clientB, label: clientBLabel }]);
+    }
+  });
+
   it('MP-14-7a canary: the planted secret and record content never reach output, errors or the audit payload', async () => {
     const { db } = controls.fixture;
     for (const answer of answers) {
