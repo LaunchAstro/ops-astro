@@ -53,7 +53,7 @@ export type WorkerOutcome =
     }
   /** The plan's work, handed back for review (AW-08, `review.ts`); its launch applies next. */
   | { readonly handedBack: HandedBack }
-  /** The provider dropped the step before it acted; handed back, and the work comes back (T3e1). */
+  /** The provider call dropped after the step was marked, and may have acted; handed back (T3e1). */
   | { readonly dropped: { readonly taskId: string; readonly cause: string } }
   /** Nothing approved and unpicked on the task: done already, or not yet approved. */
   | { readonly idle: { readonly taskId: string } }
