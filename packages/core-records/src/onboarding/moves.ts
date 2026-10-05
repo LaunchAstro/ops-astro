@@ -84,18 +84,15 @@ export async function reparkStepMove(tx: TenantQuery, taskId: string): Promise<v
 /**
  * The step's move is made: its open item closes, cleared by the person who
  * recorded the result, or withdrawn when an agent did (withdrawn names nobody).
- * The task row is locked first, so an assignment being written, which may
- * park the step again, is waited on and its item closed too.
+ * The caller holds the task row's lock (`lockStepOfTask`), so an assignment
+ * being written, which may park the step again, was waited on and its item is
+ * closed too.
  */
 export async function closeStepMove(
   tx: TenantQuery,
   step: OnboardingStepRow,
   byActorId: string,
 ): Promise<void> {
-  await tx.query('select 1 from public.records where business_id = $1 and id = $2 for update', [
-    tx.businessId,
-    step.taskId,
-  ]);
   await tx.query(
     `update public.inbox_items i
         set work_state = case when a.person_id is null then 'withdrawn' else 'cleared' end,
