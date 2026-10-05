@@ -7,7 +7,9 @@
 // message that was kept while it waited for that lock still advances the
 // activity past it, and is listed after it.
 //
-// The conversation's row is held `for update` on another connection. The
+// The conversation's row is held `for no key update` on another connection:
+// the reply's `for update` waits on it, while a key-share check on the row
+// (another step's foreign key) does not, so the one waiter is the reply. The
 // reply is seen waiting on that holder in `pg_stat_activity`; only then does
 // the holder keep a message and stamp the activity, at the database clock,
 // and commit.
@@ -43,7 +45,7 @@ describe.skipIf(serverUrl === undefined)('agent reply activity order', () => {
     const held = await hold(
       w.fixture.db,
       async (execute) => {
-        await execute('select id from public.conversations where id = $1 for update', [
+        await execute('select id from public.conversations where id = $1 for no key update', [
           asked.conversationId,
         ]);
       },
