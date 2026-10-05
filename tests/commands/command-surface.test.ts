@@ -84,9 +84,8 @@ describe('the surface as a table', () => {
     // with the agent (AW-03), its writes and its read at its address. `model`
     // is AW-01's call through the broker, asked of the lease's task. `run` is
     // AW-05's budget stop answers; `definition`, AW-04's attribution; `trace`, AW-13's readers;
-    // `harness`, AW-12's result. `operations`
-    // and `privacy` are C55's view and its incident record, and `legal` is C81's
-    // documents, asked of `privacy`. `credential` is API-2's agent credential.
+    // `harness`, AW-12's result. `operations` and `privacy` are C55's view and its
+    // incident record, `legal` C81's documents, asked of `privacy`; `credential`, API-2's.
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
     // `tag` is MP-4-11's: the business's tag vocabulary. `invitation` is C39-T's.
     // `map` is the wayfinder's (WF-1); `automation` and `activation` C33's.
