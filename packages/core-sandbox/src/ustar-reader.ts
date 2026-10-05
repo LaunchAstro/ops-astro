@@ -8,7 +8,10 @@
 //
 // The reader judges each byte as it arrives and keeps its first refusal,
 // so a refusal for the size cap means every earlier byte passed and one
-// byte went past the cap (F1's `output` crossing). A file's bytes are kept
+// byte went past the cap (F1's `output` crossing). A header or end block
+// the cap cuts is read whole first, at most 511 bytes past the cap into
+// the fixed block buffer, and judged as a larger cap would judge it, so
+// the cap never hides a fault in it. A file's bytes are kept
 // in one buffer that doubles as they arrive, never past the declared size
 // or what the cap still lets arrive, and copied, so the caller may reuse its chunk. Every header byte is
 // read: the pad and device fields hold only zeros or octal, and a name
@@ -117,11 +120,13 @@ export class UstarReader {
   private read(chunk: Uint8Array): void {
     let at = 0;
     while (at < chunk.length && this.refused === null) {
-      if (this.bytes === this.cap) {
+      if (this.bytes >= this.cap && this.blockFill === 0) {
         this.refused = refusal('too large');
         return;
       }
-      const take = Math.min(chunk.length - at, this.cap - this.bytes, this.wanted());
+      // Past the cap, only the rest of a block the cap cut.
+      const room = this.bytes >= this.cap ? BLOCK - this.blockFill : this.cap - this.bytes;
+      const take = Math.min(chunk.length - at, room, this.wanted());
       this.bytes += take;
       this.refused = this.take(chunk.subarray(at, at + take));
       at += take;
@@ -161,9 +166,6 @@ export class UstarReader {
       }
       return null;
     }
-    // After one zero block only zeros may follow: judge each as it arrives, so a cap
-    // inside the second end block cannot hide a bad byte before it.
-    if (state.at === 'zero' && bytes.some((byte) => byte !== 0)) return refusal('tar end');
     this.block.set(bytes, this.blockFill);
     this.blockFill += bytes.length;
     if (this.blockFill < BLOCK) return null;
@@ -227,7 +229,7 @@ export class UstarReader {
       this.afterData(padding);
     } else {
       const entry = { type, name, executable } as const;
-      const data = new Uint8Array(Math.min(size, FIRST_BUFFER, this.cap - this.bytes));
+      const data = new Uint8Array(Math.max(0, Math.min(size, FIRST_BUFFER, this.cap - this.bytes)));
       this.state = { at: 'data', entry, size, data, fill: 0, padding };
     }
     return null;
@@ -266,6 +268,8 @@ export class UstarReader {
 
   end(): OutputRead {
     if (this.refused !== null) return this.refused;
+    // A stream that stops inside a block ends as `tar end`, past the cap or not.
+    if (this.bytes > this.cap && this.blockFill === 0) return refusal('too large');
     if (this.state.at !== 'ended') return refusal('tar end');
     return { ok: true, entries: this.entries };
   }
