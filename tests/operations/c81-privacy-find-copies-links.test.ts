@@ -416,17 +416,37 @@ async function plantAgent(tx: Query) {
 
 type Query = Parameters<Parameters<Harness['world']['db']['app']['withBusiness']>[1]>[0];
 
-test('after an erasure, an agent id given back that now acts for someone else too marks no row given', async () => {
+test('after an erasure, an agent and its login given back, now acting for someone else too, mark no row given', async () => {
   const { world } = harness;
-  const { a, agent, grant } = await world.db.app.withBusiness(world.alpha, async (tx) => {
-    const planted = {
-      a: await plantActingPerson(tx, 'Pia Handover'),
-      agent: await plantAgent(tx),
-      grant: randomUUID(),
-    };
-    await plantDelegation(tx, planted.agent, planted.a.person, planted.a.actor);
-    return planted;
-  });
+  const { a, agent, grant, login, link, ownDelegation } = await world.db.app.withBusiness(
+    world.alpha,
+    async (tx) => {
+      const planted = {
+        a: await plantActingPerson(tx, 'Pia Handover'),
+        linker: await plantActingPerson(tx, 'Vic Linker'),
+        agent: await plantAgent(tx),
+        grant: randomUUID(),
+        login: randomUUID(),
+        link: randomUUID(),
+      };
+      const delegation = await plantDelegation(
+        tx,
+        planted.agent,
+        planted.a.person,
+        planted.a.actor,
+      );
+      await tx.query(
+        `insert into public.logins (business_id, id, provider, subject) values ($1, $2, 'dry-run', $3)`,
+        [world.alpha, planted.login, `opaque-${randomUUID()}`],
+      );
+      await tx.query(
+        `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
+         values ($1, $2, $3, $4, $5)`,
+        [world.alpha, planted.link, planted.login, planted.agent, planted.linker.actor],
+      );
+      return { ...planted, ownDelegation: delegation };
+    },
+  );
   const before = await findCopies(adminUrl, ['--text', 'Pia Handover'], 'alpha');
   const line = before.stderr
     .split('\n')
@@ -434,9 +454,10 @@ test('after an erasure, an agent id given back that now acts for someone else to
   expect(line, 'the agent acts for the person alone, so it stands for them').toContain(
     `--id ${agent}`,
   );
+  expect(line).toContain(`--id ${login}`);
   const flags = (line?.split('add: ')[1] ?? '').split(' ');
 
-  // Another person takes over the agent's approvals before the re-search.
+  // Another person takes over the agent's approvals; then the person is erased.
   const b = await world.db.app.withBusiness(world.alpha, async (tx) => {
     const taker = await plantActingPerson(tx, 'Quin Successor');
     const delegation = await plantDelegation(tx, agent, taker.person, taker.actor);
@@ -448,13 +469,48 @@ test('after an erasure, an agent id given back that now acts for someone else to
     );
     return { ...taker, delegation };
   });
+  await world.db.admin.execute('delete from public.delegations where id = $1', [ownDelegation]);
+  await world.db.admin.execute('delete from public.actors where id = $1', [a.actor]);
+  await world.db.admin.execute('delete from public.people where id = $1', [a.person]);
 
   const after = await findCopies(adminUrl, ['--text', 'Pia Handover', ...flags], 'alpha');
   expect(after.code).toBe(0);
-  for (const id of [grant, b.delegation]) {
+  for (const id of [grant, b.delegation, login, link]) {
     const hit = after.hits.find((each) => each.id === id);
-    expect(hit?.shared, 'listed as naming a shared agent').toEqual([agent]);
+    expect(hit?.shared.length, `${id} is listed as naming a shared agent`).toBeGreaterThan(0);
     expect(hit?.given, 'never a missed copy of the erased person').toBe(false);
+  }
+});
+
+test('an agent acting only for two people one text names stands for neither of them', async () => {
+  const { world } = harness;
+  const { a, b, agent, grant } = await world.db.app.withBusiness(world.alpha, async (tx) => {
+    const planted = {
+      a: await plantActingPerson(tx, 'Wren Hollowmere'),
+      b: await plantActingPerson(tx, 'Xavi Hollowmere'),
+      agent: await plantAgent(tx),
+      grant: randomUUID(),
+    };
+    await plantDelegation(tx, planted.agent, planted.a.person, planted.a.actor);
+    await plantDelegation(tx, planted.agent, planted.b.person, planted.b.actor);
+    await tx.query(
+      `insert into public.grants
+         (business_id, id, subject_kind, subject_id, scope_kind, collection, action, granted_by_actor_id)
+       values ($1, $2, 'actor', $3, 'business', 'tasks', 'read', $4)`,
+      [world.alpha, planted.grant, planted.agent, planted.b.actor],
+    );
+    return planted;
+  });
+  const found = await findCopies(adminUrl, ['--text', 'Hollowmere'], 'alpha');
+  expect(found.code).toBe(0);
+  const hit = found.hits.find((each) => each.table === 'grants' && each.id === grant);
+  expect(hit?.shared, 'the grant names an agent acting for both').toEqual([agent]);
+  expect(hit?.people, "the grant is neither person's by the agent").toEqual([b.person]);
+  for (const person of [a.person, b.person]) {
+    const line = found.stderr
+      .split('\n')
+      .find((text) => text.includes(`search again for ${person} `));
+    expect(line).not.toContain(agent);
   }
 });
 
