@@ -12,7 +12,7 @@ import { expect } from 'vitest';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import type { Answer } from '../api/fixture.ts';
 import type { Member } from '../commands/fixture.ts';
-import type { RegistryWorld } from './registry-world.ts';
+import { detail, type RegistryWorld } from './registry-world.ts';
 
 export const WAITING = `select count(*)::text as n from pg_stat_activity
   where datname = current_database() and wait_event_type = 'Lock'`;
@@ -122,3 +122,43 @@ export const serialised = (raced: Awaited<ReturnType<typeof revokedMeanwhile>>):
   raced.revokedFirst
     ? ['revoked first', raced.write.body['code']]
     : ['write first', raced.write.status, raced.revoke.status];
+
+/** An enabled scheduled activation pinning version 1 of two, at revision 1. */
+export async function pinnedFirstOf(w: RegistryWorld): Promise<{
+  readonly activationId: string;
+  readonly second: string;
+}> {
+  const { definitionId, versionId } = await w.define(['manual', 'scheduled']);
+  const on = await w.activate(versionId);
+  const next = await w.release({ definitionId, modes: ['manual', 'scheduled'] });
+  return {
+    activationId: String(detail(on)['activationId']),
+    second: String(detail(next)['versionId']),
+  };
+}
+
+/**
+ * `send` while the owner holds the activation's row, and `during` run in the
+ * owner's transaction once `send` waits on it; the answer once the owner commits.
+ */
+export async function heldWhile(
+  w: RegistryWorld,
+  activationId: string,
+  send: () => Promise<Answer>,
+  during: (execute: Execute) => Promise<unknown>,
+): Promise<Answer> {
+  const holder = connectAsAdmin(w.holderUrl(), { source: 'harness' });
+  const sent: Promise<Answer>[] = [];
+  try {
+    await holder.transaction(async (execute) => {
+      await execute('select 1 from public.activations where id = $1 for update', [activationId]);
+      sent.push(send());
+      await waitingOn(execute, 1);
+      await during(execute);
+    });
+    const [answer] = await Promise.all(sent);
+    return answer as Answer;
+  } finally {
+    await holder.close();
+  }
+}

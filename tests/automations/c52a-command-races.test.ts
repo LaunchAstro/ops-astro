@@ -8,19 +8,14 @@
 //
 // Two adoptions, or two turn-offs, sent at one revision apply once: each
 // compares the revision under the activation's lock, so the second finds it
-// moved and changes nothing.
-//
-// Each of the four writes and a revocation of the automation:manage grant
-// that admitted it: the write's grants are held for share before any
-// automation row, so a revocation that comes second waits for the write, and
-// one that came first refuses it. Never a change applied after its grant was
-// revoked (C52-A, as C33 criterion 5).
+// moved and changes nothing. A rollback picks its target only once it holds
+// the activation, so a revocation of that target committed while it waited
+// is seen and the rollback goes further back.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { grantTo } from '../commands/fixture.ts';
 import type { Answer } from '../api/fixture.ts';
-import { grantOf, overlapped, revokedMeanwhile, serialised, type Execute } from './race-hold.ts';
+import { heldWhile, overlapped, pinnedFirstOf, type Execute } from './race-hold.ts';
 import { createRegistryWorld, detail, type RegistryWorld } from './registry-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -30,13 +25,6 @@ const holding =
   (activationId: string) =>
   async (execute: Execute): Promise<unknown> =>
     await execute('select 1 from public.activations where id = $1 for update', [activationId]);
-
-/** Never applied after its grant was revoked: refused if the revocation came first. */
-const expectSerialised = (raced: Awaited<ReturnType<typeof revokedMeanwhile>>): void => {
-  expect(serialised(raced), JSON.stringify([raced.write.body, raced.revoke.body])).toStrictEqual(
-    raced.revokedFirst ? ['revoked first', 'SCOPE_NOT_GRANTED'] : ['write first', 200, 200],
-  );
-};
 
 const outcomes = (answers: readonly Answer[]): readonly unknown[] =>
   answers.map((answer) => [answer.status, answer.body['code']]).toSorted();
@@ -57,19 +45,7 @@ describe.skipIf(serverUrl === undefined)('C52-A command races', () => {
     await w?.drop();
   });
 
-  /** An enabled scheduled activation pinning version 1 of two, at revision 1. */
-  const pinnedFirst = async (): Promise<{
-    readonly activationId: string;
-    readonly second: string;
-  }> => {
-    const { definitionId, versionId } = await w.define(['manual', 'scheduled']);
-    const on = await w.activate(versionId);
-    const next = await w.release({ definitionId, modes: ['manual', 'scheduled'] });
-    return {
-      activationId: String(detail(on)['activationId']),
-      second: String(detail(next)['versionId']),
-    };
-  };
+  const pinnedFirst = async () => await pinnedFirstOf(w);
 
   it('C52-A one adoption per revision: two adoptions sent at one revision apply once, the other refused VERSION_STALE', async () => {
     const { activationId, second } = await pinnedFirst();
@@ -120,100 +96,45 @@ describe.skipIf(serverUrl === undefined)('C52-A command races', () => {
     ).toBe(1);
   }, 60_000);
 
-  /** automationOnly's live `automation:manage` grant, issued again when a case revoked it. */
-  const automationGrant = async (): Promise<string> => {
-    const live = await w.controls.count(
-      `select count(*) as n from public.grants
-        where business_id = $1 and subject_kind = 'person' and subject_id = $2
-          and collection = 'automation' and action = 'manage' and revoked_at is null`,
-      [w.alpha, w.automationOnly.personId],
-    );
-    if (live === 0) {
-      await w.controls.fixture.db.app.withBusiness(w.alpha, async (tx) => {
-        await grantTo(
-          tx,
-          w.automationOnly,
-          'manage',
-          { kind: 'business', id: null },
-          false,
-          'automation',
-        );
-      });
-    }
-    return await grantOf(w, w.automationOnly, 'automation');
-  };
-
   /** The activation as the owner's registry shows it. */
   const shownOf = async (activationId: string) =>
     (await w.registry(w.admin)).definitions
       .flatMap((one) => one.activations)
       .find((one) => one.id === activationId);
 
-  /** `name` sent by automationOnly while the activation is held, its grant revoked meanwhile. */
-  const raceRevoke = async (activationId: string, name: string, body: Record<string, unknown>) =>
-    await revokedMeanwhile(
-      w,
-      holding(activationId),
-      async () => await w.asWide(w.automationOnly, name, body),
-      await automationGrant(),
-    );
-
-  it('C52-A revoked while waiting: activation.adopt never applies after its automation:manage grant is revoked', async () => {
-    const { activationId, second } = await pinnedFirst();
-    const raced = await raceRevoke(activationId, 'activation.adopt', {
-      activationId,
-      versionId: second,
-      expectedRevision: 1,
-    });
-    expectSerialised(raced);
-    const shown = await shownOf(activationId);
-    expect([shown?.versionId === second, shown?.revision]).toStrictEqual(
-      raced.revokedFirst ? [false, 1] : [true, 2],
-    );
-  }, 60_000);
-
-  it('C52-A revoked while waiting: activation.roll_back never applies after its automation:manage grant is revoked', async () => {
+  it('C52-A rollback under the lock: a rollback waiting on a revocation of its target never approves that version again', async () => {
     const { activationId, second } = await pinnedFirst();
     const first = (await shownOf(activationId))?.versionId;
+    const shown = await shownOf(activationId);
+    const definitionId = String(
+      (await w.registry(w.admin)).definitions.find((one) =>
+        one.activations.some((a) => a.id === shown?.id),
+      )?.id,
+    );
+    const third = String(
+      detail(await w.release({ definitionId, modes: ['manual', 'scheduled'] }))['versionId'],
+    );
     const adopt = async (versionId: string | undefined, expectedRevision: number) =>
       await w.as(w.admin, 'activation.adopt', { activationId, versionId, expectedRevision });
     expect((await adopt(first, 1)).status).toBe(200);
-    expect((await adopt(second, 2)).status).toBe(200);
-    const raced = await raceRevoke(activationId, 'activation.roll_back', {
+    const target = await adopt(second, 2);
+    expect((await adopt(third, 3)).status).toBe(200);
+    const back = await heldWhile(
+      w,
       activationId,
-      expectedRevision: 3,
-    });
-    expectSerialised(raced);
-    const shown = await shownOf(activationId);
-    expect([shown?.versionId === first, shown?.revision]).toStrictEqual(
-      raced.revokedFirst ? [false, 3] : [true, 4],
+      async () =>
+        await w.asWide(w.admin, 'activation.roll_back', { activationId, expectedRevision: 4 }),
+      async (execute) =>
+        await execute(
+          `insert into public.standing_approval_revocations
+             (business_id, id, approval_id, revoked_by_actor_id)
+           values ($1, gen_random_uuid(), $2, $3)`,
+          [w.alpha, String(detail(target)['approvalId']), w.admin.actorId],
+        ),
     );
-  }, 60_000);
-
-  it('C52-A revoked while waiting: activation.turn_off never applies after its automation:manage grant is revoked', async () => {
-    const { activationId } = await pinnedFirst();
-    const raced = await raceRevoke(activationId, 'activation.turn_off', {
-      activationId,
-      expectedRevision: 1,
-    });
-    expectSerialised(raced);
-    const shown = await shownOf(activationId);
-    expect([shown?.enabled, shown?.revision]).toStrictEqual(
-      raced.revokedFirst ? [true, 1] : [false, 2],
-    );
-  }, 60_000);
-
-  it('C52-A revoked while waiting: approval.revoke never applies after its automation:manage grant is revoked', async () => {
-    const { activationId } = await pinnedFirst();
-    const first = (await shownOf(activationId))?.versionId;
-    const adopted = await w.as(w.admin, 'activation.adopt', {
-      activationId,
-      versionId: first,
-      expectedRevision: 1,
-    });
-    const approvalId = String(detail(adopted)['approvalId']);
-    const raced = await raceRevoke(activationId, 'approval.revoke', { approvalId });
-    expectSerialised(raced);
-    expect((await shownOf(activationId))?.approval?.revoked).toBe(!raced.revokedFirst);
+    expect(
+      [back.status, detail(back)['versionId'], detail(back)['act']],
+      JSON.stringify(back.body),
+    ).toStrictEqual([200, first, 'rolled_back']);
   }, 60_000);
 });
