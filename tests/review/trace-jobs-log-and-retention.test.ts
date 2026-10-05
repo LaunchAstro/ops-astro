@@ -10,7 +10,7 @@ import {
   startTraceExporter,
   traceExportSettings,
 } from '../../apps/api/trace-exporter.ts';
-import { derivedId, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
+import { derivedId, expireOnce, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
 import { asAgent, codeOf, handbackBody, liveWork } from '../runtime/schedules-harness.ts';
 import { age } from '../runtime/aw-13-retention-world.ts';
 import { drain, noDatabase, t, TRACE_KEY, useAw13World } from '../runtime/aw-13-world.ts';
@@ -200,5 +200,34 @@ it.skipIf(noDatabase)(
       );
       await t.alpha.db.admin.execute('drop function public.sol_ow004_retention_fault()');
     }
+  },
+);
+
+it.skipIf(noDatabase)(
+  'a run with an event written after its selection is not recorded as expired',
+  async () => {
+    const work = await liveWork(t.alpha, 'retention versus a late handback', 1000);
+    const runId = String(work.picked['runId']);
+    await drain(t.alpha);
+    await age(runId, TRACE_WINDOW_DAYS + 1);
+    const batches = await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, {
+      expire: async (ids) => {
+        const answer = await asAgent(
+          t.alpha,
+          handbackBody(work.picked),
+          String(work.picked['credential']),
+        );
+        expect(codeOf(answer)).toBe('applied');
+        return await t.target.expiry.expire(ids);
+      },
+      present: t.target.expiry.present,
+    });
+    expect(batches.map((batch) => batch.code)).toContain('expiry_unconfirmed');
+    const confirmed = await t.alpha.db.admin.execute<{ n: number }>(
+      `select count(*)::int as n from public.trace_expiry_batches
+        where business_id = $1 and $2::uuid = any(expired_run_ids)`,
+      [t.alpha.business, runId],
+    );
+    expect(confirmed).toEqual([{ n: 0 }]);
   },
 );
