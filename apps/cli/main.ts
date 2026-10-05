@@ -287,10 +287,8 @@ async function verbLine(argv: readonly string[], env: Environment, io: Io): Prom
     ? (env['OPS_ASTRO_DELEGATION'] ??
       readOptional(env['OPS_ASTRO_DELEGATION_FILE'] ?? DEFAULTS.delegationFile))
     : undefined;
-  const api = (text(connection, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api).replace(
-    /\/$/u,
-    '',
-  );
+  const base = text(connection, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api;
+  const api = base.replace(/\/$/u, '');
   const cli = createVerbCli({
     transport: httpTransport(api),
     businessKey: encodeURIComponent(businessKey),
@@ -300,9 +298,8 @@ async function verbLine(argv: readonly string[], env: Environment, io: Io): Prom
     address: shownAddress(api),
   });
   const answer = await cli.run(rest);
-  (answer.exit === EXIT.usage || answer.exit === EXIT.transport ? io.err : io.out)(
-    answer.exit === EXIT.transport ? `cli: ${answer.out}` : answer.out,
-  );
+  const said = answer.exit === EXIT.transport ? `cli: ${answer.out}` : answer.out;
+  (answer.exit === EXIT.usage || answer.exit === EXIT.transport ? io.err : io.out)(said);
   return answer.exit;
 }
 

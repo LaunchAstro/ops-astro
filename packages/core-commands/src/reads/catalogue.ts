@@ -60,8 +60,7 @@ import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
-import { boardPage } from './board-rows.ts';
-import { isRefusal, parsePaging, readerBlockers, sharedRead, taskAt } from './detail.ts';
+import { boardPage, isRefusal, parsePaging, readerBlockers, sharedRead, taskAt } from './detail.ts';
 
 export type ReadName = ReadRequest['read'];
 

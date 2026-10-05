@@ -108,12 +108,9 @@ const SWEEP_AT = 10_000;
 
 function overConcurrent(limits: QuotaLimits, holder: Holder): QuotaRefusal {
   const most = String(limits.concurrent[holder]);
-  return refuseCommand(
-    'QUOTA_EXCEEDED',
+  return over(
     ['concurrent', holder],
-    [
-      `Too many calls at once for this ${holder}. The limit is ${most} at a time; send again once one has answered.`,
-    ],
+    `calls at once for this ${holder}. The limit is ${most} at a time; send again once one has answered.`,
   );
 }
 
@@ -121,14 +118,14 @@ function overRequests(limits: QuotaLimits, holder: Holder, waitMs: number): Quot
   const most = String(limits.requests[holder]);
   const window = String(limits.requests.windowMs / 1000);
   const wait = String(Math.max(1, Math.ceil(waitMs / 1000)));
-  return refuseCommand(
-    'QUOTA_EXCEEDED',
+  return over(
     ['requests', holder],
-    [
-      `Too many requests for this ${holder}. The limit is ${most} in ${window} seconds; send again in ${wait} seconds.`,
-    ],
+    `requests for this ${holder}. The limit is ${most} in ${window} seconds; send again in ${wait} seconds.`,
   );
 }
+
+const over = (names: readonly string[], why: string): QuotaRefusal =>
+  refuseCommand('QUOTA_EXCEEDED', names, [`Too many ${why}`]);
 
 /** Gives the call's slots back, once, however often it is called. */
 function releaser(inFlight: Map<string, number>, keys: readonly string[]): () => void {

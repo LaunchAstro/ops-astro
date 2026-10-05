@@ -52,16 +52,16 @@ const detail = (flags: Flags): string => {
   if (!DETAILS.has(value)) throw new UsageError('--detail is brief, standard or full');
   return value;
 };
-const fields = (flags: Flags): Body => {
-  const title = maybe(flags, 'title');
-  const description = maybe(flags, 'description');
-  return {
-    ...(title === undefined ? {} : { title }),
-    ...(description === undefined ? {} : { description }),
-  };
-};
+const revised = (id: string | undefined, flags: Flags): Body => ({
+  recordId: target(id),
+  expectedRevision: revision(flags),
+});
 const optional = (key: string, value: string | undefined): Body =>
   value === undefined ? {} : { [key]: value };
+const fields = (flags: Flags): Body => ({
+  ...optional('title', maybe(flags, 'title')),
+  ...optional('description', maybe(flags, 'description')),
+});
 
 export const VERB_TABLE: readonly VerbRow[] = [
   {
@@ -99,19 +99,14 @@ export const VERB_TABLE: readonly VerbRow[] = [
     verb: 'task update',
     command: 'task.update',
     usage: '<id> --revision n [--title <t>] [--description <d>]',
-    body: (id, flags) => ({
-      recordId: target(id),
-      expectedRevision: revision(flags),
-      fields: fields(flags),
-    }),
+    body: (id, flags) => ({ ...revised(id, flags), fields: fields(flags) }),
   },
   {
     verb: 'task comment',
     command: 'task.comment',
     usage: '<id> --revision n --text <t> [--audience internal|client]',
     body: (id, flags) => ({
-      recordId: target(id),
-      expectedRevision: revision(flags),
+      ...revised(id, flags),
       body: need(flags, 'text'),
       audience: maybe(flags, 'audience') ?? 'internal',
     }),

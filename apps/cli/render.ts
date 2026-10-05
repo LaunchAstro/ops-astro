@@ -18,11 +18,12 @@ function inline(value: unknown): string {
   if (value === null || value === undefined) return '-';
   if (typeof value === 'string') return value.replaceAll(/\s+/gu, ' ');
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) return value.map((one) => inline(one)).join(', ');
-  return Object.values(value as Json)
-    .map((one) => inline(one))
-    .join(' ');
+  if (Array.isArray(value)) return joined(value, ', ');
+  return joined(Object.values(value as Json), ' ');
 }
+
+const joined = (values: readonly unknown[], by: string): string =>
+  values.map((one) => inline(one)).join(by);
 
 /** One record as `key: value` lines; a list of records as one line each under its key. */
 export function text(value: Json): string {
@@ -38,11 +39,7 @@ export function text(value: Json): string {
 
 /** A page: one line per item, then the next token when there is one. */
 export function pageText(items: readonly Json[], next: string | null): string {
-  const lines = items.map((item) =>
-    Object.values(item)
-      .map((one) => inline(one))
-      .join(' | '),
-  );
+  const lines = items.map((item) => joined(Object.values(item), ' | '));
   if (next !== null) lines.push(`next: ${next}`);
   return lines.join('\n');
 }

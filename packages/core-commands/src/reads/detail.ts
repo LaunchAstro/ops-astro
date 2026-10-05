@@ -16,6 +16,7 @@ import type { Session, Subject, TenantQuery } from '../../../core-records/src/in
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
 
 export type Detail = 'brief' | 'standard' | 'full';
+type View = Readonly<Record<string, unknown>>;
 const DETAILS: ReadonlySet<string> = new Set(['brief', 'standard', 'full']);
 
 /** How many of the latest comments a standard read carries; `full` carries them all. */
@@ -31,7 +32,7 @@ const invalid = (field: string, fix: string): CommandRefusal =>
   refuseCommand('FIELD_VALUE_INVALID', [field], [fix]);
 
 /** The level, page size and page token a body asks for, each checked; absent ones stay absent. */
-export function parsePaging(body: Readonly<Record<string, unknown>>): Paging | CommandRefusal {
+export function parsePaging(body: View): Paging | CommandRefusal {
   const { detail, limit, page } = body;
   const { most } = pageSizes();
   if (detail !== undefined && (typeof detail !== 'string' || !DETAILS.has(detail))) {
@@ -119,15 +120,15 @@ async function blockersOf(tx: TenantQuery, recordId: string): Promise<readonly s
 }
 
 /** Ids, name and state: all a brief read carries. */
-export function briefOf(task: TaskSummary): Readonly<Record<string, unknown>> {
+export function briefOf(task: TaskSummary): View {
   return { id: task.id, title: task.title, state: task.state?.label ?? null };
 }
 
 /** The whole summary: all a full list read carries. */
-const fullOf = (task: TaskSummary): Readonly<Record<string, unknown>> => ({ ...task });
+const fullOf = (task: TaskSummary): View => ({ ...task });
 
 /** The summary with its state and assignee as the words a reader uses. */
-export function standardSummaryOf(task: TaskSummary): Readonly<Record<string, unknown>> {
+export function standardSummaryOf(task: TaskSummary): View {
   return {
     id: task.id,
     key: task.key,
@@ -142,11 +143,7 @@ export function standardSummaryOf(task: TaskSummary): Readonly<Record<string, un
 }
 
 /** One task at the level asked for. `full` is the detail itself, with its blockers. */
-export function taskAt(
-  detail: Detail,
-  task: TaskDetail,
-  blockers: Blockers,
-): Readonly<Record<string, unknown>> {
+export function taskAt(detail: Detail, task: TaskDetail, blockers: Blockers): View {
   if (detail === 'brief') return briefOf(task);
   const { blockedBy, withheld } = blockers;
   const named = withheld === 0 ? { blockedBy } : { blockedBy, blockersWithheld: withheld };
@@ -161,33 +158,29 @@ export function taskAt(
 }
 
 /** The shared view (`readSharedTask`) at a level, projected from itself, never from the detail. */
-function sharedAt(detail: Detail, shared: SharedTaskView): Readonly<Record<string, unknown>> {
-  const { fields, comments } = shared;
-  if (detail === 'brief') {
-    return { id: shared.id, title: fields['title'] ?? null, state: fields['state'] ?? null };
-  }
+function sharedAt(detail: Detail, shared: SharedTaskView): View {
+  const { id, fields, comments } = shared;
+  if (detail === 'brief')
+    return { id, title: fields['title'] ?? null, state: fields['state'] ?? null };
   if (detail === 'full') return { ...shared };
   return { ...shared, comments: comments.slice(-RECENT_COMMENTS), commentCount: comments.length };
 }
 
 /** An external party's `task.read`: the shared view, or at a level its projection. */
-export function sharedRead(
-  detail: Detail | undefined,
-  sharedTask: SharedTaskView,
-):
-  | { readonly ok: true; readonly sharedTask: SharedTaskView }
-  | {
-      readonly ok: true;
-      readonly detail: Detail;
-      readonly view: Readonly<Record<string, unknown>>;
-    } {
+type SharedRead = { readonly ok: true } & ({ readonly sharedTask: SharedTaskView } | Leveled);
+export interface Leveled {
+  readonly detail: Detail;
+  readonly view: View;
+}
+
+export function sharedRead(detail: Detail | undefined, sharedTask: SharedTaskView): SharedRead {
   if (detail === undefined) return { ok: true, sharedTask };
   return { ok: true, detail, view: sharedAt(detail, sharedTask) };
 }
 
 const digestOf = (tasks: readonly TaskSummary[]): string =>
   createHash('sha256')
-    .update(tasks.map((task) => task.id).join(','))
+    .update(tasks.map(({ id }) => id).join(','))
     .digest('hex');
 const tokenOf = (shown: readonly TaskSummary[]): string =>
   `${String(shown.length)}.${digestOf(shown)}`;
@@ -202,39 +195,38 @@ function shownBy(token: string): { readonly count: number; readonly digest: stri
   const parts = token.split('.');
   if (parts.length !== 2) return undefined;
   const [count = '', digest = ''] = parts;
-  if (count === '' || count.length > 9 || !only(count, DIGITS) || count.startsWith('0')) {
-    return undefined;
-  }
-  if (digest.length !== 64 || !only(digest, HEX)) return undefined;
+  const countOk =
+    count !== '' && count.length < 10 && only(count, DIGITS) && !count.startsWith('0');
+  if (!countOk || digest.length !== 64 || !only(digest, HEX)) return undefined;
   return { count: Number(count), digest };
 }
 
-/** One page; a token is served only while the list still starts with the tasks it names (CLI.md). */
-export function pageOf(
+export interface BoardPage {
+  readonly ok: true;
+  readonly page: readonly View[];
+  readonly next: string | null;
+}
+
+/** `task.board`'s page when the body asks for a level, size or page, else none (CLI.md). */
+export function boardPage(
   tasks: readonly TaskSummary[],
   paging: Paging,
-):
-  | { readonly items: readonly Readonly<Record<string, unknown>>[]; readonly next: string | null }
-  | CommandRefusal {
+): BoardPage | CommandRefusal | undefined {
+  if (Object.keys(paging).length === 0) return undefined;
   let start = 0;
   if (paging.page !== undefined) {
     const before = shownBy(paging.page);
-    if (
-      before === undefined ||
-      before.count > tasks.length ||
-      digestOf(tasks.slice(0, before.count)) !== before.digest
-    ) {
+    start = before?.count ?? 0;
+    if (start === 0 || start > tasks.length || digestOf(tasks.slice(0, start)) !== before?.digest)
       return invalid('page', 'That page token is spent; list again from the start.');
-    }
-    start = before.count;
   }
   const size = paging.limit ?? pageSizes().standard;
   const end = Math.min(start + size, tasks.length);
   const shown = tasks.slice(start, end);
   const level = paging.detail ?? 'full';
-  const items = shown.map((task): Readonly<Record<string, unknown>> => {
+  const items = shown.map((task): View => {
     if (level === 'brief') return briefOf(task);
     return level === 'standard' ? standardSummaryOf(task) : fullOf(task);
   });
-  return { items, next: end < tasks.length ? tokenOf(tasks.slice(0, end)) : null };
+  return { ok: true, page: items, next: end < tasks.length ? tokenOf(tasks.slice(0, end)) : null };
 }

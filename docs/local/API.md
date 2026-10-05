@@ -93,24 +93,14 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
 5. Anything else reaches the executor, and login resolution runs there,
    inside the serving transaction.
 6. Once login resolution admits the caller, the call is charged to its quotas
-   (API-3, `identity/quota.ts`): requests in a window and calls at once, each
-   per credential (the login), per person (for an agent, the agent actor) and
-   per business. One over is `QUOTA_EXCEEDED` 429, its names the quota and
-   whose (`["requests", "credential"]`), its one fix a plain reason with when
-   to send again. It is recorded as a refused `authentication_attempts` row in
-   the call's own transaction, and nothing else runs. A refused call is not
-   charged, a request is charged once however many times the envelope retries,
-   and its concurrent slot is given back when the request ends
-   (`withQuotaScope`, installed on every request by `composeApi`); a live
-   stream holds it until the stream ends (`liveStream`). The presence routes,
-   which resolve their caller as a stream's recheck does (`withStanding`), are
-   charged the same way; a recheck inside a charged request is not. The limits,
-   and the page size a list read may ask for, are the one table `QUOTAS`;
-   `composeApi` takes another table and clock only as the `quota` option.
-   Charging comes after the door on purpose: before it, a caller the business
-   does not admit could use up the business's quota. The counters are the API
-   process's own. An agent credential (API-2) is not a login and is counted by
-   its own quota instead (`apps/api/auth/agent-quota.ts`, `AGENT_QUOTA_EXCEEDED`).
+   (API-3, `identity/quota.ts`, the one table `QUOTAS` or `composeApi`'s
+   `quota`): requests in a window and calls at once, per credential, person
+   and business, after the door so an unadmitted caller spends nothing. One
+   over is `QUOTA_EXCEEDED` 429, recorded in `authentication_attempts`; a
+   refused call is not charged, a request is charged once (`withQuotaScope`),
+   a live stream holds its slot until it ends (`liveStream`), and the presence
+   routes are charged through `withStanding`. Agent credentials have their own
+   (`agent-quota.ts`, `AGENT_QUOTA_EXCEEDED`).
 
 `tests/api/boundary-body-admission.test.ts` holds the body refusal and what it
 writes. `tests/api/admission-enumeration.test.ts` compares the raw bytes for a
