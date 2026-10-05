@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C39-T enrolment: each check on the link refuses on its own, a spent token, one past its own lifetime and an invitation no longer pending, everything else live, asking the provider nothing and writing nothing"
+}
