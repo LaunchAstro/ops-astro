@@ -247,3 +247,35 @@ it('a stored name of short words just under 1,000 bytes is read as a phrase, and
   expect(found.code).toBe(0);
   expect(hitOn(found.hits, 'records', record)?.text, 'the record holding the name').toBe(true);
 }, 180_000);
+
+it("a value saying one of a name's words 300 times before the name is still searched, and a person found so by the text is marked loosely", async () => {
+  const surname = word('smith');
+  const name = `Mary ${surname}`;
+  const named = await person(world.alpha, name);
+  const holder = await person(world.alpha, `Holder ${word('holder')}`);
+  const said = `${`${surname} `.repeat(300)}${name}`;
+  await world.db.admin.execute(
+    `insert into public.person_identifiers
+       (business_id, id, person_id, kind, value, observed_value, source_system, review_state)
+     values ($1, $2, $3, 'email', $4, $5, 'dry-run', 'observed')`,
+    [world.alpha, randomUUID(), holder.id, `${word('holder')}@example.test`, said],
+  );
+  const type = randomUUID();
+  const record = randomUUID();
+  await world.db.admin.execute(
+    `insert into public.record_types (business_id, id, key, name, origin, retention_class)
+     values ($1, $2, $3, 'Repeated word', 'preset', 'work')`,
+    [world.alpha, type, `rep_${type.replaceAll('-', '').slice(0, 12)}`],
+  );
+  await world.db.admin.execute(
+    `insert into public.records (business_id, id, record_type_id, data)
+     values ($1, $2, $3, jsonb_build_object('note', $4::text))`,
+    [world.alpha, record, type, said],
+  );
+  const byId = await findCopies(world.adminUrl, ['--id', named.id], 'alpha');
+  expect(hitOn(byId.hits, 'records', record)?.text, 'the stored name after its 256th word').toBe(
+    true,
+  );
+  const byText = await findCopies(world.adminUrl, ['--text', name], 'alpha');
+  expect(byText.stderr).toContain(`search again for ${holder.id} (named loosely by the text`);
+}, 180_000);
