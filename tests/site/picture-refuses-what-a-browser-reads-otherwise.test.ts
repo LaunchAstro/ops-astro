@@ -219,3 +219,18 @@ it('an imported sheet declaring another encoding fails the picture too', async (
   const picture = await capturePicture(PAGE, world(linked, sheets), standIn([SHEET], served));
   expect(picture).toEqual({ ok: false, code: 'CAPTURE_BODY_MALFORMED' });
 });
+
+// A page the reading admits is pictured or refused by name however wide its tree or its list of
+// sheets: no step may hand one call more arguments than the runtime takes.
+it('a page with 300,000 sibling elements is pictured, not thrown', async () => {
+  const html = `<!doctype html><html><body><p>Hello</p>${'<br>'.repeat(300_000)}</body></html>`;
+  const browser = standIn([], []);
+  const picture = await capturePicture(PAGE, world(html), browser);
+  expect({ ok: picture.ok, started: browser.started }).toEqual({ ok: true, started: 1 });
+});
+
+it('a page naming 150,000 sheet imports is refused by name, not thrown', async () => {
+  const html = `<style>${'@import"a.css";'.repeat(150_000)}</style><p>Hello</p>`;
+  const picture = await capturePicture(PAGE, world(html), standIn([], []));
+  expect(picture.ok ? 'pictured' : picture.code).toMatch(/^CAPTURE_[A-Z_]+$/u);
+});
