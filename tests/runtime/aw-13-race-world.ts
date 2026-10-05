@@ -4,7 +4,7 @@
 // mid-flight, a delete ask whose call times out while the store queues it,
 // and how far the export's cursor has come.
 
-import type { ExpiryPorts } from '../../packages/core-runtime/src/index.ts';
+import type { ExpiryPorts, TraceDatabase } from '../../packages/core-runtime/src/index.ts';
 import { expireOnce } from '../../packages/core-runtime/src/index.ts';
 import { rows, type Schedules } from './schedules-harness.ts';
 import { t, TRACE_KEY } from './aw-13-world.ts';
@@ -32,6 +32,19 @@ export function gate(): Gate {
       await held;
     },
     release,
+  };
+}
+
+/** `db`, except that its `call`th transaction waits at `paused` once it has committed. */
+export function pausedAfter(db: TraceDatabase, call: number, paused: Gate): TraceDatabase {
+  let calls = 0;
+  return {
+    withBusiness: async (businessId, run) => {
+      calls += 1;
+      const result = await db.withBusiness(businessId, run);
+      if (calls === call) await paused.arrive();
+      return result;
+    },
   };
 }
 
