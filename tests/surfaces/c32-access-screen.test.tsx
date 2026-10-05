@@ -14,6 +14,7 @@
 // screen owes is to ask only its own business, to name a client only from the
 // read's own records, and to draw a refusal as a refusal, never as an empty list.
 
+import { act as flushed } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { settle } from './mount.tsx';
 import {
@@ -25,6 +26,7 @@ import {
   MIA_ON_ACME,
   access,
   choose,
+  heldAnswer,
   json,
   open,
   refusal,
@@ -185,5 +187,23 @@ describe('C32 agents on Settings ▸ Access', () => {
       },
     ]);
     expect(view.find('[data-agent="d-1"]')).toBeNull();
+  });
+
+  it('C32 agents: a second act while one is out is not sent, and the page says so', async () => {
+    const held = heldAnswer();
+    const api = server([json(access([ADA, MIA]))], () => held.promise);
+    const view = await open(api.fetch);
+    const revoke = view.find('[data-revoke="d-1"] button') as HTMLElement;
+    await flushed(() => {
+      revoke.click();
+      revoke.click();
+    });
+    const outcome = view.find('[data-access-outcome]');
+    expect(outcome?.getAttribute('role')).toBe('alert');
+    expect(outcome?.textContent).toContain('Not sent');
+    held.resolve(json({ recordId: 'd-1', revision: 2 }));
+    await settle();
+    await settle();
+    expect(api.commands().map((call) => call.url)).toEqual(['/api/b/alpha/delegation/revoke']);
   });
 });

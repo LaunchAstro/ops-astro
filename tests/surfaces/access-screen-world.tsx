@@ -76,6 +76,15 @@ export const json = (body: unknown, status = 200): Response =>
 export const refusal = (code: string, status: number): Response =>
   json({ refused: true, code, names: [], fixes: [] }, status);
 
+/** An answer the case gives when it chooses, so an act stays out until then. */
+export function heldAnswer() {
+  let give: ((response: Response) => void) | null = null;
+  const promise = new Promise<Response>((resolve) => {
+    give = resolve;
+  });
+  return { promise, resolve: (response: Response) => give?.(response) };
+}
+
 interface Call {
   readonly url: string;
   readonly body: Record<string, unknown>;

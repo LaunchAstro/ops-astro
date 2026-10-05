@@ -9,6 +9,7 @@
 // the field it names, and what was typed stays. The world is
 // `access-screen-world.tsx`'s.
 
+import { act as flushed } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { settle } from './mount.tsx';
 import {
@@ -18,6 +19,7 @@ import {
   SHARE_ONLY,
   access,
   choose,
+  heldAnswer,
   json,
   open,
   refusal,
@@ -142,6 +144,23 @@ describe('C39-T invite a team member on Settings ▸ Access', () => {
     expect(view.find(`${FORM}`), 'the form, for a holder of access:share').not.toBeNull();
     expect(await roles(view)).toEqual(['Team member']);
     expect(api.commands()).toEqual([]);
+  });
+
+  it('C39-T invite a team member: a second send while the invitation is out sends nothing and keeps the form', async () => {
+    const held = heldAnswer();
+    const api = server([json(access([ADA, MIA]))], () => held.promise, MANAGE_AND_SHARE);
+    const view = await open(api.fetch);
+    await fill(view);
+    const send = view.find(`${FORM} button[type="submit"]`) as HTMLElement;
+    await flushed(() => {
+      send.click();
+      send.click();
+    });
+    expect(view.find(`${FORM} button[type="submit"]`)?.textContent).toBe('Inviting…');
+    held.resolve(json({ recordId: 'i-1', revision: 1 }));
+    await settle();
+    await settle();
+    expect(api.commands().map((call) => call.url)).toEqual(['/api/b/alpha/invitation/create']);
   });
 
   it('C39-T admin invitation asks access:manage on the screen: with it both roles are offered', async () => {

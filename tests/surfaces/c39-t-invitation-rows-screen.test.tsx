@@ -17,6 +17,7 @@ import {
   MIA,
   SHARE_ONLY,
   access,
+  heldAnswer,
   json,
   open,
   refusal,
@@ -43,15 +44,6 @@ const LISTED = [
   invitation('i-revoked', 'revoked'),
   invitation('i-expired', 'expired', '2026-09-20T01:00:05.000Z'),
 ];
-
-/** An answer the case gives when it chooses, so an act stays out until then. */
-function heldAnswer() {
-  let give: ((response: Response) => void) | null = null;
-  const promise = new Promise<Response>((resolve) => {
-    give = resolve;
-  });
-  return { promise, resolve: (response: Response) => give?.(response) };
-}
 
 /** Another administrator ended it first. */
 const staleRevoke = () => refusal('TRANSITION_NOT_PERMITTED', 409);
