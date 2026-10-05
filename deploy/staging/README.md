@@ -263,6 +263,17 @@ at another service. Those two names are the one part of production's layout
 this repository holds, because a stop with no input has to name its services
 itself (`S0-1 gated stop`). The web app and sign-in are not on the machine.
 
+Production's link (`promote.mjs --current`) points at a copy of the staged
+artefact, beside the link under `served/`, named by its digest (#497), so a
+later write to the store does not change what is served. That holds inside one
+trust boundary: root and the user who runs the promotion. Whoever can write a
+folder on the path to the link can swap the folder under it, so the promotion
+checks every folder from the link's up to `/` and refuses unless each is a real
+folder (not a link), owned by root or the promoting user, with no group or
+other write and no sticky bit. Name the link by its real path, under folders
+only you and root can write: never under `/tmp`, a shared store or a folder
+reached through a link.
+
 ## Alerts
 
 Nothing deploys before the alerts reach the owner (ticket S0-2). The watcher

@@ -180,7 +180,9 @@ export function promote(request: PromotionRequest, effects: PromotionEffects): P
       reason: `${problems.join('; ')}. Stop the API and the auth server with the service manager, then run the promotion again. Nothing was migrated or promoted.`,
     };
   }
-  const copied = frozenCopy(selected, current);
+  // The link as the walk checks it: absolute, with no `.` or `..` for the kernel to read otherwise.
+  const link = resolve(current);
+  const copied = frozenCopy(selected, link);
   if ('why' in copied) {
     return { kind: 'refused', reason: `${copied.why}; nothing was migrated or promoted` };
   }
@@ -197,7 +199,7 @@ export function promote(request: PromotionRequest, effects: PromotionEffects): P
       reason: `the copy of ${selected.name} for production changed during the migration; nothing was promoted and the API and the auth server are left stopped`,
     };
   }
-  effects.point(current, served);
+  effects.point(link, served);
   effects.start(auth);
   effects.start(api);
   return { kind: 'promoted', record, artefactPath: served };

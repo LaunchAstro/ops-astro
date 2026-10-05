@@ -3,6 +3,13 @@
 // The copy of a validated release output that production serves (#497,
 // promotion.ts): beside production's link, named by its digest, in a folder
 // only the promoting user may write.
+//
+// The trust boundary (OPS497TRUST) is root and the promoting user. Whoever can
+// write any folder on the path to production's link can move the link's
+// folder away and put their own in its place, so every folder from the link's
+// up to `/` must be a real folder, owned by root or the promoter, with no group
+// or other write and no sticky bit. A path that fails is refused, never
+// repaired: the operator names a link under folders only they and root write.
 
 import {
   chmodSync,
@@ -14,7 +21,7 @@ import {
   renameSync,
   rmSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { outputDigest } from './build-output.ts';
 
 // Where production's copies live, beside its link, each named by its digest.
@@ -22,24 +29,26 @@ const SERVED = 'served';
 
 /**
  * The validated bytes, copied where production reads them: `served/` beside
- * production's link, a folder only the promoting user may write, holds a copy
- * named by their digest. It is copied whole under a temporary name, given no
- * group or other write, hashed, and renamed into place only if it holds that
- * digest. Production points here, so a write to the store, whoever makes it,
- * never changes what is served (#497). A copy already there counts only as a
- * real folder holding that digest.
+ * production's link `link` (absolute and normalised), a folder only the
+ * promoting user may write, holds a copy named by their digest. It is copied
+ * whole under a temporary name, given no group or other write, hashed, and
+ * renamed into place only if it holds that digest. Inside the trust boundary
+ * a write to the store, whoever makes it, never changes what is served (#497).
+ * A copy already there counts only as a real folder holding that digest.
  */
 export function frozenCopy(
   selected: { readonly path: string; readonly name: string; readonly digest: string },
-  current: string,
+  link: string,
 ): { path: string } | { why: string } {
-  const home = dirname(resolve(current));
+  if (basename(link) === SERVED) return { why: `${link} is where production's copies live` };
+  const uid = process.getuid?.();
+  const home = dirname(link);
+  const untrusted = untrustedChain(home, uid);
+  if (untrusted !== undefined) return { why: untrusted };
   const folder = join(home, SERVED);
   if (!lexists(folder)) mkdirSync(folder, { mode: 0o755 });
-  for (const at of [home, folder]) {
-    const why = notPrivate(at);
-    if (why !== undefined) return { why: `${at} ${why}` };
-  }
+  const why = untrustedFolder(folder, uid);
+  if (why !== undefined) return { why: `${folder} ${why}` };
   const path = join(folder, selected.digest.slice('sha256:'.length));
   if (!lexists(path)) {
     const copy = mkdtempSync(join(folder, '.copy-'));
@@ -49,16 +58,30 @@ export function frozenCopy(
       chmodSync(copy, lstatSync(selected.path).mode & 0o755);
       if (holds(copy, selected.digest)) renameSync(copy, path);
     } catch (error) {
-      // Only another promotion of the same digest renaming its copy first.
+      // Another promotion of the same digest renaming its copy first, or the
+      // artefact swapped for a link (its copy collides with the folder).
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== 'ENOTEMPTY' && code !== 'EEXIST') throw error;
     } finally {
       rmSync(copy, { recursive: true, force: true });
     }
   }
+  if (!lexists(path)) return { why: `${selected.name} changed while it was copied` };
   return holds(path, selected.digest)
     ? { path }
     : { why: `${path} is not a real folder holding the bytes ${selected.name} records` };
+}
+
+/**
+ * Why the folders from `home` (absolute and normalised) up to `/` are not all
+ * trusted, or undefined: the first one that fails, and why.
+ */
+export function untrustedChain(home: string, uid: number | undefined): string | undefined {
+  for (let at = home; ; at = dirname(at)) {
+    const why = untrustedFolder(at, uid);
+    if (why !== undefined) return `${at} ${why}`;
+    if (dirname(at) === at) return undefined;
+  }
 }
 
 /** Whether `copy` is a real folder of regular files holding `digest`. */
@@ -71,16 +94,23 @@ export function holds(copy: string, digest: string): boolean {
   }
 }
 
-/** Why `path` is not a real folder that only this user may write, or undefined. */
-function notPrivate(path: string): string | undefined {
+/**
+ * Why `path` is outside the trust boundary, or undefined. Only one shape is
+ * trusted: a real folder, owned by root or `uid`, no sticky bit, no group or
+ * other write. Anything else, a link included, is refused.
+ */
+function untrustedFolder(path: string, uid: number | undefined): string | undefined {
   let entry;
   try {
     entry = lstatSync(path);
   } catch {
     return 'is missing';
   }
+  if (entry.isSymbolicLink()) return 'is a link; name the real path';
   if (!entry.isDirectory()) return 'is not a real folder';
-  if (entry.uid !== process.getuid?.()) return 'belongs to another user';
+  if (entry.uid !== 0 && entry.uid !== uid)
+    return 'belongs to a user other than root and the promoter';
+  if ((entry.mode & 0o1000) !== 0) return 'is shared like /tmp (sticky)';
   return (entry.mode & 0o022) === 0 ? undefined : 'can be written by others';
 }
 
@@ -102,9 +132,4 @@ function lexists(path: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Why the folders from `home` up to `/` are not trusted (OPS497TRUST); the walk comes next. */
-export function untrustedChain(_home: string, _uid: number | undefined): string | undefined {
-  return undefined;
 }

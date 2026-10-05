@@ -80,15 +80,18 @@ it.each([
   ['group-writable', 0o775, /can be written by others/u],
   ['other-writable (the shared store of the security read)', 0o777, /can be written by others/u],
   ['sticky, like /tmp', 0o1777, /sticky/u],
-])('a %s parent of the link folder is refused, nothing migrated or pointed', (_name, mode, why) => {
-  const { parent, prod, store } = underParent(mode);
-  const { outcome, calls } = promoted(store, join(prod, 'current'));
-  expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringMatching(why) });
-  expect(outcome).toMatchObject({ reason: expect.stringContaining(parent) });
-  expect(calls).toEqual([]);
-  // Checked before anything is made beside the link.
-  expect(existsSync(join(prod, 'served'))).toBe(false);
-});
+])(
+  'a parent of the link folder that is %s is refused, nothing migrated or pointed',
+  (_name, mode, why) => {
+    const { parent, prod, store } = underParent(mode);
+    const { outcome, calls } = promoted(store, join(prod, 'current'));
+    expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringMatching(why) });
+    expect(outcome).toMatchObject({ reason: expect.stringContaining(parent) });
+    expect(calls).toEqual([]);
+    // Checked before anything is made beside the link.
+    expect(existsSync(join(prod, 'served'))).toBe(false);
+  },
+);
 
 it('a parent reached through a link is refused, nothing migrated or pointed', () => {
   const { root, store } = fixture();

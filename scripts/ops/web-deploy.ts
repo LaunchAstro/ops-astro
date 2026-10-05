@@ -43,9 +43,10 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildOutputProblems, outputDigest } from './build-output.ts';
+import { buildOutputProblems } from './build-output.ts';
 import { writeMaintenanceOutput } from './maintenance.ts';
 import { type StoredArtefact, storedArtefact } from './promotion.ts';
+import { holds } from './served-copy.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -199,7 +200,8 @@ function deployCopy(
   const output = join(folder, '.vercel', 'output');
   cpSync(selected.path, output, { recursive: true });
   const problems = buildOutputProblems(output);
-  if (outputDigest(output) !== digest) problems.push('the copy does not hold the digested bytes');
+  // A real folder: an artefact swapped for a link since selection copies as a link.
+  if (!holds(output, digest)) problems.push('the copy does not hold the digested bytes');
   const runtime = runtimeOf(output);
   if (runtime === undefined) problems.push('functions/api.func declares no runtime.');
   if (problems.length > 0 || runtime === undefined) return refused(problems.join(' '));
