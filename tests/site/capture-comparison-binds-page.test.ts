@@ -103,4 +103,38 @@ describe('the comparison is bounded', () => {
       }),
     ).toMatchObject({ ok: false, fields: ['page'] });
   });
+
+  it('fails a decoy whose text is larger than it compares', () => {
+    const filler = 'x'.repeat(300_000);
+    const large = page({ ...decoy, text: `${filler} We work alongside your team.` });
+    expect(
+      compareCaptures({
+        before,
+        after,
+        decoyBefore: large,
+        decoyAfter: { ...large },
+        target: TARGET,
+      }),
+    ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['decoy'] });
+  });
+
+  it('fails a word longer than it compares', () => {
+    const word = 'a'.repeat(65);
+    const long = { ...TARGET, word };
+    const pair = (text: string) => ({
+      before: page({ text: text.replace('alongside', word) }),
+      after: page({
+        documentDigest: 'sha256:doc-after',
+        text: text.replace('alongside', 'beside'),
+      }),
+    });
+    expect(
+      compareCaptures({
+        ...pair(before.text),
+        decoyBefore: page({ ...decoy, text: `We work ${word} your team.` }),
+        decoyAfter: page({ ...decoy, text: `We work ${word} your team.` }),
+        target: long,
+      }),
+    ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['page', 'decoy'] });
+  });
 });

@@ -77,3 +77,24 @@ describe('the decoy is not the primary page under another spelling', () => {
     ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['decoy'] });
   });
 });
+
+describe('only an https address names a site', () => {
+  it.each([
+    ['data addresses', 'data:text/html,a', 'data:text/html,b'],
+    ['addresses of unknown schemes', 'foo:a', 'bar:b'],
+    ['file paths', 'file:///srv/about', 'file:///srv/services'],
+  ])('fails the decoy between two %s', (_name, primary, other) => {
+    const first = { ...before, url: primary };
+    const second = { ...after, url: primary };
+    const decoy = { ...decoyAt(other) };
+    expect(
+      compareCaptures({
+        before: first,
+        after: second,
+        decoyBefore: decoy,
+        decoyAfter: { ...decoy },
+        target,
+      }),
+    ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['decoy'] });
+  });
+});

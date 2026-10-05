@@ -7,8 +7,12 @@
 
 import { replacedAt, wordOffsets, type CorrectionTarget } from './envelope.ts';
 
-/** Capture text past this is not compared: the comparison is quadratic in it. */
+/**
+ * Capture text past this, or a word longer than this, is not compared: the
+ * comparison is quadratic in the text and grows with the word.
+ */
 const MOST_TEXT = 256 * 1024;
+const MOST_WORD = 64;
 
 /** What one fenced capture of a page observed. */
 export interface PageObservation {
@@ -60,11 +64,12 @@ const served = (page: PageObservation): boolean => page.status >= 200 && page.st
 /** A page's path, a trailing slash aside. */
 const pagePath = (url: URL): string => url.pathname.replace(/\/+$/u, '');
 
-/** `decoy` is on `primary`'s site, at another path, however either is spelled. */
+/** `decoy` is on `primary`'s https site, at another path, however either is spelled. */
 function anotherPageOfSite(decoy: string, primary: string): boolean {
   const left = URL.parse(decoy);
   const right = URL.parse(primary);
-  if (left === null || right === null) return false;
+  // Every non-web address has the origin "null", so only https names a site.
+  if (left === null || right === null || right.protocol !== 'https:') return false;
   return left.origin === right.origin && pagePath(left) !== pagePath(right);
 }
 
@@ -77,13 +82,18 @@ export function compareCaptures(input: CaptureComparison): ComparisonResult {
   const { before, after, decoyBefore, decoyAfter, target } = input;
   const failed: ('word' | 'page' | 'stylesheets' | 'decoy')[] = [];
   if (after.text === before.text) failed.push('word');
-  const comparable = before.text.length <= MOST_TEXT && after.text.length <= MOST_TEXT;
+  const sized = (page: PageObservation): boolean =>
+    page.text.length <= MOST_TEXT &&
+    target.word.length <= MOST_WORD &&
+    target.replacement.length <= MOST_WORD;
+  const comparable = sized(before) && sized(after);
   const moved =
     after.text !== before.text &&
     (!comparable || replacedAt(before.text, after.text, target) === undefined);
   if (moved || !samePage(before, after)) failed.push('page');
   if (!sameStylesheets(before, after)) failed.push('stylesheets');
   const decoyHeld =
+    sized(decoyBefore) &&
     anotherPageOfSite(decoyBefore.url, before.url) &&
     ![before.documentDigest, after.documentDigest].includes(decoyBefore.documentDigest) &&
     samePage(decoyBefore, decoyAfter) &&
