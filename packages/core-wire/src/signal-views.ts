@@ -8,7 +8,8 @@
  * `access` is `exec` when any of its actions is more than a read.
  * `redemptions` counts its agent's applied calls on its task inside its
  * window, less the pickup; nothing records what each reached. `client` is
- * null for a fleet grant.
+ * null for a fleet grant; its label is the client's name as `clients` holds
+ * it, not the tripwire and step columns' closed grammar.
  */
 export interface GrantView {
   readonly id: string;

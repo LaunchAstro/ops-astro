@@ -13,8 +13,9 @@
 -- loops, not built); until then the tests seed them as the database owner, as
 -- they do connections (20261005153051).
 --
--- Every column the page draws as words is `signal_text`: a closed grammar,
--- an explicit allow-list refused whole unless every character is on it.
+-- Every column of these two tables drawn as words is `signal_text`: a closed
+-- grammar, an explicit allow-list refused whole unless every character is on
+-- it (a grant's client label is `clients.name`, outside it).
 -- Printable ASCII; Latin-1 and Latin Extended letters and signs (U+00A1 to
 -- U+024F, less the soft hyphen U+00AD); dashes, quotes, bullets and the
 -- other visible general punctuation (U+2010 to U+2027, U+2030 to U+205E);

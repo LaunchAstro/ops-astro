@@ -63,7 +63,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   const clientAName = `Client A ${RECORD_CANARY}`;
   const clientBName = `Client B ${RECORD_CANARY}`;
   const grants: Record<
-    'liveA' | 'ranOutB' | 'takenBackFleet' | 'liveB' | 'mapA' | 'trashedA',
+    'liveA' | 'ranOutB' | 'takenBackFleet' | 'liveB' | 'mapA' | 'ticketA' | 'trashedA',
     string
   > = {
     liveA: '',
@@ -71,6 +71,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     takenBackFleet: '',
     liveB: randomUUID(),
     mapA: '',
+    ticketA: '',
     trashedA: '',
   };
   let liveCredential = '';
@@ -223,13 +224,21 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       [grants.ranOutB, grants.liveB, agentB],
     );
     // Client A grants a client-scoped reader is not shown: one on a map, one
-    // on a trashed task.
+    // on that map's ticket, one on a trashed task.
     [grants.mapA] = await delegate('map_for_a', clientA);
+    [grants.ticketA] = await delegate('ticket_for_a', clientA);
     [grants.trashedA] = await delegate('trashed_for_a', clientA);
     await owner(
       `update public.records set data = data || '{"type":"map"}'::jsonb
         where id = (select purpose_scope_id from public.delegations where id = $1)`,
       [grants.mapA],
+    );
+    await owner(
+      `update public.records
+          set data = data || jsonb_build_object('parent', (
+            select purpose_scope_id::text from public.delegations where id = $2))
+        where id = (select purpose_scope_id from public.delegations where id = $1)`,
+      [grants.ticketA, grants.mapA],
     );
     await owner(
       `update public.records set deleted_at = now()
@@ -334,7 +343,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
 
   it('MP-14-8 a business-wide reader sees every grant, on a map or a trashed task included', async () => {
     const result = await signal(admin);
-    for (const id of [grants.liveB, grants.mapA, grants.trashedA]) {
+    for (const id of [grants.liveB, grants.mapA, grants.ticketA, grants.trashedA]) {
       expect(grantOf(result, id)?.state).toBe('live');
     }
   });
@@ -453,8 +462,8 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   it('MP-14-8 the roster lists the business agents with the live grants the caller sees', async () => {
     const result = await signal(admin);
     const holder = grantOf(result, grants.liveA)?.agentId;
-    // live_for_a, map_for_a and trashed_for_a: one agent picked all three up.
-    expect(result.roster.find((one) => one.agentId === holder)?.liveGrants).toBe(3);
+    // live_for_a, map_for_a, ticket_for_a and trashed_for_a: one agent picked all four up.
+    expect(result.roster.find((one) => one.agentId === holder)?.liveGrants).toBe(4);
     expect(result.roster.find((one) => one.agentId === idleAgent)?.liveGrants).toBe(0);
     expect(result.roster.find((one) => one.agentId === agentB)?.liveGrants).toBe(1);
   });
@@ -535,6 +544,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       agentB,
       grants.liveB,
       grants.mapA,
+      grants.ticketA,
       grants.trashedA,
       '2026-09-30',
     ]) {
