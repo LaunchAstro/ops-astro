@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Trace export (#475, Sol C1b-FIX3.1): two exports read the same batch while
-// a run's delete is owed. The faster stores the owed tail and advances; the
-// queued delete then takes the trace; the slower stores only its first body,
-// which restores the earliest owed span retention reads back, and its next
-// body is refused. Its gap steps the cursor back to the place its batch was
-// read after (E150, not E1), so the batch, and with it the owed tail, goes
-// again. The faster export runs on its own connection.
+// Trace export (#475, Sol C1b-FIX3.1): two exports start on the same batch
+// while a run's delete is owed. Before the lease, the faster stored the owed
+// tail and advanced; the queued delete then took the trace; the slower stored
+// only its first body, which restores the earliest owed span retention reads
+// back, and its next body was refused, leaving E101..E151 missing. With one
+// export per business at a time (#963), the faster, on its own connection,
+// waits while the slower holds the business; the slower's gap leaves the
+// cursor at its batch's place (E150), so the batch and the owed tail go again.
 
 import { expect, it } from 'vitest';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import type { Deliver, ExpiryPorts } from '../../packages/core-runtime/src/index.ts';
+import type { Deliver, ExpiryPorts, ExportOutcome } from '../../packages/core-runtime/src/index.ts';
 import {
   derivedId,
   expireOnce,
@@ -60,7 +61,7 @@ it.skipIf(noDatabase)(
     expect(fresh).toHaveLength(151);
 
     // A reads, then waits before its first body is stored; B, on its own
-    // connection, reads the same batch and finishes first.
+    // connection, starts on the same batch meanwhile.
     let reached!: () => void;
     const atTarget = new Promise<void>((resolve) => {
       reached = resolve;
@@ -86,17 +87,15 @@ it.skipIf(noDatabase)(
     };
     const rival = connect(s.db.appUrl, { max: 1, source: 'trace-export-rival' });
     const a = exportOnce(s.db.app, s.business, TRACE_KEY, slow);
+    const fastBodies: number[] = [];
+    let outcomeB: ExportOutcome | undefined;
     try {
       await atTarget;
-      const fastBodies: number[] = [];
       const fast: Deliver = async (body) => {
         fastBodies.push(spanIds([body]).length);
         return await t.target.deliver(body);
       };
-      expect(await exportOnce(rival, s.business, TRACE_KEY, fast)).toMatchObject({
-        kind: 'delivered',
-      });
-      expect(fastBodies, 'B stores E1..E100, then E101..E151').toEqual([100, 51]);
+      outcomeB = await exportOnce(rival, s.business, TRACE_KEY, fast);
       await land();
       expect(t.target.stored.has(traceR), 'the queued delete took the whole trace').toBe(false);
       release();
@@ -130,5 +129,7 @@ it.skipIf(noDatabase)(
     expect(cursor?.id, "A's gap left the cursor at its batch's place (E150), not back at E1").toBe(
       fresh[149],
     );
+    expect(outcomeB, 'B waits while A holds the business').toEqual({ kind: 'held' });
+    expect(fastBodies, 'and sends nothing').toEqual([]);
   },
 );
