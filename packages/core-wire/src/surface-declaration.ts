@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The shape of one row of the command surface, moved whole from `surface.ts`
-// to keep that file under the 1,000-line limit for product source.
-// `surface.ts` declares the rows and re-exports this type.
+// The shape of one row of `surface.ts`'s command table, which re-exports it
+// (moved whole to keep that file under its line cap).
 
 import type { Action } from '../../core-records/src/index.ts';
 import type { CommandName } from './command-names.ts';

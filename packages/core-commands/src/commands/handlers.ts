@@ -28,6 +28,7 @@ import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
 import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
+import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
 import { recordIncident } from './privacy-write.ts';
 import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { issueCredential, revokeCredential } from './credential-write.ts';
@@ -69,6 +70,7 @@ import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
 import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
+import { reviseMap } from './wayfinder-revision.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -141,6 +143,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'settings.set_conversation_window': setting,
   'settings.set_retention_window': setting,
 
+  'secret.set': (tx, context, request) => setCustodySecret(tx, context, request),
+  'secret.clear': (tx, context, request) => clearCustodySecret(tx, context, request),
+
   'privacy.record_incident': recordIncident,
   'legal.draft_version': draftVersion,
   'legal.approve_version': approveVersion,
@@ -189,6 +194,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.write_off': writeOffOnTask,
 
   'task.set_type': setTaskType,
+  'map.revise': reviseMap,
   'map.scope': scopeMap,
   // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
   'budget.set_planning_cap': setPlanningCap,

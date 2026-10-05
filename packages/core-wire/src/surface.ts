@@ -33,6 +33,7 @@
 import type { Action } from '../../core-records/src/index.ts';
 import type { CommandName } from './command-names.ts';
 import type { CommandDeclaration } from './surface-declaration.ts';
+import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { WRITE_OPERANDS } from './write-operands.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -92,6 +93,7 @@ const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const CUSTODY_COLLECTION = 'custody';
 const CONVERSATION_COLLECTION = 'conversation';
 const TIME_COLLECTION = 'time';
 const TAG_COLLECTION = 'tag';
@@ -133,12 +135,6 @@ function read(
     audited: options.audited ?? true,
   };
 }
-
-/**
- * The key every write to a map's structure serialises on, taken before any
- * task row: no two writes hold a map and a ticket in opposite orders.
- */
-const WAYFINDER_MAP_LOCK = 'wayfinder.map';
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent credential's under its person's business-wide `task:write`
@@ -500,6 +496,22 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['clientId'],
   }),
 
+  // Custody (C31). `custody:manage` for all three, never an agent (the key
+  // catalogue: owner and administrators). The list is asked per row by the
+  // scopes the caller holds the key at, so a client-scoped holder sees that
+  // client's secrets only; setting and clearing are business-wide.
+  read('secret.list', CUSTODY_COLLECTION, { action: 'manage' }),
+  declare('secret.set', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['clientId'],
+  }),
+  declare('secret.clear', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['secretId'],
+  }),
+
   // The grant manager's authority, which is `manage` on the task family this
   // head's grants are about, asked of the revoked row's own scope. The
   // envelope asks nothing business-wide here; `authority-controls.ts` asks the
@@ -597,11 +609,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // Wayfinder (WF-1). No agent reaches these until API-2's narrowed credential
   // lands: the retype rule's floor.
   declare('task.set_type', 'write'),
+  declare('map.revise', 'write', { serialise: WAYFINDER_MAP_LOCK }),
   // A client change, as `task.set_party`: `share`, and locked once the map has content.
   declare('map.scope', 'share', {
     serialise: WAYFINDER_MAP_LOCK,
     rule: 'once the map has content: refused CLIENT_LOCKED (409), writes nothing, as task.set_party (S0-5)',
   }),
+  read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
+  read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
   // `billing:decide` on the whole business (AW-04, U10): owners and
   // administrators set the planning cap; no agent route serves it.
   declare('budget.set_planning_cap', 'decide', {

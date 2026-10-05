@@ -3,6 +3,8 @@
 // Every command's name, one union. Type-only, so the command surface
 // (`surface.ts`, which re-exports it) stays under the product line cap.
 
+import type { SetupCommandName } from './surface-setup.ts';
+
 export type CommandName =
   // The contract's nine.
   | 'task.create'
@@ -150,7 +152,11 @@ export type CommandName =
   // Wayfinder (WF-1): a map is a task of type `map`, its tickets its subtasks.
   // Retyping to or from grilling, prototype or map also asks the owner's `decide`.
   | 'task.set_type'
+  | 'map.revise'
   | 'map.scope'
+  | 'map.view'
+  // WF-2: a map's frontier and fog, from their read models.
+  | 'map.frontier'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
   // planning replies spend before the accept.
   | 'budget.set_planning_cap'
@@ -230,4 +236,6 @@ export type CommandName =
   // a definition version `automation:manage`, neither an agent's.
   | 'automation.registry'
   | 'activation.change'
-  | 'definition.release';
+  | 'definition.release'
+  // Setup's operations (C31 on), in `surface-setup.ts`.
+  | SetupCommandName;

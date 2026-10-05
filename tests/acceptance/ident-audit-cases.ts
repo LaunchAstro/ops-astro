@@ -87,6 +87,8 @@ export interface IdentWorld {
     clientId: string;
     automation: SeededAutomation;
     alphaVersionId: string;
+    /** A custody key of bravo's (C31). */
+    secretId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;

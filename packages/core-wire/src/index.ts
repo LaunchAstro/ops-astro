@@ -157,6 +157,7 @@ export type {
   TaskTimeView,
   TimeEntryView,
 } from './views.ts';
+export type { MapComponentView, MapView, MapViewResult, MapFrontierResult } from './views-map.ts';
 // AW-04's attribution and allowance answers, beside the other agent views.
 export type {
   AllowanceResult,
@@ -172,6 +173,8 @@ export type {
   AutomationRegistryResult,
   DefinitionVersionView,
 } from './views-automations.ts';
+// Custody's secrets as Settings ▸ Keys reads them (C31).
+export type { SecretListResult, SecretView } from './connection-views.ts';
 // AW-04: a plan version as a planning reply offers it in the chat
 export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
 // the command catalogue and its parity check (API-1)

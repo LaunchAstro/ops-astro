@@ -46,7 +46,9 @@
 // either side. That is what binds database activity to a path rather than to
 // a total, and it is why the runner spawns vitest once per suite.
 //
-// Usage: node scripts/db-conformance.mjs [--manifest <path>] [--shard <i>/<n>]
+// Usage: node scripts/db-conformance.mjs [--manifest <path> | --isolation] [--shard <i>/<n>]
+//   --isolation runs the isolation suites: the named suites whose file says so
+//   (scripts/named-suites.ts readIsolationSuites).
 //   DATABASE_URL  the database to run against. Required.
 //   --shard       run only shard i of n (scripts/db-shards.ts decides which
 //                 suites). Rules 2 and 3 still read the whole manifest.
@@ -59,13 +61,14 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import pg from 'pg';
 import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
-import { manifestPathIn, readNamedSuites } from './named-suites.ts';
+import { manifestPathIn, readIsolationSuites, readNamedSuites } from './named-suites.ts';
 import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 
 const argv = process.argv.slice(2);
 const manifestFlag = argv.indexOf('--manifest');
+const isolationRun = argv.includes('--isolation');
 // Without --manifest the runner reads the repository's own manifest, the
 // per-area folder or the single file (scripts/named-suites.ts); with it, that
 // one file, as given.
@@ -97,10 +100,11 @@ if (!existsSync(manifestPath)) {
 
 let manifest;
 try {
-  manifest =
-    manifestFlag === -1
-      ? readNamedSuites(repoRoot)
-      : JSON.parse(readFileSync(manifestPath, 'utf8'));
+  if (manifestFlag === -1) {
+    manifest = isolationRun ? readIsolationSuites(repoRoot) : readNamedSuites(repoRoot);
+  } else {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  }
 } catch (error) {
   console.error(`db-conformance: cannot read ${manifestPath}: ${String(error)}`);
   process.exit(2);
