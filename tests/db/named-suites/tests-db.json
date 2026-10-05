@@ -6,6 +6,7 @@
     "tests/db/backup-carried-drill.test.ts",
     "tests/db/backup-identity-grants.test.ts",
     "tests/db/backup-identity.test.ts",
+    "tests/db/backup-part-reads-wait-for-gate.test.ts",
     "tests/db/backup-store-bounded.test.ts",
     "tests/db/backup-store-drills.test.ts",
     "tests/db/backup-store-encryption.test.ts",
@@ -13,6 +14,7 @@
     "tests/db/backup-store-read-binding.test.ts",
     "tests/db/backup-store.test.ts",
     "tests/db/business-lookup.test.ts",
+    "tests/db/conversation-run-end-retention.test.ts",
     "tests/db/decision-never-delegated.test.ts",
     "tests/db/forwarder-export-ageout-false-signals-dropped-review.test.ts",
     "tests/db/inbox-conformance.test.ts",
@@ -21,9 +23,10 @@
     "tests/db/lease-holder-guard.test.ts",
     "tests/db/reservation-stop-cause.test.ts",
     "tests/db/reviewed-output-proposer.test.ts",
+    "tests/db/run-end-stamped-after-lock-wait.test.ts",
+    "tests/db/run-supersede-stamped-after-lock-wait.test.ts",
     "tests/db/second-factor-codes-retention.test.ts",
-    "tests/db/take-lease-path.test.ts",
-    "tests/db/backup-part-reads-wait-for-gate.test.ts"
+    "tests/db/take-lease-path.test.ts"
   ],
   "conformance": [
     "tests/db/mp-6-2-run-states.test.ts",
