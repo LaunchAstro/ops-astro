@@ -66,6 +66,68 @@ describe('a template the page nests must end as it began', () => {
   });
 });
 
+describe('a value the page computes is not taken as text', () => {
+  it.each([
+    [
+      'an object with its own text',
+      '<div>{{ toString: () => "<textarea>" }}<b>Hello there</b></div>\n',
+    ],
+    [
+      'a frontmatter value',
+      '---\nconst t = { toString: () => "<textarea>" };\n---\n<div>{t}<b>Hello there</b></div>\n',
+    ],
+    ['a typed array', '<div>{new TextEncoder().encode("<textarea>")}<b>Hello there</b></div>\n'],
+    [
+      'raw markup by another call form',
+      '<div>{(0, $$unescapeHTML)("<textarea>")}<b>Hello there</b></div>\n',
+    ],
+    [
+      'a render tag under another name',
+      '---\nconst r = $$render;\nconst x = r`<textarea>`;\n---\n<div>{x}<b>Hello there</b></div>\n',
+    ],
+    [
+      'a component the page defines',
+      '---\nconst C = { toString: () => "<textarea>" };\n---\n<div><C /><b>Hello there</b></div>\n',
+    ],
+    [
+      'a component name a parameter shadows',
+      '---\nimport Card from "./card.astro";\n---\n<div>{[1].map((Card) => <Card />)}<b>Hello there</b></div>\n',
+    ],
+  ])('refuses a word after %s', async (_name, before) => {
+    expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: false });
+  });
+
+  it('accepts a word after a literal string and an imported component', async () => {
+    const before =
+      '---\nimport Card from "./card.astro";\n---\n<div>{"x"}<Card /><b>Hello there</b></div>\n';
+    expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: true });
+  });
+});
+
+describe('svg and math, whose text a browser reads by other rules, are refused', () => {
+  it.each([
+    [
+      'a style in an svg',
+      '<div><svg><style><p><textarea></style></svg>{""}<b>Hello there</b></div>\n',
+    ],
+    [
+      'a style in an svg in a fragment',
+      '<div><><svg><style><title><textarea></style></svg></><b>Hello there</b></div>\n',
+    ],
+    ['an svg on its own', '<div><svg><g></g></svg><b>Hello there</b></div>\n'],
+    ['a math element', '<div><math><mi>x</mi></math><b>Hello there</b></div>\n'],
+  ])('%s', async (_name, before) => {
+    expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: false });
+  });
+});
+
+describe('a template whose tags the compiler closes late is refused', () => {
+  it('refuses a word after a textarea a noscript left open', async () => {
+    const before = '<div><noscript><textarea></noscript>{""}<b>Hello there</b></div>\n';
+    expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: false });
+  });
+});
+
 describe('a page holding a select is refused', () => {
   it.each([
     ['unclosed, before the word', 'amp', 'copy', '<div><select></div>Fish &<b></b>amp; chips\n'],
