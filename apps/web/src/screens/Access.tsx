@@ -32,10 +32,10 @@
 // (SEC27): without it the role is not offered and such a resend is not drawn.
 // Each section has its own outcome line and holds one act at a time.
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
-import { describeFailure, type SubmitResult } from '../records/submit.ts';
+import type { SubmitResult } from '../records/submit.ts';
 import { RecordState } from '../views/record-state.tsx';
 import type {
   AccessReadResult,
@@ -47,17 +47,12 @@ import { holdsAccess, InviteMember, type Invitation } from './access/invite.tsx'
 import { Invitations, type InvitationAct } from './access/invitations.tsx';
 import { ClientPrivacy } from './access/privacy.tsx';
 import { Agents, People } from './access/rows.tsx';
+import { useAct, type Act } from './access/use-act.tsx';
 
 export interface AccessScreenProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
 }
-
-/** One write, then the list read again; a refusal changes nothing but the outcome line. */
-type Act = (send: () => Promise<SubmitResult>, done: string) => Promise<SubmitResult>;
-
-/** What an act answers while another of its section's is out: nothing was sent. */
-const HELD: SubmitResult = { unavailable: true, because: 'Another act is still being sent.' };
 
 const revokeWith =
   (client: OperationsClient, act: Act) =>
@@ -78,7 +73,7 @@ const giveWith =
 
 const inviteWith =
   (client: OperationsClient, act: Act) =>
-  async (invitation: Invitation): Promise<SubmitResult> =>
+  async (invitation: Invitation): Promise<SubmitResult | null> =>
     await act(
       () => client.mutate('invitation.create', { ...invitation }),
       `Invited ${invitation.name}. The invitation is pending until it is accepted, resent, revoked or expires.`,
@@ -93,18 +88,6 @@ const actOnInvitationWith =
       `${done}: the invitation to ${invitation.name}.`,
     );
   };
-
-/** A refusal is drawn as Settings draws one; a success stays a quiet line. */
-const Outcome = (props: { readonly text: string; readonly refused: boolean }): ReactElement =>
-  props.refused ? (
-    <p className="field__error" role="alert" data-access-outcome="refused">
-      {props.text}
-    </p>
-  ) : (
-    <p className="card__sub" role="status" data-access-outcome="done">
-      {props.text}
-    </p>
-  );
 
 /**
  * The two acts that wait on a confirmation before anything is sent: ending a
@@ -223,32 +206,6 @@ function InviteSection(props: {
       />
     </section>
   );
-}
-
-/**
- * One write at a time: a second while one is out sends nothing. After one that
- * worked the list is read again; after any answer the invitations are.
- */
-function useAct(reload: () => void) {
-  const out = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [version, setVersion] = useState(0);
-  const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
-  const act: Act = async (send, done) => {
-    if (out.current) return HELD;
-    out.current = true;
-    setBusy(true);
-    const result = await send();
-    out.current = false;
-    const failure = describeFailure(result);
-    setBusy(false);
-    setOutcome({ text: failure ?? done, refused: failure !== null });
-    if (failure === null) reload();
-    setVersion((was) => was + 1);
-    return result;
-  };
-  const line = outcome === null ? null : <Outcome {...outcome} />;
-  return { act, busy, version, outcome: line };
 }
 
 export function AccessScreen(props: AccessScreenProps): ReactElement {

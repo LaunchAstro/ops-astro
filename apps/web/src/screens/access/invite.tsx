@@ -15,7 +15,7 @@
 // at a narrower scope is still offered it and sees the server's refusal under
 // Role.
 
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { Button, Card, Select, TextField } from '@launchastro/ui';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { isRefusal, type WireRefusal } from '../../operations/client.ts';
@@ -52,8 +52,12 @@ export const holdsAccess = (
 const errorOf = (refusal: WireRefusal | null, field: keyof Invitation): string | undefined =>
   refusal?.names.includes(field) === true ? refusal.fixes.join(' ') || 'Refused.' : undefined;
 
+/** Null when the page held the invitation back: nothing was sent. */
+type OnInvite = (invitation: Invitation) => Promise<SubmitResult | null>;
+
 /** The typed fields, the last refusal and whether this form's invitation is out. */
-function useInvite(onInvite: (invitation: Invitation) => Promise<SubmitResult>) {
+function useInvite(onInvite: OnInvite) {
+  const own = useRef(false);
   const [fields, setFields] = useState<Invitation>(BLANK);
   const [refusal, setRefusal] = useState<WireRefusal | null>(null);
   const [sending, setSending] = useState(false);
@@ -62,10 +66,14 @@ function useInvite(onInvite: (invitation: Invitation) => Promise<SubmitResult>) 
   };
   const submit = (event: FormEvent): void => {
     event.preventDefault();
+    if (own.current) return;
+    own.current = true;
     setSending(true);
     void (async () => {
       const result = await onInvite(fields);
+      own.current = false;
       setSending(false);
+      if (result === null) return;
       setRefusal(isRefusal(result) ? result : null);
       if ('ok' in result) setFields(BLANK);
     })();
@@ -77,7 +85,7 @@ export function InviteMember(props: {
   readonly busy: boolean;
   /** The session holds `access:manage`, which an administrator's invitation asks. */
   readonly canInviteAdmin: boolean;
-  readonly onInvite: (invitation: Invitation) => Promise<SubmitResult>;
+  readonly onInvite: OnInvite;
 }): ReactElement {
   const { fields, refusal, sending, set, submit } = useInvite(props.onInvite);
   const text = (field: 'name' | 'email', label: string) => (
