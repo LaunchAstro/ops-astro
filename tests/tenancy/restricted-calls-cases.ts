@@ -39,6 +39,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // `select 1` needs one column, and c55-security-alerts proves which.
   ['s', 'ops.security_alert_log'],
   ['s', 'ops.slots'],
+  // The wayfinder's map read models (WF-1): their triggers write them; the app reads.
+  ['s', 'map_frontier map_summaries'],
   // 0058 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().
   // 0059 (S0-5, ORCH38): the gate's own commands write through the app, so it
@@ -54,12 +56,15 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.ended_subject_sessions'],
   // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
   ['si', 'ops.second_factor_subjects'],
-  // 20261004101257 (C40): a reset in flight, by subject digest; settled by its column grant alone.
+  // 20261005030427 (C40): a reset in flight, by subject digest; settled by its column grant alone.
   ['si', 'ops.subject_resets'],
   // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
   ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
+  // A map's versions are history; its components are retired by version, never deleted.
+  ['si', 'map_versions'],
+  ['siu', 'map_components'],
   // A run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
   // 0095 (MP-6-2): a run's state, each revision a version, never rewritten.
@@ -92,7 +97,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // AW-13: a retention batch is a fact, never rewritten.
   ['si', 'trace_expiry_batches'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
-  // 20261004101257 (C40B): a reset token is written once, then spent by its column grant alone.
+  // 20261005030427 (C40B): a reset token is written once, then spent by its column grant alone.
   ['si', 'inbox_attention inbox_delivery_attempts password_reset_tokens'],
   ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
@@ -140,6 +145,14 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
   ['si', 'tags'],
   ['sid', 'task_tags'],
+  // C80: a live correction takes updates (a decision is one); its receipts
+  // are append only.
+  ['siu', 'live_corrections'],
+  ['si', 'live_correction_receipts'],
+  // 20261005003850 (C33): a definition, a released version and an occurrence
+  // are written once and never changed; an activation's setting moves by the
+  // column grant in COLUMN_UPDATES.
+  ['si', 'activation_occurrences activations automation_definitions definition_versions'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
@@ -196,7 +209,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_event_hash',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
-  // 20261004101257 (C40B): the reset's token lookup, two ids for one hash.
+  // 20261005030427 (C40B): the reset's token lookup, two ids for one hash.
   'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',

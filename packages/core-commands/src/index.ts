@@ -18,8 +18,8 @@ export {
 } from './commands/conversation-exchange.ts';
 export {
   CREDENTIAL_REACH,
-  credentialNotLive,
   executeCredentialCommand,
+  atUnheldKey,
   type CredentialQuota,
   type QuotaSlot,
 } from './commands/credential-envelope.ts';

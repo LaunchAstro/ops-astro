@@ -49,7 +49,11 @@ import {
   KEY_FILE_VARIABLE,
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
-import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
+import type {
+  AdminConnection,
+  BusinessId,
+  Database,
+} from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
@@ -83,6 +87,7 @@ import {
 import { startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
+import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
@@ -212,6 +217,8 @@ export interface ApiConfig {
    * mounted. Its check is `admitReads` unless a test hands in its own to count.
    */
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
+  /** The email provider's delivery hook (AW-07b); absent, the hook route is not mounted. */
+  readonly mailHook?: MailHookOptions;
   /** C40's `POST /api/password/set` over these businesses and broker; absent, not mounted. */
   readonly passwordSet?: PasswordSetOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
@@ -311,6 +318,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
     });
   }
 
+  // AW-07b: the provider's delivery and bounce events, verified by signature,
+  // as system work with no sign-in (`mail-hook.ts`).
+  if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);
   // C40: a reset token's password set, mounted when given; `main()` does not yet.
   if (config.passwordSet !== undefined) mountPasswordSet(server, database, config.passwordSet);
 
@@ -471,6 +481,16 @@ async function main(): Promise<void> {
     console.error(`api: ${(error as Error).message}`);
     process.exit(1);
   }
+  // AW-07b: the provider's delivery hook, mounted only with a hook secret in
+  // the provider's form; a malformed one stops the server, naming the setting.
+  const hookConfig = mailHookSettings(environment);
+  if (hookConfig.kind === 'invalid') {
+    console.error(`api: ${hookConfig.problem}`);
+    process.exit(1);
+  }
+  // The hook's events land over the businesses restart recovery resolves, set
+  // below before the port is bound.
+  let hookBusinesses: readonly BusinessId[] = [];
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -489,7 +509,16 @@ async function main(): Promise<void> {
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     errorSink,
     ...(alerts === undefined ? {} : { alerts }),
+    ...(hookConfig.kind === 'configured'
+      ? {
+          mailHook: {
+            secret: hookConfig.secret,
+            businesses: async () => await Promise.resolve(hookBusinesses),
+          },
+        }
+      : {}),
   });
+  console.log(`api: email hook ${hookConfig.kind === 'configured' ? 'mounted' : 'not mounted'}`);
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
   // bound: a process start is the resume entry, and a failure is a failed
@@ -515,6 +544,7 @@ async function main(): Promise<void> {
   // an interval; nothing on the wire reaches it. Started before the port is
   // bound, so a custody that cannot start stops the server first.
   const traced = recovered.businesses.map((business) => business.businessId);
+  hookBusinesses = traced;
   const tracer =
     traceConfig.kind === 'on'
       ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))

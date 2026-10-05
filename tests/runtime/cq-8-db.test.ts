@@ -203,9 +203,20 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
     let orderedLocks = 0;
     let compared = 0;
     for (const statements of seen) {
-      const kinds = classifyAll(statements);
+      // The operation identity's door (#932) opens every call, so it is
+      // checked on its own and the floors below count the command layer's
+      // other locks: the door alone cannot meet them.
+      const kinds = classifyAll(statements).map((kind, index) =>
+        kind === 'command' && String(statements[index]?.parameters[0]).startsWith('operation:')
+          ? 'door'
+          : kind,
+      );
+      const door = kinds.indexOf('door');
       const lastCommand = kinds.lastIndexOf('command');
       const firstOrdered = kinds.indexOf('ordered');
+      if (door >= 0 && firstOrdered >= 0) {
+        expect(door, statements[door]?.text).toBeLessThan(firstOrdered);
+      }
       commandLocks += kinds.filter((kind) => kind === 'command').length;
       orderedLocks += kinds.filter((kind) => kind === 'ordered').length;
       if (lastCommand < 0 || firstOrdered < 0) continue;

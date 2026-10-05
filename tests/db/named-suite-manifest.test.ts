@@ -56,6 +56,10 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
     'pure: a stubbed fetch and a typed stand-in world, counter 0',
   'tests/api/function-agent-quota.test.ts':
     'pure: the function handler with no database, counter 0',
+  'tests/api/secret-log-capture-keeps-credential-in-object.test.ts':
+    'pure: the console capture only, counter 0',
+  'tests/api/secret-log-capture-keeps-credential-in-format-and-buffer.test.ts':
+    'pure: the console capture only, counter 0',
 };
 
 const manifest = readNamedSuites(root);

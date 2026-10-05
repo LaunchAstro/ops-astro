@@ -45,6 +45,11 @@ export interface AgentPaneProps {
   readonly busy: boolean;
   /** The server's refusal of the last action, quoted as it came. */
   readonly refusal: string | null;
+  /**
+   * The server refused a decision of this reader's on the task for want of the
+   * grant. Every decide control is drawn closed rather than asking again.
+   */
+  readonly decideClosed: boolean;
   readonly onDecide: (gate: GateRef, decision: GateDecision) => void;
   readonly onReject: (gate: GateRef) => void;
   readonly onCancel: (lineageId: string) => void;
@@ -110,6 +115,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         <ProposalHeader
           story={shown}
           busy={props.busy}
+          decideClosed={props.decideClosed}
           onReject={props.onReject}
           onCancel={props.onCancel}
         />
@@ -134,6 +140,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
           story={shown}
           effect={props.effect}
           busy={props.busy}
+          closed={props.decideClosed}
           nameOf={props.nameOf}
           decisions={lineage?.decisions ?? []}
           onDecide={props.onDecide}

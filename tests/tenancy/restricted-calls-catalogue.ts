@@ -17,7 +17,21 @@ const COLUMN_UPDATES: Readonly<
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
   // C40B: a reset token is spent by `spent_at` alone.
-  'public.password_reset_tokens': { from: '20261004101257', columns: ['spent_at'] },
+  'public.password_reset_tokens': { from: '20261005030427', columns: ['spent_at'] },
+  // C33: an activation's setting, pin and switch, each change by a person.
+  'public.activations': {
+    from: '20261005003850',
+    columns: [
+      'changed_at',
+      'changed_by_actor_id',
+      'enabled',
+      'event_kind',
+      'every_minutes',
+      'mode',
+      'revision',
+      'version_id',
+    ],
+  },
   'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
   'public.clients': {
@@ -26,15 +40,20 @@ const COLUMN_UPDATES: Readonly<
   },
 };
 
+/**
+ * Whether the migration `at` (its version, `0086_bootstrap_pins` or
+ * `20261005003850_automations`) is `from` or later. Every four-digit ID sorts
+ * before every fourteen-digit timestamp, so both are padded to fourteen.
+ */
+const reached = (at: string, from: string): boolean =>
+  (at.split('_', 1)[0] ?? at).padStart(14, '0') >= from.padStart(14, '0');
+
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
 export function columnUpdatesAt(at?: string): readonly string[] {
-  return (
-    Object.entries(COLUMN_UPDATES)
-      // The migration's ID, four digits or a UTC timestamp, which sorts after them all.
-      .filter(([, grant]) => at === undefined || (at.split('_')[0] ?? '') >= grant.from)
-      .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
-      .toSorted()
-  );
+  return Object.entries(COLUMN_UPDATES)
+    .filter(([, grant]) => at === undefined || reached(at, grant.from))
+    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
+    .toSorted();
 }
 
 /**
@@ -94,7 +113,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
       line: `ops_astro_app ${act} ops.second_factor_subjects.${column}`,
     })),
   ),
-  // C40 (20261004101257): a reset in flight; the application opens one and settles it.
+  // C40 (20261005030427): a reset in flight; the application opens one and settles it.
   ...[
     ['INSERT', 'id'],
     ['INSERT', 'subject_digest'],
@@ -104,7 +123,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     ['SELECT', 'subject_digest'],
     ['UPDATE', 'settled_at'],
   ].map(([act, column]) => ({
-    from: '20261004101257',
+    from: '20261005030427',
     line: `ops_astro_app ${act} ops.subject_resets.${column}`,
   })),
   // Batch 2b's (C55, C59): the forwarder writes an alert's kind alone and the
@@ -130,7 +149,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
 ];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {
-  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at >= grant.from)
+  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || reached(at, grant.from))
     .map((grant) => grant.line)
     .toSorted();
 }
