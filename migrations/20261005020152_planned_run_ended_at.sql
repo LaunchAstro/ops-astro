@@ -15,9 +15,15 @@
 -- alone. The clock is read as the row changes, after any lock the change
 -- waited on, not at the transaction's start: an end held up by another
 -- writer is never stamped before the run could leave work. Rows
--- already written: a hand-back takes its run event's time; a cancel, whose
--- time was never stored, takes this migration's instant (later than the true
--- end, never earlier, so no body is purged early).
+-- already written: a hand-back takes its run event's time, which is its
+-- transaction's start and so may sit before the end by any lock wait (seconds
+-- against a window of days); a cancel, whose time was never stored, takes this
+-- migration's instant (later than the true end, never earlier).
+--
+-- A claimed run whose plan version is replaced keeps its state, so its end is
+-- the version's `superseded_at`. The propose that supersedes takes the run's
+-- lock first, so the same clock rule holds there: the first supersede is
+-- stamped with `clock_timestamp()`, whatever the statement supplies.
 
 alter table public.planned_runs add column ended_at timestamptz;
 
@@ -53,3 +59,21 @@ revoke all on function public.planned_runs_stamp_end() from public;
 create trigger planned_runs_stamp_end
   before insert or update on public.planned_runs
   for each row execute function public.planned_runs_stamp_end();
+
+create function public.proposal_versions_stamp_superseded() returns trigger
+  language plpgsql
+  set search_path = pg_catalog, public
+as $$
+begin
+  if old.superseded_at is null and new.superseded_at is not null then
+    new.superseded_at := clock_timestamp();
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.proposal_versions_stamp_superseded() from public;
+
+create trigger proposal_versions_stamp_superseded
+  before update on public.proposal_versions
+  for each row execute function public.proposal_versions_stamp_superseded();
