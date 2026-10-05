@@ -113,8 +113,11 @@ the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 Under those locks, `task.propose` checks the cap's currency and room and the
 open envelope's, T1's "existing budget authority", as the handback's successor
 bound does (`refuseBeyondBudget`, `propose.ts`). The envelope is asked first
-(`refuseBeyondEnvelope`), and each room is less the hold the superseded version
-releases. The cap is the open envelope's, else the one the caller passed, else
+(`refuseBeyondEnvelope`), and each room is less what superseding the live
+versions gives back, by the rule the classifier closes a hold by
+(`releasedOnClosing`, `budget-ledger.ts`, #836): a hold closes at its settled
+model calls' spend, and a marked hold or one with a call still open gives back
+nothing. The cap is the open envelope's, else the one the caller passed, else
 the business cap: with no `capId` passed, which is `task.restart`,
 `lockProposal` reads the business cap (`readBusinessCapId`) and locks it with
 the rest of the set. The check runs
@@ -1615,6 +1618,16 @@ both tenancy-scoped with row security forced, and the fair share's count
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
   update and delete, and the application group may select and insert only.
+
+An observation settles its hold by the same rule (#832): the reservation and
+the envelope close at the attempt's priced cost plus what the hold's settled
+calls cost, and the attempt records its own cost. A call on the hold sent and
+never settled, or a total above the hold, keeps the whole hold as
+`liability_unknown` for a person; `task.observe` refuses `BUDGET_UNAVAILABLE`
+retaining it, in words that name which. Observe locks the envelope with the
+step, lease and reservation, ahead of them in the contract's order, so it never
+waits on the envelope while holding a lease a hand-back is parked on (#834;
+`tests/runtime/observe-counts-the-holds-calls.test.ts`).
 
 The broker (`core-custody/src/broker.ts`, with its steps in the
 `broker-*.ts` files beside it) writes both, and the `model.call`

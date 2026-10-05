@@ -18,7 +18,7 @@ const TARGET: CorrectionTarget = {
 };
 
 function page(overrides: Partial<PageObservation> = {}): PageObservation {
-  return {
+  const observed = {
     url: 'https://www.example.com/about',
     status: 200,
     documentDigest: 'sha256:doc-before',
@@ -26,6 +26,8 @@ function page(overrides: Partial<PageObservation> = {}): PageObservation {
     stylesheets: { 'https://www.example.com/_astro/site.css': 'sha256:css-1' },
     ...overrides,
   };
+  // The served document carries what the text shows, and nothing else.
+  return { ...observed, html: `<p>${observed.text}</p>` };
 }
 
 const before = page();

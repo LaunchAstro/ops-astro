@@ -1,6 +1,5 @@
 {
   "rules": {
-    "eslint(max-lines-per-function)": 11,
-    "unicorn(prefer-native-coercion-functions)": 1
+    "eslint(max-lines-per-function)": 11
   }
 }
