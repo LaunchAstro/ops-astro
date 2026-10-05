@@ -13,7 +13,7 @@
 
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -77,9 +77,13 @@ export function runContainer(role, network, env, command, { stdin = false } = {}
     rmSync(folder, { recursive: true, force: true });
     return succeeded;
   });
-  // A running container goes first, by its id, so the client sees it end;
-  // then the client is asked to end, and killed if it has not within `GRACE_MS`.
+  // psql and pg_dump ask the server to cancel the statement they are on when
+  // they get SIGINT, so the server's side ends as well (a backend blocked in a
+  // statement never notices its client go). The init passes the signal on.
+  // Whatever still runs after `GRACE_MS` is removed by its id, so the client
+  // sees it end; then the client is asked to end, and killed if it has not.
   async function stop() {
+    if (await dockerOn(cidfile, ['kill', '--signal=INT'])) await settles(closed, GRACE_MS);
     await removeContainer(cidfile);
     child.kill('SIGTERM');
     const kill = setTimeout(() => child.kill('SIGKILL'), GRACE_MS);
@@ -87,6 +91,32 @@ export function runContainer(role, network, env, command, { stdin = false } = {}
     clearTimeout(kill);
   }
   return { child, exited, stop };
+}
+
+/** Runs `docker <command> <id>` for the id in `cidfile`; whether there was one. */
+async function dockerOn(cidfile, command) {
+  let id = '';
+  try {
+    id = readFileSync(cidfile, 'utf8').trim();
+  } catch {
+    // Docker has not made the file yet.
+  }
+  if (!/^[0-9a-f]{64}$/u.test(id)) return false;
+  await new Promise((resolve) => {
+    execFile('docker', [...command, id], { timeout: STOP_MS }, () => resolve());
+  });
+  return true;
+}
+
+/** Whether `promise` settles within `ms`. */
+function settles(promise, ms) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    void promise.then(() => {
+      clearTimeout(timer);
+      return resolve(true);
+    });
+  });
 }
 
 /**
@@ -97,17 +127,9 @@ export function runContainer(role, network, env, command, { stdin = false } = {}
  * is never another run's container. No file means docker made nothing.
  */
 async function removeContainer(cidfile, name) {
-  let id;
-  try {
-    id = readFileSync(cidfile, 'utf8').trim();
-  } catch {
-    return;
-  }
-  const target = /^[0-9a-f]{64}$/u.test(id) ? id : name;
-  if (target === undefined) return;
+  const remove = ['rm', '--force', '--volumes'];
+  if ((await dockerOn(cidfile, remove)) || name === undefined || !existsSync(cidfile)) return;
   await new Promise((resolve) => {
-    execFile('docker', ['rm', '--force', '--volumes', target], { timeout: STOP_MS }, () =>
-      resolve(),
-    );
+    execFile('docker', [...remove, name], { timeout: STOP_MS }, () => resolve());
   });
 }
