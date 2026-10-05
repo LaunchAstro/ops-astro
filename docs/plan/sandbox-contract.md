@@ -2,7 +2,7 @@
 
 Status: **draft for approval**. Drafted 5 October 2026 under
 [ADR 0048](../adr/0048-sandbox-launcher-contract-drafted-reviewed-not-built.md),
-revised the same day after three adversarial reviews. Nothing here is built.
+revised the same day after four adversarial reviews. Nothing here is built.
 Nathan approves the final version after the adversarial findings are
 resolved, and only then may implementation start. Until then untrusted
 package installation and headless execution stay unavailable, with no
@@ -65,7 +65,9 @@ The launcher knows exactly three run classes. Any other request is refused.
   reviewed pin change (T2), never during a check. It receives only
   `package.json`, `package-lock.json`, the package tarballs (E2) and an npm
   configuration the launcher writes; never the site tree or any
-  configuration file from it. Anything given to it is treated as public.
+  configuration file from it. Anything given to it is treated as public. It
+  runs in the base-plus-entrypoint image (no `node_modules` layer), whose id
+  is pinned per platform.
 
 No run class has network access (section 5).
 
@@ -106,9 +108,10 @@ allow-list. Unknown keys, unknown values and extra fields are refused.
 - **I5. The lockfile grammar.** `site.prepare` accepts only
   `package-lock.json` with `lockfileVersion` 3 and a `package.json` with no
   `packageManager` field. Every non-root package entry has a `sha512`
-  `integrity` and a `resolved` URL of exactly one of two forms, where
-  `<name>` and `<version>` equal the entry's own `name` and `version` and
-  `<name>` follows npm's name grammar:
+  `integrity` and a `resolved` URL of exactly one of two forms. `<name>` is
+  the entry's key after its last `node_modules/` and follows npm's name
+  grammar; `<version>` is the entry's own `version`; `<base>` is `<name>`
+  without its scope. An entry carrying a `name` field (an alias) is refused.
   - `https://registry.npmjs.org/<name>/-/<base>-<version>.tgz`;
   - `https://npm.pkg.github.com/download/<name>/<version>/<40 hex>`, with
     `<name>` under a scope the site record lists.
@@ -175,10 +178,10 @@ ends, whatever the outcome.
 - **B7. Machine share.** One sandbox at a time, a queue of at most four and a
   queue wait of at most 300 s. Every sandbox runs with `OomScoreAdj` 1000.
 - **B8. Images.** No image is built by the daemon. The launcher assembles each
-  site image itself as an image archive of three layers, bottom to top:
-  - the Node base image's layers and config, an archive that arrives through
-    the reviewed pin change and is checked against its pinned per-platform
-    digest at every assembly;
+  site image itself as an image archive, bottom to top:
+  - the Node base image's pinned layers in their pinned order, and its
+    config, from an archive that arrives through the reviewed pin change and
+    is checked against its pinned per-platform digests at every assembly;
   - one `node_modules` layer, unpacked at `/node_modules` only, which the
     launcher writes from S2's output under O2's rules;
   - the launcher's entrypoint layer (pinned) on top, so nothing below can
@@ -187,21 +190,30 @@ ends, whatever the outcome.
   The assembled config sets no `Entrypoint`, `Cmd`, `Volumes`,
   `Healthcheck`, `OnBuild` or `StopSignal` of its own. The VM's daemon uses
   the classic overlay2 image store, and the image id is the sha256 of the
-  image config, which the launcher computes. That id enters the pin through
-  the same reviewed change (a second commit after F2), never from the
-  launcher. The load (P5) must report the same id. Site images are removed
-  when their pin is replaced, and at most 50 are kept.
+  image config, which the launcher computes. Making a pin: for a site whose
+  lockfile digest is pinned, S2, the assembly and F2 run on the production
+  sandbox VM through the proxy; the proxy loads that not-yet-pinned image
+  for F2 runs only, records the id it computed itself, and refuses that id
+  to every check. The reviewed second commit copies the proxy's recorded id
+  into the pin; the launcher never writes it. The load (P5) must report the
+  same id. Site images are removed when their pin is replaced, and at most
+  50 are kept.
 
 - **B9. Placement.** Sandboxes run in a dedicated Linux VM on the production
   machine that runs no live service, shares no host folder, holds no
   credential, and has its own Docker daemon with automatic updates off.
   - The daemon listens on no TCP port. Its socket reaches the machine only
     as one path readable by the proxy's own uid alone (mode 0600), never
-    mounted into the launcher or any other unit.
+    mounted into the launcher or any other unit. The proxy runs as a uid no
+    other process on the machine uses.
+  - While in production use the VM exposes no ssh, shell or other
+    management path.
   - The daemon's default runtime is `runsc`, and its `daemon.json` is pinned
     by hash and checked at VM boot.
   - The VM has no network interface beyond the channel that carries the
-    daemon socket to the proxy, or one whose firewall drops everything else.
+    daemon socket to the proxy, or one whose filter sits outside the VM (the
+    VM tool's network filter or the machine's packet filter), which nothing
+    inside the VM can change.
 
   A placement beside live services needs its own amendment and approval.
 
@@ -260,12 +272,15 @@ checked values, never the bytes it received.
     is read;
   - `DELETE /containers/{id}?force=1`.
 - **P5. Images.** `POST /images/load?quiet=1` only after the proxy has parsed
-  the archive itself: its manifest names exactly B8's three layers in
+  the archive itself and rebuilt it with exactly `manifest.json`, the config
+  blob and the layer files (a `repositories`, `index.json`, `oci-layout` or
+  any other member is refused): its manifest names exactly B8's layers in
   order; the base and entrypoint layers equal their pinned digests byte for
   byte; the `node_modules` layer passes O2's grammar, re-checked by the
   proxy; there are no `RepoTags`; and the image id the proxy computes is in
-  the pin list. `GET /images/{id}/json` and `DELETE /images/{id}` (no query)
-  for site images in the pin list, never the base image.
+  the pin list, or is a pin being made (B8). `GET /images/{id}/json` and
+  `DELETE /images/{id}` (no query) for site images in the pin list or
+  removed from it by the last deploy, never the base image.
 - **P6. Deadline and sweep.** The proxy kills any recorded container past its
   class's wall clock, measured in wall-clock time from the recorded start,
   whatever the launcher does. On start, before it takes a
@@ -302,7 +317,8 @@ extracted to disk.
   header's owner-execute bit is set and 0644 otherwise, directories 0755,
   owner 0:0, a fixed time, no extended attributes.
 - **O3. Exit.** Success needs exit code 0 within every B6 cap, with
-  `State.OOMKilled` false. stderr is kept for a person and never read into a
+  `State.OOMKilled` false. R1 reports `memory` only when `OOMKilled` is true;
+  any other failure to finish is `non-zero exit` or `deadline`. stderr is kept for a person and never read into a
   decision.
 - **O4. Comparison**, for the envelope:
   - the two outputs carry exactly the same set of names;
@@ -317,36 +333,46 @@ extracted to disk.
 
 - **O5. Binding.** A verdict covers exactly (site, the site record's digest,
   `baseRevision`, path, sha256 of the new content, image id). The publish
-  lands only as a compare-and-swap update of the branch from exactly
-  `baseRevision` to a commit whose only parent is `baseRevision` and whose
-  tree differs from it only at the path, whose blob is the new content. A
+  lands only as a fast-forward-only update of the branch, from exactly
+  `baseRevision`, to a commit whose only parent is `baseRevision` and whose
+  tree differs from it only at the path, whose blob is the new content. The
+  publish flow and the client branch protection change to allow this
+  (section 12, question 6). A
   merge, a squash or an update from any other head is refused, and the
   verdict lapses. Anything else is a new check, never a reuse.
 - **H1. Host fidelity.** "Served" in O4 means built by the pinned toolchain
   under B3. The verdict carries over to the host only where the two match, so
   a site is refused when:
   - its record's build command, install command, Node version or build
-    environment differs from the host's production build, or the host's
-    install is not `npm ci --ignore-scripts` with the base image's npm;
+    variables differ from the host's configured production build, or the
+    host's install is not `npm ci --ignore-scripts` with the base image's
+    npm. The sandbox-only variables and layout in B3 and B8 are accepted
+    differences, and host-injected variables are listed per host under
+    question 4;
   - its `output` is not `static`, it uses an adapter, or any page uses
     `server:defer`;
   - the host rewrites HTML after the build (section 12, question 4);
   - its build tried to reach the network when the pin was made: F2's builds
-    run in CI under runsc's trace points, which record every non-loopback
-    connect or send and every name lookup outside the sandbox, and any record
-    refuses the pin. Template dependencies that fetch at build time, such as
+    run on the production sandbox VM through the proxy as S1 runs, with
+    runsc's trace points in B1's pinned argument list recording every
+    non-loopback connect or send and every name lookup to a sink on the VM,
+    and any record refuses the pin. No client site is built in CI, which
+    runs only our fixtures. Template dependencies that fetch at build time, such as
     the astro-embed components, make a site refused, never a reason to give
     `site.build` network.
 
   At check time a build has no network, so a fetch fails or falls back. The
   residual, a fetch path that only the edited word reaches, is accepted only
-  because the word is letters only and sits in body copy (O4).
+  because the word is letters only and sits in a text node, as the
+  envelope's static layer checks (D2); the launcher's verdict is never used
+  without it.
 
 ## 8. Preflight
 
-- **F1. Probe.** At start, every 15 minutes, and after any F3 difference, the
-  launcher runs S0 once per run class with that class's create body (the
-  appendix gives the differences). From inside it proves each limit by
+- **F1. Probe.** At start and after any F3 difference, the launcher runs S0
+  once per run class with that class's create body (the appendix gives the
+  differences). Every 15 minutes it probes S1 only, without the wall-clock
+  crossing; S2's probe also runs before each S2 run. From inside it proves each limit by
   crossing it:
   - the kernel is gVisor's, and the only interface is loopback;
   - no address answers: a public address, the metadata address, the VM's and
@@ -358,9 +384,11 @@ extracted to disk.
   - allocating past the memory limit ends the run for memory, a fork past
     256 is refused, and outliving the wall clock ends in the kill;
   - writing past the output cap gives the refusal;
-  - and, from the VM rather than the sandbox, the machine, the LAN and a
-    public address do not answer, and the launcher's uid cannot open the
-    daemon socket.
+  - and, run by the VM's boot check and by a machine-side check at deploy and
+    after any F3 difference (never by the launcher, and F3 reads their last
+    result): from the VM, the machine, the LAN and a public address do not
+    answer; on the machine, neither the launcher's uid nor the machine's main
+    user can open the daemon socket.
 - **F2. Reproducibility**, a precondition for recording a pin, not a safety
   control (every check re-proves equality under O4): three builds of the
   unchanged tree, compared as O4 compares, must be identical. It is repeated
@@ -395,12 +423,12 @@ extracted to disk.
 
 ## 11. Where it runs
 
-| Place                            | Runs                                                                    |
-| -------------------------------- | ----------------------------------------------------------------------- |
-| Production machine, sandbox VM   | The socket proxy's daemon and the sandboxes (B9)                        |
-| Production machine, outside it   | The launcher and the socket proxy, as their own unit (question 2)       |
-| CI (existing GitHub-hosted runs) | `runsc` installed in the job; the full section 13 suite                 |
-| A developer's macOS laptop       | Nothing sandboxed; the grammar corpus only; sandbox tests report absent |
+| Place                            | Runs                                                                                    |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| Production machine, sandbox VM   | The socket proxy's daemon and the sandboxes (B9)                                        |
+| Production machine, outside it   | The launcher and the socket proxy, as their own unit (question 2)                       |
+| CI (existing GitHub-hosted runs) | `runsc` installed in the job; the section 13 suite on our fixtures; never a client site |
+| A developer's macOS laptop       | Nothing sandboxed; the grammar corpus only; sandbox tests report absent                 |
 
 The launcher reports a run class available only after the full section 13
 suite has passed on the production sandbox VM, and again after any F3
@@ -434,23 +462,28 @@ is reviewed.
 4. **The host.** Which host serves client sites and whether it rewrites HTML
    after the build (H1) is not recorded. Until it is, every site fails H1 and
    is refused.
-5. **Unverified mechanisms.** Whether runsc's trace points can feed a sink in
-   CI (H1), whether GitHub Packages downloads redirect and to which hosts
+5. **Unverified mechanisms.** Whether runsc's trace points can feed a sink on
+   the sandbox VM (H1), whether GitHub Packages downloads redirect and to which hosts
    (E2), and how runsc backs `/dev/shm`. Each is settled by a crossing test
    before the line that needs it may pass; until then that line refuses.
+6. **The publish flow.** O5 lands an approved edit as a fast-forward of the
+   client's branch, not through a merged request. That changes
+   `publish.ts`'s flow and each client repository's branch protection, and
+   is part of what this approval amends.
 
 ## 13. Proof before merge of the implementation
 
 Every numbered line is in exactly one of these two lists:
 
-- Crossings, in a real `runsc` container or VM: B1-B9, E1-E3, P6, F1, F2's
-  trace points, H1. A real network attempt, a real write, a real secret
+- Crossings, in a real `runsc` container or VM: T1, B1-B9, E1-E3, P6, F1,
+  F2, H1. A real network attempt, a real write, a real secret
   probe, a real cap, a real load.
-- Corpus fixtures, one per refusal clause: T2's pin rule, S0-S2, I1-I6,
+- Corpus fixtures, one per refusal clause: T2's pin rule, T3, S0-S2, I1-I6,
   P1-P5, P7, O1-O5, F3, R1-R3, D1-D2.
 - Each test fails with its guarding clause removed, and the pull request
   lists that red under "Undo-red".
-- The suite runs in CI and on the production sandbox VM (section 11).
+- The suite runs in CI against our fixtures and on the production sandbox VM
+  (section 11).
 
 ## Appendix: the fixed create body
 
@@ -462,7 +495,8 @@ values, and in nothing else:
   `Memory` and `MemorySwap` 4294967296; `Tmpfs` `/work` size 2147483648 and
   `/tmp` size 1073741824.
 - `probe`: `Image` the pinned probe image; `Cmd` `["probe", "<class>"]`;
-  every other key as the probed class's body.
+  for S1, `Env` the fixed variables of B3 and no site variables; every other
+  key as the probed class's body.
 
 ```json
 {
