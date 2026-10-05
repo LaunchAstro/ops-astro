@@ -28,7 +28,8 @@ import {
 import { raiseAlert } from '../alerts.ts';
 import { lockedInstant } from '../clock.ts';
 import { lockRediscovered } from '../rediscovery.ts';
-import { checkAuthorityAt, closeHold, holdCoveringGrants } from './classifier.ts';
+import { closeHold } from '../close-hold.ts';
+import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
 import { modelCallsOn } from '../model-calls-on.ts';
 import { fourEyesBandMinor, pairFor, type Holds } from '../four-eyes.ts';
 import { locksOf, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';

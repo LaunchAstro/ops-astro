@@ -13,6 +13,7 @@ import type {
   Subject,
 } from '../../../core-records/src/index.ts';
 import type { LockRequest, LockSet } from '../locks.ts';
+import { closeHold } from '../close-hold.ts';
 import { modelCallsOn } from '../model-calls-on.ts';
 
 /** The durable causes that make an exact attempt nonclaimable. Nothing else is one. */
@@ -239,46 +240,6 @@ export async function classifyUnderLocks(
         ? `settled under ${request.cause} (${request.causeId}) at the ${calls.spentMinor.toString()} its model calls cost; the rest of the hold was released once`
         : `abandoned under ${request.cause} (${request.causeId}); the hold was released once and no cost was recorded`,
   };
-}
-
-/**
- * Close a held reservation, guarded on `held` (false if another closed it): `actual` at
- * its model calls' cost, else abandoned under the cause (0013: an actual is never zero).
- * The envelope gives the hold back once and takes only that spend, never an invented zero.
- * A hold the classifier `stopped` records its cause on `actual` too (20261004040100); a person's
- * write-off or recorded outcome that settles it records none, as before.
- */
-export async function closeHold(
-  tx: TenantQuery,
-  hold: { readonly reservationId: string; readonly envelopeId: string },
-  cause: { readonly cause: string; readonly causeId: string },
-  spentMinor: bigint,
-  { stopped = false }: { readonly stopped?: boolean } = {},
-): Promise<boolean> {
-  const spent = spentMinor > 0n;
-  const recorded = !spent || stopped;
-  const [changed] = await tx.query<{ readonly held_minor: string }>(
-    `update public.reservations
-        set state = $3, actual_minor = $4, classified_cause = $5, classified_cause_id = $6,
-            terminal_at = now()
-      where business_id = $1 and id = $2 and state = 'held'
-      returning held_minor::text as held_minor`,
-    [
-      tx.businessId,
-      hold.reservationId,
-      spent ? 'actual' : 'abandoned',
-      spent ? spentMinor.toString() : null,
-      recorded ? cause.cause : null,
-      recorded ? cause.causeId : null,
-    ],
-  );
-  if (changed === undefined) return false;
-  await tx.query(
-    `update public.task_envelopes set held_minor = held_minor - $3, actual_minor = actual_minor + $4
-      where business_id = $1 and id = $2`,
-    [tx.businessId, hold.envelopeId, changed.held_minor, spentMinor.toString()],
-  );
-  return true;
 }
 
 interface CauseRow {
