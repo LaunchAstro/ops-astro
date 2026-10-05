@@ -240,3 +240,14 @@ it('refuses a name over 255 bytes and a path over 4,096 bytes', async () => {
   const result = await assembleTree(read, fits, { ...EDIT, path: `${'a'.repeat(252)}.md` });
   expect(result.ok).toBe(true);
 });
+
+it('refuses a .git directory in the tree', async () => {
+  const config = blob('[core]\n\tfsmonitor = sh -c id\n');
+  await allRefused(
+    [
+      assemble([...SITE_FILES, `100644 ${config} .git/config`]),
+      assemble([...SITE_FILES, `100644 ${config} GIT~1/config`]),
+    ],
+    'tree config',
+  );
+});

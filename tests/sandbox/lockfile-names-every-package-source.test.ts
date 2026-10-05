@@ -10,9 +10,19 @@
 // (`name` field), a `link` entry or any other form is a refusal.
 
 import { expect, it } from 'vitest';
-import { checkLockfile, LOCKFILE_CAP } from '../../packages/core-sandbox/src/lockfile.ts';
+import {
+  checkLockfile as checkBytes,
+  LOCKFILE_CAP,
+} from '../../packages/core-sandbox/src/lockfile.ts';
 
 type Entry = Record<string, unknown>;
+const asBytes = (file: string | Uint8Array) =>
+  typeof file === 'string' ? new TextEncoder().encode(file) : file;
+const checkLockfile = (
+  packageJson: string | Uint8Array,
+  lockfile: string | Uint8Array,
+  scopes: readonly string[],
+) => checkBytes(asBytes(packageJson), asBytes(lockfile), scopes);
 const refused = (why: string) => ({ ok: false, reason: 'lockfile refused', why });
 const SHA512 = `sha512-${Buffer.alloc(64, 7).toString('base64')}`;
 const HEX40 = 'a'.repeat(40);
@@ -170,4 +180,11 @@ it('reads a lockfile up to 16 MB, past the 1 MiB that holds other JSON, and refu
   );
   const manifest = JSON.stringify({ name: 'site', description: 'a'.repeat(1024 * 1024) });
   expect(checkLockfile(manifest, lock(), ['@agency'])).toEqual(refused('too large'));
+});
+
+it('reads both files as bytes, so bad UTF-8 or a byte-order mark is refused, not decoded', () => {
+  const bad = Uint8Array.from([...new TextEncoder().encode(lock().slice(0, -1)), 0xff, 0x7d]);
+  expect(checkLockfile(PACKAGE_JSON, bad, [])).toEqual(refused('not utf-8'));
+  const bom = Uint8Array.from([0xef, 0xbb, 0xbf, ...new TextEncoder().encode(PACKAGE_JSON)]);
+  expect(checkLockfile(bom, lock(), [])).toMatchObject({ ok: false, reason: 'lockfile refused' });
 });

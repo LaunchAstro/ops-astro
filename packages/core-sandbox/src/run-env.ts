@@ -10,6 +10,8 @@
 // first value listed, so neither the base image nor a record can change a
 // fixed value: a record naming HOME gets B3's.
 
+import type { SandboxResult } from './refusal.ts';
+
 type Pair = readonly [string, string];
 
 const PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
@@ -58,10 +60,10 @@ function exact(lists: readonly (readonly Pair[])[]): string[] {
 export function s1Env(
   base: readonly string[],
   record: { readonly buildEnv: readonly Pair[] },
-): string[] {
-  return exact([S1_FIXED, pairs(base), record.buildEnv]);
+): SandboxResult<{ env: string[] }> {
+  return { ok: true, env: exact([S1_FIXED, pairs(base), record.buildEnv]) };
 }
 
-export function s2Env(base: readonly string[]): string[] {
-  return exact([S2_FIXED, pairs(base)]);
+export function s2Env(base: readonly string[]): SandboxResult<{ env: string[] }> {
+  return { ok: true, env: exact([S2_FIXED, pairs(base)]) };
 }

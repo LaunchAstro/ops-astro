@@ -111,3 +111,18 @@ it('refuses a size that is not a whole number of bytes', () => {
     expect(withEntry(file('src/pages/x.astro', size)), String(size)).toEqual(refused('tree size'));
   }
 });
+
+it('refuses a .git entry in any spelling git itself refuses to check out', () => {
+  for (const path of [
+    '.git/config',
+    'src/.git',
+    '.GIT/config',
+    '.git./config',
+    '.git../x',
+    'GIT~1/config',
+    'src/git~1',
+  ])
+    expect(withEntry(file(path))).toEqual(refused('tree config'));
+  for (const path of ['.github/workflows/a.md', 'src/.gitkeep', 'git~2.md', 'src/x.git'])
+    expect(withEntry(file(path))).toEqual({ ok: true });
+});

@@ -84,6 +84,16 @@ it('refuses a site with no record as unknown and one whose pin is being made as 
   });
   expect(withField('site', 'dental')).toEqual({ ok: false, reason: 'no pin', why: 'pin image' });
   expect(withField('site', 7)).toEqual(refused('request value'));
+  const looked: string[] = [];
+  const spy = (id: string) => {
+    looked.push(id);
+    return siteOf(id);
+  };
+  for (const site of ['__proto__', 'Physio', 'a'.repeat(64), '-x', ''])
+    expect(
+      readBuildRequest(new TextEncoder().encode(JSON.stringify({ ...REQUEST, site })), spy),
+    ).toEqual(refused('request value'));
+  expect(looked).toEqual([]);
 });
 
 it('takes baseRevision only as 40 lowercase hex', () => {
@@ -107,6 +117,7 @@ it("takes a path only under the record's directories with its extensions", () =>
     'src/pages/about',
     'src/pages/.astro',
     'src/pages/../../package.json',
+    'src/pages/../pages/a.astro',
     'src/pages/./a.astro',
     'src/pages//a.astro',
     '/src/pages/a.astro',

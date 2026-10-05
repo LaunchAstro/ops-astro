@@ -87,10 +87,12 @@ function entryClause(key: string, entry: Json | undefined, scopes: readonly stri
 }
 
 export function checkLockfile(
-  packageJson: string,
-  lockfile: string,
+  packageJsonBytes: Uint8Array,
+  lockfileBytes: Uint8Array,
   scopes: readonly string[],
 ): SandboxResult<object> {
+  const packageJson = new TextDecoder().decode(packageJsonBytes);
+  const lockfile = new TextDecoder().decode(lockfileBytes);
   const manifest = parse(packageJson);
   if (!manifest.ok) return manifest;
   if (Object.hasOwn(manifest.object, 'packageManager')) return refusal('package manager');
