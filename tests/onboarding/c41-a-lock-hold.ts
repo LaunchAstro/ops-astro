@@ -49,9 +49,10 @@ export interface LockHold {
   readonly stepWorld: (tasks: readonly string[]) => Promise<readonly unknown[]>;
   readonly waiters: (n: number) => Promise<boolean>;
   readonly whileHeld: (
-    onboardingId: string,
+    heldId: string,
     first: Sent,
     meanwhile: (send: (sent: Sent) => Promise<Answer>) => Promise<void>,
+    table?: 'onboardings' | 'delegations',
   ) => Promise<Answer>;
 }
 
@@ -138,9 +139,10 @@ export function lockHold(the: MoveWorld['the']): LockHold {
    * hold ends when `meanwhile` returns; every call is then answered.
    */
   const whileHeld = async (
-    onboardingId: string,
+    heldId: string,
     first: Sent,
     meanwhile: (send: (sent: Sent) => Promise<Answer>) => Promise<void>,
+    table: 'onboardings' | 'delegations' = 'onboardings',
   ): Promise<Answer> => {
     const { db, business, environment } = the.controls.fixture;
     const pools: Database[] = [];
@@ -161,9 +163,7 @@ export function lockHold(the: MoveWorld['the']): LockHold {
     let answer: Promise<Answer> | undefined;
     try {
       await holder.withBusiness(business, async (tx) => {
-        await tx.query('select id from public.onboardings where id = $1 for update', [
-          onboardingId,
-        ]);
+        await tx.query(`select id from public.${table} where id = $1 for update`, [heldId]);
         answer = send(first);
         expect(await waiters(1)).toBe(true);
         await meanwhile(send);

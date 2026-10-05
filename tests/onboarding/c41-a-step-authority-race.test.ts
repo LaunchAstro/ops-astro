@@ -105,4 +105,39 @@ describe.skipIf(serverUrl === undefined)('C41-A step result authority after the 
     expect([answer.status, answer.body['code']]).toStrictEqual([401, 'DELEGATION_NOT_LIVE']);
     expect(await stepWorld(tasks)).toStrictEqual(before);
   }, 60_000);
+
+  it('C41-A races: a delegation that expires while its agent’s step result waits on the delegation row, left unchanged, is refused, writing nothing', async () => {
+    const steps = await onboard('Made-up Client Delegation Row Wait');
+    const welcome = String(steps.get('welcome-email'));
+    const tasks = [...steps.values()];
+    const { controls } = the;
+    const proposal = await controls.propose(welcome, await revisionOf(welcome), 'step_welcome');
+    const credential = String(
+      (await controls.pickup(await controls.approve(proposal)))['credential'],
+    );
+    const [delegation] = await controls.fixture.db.admin.execute<{ readonly id: string }>(
+      `update public.delegations set expires_at = clock_timestamp() + interval '3 seconds'
+        where purpose_scope_id = $1 and revoked_at is null returning id::text`,
+      [welcome],
+    );
+    const before = await stepWorld(tasks);
+    const first: Sent = {
+      path: agentPath('onboarding.step_result'),
+      body: { operationId: randomUUID(), recordId: welcome, outcome: 'done', result: 'expired' },
+      headers: {
+        ...authorised(await tokenFor(controls.fixture.agent.subject)),
+        'x-agent-delegation': credential,
+      },
+    };
+    const answer = await whileHeld(
+      String(delegation?.id),
+      first,
+      async () => {
+        await pause(3500);
+      },
+      'delegations',
+    );
+    expect([answer.status, answer.body['code']]).toStrictEqual([401, 'DELEGATION_NOT_LIVE']);
+    expect(await stepWorld(tasks)).toStrictEqual(before);
+  }, 60_000);
 });
