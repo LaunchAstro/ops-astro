@@ -8,8 +8,7 @@
 //   new enduring person and the invitation, pending for the lifetime below.
 // - `invitation.resend` moves a pending invitation's expiry on by a lifetime.
 // - `invitation.revoke` ends a pending invitation.
-// Either spends every enrolment token minted before it, so no older link
-// accepts (SEC27 F5); a resend's own link is minted by its send.
+// Either spends every enrolment token minted before it (SEC27 F5); a resend's send mints anew.
 //
 // An administrator's invitation, created or resent, also asks `access:manage`
 // on the whole business: an administrator manages access, so only a person
@@ -251,10 +250,8 @@ async function move(
   request: Act & { readonly command: 'invitation.resend' | 'invitation.revoke' },
 ): Promise<HandlerOutcome> {
   const resend = request.command === 'invitation.resend';
-  // One lock order for every act and the expiry: the limiter's, then the
-  // invitation's row. `create` ends a lapsed row only under the limiter, so a
-  // resend holding the row while it waits on the limiter would deadlock with
-  // it. The address is fixed at create, so it is read before the row's lock.
+  // `create`'s lock order, so the two never deadlock: the limiter's, then the row's. The
+  // address is fixed at create, so it is read before the row's lock.
   const address = resend ? (await read(tx, request.invitationId, false))?.address : undefined;
   const limit =
     address === undefined ? undefined : await overLimit(tx, address, context.session.actorId);
