@@ -31,6 +31,7 @@ import {
 } from './api-1-isolation-world.ts';
 import { delegationCrossing, delegationCrossingTargets } from './api-1-isolation-delegation.ts';
 import { foreign, threeWays, type Heard } from './api-1-isolation-surfaces.ts';
+import { ownStepControl } from './api-1-isolation-steps.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -45,6 +46,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
   useIsolationWorld();
   businessAndClientCrossings();
   delegationCrossing();
+  ownStepControl();
   delegationCrossingTargets();
   leaksInSuccessfulReads();
   refusalsNameNoForeignRecord();
