@@ -7,7 +7,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { c80World, type C80World } from './c80-world.ts';
+import { ABOUT, AFTER, BEFORE, c80World, type C80World } from './c80-world.ts';
+import { approvedChange } from '../../packages/core-connectors/src/index.ts';
 import { grantTo } from '../commands/fixture.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 
@@ -125,6 +126,25 @@ describe.skipIf(serverUrl === undefined)('C80 approver, the approved version sta
       }),
     ).rejects.toThrow(/live_corrections_pinned/u);
     expect(await w.stateOf(correctionId)).toBe('approved');
+  });
+
+  it('stores a version the publish can rebuild, its own seam bound in', async () => {
+    const { correctionId } = await requested();
+    const [row] = await w.world.db.admin.execute<Record<string, string>>(
+      `select seam, version_digest, pre_image_digest, base_revision, page_url
+         from public.live_corrections where id = $1`,
+      [correctionId],
+    );
+    const pin = {
+      target: { path: ABOUT, word: 'friendly', replacement: 'welcoming' },
+      preImageDigest: String(row?.['pre_image_digest']),
+      baseRevision: String(row?.['base_revision']),
+      pageUrl: String(row?.['page_url']),
+      seam: String(row?.['seam']),
+    };
+    expect(approvedChange(pin, BEFORE, String(row?.['version_digest']))).toStrictEqual({
+      files: [{ path: ABOUT, before: BEFORE, after: AFTER }],
+    });
   });
 
   it('refuses a request worked under a task the requester cannot read, as if absent', async () => {
