@@ -187,6 +187,10 @@
       "rules": { "unicorn/no-useless-undefined": "off" }
     },
     {
+      "files": ["tests/broker/sweep-after-committed-renewal-leaves-call-startable.test.ts"],
+      "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
+    },
+    {
       "files": [
         "tests/ci/restore-check-barrier-and-logs.proof.test.mjs",
         "tests/ci/restore-refuses-permissive-barrier.proof.test.mjs",
