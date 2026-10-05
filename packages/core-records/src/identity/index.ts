@@ -46,6 +46,7 @@ export {
   endProviderSession,
   endOwnSession,
   listSeenSessions,
+  holdSubjectEnding,
   openResetWindow,
   settleResetWindow,
   waitForNextSecond,

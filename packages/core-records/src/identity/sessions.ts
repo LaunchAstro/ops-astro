@@ -17,7 +17,9 @@
 // ending through another business so either commits before the ask reads the
 // endings, or waits for the asking write to commit (C52-A, PRV-oa-984-R2.1).
 // A reset's window (C40) is an ending of the subject: its open takes the
-// subject's key alone, as it writes no audit event.
+// subject's key alone, as it writes no audit event; its settle, which ends
+// sessions signed in after the window's bound too, takes the keys first
+// (`holdSubjectEnding`).
 
 import { randomUUID } from 'node:crypto';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
@@ -61,6 +63,15 @@ async function holdEnding(
     // eslint-disable-next-line no-await-in-loop -- one key after another, in order
     await advisoryLock(tx, key);
   }
+}
+
+/**
+ * The subject's ending keys, exclusively, for a transaction that ends the
+ * login's sessions as a whole (C40's settle): taken first, before any session
+ * key, in `holdEnding`'s order.
+ */
+export async function holdSubjectEnding(tx: TenantQuery, subject: string): Promise<void> {
+  await holdEnding(tx, subject, []);
 }
 
 /** The most sessions one list names; a person has a handful, never hundreds. */

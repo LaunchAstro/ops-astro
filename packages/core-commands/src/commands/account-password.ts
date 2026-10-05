@@ -49,6 +49,7 @@ import { createHash } from 'node:crypto';
 import {
   endOtherSeenSessions,
   endSeenSessions,
+  holdSubjectEnding,
   lockLoginFactors,
   loginHasVerifiedFactor,
   NO_ASSURANCE,
@@ -250,6 +251,10 @@ async function setAndEnd(
     ended = true;
   } finally {
     await database.withBusiness(found.business, async (tx) => {
+      // The settle ends sessions signed in after the window's bound too, so it
+      // takes the login's ending keys first: a write that read one live commits
+      // before it (C52-A). Before the endings below, which take session keys.
+      await holdSubjectEnding(tx, found.subject);
       if (set === 'set') await waitForNextSecond(tx);
       await endIn(tx, own.session, unset());
       if (ended && set === 'set') await audited(tx, own.session);

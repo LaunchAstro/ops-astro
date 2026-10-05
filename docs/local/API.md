@@ -2961,7 +2961,8 @@ password is set at the provider through custody under the catalogued
 held by custody alone, whose `auth` destination lists that route and takes no
 POST, `post: false`; the answer must name the same user). In each business
 the login is mapped in, one transaction ends the sessions seen there. Last,
-whatever happened, one transaction in the token's business settles the window
+whatever happened, one transaction in the token's business, holding the login's
+session-ending keys first, settles the window
 (`clock_timestamp()`; a sign-in after it is served) and, only when the
 password was set and every business's ending committed, audits
 `account.password_changed` there, once, as the person that business maps. The
