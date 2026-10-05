@@ -173,6 +173,10 @@ it.each([
     "---\nconst md = `\n---\n`;\nconst old = 'Contcat';\n--- // end\n",
   ],
   ['TOML fences', '+++\ntitle = "Contcat"\n+++\n\n'],
+  ['a next-line control', "\u0085---\nconst old = 'Contcat';\n\u0085---\n"],
+  ['a letter before it', "x---\nconst old = 'Contcat';\nx---\n"],
+  ['the closer after code', "\u0085---\nconst old = 'Contcat';\nconst year = 2026; ---\n"],
+  ['a decrement in the code', "---\nlet i = 2;\ni---1;\nconst old = 'Contcat';\n---\n"],
 ])('a fence written with %s leaves the page with no place', (_, frontmatter) => {
   const before = `${frontmatter}<h1>Contcat</h1>\n`;
   const after = before.replace('<h1>Contcat', '<h1>Contact');
