@@ -960,7 +960,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // it is served, as `gate.pending`: the door asks for any grant, and the read
   // filters by the caller's `run:write` at the correction's own party inside
   // its query, so a correction out of reach and one that does not exist are
-  // one answer. The answer's correction is its audit subject (Sol R2.3).
+  // one answer. The answer's correction is its audit subject.
   'live_correction.read': {
     identifiers: ['correctionId'],
     parse: parseCorrectionRead,

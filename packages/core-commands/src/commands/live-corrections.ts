@@ -4,7 +4,7 @@
 // The request is checked against the envelope before anything is written, so a change of more than
 // one word on one line of one file is refused with nothing stored; what is stored is the target,
 // the digests and the version the approval must name, never the file's text. The approval refuses a
-// caller outside the staff roles before reading any correction (P27 L1), locks the row at its
+// caller outside the staff roles before reading any correction, locks the row at its
 // party, reads the configured approver under a share lock on its setting, and refuses the requester
 // first: a person cannot approve their own change even when they are the configured approver
 // (release decision 3.4). Each write reads its authority again after its last

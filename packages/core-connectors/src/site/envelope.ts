@@ -95,7 +95,7 @@ function isFence(line: string): boolean {
 /**
  * Where body copy can start: just after the frontmatter's closing fence, or at zero when the file
  * opens with no frontmatter (blank lines aside). The scan starts there, so nothing in the
- * frontmatter (a quoted brace included, Sol R2.2) is read as markup. A first line that begins
+ * frontmatter (a quoted brace included) is read as markup. A first line that begins
  * `---` but is no fence, or a fence that never closes, is `undefined`: no offset is body copy.
  */
 function bodyStart(source: string): number | undefined {
