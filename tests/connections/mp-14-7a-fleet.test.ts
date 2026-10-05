@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
+import { authorised, ISSUER, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { createControls, type Controls } from '../api/controls-fixture.ts';
 import { generateSealingPair } from '../../packages/core-records/src/custody/index.ts';
 import {
@@ -31,6 +31,11 @@ import { connect, type Database } from '../../packages/core-records/src/tenancy/
 import type { TransactionQuery } from '../../packages/core-records/src/tenancy/transaction.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import type { ConnectionFleetResult, ConnectionView } from '../../packages/core-wire/src/index.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
+import { composeApi } from '../../apps/api/server.ts';
+import type { SecuritySignal } from '../../apps/api/alerts/detect.ts';
+import { testSignIn } from '../support/sign-in.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const SECRET_CANARY = `secret-canary-${randomUUID()}-do-not-log`;
@@ -536,6 +541,44 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     );
     expect(events.length).toBeGreaterThan(0);
     for (const event of events) expect(event.hash).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
+  it('MP-14-7a the fleet read feeds the export-volume detector one item per connection it hands out', async () => {
+    // Sol PRV-oa-978-R2.1: the server's own composition, its alerts observed;
+    // a business-wide connection:read holder reads the fleet of alpha.
+    const { fixture } = controls;
+    const signals: SecuritySignal[] = [];
+    const observed = composeApi({
+      keys: { ...runtimeKeys({ ...fixture.environment }), custody: pair.key },
+      database: fixture.db.app,
+      admin: fixture.db.admin,
+      signIn: testSignIn(ISSUER),
+      executeRead,
+      alerts: {
+        observe: (signal) => signals.push(signal),
+        fault: async () => await Promise.resolve(),
+        settled: async () => await Promise.resolve(),
+      },
+    }).app;
+    const answer = await post(
+      observed,
+      path('alpha', 'connection.fleet'),
+      { operationId: randomUUID() },
+      authorised(await tokenFor(reader.presented.subject)),
+    );
+    answers.push(answer);
+    expect(answer.status).toBe(200);
+    const shown = (answer.body as unknown as ConnectionFleetResult).connections;
+    expect(shown.length).toBeGreaterThanOrEqual(2);
+    expect(shown.filter((one) => one.clients.length > 0).length).toBeGreaterThanOrEqual(2);
+    expect(signals.filter((signal) => signal.kind === 'export')).toStrictEqual([
+      {
+        kind: 'export',
+        business: 'alpha',
+        who: `${reader.presented.provider}\u0000${reader.presented.subject}`,
+        items: shown.length,
+      },
+    ]);
   });
 
   it('MP-14-7a the fleet read writes no repair and no audit event beyond its own operation row', async () => {
