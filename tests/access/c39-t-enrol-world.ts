@@ -3,8 +3,8 @@
 // The enrolment cases' world (C39-T, piece P3), over the invitation world:
 // custody again, holding the mail key and the login provider's made-up
 // service key for the `auth` destination, the stand-in admin users route on
-// loopback (`c39-t-users-fake.ts`), its update route the one PUT custody
-// sends there, and a broker that catalogues `auth.create_user` and
+// loopback (`c39-t-users-fake.ts`), taking no POST but the listed create and
+// the one PUT update route, as C40's destination does, and a broker that catalogues `auth.create_user` and
 // `auth.update_user` beside `email.send`, as a deployment with the login
 // provider configured has. The route is mounted the way the hooks are, on
 // its own app, over the deployment's businesses alpha and bravo.
@@ -67,7 +67,11 @@ async function withUsers(): Promise<void> {
       {
         key: 'auth',
         origin: e.users.origin,
-        routes: [{ method: 'PUT', path: '/auth/v1/admin/users/*' }],
+        post: false,
+        routes: [
+          { method: 'POST', path: '/auth/v1/admin/users' },
+          { method: 'PUT', path: '/auth/v1/admin/users/*' },
+        ],
       },
     ],
   });
