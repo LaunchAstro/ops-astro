@@ -15,6 +15,20 @@
   "overrides": [
     {
       "files": [
+        "tests/surfaces/c31-keys-panel-latest-read-and-settings-harness.test.tsx",
+        "tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx",
+        "tests/surfaces/c31-keys-panel-stale-set-refused.test.tsx",
+        "tests/surfaces/c31-keys-panel-write-denial-drops-the-list.test.tsx"
+      ],
+      "rules": {
+        "require-await": "off",
+        "no-promise-executor-return": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "max-lines-per-function": "off"
+      }
+    },
+    {
+      "files": [
         "tests/acceptance/a-credential-cannot-write-another-clients-or-persons-task.test.ts"
       ],
       "rules": { "max-lines-per-function": "off" }
