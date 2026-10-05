@@ -109,6 +109,18 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     await controls.fixture.db.admin.execute(sql, params);
   };
 
+  /** An applied call by `actor` on `record`, recorded `ago` before now. */
+  const applied = async (actor: string, record: unknown, ago: string): Promise<void> => {
+    await owner(
+      `insert into public.audit_events
+         (business_id, id, actor_id, command, outcome, subject_record_id, payload_digest, seq,
+          hash, occurred_at)
+       values ($1, $2, $3, 'task.read', 'applied', $4, repeat('0', 64), 1, repeat('0', 64),
+               now() - $5::interval)`,
+      [alpha, randomUUID(), actor, record, ago],
+    );
+  };
+
   /** Pick a task up for real, with its client set to `client`. */
   async function delegate(purpose: string, client: string | null): Promise<[string, string]> {
     const task = await controls.createTask(purpose);
@@ -608,6 +620,52 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       liveExec: before.grantCounts.liveExec - 2,
     });
     expect(after.roster.find((one) => one.agentId === helper)?.liveGrants).toBe(0);
+
+    // SEC-P04A-RB4.1: a call recorded after the revocation, then the helper
+    // hands back as the refusal tells it to. The parent ended first, so the
+    // grant stays taken back at the parent's end and the call is outside it.
+    const parentEnd = grantOf(after, parentId)?.endedAt;
+    await applied(helper, recordId, '0 seconds');
+    await owner(`update public.delegations set settled_at = now() where id = $1`, [
+      child.delegation.id,
+    ]);
+    const handed = grantOf(await signal(admin), child.delegation.id);
+    expect([
+      handed?.state,
+      handed?.endedAt,
+      handed?.revocationCause,
+      handed?.redemptions,
+    ]).toStrictEqual(['taken_back', parentEnd, 'delegation_revoked', 0]);
+  });
+
+  it('MP-14-8 a child grant whose parent ran out ends at the parent expiry, and later calls count none', async () => {
+    // SEC-P04A-RB4.2: the parent's expiry bounds the child's end and its
+    // window, though the child's own expiry is an hour away.
+    const childId = randomUUID();
+    await owner(
+      `insert into public.delegations
+         (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
+          collections, actions, credential_hash, granted_at, expires_at, purpose_scope_kind,
+          purpose_scope_id, parent_delegation_id)
+       select business_id, $2, $3, delegate_person_id, minted_by_actor_id, 'child_ran_out',
+              collections, (select array_agg(one) from unnest(actions) one where one = 'read'),
+              repeat('cd', 32), granted_at, now() + interval '1 hour', purpose_scope_kind,
+              purpose_scope_id, id
+         from public.delegations where id = $1`,
+      [grants.ranOutB, childId, agentB],
+    );
+    const task = await controls.fixture.db.admin.execute<{ readonly id: string }>(
+      `select purpose_scope_id as id from public.delegations where id = $1`,
+      [grants.ranOutB],
+    );
+    await applied(agentB, task[0]?.id, '30 minutes');
+    const result = await signal(admin);
+    const shown = grantOf(result, childId);
+    expect([shown?.state, shown?.endedAt, shown?.redemptions]).toStrictEqual([
+      'ran_out',
+      grantOf(result, grants.ranOutB)?.expiresAt,
+      0,
+    ]);
   });
 
   it('MP-14-8 the read writes nothing beyond its own operation row', async () => {
