@@ -129,7 +129,9 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     const attempt = declarationFor(cell.operation).kind !== 'read';
     expectUnchanged(before, after, audit, { operation: cell.operation, code, attempt });
     if (inject(body, value)[cell.key] !== undefined) {
-      expect(audit['attempted']).toStrictEqual({ [cell.key]: value });
+      // secret.set's body carries the value, so its refusals keep no attempted values.
+      const kept = cell.operation === 'secret.set' ? null : { [cell.key]: value };
+      expect(audit['attempted']).toStrictEqual(kept);
     }
 
     // And the same request without the field succeeds, under a fresh identity:

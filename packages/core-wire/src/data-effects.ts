@@ -5,7 +5,7 @@
 // hand, are in `data-effects-types.ts`, re-exported here.
 
 import type { CommandName } from './surface.ts';
-import type { DataEffects, OutsideEffect, RecordWrite } from './data-effects-types.ts';
+import { business, client, writing, type DataEffects } from './data-effects-types.ts';
 
 export type {
   ClassedEffects,
@@ -17,15 +17,6 @@ export type {
   RecordWrite,
 } from './data-effects-types.ts';
 export { classOf } from './data-effects-types.ts';
-
-const business = (...kinds: string[]): RecordWrite[] =>
-  kinds.map((kind) => ({ kind, scope: 'business' }));
-const client = (...kinds: string[]): RecordWrite[] =>
-  kinds.map((kind) => ({ kind, scope: 'client' }));
-const writing = (
-  writes: readonly RecordWrite[],
-  outside: readonly OutsideEffect[] = [],
-): DataEffects => ({ writes, intake: [], outside, access: false });
 
 const READ = writing([]);
 // A task is a row of `records`, with its unique values beside it.
@@ -184,6 +175,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'operations.change_installation_mode': writing(business('ops.installation')),
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
+  // Custody (C31): a set may store a client's credential (a clientId), so it
+  // is client data and waits on the first-client gate, as a task that may
+  // name no client does. A clear gives no one anything, as a share revoked.
+  'secret.list': READ,
+  'secret.set': writing(client('custody_secrets')),
+  'secret.clear': writing(business('custody_secrets')),
   'client.create': writing(client('clients')),
   // New client onboarding (C41-A): the client row, its tasks laid out from a
   // template, a step's result as a comment on its task, and the inbox item

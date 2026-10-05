@@ -248,6 +248,10 @@ const UNREACHED: Readonly<Record<string, string>> = {
        join public.records b on b.business_id = a.business_id and b.id > a.id
       where a.business_id = $1 order by a.id, b.id limit 1 returning 1`,
   // T3e2: the journey drops nothing, so one report and one of its runs.
+  // A cleared secret: the row with no sealed value, which is a whole row (C31).
+  'public.custody_secrets': `insert into public.custody_secrets
+       (business_id, id, name, scope_kind, scope_id)
+     values ($1, gen_random_uuid(), 'restricted-calls.seed', 'business', null) returning 1`,
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
   // C80's two tables: the journey requests no live correction. The receipt
