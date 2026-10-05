@@ -7,8 +7,11 @@
 // 200,000, plus symlinks that stay inside it, and no `.wh.` segment.
 //
 // The reader judges each byte as it arrives and keeps its first refusal,
-// so a refusal for the size cap means every earlier byte passed (F1's
-// `output` crossing). Mode, owner and time are never read, except a
+// so a refusal for the size cap means every earlier byte passed and one
+// byte went past the cap (F1's `output` crossing). A file's bytes are kept
+// as they arrive, never booked from its declared size. Every header byte is
+// read: the pad and device fields hold only zeros or octal, and a name
+// field is never empty, so an entry's last segment fits the name field. Mode, owner and time are never read, except a
 // `prepare` file's owner-execute bit, which O2's layer rewrite keeps.
 //
 // A symlink's link name is any number of leading `..` then plain segments,
@@ -64,12 +67,35 @@ function readText(field: Uint8Array): string | null {
   return String.fromCodePoint(...field.subarray(0, end === -1 ? field.length : end));
 }
 
+/** A device field: all NUL, or octal. Go's tar refuses any other bytes there. */
+const isDevice = (field: Uint8Array): boolean =>
+  field.every((byte) => byte === 0) || readOctal(field) !== null;
+
+/** A file's bytes, kept as they arrived, in one array. */
+function joined(chunks: readonly Uint8Array[], size: number): Uint8Array {
+  if (chunks.length === 1 && chunks[0] !== undefined) return chunks[0];
+  const data = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    data.set(chunk, at);
+    at += chunk.length;
+  }
+  return data;
+}
+
 const plain = (segment: string): boolean =>
   SEGMENT.test(segment) && segment !== '.' && segment !== '..';
 
 type State =
   | { readonly at: 'header' }
-  | { readonly at: 'data'; readonly data: Uint8Array; fill: number; padding: number }
+  | {
+      readonly at: 'data';
+      readonly entry: Omit<Extract<TarEntry, { type: 'file' }>, 'data'>;
+      readonly size: number;
+      readonly chunks: Uint8Array[];
+      fill: number;
+      padding: number;
+    }
   | { readonly at: 'padding'; left: number }
   | { readonly at: 'zero' }
   | { readonly at: 'ended' };
@@ -113,7 +139,7 @@ export class UstarReader {
 
   private wanted(): number {
     const state = this.state;
-    if (state.at === 'data') return state.data.length - state.fill;
+    if (state.at === 'data') return state.size - state.fill;
     if (state.at === 'padding') return state.left;
     if (state.at === 'ended') return 1;
     return BLOCK - this.blockFill;
@@ -129,9 +155,12 @@ export class UstarReader {
       return null;
     }
     if (state.at === 'data') {
-      state.data.set(bytes, state.fill);
+      state.chunks.push(new Uint8Array(bytes));
       state.fill += bytes.length;
-      if (state.fill === state.data.length) this.afterData(state.padding);
+      if (state.fill === state.size) {
+        this.entries.push({ ...state.entry, data: joined(state.chunks, state.size) });
+        this.afterData(state.padding);
+      }
       return null;
     }
     this.block.set(bytes, this.blockFill);
@@ -159,6 +188,10 @@ export class UstarReader {
     for (let at = 0; at < BLOCK; at += 1) if (at < 148 || at >= 156) sum += block[at] ?? 0;
     if (readOctal(block.subarray(148, 156)) !== sum) return refusal('tar checksum');
     if (MAGIC.some((byte, at) => block[257 + at] !== byte)) return refusal('tar magic');
+    if (!isDevice(block.subarray(329, 337)) || !isDevice(block.subarray(337, 345))) {
+      return refusal('tar block');
+    }
+    if (block.subarray(500, BLOCK).some((byte) => byte !== 0)) return refusal('tar block');
 
     const type = TYPES[block[156] as keyof typeof TYPES] as TarEntry['type'] | undefined;
     if (type === undefined || (type === 'symlink' && !this.rules.symlinks)) {
@@ -179,8 +212,6 @@ export class UstarReader {
     if (link === null || (type !== 'symlink' && link !== '')) return refusal('tar link');
     if (type === 'symlink' && !this.staysInside(name, link)) return refusal('tar link');
     if (this.entries.length === this.rules.entries) return refusal('too many entries');
-    // The bytes counted include this header, so the rest of the cap is what remains for data.
-    if (size > this.cap - this.bytes) return refusal('too large');
 
     this.kinds.set(name, type);
     this.folded.add(name.toLowerCase());
@@ -189,11 +220,14 @@ export class UstarReader {
       this.state = { at: 'header' };
       return null;
     }
-    const data = new Uint8Array(size);
-    this.entries.push({ type, name, data, executable });
     const padding = (BLOCK - (size % BLOCK)) % BLOCK;
-    if (size === 0) this.afterData(padding);
-    else this.state = { at: 'data', data, fill: 0, padding };
+    if (size === 0) {
+      this.entries.push({ type, name, data: new Uint8Array(), executable });
+      this.afterData(padding);
+    } else {
+      const entry = { type, name, executable } as const;
+      this.state = { at: 'data', entry, size, chunks: [], fill: 0, padding };
+    }
     return null;
   }
 
@@ -201,7 +235,7 @@ export class UstarReader {
   private name(block: Uint8Array, type: TarEntry['type']): string | Refused {
     const name = readText(block.subarray(0, 100));
     const prefix = readText(block.subarray(345, 500));
-    if (name === null || prefix === null) return refusal('tar name');
+    if (name === null || prefix === null || name === '') return refusal('tar name');
     let path = prefix === '' ? name : `${prefix}/${name}`;
     if (path.length > MAX_NAME) return refusal('tar name');
     if (type === 'directory' && path.endsWith('/')) path = path.slice(0, -1);

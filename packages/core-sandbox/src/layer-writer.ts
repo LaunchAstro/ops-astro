@@ -5,8 +5,10 @@
 // accepted, never from the run's bytes. A file is 0755 when its header's
 // owner-execute bit was set and 0644 otherwise, a directory 0755, a
 // symlink 0777; owner 0:0, time 0, no owner names and no extended headers.
-// A name past 100 bytes goes through the prefix at its last `/` that fits;
-// the reader held each name to 255 bytes in a form that already fitted.
+// Entries are written in byte order of name, so the run's own order never
+// reaches the layer (a parent sorts before its children). A name past 100
+// bytes goes through the prefix at its last `/` that fits: the reader held
+// each name to 255 bytes with a non-empty name field, so one always does.
 
 import type { TarEntry } from './ustar-reader.ts';
 
@@ -45,10 +47,12 @@ function header(entry: TarEntry): Uint8Array {
   return block;
 }
 
-/** The layer as tar blocks in entry order, ending in two zero blocks. */
+/** The layer as tar blocks in byte order of name, ending in two zero blocks. */
 export function writeLayer(entries: readonly TarEntry[]): Uint8Array[] {
   const out: Uint8Array[] = [];
-  for (const entry of entries) {
+  const named = entries.map((entry) => ({ entry, name: Buffer.from(entry.name) }));
+  named.sort((a, b) => Buffer.compare(a.name, b.name));
+  for (const { entry } of named) {
     out.push(header(entry));
     if (entry.type !== 'file' || entry.data.length === 0) continue;
     out.push(entry.data);

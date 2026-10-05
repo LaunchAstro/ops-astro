@@ -48,13 +48,19 @@ it('reads a valid build stream as its entries, names canonical', () => {
   });
 });
 
-it('reads the same entries however the stream is cut into chunks', () => {
+it('reads the same entries however the stream is cut into chunks, and keeps its own copy', () => {
   const whole = build(SITE);
   const bytes = [...SITE].map((byte) => Uint8Array.of(byte));
   expect(build(...bytes)).toEqual(whole);
   expect(build(SITE.subarray(0, 700), SITE.subarray(700, 1800), SITE.subarray(1800))).toEqual(
     whole,
   );
+  // Its own copy: a caller that reuses the chunk afterwards changes nothing kept.
+  const reused = new UstarReader('build', CAP);
+  const chunk = new Uint8Array(SITE);
+  reused.push(chunk);
+  chunk.fill(0x21);
+  expect(reused.end()).toEqual(whole);
 });
 
 it('accepts an empty stream of two zero blocks', () => {
@@ -269,12 +275,6 @@ it('keeps its first refusal and reads nothing after it', () => {
   reader.push(dir('dist'), END);
   expect(reader.end()).toEqual(refused('tar parent'));
   expect(reader.end()).toEqual(refused('tar parent'));
-});
-
-it('refuses a byte other than zero in the padding after a file', () => {
-  const padded = Buffer.concat([dir('dist'), file('dist/a', 'x')]);
-  padded[512 + 512 + 1] = 0x20;
-  expect(build(padded, END)).toEqual(refused('tar block'));
 });
 
 it('refuses for the cap only at the byte past it, never from a declared size', () => {

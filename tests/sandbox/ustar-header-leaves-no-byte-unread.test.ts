@@ -5,11 +5,11 @@
 // tar library. An entry's last segment always comes through the name field
 // (so the layer rewrite can always split it again), and the pad and device
 // fields hold only zeros or octal, which Go's archive/tar would otherwise
-// read as another format or refuse.
+// read as another format or refuse, and a file's padding is zeros.
 
 import { expect, it } from 'vitest';
 import { OUTPUT_CAP, readOutput } from '../../packages/core-sandbox/src/ustar-reader.ts';
-import { dir, file, header, tar } from './ustar-fixture.ts';
+import { dir, END, file, header, tar } from './ustar-fixture.ts';
 
 const ascii = (text: string): Uint8Array => new TextEncoder().encode(text);
 const refused = (why: string) => ({ ok: false, reason: 'output refused', why });
@@ -37,4 +37,10 @@ it('refuses a header whose pad or device fields hold anything but zeros or octal
       [337, ascii('0000000\0')],
     ]),
   ).toMatchObject({ ok: true });
+});
+
+it('refuses a byte other than zero in the padding after a file', () => {
+  const padded = Buffer.concat([dir('dist'), file('dist/a', 'x')]);
+  padded[512 + 512 + 1] = 0x20;
+  expect(build(padded, END)).toEqual(refused('tar block'));
 });
