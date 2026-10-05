@@ -135,6 +135,7 @@ export interface RepairStarted {
 
 export type RepairRefusal =
   | { readonly refused: 'not-found' }
+  | { readonly refused: 'not-granted' }
   | { readonly refused: 'not-broken'; readonly status: ConnectionStatus }
   | { readonly refused: 'stale'; readonly revision: number };
 
@@ -165,6 +166,13 @@ async function connectionNow(
  * checks would refuse it now. Two starters on one revision serialise on the
  * unique key (connection, revision): the second insert waits for the first
  * to commit, does nothing, and both answer with the one repair.
+ *
+ * `admitted` asks the starter's authority again after that first read and
+ * before the insert, with the grants it rests on held, so a revocation that
+ * committed since the envelope's check refuses the start and a later one
+ * waits for it. After the insert the connection is read once more whatever
+ * the insert did: a repair already recorded for this revision is history and
+ * is answered only while the connection is still broken at it.
  */
 export async function startRepair(
   tx: TenantQuery,
@@ -172,6 +180,7 @@ export async function startRepair(
     readonly connectionId: string;
     readonly actorId: string;
     readonly expectedRevision?: number;
+    readonly admitted: () => Promise<boolean>;
   },
 ): Promise<RepairStarted | RepairRefusal> {
   const connection = await connectionNow(tx, start.connectionId);
@@ -181,6 +190,7 @@ export async function startRepair(
     return { refused: 'stale', revision };
   }
   if (connection.status !== 'broken') return { refused: 'not-broken', status: connection.status };
+  if (!(await start.admitted())) return { refused: 'not-granted' };
   await tx.query(
     `insert into public.connection_repairs
        (business_id, id, connection_id, connection_revision, started_by_actor_id)
@@ -198,12 +208,13 @@ export async function startRepair(
     [start.connectionId, revision],
   );
   const row = rows[0];
-  if (row === undefined) {
-    // Healed or moved on since the read: refuse as the checks above would now.
-    const moved = await connectionNow(tx, start.connectionId);
-    if (moved === undefined) return { refused: 'not-found' };
-    if (moved.status !== 'broken') return { refused: 'not-broken', status: moved.status };
-    return { refused: 'stale', revision: Number(moved.revision) };
+  // Healed or moved on since the read: refuse as the checks above would now,
+  // even when an earlier start's row for this revision is there.
+  const now = await connectionNow(tx, start.connectionId);
+  if (now === undefined) return { refused: 'not-found' };
+  if (now.status !== 'broken') return { refused: 'not-broken', status: now.status };
+  if (row === undefined || Number(now.revision) !== revision) {
+    return { refused: 'stale', revision: Number(now.revision) };
   }
   return {
     id: row.id,

@@ -8,15 +8,28 @@
 // if they named one. The repair is recorded against that exact revision and
 // nothing else happens: re-authorising is the broker's (AW-01), and it passes
 // the approval gate on this revision before anything leaves the system.
+//
+// The envelope's check is not held to the write, so `custody:manage` is asked
+// again inside the start, straight before its insert, with the caller's
+// custody grants held for share (`holdCoveringGrants`, as `task.duplicate`
+// holds its own): a revocation that committed first refuses the start, and one
+// that comes second waits for it to commit.
 
 import {
   isRepairRefusal,
   isUuid,
   startRepair,
+  subjectsOf,
+  type RepairRefusal,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
+import {
+  checkAuthorityAt,
+  holdCoveringGrants,
+  lockedInstant,
+} from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 
 const REVISION_FIXES = [
@@ -25,6 +38,46 @@ const REVISION_FIXES = [
 
 function isRevision(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1;
+}
+
+/** `custody:manage` business-wide, judged at the instant the grants are held. */
+async function stillManagesCustody(tx: TenantQuery, context: CommandContext): Promise<boolean> {
+  const subjects = subjectsOf(context.session);
+  await holdCoveringGrants(tx, subjects, 'custody');
+  const at = await lockedInstant(tx);
+  const decision = await checkAuthorityAt(
+    tx,
+    subjects,
+    { collection: 'custody', action: 'manage', scope: { kind: 'business', id: null } },
+    at,
+  );
+  return decision.ok;
+}
+
+/** The command's answer to each way the start is refused. */
+function refusalOf(refusal: RepairRefusal): CommandRefusal {
+  switch (refusal.refused) {
+    case 'not-found':
+      return refuseNotFound();
+    case 'not-granted':
+      return refuseCommand(
+        'SCOPE_NOT_GRANTED',
+        [],
+        ['no live grant covers it', 'ask a holder who may delegate'],
+      );
+    case 'stale':
+      return refuseCommand(
+        'VERSION_STALE',
+        [`revision=${refusal.revision}`],
+        ['Read the fleet again and start the repair on the revision it is at now.'],
+      );
+    case 'not-broken':
+      return refuseCommand(
+        'TRANSITION_NOT_PERMITTED',
+        [`status=${refusal.status}`],
+        ['Only a broken connection is repaired; this one is not broken.'],
+      );
+  }
 }
 
 export async function startConnectorRepair(
@@ -43,29 +96,9 @@ export async function startConnectorRepair(
     connectionId: request.connectionId,
     actorId: context.session.actorId,
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
+    admitted: async () => await stillManagesCustody(tx, context),
   });
-  if (isRepairRefusal(started)) {
-    switch (started.refused) {
-      case 'not-found':
-        return refused(refuseNotFound());
-      case 'stale':
-        return refused(
-          refuseCommand(
-            'VERSION_STALE',
-            [`revision=${started.revision}`],
-            ['Read the fleet again and start the repair on the revision it is at now.'],
-          ),
-        );
-      case 'not-broken':
-        return refused(
-          refuseCommand(
-            'TRANSITION_NOT_PERMITTED',
-            [`status=${started.status}`],
-            ['Only a broken connection is repaired; this one is not broken.'],
-          ),
-        );
-    }
-  }
+  if (isRepairRefusal(started)) return refused(refusalOf(started));
   return applied(started.id, started.connectionRevision, {
     repairId: started.id,
     connectionId: started.connectionId,

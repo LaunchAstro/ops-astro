@@ -78,6 +78,9 @@ function afterFirst(tx: TenantQuery, between: () => Promise<void>): TenantQuery 
   };
 }
 
+/** The starter's authority at the records layer, where these cases call `startRepair` itself. */
+const admitted = async (): Promise<boolean> => await Promise.resolve(true);
+
 /** The repair's first read of the connection, the statement the races below pause after. */
 const CONNECTION_READ = 'select status, revision from public.connections';
 
@@ -744,7 +747,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
                 moved.id,
               ]);
             }),
-            { connectionId: moved.id, actorId: admin.actorId },
+            { connectionId: moved.id, actorId: admin.actorId, admitted },
           ),
       );
       const repairs = await controls.count(
@@ -772,6 +775,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
             connectionId: moved.id,
             actorId: admin.actorId,
             expectedRevision: 1,
+            admitted,
           }),
       );
       if (isRepairRefusal(earlier)) throw new Error('mp-14-7a: the earlier repair was refused');
@@ -784,7 +788,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
                 moved.id,
               ]);
             }),
-            { connectionId: moved.id, actorId: admin.actorId, expectedRevision: 1 },
+            { connectionId: moved.id, actorId: admin.actorId, expectedRevision: 1, admitted },
           ),
       );
       const rows = await db.admin.execute<{ readonly id: string; readonly revision: string }>(
