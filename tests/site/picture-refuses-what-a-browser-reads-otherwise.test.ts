@@ -82,9 +82,56 @@ it.each([
   },
 );
 
-it('a markup policy over a page with no inline sheet still gets its picture', async () => {
-  const policy = '<meta http-equiv=content-security-policy content="img-src \'none\'">';
-  const picture = await capturePicture(PAGE, world(`${policy}<p>Hello</p>`), standIn([], []));
+// A browser applies no sheet of another type, and of titled sets only the preferred one, so
+// any of these could leave a sheet the observation read out of the picture with no request missed.
+it.each([
+  [
+    'a policy with no inline sheet',
+    '<meta http-equiv=content-security-policy content="img-src \'none\'"><p>Hi</p>',
+  ],
+  ['a style of another type', '<style type="text/plain">p{color:red}</style><p>Hi</p>'],
+  [
+    'a style type with parameters',
+    '<style type="text/css; charset=utf-8">p{color:red}</style><p>Hi</p>',
+  ],
+  [
+    'titled style sets',
+    '<style title="a">p{color:blue}</style><style title="b">p{color:red}</style><p>Hi</p>',
+  ],
+  [
+    'a default style set',
+    '<meta http-equiv="Default-Style" content="a"><style>p{color:red}</style><p>Hi</p>',
+  ],
+  [
+    'an SVG style of another type',
+    '<svg><style type="text/plain">p{color:red}</style></svg><p>Hi</p>',
+  ],
+  ['an alternate sheet', '<link rel="alternate stylesheet" href="/site.css"><p>Hi</p>'],
+  [
+    'a titled sheet',
+    '<style title="a">p{}</style><link rel=stylesheet title="b" href="/site.css"><p>Hi</p>',
+  ],
+])('a page with %s is refused before the browser starts', async (_, page) => {
+  const browser = standIn([SHEET], []);
+  const picture = await capturePicture(PAGE, world(page, { [SHEET]: 'p{color:red}' }), browser);
+  expect({ picture, started: browser.started }).toEqual({
+    picture: { ok: false, code: 'CAPTURE_BODY_MALFORMED' },
+    started: 0,
+  });
+});
+
+it.each([
+  ['no type', '<style>p{color:red}</style>'],
+  ['an empty type', '<style type="">p{color:red}</style>'],
+  ['the CSS type in capitals', '<style type="TEXT/CSS">p{color:red}</style>'],
+  ['an empty title', '<link rel=stylesheet title="" href="/site.css">'],
+])('a sheet with %s, which a browser applies, still gets its picture', async (_, sheet) => {
+  const links = sheet.includes('<link') ? [SHEET] : [];
+  const picture = await capturePicture(
+    PAGE,
+    world(`${sheet}<p>Hi</p>`, { [SHEET]: 'p{color:red}' }),
+    standIn(links, []),
+  );
   expect(picture.ok).toBe(true);
 });
 
