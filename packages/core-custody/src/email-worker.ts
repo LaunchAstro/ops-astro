@@ -17,7 +17,9 @@
 // worker or another, sends nothing twice: the first's `asked` is what the
 // second reads (`checkItem`, `windowSpent`). The ceiling and each client's
 // week are the send path's too; a pass at the ceiling stops, and the next
-// pass carries on.
+// pass carries on. So is the worker's standing: each send holds the worker
+// actor and finds it active before custody is asked, so a worker deactivated
+// mid-pass sends nothing further.
 //
 // The daily tick runs every hour of the batch window, not once a day: each
 // person's day is their own window, read from their last batch, so a tick
@@ -51,11 +53,15 @@ const DUE = `select i.id, i.recipient_person_id as recipient, i.reason
                    order by a.observed_seq desc limit 1), true)
   order by i.raised_at, i.id`;
 
+/**
+ * The worker actor, held `for share` and active: a deactivation in flight is waited on and then
+ * read, and one that comes later waits for this transaction's end.
+ */
 async function activeWorker(tx: TenantQuery, actorId: string): Promise<boolean> {
   if (!isUuid(actorId)) return false;
   const rows = await tx.query<{ readonly id: string }>(
     `select id from public.actors
-      where business_id = $1 and id = $2 and kind = 'worker' and active`,
+      where business_id = $1 and id = $2 and kind = 'worker' and active for share`,
     [tx.businessId, actorId],
   );
   return rows.length === 1;
@@ -88,27 +94,39 @@ async function whomToTry(
   return now;
 }
 
-/** One pass over one business; how many emails it handed to custody. */
+/**
+ * One pass over one business; how many emails it handed to custody. `stop`, once aborted, starts
+ * no further send: it is checked between sends, and a send already asked runs to its end. The
+ * worker's standing is checked again in each send's own transaction, before custody is asked: a
+ * worker deactivated mid-pass sends nothing further, and the pass answers `WORKER_REQUIRED`.
+ */
 export async function deliverDue(
   database: Database,
   businessId: BusinessId,
   workerActorId: string,
   timing: EmailTiming,
   kind: 'at_once' | 'daily',
+  stop?: AbortSignal,
 ): Promise<DeliveryPass> {
   const targets = await database.withBusiness(businessId, async (tx) =>
     (await activeWorker(tx, workerActorId)) ? await whomToTry(tx, timing, kind) : undefined,
   );
   if (targets === undefined) return { ok: false, code: 'WORKER_REQUIRED' };
+  const asWorker: EmailTiming = {
+    ...timing,
+    standing: async (tx) => await activeWorker(tx, workerActorId),
+  };
   let emails = 0;
   for (const target of targets) {
+    if (stop?.aborted === true) break;
     // One send at a time: each is its own transactions and custody call.
     const sent =
       kind === 'at_once'
         ? // oxlint-disable-next-line no-await-in-loop
-          await emailAtOnce(database, businessId, target, timing)
+          await emailAtOnce(database, businessId, target, asWorker)
         : // oxlint-disable-next-line no-await-in-loop
-          await emailDailyBatch(database, businessId, target, timing);
+          await emailDailyBatch(database, businessId, target, asWorker);
+    if (!sent.ok && sent.code === 'WORKER_REQUIRED') return { ok: false, code: 'WORKER_REQUIRED' };
     if (sent.ok || sent.code === 'EMAIL_FAILED') emails += 1;
     else if (sent.code === 'EMAIL_AT_CEILING') break;
   }
@@ -121,7 +139,7 @@ export interface MailTarget {
   readonly workerActorId: string;
 }
 
-/** How often each pass runs; the daily tick defaults to an hour of the batch window. */
+/** How often each pass runs; the daily tick is an hour unless a shorter window sets its own. */
 export interface MailCadence {
   readonly atOnceMs?: number;
   readonly dailyTickMs?: number;
@@ -131,40 +149,55 @@ export const AT_ONCE_EVERY_MS = 15_000;
 
 /**
  * Run both passes on their intervals over `targets`, one of each kind at a
- * time: a pass still running when its next is due is skipped, not stacked. A business
+ * time: a pass still running when its next is due is skipped, not stacked.
+ * `timing` is read at the start of every pass, so a sending subdomain whose
+ * setup check stops verifying stops the next pass's sends. A business
  * whose pass fails is logged by its kind of pass only (never an address, a
- * link or the fault's text) and the next tick tries it again.
+ * link or the fault's text) and the next tick tries it again. `stop` starts
+ * no pass and no business after it, and resolves once a pass already running
+ * ends, so custody and the pool outlive every send in flight. Within a
+ * business it starts no send after it either.
  */
 export function startMailWorker(
   database: Database,
   targets: () => Promise<readonly MailTarget[]>,
-  timing: EmailTiming,
+  timing: () => Promise<EmailTiming>,
   cadence: MailCadence = {},
-): { readonly stop: () => void } {
-  const running = { at_once: false, daily: false };
-  const once = async (kind: 'at_once' | 'daily'): Promise<void> => {
-    if (running[kind]) return;
-    running[kind] = true;
+): { readonly stop: () => Promise<void> } {
+  const running: Partial<Record<'at_once' | 'daily', Promise<void>>> = {};
+  const stopping = new AbortController();
+  const pass = async (kind: 'at_once' | 'daily'): Promise<void> => {
     try {
-      for (const target of await targets()) {
+      const now = await timing();
+      for (const { businessId, workerActorId } of await targets()) {
+        if (stopping.signal.aborted) break;
         try {
-          // Sequential by design: one business's sends before the next's.
-          // oxlint-disable-next-line no-await-in-loop
-          await deliverDue(database, target.businessId, target.workerActorId, timing, kind);
+          // oxlint-disable-next-line no-await-in-loop -- one business's sends before the next's
+          await deliverDue(database, businessId, workerActorId, now, kind, stopping.signal);
         } catch {
           console.error(`mail worker: a ${kind} pass failed for one business`);
         }
       }
     } catch {
-      console.error('mail worker: the businesses to serve could not be read');
-    } finally {
-      running[kind] = false;
+      console.error('mail worker: the pass could not read its sender check or its businesses');
     }
   };
+  const once = (kind: 'at_once' | 'daily'): void => {
+    if (stopping.signal.aborted || running[kind] !== undefined) return;
+    running[kind] = pass(kind).finally(() => {
+      delete running[kind];
+    });
+  };
   const timers = [
-    setInterval(() => void once('at_once'), cadence.atOnceMs ?? AT_ONCE_EVERY_MS),
-    setInterval(() => void once('daily'), cadence.dailyTickMs ?? (timing.dayMs ?? DAY_MS) / 24),
+    setInterval(() => once('at_once'), cadence.atOnceMs ?? AT_ONCE_EVERY_MS),
+    setInterval(() => once('daily'), cadence.dailyTickMs ?? DAY_MS / 24),
   ];
   for (const timer of timers) timer.unref();
-  return { stop: () => timers.forEach((timer) => clearInterval(timer)) };
+  return {
+    stop: async () => {
+      stopping.abort();
+      for (const timer of timers) clearInterval(timer);
+      await Promise.all(Object.values(running));
+    },
+  };
 }

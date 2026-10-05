@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "PORT-P10 (C33 commands): a racing release asked again, one change per revision, each on its own connection."
+}

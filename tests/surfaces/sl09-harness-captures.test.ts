@@ -100,6 +100,15 @@ const ACCESS = {
   clients: [],
   agents: [],
   clientRecords: [{ clientId: id(9), name: 'Acme Dental' }],
+  clientPrivacy: [
+    {
+      clientId: id(9),
+      modelEgress: false,
+      providers: [],
+      handlesHealth: false,
+      noAgentEdits: false,
+    },
+  ],
 };
 
 /** The page, loaded at 390 with the made-up answers, draws `drawn`. */

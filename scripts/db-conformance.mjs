@@ -46,10 +46,15 @@
 // either side. That is what binds database activity to a path rather than to
 // a total, and it is why the runner spawns vitest once per suite.
 //
-// Usage: node scripts/db-conformance.mjs [--manifest <path>] [--shard <i>/<n>]
+// Usage: node scripts/db-conformance.mjs [--manifest <path> | --isolation] [--shard <i>/<n>] [--list]
+//   --isolation runs the isolation suites: the named suites whose file says so
+//   (scripts/named-suites.ts readIsolationSuites).
 //   DATABASE_URL  the database to run against. Required.
 //   --shard       run only shard i of n (scripts/db-shards.ts decides which
-//                 suites). Rules 2 and 3 still read the whole manifest.
+//                 suites; for --isolation, scripts/ci-shards.ts). Rules 2 and
+//                 3 still read the whole manifest.
+//   --list        print the run items it would run, one a line, and stop
+//                 before reaching the database (tests/ci/ci-shards.test.ts).
 //   A suite tests/db/shard-plan.json splits into parts runs once per part,
 //   with SUITE_PART=i/k, sharded or not; every rule applies to each part.
 
@@ -59,13 +64,20 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import pg from 'pg';
 import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
+import { ISOLATION_STEPS, isolationShards, readShardPlan } from './ci-shards.ts';
+import { manifestPathIn, readIsolationSuites, readNamedSuites } from './named-suites.ts';
+import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 
 const argv = process.argv.slice(2);
 const manifestFlag = argv.indexOf('--manifest');
+const isolationRun = argv.includes('--isolation');
+// Without --manifest the runner reads the repository's own manifest, the
+// per-area folder or the single file (scripts/named-suites.ts); with it, that
+// one file, as given.
 const manifestPath = resolve(
-  manifestFlag === -1 ? join(repoRoot, 'tests/db/named-suites.json') : argv[manifestFlag + 1],
+  manifestFlag === -1 ? manifestPathIn(repoRoot) : argv[manifestFlag + 1],
 );
 
 const shardFlag = argv.indexOf('--shard');
@@ -92,7 +104,11 @@ if (!existsSync(manifestPath)) {
 
 let manifest;
 try {
-  manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  if (manifestFlag === -1) {
+    manifest = isolationRun ? readIsolationSuites(repoRoot) : readNamedSuites(repoRoot);
+  } else {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  }
 } catch (error) {
   console.error(`db-conformance: cannot read ${manifestPath}: ${String(error)}`);
   process.exit(2);
@@ -109,10 +125,20 @@ const failures = [];
 // except 2 and 3, which read the whole manifest in every shard.
 const plan = readPlan(join(repoRoot, 'tests/db/shard-plan.json'));
 const items = planItems(named, plan.parts);
-const toRun =
-  shard === undefined
-    ? items
-    : (assignShards(items, plan.seconds, shard.count)[shard.index - 1] ?? []);
+/** This shard's items: an isolation shard's from the split beside its steps, which run outside this. */
+const shareOf = ({ index, count }) =>
+  isolationRun
+    ? (isolationShards(items, readShardPlan(repoRoot), count)[index - 1] ?? []).filter(
+        (item) => !ISOLATION_STEPS.includes(item),
+      )
+    : (assignShards(items, plan.seconds, count)[index - 1] ?? []);
+const toRun = shard === undefined ? items : shareOf(shard);
+// Prints this shard's suites for tests/ci/ci-shards.test.ts. It runs none, so
+// it never exits 0: a stray --list in a CI command fails that shard.
+if (argv.includes('--list')) {
+  for (const item of toRun) console.log(item);
+  process.exit(3);
+}
 const shardLabel =
   shard === undefined ? '' : `shard ${String(shard.index)}/${String(shard.count)} `;
 
@@ -163,6 +189,16 @@ const client = new pg.Client({ connectionString: url });
 let selfCost = 0;
 
 try {
+  // The migrated template is no suite's work, and building it takes a lock in
+  // `postgres`, which may be the database measured here. So it is built now,
+  // before the first read, and each suite's global setup only finds it
+  // finished, beside the measured database (scripts/migrated-template.ts). A run
+  // that has already failed builds nothing. It comes before the connection: a
+  // session flushes its counts at most once a second, so one left idle through
+  // the build makes the first read flush and the measured read cost twice that.
+  if (failures.length === 0 && templateEnabled()) {
+    await ensureMigratedTemplate(process.env['DATABASE_ADMIN_URL'] ?? url);
+  }
   await client.connect();
   // Two consecutive reads measure what a read of the counter costs, so the
   // threshold below is calibrated on this database rather than assumed. The
@@ -171,7 +207,9 @@ try {
   const second = await readCounter(client);
   selfCost = Math.max(1, second - first);
 } catch (error) {
-  console.error(`db-conformance: the database named by DATABASE_URL did not answer.`);
+  console.error(
+    'db-conformance: the database named by DATABASE_URL did not answer, or its migrated template was not built.',
+  );
   console.error(`db-conformance: ${String(error)}`);
   await client.end().catch(() => {});
   process.exit(1);

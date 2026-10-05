@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The records package's one way in: tenancy, identity, authority, the records
-// engine, the task type and the refusal register. It is the bottom layer. It
-// imports neither the runtime nor the command package, and every other package
-// reaches it through this file (`.dependency-cruiser.cjs`).
+// The records package's one way in: tenancy, identity, authority, the records engine, the task type
+// and the refusal register. It is the bottom layer. It imports neither the runtime nor the command
+// package, and every other package reaches it through this file (`.dependency-cruiser.cjs`).
 //
-// Two names are renamed here because two modules use them for different
-// things: `Refusal` is the authority check's, and the identity layer's is
-// `IdentityRefusal`.
+// Two names are renamed here because two modules use them for different things: `Refusal` is the
+// authority check's, and the identity layer's is `IdentityRefusal`.
 
 export * from './authority/agent-credential-surface.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
+  DELEGATION_STANDS,
+  DELEGATION_STANDS_AT_CHECK,
   digestOf,
   mintChildDelegation,
   mintDelegation,
@@ -30,6 +30,7 @@ export {
   type PurposeScope,
 } from './authority/delegations.ts';
 export {
+  askedFor,
   checkAuthority,
   EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
@@ -66,54 +67,25 @@ export {
   type ClientRow,
 } from './clients/clients.ts';
 export {
+  checkClientEditRun,
+  checkClientModelUse,
+  judgeModelRequest,
+  listClientPrivacy,
+  MODEL_PROVIDERS,
+  readClientPrivacy,
+  recordModelRequest,
+  writeClientPrivacy,
+  type ClientPrivacy,
+  type ClientUse,
+  type ModelRequest,
+} from './clients/privacy.ts';
+export {
   readableRecordIds,
   readableScope,
   type ReadableScope,
 } from './authority/readable-scope.ts';
 export { issueShare, withdrawShares } from './authority/shares.ts';
-export {
-  EXPIRED_FIXES,
-  NO_AGENT_FIXES,
-  resolveAgentLogin,
-  type AgentSession,
-} from './identity/agent-login.ts';
-export {
-  recordAuthenticationAttempt,
-  recordBodyRefusal,
-} from './identity/authentication-attempts.ts';
-export {
-  NO_MEMBERSHIP_FIXES,
-  standsOnShares,
-  resolveLogin,
-  withSession,
-  type SecondFactorRule,
-  type Session,
-  type VerifiedSubject,
-} from './identity/login-resolution.ts';
-export { withStanding } from './identity/standing.ts';
-export {
-  NO_ASSURANCE,
-  SESSION_ABSOLUTE_SECONDS,
-  type Assurance,
-  type AssuranceLevel,
-} from './identity/verified-subject.ts';
-export {
-  liveFactor,
-  loginHasVerifiedFactor,
-  recordFactorEnrolled,
-  recordFactorRemoved,
-  recordFactorVerified,
-  type FactorStatus,
-  type SecondFactor,
-} from './identity/second-factor.ts';
-export {
-  endOtherSeenSessions,
-  endProviderSession,
-  endOwnSession,
-  listSeenSessions,
-  type SeenSession,
-  type SessionEndReason,
-} from './identity/sessions.ts';
+export * from './identity/index.ts';
 export {
   asksMoneyStepUp,
   isMoneyKey,
@@ -177,41 +149,10 @@ export {
   savePreference,
   type PreferenceKey,
 } from './preferences/store.ts';
-export {
-  readInboxItems,
-  countOwedItems,
-  INBOX_HISTORY_PAGE,
-  INBOX_HISTORY_SCAN,
-} from './inbox/read.ts';
-export {
-  owes,
-  toldAtOnce,
-  raiseInboxItem,
-  stampSeen,
-  recordDeliveryAttempt,
-  type DeliveryChannel,
-  type DeliveryState,
-  type InboxAccess,
-  type InboxFactKind,
-  type InboxItem,
-  type InboxAlert,
-  type InboxReason,
-  type InboxWorkState,
-  type RaiseInboxItem,
-} from './inbox/items.ts';
-export { readScopes, taskAccess } from './inbox/access.ts';
-export {
-  raiseAssignment,
-  raiseDecision,
-  raiseEscalation,
-  raiseIncident,
-  raiseRunSettled,
-} from './inbox/raise.ts';
-export { raiseMentions, readMentions, seenBy, type Mentioned } from './inbox/mentions.ts';
-export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
-export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
+export * from './inbox/index.ts';
 export {
   isSettingRevisionStale,
+  lockSettingsInstall,
   readBusinessSetting,
   readBusinessSettings,
   writeBusinessSetting,
@@ -260,6 +201,16 @@ export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.t
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';
 export { purgeTrashedRecords, restoreBatch, trashSubtree } from './tasks/trash.ts';
 export {
+  isTaskType,
+  isWayfinderRecord,
+  mapTicketCondition,
+  OWNER_TYPES,
+  TASK_TYPES,
+  wayfinderFacts,
+  type TaskType,
+  type WayfinderFacts,
+} from './tasks/wayfinder.ts';
+export {
   advisoryLock,
   connect,
   connectAsAdmin,
@@ -276,3 +227,8 @@ export { isUuid } from './tenancy/ids.ts';
 export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
 export { loginLiveElsewhere } from './identity/shared-login.ts';
+export * from './site/index.ts';
+export * from './automations/index.ts';
+export * from './custody/surface.ts';
+// The connector fleet and a repair's start (MP-14-7a): no value is read.
+export * from './connections/fleet.ts';

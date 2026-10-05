@@ -11,20 +11,24 @@
 // The depth guard is not decoration. `parent_grant_id` sits under the same
 // UPDATE privilege that writes `revoked_at`, so a cycle is reachable, and an
 // unbounded recursive term that meets a cycle does not return.
+//
+// Expiry is judged when the statement runs, as a revocation is seen, not when
+// the transaction began: a check that waited on a lock sees a grant that
+// lapsed while it waited.
 export const EFFECTIVE = `
   with recursive effective as (
     select g.*, 1 as depth
       from public.grants g
      where g.parent_grant_id is null
        and g.revoked_at is null
-       and (g.expires_at is null or g.expires_at > now())
+       and (g.expires_at is null or g.expires_at > statement_timestamp())
     union all
     select c.*, p.depth + 1
       from public.grants c
       join effective p on p.id = c.parent_grant_id
      where p.depth < 8
        and c.revoked_at is null
-       and (c.expires_at is null or c.expires_at > now())
+       and (c.expires_at is null or c.expires_at > statement_timestamp())
        and p.can_delegate
        and c.collection = p.collection
        and c.action = p.action

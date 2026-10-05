@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T enrolment, no account oracle, isolation and hostile provider on accept: the newest live link makes one login through custody under auth.create_user for the invitation's one person, spends every token, records invitation.accept and login.create and opens no session; replayed, expired, revoked, resent-older and unissued links are refused alike and ask nothing; a token reaches only its own business"
+}

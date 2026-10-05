@@ -18,8 +18,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SYSTEM_OWNED_FIELDS } from '../../packages/core-commands/src/commands/prepare.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { grantTo } from '../commands/fixture.ts';
-import { enrolCaller, type Caller } from './cast.ts';
-import { invitee } from './role-case-invitation-bodies.ts';
 import {
   FIELDS_PAYLOAD_OPERATIONS,
   PAYLOAD_CELLS,
@@ -45,19 +43,6 @@ import { serverUrl } from './world.ts';
 /** The two commands that write a record's generic fields, through `tasks-write.ts`. */
 const GENERIC_WRITES: ReadonlySet<CommandName> = new Set(['task.create', 'task.update']);
 
-/**
- * C39-T's three acts. The product allows one person 30 invitation sends an
- * hour (`INVITATION_LIMITS`), and a part holds about forty of these cells at
- * up to four sends each, so each cell acts as a person of its own holding
- * `access:share`: its sends are the only ones counted against it, and the
- * limit itself stays proved where it is, in `tests/access/c39-t-*`.
- */
-const INVITATION_ACTS: ReadonlySet<CommandName> = new Set([
-  'invitation.create',
-  'invitation.resend',
-  'invitation.revoke',
-]);
-
 // The hosted runner runs this file in the parts tests/db/shard-plan.json names,
 // SUITE_PART=i/k, each part on a fixture of its own. A part registers only its
 // share of the cells, so every cell runs once across the parts; unset, the
@@ -73,17 +58,13 @@ if (serverUrl === undefined) {
 // eslint-disable-next-line max-lines-per-function -- one fixture, and the cells that share it
 describe.skipIf(serverUrl === undefined)('D06: every operation, field and surface', () => {
   let harness: Harness;
-  let sendAsAda: (
-    surface: Surface,
-    name: CommandName,
-    body: Record<string, unknown>,
-  ) => Promise<Said>;
+  let send: (surface: Surface, name: CommandName, body: Record<string, unknown>) => Promise<Said>;
   let durable: () => Promise<Durable>;
   const tally = new Tally();
 
   beforeAll(async () => {
     harness = await createHarness('d06g');
-    sendAsAda = surfacesOf(harness);
+    send = surfacesOf(harness);
     await roomToApprove(harness);
     durable = await durableProbe(harness);
   }, 120_000);
@@ -93,27 +74,9 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     await harness?.close();
   });
 
-  /** A new person in alpha holding `access:share` and nothing else, for one invitation cell. */
-  async function inviter(): Promise<Caller> {
-    const { world } = harness;
-    return await enrolCaller(world.db, world.alpha, 'alpha', 'inviter', {
-      membership: true,
-      actions: ['share'],
-      collections: ['access'],
-    });
-  }
-
-  /**
-   * A valid body for one operation, as ada (or the cell's inviter), on work of
-   * its own: nothing is shared between cells.
-   */
-  async function positive(name: CommandName, caller?: Caller): Promise<Record<string, unknown>> {
+  /** A valid body for one operation, as ada, on work of its own: nothing is shared between cells. */
+  async function positive(name: CommandName): Promise<Record<string, unknown>> {
     const operationId = randomUUID();
-    if (caller !== undefined && (name === 'invitation.resend' || name === 'invitation.revoke')) {
-      const made = await harness.asPerson('invitation.create', invitee(), 'alpha', caller);
-      expect(made.code, `the invitation ${name} names`).toBe('ok');
-      return { operationId, invitationId: String(made.body['recordId']) };
-    }
     if (name === 'grant.revoke') {
       const { world } = harness;
       const grantId = await world.db.app.withBusiness(world.alpha, async (tx) => {
@@ -144,22 +107,16 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     code: string,
   ): Promise<void> {
     const value = probeValue(cell.key);
-    const caller = INVITATION_ACTS.has(cell.operation) ? await inviter() : undefined;
-    const send = caller === undefined ? sendAsAda : surfacesOf(harness, caller);
 
     // First, a valid request succeeds, so a refusal below is not a refusal of everything.
-    const control = await send(
-      cell.surface,
-      cell.operation,
-      await positive(cell.operation, caller),
-    );
+    const control = await send(cell.surface, cell.operation, await positive(cell.operation));
     expect(control.code, `positive control for ${cell.operation}`).toBe('ok');
     tally.control(cell.operation, cell.surface);
 
     // The injected request is prepared the same way, on work of its own (a
     // fresh reservation, a fresh lease), so nothing but the field stands
     // between it and a success, and the clean retry below reaches that work.
-    const body = await positive(cell.operation, caller);
+    const body = await positive(cell.operation);
     const before = await durable();
     const answer = await send(cell.surface, cell.operation, inject(body, value));
     // Counted on the answer, so a cell that goes red is still a cell that ran.
@@ -172,7 +129,9 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     const attempt = declarationFor(cell.operation).kind !== 'read';
     expectUnchanged(before, after, audit, { operation: cell.operation, code, attempt });
     if (inject(body, value)[cell.key] !== undefined) {
-      expect(audit['attempted']).toStrictEqual({ [cell.key]: value });
+      // secret.set's body carries the value, so its refusals keep no attempted values.
+      const kept = cell.operation === 'secret.set' ? null : { [cell.key]: value };
+      expect(audit['attempted']).toStrictEqual(kept);
     }
 
     // And the same request without the field succeeds, under a fresh identity:

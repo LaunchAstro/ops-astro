@@ -217,15 +217,32 @@ interface Pending {
   readonly live: boolean;
 }
 
-/** The invitation, locked when `lock`; another business's and an unissued id are one answer. */
+/**
+ * Whether the invitation is live now, on the clock: an act that waited for a lock is judged when
+ * it got it, not when its transaction or the lock statement began.
+ */
+async function liveNow(tx: TenantQuery, id: string): Promise<boolean> {
+  const [now] = await tx.query<{ live: boolean }>(
+    `select expires_at > clock_timestamp() as live from invitations
+      where business_id = $1 and id = $2`,
+    [tx.businessId, id],
+  );
+  return now?.live === true;
+}
+
+/**
+ * The invitation, locked when `lock`; another business's and an unissued id are one answer.
+ * Whether it is live is read by a second statement once any lock is held.
+ */
 async function read(tx: TenantQuery, id: string, lock: boolean): Promise<Pending | undefined> {
   if (!isUuid(id)) return undefined;
-  const [row] = await tx.query<Pending>(
-    `select id, address, role_key, state, expires_at > now() as live from invitations
+  const [row] = await tx.query<Omit<Pending, 'live'>>(
+    `select id, address, role_key, state from invitations
       where business_id = $1 and id = $2 ${lock ? 'for update' : ''}`,
     [tx.businessId, id],
   );
-  return row;
+  if (row === undefined) return undefined;
+  return { ...row, live: await liveNow(tx, id) };
 }
 
 async function move(

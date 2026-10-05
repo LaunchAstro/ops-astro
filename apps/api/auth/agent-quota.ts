@@ -4,13 +4,14 @@
 // and records handed out a minute, each held per credential, per person and
 // per business; and the made-up or dead bearers a business key is sent a
 // minute, past which a not-live one is answered as limited and not recorded.
+// A key nobody holds has the same door, so the two answer alike.
 //
 // Past a full door each bearer costs one unlocked read and writes nothing
 // (`executeCredentialCommand`); nothing here holds a bearer, its digest or a
 // client's address, so a live credential is never refused at the door. The
 // platform's own request limit stands in front of that read.
 
-import type { CredentialQuota } from '../../../packages/core-commands/src/index.ts';
+import type { CredentialQuota, QuotaSlot } from '../../../packages/core-commands/src/index.ts';
 
 /** One limit at each of the three levels a credential's call counts against. */
 export interface Tiers {
@@ -39,37 +40,53 @@ export const DEFAULT_AGENT_LIMITS: AgentLimits = {
 };
 
 const WINDOW_MS = 60_000;
+const SWEEP_MS = 1000;
 const LEVELS = ['credential', 'person', 'business'] as const;
 
-interface Window {
+export interface Window {
   start: number;
   requests: number;
   exports: number;
 }
 
-/** This key's window at `at`: the one running, or a fresh one. */
-function currentWindow(windows: Map<string, Window>, key: string, at: number): Window {
-  const held = windows.get(key);
-  if (held !== undefined && at - held.start < WINDOW_MS) return held;
-  // A new window; stale ones go when the map grows, so it cannot grow without end.
-  if (windows.size > 10_000) {
-    for (const [old, window] of windows) if (at - window.start >= WINDOW_MS) windows.delete(old);
-  }
-  const fresh = { start: at, requests: 0, exports: 0 };
-  windows.set(key, fresh);
-  return fresh;
+/**
+ * Windows by key, each the one running or a fresh one. A new window goes to
+ * the back, so the map runs oldest first, and at most once a second the lapsed
+ * ones go from the front, the pass stopping at the first live one: a flood of
+ * new keys (a made-up business key each) costs each one the same. The map
+ * may be handed in, so a test can watch the lapsed ones go.
+ */
+export function windowsOf(
+  windows: Map<string, Window> = new Map(),
+): (key: string, at: number) => Window {
+  let swept = Number.NEGATIVE_INFINITY;
+  return (key, at) => {
+    const held = windows.get(key);
+    if (held !== undefined && at - held.start < WINDOW_MS) return held;
+    if (Math.abs(at - swept) >= SWEEP_MS) {
+      swept = at;
+      for (const [old, window] of windows) {
+        if (at - window.start < WINDOW_MS) break;
+        windows.delete(old);
+      }
+    }
+    windows.delete(key);
+    const fresh = { start: at, requests: 0, exports: 0 };
+    windows.set(key, fresh);
+    return fresh;
+  };
 }
 
 /**
- * A business's door: its not-live bearers a minute, counted in its own
- * window's `requests`. A knock takes a place at once; a released one is given
- * back to the window it was taken from.
+ * A door: the not-live bearers a business, or a key nobody holds, is sent a
+ * minute, counted in its own window's `requests`. A knock takes a place at
+ * once; a released one is given back to the window it was taken from.
  */
 function doorOf(refused: number, now: () => Date): Pick<CredentialQuota, 'knock'> {
-  const windows = new Map<string, Window>();
+  const windowOf = windowsOf();
   return {
-    knock(businessId) {
-      const window = currentWindow(windows, businessId, now().getTime());
+    knock(door) {
+      const window = windowOf(door, now().getTime());
       if (window.requests >= refused) return;
       window.requests += 1;
       let released = false;
@@ -88,8 +105,10 @@ function doorOf(refused: number, now: () => Date): Pick<CredentialQuota, 'knock'
  * The quota as the app holds it, in this process: a fixed one-minute window
  * of requests and records handed out, and a count of calls in flight, per
  * level. A call is refused when any level is at any of its limits, before it
- * runs, and counts only when it is let in. `handedOut` is the app's own count
- * of the records an answer carries.
+ * runs, and counts only when it is let in. Its records count when its answer
+ * is decided, and an answer that would take a level past its limit is
+ * refused then, so calls let in together cannot hand out more between them.
+ * `handedOut` is the app's own count of the records an answer carries.
  */
 export function createAgentQuota(
   limits: AgentLimits,
@@ -102,15 +121,25 @@ export function createAgentQuota(
   };
 }
 
+/** What a call's slot needs from the quota that let it in. */
+interface Counts {
+  readonly limits: AgentLimits;
+  readonly now: () => Date;
+  readonly handedOut: (answer: object) => number;
+  readonly windowOf: (key: string, at: number) => Window;
+  readonly inFlight: Map<string, number>;
+}
+
+type Level = (typeof LEVELS)[number];
+
 /** The three levels' counts; `createAgentQuota` adds the door. */
 function callsOf(
   limits: AgentLimits,
   now: () => Date,
   handedOut: (answer: object) => number,
 ): Pick<CredentialQuota, 'enter'> {
-  const windows = new Map<string, Window>();
   const inFlight = new Map<string, number>();
-  const windowOf = (key: string, at: number): Window => currentWindow(windows, key, at);
+  const windowOf = windowsOf();
   return {
     enter(keys) {
       const at = now().getTime();
@@ -136,20 +165,45 @@ function callsOf(
         one.window.requests += 1;
         inFlight.set(one.key, one.running + 1);
       }
-      let left = false;
-      return {
-        leave(answer) {
-          if (left) return;
-          left = true;
-          const items = answer === undefined ? 0 : handedOut(answer);
-          for (const { key } of counted) {
-            const running = (inFlight.get(key) ?? 1) - 1;
-            if (running > 0) inFlight.set(key, running);
-            else inFlight.delete(key);
-            windowOf(key, now().getTime()).exports += items;
-          }
-        },
-      };
+      return slotOf(counted, { limits, now, handedOut, windowOf, inFlight });
+    },
+  };
+}
+
+/** A call let in: its records counted when its answer is decided, its place given back as it leaves. */
+function slotOf(
+  counted: readonly { readonly level: Level; readonly key: string }[],
+  { limits, now, handedOut, windowOf, inFlight }: Counts,
+): QuotaSlot {
+  let left = false;
+  // What this call has counted, in the windows it counted it in.
+  let held: { readonly windows: readonly Window[]; readonly items: number } | undefined;
+  const giveBack = (): void => {
+    for (const window of held?.windows ?? []) window.exports -= held?.items ?? 0;
+    held = undefined;
+  };
+  return {
+    handOut(answer) {
+      giveBack();
+      const items = handedOut(answer);
+      const at = now().getTime();
+      const open = counted.map(({ level, key }) => ({ level, window: windowOf(key, at) }));
+      if (open.some(({ level, window }) => window.exports + items > limits.exports[level])) {
+        return false;
+      }
+      for (const { window } of open) window.exports += items;
+      held = { windows: open.map(({ window }) => window), items };
+      return true;
+    },
+    leave(delivered) {
+      if (left) return;
+      left = true;
+      if (!delivered) giveBack();
+      for (const { key } of counted) {
+        const running = (inFlight.get(key) ?? 1) - 1;
+        if (running > 0) inFlight.set(key, running);
+        else inFlight.delete(key);
+      }
     },
   };
 }

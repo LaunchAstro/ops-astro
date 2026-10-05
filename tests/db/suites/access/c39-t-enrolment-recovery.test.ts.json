@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T enrolment recovery: a login made behind a late answer or a link that died before the bind is adopted by the next accept; another business's login or one made elsewhere is never set and answers sign_in; a hostile provider answer spends and binds nothing"
+}

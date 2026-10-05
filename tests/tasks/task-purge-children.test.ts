@@ -9,7 +9,12 @@
 // (ORCH58): they keep their own retention (CS-16.12) and feed billing, so the
 // purge detaches them, and a timer left running is stopped first, so its
 // person can start another.
+//
+// A live correction (C80) keys to its task with no cascade too. It is
+// evidence, so the purge neither detaches nor deletes it: it keeps the task,
+// reports it retained, and purges the rest (P26 round 3, finding 1).
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { insertActor, insertBusiness, insertPerson } from '../identity/fixture.ts';
 import {
@@ -109,6 +114,58 @@ async function leftOf(tx: TenantQuery, ids: readonly string[]) {
   };
 }
 
+/**
+ * Two trashed tasks in a business of their own: one a correction names (a raw
+ * insert, as the application role), and one plain.
+ */
+async function seedCorrected(tx: TenantQuery) {
+  const spine = await installTaskSpine(tx);
+  const personId = await insertPerson(tx, 'a requester');
+  const actorId = await insertActor(tx, personId);
+  const corrected = await createTask(tx, spine, { title: 'corrected', parentId: null });
+  const plain = await createTask(tx, spine, { title: 'plain', parentId: null });
+  const correctionId = randomUUID();
+  await tx.query(
+    `insert into public.live_corrections
+       (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
+        target_path, word, replacement, page_url, pre_image_digest, base_revision, seam,
+        version_id, version_digest)
+     values ($1, $2, $3, $4, $5, $6, 'src/pages/about.md', 'friendly', 'welcoming',
+             'https://agency.example/about/', 'sha256:pre', 'rev-1', 'seam', $7, 'sha256:v')`,
+    [tx.businessId, correctionId, randomUUID(), corrected, actorId, personId, randomUUID()],
+  );
+  const trash = async (rootId: string) => {
+    const trashed = await trashSubtree(tx, { rootId, actorId });
+    if (isRecordsRefusal(trashed)) throw new Error(trashed.code);
+  };
+  await trash(corrected);
+  await trash(plain);
+  return { taskTypeId: spine.taskTypeId, corrected, plain, correctionId };
+}
+
+/** The purge over `seedCorrected`'s business: its answer, the tasks left, the correction kept. */
+async function purgeCorrected(tx: TenantQuery) {
+  const seeded = await seedCorrected(tx);
+  const purged = await purgeTrashedRecords(tx, {
+    recordTypeId: seeded.taskTypeId,
+    trashedBefore: new Date(Date.now() + 1000),
+  });
+  const left = await tx.query<{ readonly id: string }>(
+    `select id from records where business_id = $1 and id = any ($2::uuid[])`,
+    [tx.businessId, [seeded.corrected, seeded.plain]],
+  );
+  const kept = await tx.query<{ readonly task_id: string }>(
+    `select task_id from public.live_corrections where business_id = $1 and id = $2`,
+    [tx.businessId, seeded.correctionId],
+  );
+  return {
+    ...seeded,
+    purged,
+    left: left.map((row) => row.id),
+    kept: kept.map((row) => row.task_id),
+  };
+}
+
 let db: FreshDatabase | undefined;
 let businessId: string;
 
@@ -166,5 +223,19 @@ describe.skipIf(serverUrl === undefined)('the purge and a task’s time and tags
     expect(seen.started.kind).toBe('started');
     expect(seen.nextTime.totalMinutes).toBe(0);
     expect(seen.nextTime.entries).toHaveLength(1);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('the purge and a task’s live correction', () => {
+  it('purge retains a trashed task holding only a correction, and purges the rest of the business', async () => {
+    if (db === undefined) throw new Error('no database');
+    const held = await insertBusiness(db.app, 'task-purge-correction');
+    const seen = await db.app.withBusiness(held, purgeCorrected);
+    if (isRecordsRefusal(seen.purged)) throw new Error(seen.purged.code);
+    expect(seen.purged.retainedIds).toStrictEqual([seen.corrected]);
+    expect(seen.purged.recordIds).toStrictEqual([seen.plain]);
+    expect(seen.left).toStrictEqual([seen.corrected]);
+    // The correction is evidence: kept, still naming its task.
+    expect(seen.kept).toStrictEqual([seen.corrected]);
   });
 });

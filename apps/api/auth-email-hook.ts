@@ -17,7 +17,7 @@
 //
 // A replayed message id is refused twice over: by this process for any
 // message it took inside the timestamp window, and by the database for a
-// message that recorded an attempt, whichever process took it first.
+// message that a send claimed, in any business, whichever process took it first.
 
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';

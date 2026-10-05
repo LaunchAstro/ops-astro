@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "SEC27 F5 and F6 on accept: a resend or revoke spends every older token; the lookup by hash is one narrow security definer function, PUBLIC refused, the application group alone; a hash two businesses hold accepts in neither"
+}

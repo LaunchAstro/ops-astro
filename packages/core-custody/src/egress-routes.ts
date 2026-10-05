@@ -3,8 +3,11 @@
 // What a destination adds to, and allows beyond, a POST (AW-13): fixed
 // headers custody sets on every request to it, and the few DELETE, GET and
 // PUT routes it answers (the trace store's expiry and the read that confirms
-// it; the login provider's update of one user, C39-T). Both are custody's own
-// list, read once at start; a caller names neither.
+// it; the login provider's update of one user, C40). Both are custody's own
+// list, read once at start; a caller names neither. A destination marked
+// `post: false` takes no POST at all, only its listed routes: the login
+// provider's, whose service key could otherwise mint sign-in links or users
+// (C40 security review M1).
 
 /**
  * A non-POST route: an exact path, or for a GET one trailing `/*` segment.
@@ -47,6 +50,8 @@ const SEGMENT = /^[A-Za-z0-9_-]{1,128}$/u;
 export interface Extras {
   readonly headers?: Readonly<Record<string, string>>;
   readonly routes?: readonly Route[];
+  /** `false`: no POST to any path, only the listed routes. */
+  readonly post?: false;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -76,9 +81,13 @@ function routeOf(value: unknown): Route | undefined {
   return undefined;
 }
 
-/** A destination entry's headers and routes, or `undefined` when either is malformed. */
+/** A destination entry's headers, routes and POST bar, or `undefined` when one is malformed. */
 export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | undefined {
-  const extras: { headers?: Record<string, string>; routes?: Route[] } = {};
+  const extras: { headers?: Record<string, string>; routes?: Route[]; post?: false } = {};
+  if (entry['post'] !== undefined) {
+    if (entry['post'] !== false) return undefined;
+    extras.post = false;
+  }
   if (entry['headers'] !== undefined) {
     const headers = headersOf(entry['headers']);
     if (headers === undefined) return undefined;
@@ -98,11 +107,12 @@ const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
 
 /**
  * A path a request may name: a plain path under the origin for a POST, as
- * before; for any other method, only a route the destination lists.
+ * before, unless the destination takes none; for any other method, only a
+ * route the destination lists.
  */
 export function pathAllowed(extras: Extras, method: Method, path: string): boolean {
   if (!PATH.test(path) || path.includes('..')) return false;
-  if (method === 'POST') return true;
+  if (method === 'POST') return extras.post !== false;
   return (extras.routes ?? []).some((route) => {
     if (route.method !== method) return false;
     if (!route.path.endsWith('/*')) return route.path === path;

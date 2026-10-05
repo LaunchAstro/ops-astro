@@ -49,7 +49,14 @@ export interface Outcome {
 const SIGN_IN_FAILED = new Set(['AUTH_UNKNOWN_LOGIN', 'ACTOR_INACTIVE']);
 // A caller refused outside its scope: a person or an agent at a business it is not in, or a grant it lacks.
 const CROSS_SCOPE = new Set(['AUTH_NO_MEMBERSHIP', 'AUTH_NO_AGENT_IDENTITY', 'SCOPE_NOT_GRANTED']);
-const AUTHORITY = new Set(['grant.revoke', 'delegation.revoke']);
+// Who may act on what changed: a grant given, revoked or ended, or a delegation revoked.
+const AUTHORITY = new Set([
+  'grant.revoke',
+  'delegation.revoke',
+  'access.grant',
+  'access.revoke',
+  'access.end',
+]);
 
 /** What an answer tells the detector, if anything. */
 export function signalOf({
@@ -116,9 +123,14 @@ export function scopeOf(signal: SecuritySignal): string {
 
 export function createDetector(
   raise: (kind: AlertKind) => void,
-  options: { readonly now?: () => number } = {},
+  options: {
+    readonly now?: () => number;
+    /** Scopes held before the oldest are dropped: the live API's bound unless said. */
+    readonly scopes?: number;
+  } = {},
 ): Detector {
   const now = options.now ?? Date.now;
+  const most = options.scopes ?? SWEEP_AT;
   const seen = new Map<string, { at: number; weight: number }[]>();
 
   function sweep(at: number): void {
@@ -128,7 +140,7 @@ export function createDetector(
     }
     // A flood of live scopes: the oldest are dropped, so memory stays bounded.
     for (const key of seen.keys()) {
-      if (seen.size <= SWEEP_AT) break;
+      if (seen.size <= most) break;
       seen.delete(key);
     }
   }
@@ -146,7 +158,7 @@ export function createDetector(
       return;
     }
     seen.set(key, events);
-    if (seen.size > SWEEP_AT) sweep(at);
+    if (seen.size > most) sweep(at);
   }
 
   return { observe, tracked: () => seen.size };

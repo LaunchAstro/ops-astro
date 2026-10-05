@@ -414,6 +414,18 @@
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
 }
+/* The tile in a stat row (DS-COMP-6): the row's padding, and the number a
+   step down at 640 and under. */
+.stat--row {
+  padding: var(--s-4) var(--s-5) var(--s-4) 0;
+}
+@media (width <= 640px) {
+  .stat--row .stat__num {
+    font: var(--type-num-md);
+    letter-spacing: var(--type-num-md-tracking);
+    text-transform: var(--type-num-md-case);
+  }
+}
 /* DS-PRIM-29 (DR-37): a skeleton at the size of what it stands for. A slow
    pulse, and none at all under reduced motion. */
 .skel {

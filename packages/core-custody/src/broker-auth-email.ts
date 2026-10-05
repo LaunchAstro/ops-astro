@@ -18,6 +18,9 @@
 //   check of the act applies and the attempt carries the id. The provider's
 //   tokens are never read. An address pending in two businesses names
 //   neither, and nothing is sent; nor is anything for an act already sent.
+//   The businesses are read one transaction each, so two hook processes
+//   taking one message may each find a different business's invitation: the
+//   send's installation-wide claim of the message id lets one of them send.
 // - Every other action (a reset, a magic link, an address change, a
 //   reauthentication, a sign-up) has no delivery attempt to carry it yet,
 //   so nothing is sent: no mail without its attempt (C40 brings the reset's).

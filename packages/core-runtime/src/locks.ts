@@ -31,7 +31,10 @@
 // C59's login-wide keys, `second-factor-codes:<digest>` and
 // `second-factor-subject:<digest>`, are command-layer locks too, and the only
 // installation-wide ones: each names a sign-in login, not a business, and is
-// taken first in its transaction, before any row or chain lock.
+// taken first in its transaction, before any row or chain lock. The Send
+// Email hook's message claim (`ops.auth_hook_messages`, C39-T) is the one
+// other wait across businesses: a unique key, taken last, after the
+// invitation's row and the business's email limit.
 // The grant rows an operation's authority rests on are the other class outside
 // the list, also taken first: decide, pickup and cancellation hold theirs `for
 // share` (`holdCoveringGrants`) and `grant.revoke` its own `for update`, before
@@ -51,8 +54,17 @@
 // A planning reply (AW-04, U10; `core-custody/src/broker-planning.ts`)
 // takes its business's planning cap `for update` (the `cap` class, first),
 // then the same ceiling and route keys, last.
-// The pinned read (AW-02, `definitions-read.ts`) takes one lock, its lease,
-// through `acquire`, before it writes its ledger row.
+// The pinned read (AW-02, `definitions-read.ts`) takes its lease through
+// `acquire`, then holds an agent lease's delegation row `for share` (lease
+// before delegation, as here), before it writes its ledger row.
+// The audit chain's key (the business id, `audit_events_chain`) is taken by
+// each audit write, for most commands their last lock; an agent `task.assign`
+// takes it just after its write, before its operation record (`tasks-agent.ts`).
+// The operation identity's key, its door (`enter` in the envelope:
+// `operation:<business>:<actor>:<sha256 of the id>`), is a command-layer lock,
+// taken first of all of them; before it a call holds only key-share locks
+// from its login's attempt row and a credential's row `for share`, which no
+// same-identity call updates.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements

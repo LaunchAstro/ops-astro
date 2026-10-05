@@ -10,7 +10,13 @@
 import { expect, it as vitestIt } from 'vitest';
 import { checkItem, recordAsked } from '../../packages/core-custody/src/broker-email.ts';
 import { DAY_MS, windowSpent } from '../../packages/core-custody/src/email-class.ts';
-import { emailAtOnce, emailDailyBatch } from '../../packages/core-custody/src/index.ts';
+import {
+  emailAtOnce,
+  emailDailyBatch,
+  type EmailPreferences,
+} from '../../packages/core-custody/src/index.ts';
+import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { attemptsOf, itemFor, MAIL, masked, noDatabase, useEmailWorld, w } from './email-world.ts';
 import {
   aged,
@@ -183,4 +189,83 @@ it('AW-07b recovery: a refusal is recorded and the item stands; only a refusal t
   expect(await batch()).toEqual({ ok: false, code: 'NOTHING_WAITING' });
   expect(w.provider.outbox.length).toBe(sent);
   expect((await attemptsOf(later)).map((attempt) => attempt.state)).toEqual(['asked', 'failed']);
+});
+
+/** The case's preferences, with `before` run ahead of each choice read, numbered from 1. */
+function choosing(before: (read: number) => Promise<void>): EmailPreferences {
+  const own = timing().preferences;
+  let read = 0;
+  return {
+    mock: true,
+    choice: async (tx, person, reason) => {
+      read += 1;
+      await before(read);
+      return await own.choice(tx, person, reason);
+    },
+  };
+}
+
+it('AW-07b daily batch: the day starts when the batch is reserved, so slow preparation opens no second batch', async () => {
+  await freshInbox();
+  const first = await itemFor(w.task, 'mention');
+  const before = w.provider.outbox.length;
+  // A two-second day, and preparing the batch takes longer than the day.
+  const slow = {
+    ...timing(),
+    dayMs: 2000,
+    preferences: choosing(
+      async () =>
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 3500);
+        }),
+    ),
+  };
+  expect(await emailDailyBatch(w.db.app, w.alpha, w.person, slow)).toMatchObject({
+    ok: true,
+    items: 1,
+  });
+  expect((await attemptsOf(first)).map((row) => row.state)).toEqual(['asked', 'accepted']);
+  const later = await itemFor(w.task, 'assignment');
+  const second = await emailDailyBatch(w.db.app, w.alpha, w.person, { ...timing(), dayMs: 2000 });
+  expect(second).toEqual({ ok: false, code: 'BATCH_ALREADY_SENT' });
+  expect(w.provider.outbox.length).toBe(before + 1);
+  expect(await attemptsOf(later)).toEqual([]);
+}, 30_000);
+
+it('AW-07b daily batch: read access revoked while the batch is prepared withholds the items already checked', async () => {
+  await freshInbox();
+  const first = await itemFor(w.task, 'mention');
+  const second = await itemFor(w.task, 'assignment');
+  const before = w.provider.outbox.length;
+  const [grant] = await w.db.admin.execute<{ id: string }>(
+    `select id from public.grants where business_id = $1 and subject_kind = 'person'
+        and subject_id = $2 and collection = 'task' and action = 'read' and revoked_at is null`,
+    [w.alpha, w.person],
+  );
+  if (grant === undefined) throw new Error('missing read grant');
+  const revoker = connect(w.db.appUrl);
+  let revoked = false;
+  // The first item's checks have passed. Before the second's, another
+  // transaction commits the recipient's revocation.
+  const preferences = choosing(async (read) => {
+    if (read !== 2) return;
+    await revoker.withBusiness(w.alpha, async (other) => {
+      expect(await revokeGrant(other, grant.id)).not.toBeNull();
+    });
+    revoked = true;
+  });
+  try {
+    const result = await emailDailyBatch(w.db.app, w.alpha, w.person, { ...timing(), preferences });
+    expect(revoked).toBe(true);
+    expect(result).toEqual({ ok: false, code: 'NOTHING_WAITING' });
+    expect(w.provider.outbox.length).toBe(before);
+    expect(await attemptsOf(first)).toEqual([]);
+    expect(await attemptsOf(second)).toEqual([]);
+  } finally {
+    await revoker.close();
+    // Restore the grant so the cases that follow are independent.
+    await w.db.admin.execute('update public.grants set revoked_at = null where id = $1', [
+      grant.id,
+    ]);
+  }
 });

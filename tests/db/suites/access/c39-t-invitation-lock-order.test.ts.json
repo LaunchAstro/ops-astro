@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C39-T rate limit and expiry, one lock order: a resend started while its invitation is live and a create for the same address started once it lapsed both finish, never a deadlock"
+}

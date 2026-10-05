@@ -125,6 +125,7 @@ function unknownT1(): InternalTaskRead {
       dispatchMarker: true,
       observed: false,
       dropCause: null,
+      outcome: null,
     },
   };
   const reservations = [...lineage.reservations, held];

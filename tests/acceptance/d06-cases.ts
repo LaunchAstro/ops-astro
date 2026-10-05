@@ -51,8 +51,8 @@ import { TASK_STATE_FIELDS } from '../../packages/core-records/src/tasks/states.
 import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient, type ReadName } from '../../apps/web/src/operations/client.ts';
 import type { Harness } from './role-case-harness.ts';
-import type { Caller } from './world.ts';
 import { asBrowser } from '../support/sign-in.ts';
+import { isInvitation } from './role-case-invitation-bodies.ts';
 
 export type Surface = 'api' | 'cli' | 'web';
 export const SURFACES: readonly Surface[] = ['api', 'cli', 'web'];
@@ -182,39 +182,40 @@ function said(answer: unknown): Said {
  * `apps/cli/client.ts` with its transport pointed at the same app. The web is
  * the mounted app's own `OperationsClient`, reads through `read` and commands
  * through `mutate`, which is the path every screen's submission takes.
- * Each speaks as the admin unless another caller is named.
  */
 export function surfacesOf(
   harness: Harness,
-  caller: Caller = harness.world.ada,
 ): (surface: Surface, name: CommandName, body: Readonly<Record<string, unknown>>) => Promise<Said> {
   const { world } = harness;
-  const cli = createCli({
-    businessKey: 'alpha',
-    credential: caller.token,
-    transport: async (path, body, credential) =>
-      await world.api.fetch(
-        new Request(`http://api.test${path}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
-          body,
-        }),
-      ),
+  const doors = (token: string) => ({
+    cli: createCli({
+      businessKey: 'alpha',
+      credential: token,
+      transport: async (path, body, credential) =>
+        await world.api.fetch(
+          new Request(`http://api.test${path}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
+            body,
+          }),
+        ),
+    }),
+    web: new OperationsClient({
+      origin: 'http://api.test',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch: asBrowser(token, async (url, init) => await world.api.fetch(new Request(url, init))),
+    }),
   });
-  const web = new OperationsClient({
-    origin: 'http://api.test',
-    businessKey: 'alpha',
-    signedIn: true,
-    fetch: asBrowser(
-      caller.token,
-      async (url, init) => await world.api.fetch(new Request(url, init)),
-    ),
-  });
+  const admin = doors(world.ada.token);
+  // C39-T's invitation acts come from the harness's current inviter (`freshInviter`).
   return async (surface, name, body) => {
+    const caller = isInvitation(name) ? harness.inviter() : world.ada;
     if (surface === 'api') {
       const answer = await harness.asPerson(name, body, 'alpha', caller);
       return said(answer.body);
     }
+    const { cli, web } = caller === world.ada ? admin : doors(caller.token);
     if (surface === 'cli') return said((await cli.run(name, body)).body);
     const result =
       declarationFor(name).kind === 'read'

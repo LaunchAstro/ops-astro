@@ -445,6 +445,32 @@ const strictlyNarrower = (child: ChildMintRequest, parent: Delegation): boolean 
 const PARENT_FIX = 'the work this helper was given has ended; hand back what it has';
 
 /**
+ * SQL that holds while the delegation aliased `d` stands: not revoked, handed
+ * back or expired, nor its parent (children go one level deep), as
+ * `checkDelegatedAuthority` asks at each of a child's calls. For what a read
+ * lists or offers and what an assignment accepts; a call still asks
+ * `checkDelegatedAuthority`.
+ */
+const standsAt = (
+  clock: string,
+): string => `(d.revoked_at is null and d.settled_at is null and d.expires_at > ${clock}
+   and (d.parent_delegation_id is null
+        or exists (select 1 from public.delegations stands_parent
+                    where stands_parent.business_id = d.business_id
+                      and stands_parent.id = d.parent_delegation_id
+                      and stands_parent.revoked_at is null and stands_parent.settled_at is null
+                      and stands_parent.expires_at > ${clock})))`;
+
+export const DELEGATION_STANDS: string = standsAt('now()');
+
+/**
+ * `DELEGATION_STANDS` at the statement's clock, not the transaction's start:
+ * for a write that may have waited on a lock, so an expiry during the wait
+ * counts.
+ */
+export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
+
+/**
  * A child's parent as it stands in this transaction (the U6 fallback: the row,
  * never a token's claims). Precedence as `resolveDelegation`'s: settled, then
  * expired, then the recorded revocation cause. The holder presented a live

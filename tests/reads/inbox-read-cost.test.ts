@@ -21,9 +21,8 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { raiseInboxItem, type TenantQuery } from '../../packages/core-records/src/index.ts';
 import { countOwed, readInbox } from '../../packages/core-commands/src/reads/inbox.ts';
-import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { enrol, type Member } from '../commands/fixture.ts';
-import { authorised, BUSINESS_KEY, post, tokenFor } from '../api/fixture.ts';
+import { tokenFor } from '../api/fixture.ts';
 import { clearingWorld, ok } from '../commands/inbox-clearing-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -68,15 +67,8 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
   const inAlpha = async <T>(work: (tx: TenantQuery) => Promise<T>): Promise<T> =>
     await w.fixture.db.app.withBusiness(w.fixture.business, work);
 
-  const task = async (title: string, client: string): Promise<string> => {
-    const id = String(ok(await w.call('task.create', { fields: { title } })).body['recordId']);
-    await w.fixture.db.admin.execute(
-      `update public.records set data = data || jsonb_build_object('client', $2::text)
-        where id = $1`,
-      [id, client],
-    );
-    return id;
-  };
+  const task = async (title: string, client: string): Promise<string> =>
+    (await w.task(title, client)).id;
 
   /**
    * `count` closed items for Hana on `taskId`, each closed a second apart,
@@ -98,9 +90,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
   };
 
   const listed = async (): Promise<readonly Entry[]> =>
-    ok(
-      await post(w.api, `/api/b/${BUSINESS_KEY}${pathOf('inbox.read')}`, {}, authorised(hanaToken)),
-    ).body['inbox'] as Entry[];
+    ok(await w.send('inbox.read', hanaToken)).body['inbox'] as Entry[];
 
   /**
    * The queries each read makes for Hana, counted on the real transaction, and

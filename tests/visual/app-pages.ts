@@ -13,15 +13,17 @@
 // on T4b1's fixture). Each picture counts only when the page drew its own
 // screen, never the sign-in form or a gate.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Browser } from 'playwright';
+import type { Browser, Page } from 'playwright';
 import { createServer } from 'vite';
+import { launchChromium } from '../support/chromium.ts';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
 import { CONVERSATION_ID } from './made-up-agent.ts';
 import { answerMadeUp } from './made-up-api.ts';
-import type { Packet, Theme } from './packet.ts';
+import { fetchAssets, MODE, readAssets, readPacket, type Packet, type Theme } from './packet.ts';
 import {
   addressOf,
   builtPages,
@@ -60,42 +62,28 @@ export function madeUpSession(app: URL, dir: string): string {
   return file;
 }
 
-export async function captureBuiltPages(options: {
-  browser: Browser;
-  packet: Packet;
-  app: URL;
-  session: string;
-  widths: readonly number[];
-  themes: readonly Theme[];
-  out: string;
-  /** Only these pages (a ticket's own captures); every built page when not given. */
-  pages?: readonly string[];
-  /** Made-up answers to the app's reads, by the end of the read's address (`operations/read`). */
-  answers?: Readonly<Record<string, unknown>>;
-}): Promise<PageShot[]> {
-  const { browser, packet, app, session } = options;
-  const { mask } = JSON.parse(
-    readFileSync(new URL('states.json', import.meta.url), 'utf8'),
-  ) as Catalogue;
-  mkdirSync(options.out, { recursive: true });
-  const shots: PageShot[] = [];
-  for (const width of options.widths) {
-    for (const theme of options.themes) {
-      // A public page (sign-in) is drawn signed out, a working page signed in.
-      const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
-      const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
-      // Made-up reads first; a page's own answers are routed after, so they are asked first.
-      await answerMadeUp(signedIn.context);
-      for (const side of [signedOut, signedIn]) await answer(side, options.answers ?? {});
-      try {
-        const sides = { signedOut, signedIn };
-        shots.push(...(await capturePages(sides, { ...options, mask, width, theme })));
-      } finally {
-        await Promise.all([signedOut.context.close(), signedIn.context.close()]);
-      }
-    }
+/** The pinned browser and the served app, signed in with the made-up session. */
+export type SignedInApp = { browser: Browser; packet: Packet; app: URL; session: string };
+
+/**
+ * Starts what every browser leg draws on, in its order: the packet's faces
+ * fetched, the pinned browser, the app served from source and the made-up
+ * session; hands them to `use` and closes them after. No browser: the launch
+ * throws, so a test on what `use` draws fails and never skips.
+ */
+export async function withSignedInApp<T>(use: (at: SignedInApp) => Promise<T>): Promise<T> {
+  const packet = readPacket();
+  await fetchAssets(readAssets(), packet);
+  const browser = await launchChromium(MODE);
+  const { app, close } = await serveApp();
+  const dir = mkdtempSync(join(tmpdir(), 'made-up-session-'));
+  try {
+    return await use({ browser, packet, app, session: madeUpSession(app, dir) });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    await browser.close();
+    await close();
   }
-  return shots;
 }
 
 /**
@@ -110,6 +98,113 @@ export const MADE_UP_PARAMS: Readonly<Record<string, string>> = {
   // The enrolment page's link (C39-T): drawn as the form, so no API answers it.
   token: 'made-up-enrolment-link',
 };
+
+/** A built page drawn at one width in one theme: `<page>@<width>-<theme>`. */
+export type BuiltPage = {
+  id: string;
+  name: string;
+  /** The address the page was loaded at, its route parameters filled from MADE_UP_PARAMS. */
+  address: string;
+  width: number;
+  theme: Theme;
+  page: Page;
+};
+
+/** The two sides of one width and theme: signed out and signed in. */
+export type Sides = { signedOut: Side; signedIn: Side };
+
+/** Loads one built page; a page that draws nothing is named, so a timed-out run says which. */
+async function loadNamed(
+  side: Side,
+  packet: Packet,
+  app: URL,
+  id: string,
+  address: string,
+): ReturnType<typeof load> {
+  try {
+    return await load(side, packet, new URL(address, app).href);
+  } catch (error) {
+    throw new Error(`built page ${id} (${address}) drew nothing into #app`, { cause: error });
+  }
+}
+
+/**
+ * Every built page (or only `pages`) at each width in each theme, each on the
+ * side its route asks for (a public page signed out, a working page signed
+ * in), handed to `visit`, then closed. `route` sets each width and theme's
+ * routes before its first page loads.
+ */
+export async function eachBuiltPage<T>(
+  options: {
+    browser: Browser;
+    packet: Packet;
+    app: URL;
+    session: string;
+    widths: readonly number[];
+    themes: readonly Theme[];
+    pages?: readonly string[] | undefined;
+    route?: ((sides: Sides) => Promise<void>) | undefined;
+  },
+  visit: (built: BuiltPage) => Promise<T>,
+): Promise<T[]> {
+  const { browser, packet, app, session } = options;
+  const out: T[] = [];
+  for (const width of options.widths) {
+    for (const theme of options.themes) {
+      const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
+      const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      try {
+        await options.route?.({ signedOut, signedIn });
+        for (const id of options.pages ?? builtPages()) {
+          const side = needsSession(id) ? signedIn : signedOut;
+          const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
+          const page = await loadNamed(side, packet, app, id, address);
+          const name = `${id}@${String(width)}-${theme}`;
+          out.push(await visit({ id, name, address, width, theme, page }));
+          await page.close();
+        }
+      } finally {
+        await Promise.all([signedOut.context.close(), signedIn.context.close()]);
+      }
+    }
+  }
+  return out;
+}
+
+export function captureBuiltPages(options: {
+  browser: Browser;
+  packet: Packet;
+  app: URL;
+  session: string;
+  widths: readonly number[];
+  themes: readonly Theme[];
+  out: string;
+  /** Only these pages (a ticket's own captures); every built page when not given. */
+  pages?: readonly string[];
+  /** Made-up answers to the app's reads, by the end of the read's address (`operations/read`). */
+  answers?: Readonly<Record<string, unknown>>;
+}): Promise<PageShot[]> {
+  const { mask } = JSON.parse(
+    readFileSync(new URL('states.json', import.meta.url), 'utf8'),
+  ) as Catalogue;
+  mkdirSync(options.out, { recursive: true });
+  const route = async (sides: Sides): Promise<void> => {
+    // Made-up reads first; a page's own answers are routed after, so they are asked first.
+    await answerMadeUp(sides.signedIn.context);
+    for (const side of [sides.signedOut, sides.signedIn]) await answer(side, options.answers ?? {});
+  };
+  return eachBuiltPage({ ...options, route }, async ({ id, name, width, theme, page }) => {
+    // The intended screen is checked before the picture counts.
+    const intended = intendedScreen(id);
+    const drew = await page.evaluate(screenOf);
+    const [shot] = await shoot(page, name, { page: 'viewport' }, mask);
+    const overflow = overflowOf(await page.evaluate(scrollMetrics));
+    const picture = shot === undefined ? null : join(options.out, `${name}.page.png`);
+    if (shot !== undefined && picture !== null) writeFileSync(picture, shot.png);
+    const wrong = drew === intended ? {} : { wrongScreen: `drew ${String(drew)}, not ${intended}` };
+    return { page: id, width, theme, picture, overflow, ...wrong };
+  });
+}
 
 /** Each read named answers its made-up body; a route added last is asked first. */
 export async function answer(
@@ -133,38 +228,4 @@ export function screenOf(): string {
   if (title.startsWith('You are already signed in')) return 'the already-signed-in gate';
   if (title.startsWith('No screen is registered')) return 'the not-found gate';
   return 'the page';
-}
-
-/** Every built page at one width in one theme, each on the side its route asks for. */
-async function capturePages(
-  sides: { signedOut: Side; signedIn: Side },
-  at: {
-    packet: Packet;
-    app: URL;
-    width: number;
-    theme: Theme;
-    mask: string[];
-    out: string;
-    pages?: readonly string[] | undefined;
-  },
-): Promise<PageShot[]> {
-  const { packet, app, width, theme, mask, out } = at;
-  const shots: PageShot[] = [];
-  for (const id of at.pages ?? builtPages()) {
-    const name = `${id}@${width}-${theme}`;
-    const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
-    const side = needsSession(id) ? sides.signedIn : sides.signedOut;
-    const page = await load(side, packet, new URL(address, app).href);
-    // The intended screen is checked before the picture counts.
-    const intended = intendedScreen(id);
-    const drew = await page.evaluate(screenOf);
-    const [shot] = await shoot(page, name, { page: 'viewport' }, mask);
-    const overflow = overflowOf(await page.evaluate(scrollMetrics));
-    await page.close();
-    const picture = shot === undefined ? null : join(out, `${name}.page.png`);
-    if (shot !== undefined && picture !== null) writeFileSync(picture, shot.png);
-    const wrong = drew === intended ? {} : { wrongScreen: `drew ${String(drew)}, not ${intended}` };
-    shots.push({ page: id, width, theme, picture, overflow, ...wrong });
-  }
-  return shots;
 }

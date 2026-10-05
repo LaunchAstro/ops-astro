@@ -36,6 +36,7 @@ import {
   TASK_COLLECTION,
   TEST_SIGNING_KEY,
   type RuntimeFixture,
+  stepPlanRecord,
 } from './fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -52,11 +53,13 @@ const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032'
 // And AW-06's 0105 plan step key: that runtime's proposal writes its step with it.
 // And AW-01's 0085 model calls with AW-05's 0087 and 0088 budget asks and
 // answers: its classifier reads a hold's model calls when it hands back.
+// And 20261004040200's pickup path: that runtime takes its lease through `take_lease`.
 // None reads anything 0033 to 0035 add, and the runner applies whatever is
 // pending, so the upgrade below still applies 0033 onto these rows.
 const SEEDED = (version: string): boolean =>
   THROUGH_0032(version) ||
-  ['0036', '0085', '0087', '0088', '0100', '0105'].includes(version.slice(0, 4));
+  ['0036', '0085', '0087', '0088', '0100', '0105'].includes(version.slice(0, 4)) ||
+  version.startsWith('20261004040200');
 
 /** Proposes work on the task and approves it, answering the reservation the approval made. */
 async function approvedReservation(
@@ -74,6 +77,8 @@ async function approvedReservation(
     currency: 'AUD',
     payload: { change: 'a comment' },
     step: { kind: 'synthetic_comment', payload: {} },
+    // As this schema writes it: no plan record columns before 20261003001115, none bound after.
+    planRecordId: await stepPlanRecord(tx),
     expiresAt: new Date(Date.now() + 3_600_000),
   });
   if (!proposed.ok) throw new Error(`propose refused ${proposed.refusal.code}`);
@@ -140,6 +145,7 @@ async function rows(db: EmptyDatabase): Promise<unknown> {
     `select (select json_agg(to_jsonb(a) - 'drop_cause' - 'provider_started_at' - 'receipt_link'
                     order by a.id) from public.attempts a) as attempts,
             (select json_agg(to_jsonb(s) - 'dispatch_attempt_id' - 'dispatch_marked'
+                             - 'plan_record_id' - 'plan_record_written'
                              order by s.id) from public.planned_steps s) as steps`,
   );
 }

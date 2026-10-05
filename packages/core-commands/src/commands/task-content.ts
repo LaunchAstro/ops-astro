@@ -4,10 +4,11 @@
 // (owner line 75). `task.set_party` asks it under the task's row lock
 // (`task-client-lock.ts`); `task.read` sends it to a member, with the task's
 // client, for the Client field (MP-4-8), so the field and the lock never
-// disagree about a task they both see.
+// disagree about a task they both see. `task.board` sends each row's client by
+// the same rule (the Clients row door), so the board and the field agree too.
 
 import { clientsReached, type Subject, type TenantQuery } from '../../../core-records/src/index.ts';
-import { COMMAND_SURFACE } from '../../../core-wire/src/index.ts';
+import { COMMAND_SURFACE, type ClientView } from '../../../core-wire/src/index.ts';
 
 /**
  * Writes whose history event is content; creation and client changes are not.
@@ -16,14 +17,17 @@ import { COMMAND_SURFACE } from '../../../core-wire/src/index.ts';
 const CONTENT_COMMANDS: readonly string[] = COMMAND_SURFACE.filter(
   (declaration) =>
     declaration.kind === 'write' &&
-    !['task.create', 'task.duplicate', 'task.set_party'].includes(declaration.name),
+    // `map.scope` is a map's `task.set_party` (WF-1): a client change too.
+    !['task.create', 'task.duplicate', 'task.set_party', 'map.scope'].includes(declaration.name),
 ).map((declaration) => declaration.name);
 
 /**
  * Content is an applied write beyond creation and client changes, or a row
  * naming the task: a subtask, a proposal, a planned run, an envelope, a
  * lease, an alert, a time entry (deleted or not: a time event names no
- * subject, RS-VAULT-9, so the entry's row is what the lock reads).
+ * subject, RS-VAULT-9, so the entry's row is what the lock reads), a live
+ * correction (its audit event names the correction, not the task, and its
+ * party is pinned to the client it was filed under).
  */
 export async function hasContent(tx: TenantQuery, taskId: string): Promise<boolean> {
   const [row] = await tx.query<{ readonly content: boolean }>(
@@ -36,7 +40,9 @@ export async function hasContent(tx: TenantQuery, taskId: string): Promise<boole
          or exists (select 1 from task_envelopes where business_id = $1 and task_id = $2)
          or exists (select 1 from leases where business_id = $1 and task_id = $2)
          or exists (select 1 from alerts where business_id = $1 and task_id = $2)
-         or exists (select 1 from time_entries where business_id = $1 and task_id = $2) as content`,
+         or exists (select 1 from time_entries where business_id = $1 and task_id = $2)
+         or exists (select 1 from live_corrections where business_id = $1 and task_id = $2)
+           as content`,
     [tx.businessId, taskId, CONTENT_COMMANDS],
   );
   return row?.content !== false;
@@ -65,4 +71,34 @@ export async function readClientFacts(
     client: reached.some((one) => one.clientId === client) ? client : null,
     hasContent: await hasContent(tx, taskId),
   };
+}
+
+/**
+ * The served board rows, each with its client (the Clients row door), by
+ * `readClientFacts`' rule: the id and `client.list`'s name only where the
+ * reader's grants reach the client; null for none, and null for a client they
+ * do not reach, whose row's `clientSet` says it is under one. Asked only of the
+ * rows served.
+ */
+export async function withBoardClients<Row extends { readonly id: string }>(
+  tx: TenantQuery,
+  served: readonly Row[],
+  subjects: readonly Subject[],
+): Promise<readonly (Row & { readonly client: ClientView | null })[]> {
+  const rows =
+    served.length === 0
+      ? []
+      : await tx.query<{ readonly id: string; readonly client: string }>(
+          `select id, uuid_7 as client from records
+            where business_id = $1 and id = any($2::uuid[]) and uuid_7 is not null`,
+          [tx.businessId, served.map((row) => row.id)],
+        );
+  const among = [...new Set(rows.map((row) => row.client))];
+  const reached = new Map(
+    among.length === 0
+      ? []
+      : ((await clientsReached(tx, subjects, among)) ?? []).map((one) => [one.clientId, one]),
+  );
+  const clientOf = new Map(rows.map((row) => [row.id, reached.get(row.client) ?? null]));
+  return served.map((row) => ({ ...row, client: clientOf.get(row.id) ?? null }));
 }

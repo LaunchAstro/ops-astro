@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// FR1-DBTEST #49: every database-bound suite is named in
-// tests/db/named-suites.json, or is listed below as deliberately unnamed with
-// the variable it waits for.
+// FR1-DBTEST #49: every database-bound suite is named in the manifest
+// (tests/db/named-suites.json, or the per-area tests/db/named-suites/ once
+// split), or is listed below as deliberately unnamed with the variable it
+// waits for.
 //
 // The `local checks` job runs `pnpm test` with no DATABASE_URL, so a
 // database-bound suite skips there and vitest exits 0. The `database
@@ -17,6 +18,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readNamedSuites } from '../../scripts/named-suites.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const HARNESS = 'tests/support/fresh-database.ts';
@@ -32,6 +34,7 @@ const HARNESS = 'tests/support/fresh-database.ts';
 const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/api/server-onerror.test.ts': 'skips without SURFACE_API_PORT',
   'tests/cli/mounted-cli.test.ts': 'skips without SURFACE_API_PORT',
+  'tests/api/c40-password-set-provider.test.ts': 'skips without C40_AUTH_URL (a pinned GoTrue)',
   'tests/runtime/aw-13-local-target.test.ts':
     'skips without TRACE_TARGET_ENV_FILE (a running local trace target)',
   'tests/acceptance/restart-and-expiry.test.ts': 'skips without L5_RESTART_CONTAINER_NAME',
@@ -53,17 +56,17 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
     'pure: a stubbed fetch and a typed stand-in world, counter 0',
   'tests/api/function-agent-quota.test.ts':
     'pure: the function handler with no database, counter 0',
+  'tests/custody/c31-secret-set-not-task-content.test.ts':
+    "pure: the S0-5 world's content list only, counter 0",
+  'tests/custody/c31-audit-chain-corrupted.test.ts':
+    'red by design: run only as the child of c31-audit-chain-test-catches-corruption',
+  'tests/api/secret-log-capture-keeps-credential-in-object.test.ts':
+    'pure: the console capture only, counter 0',
+  'tests/api/secret-log-capture-keeps-credential-in-format-and-buffer.test.ts':
+    'pure: the console capture only, counter 0',
 };
 
-interface Manifest {
-  readonly comment: readonly string[];
-  readonly invariant: readonly string[];
-  readonly conformance: readonly string[];
-}
-
-const manifest = JSON.parse(
-  readFileSync(join(root, 'tests/db/named-suites.json'), 'utf8'),
-) as Manifest;
+const manifest = readNamedSuites(root);
 
 function walk(directory: string, out: string[] = []): string[] {
   for (const entry of readdirSync(directory)) {

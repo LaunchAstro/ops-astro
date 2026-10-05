@@ -12,9 +12,9 @@
 // separate fields), and withheld is not gone. A withheld item, about a task the
 // caller holds no read on, is not listed at all: its identity, reason and times
 // would say that another client's task exists. It stays stored and comes back
-// at the first read after access returns. A gone item, a trashed task the
-// caller still holds read on, is listed as gone and names nothing of the task
-// or the fact it points at.
+// at the first read after access returns. A gone item, about a trashed task
+// the caller still holds read on, is listed as gone and names nothing of the
+// task or the fact it points at.
 
 import {
   clientsReached,
@@ -55,10 +55,11 @@ function entryOf(item: InboxItem): InboxEntry {
 }
 
 /**
- * The caller's own inbox, newest raised last, as `readInboxItems` orders it.
- * A readable entry is named in the same transaction: its task's key and title,
- * who closed it, and its task's client where the caller's subjects reach that
- * client (MP-7-3). The item stores none of them, so a rename reads renamed.
+ * The caller's own inbox, oldest raised first, as `readInboxItems` orders it.
+ * A readable entry is named: its task's key and title, read in the statement
+ * that found the task readable (`readInboxItems`), who closed it, and its
+ * task's client where the caller's subjects reach that client (MP-7-3). The
+ * item stores none of them, so a rename reads renamed.
  */
 export async function readInbox(
   tx: TenantQuery,
@@ -66,33 +67,16 @@ export async function readInbox(
   subjects: readonly Subject[],
 ): Promise<readonly InboxEntry[]> {
   const items = await readInboxItems(tx, personId);
-  const listed = items.filter((item) => item.access !== 'withheld').map((item) => entryOf(item));
-  return await named(tx, listed, subjects);
+  return await named(
+    tx,
+    items.filter((item) => item.access !== 'withheld'),
+    subjects,
+  );
 }
 
 /** The owed count: the list's counted entries, counted in one query under the same rule. */
 export async function countOwed(tx: TenantQuery, personId: string): Promise<number> {
   return await countOwedItems(tx, personId);
-}
-
-/** Each task's key, title and client link, read at the read. */
-async function taskNames(
-  tx: TenantQuery,
-  taskIds: readonly string[],
-): Promise<ReadonlyMap<string, { key: string; title: string | null; clientId: string | null }>> {
-  const rows = await tx.query<{
-    readonly id: string;
-    readonly key: string | null;
-    readonly title: string | null;
-    readonly clientId: string | null;
-  }>(
-    `select id, txt_1 as key, txt_4 as title, uuid_7 as "clientId" from public.records
-      where business_id = $1 and id = any($2::uuid[]) and deleted_at is null`,
-    [tx.businessId, taskIds],
-  );
-  return new Map(
-    rows.map((row) => [row.id, { key: row.key ?? '', title: row.title, clientId: row.clientId }]),
-  );
 }
 
 /**
@@ -111,15 +95,13 @@ async function reachedClients(
 
 async function named(
   tx: TenantQuery,
-  entries: readonly InboxEntry[],
+  items: readonly InboxItem[],
   subjects: readonly Subject[],
 ): Promise<readonly InboxEntry[]> {
-  const readable = entries.filter((entry) => entry.access === 'readable');
-  const taskIds = [...new Set(readable.map((entry) => entry.subjectRecordId ?? ''))];
-  const deciderIds = [...new Set(readable.flatMap((entry) => entry.closedByPersonId ?? []))];
-  if (taskIds.length === 0) return entries;
-  const tasks = await taskNames(tx, taskIds);
-  const clientIds = [...tasks.values()].flatMap((task) => task.clientId ?? []);
+  const readable = items.flatMap((item) => (item.access === 'readable' ? [item] : []));
+  if (readable.length === 0) return items.map((item) => entryOf(item));
+  const deciderIds = [...new Set(readable.flatMap((item) => item.closedByPersonId ?? []))];
+  const clientIds = [...new Set(readable.flatMap((item) => item.clientId ?? []))];
   const reached = await reachedClients(tx, subjects, clientIds);
   const people = new Map<string, PersonView>(
     deciderIds.length === 0
@@ -132,14 +114,13 @@ async function named(
           )
         ).map((row) => [row.id, { personId: row.id, name: row.name }] as const),
   );
-  return entries.map((entry) => {
-    if (entry.access !== 'readable') return entry;
-    const task = tasks.get(entry.subjectRecordId ?? '');
-    const client = reached.get(task?.clientId ?? '');
-    const decider = entry.closedByPersonId ?? null;
+  return items.map((item) => {
+    if (item.access !== 'readable') return entryOf(item);
+    const client = reached.get(item.clientId ?? '');
+    const decider = item.closedByPersonId;
     return {
-      ...entry,
-      ...(task === undefined ? {} : { task: { key: task.key, title: task.title } }),
+      ...entryOf(item),
+      task: item.task,
       ...(client === undefined ? {} : { client }),
       closedBy: decider === null ? null : (people.get(decider) ?? null),
     };
