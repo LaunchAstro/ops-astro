@@ -58,6 +58,34 @@ it('the text is searched without the spaces around it, and a run of spaces of an
   }
 });
 
+it('after an erasure, a row naming only an id given back with --id is marked given, so it never passes for another person', async () => {
+  const gus = word('gus');
+  const erased = await person(world.alpha, `Gus ${gus}`);
+  const granter = await person(world.alpha, `Ida ${word('ida')}`);
+  const grant = randomUUID();
+  await world.db.admin.execute(
+    `insert into public.grants
+       (business_id, id, subject_kind, subject_id, scope_kind, collection, action, granted_by_actor_id)
+     values ($1, $2, 'actor', $3, 'business', 'tasks', 'read', $4)`,
+    [world.alpha, grant, erased.actor, granter.actor],
+  );
+  const before = await findCopies(world.adminUrl, ['--text', gus], 'alpha');
+  const flags = /--id \S+(?: --id \S+)*/u.exec(before.stderr)?.[0] ?? '';
+  expect(flags).toContain(erased.actor);
+  for (const table of ['memberships', 'actors', 'people']) {
+    // oxlint-disable-next-line no-await-in-loop
+    await world.db.admin.execute(
+      `delete from public.${table} where ${table === 'people' ? 'id' : 'person_id'} = $1`,
+      [erased.id],
+    );
+  }
+  const after = await findCopies(world.adminUrl, ['--text', gus, ...flags.split(' ')], 'alpha');
+  expect(after.code).toBe(0);
+  const hit = hitOn(after.hits, 'grants', grant);
+  expect(hit?.text).toBe(false);
+  expect(hit?.given, 'the row holds an id the operator gave back for the erased person').toBe(true);
+});
+
 it('a large export reaches its reader whole', async () => {
   const bulk = word('bulk');
   const filler = 'x'.repeat(20_000);
@@ -138,6 +166,9 @@ it('the finder refuses an id that is not a UUID, a repeated option and an unknow
     ['--text', '--export'],
     ['--id', '--export'],
     ['--text', 'a  b'],
+    ['--text', 'a, b'],
+    ['--text', 'a.-b'],
+    ['--text', '\u200Ba b\u200B'],
     ['--text', '\u00A0a\u00A0\u00A0b\u00A0'],
   ]) {
     // oxlint-disable-next-line no-await-in-loop

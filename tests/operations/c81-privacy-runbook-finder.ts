@@ -18,6 +18,8 @@ export interface Hit {
   readonly people: readonly string[];
   /** Whether a value of the row holds the text. */
   readonly text: boolean;
+  /** Whether the row holds an id given with --id. */
+  readonly given: boolean;
   readonly row?: Record<string, unknown>;
 }
 
