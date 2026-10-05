@@ -136,17 +136,62 @@ export function occurrenceOf(
     (offset) =>
       line.slice(0, offset) + target.replacement + line.slice(end(offset)) === after[index],
   );
-  if (at === undefined) return undefined;
+  if (at === undefined || file === undefined) return undefined;
   before[index] = line.slice(0, at) + MARK + line.slice(end(at));
   const page = rendered(before.join('\n'));
   const block = page?.findIndex((text) => text.includes(MARK)) ?? -1;
-  if (page === undefined || page.join(' ').split(MARK).length !== 2) return undefined;
+  if (page === undefined || block < 0) return undefined;
+  const joined = visible(page.join(' '));
+  const showing = (word: string) => joined.replace(MARK, () => word);
+  // The marker stands for the word only where the page shows the word there, and the
+  // replacement there once changed: never inside a reference, nor a mark the page shows itself.
+  const shows = (html: string, word: string) => {
+    const blocks = rendered(html);
+    return blocks !== undefined && visible(blocks.join(' ')) === showing(word);
+  };
+  if (joined.split(MARK).length !== 2) return undefined;
+  if (!shows(file.before ?? '', target.word) || !shows(file.after ?? '', target.replacement))
+    return undefined;
   const [left = '', right = ''] = page[block]?.split(MARK) ?? [];
-  const prior = page.slice(0, block).join(' ');
-  const earlier = [target.word, target.replacement].flatMap((word) =>
-    wordOffsets(prior, left + word + right),
-  );
-  return { left, right, index: earlier.length };
+  const near = { left: nearLeft(left), right: nearRight(right) };
+  if (near.left === undefined || near.right === undefined) return undefined;
+  const where = { left: near.left, right: near.right };
+  // Ranked on the whole page, as the live check ranks it, the same before and after the change.
+  const spot = joined.indexOf(MARK) - where.left.length;
+  const words = [target.word, target.replacement];
+  const rank = (word: string) =>
+    equals(showing(word), where, words).findIndex((one) => one.at === spot && one.word === word);
+  const ranked = rank(target.word);
+  return ranked >= 0 && ranked === rank(target.replacement)
+    ? { ...where, index: ranked }
+    : undefined;
+}
+
+// How much of its block either side places the word: enough to tell it from its neighbours,
+// short enough that counting its equals stays linear in the page.
+const CONTEXT = 128;
+/** The block's last CONTEXT characters before the word, cut after a space so word edges hold. */
+function nearLeft(text: string): string | undefined {
+  if (text.length <= CONTEXT) return text;
+  const cut = text.slice(-CONTEXT);
+  const space = cut.indexOf(' ');
+  return space < 0 ? undefined : cut.slice(space + 1);
+}
+/** The block's first CONTEXT characters after the word, cut before a space. */
+function nearRight(text: string): string | undefined {
+  if (text.length <= CONTEXT) return text;
+  const cut = text.slice(0, CONTEXT);
+  const space = cut.lastIndexOf(' ');
+  return space < 0 ? undefined : cut.slice(0, space);
+}
+
+/** Every match of the place holding one of `words`, in page order (ties by word). */
+function equals(text: string, where: Occurrence, words: readonly string[]) {
+  return words
+    .flatMap((word) =>
+      wordOffsets(text, where.left + word + where.right).map((at) => ({ at, word })),
+    )
+    .toSorted((a, b) => a.at - b.at || (a.word < b.word ? -1 : Number(a.word > b.word)));
 }
 
 /** The page's match of the approved occurrence, counted among its equals, holds `shown`. */
@@ -157,8 +202,5 @@ export function showsAt(
   gone: string,
 ): boolean {
   if (where === undefined) return false;
-  const found = [shown, gone].flatMap((word) =>
-    wordOffsets(text, where.left + word + where.right).map((at) => ({ at, word })),
-  );
-  return found.toSorted((a, b) => a.at - b.at)[where.index ?? 0]?.word === shown;
+  return equals(text, where, [shown, gone])[where.index ?? 0]?.word === shown;
 }
