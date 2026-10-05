@@ -7,7 +7,6 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { raiseInboxItem } from '../inbox/items.ts';
-import type { OnboardingStepRow } from './onboardings.ts';
 
 /**
  * Each ready person or client-wait step of a running onboarding, on its own
@@ -135,7 +134,7 @@ export async function reparkStepMove(tx: TenantQuery, taskId: string): Promise<v
  */
 export async function closeStepMove(
   tx: TenantQuery,
-  step: OnboardingStepRow,
+  step: { readonly taskId: string },
   byActorId: string,
 ): Promise<void> {
   await tx.query(
