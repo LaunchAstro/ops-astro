@@ -104,6 +104,18 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     scope_kind: 'business',
     scope_id: null,
   },
+  // The connector fleet (MP-14-7a): nothing the journey does writes one.
+  'public.connections': {
+    connector_key: 'restricted-calls',
+    label: 'restricted calls',
+    status: 'active',
+  },
+  'public.connection_clients': { connection_id: randomUUID(), client_id: randomUUID() },
+  'public.connection_repairs': {
+    connection_id: randomUUID(),
+    connection_revision: 1,
+    started_by_actor_id: randomUUID(),
+  },
   'public.outage_runs': {
     outage_id: randomUUID(),
     attempt_id: randomUUID(),

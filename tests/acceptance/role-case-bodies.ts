@@ -109,6 +109,8 @@ export interface BodyContext {
   clearGateItem?(item: string): Promise<void>;
   /** C81: the links to the published legal versions gate items 3 to 6 take (`legalEvidence`). */
   legalEvidence?(): Promise<Readonly<Record<string, string>>>;
+  /** MP-14-7a: a broken connection to repair, owner-written. */
+  brokenConnection?(): Promise<string>;
 }
 
 export const batchOf = (answer: Answer): string =>

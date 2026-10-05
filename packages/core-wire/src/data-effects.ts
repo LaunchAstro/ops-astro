@@ -6,7 +6,6 @@
 
 import type { CommandName } from './surface.ts';
 import { business, client, writing, type DataEffects } from './data-effects-types.ts';
-
 export type {
   ClassedEffects,
   DataClass,
@@ -89,8 +88,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
   'task.triage': TASK,
   'task.set_stage': TASK,
-  // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10) and
-  // the category (MP-4-8).
+  // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10), the category (MP-4-8).
   'task.set_state': TASK,
   'task.set_scores': TASK,
   'task.set_adhoc': TASK,
@@ -177,6 +175,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.list': READ,
   'secret.set': writing(client('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
+  'connection.fleet': READ,
+  'connector.repair': writing(business('connection_repairs')),
   'client.create': writing(client('clients')),
   'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
