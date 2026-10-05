@@ -34,6 +34,9 @@ const path = (business: string, name: string): string =>
 const grantOf = (result: ConnectionSignalResult, id: string): GrantView | undefined =>
   result.leases.find((one) => one.id === id);
 
+/** Text from code points, so no hostile character sits in this file as itself. */
+const cp = (...points: readonly number[]): string => String.fromCodePoint(...points);
+
 /** A real client of the transaction's business, by name. */
 async function madeClient(
   tx: Parameters<typeof createClient>[0],
@@ -59,13 +62,20 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   let bravoClient = '';
   const clientAName = `Client A ${RECORD_CANARY}`;
   const clientBName = `Client B ${RECORD_CANARY}`;
-  const grants: Record<'liveA' | 'ranOutB' | 'takenBackFleet', string> = {
+  const grants: Record<
+    'liveA' | 'ranOutB' | 'takenBackFleet' | 'liveB' | 'mapA' | 'trashedA',
+    string
+  > = {
     liveA: '',
     ranOutB: '',
     takenBackFleet: '',
+    liveB: randomUUID(),
+    mapA: '',
+    trashedA: '',
   };
   let liveCredential = '';
   const idleAgent = randomUUID();
+  const agentB = randomUUID();
   const tripwireB = `Client B watch ${RECORD_CANARY}`;
   const stepB = `Client B step ${RECORD_CANARY}`;
   const answers: Answer[] = [];
@@ -195,6 +205,37 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       alpha,
       idleAgent,
     ]);
+    // A second agent holding a live grant for client B only, written as the
+    // owner beside the ran-out one: never on a client A reader's roster.
+    await owner(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
+      alpha,
+      agentB,
+    ]);
+    await owner(
+      `insert into public.delegations
+         (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
+          collections, actions, credential_hash, granted_at, expires_at, purpose_scope_kind,
+          purpose_scope_id)
+       select business_id, $2, $3, delegate_person_id, minted_by_actor_id, 'live_for_b',
+              collections, actions, repeat('ab', 32), now(), now() + interval '1 hour',
+              purpose_scope_kind, purpose_scope_id
+         from public.delegations where id = $1`,
+      [grants.ranOutB, grants.liveB, agentB],
+    );
+    // Client A grants a client-scoped reader is not shown: one on a map, one
+    // on a trashed task.
+    [grants.mapA] = await delegate('map_for_a', clientA);
+    [grants.trashedA] = await delegate('trashed_for_a', clientA);
+    await owner(
+      `update public.records set data = data || '{"type":"map"}'::jsonb
+        where id = (select purpose_scope_id from public.delegations where id = $1)`,
+      [grants.mapA],
+    );
+    await owner(
+      `update public.records set deleted_at = now()
+        where id = (select purpose_scope_id from public.delegations where id = $1)`,
+      [grants.trashedA],
+    );
 
     await tripwire(alpha, { what: 'Lease died waiting', fired: 2, filed: 'AT-10' });
     await tripwire(alpha, { what: 'Quota near its ceiling', client: clientA });
@@ -278,7 +319,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       'delegation_revoked',
       null,
     ]);
-    expect(result.leases.map((one) => one.state)).toStrictEqual(['live', 'ran_out', 'taken_back']);
+    const order = { live: 0, ran_out: 1, taken_back: 2 } as const;
+    const ranks = result.leases.map((one) => order[one.state]);
+    expect(ranks).toStrictEqual(ranks.toSorted((a, b) => a - b));
+    expect(new Set(ranks)).toStrictEqual(new Set([0, 1, 2]));
     const rows = result.leases;
     expect(result.leaseCounts).toStrictEqual({
       live: rows.filter((one) => one.state === 'live').length,
@@ -286,6 +330,13 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       takenBack: rows.filter((one) => one.state === 'taken_back').length,
       liveExec: rows.filter((one) => one.state === 'live' && one.access === 'exec').length,
     });
+  });
+
+  it('MP-14-8 a business-wide reader sees every grant, on a map or a trashed task included', async () => {
+    const result = await signal(admin);
+    for (const id of [grants.liveB, grants.mapA, grants.trashedA]) {
+      expect(grantOf(result, id)?.state).toBe('live');
+    }
   });
 
   it('MP-14-8 grant reads count the applied calls made under it, and an unused grant counts none', async () => {
@@ -321,11 +372,21 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   });
 
   it.each([
-    ['a line break', 'Lease died\nwaiting'],
-    ['a direction override', 'Lease ‮died waiting'],
-    ['a zero-width space', 'Lease​died'],
+    ['a line break', `Lease died${cp(0x0a)}waiting`],
+    ['a line separator', `Lease died${cp(0x2028)}waiting`],
+    ['a direction override', `Lease ${cp(0x202e)}died waiting`],
+    ['an Arabic letter mark', `Lease${cp(0x061c)} died`],
+    ['a zero-width space', `Lease${cp(0x200b)}died`],
+    ['a byte order mark', `Lease died${cp(0xfeff)}`],
+    ['a soft hyphen', `Lease${cp(0x00ad)}died`],
+    ['hidden tag characters', `Lease died${cp(0xe0069, 0xe0067, 0xe006e)} waiting`],
+    ['a variation selector', `L${cp(0xfe0f)}ease died`],
+    ['a supplementary variation selector', `Lease died${cp(0xe0100)}`],
+    ['a leading combining mark', `${cp(0x0301)}Lease died`],
+    ['a stack of combining marks', `L${cp(...Array.from({ length: 8 }, () => 0x030d))}ease`],
+    ['a format control', `${cp(0x0600)}Lease`],
     ['a leading space', ' Lease died'],
-    ['a trailing no-break space', 'Lease died '],
+    ['a trailing no-break space', `Lease died${cp(0x00a0)}`],
     ['nothing at all', ''],
   ])(
     'MP-14-8 seeded text: a tripwire or a step holding %s is refused whole',
@@ -336,6 +397,13 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       );
     },
   );
+
+  it('MP-14-8 seeded text: ordinary words with accents, dashes, quotes and signs are kept as written', async () => {
+    const what = `Caf${cp(0xe9)}${cp(0x2019)}s quota ${cp(0x2014)} ${cp(0x20ac)}40 ${cp(0x2192)} 80%`;
+    await tripwire(alpha, { what });
+    const result = await signal(admin);
+    expect(result.tripwires.map((one) => one.what)).toContain(what);
+  });
 
   it('MP-14-8 seeded text: a task cite is a task key and a filed item a display id, nothing else', async () => {
     for (const ref of ['/task/T-1', 'T-1?x', 'javascript:alert(1)', 'T-01', 't-1']) {
@@ -385,8 +453,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   it('MP-14-8 the roster lists the business agents with the live grants the caller sees', async () => {
     const result = await signal(admin);
     const holder = grantOf(result, grants.liveA)?.agentId;
-    expect(result.roster.find((one) => one.agentId === holder)?.liveGrants).toBe(1);
+    // live_for_a, map_for_a and trashed_for_a: one agent picked all three up.
+    expect(result.roster.find((one) => one.agentId === holder)?.liveGrants).toBe(3);
     expect(result.roster.find((one) => one.agentId === idleAgent)?.liveGrants).toBe(0);
+    expect(result.roster.find((one) => one.agentId === agentB)?.liveGrants).toBe(1);
   });
 
   it('MP-14-8 the read writes nothing beyond its own operation row', async () => {
@@ -416,7 +486,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     const answer = await controls.asAgent('connection.signal', {}, liveCredential);
     answers.push(answer);
     expect(answer.status).toBe(403);
-    expect(String(answer.body['code'])).toMatch(/^(DELEGATION_|AUTH_)/u);
+    expect(answer.body['code']).toBe('DELEGATION_EXCLUDES_OPERATION');
     expect(answer.body['leases']).toBeUndefined();
   });
 
@@ -450,7 +520,9 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     expect(result.tripwireCounts).toStrictEqual({ armed: 1, cannotBeArmed: 0 });
     expect(result.nightRound?.roundOn).toBe('2026-09-29');
     expect(result.nightRound?.steps.map((one) => one.what)).toStrictEqual(['A fix for A stalled']);
-    expect(result.roster.map((one) => one.agentId)).toStrictEqual([result.leases[0]?.agentId]);
+    expect(result.roster).toStrictEqual([
+      { agentId: result.leases[0]?.agentId, active: true, liveGrants: 1 },
+    ]);
     const text = JSON.stringify(result);
     for (const foreign of [
       clientB,
@@ -460,6 +532,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       tripwireB,
       stepB,
       idleAgent,
+      agentB,
+      grants.liveB,
+      grants.mapA,
+      grants.trashedA,
       '2026-09-30',
     ]) {
       expect(text).not.toContain(foreign);
