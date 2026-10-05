@@ -124,17 +124,17 @@ function rendered(html: string): string[] | undefined {
 }
 
 // The frontmatter fence, read as a closed grammar over whole lines: a plain fence, a blank line,
-// and anything a build might also read as a fence (`---` or `+++` after any space or format
-// character, or with more on its line), which the source may not hold anywhere.
+// and no other line holding `---` or `+++` anywhere, since a build reads a fence after any prefix
+// and closes one after code on its line.
 const FENCE = /^[\t ]*---[\t ]*$/u;
 const BLANK = /^[\t ]*$/u;
-const FENCE_LIKE = /^[\s\p{Cf}]*(?:---|\+\+\+)/u;
+const FENCE_LIKE = /---|\+\+\+/u;
 
 /**
  * The source's page as its build serves it: the frontmatter between two plain `---` lines, the
- * first opening the file (after any byte-order mark or blank lines), never renders. A line a
- * build could read as a fence otherwise (carriage returns alone make the file one such line), a
- * third fence, or one after other text leaves no page.
+ * first opening the file (after any byte-order mark or blank lines), never renders. Any other
+ * line holding `---` or `+++` (carriage returns alone make the file one such line), a third
+ * fence, or one after other text leaves no page.
  */
 function served(source: string): string[] | undefined {
   const text = source.replace(/^\uFEFF/u, '').replaceAll('\r\n', '\n');
