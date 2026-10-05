@@ -21,6 +21,10 @@
 // any late finish after a lost answer with no stop) leaves a container in
 // `Created`. A removal docker answers is already in progress counts as gone
 // (`GONE`); if the daemon's own removal then fails, docker keeps it, dead.
+// One answer errs the other way: a removal refused before the client closes is
+// asked again after a clean close, but a client that then fails reports the
+// container kept even if the daemon's own --rm removed it; the record says
+// `container` and the sweep finds nothing to remove.
 
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
