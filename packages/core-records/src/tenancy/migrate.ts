@@ -15,6 +15,13 @@
 //   PostgreSQL runs DDL inside transactions, which is what makes this possible
 //   at all, and a file holding a statement it will not run inside one is
 //   refused before anything runs.
+// - A run that loses a race on a shared catalogue row is applied again. Roles
+//   are the cluster's, so two databases migrating at once can both judge the
+//   same role and alter it, and the second fails with XX000 "tuple
+//   concurrently updated" (0046's lookup role, OW-007.3). That run rolled back
+//   whole, so it starts again, up to five attempts with a short jittered
+//   pause, and then reads the role as the other database left it
+//   (`retryOnSharedRace`).
 // - An applied migration's checksum is checked on every run, before anything
 //   runs. Editing a file that has already been applied is refused rather than
 //   ignored, because the database and the file would otherwise disagree in
@@ -34,6 +41,7 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { setTimeout as pause } from 'node:timers/promises';
 import type { AdminConnection } from './database.ts';
 import { migrationIdProblems } from './migration-ids.ts';
 import { classifyStatement, scanToken, splitStatements } from './statements.ts';
@@ -330,6 +338,41 @@ function splitByLedger(
   return { pending, alreadyApplied };
 }
 
+/** How many times a run is applied while each attempt loses the shared catalogue race. */
+const SHARED_RACE_ATTEMPTS = 5;
+
+/**
+ * Whether a statement failed only because another database's transaction
+ * updated the same shared catalogue row (a role) first. PostgreSQL waits for
+ * that transaction, then refuses the update rather than redo it: XX000 with
+ * this exact message. The run's one transaction rolled back, so nothing of it
+ * committed.
+ */
+function lostSharedRace(error: unknown): boolean {
+  const cause = (error instanceof Error ? error.cause : undefined) as
+    { readonly code?: unknown; readonly message?: unknown } | undefined;
+  return cause?.code === 'XX000' && cause.message === 'tuple concurrently updated';
+}
+
+/**
+ * Run `apply`, and run it again from the start while it loses the shared
+ * catalogue race. Any other failure, or the last attempt's, is thrown as it
+ * came.
+ */
+async function retryOnSharedRace<T>(apply: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- one attempt after another, never two at once
+      return await apply();
+    } catch (error) {
+      if (attempt >= SHARED_RACE_ATTEMPTS || !lostSharedRace(error)) throw error;
+    }
+    // Jittered, so two runs that lost to each other do not meet again in step.
+    // oxlint-disable-next-line no-await-in-loop -- the next attempt follows this pause
+    await pause(50 * attempt + Math.floor(Math.random() * 100));
+  }
+}
+
 /**
  * The same run over a list somebody else read.
  *
@@ -339,6 +382,14 @@ function splitByLedger(
  * anything about it means being able to stand there.
  */
 export async function applyMigrations(
+  admin: AdminConnection,
+  migrations: readonly Migration[],
+): Promise<MigrationOutcome> {
+  return await retryOnSharedRace(async () => await applyOnce(admin, migrations));
+}
+
+/** One attempt: the ledger read, every check, and the one transaction. */
+async function applyOnce(
   admin: AdminConnection,
   migrations: readonly Migration[],
 ): Promise<MigrationOutcome> {

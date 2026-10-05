@@ -1,0 +1,291 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The execution map (MP-6-3, DS-TASK-12 to DS-TASK-14), ported from the
+   mockup's `app.css` 12448-12593 onto the product's tokens. Rail only (R63):
+   the other four studies, the study bar and the route facets are not built.
+   Three connector colours: --accent, dashed --warning, and the grid quieter
+   than --border. The card's 3px left rule is its state and nothing else:
+   hover and selection take the other three sides. */
+
+.tg {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+.tg__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-5);
+  padding: 0 0 var(--s-3);
+}
+.tg__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4);
+}
+.tg__legend .sb__k {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.tg__lline {
+  flex: none;
+  width: 1.1rem;
+  border-top: 2px solid var(--accent);
+}
+.tg__lline--wait {
+  border-top-style: dashed;
+  border-top-color: var(--warning);
+}
+
+/* The scroll region is the map's own, never the page's. */
+.tg__scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto hidden;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.tg__canvas {
+  position: relative;
+  box-sizing: border-box;
+  width: var(--tg-w, auto);
+  height: var(--tg-h, auto);
+  margin: 0 auto;
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--border) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklch, var(--border) 55%, transparent) 1px, transparent 1px);
+  background-position: -1px -1px;
+  background-size: 28px 28px;
+}
+.tg__stage {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.tg__stage::after {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  content: '';
+}
+
+/* The card mould: fixed outer geometry, three reserved tracks inside. */
+.tg__node {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  grid-template-rows: 1.9rem minmax(0, 1fr);
+  box-sizing: border-box;
+  width: 208px;
+  height: 136px;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.tg__node[data-tone='gate'] {
+  border-left-color: var(--warning);
+}
+.tg__node[data-tone='run'] {
+  border-left-color: var(--accent);
+}
+.tg__node[data-kind='terminal'] {
+  border-style: dashed;
+  border-left-style: solid;
+}
+.tg__node:hover {
+  border-top-color: var(--border-strong);
+  border-right-color: var(--border-strong);
+  border-bottom-color: var(--border-strong);
+  background: var(--surface-2);
+}
+/* One ring: the global focus ring (DS-TASK-13 drift: never two). */
+.tg__node[aria-pressed='true'] {
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: var(--surface-2);
+}
+.tg__ntop {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.55rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.tg__nkey {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.tg__nstate {
+  flex: none;
+  margin-left: auto;
+}
+.tg__nmain {
+  display: grid;
+  grid-template-rows: 2.6rem 1.15rem minmax(0, 1fr);
+  min-height: 0;
+  padding: 0.5rem 0.55rem 0;
+}
+.tg__nt {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.tg__nowner {
+  align-self: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tg__nout {
+  align-self: end;
+  margin: 0 -0.55rem;
+  padding: 0.35rem 0.55rem;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tg__nout b {
+  color: var(--accent);
+}
+.tg__node[data-tone='gate'] .tg__nout b {
+  color: var(--warning);
+}
+.tg__ndep {
+  display: none;
+}
+
+/* The connector plane: behind the cards, never eating a click. */
+.tg__edges {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.tg__edge {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.tg__edge--wait {
+  stroke: var(--warning);
+  stroke-dasharray: 5 4;
+}
+.tg__arrow {
+  fill: var(--accent);
+}
+.tg__arrow--wait {
+  fill: var(--warning);
+}
+.tg__join {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.tg__insp {
+  display: grid;
+  gap: var(--s-3);
+  min-width: 0;
+  padding: var(--s-4) 0 0;
+}
+.tg__insp__t {
+  margin: 0;
+  color: var(--text);
+  font: var(--type-card-title);
+  letter-spacing: var(--type-card-title-tracking);
+  text-transform: var(--type-card-title-case);
+}
+.tg__insp__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  gap: var(--s-3);
+}
+/* D-16: an unbroken digest or run id wraps; the page never scrolls sideways. */
+.tg__insp .gate__say,
+.tg__insp__facts .sout__row > span:last-child {
+  overflow-wrap: anywhere;
+}
+.tg__orphan {
+  padding-top: var(--s-3);
+}
+
+/* At 900 and below the map is a vertical list: full-width cards in plan
+   order, no lines, no stage labels, each card's dependency said in words. */
+@media (width <= 900px) {
+  .tg__canvas {
+    width: auto;
+    height: auto;
+    padding: var(--s-3);
+    background-image: none;
+  }
+  .tg__edges,
+  .tg__stage {
+    display: none;
+  }
+  .tg__scroll {
+    overflow: visible;
+  }
+  .tg__node {
+    position: static;
+    grid-template-rows: 1.9rem auto;
+    width: 100%;
+    height: auto;
+    margin: 0 0 var(--s-2);
+  }
+  .tg__nmain {
+    grid-template-rows: auto auto auto;
+    gap: 0.3rem;
+  }
+  .tg__nt {
+    -webkit-line-clamp: 3;
+  }
+  .tg__nout,
+  .tg__nowner {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .tg__ndep {
+    display: block;
+    padding: 0.3rem 0.55rem 0.4rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+}

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // CI-SPEED (ORCH78 LOOKAHEAD, YAMLPARSE): the job-level twin of merge-group-workflows.test.ts's
-// step rule. A merge group runs every job but the not-required Postgres 18 look-ahead, and no job
-// waits on that one, directly or through another job: a job that did would be skipped on every
-// group, and a skipped required check reads as passed. The workflows are read with a YAML parser,
-// so a form a line pattern would misread (a block list, a folded value, an alias, a comment in
-// column one) is read as GitHub reads it.
+// step rule. A merge group runs every job, and no job waits on one that is skipped there or does
+// not exist, directly or through another job: a job that did would be skipped on every group, and
+// a skipped required check reads as passed. The Postgres 18 look-ahead, the one job that ran on
+// pull requests alone, left ci.yml for a nightly workflow (CI-SPEED, NATHAN-CF-RECORD item 1), so
+// no job here is excused any more. The workflows are read with a YAML parser, so a form a line
+// pattern would misread (a block list, a folded value, an alias, a comment in column one) is read
+// as GitHub reads it.
 
 import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
@@ -13,9 +15,17 @@ import { read } from './merge-group-repo.ts';
 
 const CI = '.github/workflows/ci.yml';
 const REVIEW = '.github/workflows/review-evidence.yml';
+/** Not required, and nightly since CI-SPEED; it must not come back as a required check. */
 const LOOKAHEAD = 'database look-ahead, Postgres 18 (not required)';
 const ONLY_PULL_REQUESTS = "github.event_name == 'pull_request'";
-const ALLOWED = new Set([undefined, 'always()', "github.event_name != 'push'"]);
+// `!= 'pull_request'` never skips a group: the database conformance shards carry it (CI-SPEED,
+// light pull requests). A required job carrying it is refused by merge-group-workflows.test.ts.
+const ALLOWED = new Set([
+  undefined,
+  'always()',
+  "github.event_name != 'push'",
+  "github.event_name != 'pull_request'",
+]);
 const required = (
   JSON.parse(read('.github/required-checks.json')) as {
     required_status_checks: { context: string }[];
@@ -27,9 +37,9 @@ const condition = (value: unknown) =>
   typeof value === 'string' ? value.trim().replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/u, '$1') : value;
 
 /**
- * Every way a workflow lets a merge group skip a job: a job other than the look-ahead with a
- * condition that could skip a group, a look-ahead that runs anywhere but pull requests, or a job
- * that waits on the look-ahead. Empty when the workflow is sound; anything unreadable is a problem.
+ * Every way a workflow lets a merge group skip a job: a condition that could skip a group, or a
+ * wait on a job that has one or that is not there. Empty when the workflow is sound; anything
+ * unreadable is a problem.
  */
 export function groupSkips(text: string, path: string): string[] {
   // Merge keys resolved and duplicate keys refused, so neither can hide a `needs` or an `if`.
@@ -52,10 +62,12 @@ export function groupSkips(text: string, path: string): string[] {
       needs: list.filter((n) => typeof n === 'string').map((n) => n.toLowerCase()),
     });
   }
-  const look = [...table].find(([, j]) => j.name === LOOKAHEAD)?.[0];
+  const skips = (key: string) => {
+    const job = table.get(key);
+    return job === undefined || !ALLOWED.has(job.cond as string);
+  };
   for (const [key, { name, cond }] of table) {
-    const ok = key === look ? cond === ONLY_PULL_REQUESTS : ALLOWED.has(cond as string);
-    if (!ok) problems.push(`${path}: ${name}: if: ${String(cond)}`);
+    if (!ALLOWED.has(cond as string)) problems.push(`${path}: ${name}: if: ${String(cond)}`);
     const seen = new Set<string>();
     const todo = [...(table.get(key)?.needs ?? [])];
     for (let n = todo.pop(); n !== undefined; n = todo.pop()) {
@@ -63,7 +75,7 @@ export function groupSkips(text: string, path: string): string[] {
       seen.add(n);
       todo.push(...(table.get(n)?.needs ?? []));
     }
-    if (look !== undefined && seen.has(look)) problems.push(`${path}: ${name}: waits on ${look}`);
+    for (const n of seen) if (skips(n)) problems.push(`${path}: ${name}: waits on ${n}`);
   }
   return problems;
 }
@@ -135,7 +147,7 @@ const PLANTS: [string, [string, string][]][] = [
 ];
 
 describe('merge group: no job skips a group', () => {
-  it('the look-ahead is not required, runs on pull requests alone, and nothing waits on it', () => {
+  it('no job skips a group, waits on one that does, or waits on one that is not there', () => {
     expect(required.map((c) => c.context)).not.toContain(LOOKAHEAD);
     expect(groupSkips(read(CI), CI)).toStrictEqual([]);
     expect(groupSkips(read(REVIEW), REVIEW)).toStrictEqual([]);
@@ -149,7 +161,8 @@ describe('merge group: no job skips a group', () => {
   });
 
   it.each(PLANTS)('refuses %s', (_form, swaps) => {
-    // A planted condition is refused as that condition; any other plant as a wait on the look-ahead.
+    // A planted condition is refused as that condition; any other plant as a wait on a job that is
+    // not there (the look-ahead's old ID, which no longer names a job in ci.yml).
     const conditioned = swaps.some(([, to]) =>
       /if ?: github\.event_name == 'pull_request'/u.test(to),
     );

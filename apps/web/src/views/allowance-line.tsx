@@ -25,6 +25,13 @@ export interface AllowanceLineProps {
   readonly settled: number;
 }
 
+/** A read's figures with the client and conversation they were read for. */
+interface Held {
+  readonly client: OperationsClient;
+  readonly conversationId: string | null;
+  readonly allowance: PlanningAllowanceView | null;
+}
+
 const money = (minor: number, currency: string): string =>
   `${currency} ${(minor / 100).toFixed(2)}`;
 
@@ -37,14 +44,17 @@ function words(allowance: PlanningAllowanceView, started: boolean): string {
 
 export function AllowanceLine(props: AllowanceLineProps): ReactElement | null {
   const { client, conversationId, settled } = props;
-  const [allowance, setAllowance] = useState<PlanningAllowanceView | null>(null);
+  // The figures are the conversation's they were read for: another tab's, still
+  // held while this one's read is out, are never called "This conversation".
+  const [held, setHeld] = useState<Held | null>(null);
   useEffect(() => {
     let current = true;
     const body = conversationId === null ? {} : { conversationId };
     const load = async (): Promise<void> => {
       const answer = await client.read<AllowanceResult>('conversation.allowance', body);
       if (!current) return;
-      setAllowance(isRefusal(answer) || isUnavailable(answer) ? null : answer.value.allowance);
+      const allowance = isRefusal(answer) || isUnavailable(answer) ? null : answer.value.allowance;
+      setHeld({ client, conversationId, allowance });
     };
     void load();
     return () => {
@@ -53,6 +63,8 @@ export function AllowanceLine(props: AllowanceLineProps): ReactElement | null {
     // `settled` is read by no line here: it is the reload's trigger.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [client, conversationId, settled]);
+  const own = held?.client === client && held.conversationId === conversationId;
+  const allowance = own ? held.allowance : null;
   if (allowance === null) return null;
   return (
     <p className="aip__msg aip__msg--note" data-assistant="allowance">

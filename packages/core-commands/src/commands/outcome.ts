@@ -42,6 +42,14 @@ export interface Refused {
    * that knows it did.
    */
   readonly retains?: true;
+  /**
+   * The refusal as the register keeps it, when the answer names what only the
+   * caller's rights at the time may see: a refused mention names a person to
+   * an author who may see them, and keeps each one by the identifier as sent
+   * (OW-037.1). A replay answers the kept form, so a stored refusal carries
+   * nothing protected.
+   */
+  readonly kept?: CommandRefusal;
 }
 
 export type HandlerOutcome = Applied | Refused;

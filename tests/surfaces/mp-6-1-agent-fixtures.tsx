@@ -53,7 +53,7 @@ export const running: RunLineage['reservations'][number] = {
   actualMinor: null,
   classifiedCause: null,
   lease: { state: 'live' },
-  attempt: { state: 'dispatched' },
+  attempt: { state: 'dispatched', outcome: null },
 };
 
 const live: Mounted[] = [];
@@ -79,6 +79,7 @@ export async function pane(overrides: Partial<AgentPaneProps> = {}): Promise<Mou
     onJobList: ignore,
     busy: false,
     refusal: null,
+    decideClosed: false,
     onDecide: ignore,
     onReject: ignore,
     onCancel: ignore,

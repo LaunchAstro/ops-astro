@@ -20,8 +20,36 @@
 // The order matters. The contamination gate's self-test comes before its
 // sweep, because a blind gate that has stopped working looks exactly like a
 // clean repository.
+//
+// CI-SPEED, light pull requests. The `local checks` job sets CHECK_SCOPE to its
+// name and scripts/ci-scope.ts decides. On a pull request the step marked
+// `changed` runs only the tests the change reaches (`vitest run --changed`, from
+// the pull request's base); the full run is in the merge queue, the only way
+// into main. A merge group, a push, any other event and a run with no
+// CHECK_SCOPE, every local run, run every step in full. A decision or a base it
+// cannot read fails the check before any step runs.
+//
+// The build runs before the tests, on a pull request too. Tests copy the bundle
+// it writes to apps/web/dist. Run last, and on a pull request not at all, it
+// left them to whichever test worker built first, and a pull request's light set
+// could select them without the one test that builds, so they read no bundle at
+// all. The build takes seconds.
+//
+// Once the build passes, every step after it gets the stamp it wrote, in
+// CHECK_WEB_BUILD, and no step before it gets one from outside.
+// tests/ci/no-fallback-in-bundle.test.ts keeps a bundle carrying exactly that
+// stamp rather than rewriting it under the other tests, and rebuilds any other
+// (tests/ci/web-bundle-build.ts). A build that leaves no stamp this can read
+// names nothing, so that test builds for itself.
 
 import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
+import { readStamp } from '../apps/web/build-stamp.ts';
+
+/** The variable the steps after the build read the bundle's stamp from. */
+const BUILT = 'CHECK_WEB_BUILD';
+/** Where the build writes the bundle, from the directory every step runs in. */
+const BUNDLE = join('apps', 'web', 'dist');
 
 const STEPS = [
   ['brand:check', 'product name headings'],
@@ -30,7 +58,8 @@ const STEPS = [
   ['lint', 'lint'],
   ['lint:ratchet', 'no new lint warning, no product source file over 1,000 lines'],
   ['format:check', 'format'],
-  ['test', 'tests'],
+  ['build', 'build'],
+  ['test', 'tests', 'changed'],
   ['gate:selftest', 'the gate proves itself'],
   ['gate:cases', 'the gate catches what it must'],
   ['gate:hooks', 'the hook handles every exit code'],
@@ -58,7 +87,6 @@ const STEPS = [
   ['deps:cruise', 'structural dependency rules'],
   ['db:cases', 'the database gate refuses a skip, a missing suite and an empty run'],
   ['local:cases', 'the local scripts never reuse a database on another major'],
-  ['build', 'build'],
 ];
 
 const execPath = process.env['npm_execpath'];
@@ -66,14 +94,53 @@ const isScript = execPath !== undefined && /\.[cm]?js$/u.test(execPath);
 const command = execPath === undefined ? 'pnpm' : isScript ? process.execPath : execPath;
 const prefix = isScript && execPath !== undefined ? [execPath] : [];
 
-const results = [];
+/** A script beside this one, run by this node; its stdout, or the check fails. */
+const read = (script, ...args) => {
+  const run = spawnSync(process.execPath, [join(import.meta.dirname, script), ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  if (run.status !== 0) {
+    console.error(`check: ${script} ${args.join(' ')} failed; nothing ran.`);
+    process.exit(1);
+  }
+  return run.stdout;
+};
 
-for (const [script, label] of STEPS) {
-  console.log(`\n=== ${label} (pnpm run ${script}) ===`);
-  const run = spawnSync(command, [...prefix, 'run', script], { stdio: 'inherit' });
+/** On a pull request under CHECK_SCOPE, the base the light set reads the change from; else null. */
+function lightBase() {
+  const scope = process.env['CHECK_SCOPE'] ?? '';
+  if (scope === '') return null;
+  const decision = read('ci-scope.ts', scope, '--decide');
+  if (decision === 'run\n') return null;
+  const base = decision === 'skip\n' ? read('merge-group.mjs', 'base').trim() : '';
+  if (!/^[0-9a-f]{40}$/u.test(base)) {
+    console.error(`check: no light set (decision ${JSON.stringify(decision)}, base "${base}").`);
+    process.exit(1);
+  }
+  return base;
+}
+
+const base = lightBase();
+const results = [];
+const env = { ...process.env };
+delete env[BUILT];
+
+for (const [script, label, light] of STEPS) {
+  const changed = base !== null && light === 'changed';
+  const args = changed ? ['--changed', base, '--passWithNoTests'] : [];
+  const note = changed
+    ? ': the full run is in the merge queue; here, the tests the change reaches'
+    : '';
+  console.log(`\n=== ${label} (pnpm run ${script})${note} ===`);
+  const run = spawnSync(command, [...prefix, 'run', script, ...args], { stdio: 'inherit', env });
   const ok = run.status === 0;
   results.push({ script, label, ok });
   if (!ok) break;
+  if (script === 'build') {
+    const stamp = readStamp(BUNDLE);
+    if (stamp !== undefined) env[BUILT] = stamp;
+  }
 }
 
 console.log('\n=== summary ===');
@@ -86,4 +153,8 @@ if (failed) {
   console.error(`\ncheck: failed at ${failed.script}. Nothing after it ran.`);
   process.exit(1);
 }
-console.log('\ncheck: green.');
+console.log(
+  base === null
+    ? '\ncheck: green.'
+    : '\ncheck: green, the light set. The full set runs in the merge queue.',
+);

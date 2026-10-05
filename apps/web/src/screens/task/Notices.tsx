@@ -72,7 +72,12 @@ export function changedSince(
   now: InternalTaskDetail,
   names: ReadonlyMap<string, string>,
 ): ChangedSince | null {
-  if (now.revision === before.revision) return null;
+  // A comment moves no revision, so the history and the comments are asked too.
+  // The history is in the audit chain's order, so what the reread added is what
+  // follows the entries the edit began with, whatever their times.
+  const added = now.history.slice(before.history.length);
+  const comments = now.comments.length - before.comments.length;
+  if (now.revision === before.revision && added.length === 0 && comments <= 0) return null;
   const fields: readonly (readonly [string, boolean])[] = [
     ['title', now.title !== before.title],
     ['due date', now.due !== before.due],
@@ -82,15 +87,11 @@ export function changedSince(
     ['description', now.description !== before.description],
   ];
   const what = fields.filter(([, differs]) => differs).map(([field]) => field);
-  const added = now.comments.length - before.comments.length;
-  if (added > 0) what.push(added === 1 ? 'a comment' : `${String(added)} comments`);
-  const last = before.history.at(-1)?.at ?? '';
+  if (comments > 0) what.push(comments === 1 ? 'a comment' : `${String(comments)} comments`);
   const who = new Set(
-    now.history
-      .filter((entry) => entry.at > last)
-      .map(
-        (entry) => (entry.personId === null ? undefined : names.get(entry.personId)) ?? 'someone',
-      ),
+    added.map(
+      (entry) => (entry.personId === null ? undefined : names.get(entry.personId)) ?? 'someone',
+    ),
   );
   return {
     who: who.size === 0 ? ['someone'] : [...who],

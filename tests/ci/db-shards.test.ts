@@ -57,6 +57,19 @@ it('the matrix numbers its shards 1 to n, and the runner is told which of n it i
   expect(shardJob).toContain('FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}');
 });
 
+// CI-SPEED, the owner's 4 October 2026 decision (NATHAN-CF-RECORD item 1): 16 shards.
+it('the run is split 16 ways, each shard near its share', () => {
+  expect(shardCount).toBe(16);
+  const weight = (item: string) => timings[item] ?? 0;
+  const loads = assignShards(items, timings, shardCount).map((shard) =>
+    shard.reduce((sum, item) => sum + weight(item), 0),
+  );
+  const total = items.reduce((sum, item) => sum + weight(item), 0);
+  const longest = Math.max(...items.map((item) => weight(item)));
+  // No shard carries more than a tenth over its share, or the one item too long to share.
+  expect(Math.max(...loads)).toBeLessThanOrEqual(Math.max(longest, (total / shardCount) * 1.1));
+});
+
 it('every run item runs in exactly one shard, and the shards together are the manifest', () => {
   const shards = assignShards(items, timings, shardCount);
   expect(shards).toHaveLength(shardCount);
@@ -134,7 +147,10 @@ it('a shard argument that is not i of n is refused', () => {
 it('the aggregate keeps the name and fails unless every shard succeeded', () => {
   const aggregate = job('database');
   expect(aggregate).toContain('    name: database conformance\n');
-  expect(aggregate).toContain('    needs: [database-shard]\n');
+  // It needs the gate too, and reads its result: a pull request whose gate failed skips the
+  // shards, and that skip must not pass (tests/ci/light-pull-requests-workflow.test.ts).
+  expect(aggregate).toContain('    needs: [gate, database-shard]\n');
+  expect(aggregate).toContain('GATE: ${{ needs.gate.result }}');
   // Without always() a failed or skipped shard would skip this job, and a
   // skipped required check reads as passed.
   expect(aggregate).toContain('    if: always()\n');

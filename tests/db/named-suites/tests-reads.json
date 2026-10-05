@@ -1,6 +1,7 @@
 {
   "invariant": [
     "tests/reads/access-step-up-preview.test.ts",
+    "tests/reads/board-admission-refuses-as-the-read.test.ts",
     "tests/reads/board-agents.test.ts",
     "tests/reads/board-comments.test.ts",
     "tests/reads/board-row-client.test.ts",
@@ -53,6 +54,7 @@
   ],
   "conformance": [
     "tests/reads/decision-evidence-binding.test.ts",
-    "tests/reads/decision-signature-read.test.ts"
+    "tests/reads/decision-signature-read.test.ts",
+    "tests/reads/steps-child-text-stays-in-database.test.ts"
   ]
 }

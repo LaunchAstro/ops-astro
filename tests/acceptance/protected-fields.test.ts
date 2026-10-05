@@ -547,7 +547,9 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
       'archived_why',
       'completed_at',
       'key',
+      'map_owner',
       'source',
+      'type_history',
     ]);
     expect(baseline.data['source']).toBe('person:api');
     expect(baseline.data['key']).toMatch(/^T-\d+$/u);

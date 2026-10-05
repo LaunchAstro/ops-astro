@@ -21,6 +21,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
+import { consoleLine, streamText } from '../support/console-text.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 type Entry = Pick<typeof commands, 'executeCommand' | 'executeRead' | 'isCommandRefusal'>;
@@ -45,15 +46,16 @@ const codeOfResult = (entry: Entry, result: unknown): string =>
 const ghost = (task: Task): Task => ({ ...task, id: randomUUID() });
 
 async function logged<T>(run: () => Promise<T>): Promise<[T, string]> {
-  const lines: unknown[] = [];
-  const push = (...parts: unknown[]) => lines.push(...parts) > 0;
+  const lines: string[] = [];
+  const push = (...parts: unknown[]) => lines.push(consoleLine(...parts)) > 0;
+  const write = (chunk: unknown) => lines.push(streamText(chunk)) > 0;
   const levels = ['log', 'info', 'warn', 'error', 'debug', 'trace'] as const;
   const spies = [
     ...levels.map((level) => vi.spyOn(console, level).mockImplementation(push)),
-    ...[process.stdout, process.stderr].map((s) => vi.spyOn(s, 'write').mockImplementation(push)),
+    ...[process.stdout, process.stderr].map((s) => vi.spyOn(s, 'write').mockImplementation(write)),
   ];
   const result = await run().finally(() => spies.forEach((spy) => spy.mockRestore()));
-  return [result, lines.map(String).join('\n')];
+  return [result, lines.join('\n')];
 }
 
 describe.skipIf(serverUrl === undefined)('CQ-4 the command package entry', () => {
