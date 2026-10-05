@@ -109,34 +109,42 @@ async function answersOn(runId: string): Promise<number> {
   return Number(found?.n);
 }
 
+/**
+ * A person writes off the first hold at 0 while its dispatched call is held
+ * unknown, so it closes at its settled 300 with the call still open. The
+ * replacement holds the 200 left, spends it and stops, stamped before the
+ * first hold, so picking the first hold up stops the run for room.
+ */
+async function stopOnWrittenOff() {
+  const { work, versionId, first } = await roomyWork(s);
+  await spend(s, first, 300);
+  const c2 = await dispatchedCall(first, 200);
+  // The worker's authority goes: its lease is fenced and, with c2 open, the
+  // step is held unknown at the whole hold. The sweep holds c2 unknown.
+  await stopWorker(s, work.picked);
+  await sweep(s);
+  const writtenOff = await asPerson(
+    s,
+    writeOffBody({ taskId: work.taskId, attemptId: await attemptOf(first) }, 0),
+  );
+  appliedDetail(writtenOff, 'budget.write_off');
+
+  const second = await pickup(s, first);
+  await spend(s, second['reservationId'], 200);
+  await stopWorker(s, second);
+  await stampBefore(s, first, second['reservationId']);
+  const stopped = await asAgent(s, {
+    command: 'task.pickup',
+    operationId: randomUUID(),
+    reservationId: first,
+    leaseSeconds: 600,
+  });
+  return { work, versionId, first, c2, stopped, ...(await askOf(s, first)) };
+}
+
 describe.skipIf(serverUrl === undefined)('a top-up on a stop raised on a written-off hold', () => {
   it('refuses a top-up on a written-off hold whose call is still unknown, moving nothing, and lets the end apply', async () => {
-    const { work, versionId, first } = await roomyWork(s);
-    await spend(s, first, 300);
-    const c2 = await dispatchedCall(first, 200);
-    // The worker's authority goes: its lease is fenced and, with c2 open, the
-    // step is held unknown at the whole hold. The sweep holds c2 unknown.
-    await stopWorker(s, work.picked);
-    await sweep(s);
-    const writtenOff = await asPerson(
-      s,
-      writeOffBody({ taskId: work.taskId, attemptId: await attemptOf(first) }, 0),
-    );
-    appliedDetail(writtenOff, 'budget.write_off');
-
-    // The replacement holds the 200 the write-off left, spends it and stops,
-    // stamped before the first hold, so picking the first hold up finds no room.
-    const second = await pickup(s, first);
-    await spend(s, second['reservationId'], 200);
-    await stopWorker(s, second);
-    await stampBefore(s, first, second['reservationId']);
-    const stopped = await asAgent(s, {
-      command: 'task.pickup',
-      operationId: randomUUID(),
-      reservationId: first,
-      leaseSeconds: 600,
-    });
-    const { runId, askId } = await askOf(s, first);
+    const { work, versionId, first, c2, stopped, runId, askId } = await stopOnWrittenOff();
     const before = await moneyOf(s, work, versionId);
 
     const topped = await topUp(s, work, first, 100);
