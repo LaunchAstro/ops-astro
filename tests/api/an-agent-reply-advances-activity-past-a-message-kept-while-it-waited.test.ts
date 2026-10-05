@@ -5,11 +5,12 @@
 // must be the reply's own, read when it writes after the conversation's row
 // lock, not its transaction's start: a reply whose transaction began before a
 // message that was kept while it waited for that lock still advances the
-// activity past it.
+// activity past it, and is listed after it.
 //
 // The conversation's row is held `for update` on another connection. The
 // reply is seen waiting on that holder in `pg_stat_activity`; only then does
-// the holder stamp the activity, at the database clock, and commit.
+// the holder keep a message and stamp the activity, at the database clock,
+// and commit.
 
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -75,6 +76,14 @@ describe.skipIf(serverUrl === undefined)('agent reply activity order', () => {
       const [me] = await execute<{ readonly pid: number }>('select pg_backend_pid() as pid');
       holding(Number(me?.pid));
       await stamped;
+      await execute(
+        `insert into public.conversation_messages
+           (business_id, id, conversation_id, role, author_actor_id, body, created_at)
+         select c.business_id, gen_random_uuid(), c.id, 'person', c.owner_actor_id,
+                'kept while the reply waited', clock_timestamp()
+           from public.conversations c where c.id = $1`,
+        [asked.conversationId],
+      );
       const [kept] = await execute<{ readonly at: string }>(
         `update public.conversations set last_activity_at = clock_timestamp()
           where id = $1 returning last_activity_at::text as at`,
@@ -100,9 +109,13 @@ describe.skipIf(serverUrl === undefined)('agent reply activity order', () => {
     const [after] = await w.fixture.db.admin.execute<{
       readonly beganFirst: boolean;
       readonly advanced: boolean;
+      readonly order: readonly string[];
     }>(
       `select $2::timestamptz < $3::timestamptz as "beganFirst",
-              c.last_activity_at > $3::timestamptz as advanced
+              c.last_activity_at > $3::timestamptz as advanced,
+              array(select m.role || ':' || left(m.body, 27) from public.conversation_messages m
+                     where m.business_id = c.business_id and m.conversation_id = c.id
+                     order by m.created_at, m.id) as "order"
          from public.conversations c where c.id = $1`,
       [asked.conversationId, began, keptAt],
     );
@@ -110,6 +123,11 @@ describe.skipIf(serverUrl === undefined)('agent reply activity order', () => {
       answered: true,
       beganFirst: true,
       advanced: true,
+      order: [
+        'person:answer me',
+        'person:kept while the reply waited',
+        expect.stringMatching(/^agent:/u),
+      ],
     });
   }, 60_000);
 });

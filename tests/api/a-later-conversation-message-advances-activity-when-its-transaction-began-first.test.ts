@@ -4,7 +4,8 @@
 // (`conversation.message`). The instant it moves to must be the message's
 // own, read when it writes, not its transaction's start: a message whose
 // transaction began before the message before it, and which is written after
-// that one committed, still advances the activity past it.
+// that one committed, still advances the activity past it, and is listed
+// after it.
 //
 // The third message's transaction begins and holds; the second message goes
 // through the API and commits; then the third is sent in the held transaction.
@@ -67,13 +68,24 @@ describe.skipIf(serverUrl === undefined)('conversation activity order', () => {
              from public.conversations c where c.business_id = $1 and c.id = $2`,
           [tx.businessId, conversationId],
         );
+        const listed = await tx.query<{ readonly body: string }>(
+          `select body from public.conversation_messages
+            where business_id = $1 and conversation_id = $2 order by created_at, id`,
+          [tx.businessId, conversationId],
+        );
         return {
           beganFirst: (began?.at.getTime() ?? Infinity) < afterSecond.getTime(),
           messages: own?.messages,
           advanced: (own?.at.getTime() ?? 0) > afterSecond.getTime(),
+          order: listed.map((row) => row.body),
         };
       });
-      expect(raced).toEqual({ beganFirst: true, messages: 3, advanced: true });
+      expect(raced).toEqual({
+        beganFirst: true,
+        messages: 3,
+        advanced: true,
+        order: ['first', 'second', 'third, written after the second committed'],
+      });
     } finally {
       await early.close();
     }
