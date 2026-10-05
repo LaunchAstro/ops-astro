@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// catalogue #439, SEC-439: a call's row records the route's key, reach and
-// credential kind, not its credential. When two configured routes match all
-// of those, either account could have carried the call, so a lookup through
-// one cannot prove the call absent: the pass proves nothing and a person
-// records the outcome.
+// catalogue #439, #943: a call's row records the provider and credential that
+// carried it. Two configured routes may share its key, reach, provider and
+// credential kind; the pass asks only through the one with its credential,
+// wherever that one is listed, so another account's answer never decides it.
 import { expect, it as vitestIt } from 'vitest';
 import {
   callModelForPlanning,
@@ -20,24 +19,25 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('reconcileambiguous');
 
-it('reconciliation proves nothing when two configured routes match the route that carried the call', async () => {
+it('reconciliation asks only through the credential that carried the call when two routes share its key', async () => {
   const on = await seedSchedules(s.db, 'reconcileambiguousroute', 1_000_000);
   const route = { ...LOCAL, key: 'twin_tuple_route' };
-  // Same key, reach, provider and credential kind; another account.
+  // Same key, reach, provider and credential kind; a credential custody does not hold.
   const other = { ...route, credentialRef: `${route.credentialRef}_other` };
-  const base: Broker = { ...faultBroker(), routes: [route, other], audit: local(on).audit };
+  const carried: Broker = { ...faultBroker(), routes: [route], audit: local(on).audit };
   const request = ask(on);
   world.provider.mode('cut');
   expect(
-    await callModelForPlanning(on.db.app, on.business, ownerOf(on), request, base),
+    await callModelForPlanning(on.db.app, on.business, ownerOf(on), request, carried),
   ).toMatchObject({ code: 'LIABILITY_UNKNOWN' });
   world.provider.mode('answer');
   world.provider.lookupMode('honest');
 
-  await reconcileProviderCalls(on.db.app, on.business, base);
+  // The other route is listed first: a pass that took it would be refused by custody.
+  await reconcileProviderCalls(on.db.app, on.business, { ...carried, routes: [other, route] });
 
   expect(
     await rowsFor(on, request.conversation.id),
-    'either account could have carried it; an absence on one proves nothing',
-  ).toMatchObject([{ state: 'liability_unknown' }]);
+    'the carrying credential proves the cut call never began',
+  ).toMatchObject([{ state: 'released' }]);
 });
