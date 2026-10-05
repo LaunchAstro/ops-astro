@@ -28,7 +28,8 @@ import {
 import { raiseAlert } from '../alerts.ts';
 import { lockedInstant } from '../clock.ts';
 import { lockRediscovered } from '../rediscovery.ts';
-import { checkAuthorityAt, closeHold, holdCoveringGrants } from './classifier.ts';
+import { closeHold } from '../close-hold.ts';
+import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
 import { modelCallsOn } from '../model-calls-on.ts';
 import { fourEyesBandMinor, pairFor, type Holds } from '../four-eyes.ts';
 import { locksOf, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
@@ -141,7 +142,7 @@ export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promi
     rule: 'exact',
     changed: 'write-off: the step changed under discovery; roll back and write it off again',
   });
-  const at = await lockedInstant(tx);
+  const at = await lockedInstant(tx, ['four_eyes_threshold']);
   const scope = { kind: 'record', id: request.taskId } as const;
   const ask = { collection: request.collection, action: 'decide', scope } as const;
   const holds: Holds = async (who) => (await checkAuthorityAt(tx, who, ask, at)).ok;

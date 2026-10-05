@@ -25,7 +25,7 @@ export {
 } from './egress.ts';
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
 export { raiseBudgetWait, stopWords } from './broker-wait.ts';
-export { giveBack } from './broker-give-back.ts';
+export { giveBack, giveBackReleased } from './broker-give-back.ts';
 export {
   ENROL_PATH,
   INVITATION_SEND_ACTS,

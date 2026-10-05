@@ -17,14 +17,17 @@ import { COMMAND_SURFACE, type ClientView } from '../../../core-wire/src/index.t
 const CONTENT_COMMANDS: readonly string[] = COMMAND_SURFACE.filter(
   (declaration) =>
     declaration.kind === 'write' &&
-    !['task.create', 'task.duplicate', 'task.set_party'].includes(declaration.name),
+    // `map.scope` is a map's `task.set_party` (WF-1): a client change too.
+    !['task.create', 'task.duplicate', 'task.set_party', 'map.scope'].includes(declaration.name),
 ).map((declaration) => declaration.name);
 
 /**
  * Content is an applied write beyond creation and client changes, or a row
  * naming the task: a subtask, a proposal, a planned run, an envelope, a
  * lease, an alert, a time entry (deleted or not: a time event names no
- * subject, RS-VAULT-9, so the entry's row is what the lock reads).
+ * subject, RS-VAULT-9, so the entry's row is what the lock reads), a live
+ * correction (its audit event names the correction, not the task, and its
+ * party is pinned to the client it was filed under).
  */
 export async function hasContent(tx: TenantQuery, taskId: string): Promise<boolean> {
   const [row] = await tx.query<{ readonly content: boolean }>(
@@ -37,7 +40,9 @@ export async function hasContent(tx: TenantQuery, taskId: string): Promise<boole
          or exists (select 1 from task_envelopes where business_id = $1 and task_id = $2)
          or exists (select 1 from leases where business_id = $1 and task_id = $2)
          or exists (select 1 from alerts where business_id = $1 and task_id = $2)
-         or exists (select 1 from time_entries where business_id = $1 and task_id = $2) as content`,
+         or exists (select 1 from time_entries where business_id = $1 and task_id = $2)
+         or exists (select 1 from live_corrections where business_id = $1 and task_id = $2)
+           as content`,
     [tx.businessId, taskId, CONTENT_COMMANDS],
   );
   return row?.content !== false;

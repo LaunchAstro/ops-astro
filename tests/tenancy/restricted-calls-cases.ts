@@ -39,6 +39,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // `select 1` needs one column, and c55-security-alerts proves which.
   ['s', 'ops.security_alert_log'],
   ['s', 'ops.slots'],
+  // The wayfinder's map read models (WF-1): their triggers write them; the app reads.
+  ['s', 'map_frontier map_summaries'],
   // 0058 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().
   // 0059 (S0-5, ORCH38): the gate's own commands write through the app, so it
@@ -61,6 +63,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.auth_hook_messages'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
+  // A map's versions are history; its components are retired by version, never deleted.
+  ['si', 'map_versions'],
+  ['siu', 'map_components'],
   // A run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
   // 0095 (MP-6-2): a run's state, each revision a version, never rewritten.
@@ -92,14 +97,15 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'trace_export_gaps'],
   // AW-13: a retention batch is a fact, never rewritten.
   ['si', 'trace_expiry_batches'],
-  // 0042, 20261003175457 (C39-T): an attempt, a seen stamp and a token are written once (INB-1a).
+  // 0042, 20261005135301 (C39-T): an attempt, a seen stamp and a token are written once (INB-1a).
   ['si', 'inbox_attention inbox_delivery_attempts enrolment_tokens invitation_delivery_attempts'],
   ['siu', 'inbox_items invitations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
-  // AW-02: a historical run is never rewritten; the application moves its
-  // state alone, by the column grant in COLUMN_UPDATES.
+  ['siu', 'planned_steps proposal_lineages proposal_versions'],
+  // AW-02 and SL11-30: a historical run and a lease's holder are never rewritten; the
+  // application moves their states by COLUMN_UPDATES, and takes a lease by take_lease.
   ['si', 'planned_runs'],
+  ['s', 'leases'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   // 0049 (C59): a factor is written and moved on, never deleted.
   ['siu', 'second_factors'],
@@ -116,8 +122,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0054 (API-2): an agent credential is issued by insert and revoked by
   // update; never deleted.
   ['siu', 'agent_credentials'],
-  // 0055 (C32): a client is written once; never updated or deleted.
+  // 0055 (C32): a client is written once and never deleted; C60 updates its
+  // four privacy settings alone, by the column grant in COLUMN_UPDATES.
   ['si', 'clients'],
+  // C60: a client's written request for model use is kept as written.
+  ['si', 'client_model_requests'],
   // 0056 (C58): an access ending is written, then its provider steps are
   // stamped by update; never deleted.
   ['siu', 'access_endings'],
@@ -136,11 +145,22 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
   ['si', 'tags'],
   ['sid', 'task_tags'],
+  // C80: a live correction takes updates (a decision is one); its receipts
+  // are append only.
+  ['siu', 'live_corrections'],
+  ['si', 'live_correction_receipts'],
+  // 20261005003850 (C33): a definition, a released version and an occurrence
+  // are written once and never changed; an activation's setting moves by the
+  // column grant in COLUMN_UPDATES.
+  ['si', 'activation_occurrences activations automation_definitions definition_versions'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
   ['siud', 'record_links record_types record_unique_values'],
   ['siud', 'records'],
+  // 20261005023013 (C31): custody's select is a column grant without the sealed
+  // columns, proved by name in `tests/custody/c31-credentials.test.ts`.
+  ['siu', 'custody_secrets'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(
@@ -159,6 +179,8 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
   'public.person_merges': { from: '0028', letters: 'd' },
   // 0086 takes back update on the whole run and grants it on `state` alone.
   'public.planned_runs': { from: '0086', letters: 'u' },
+  // 20261004040200 takes back insert and update on the whole lease and grants update by column.
+  'public.leases': { from: '20261004040200', letters: 'iu' },
 };
 
 /**
@@ -176,7 +198,7 @@ const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: 
 export function applicationGrantsAt(qualified: string, at?: string): string | undefined {
   const granted = APPLICATION_GRANTS[qualified];
   if (granted === undefined || at === undefined) return granted;
-  const version = at.slice(0, 4);
+  const version = at;
   const revoked = REVOKED[qualified];
   const added = ADDED[qualified];
   if (revoked !== undefined && version < revoked.from) return granted + revoked.letters;
@@ -190,6 +212,8 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_event_hash',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
+  // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
+  'public.take_lease',
 ];
 
 /** What the server said, reduced to what a contract can name. */

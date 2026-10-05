@@ -9,7 +9,7 @@
 // task the reader cannot read is never looked at. Another person's
 // delegations are never listed, counted or hinted.
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { DELEGATION_STANDS, type TenantQuery } from '../../../core-records/src/index.ts';
 import type { AgentAssigneeView, AgentOfferView } from '../../../core-wire/src/index.ts';
 
 export interface RowAgents {
@@ -55,7 +55,7 @@ async function heldByReader(
   }>(
     `select r.id as task_id, d.id, d.purpose, d.delegate_person_id as person_id,
             p.display_name as person_name,
-            (d.revoked_at is null and d.settled_at is null and d.expires_at > now()) as live
+            ${DELEGATION_STANDS} as live
        from public.records r
        join public.delegations d on d.business_id = r.business_id and d.id::text = r.data ->> 'agent'
        left join public.people p on p.business_id = d.business_id and p.id = d.delegate_person_id
@@ -80,10 +80,10 @@ async function offeredToReader(
   reader: string,
 ): Promise<readonly { readonly task_id: string; readonly id: string; readonly purpose: string }[]> {
   return await tx.query(
-    `select purpose_scope_id as task_id, id, purpose from public.delegations
-      where business_id = $1 and delegate_person_id = $2 and purpose_scope_id = any($3::uuid[])
-        and revoked_at is null and settled_at is null and expires_at > now()
-      order by purpose, id`,
+    `select d.purpose_scope_id as task_id, d.id, d.purpose from public.delegations d
+      where d.business_id = $1 and d.delegate_person_id = $2 and d.purpose_scope_id = any($3::uuid[])
+        and ${DELEGATION_STANDS}
+      order by d.purpose, d.id`,
     [tx.businessId, reader, taskIds],
   );
 }

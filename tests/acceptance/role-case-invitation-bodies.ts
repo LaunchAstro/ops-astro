@@ -7,7 +7,7 @@
 // run of many cells never meets the 30-an-hour limit on one account.
 
 import { randomUUID } from 'node:crypto';
-import type { BodyContext, Prepared } from './role-case-bodies.ts';
+import type { SetupContext } from './role-case-setup.ts';
 
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 
@@ -25,8 +25,8 @@ const invitee = (): Record<string, unknown> => ({
 
 export async function invitationBody(
   name: InvitationCommand,
-  context: BodyContext,
-): Promise<Prepared> {
+  context: SetupContext,
+): Promise<{ readonly body: Record<string, unknown> }> {
   await context.freshInviter?.();
   if (name === 'invitation.create') return { body: invitee() };
   const made = await context.asPerson('invitation.create', invitee());

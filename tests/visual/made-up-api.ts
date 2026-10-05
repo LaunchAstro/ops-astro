@@ -35,6 +35,7 @@ import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 import { AGENT_READS } from './made-up-agent.ts';
+import { AUTOMATION_REGISTRY } from './made-up-automations.ts';
 import { EXECUTION, RECEIPT } from './made-up-data.ts';
 import { DETAIL, LEDGER, STATE, TAGS, TASKS, TODOS } from './made-up-rows.ts';
 
@@ -172,6 +173,8 @@ const READS = {
   // The business's clients (C32), as the task's client field and the to-dos'
   // client scope ask them.
   'client.list': { ok: true, clients: [HARBOUR, MERIDIAN] } satisfies ClientListResult,
+  // Settings ▸ Workflow triggers (C33).
+  'automation.registry': AUTOMATION_REGISTRY,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

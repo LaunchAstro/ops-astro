@@ -9,6 +9,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, expect } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
+import { SIGN_IN_CLOCK_SKEW_SECONDS } from '../../packages/core-records/src/index.ts';
 import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
@@ -256,14 +257,30 @@ export async function closeSessionsWorld(): Promise<void> {
 }
 
 /** The hooks a test file opening this world calls at module level, under its cases' skip. */
+/**
+ * Every subject-wide ending so far, moved back past the clock allowance. Cases
+ * share their people and run seconds apart, and a session signed in within
+ * the allowance after an ending is refused (Sol OW-001), so without this one
+ * case's ending would refuse the next case's fresh sign-ins.
+ */
+export async function endingsBehind(): Promise<void> {
+  await world.db.admin.execute(
+    `update ops.ended_subject_sessions
+        set ended_before = ended_before - make_interval(secs => $1)
+      where ended_before > now() - make_interval(secs => $1)`,
+    [SIGN_IN_CLOCK_SKEW_SECONDS + 5],
+  );
+}
+
 export function useSessionsWorld(): void {
   beforeAll(async () => {
     if (serverUrl === undefined) return;
     await openSessionsWorld();
   }, 60_000);
-  afterEach(() => {
+  afterEach(async () => {
     if (serverUrl === undefined) return;
     resetProvider();
+    await endingsBehind();
   });
   afterAll(async () => {
     if (serverUrl === undefined) return;

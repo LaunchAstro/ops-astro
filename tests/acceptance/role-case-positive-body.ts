@@ -25,12 +25,12 @@ import { timeRecipes } from './time-recipes.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient } from './role-case-access-bodies.ts';
-import { invitationBody, isInvitation } from './role-case-invitation-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
 import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
-import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
+import { tableBody } from './role-case-setup.ts';
 import { moneyBody } from './role-case-money-bodies.ts';
 import { lineageBody } from './role-case-lineage-bodies.ts';
+import { laterBody } from './role-case-automations.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -47,9 +47,8 @@ export function createPositiveBody(
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };
     };
-    const fixed = FIXED_BODIES[declaration.name];
-    if (fixed !== undefined) return { body: { ...fixed } };
-    if (isInvitation(declaration.name)) return await invitationBody(declaration.name, context);
+    const tabled = await tableBody(declaration.name, context);
+    if (tabled !== undefined) return tabled;
     switch (declaration.name) {
       case 'task.create':
         return { body: { fields: { title: 'the admin creates a task' } } };
@@ -188,6 +187,7 @@ export function createPositiveBody(
       case 'trace.read':
         return { body: { recordId: context.alphaTaskId } };
       case 'client.create':
+      case 'client.set_privacy':
       case 'access.grant':
       case 'access.revoke':
       case 'access.end':
@@ -294,7 +294,7 @@ export function createPositiveBody(
         // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
         return await conversationBody(declaration.name, context);
       default:
-        throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
+        return { body: await laterBody(declaration.name, context, target) };
     }
   };
 }

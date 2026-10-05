@@ -128,7 +128,6 @@ function ColumnPlot(props: {
 }): ReactElement {
   const { plot, left, right, slot, xOf } = props.at;
   const { chart } = props;
-  const base = left.y(0);
   return (
     <>
       <PlotAxes
@@ -163,7 +162,7 @@ function ColumnPlot(props: {
       <HitTargets
         labels={chart.labels}
         y={plot.y}
-        box={(i) => ({ x: plot.x + slot * i, width: slot, height: Math.max(0, base - plot.y) })}
+        box={(i) => ({ x: plot.x + slot * i, width: slot, height: plot.h })}
         hit={props.hit}
       />
     </>

@@ -6,7 +6,7 @@
 // question joins it (`conversation.message`). A rename or a page chosen before
 // that first question is held in the tab and goes with the start: the title in
 // the start itself, the page by `conversation.set_scope` straight after it.
-// Once started, a rename and a page go to the conversation straight away.
+// After that, a rename and a page go to the conversation in turn, in order.
 //
 // **One start per tab.** A second question asked while the first is still
 // starting waits for that start and joins the conversation it made, so a
@@ -21,33 +21,34 @@
 // here, so the picker offers nothing and the choice is not sent.
 //
 // The agent's answer comes back beside each kept question (AW-03's exchange,
-// on AW-01's conversation seam) and is drawn as the agent's line, as text.
+// on AW-01's conversation seam) and is drawn after its question, as text.
 // Where the deployment answers nothing, or no model may take the question,
 // the tab says so in plain words: the server's own, for a refusal.
 //
 // A started tab links to the conversation's own address (C36), where it stays
 // after it is taken out of the tab row.
 //
-// The planning allowance line (AW-04) sits above the transcript, from before
-// the first message (`allowance-line.tsx`).
+// AW-04: the allowance line sits above the transcript from the start (`allowance-line.tsx`); a
+// reply's plan is a card whose one click is `task.accept_plan` (`assistant/plans.ts`); the Agent
+// pane's new attempt opens the drawer through `useAsks`, drafted, unsent, its session's alone.
 
-import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { AssistantPanel, type AssistantMessage, type AssistantPage } from '@launchastro/ui';
+import { useEffect, useRef, type ReactElement } from 'react';
+import { AssistantPanel, type AssistantPage } from '@launchastro/ui';
 import {
   addPage,
   ask,
   chooseModel,
   fresh,
-  initial,
   rename,
-  said,
   select,
   started,
   takeOut,
-  type AssistantState,
   type Chat,
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
+import { acceptPlanCard } from '../assistant/accept.ts';
+import { useAsks } from '../assistant/asks.ts';
+import { useStore, type Store } from '../assistant/store.ts';
 import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
 import type {
   CallResult,
@@ -73,38 +74,8 @@ export interface AssistantViewProps {
   readonly entry: EntryPoint | null;
   /** Its own close and title; the dock leaves it out, as its panel head closes and names it. */
   readonly onClose?: () => void;
-}
-
-type Move = (state: AssistantState) => AssistantState;
-
-interface Store {
-  readonly state: AssistantState;
-  readonly update: (move: Move) => void;
-  /** The state as the last move left it, for a step that resumes after a wait. */
-  readonly now: () => AssistantState;
-  readonly chat: (key: string) => Chat | undefined;
-  readonly line: (key: string, role: AssistantMessage['role'], body: string) => void;
-}
-
-function useStore(): Store {
-  const [state, setState] = useState(initial);
-  const latest = useRef(state);
-  const count = useRef(0);
-  const update = (move: Move): void => {
-    latest.current = move(latest.current);
-    setState(latest.current);
-  };
-  return {
-    state,
-    update,
-    now: () => latest.current,
-    chat: (key) => latest.current.chats.find((each) => each.key === key),
-    line: (key, role, body) => {
-      count.current += 1;
-      const id = `${role}-${String(count.current)}`;
-      update((current) => said(current, key, { id, role, body, cites: [] }));
-    },
-  };
+  /** The session it serves: it takes a page's ask (`asks.ts`) only from this one, none without it. */
+  readonly grantKey?: string;
 }
 
 type Sent = Promise<CallResult<CommandOutcome>>;
@@ -119,6 +90,7 @@ interface Opening {
 /** The agent's answer to a kept question, why there is none, or that none comes here. */
 function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
   if (reply === undefined) store.line(key, 'note', KEPT);
+  else if (reply.answered && reply.plan !== undefined) store.plan(key, reply.body, reply.plan);
   else if (reply.answered) store.line(key, 'ai', reply.body);
   else store.line(key, 'failed', reply.words);
 }
@@ -131,13 +103,9 @@ async function startWith(
   report: (key: string, sent: Sent) => Promise<boolean>,
 ): Promise<string | null> {
   const { chat, body, subject, scope } = opening;
+  const { title, page } = store.chat(chat.key) ?? chat;
   const settled = settle(
-    await client.mutate('conversation.start', {
-      body,
-      title: chat.title,
-      subject: subject.label,
-      scope,
-    }),
+    await client.mutate('conversation.start', { body, title, subject: subject.label, scope }),
   );
   const id = settled.kind === 'ok' ? settled.value.detail?.['conversationId'] : undefined;
   if (typeof id !== 'string') {
@@ -150,7 +118,6 @@ async function startWith(
   }
   store.update((current) => started(current, chat.key, id));
   replied(store, chat.key, settled.kind === 'ok' ? settled.value.reply : undefined);
-  const page = store.chat(chat.key)?.page ?? null;
   if (page !== null) await report(chat.key, setScope(client, id, page));
   return id;
 }
@@ -167,12 +134,17 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const task = store.now().scope.task;
     return subject.kind === 'task' && task !== null ? { kind: 'task', id: task.id } : null;
   };
-  const start = (chat: Chat, body: string): Promise<string | null> =>
-    startWith(props.client, store, { chat, body, subject, scope: scope() }, report);
+  const start = (chat: Chat, body: string, on: Store): Promise<string | null> =>
+    startWith(props.client, on, { chat, body, subject, scope: scope() }, report);
   const send = async (key: string, body: string): Promise<void> => {
     const chat = store.chat(key);
     if (chat === undefined) return;
-    store.line(key, 'user', body);
+    const question = store.line(key, 'user', body);
+    const on: Store = {
+      ...store,
+      line: (k, role, words) => store.line(k, role, words, question),
+      plan: (k, words, offer) => store.plan(k, words, offer, question),
+    };
     let known = chat.conversationId;
     if (known === null) {
       // Queued behind the tab's last start: joins what it made, or starts
@@ -182,7 +154,7 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
       const turn = before.then(async (id) => {
         if (id !== null) return id;
         asked = true;
-        return await start(chat, body);
+        return await start(chat, body, on);
       });
       starts.current.set(key, turn);
       known = await turn;
@@ -191,27 +163,30 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const settled = settle(
       await props.client.mutate('conversation.message', { conversationId: known, body }),
     );
-    if (settled.kind === 'ok') replied(store, key, settled.value.reply);
-    else store.line(key, 'failed', settled.because);
+    if (settled.kind === 'ok') replied(on, key, settled.value.reply);
+    else on.line(key, 'failed', settled.because);
   };
-  return { report, send };
+  return { report, send, starts: starts.current };
 }
 
 const setScope = (client: OperationsClient, conversationId: string, page: AssistantPage): Sent =>
   client.mutate('conversation.set_scope', { conversationId, page });
 
-/** A rename and a page: held in the tab, and sent at once when it has started. */
+/** A rename and a page: held in the tab until it starts, then sent after the start, in turn. */
 function useWrites(
   props: AssistantViewProps,
   store: Store,
-  report: (key: string, sent: Sent) => Promise<boolean>,
+  sender: Pick<ReturnType<typeof useSender>, 'report' | 'starts'>,
 ): {
   readonly rename: (key: string, title: string) => void;
   readonly addPage: (key: string) => void;
 } {
   const written = (key: string, write: (conversationId: string) => Sent): void => {
-    const id = store.chat(key)?.conversationId ?? null;
-    if (id !== null) void report(key, write(id));
+    const turn = sender.starts.get(key)?.then(async (id) => {
+      if (id !== null) await sender.report(key, write(id));
+      return id;
+    });
+    if (turn !== undefined) sender.starts.set(key, turn);
   };
   return {
     rename: (key, title) => {
@@ -247,9 +222,10 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
     // the ask reads; only a new entry is a new ask.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [props.entry]);
+  useAsks(props.grantKey, (asked) => update((current) => ask(current, asked)));
   const subject = subjectFor({ route: props.route, ...state.scope });
   const sender = useSender(props, store, subject);
-  const writes = useWrites(props, store, sender.report);
+  const writes = useWrites(props, store, sender);
   const chat = state.chats.find((each) => each.key === state.selected);
   const opened = chat?.conversationId ?? null;
   return (
@@ -279,6 +255,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
       }}
       onAddPage={writes.addPage}
       onSend={sender.send}
+      onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}
       onClose={props.onClose}
     />
   );

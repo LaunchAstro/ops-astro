@@ -246,6 +246,9 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.reparent': { parentId: null },
       'task.move': { board: null, boardSection: null },
       'task.rank': { afterId: w.h.alphaTask.id },
+      'task.set_type': { taskType: 'build' },
+      'map.scope': { client: randomUUID() },
+      'map.revise': { notes: NOBODY },
     };
     // Named by `recordId` (`targetKeyOf`): task.receipt names its task by
     // `attemptId` and has its own cell below.
@@ -339,6 +342,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       stepNames: [],
     }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('secret.clear', 'secretId', f.secretId, (secretId) => ({ secretId }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
       holderId,
@@ -346,6 +350,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       action: 'read',
     }));
     byAda('access.end', 'holderId', f.admin.personId as string, (holderId) => ({ holderId }));
+    // C60: bravo's client named in an alpha privacy change.
+    byAda('client.set_privacy', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      modelEgress: false,
+      providers: [],
+      handlesHealth: false,
+      noAgentEdits: true,
+    }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
     }));
@@ -356,6 +368,20 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('legal.publish_version', 'versionId', f.legalVersionId, (versionId) => ({ versionId }));
     byAda('credential.revoke', 'credentialId', f.credentialId, (credentialId) => ({
       credentialId,
+    }));
+    // C33: bravo's version and definition named in an alpha change and release.
+    byAda('activation.change', 'versionId', f.automation.versionId, (versionId) => ({
+      versionId,
+      mode: 'manual',
+      enabled: false,
+    }));
+    byAda('definition.release', 'definitionId', f.automation.definitionId, (definitionId) => ({
+      definitionId,
+      contentDigest: 'e'.repeat(64),
+      contentSize: 1,
+      inputs: [],
+      operations: [],
+      modes: ['manual'],
     }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
@@ -471,11 +497,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 73 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 82 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(73);
-    expect(names).toHaveLength(73);
+    expect(new Set(names).size, 'distinct operations').toBe(82);
+    expect(names).toHaveLength(82);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

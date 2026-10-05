@@ -76,6 +76,7 @@ import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { siteCatalogue } from '../../packages/core-connectors/src/index.ts';
 import type { AgentLimits } from './auth/agent-quota.ts';
 import { createGoTrueFactors } from './auth/factors.ts';
+import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink, type ErrorSinkLink } from './health/error-sink-link.ts';
 import { createLangfuseHealth } from './health/tracing.ts';
 import { goTrueLogins, providerAdminKey } from './auth/provider-logins.ts';
@@ -132,9 +133,15 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
     // Deployment configuration rather than a secret, in a file of its own so the
     // database script that rewrites `db.env` cannot drop it.
     ...readEnvFile(join(ROOT, '.local', 'recovery.env')),
+    // The broker's public key custody seals secrets to (C31). Public: the
+    // private half is the broker's and never in this process's files.
+    ...readEnvFile(join(ROOT, '.local', 'custody.env')),
     ...process.env,
   };
 }
+
+/** The business lookup identity (0046) the resolver takes by name. */
+export const LOOKUP_ROLE = 'ops_astro_lookup';
 
 /**
  * The business key to its identifier, cached after the first answer.
@@ -163,7 +170,7 @@ export function createBusinessResolver(
 
     // As the lookup identity (0046), which reads id and key and nothing else.
     const rows = await admin.transaction(async (execute) => {
-      await execute('set local role ops_astro_lookup');
+      await execute(`set local role ${LOOKUP_ROLE}`);
       return await execute<{ id: string }>(
         'select id from public.businesses where key = $1 limit 2',
         [businessKey],
@@ -355,7 +362,11 @@ export function composeApi(config: ApiConfig): ComposedApi {
         ? {}
         : { answerConversation: config.answerConversation }),
       // The provider GoTrue is: the one destination its factor calls reach.
-      factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
+      // A hosted gateway refuses them without the project's publishable key.
+      factors: createGoTrueFactors({
+        baseUrl: config.signIn.issuer,
+        ...(key === '' ? {} : { projectKey: key }),
+      }),
       logins,
       // Only where a provider key is held (the local server): the Vercel
       // function has none, so it asks the owner nothing and leaves every
@@ -421,6 +432,15 @@ async function main(): Promise<void> {
     console.error(
       'api: SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer.',
     );
+    process.exit(1);
+  }
+  // The hosted provider's public key: the page's sign-in and this server's
+  // own provider calls (factors, sign-out) carry it. Only a public key passes.
+  let providerKey: string;
+  try {
+    providerKey = publishableKey(environment['SUPABASE_PUBLISHABLE_KEY']);
+  } catch (error) {
+    console.error(`api: ${(error as Error).message}`);
     process.exit(1);
   }
   for (const [name, value] of [
@@ -502,6 +522,7 @@ async function main(): Promise<void> {
     database,
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
+    providerKey,
     keys,
     live: { topics, presence: createLivePresence() },
     ...(broker === undefined
