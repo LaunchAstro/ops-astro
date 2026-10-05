@@ -21,6 +21,8 @@ const fault = vi.hoisted(() => ({
   foreign: [] as RegExp[],
   /** The rename of a fresh copy into its served name fails. */
   renameIn: false,
+  /** The rename of an earlier copy aside fails. */
+  renameAside: false,
   /** Removing a temporary folder fails. */
   remove: false,
   /** Making the folder an earlier copy is moved into fails. */
@@ -31,6 +33,7 @@ const fault = vi.hoisted(() => ({
 afterEach(() => {
   fault.foreign = [];
   fault.renameIn = false;
+  fault.renameAside = false;
   fault.remove = false;
   fault.aside = false;
   fault.openWhileSet = [];
@@ -54,6 +57,9 @@ vi.mock('node:fs', async (original) => {
       real.chmodSync(path, mode);
     },
     renameSync: (from: string, to: string) => {
+      if (fault.renameAside && /\/\.before-[^/]+\/copy$/u.test(String(to))) {
+        throw Object.assign(new Error('i/o error'), { code: 'EIO' });
+      }
       if (fault.renameIn && /\/\.copy-[^/]+$/u.test(String(from))) {
         throw Object.assign(new Error('i/o error'), { code: 'EIO' });
       }
@@ -203,6 +209,18 @@ it('a refused replacement leaves the earlier copy with its own modes, so it read
   expect(calls).toEqual([]);
   expect(fs.statSync(copy).mode & 0o7777).toBe(0o755);
   expect(fs.statSync(join(copy, 'static')).mode & 0o7777).toBe(0o755);
+});
+
+it('a move aside that fails leaves the earlier copy with its own modes, so it reads as before', () => {
+  const { store, current, hex } = world();
+  const copy = earlier(current, hex, 'the earlier copy');
+  fs.chmodSync(copy, 0o755);
+  fault.renameAside = true;
+  const { outcome, calls } = promoted(store, current);
+  expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringContaining('EIO') });
+  expect(calls).toEqual([]);
+  expect(fs.statSync(copy).mode & 0o7777).toBe(0o755);
+  expect(fs.readFileSync(join(copy, 'static', 'index.html'), 'utf8')).toBe('the earlier copy');
 });
 
 it('a cleanup that fails after the copy is in place still promotes', () => {
