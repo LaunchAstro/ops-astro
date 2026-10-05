@@ -186,9 +186,10 @@ describe.skipIf(serverUrl === undefined)('the model negatives, one per member', 
     // and eighteen since Assign to AI added the agent `task.assign` owns, and
     // nineteen since MP-4-8 added the category `task.set_category` owns, and
     // twenty-two since WF-1 added the type `task.set_type` owns, the map's
-    // owner and the retype history.
-    it('is twenty-two, read from the spine', () => {
-      expect(PROTECTED_TASK_FIELDS.length).toBe(22);
+    // owner and the retype history, and twenty-three with the map's version
+    // number, which `map.revise` stamps.
+    it('is twenty-three, read from the spine', () => {
+      expect(PROTECTED_TASK_FIELDS.length).toBe(23);
     });
 
     it.each([...PROTECTED_TASK_FIELDS])('catches %s relaxed to generic', async (key) => {
