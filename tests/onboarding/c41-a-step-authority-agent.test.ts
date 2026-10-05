@@ -34,21 +34,24 @@ describe.skipIf(serverUrl === undefined)('C41-A agent step result authority afte
     });
   });
 
-  /** A person whose task authority is one `manage` grant, lapsing at `ends`. */
+  /** A person whose task authority is the fixture decider's five grants, each lapsing at `ends`. */
   const delegator = async (ends: Date): Promise<Member> => {
     const { db, business } = the.controls.fixture;
     const member = await enrol(db.app, business, 'step-delegator');
     await db.app.withBusiness(business, async (tx) => {
-      const issued = await issueGrant(tx, [], {
-        subject: { kind: 'person', id: member.personId },
-        scope: { kind: 'business', id: null },
-        collection: 'task',
-        action: 'manage',
-        parentGrantId: null,
-        grantedByActorId: the.admin.actorId,
-        expiresAt: ends,
-      });
-      if (!issued.ok) throw new Error(issued.refusal.code);
+      for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
+        // oxlint-disable-next-line no-await-in-loop -- issueGrant reads the granter's rows
+        const issued = await issueGrant(tx, [], {
+          subject: { kind: 'person', id: member.personId },
+          scope: { kind: 'business', id: null },
+          collection: 'task',
+          action,
+          parentGrantId: null,
+          grantedByActorId: the.admin.actorId,
+          expiresAt: ends,
+        });
+        if (!issued.ok) throw new Error(issued.refusal.code);
+      }
     });
     return member;
   };
@@ -126,13 +129,13 @@ describe.skipIf(serverUrl === undefined)('C41-A agent step result authority afte
     const welcome = String(steps.get('welcome-email'));
     const tasks = [...steps.values()];
     const { onboardingId } = await onboardingOf(welcome);
-    const issued = await as(the.admin, 'credential.issue', issueBody());
-    expect(issued.status, JSON.stringify(issued.body)).toBe(200);
-    await the.controls.fixture.db.admin.execute(
-      `update public.agent_credentials set expires_at = clock_timestamp() + interval '3 seconds'
-        where id = $1`,
-      [detail(issued)['credentialId']],
+    // A credential is written once: it is issued to lapse four seconds on.
+    const issued = await as(
+      the.admin,
+      'credential.issue',
+      issueBody({ expiresAt: new Date(Date.now() + 4 * SECONDS).toISOString() }),
     );
+    expect(issued.status, JSON.stringify(issued.body)).toBe(200);
     const before = await stepWorld(tasks);
     const first: Sent = {
       path: agentPath('onboarding.step_result'),
@@ -140,7 +143,7 @@ describe.skipIf(serverUrl === undefined)('C41-A agent step result authority afte
       headers: authorised(String(detail(issued)['credential'])),
     };
     const answer = await whileHeld(onboardingId, first, async () => {
-      await pause(3500);
+      await pause(4500);
     });
     expect([answer.status, answer.body['code']]).toStrictEqual([401, 'DELEGATION_NOT_LIVE']);
     expect(await stepWorld(tasks)).toStrictEqual(before);
