@@ -482,8 +482,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
         });
       return sent;
     };
-    // The recorder sees what a well-formed question reads.
-    expect((await asked({})).length).toBeGreaterThan(0);
+    // The recorder sees what a well-formed question reads, and it reads.
+    const wellFormed = await asked({});
+    expect(wellFormed).not.toContain('RangeError');
+    expect(wellFormed.some((sql) => sql.includes('public.clients'))).toBe(true);
     for (const question of [
       { actionClass: '' },
       { actionClass: 'report' },
