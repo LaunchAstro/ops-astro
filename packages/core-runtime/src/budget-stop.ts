@@ -68,10 +68,11 @@ export async function spentOn(tx: TenantQuery, reservationId: string): Promise<S
 }
 
 /**
- * An observation that kept the hold whole (`settleAtObserved`) priced the step at a cost
- * nothing counts yet, so ending the run, releasing the hold less its calls, would hand
- * that cost back to the cap as unspent. Read under the reservation lock; the hold waits
- * for a person's outcome.
+ * An attempt left `liability_unknown` on the held reservation has a cost nothing counts yet:
+ * an observation or a failed report that kept the hold whole (`settleAtObserved`), or the
+ * classifier's or a lost worker's open call. Ending the run, releasing the hold less its
+ * calls, would hand that cost back to the cap as unspent. Read under the reservation lock;
+ * the hold waits for a person's outcome.
  */
 export async function observedRefusal(
   tx: TenantQuery,
@@ -81,14 +82,14 @@ export async function observedRefusal(
   if (reservationState !== 'held') return null;
   const kept = await tx.query(
     `select 1 from public.attempts
-      where business_id = $1 and reservation_id = $2 and observed and state = 'liability_unknown'`,
+      where business_id = $1 and reservation_id = $2 and state = 'liability_unknown'`,
     [tx.businessId, reservationId],
   );
   if (kept.length === 0) return null;
   return refuse(
     'TRANSITION_NOT_PERMITTED',
-    'this step was observed and its cost is not counted yet, ' +
-      'whether the cost ran above the hold or a call on it is still open',
+    "this step's cost is not resolved yet: it ran above the hold, " +
+      'or a call on it is still open or was lost',
     'Record the step’s outcome first, then end the work.',
   );
 }
