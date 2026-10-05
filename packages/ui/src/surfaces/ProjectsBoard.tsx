@@ -51,6 +51,10 @@ export interface ProjectsBoardProps {
   readonly viewerOn?: boolean;
   /** What a row can do (MP-5-9); the page owns the commands. */
   readonly actions?: RowActions;
+  /** Whether its tab is not shown: a hidden board takes no Undo and writes no address. */
+  readonly hidden?: boolean;
+  /** The clients the reader reaches, by name: each a Client filter, with rows or none. */
+  readonly clients?: readonly string[];
 }
 
 const WORK_ORDER = { key: 'rank', dir: 'asc' } as const;
@@ -62,6 +66,11 @@ function withWorkOrder(address: string): string {
   return params.toString();
 }
 
+const BOARD_EMPTY = {
+  title: 'No task matches that.',
+  description: 'Drop a filter or Clear all to widen the list.',
+};
+
 const REVIEW_EMPTY = {
   title: 'Nothing is waiting for your decision.',
   description: 'Press Review again to go back to every task.',
@@ -72,10 +81,13 @@ function useChips(
   rows: readonly ProjectRow[],
   viewer: string | null,
   now: Date,
-  board: Pick<ProjectsBoardProps, 'owed'>,
+  board: Pick<ProjectsBoardProps, 'owed' | 'clients'>,
 ) {
-  const { owed } = board;
-  const facets = useMemo(() => projectFacets(rows, now, viewer), [rows, now, viewer]);
+  const { owed, clients } = board;
+  const facets = useMemo(
+    () => projectFacets(rows, now, viewer, clients),
+    [rows, now, viewer, clients],
+  );
   const presets = useMemo(() => projectPresets(rows, viewer), [rows, viewer]);
   const modes = useMemo(
     () => [{ ...REVIEW_MODE, badge: reviewBadge(rows, owed), empty: REVIEW_EMPTY }],
@@ -109,7 +121,8 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
   );
   const [address, setAddress] = useState(opening);
   const now = useMemo(() => props.now ?? new Date(), [props.now]);
-  const clientFilters = clientFiltersIn(address);
+  const { facets, presets, modes } = useChips(props.rows, viewer, now, props);
+  const clientFilters = clientFiltersIn(address, facets);
   const columns = useMemo(
     () => projectColumns({ stages: props.stages, rows: props.rows, clientFilters }),
     [props.stages, props.rows, clientFilters],
@@ -118,11 +131,11 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     () => sortRows(props.rows, WORK_ORDER, projectColumns({ stages: props.stages })),
     [props.rows, props.stages],
   );
-  const { facets, presets, modes } = useChips(props.rows, viewer, now, props);
   const cells = useCells(props, now);
   const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (
     <BoardMachine<ProjectRow>
+      hidden={props.hidden === true}
       rows={rows}
       withheld={props.withheld ?? 0}
       columns={columns}
@@ -135,10 +148,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
       hay={(row) => `${row.name} ${row.client ?? ''} ${row.assignee?.name ?? ''}`}
       name={(row) => row.name}
       noun="task"
-      empty={{
-        title: 'No task matches that.',
-        description: 'Drop a filter or Clear all to widen the list.',
-      }}
+      empty={BOARD_EMPTY}
       address={opening}
       onAddress={(next) => {
         setAddress(next);

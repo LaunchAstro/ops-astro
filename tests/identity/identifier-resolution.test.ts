@@ -188,6 +188,53 @@ describe.skipIf(serverUrl === undefined)('login_resolution: the identifier', () 
     });
   });
 
+  describe('a link a human rejected', () => {
+    it('is not evidence: the observation attaches to the confirmed person, and the rejected row is untouched', async () => {
+      const [ada, bea] = await db.app.withBusiness(business, async (tx) => {
+        const rejected = await insertPerson(tx, 'Ada');
+        const confirmed = await insertPerson(tx, 'Bea');
+        await insertIdentifier(tx, rejected, 'contested@example.com', 'crm');
+        await insertIdentifier(tx, confirmed, 'contested@example.com', 'forms');
+        await tx.query(
+          `update person_identifiers set review_state = case person_id when $1 then 'rejected' else 'confirmed' end
+            where value = 'contested@example.com'`,
+          [rejected],
+        );
+        return [rejected, confirmed] as const;
+      });
+      const rejectedRow = async (): Promise<unknown> =>
+        await db.app.withBusiness(business, (tx) =>
+          tx.query(
+            `select review_state, source_system, last_observed_at, confidence
+               from person_identifiers where person_id = $1`,
+            [ada],
+          ),
+        );
+      const before = await rejectedRow();
+      expect(await observe('contested@example.com')).toMatchObject({
+        outcome: 'attached',
+        personId: bea,
+        person: 'existing',
+      });
+      expect(await rejectedRow()).toStrictEqual(before);
+    });
+
+    it('alone, does not attach the observation to the rejected person', async () => {
+      const ada = await db.app.withBusiness(business, async (tx) => {
+        const rejected = await insertPerson(tx, 'Ada');
+        await insertIdentifier(tx, rejected, 'turned-down@example.com', 'crm');
+        await tx.query(
+          `update person_identifiers set review_state = 'rejected' where person_id = $1`,
+          [rejected],
+        );
+        return rejected;
+      });
+      const resolved = await observe('turned-down@example.com');
+      expect(resolved).toMatchObject({ outcome: 'attached', person: 'new' });
+      expect(personOf(resolved)).not.toBe(ada);
+    });
+  });
+
   describe('a merge that points at itself', () => {
     it('stops, and arbitrates nothing', async () => {
       // Nothing stops A being absorbed into B and B into A on two separate

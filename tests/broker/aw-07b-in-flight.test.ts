@@ -8,14 +8,15 @@
 // sender died before recording an outcome stays `asked` (unknown, never sent
 // again) but stops holding a place once custody's own timeout and a grace have
 // passed, so a business is never held at the ceiling for good and its
-// decisions and incidents still go out at once.
+// decisions and incidents still go out at once. A send paused after its ask
+// past the fence, on either host clock, sends nothing.
 
-import { expect, it as vitestIt } from 'vitest';
+import { expect, it as vitestIt, vi } from 'vitest';
 import { checkItem, recordAsked } from '../../packages/core-custody/src/broker-email.ts';
-import { roomFor } from '../../packages/core-custody/src/email-class.ts';
+import { IN_FLIGHT_GRACE_MS, roomFor } from '../../packages/core-custody/src/email-class.ts';
 import { emailAtOnce } from '../../packages/core-custody/src/index.ts';
-import { EMAIL_SEND } from '../../packages/core-connectors/src/index.ts';
-import { connect } from '../../packages/core-records/src/index.ts';
+import { catalogue, EMAIL_SEND } from '../../packages/core-connectors/src/index.ts';
+import { connect, type Database } from '../../packages/core-records/src/index.ts';
 import { attemptsOf, itemFor, noDatabase, useEmailWorld, w } from './email-world.ts';
 import { aged, freshInbox, timing, useTimingWorld } from './email-timing-world.ts';
 
@@ -147,4 +148,124 @@ it('AW-07b ceiling: a send racing an ask that takes the last room waits on the l
     await racing.catch(() => {});
     await holder.close();
   }
+});
+
+/**
+ * The app database, pausing after its first transaction (the ask, committed)
+ * until `resume`: a scheduling pause before custody is asked. The database
+ * and custody themselves are unchanged.
+ */
+function pausedAfterAsk(): { database: Database; reserved: Promise<void>; resume: () => void } {
+  let resume!: () => void;
+  let ready!: () => void;
+  const paused = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const reserved = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  let first = true;
+  const database: Database = {
+    ...w.db.app,
+    withBusiness: async (business, run) => {
+      const result = await w.db.app.withBusiness(business, run);
+      if (first) {
+        first = false;
+        ready();
+        await paused;
+      }
+      return result;
+    },
+  };
+  return { database, reserved, resume };
+}
+
+const sleep = async (ms: number) =>
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+it('AW-07b ceiling: an expired ask cannot resume its send while its replacement is in flight', async () => {
+  await freshInbox();
+  const original = await itemFor(w.task, 'decision');
+  const replacement = await itemFor(w.task, 'decision');
+  const before = w.provider.received.length;
+  const settings = {
+    ...timing(),
+    broker: {
+      ...w.broker,
+      operations: catalogue([{ ...EMAIL_SEND, concurrency: 1, timeoutMs: 5000 }]),
+    },
+  };
+  const held = pausedAfterAsk();
+  const originalSend = emailAtOnce(held.database, w.alpha, original, settings);
+  let replacementSend: Promise<unknown> = Promise.resolve();
+  try {
+    await held.reserved;
+    expect((await attemptsOf(original)).map((row) => row.state)).toEqual(['asked']);
+    // Real elapsed time, past the catalogued timeout and the grace.
+    await sleep(66_000);
+    w.provider.mode('slow');
+    let replacementFinished = false;
+    replacementSend = emailAtOnce(w.db.app, w.alpha, replacement, settings).finally(() => {
+      replacementFinished = true;
+    });
+    await expect
+      .poll(() => w.provider.received.length, { interval: 20, timeout: 2000 })
+      .toBe(before + 1);
+    expect(replacementFinished).toBe(false);
+    held.resume();
+    // Read while the replacement is still in flight: a refusal or a wait for
+    // that call to end both keep the ceiling.
+    await Promise.race([originalSend, sleep(1000)]);
+    expect(replacementFinished).toBe(false);
+    expect(w.provider.received.length).toBe(before + 1);
+  } finally {
+    held.resume();
+    await Promise.allSettled([originalSend, replacementSend]);
+    w.provider.mode('accept');
+  }
+}, 90_000);
+
+/**
+ * One host clock, moved forward by `ms` from now on: as if the sender's host
+ * stood still that long (`performance`), or was suspended or stepped by its
+ * time service (`Date`), which the other clock does not see.
+ */
+function moved(clock: 'performance' | 'Date', ms: number): void {
+  if (clock === 'performance') {
+    const real = performance.now.bind(performance);
+    vi.spyOn(performance, 'now').mockImplementation(() => real() + ms);
+  } else {
+    const real = Date.now.bind(Date);
+    vi.spyOn(Date, 'now').mockImplementation(() => real() + ms);
+  }
+}
+
+it.each([
+  // Short of the grace itself, past the margin the fence keeps before it.
+  { clock: 'performance' as const, ms: IN_FLIGHT_GRACE_MS - 5000, why: 'within ms of the grace' },
+  // The wall clock alone: a suspended host, which the monotonic clock does not count.
+  { clock: 'Date' as const, ms: IN_FLIGHT_GRACE_MS + 10_000, why: 'on the wall clock only' },
+])('AW-07b ceiling: a send paused past the fence $why sends nothing', async ({ clock, ms }) => {
+  await freshInbox();
+  const item = await itemFor(w.task, 'decision');
+  const before = w.provider.received.length;
+  const held = pausedAfterAsk();
+  const sending = emailAtOnce(held.database, w.alpha, item, timing());
+  try {
+    await held.reserved;
+    moved(clock, ms);
+    held.resume();
+    expect(await sending).toMatchObject({ ok: false, code: 'EMAIL_FAILED', fault: 'expired' });
+  } finally {
+    held.resume();
+    await sending.catch(() => {});
+    vi.restoreAllMocks();
+  }
+  expect(w.provider.received.length).toBe(before);
+  expect(await attemptsOf(item)).toEqual([
+    { state: 'asked', evidence: null },
+    { state: 'failed', evidence: 'expired' },
+  ]);
 });

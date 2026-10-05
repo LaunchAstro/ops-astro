@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T agent parity: invitation.create, resend, revoke and list through the CLI client and straight to the person API as the same caller give the same records bar the minted values; refused word for word without access:share, on the agent prefix and business to business by prefix and by id, writing nothing in either business"
+}

@@ -19,6 +19,11 @@ const NOT_DRAWN = new Set([
   // AW-12: no screen draws the harness result in this piece.
   'harness.read',
   'privacy.draft_breach_notices',
+  // WF-1: no screen draws a map until the WF-3/4 map views (P20).
+  'map.view',
+  'map.frontier',
+  // MP-14-7a: the fleet data lands before the screen that draws it (next piece).
+  'connection.fleet',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {

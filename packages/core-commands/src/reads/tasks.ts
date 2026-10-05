@@ -28,10 +28,13 @@ import {
   isUuid,
   readTaskTime,
   tagsOfTask,
+  isWayfinderRecord,
+  INTERNAL_ROLE_KEYS,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
 import type { BoardTask, InternalCommentView } from '../../../core-wire/src/index.ts';
+
 import { openEnvelopeOf } from '../../../core-runtime/src/index.ts';
 import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskWork } from './proposals.ts';
@@ -46,6 +49,9 @@ import { historyOf } from './task-history.ts';
 import { readTaskAgents } from './task-agents.ts';
 import { NO_AGENTS, readBoardAgents } from './board-agents.ts';
 import { NO_COMMENTS, readBoardComments } from './board-comments.ts';
+
+/** A board row as read here; `task.board` adds the client the caller reaches. */
+type BoardRead = Omit<BoardTask, 'client'>;
 
 // A served row is always in its reader's pool; this is only the type's answer.
 const UNRANKED = { number: null, score: null, calc: '' } as const;
@@ -185,7 +191,7 @@ export async function resolveTaskId(
  * nobody classified sees everything, which is how the leak arrives with the
  * next kind of member rather than with this one.
  */
-const INTERNAL_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'member']);
+const INTERNAL_ROLES: ReadonlySet<string> = new Set(INTERNAL_ROLE_KEYS);
 
 export function isInternalReader(roleKey: string | null): boolean {
   return roleKey !== null && INTERNAL_ROLES.has(roleKey);
@@ -342,6 +348,9 @@ export async function readSharedTask(
   );
   const row = rows[0];
   if (row === undefined) return undefined;
+  // A map, its tickets and their threads never reach a client surface (WF-1),
+  // even under a read grant written behind the share path's back.
+  if (await isWayfinderRecord(tx, recordId)) return undefined;
   const data = (row['data'] ?? {}) as Readonly<Record<string, unknown>>;
   const fields: Record<string, unknown> = {};
   for (const field of await readFieldDefinitions(tx, taskTypeId)) {
@@ -408,7 +417,7 @@ export async function readBoardStamped(
   readable: readonly string[] | null,
   decidable: DecideReach | null = null,
   reader: string | null = null,
-): Promise<{ readonly tasks: readonly BoardTask[]; readonly changedAt: string | null }> {
+): Promise<{ readonly tasks: readonly BoardRead[]; readonly changedAt: string | null }> {
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
@@ -431,7 +440,7 @@ export async function readBoardStamped(
   const agents = await readBoardAgents(tx, served, reader);
   const comments = await readBoardComments(tx, served, reader);
   const decides = await awaitingTheReader(tx, gated, decidable);
-  const tasks = rows.map((row): BoardTask =>
+  const tasks = rows.map((row): BoardRead =>
     Object.assign(summaryOf(row), {
       rank: ranks.get(row.id) ?? UNRANKED,
       stage: row.stage,

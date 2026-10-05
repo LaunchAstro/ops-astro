@@ -27,7 +27,7 @@ If you are new to this checkout, read this section first.
   `docs/current-decisions.md` and `docs/adr/`. Demonstrated failures that have
   no executable check yet: `docs/TRAPS.md`. The proofs:
   `tests/acceptance/`, described in [PROOFS.md](PROOFS.md). The database suites
-  that conformance must run: `tests/db/named-suites.json`.
+  that conformance must run: one file each under `tests/db/suites/`.
 - **Where state does not live.** Run status, reviews and acceptance records are
   kept with the build run's evidence, outside the tree. A checkout may carry an
   ignored `.local/run-context.json` that points there ([below](#the-optional-local-run-pointer)).
@@ -207,7 +207,7 @@ route. The API resolves who you are and what you may see on the server.
 
 `db:seed` adds a sixth login to the same file, the external party (R4), with
 `role: 'external'` (`scripts/local-seed.mjs`, `ensureExternalEntry` and
-`seedExternalUser`). Its address is built at seed time rather than written
+`seedAgentUser`). Its address is built at seed time rather than written
 down, so it is not listed above. Read it from the file.
 
 The seed writes this entry only when the file does not already have one. When
@@ -215,9 +215,12 @@ it writes one, it generates a new password and sets that user's password in
 GoTrue to match. So if the file has no external entry, for example because
 `auth:seed` rewrote it, re-seeding resets the external party's password in
 GoTrue. Anyone else who signs in as that user against the same GoTrue then
-holds a stale password. If your stack shares an identity service with another
-checkout, copy that checkout's existing external entry into your
-`.local/synthetic-users.json` before you run `db:seed`.
+holds a stale password. The agents in `.local/synthetic-agents.json` are
+treated the same way: every seed sets each GoTrue user's password to the
+file's. If your stack shares an identity service with another checkout, copy
+that checkout's existing external entry into your
+`.local/synthetic-users.json`, and its `.local/synthetic-agents.json`, before
+you run `db:seed`.
 
 ## Verify it
 

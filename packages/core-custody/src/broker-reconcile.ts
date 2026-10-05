@@ -24,15 +24,20 @@
 // A lookup goes out under the gate a model call takes (`atCeiling`, AW-01):
 // the business's own ceiling for the operation, then the route's ceiling and
 // the business's fair share of it. With no room the lookup waits: nothing is
-// sent and nothing written, so the next pass asks again. The gate is read in
-// its own transaction just before the lookup; the lookup holds no row of its
-// own, so the pass sends one at a time.
+// sent and nothing written, so the next pass asks again. With room, the
+// transaction that read the gate, still under its locks, takes the lookup's
+// slot on the asked call's row (`lookup_until`, migration 20261004040000), which every
+// one of those counts sees, so a second pass or a model call cannot take the
+// same place. The slot is given back when the lookup ends, whatever it
+// answered or if custody threw; a worker lost while asking leaves it to
+// expire at the operation's timeout plus `SLOT_MARGIN_MS`.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
-import { giveBack } from './broker-give-back.ts';
+import { giveBack, lockEnvelope } from './broker-give-back.ts';
 import { atCeiling } from './broker-reserve.ts';
-import type { Broker } from './broker-types.ts';
+import type { Broker, BrokerRoute } from './broker-types.ts';
+import type { CustodyOutcome } from './custody.ts';
 
 /** The most a lookup answer is read: one short code. */
 const LOOKUP_BYTES = 4 * 1024;
@@ -41,6 +46,14 @@ const LOOKUP_BYTES = 4 * 1024;
 const MOST = 50;
 
 const NOTE_MOST = 300;
+
+/**
+ * How long a lookup's slot outlives the operation's timeout. Custody's
+ * deadline covers the whole lookup (`send`, egress.ts), so a slot still held
+ * past that is a lost worker's; the margin covers custody's hand-off and the
+ * transaction that gives the slot back.
+ */
+const SLOT_MARGIN_MS = 60_000;
 
 export interface ProviderProof {
   readonly callId: string;
@@ -52,13 +65,19 @@ interface Asked {
   readonly id: string;
   readonly operation_key: string;
   readonly route_key: string | null;
+  readonly route_reach: string | null;
+  readonly credential_kind: string | null;
+  readonly provider: string | null;
+  readonly credential_ref: string | null;
+  readonly account: string | null;
   readonly reserved_minor: string;
 }
 
 const nothing = (reason: string): Proof => ({ proved: false, reason });
 
-/** A lookup with no room on its route: not sent, and nothing written on the call. */
-const WAITS = "its route has no room for this business's lookup; the next pass asks again";
+/** A lookup with no room on its route, or one another pass is making: not sent, nothing written. */
+const WAITS =
+  "its route has no room for this business's lookup, or another pass is asking; the next pass asks again";
 
 /** How the call is reconciled; a call the sweep held from a lost worker learns it here. */
 function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
@@ -66,6 +85,42 @@ function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
   if (operation === undefined) return 'person';
   return reconcileModeOf(operation, broker.providers.get(operation.provider));
 }
+
+/**
+ * The configured route that carried the call, as its row records it: key,
+ * reach, credential kind, provider and credential (catalogue #439, #943),
+ * and only while the operation still goes to that provider. The account is
+ * the one custody named for the credential before the send (`describe`). A
+ * row with no provider or credential (written before 20261005100149), or no
+ * account (a `replay` credential has none, so one key cannot be told from
+ * another), cannot name the account that carried it, and an absence elsewhere
+ * proves nothing: a person records the outcome.
+ */
+function carryingRoute(broker: Broker, call: Asked, provider: string): BrokerRoute | string {
+  if (call.provider === null || call.credential_ref === null) {
+    return 'its row names no provider or credential that carried it; a person records the outcome';
+  }
+  if (call.account === null) {
+    return 'custody named no account carrying it; a person records the outcome';
+  }
+  if (call.provider !== provider) {
+    return 'its operation now goes to another provider; a person records the outcome';
+  }
+  const carrying = broker.routes.find(
+    (one) =>
+      one.key === call.route_key &&
+      one.reach === call.route_reach &&
+      one.credentialKind === call.credential_kind &&
+      one.provider === call.provider &&
+      one.credentialRef === call.credential_ref,
+  );
+  return carrying ?? 'no configured route is the one that carried it';
+}
+
+/** The lookup went out on the account and credential kind that carried the call. */
+const sameCarrier = (outcome: CustodyOutcome, call: Asked): boolean =>
+  outcome.kind !== 'answered' ||
+  (outcome.credentialKind === call.credential_kind && outcome.account === call.account);
 
 /**
  * Ask the call's provider whether it began the call, or `waits` when the
@@ -82,18 +137,19 @@ async function ask(
   if (operation === undefined || adapter?.lookup === undefined || !adapter.readLookup) {
     return nothing('no lookup is declared for this operation; a person records the outcome');
   }
-  const route = broker.routes.find((one) => one.key === call.route_key);
-  if (route === undefined) return nothing('no configured route reaches its provider');
+  const route = carryingRoute(broker, call, operation.provider);
+  if (typeof route === 'string') return nothing(route);
   // A person's own subscription is never carried by unattended work (AW-01's credential rule).
   if (route.credentialKind === 'subscription') {
     return nothing("the route's credential is a person's own; a person records the outcome");
   }
-  const full = await database.withBusiness(
-    businessId,
-    async (tx) => await atCeiling(tx, operation, route),
-  );
-  if (full) return 'waits';
   const request = adapter.lookup(call.id);
+  const slot = await database.withBusiness(businessId, async (tx) =>
+    (await atCeiling(tx, operation, route))
+      ? null
+      : await takeSlot(tx, call.id, operation.timeoutMs + SLOT_MARGIN_MS),
+  );
+  if (slot === null) return 'waits';
   try {
     const outcome = await broker.custody.dispatch(route.credentialRef, {
       destination: operation.destination,
@@ -103,10 +159,43 @@ async function ask(
       timeoutMs: operation.timeoutMs,
       maxResponseBytes: LOOKUP_BYTES,
     });
+    if (!sameCarrier(outcome, call)) {
+      return nothing('custody asked through another account than the one that carried it');
+    }
     return proofOf(outcome, operation, adapter);
   } catch {
     return { proved: false, reason: 'custody could not ask the provider', silent: true };
+  } finally {
+    await database.withBusiness(businessId, async (tx) => {
+      await giveSlot(tx, call.id, slot);
+    });
   }
+}
+
+/**
+ * The lookup's slot on its call, in the gate's transaction: null when the
+ * call is no longer held unknown or another pass's slot on it is unexpired.
+ * The answer is the slot's end, which only this taking wrote, so the give
+ * back clears this slot and never a later one.
+ */
+async function takeSlot(tx: TenantQuery, callId: string, boundMs: number): Promise<string | null> {
+  const [taken] = await tx.query<{ until: string }>(
+    `update public.model_calls set lookup_until = clock_timestamp() + $3 * interval '1 millisecond'
+      where business_id = $1 and id = $2 and state = 'liability_unknown' and outcome is null
+        and (lookup_until is null or lookup_until <= clock_timestamp())
+      returning lookup_until::text as until`,
+    [tx.businessId, callId, boundMs],
+  );
+  return taken?.until ?? null;
+}
+
+/** Sent as text: a parameter typed `timestamptz` would pass through a JS Date and lose microseconds. */
+async function giveSlot(tx: TenantQuery, callId: string, slot: string): Promise<void> {
+  await tx.query(
+    `update public.model_calls set lookup_until = null
+      where business_id = $1 and id = $2 and lookup_until = $3::text::timestamptz`,
+    [tx.businessId, callId, slot],
+  );
 }
 
 /**
@@ -150,17 +239,6 @@ async function record(
   return { callId, proved: proof.proved, reason };
 }
 
-/** The call's envelope, locked before the call's row, in settlement's order (`lockCall`). */
-async function lockEnvelope(tx: TenantQuery, callId: string): Promise<void> {
-  await tx.query(
-    `select 1 from public.model_calls c
-       join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
-       join public.task_envelopes e on e.business_id = r.business_id and e.id = r.envelope_id
-      where c.business_id = $1 and c.id = $2 for update of e`,
-    [tx.businessId, callId],
-  );
-}
-
 /**
  * The provider phase for one business, as system work. `unanswered` is the
  * pass's: the providers that gave a lookup no answer in any business so far.
@@ -175,7 +253,8 @@ export async function reconcileProviderCalls(
     businessId,
     async (tx) =>
       await tx.query<Asked>(
-        `select c.id, c.operation_key, c.route_key, c.reserved_minor::text as reserved_minor
+        `select c.id, c.operation_key, c.route_key, c.route_reach, c.credential_kind,
+                c.provider, c.credential_ref, c.account, c.reserved_minor::text as reserved_minor
            from public.model_calls c
            left join public.attempts att
              on att.business_id = c.business_id and att.reservation_id = c.reservation_id

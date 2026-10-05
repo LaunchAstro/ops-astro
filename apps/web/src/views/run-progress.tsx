@@ -22,10 +22,12 @@ import type {
   ExecutionRun,
   ExecutionEvent,
   ExecutionNode,
+  ProposalView,
   ReceiptResult,
   TaskExecutionResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { isExecutionGraph, RunMap } from './run-map.tsx';
 import { Observed } from './run-observed.tsx';
 
 export interface RunProgressProps {
@@ -37,9 +39,22 @@ export interface RunProgressProps {
    * task, and each new answer re-reads the run with it, so no second stream.
    */
   readonly readOf: unknown;
+  /** The task read's proposals, for each run's gate on the execution map (MP-6-3). */
+  readonly proposals?: readonly ProposalView[];
 }
 
+/**
+ * The run of one task read under one grant. A section is keyed by both, so
+ * another grant or task (business, person or client) is a new section whose
+ * read starts afresh: nothing the last one read or held (its graph, runs or
+ * receipts) is drawn under the new scope, even when React batches the old
+ * scope's answer into the same render as the change (SEC35 M1).
+ */
 export function RunProgress(props: RunProgressProps): ReactElement {
+  return <RunSection key={JSON.stringify([props.grantKey, props.taskKey])} {...props} />;
+}
+
+function RunSection(props: RunProgressProps): ReactElement {
   const { client, taskKey } = props;
   const { state } = useRead<TaskExecutionResult>({
     grantKey: props.grantKey,
@@ -48,36 +63,53 @@ export function RunProgress(props: RunProgressProps): ReactElement {
   });
   const value =
     state.outcome === 'ready' || state.outcome === 'empty' ? (state.value.execution ?? null) : null;
-  // An answer without the run list is not one this page can read, so it draws
-  // as unavailable rather than as no run.
   const settledRead = state.outcome === 'ready' || state.outcome === 'empty';
-  const readable = value !== null && Array.isArray(value.runs) && Array.isArray(value.events);
+  const readable = value !== null && isReadable(value);
   const outcome = settledRead ? (readable ? value.outcome : 'unavailable') : state.outcome;
+  const graph = readable ? value.graph : undefined;
   return (
-    <section className="sb__sect" data-outcome={outcome} data-run-progress="">
-      <div className="sb__sh">
-        <span className="sb__k">The run</span>
-      </div>
-      {state.outcome === 'loading' ? (
-        <Empty look="inline" title="Reading the run…" />
-      ) : state.outcome === 'denied' ? (
-        <p className="card__sub" data-run="denied">
-          The server refused this read ({state.refusal.code}), so nothing about the run is shown.
-        </p>
-      ) : state.outcome === 'unavailable' || !readable ? (
-        // DS-PRIM-30: a read that could not be read is a section error, the bad banner.
-        <div data-run="unavailable">
-          <Banner tone="bad" lead="The run could not be read.">
-            {state.outcome === 'unavailable' ? `${state.because} ` : ''}That is not a claim that no
-            work ran.
-          </Banner>
+    <>
+      <RunMap
+        graph={graph}
+        proposals={props.proposals ?? []}
+        read={state}
+        scope={`${props.grantKey} ${taskKey}`}
+      />
+      <section className="sb__sect" data-outcome={outcome} data-run-progress="">
+        <div className="sb__sh">
+          <span className="sb__k">The run</span>
         </div>
-      ) : value === null ? null : value.outcome === 'no-run' ? (
-        <Empty title="No run yet" description="Nothing has been picked up on this task." />
-      ) : (
-        <Runs client={client} grantKey={props.grantKey} readOf={props.readOf} value={value} />
-      )}
-    </section>
+        {state.outcome === 'loading' ? (
+          <Empty look="inline" title="Reading the run…" />
+        ) : state.outcome === 'denied' ? (
+          <p className="card__sub" data-run="denied">
+            The server refused this read ({state.refusal.code}), so nothing about the run is shown.
+          </p>
+        ) : state.outcome === 'unavailable' || !readable ? (
+          // DS-PRIM-30: a read that could not be read is a section error, the bad banner.
+          <div data-run="unavailable">
+            <Banner tone="bad" lead="The run could not be read.">
+              {state.outcome === 'unavailable' ? `${state.because} ` : ''}That is not a claim that
+              no work ran.
+            </Banner>
+          </div>
+        ) : value === null ? null : value.outcome === 'no-run' ? (
+          <Empty title="No run yet" description="Nothing has been picked up on this task." />
+        ) : (
+          <Runs client={client} grantKey={props.grantKey} readOf={props.readOf} value={value} />
+        )}
+      </section>
+    </>
+  );
+}
+
+// An answer without the run list, or with a graph not whole, draws as
+// unavailable, never as no run or a throw. No graph: its runs and no map.
+function isReadable(value: NonNullable<TaskExecutionResult['execution']>): boolean {
+  return (
+    Array.isArray(value.runs) &&
+    Array.isArray(value.events) &&
+    (value.graph === undefined || isExecutionGraph(value.graph))
   );
 }
 
@@ -120,7 +152,7 @@ function Runs(props: {
  * the walk rather than asking for the same page again, and so does an answer
  * that carries no `next` at all.
  */
-async function wholeExecution(
+export async function wholeExecution(
   client: OperationsClient,
   recordId: string,
 ): Promise<CallResult<TaskExecutionResult>> {

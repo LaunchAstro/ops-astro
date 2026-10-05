@@ -374,6 +374,10 @@ const isCode = (file: string): boolean => /\.(?:ts|tsx|mts|mjs|js)$/u.test(file)
 const isTest = (file: string): boolean =>
   file.startsWith('tests/') || /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(file);
 
+// The last test below reads and parses every tracked code file: 4.6 to 5.1 s
+// on the hosted runner in October 2026, against vitest's 5 s default (#995).
+const TREE_SCAN = 30_000;
+
 describe('product source holds what the product uses', () => {
   it('counts an import only where the code makes one', () => {
     const source = [
@@ -399,7 +403,7 @@ describe('product source holds what the product uses', () => {
     ]);
   });
 
-  it('nothing in packages/ or apps/ is imported only by tests', () => {
+  it('nothing in packages/ or apps/ is imported only by tests', { timeout: TREE_SCAN }, () => {
     const product = tracked('packages', 'apps').filter((file) => isCode(file) && !isTest(file));
     const importers = new Map<string, { product: number; tests: number }>();
     const code = tracked('packages', 'apps', 'tests', 'scripts').filter((path) => isCode(path));
@@ -562,7 +566,11 @@ describe('the case count across the renames', () => {
 
 describe('test files for one task step, in one folder', () => {
   it('the test files for task pickup come back by name, from one folder', () => {
-    const pickup = tracked('tests').filter((file) => /pickup/u.test(file.split('/').pop() ?? ''));
+    // tests/db/suites/ holds one file per named suite, named for its test file
+    // (pickup/pickup-receipt-binding.test.ts.json); it is an index, not a test file.
+    const pickup = tracked('tests')
+      .filter((file) => !file.startsWith('tests/db/suites/'))
+      .filter((file) => /pickup/u.test(file.split('/').pop() ?? ''));
     expect(pickup.filter((file) => file.endsWith('.test.ts')).length).toBeGreaterThanOrEqual(6);
     expect(pickup.filter((file) => !file.startsWith('tests/pickup/'))).toEqual([]);
   });

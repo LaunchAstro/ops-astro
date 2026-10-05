@@ -50,21 +50,18 @@ async function latestHeader(storeUrl, reach, operator) {
   return header;
 }
 
-/** The script that reads every part of `header`'s archive, one line per part. */
-function* partsScript(header) {
-  yield `set role ${RESTORE_ROLE};\n`;
-  for (let seq = 0; seq < header.parts; seq += 1) {
-    yield `select ${seq} || '|' || part_sha256 || '|' || encode(part, 'hex') from backups.read_part(${value(header.id, 'uuid')}, ${seq});\n`;
-  }
-}
+/** The script that reads part `seq` of `header`'s archive: one line. */
+const partScript = (header, seq) =>
+  `set role ${RESTORE_ROLE};\nselect ${seq} || '|' || part_sha256 || '|' || encode(part, 'hex') from backups.read_part(${value(header.id, 'uuid')}, ${seq});\n`;
 
 /**
  * The newest backup, read as the restore identity (the store logs the read),
  * part by part into `file` (made here, mode 600, never over a file), each
  * part checked against the digest the store took of it and the whole against
- * the digest the store recorded; nothing is held whole. On any failure the
- * file is removed. `operator` is the gate's person and business, which the
- * store checks against its own appointment before it hands out anything.
+ * the digest the store recorded; nothing is held whole. A part is a reach of
+ * its own, after the last has ended, so a gated reach asks between parts. On
+ * any failure the file is removed. `operator` is the gate's person and
+ * business, which the store checks against its own appointment first.
  */
 export async function fetchLatest(storeUrl, file, reach = stagingReach, operator = undefined) {
   const header = await latestHeader(storeUrl, reach, operator);
@@ -73,18 +70,21 @@ export async function fetchLatest(storeUrl, file, reach = stagingReach, operator
   // One part's room, used for every part in turn.
   const room = Buffer.allocUnsafe(PART);
   let [next, bytes] = [0, 0];
+  const onPart = (line) => {
+    const [, seq, digest, hex = ''] = PART_LINE.exec(line) ?? [];
+    const part = room.subarray(0, hex.length > 2 * PART ? 0 : room.write(hex, 'hex'));
+    const own = createHash('sha256').update(part).digest('hex');
+    if (Number(seq) !== next || part.length === 0 || !same(own, digest ?? '')) {
+      throw new Error('a part of the archive is not the one the store took');
+    }
+    whole.update(part);
+    writeSync(fd, part);
+    [next, bytes] = [next + 1, bytes + part.length];
+  };
   try {
-    await reach(storeUrl, partsScript(header), (line) => {
-      const [, seq, digest, hex = ''] = PART_LINE.exec(line) ?? [];
-      const part = room.subarray(0, hex.length > 2 * PART ? 0 : room.write(hex, 'hex'));
-      const own = createHash('sha256').update(part).digest('hex');
-      if (Number(seq) !== next || part.length === 0 || !same(own, digest ?? '')) {
-        throw new Error('a part of the archive is not the one the store took');
-      }
-      whole.update(part);
-      writeSync(fd, part);
-      [next, bytes] = [next + 1, bytes + part.length];
-    });
+    for (let seq = 0; seq < header.parts && next === seq; seq += 1)
+      // oxlint-disable-next-line no-await-in-loop -- one part at a time, each ended before the next
+      await reach(storeUrl, partScript(header, seq), onPart);
     if (
       next !== header.parts ||
       bytes !== header.bytes ||

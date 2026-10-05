@@ -48,12 +48,17 @@ import type {
   AllowanceResult,
   ConversationReadResult,
   SettingsReadResult,
+  SecretListResult,
+  ConnectionFleetResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
   UnattendedView,
   TaskSearchResult,
   TaskLedgerResult,
+  AutomationRegistryResult,
+  MapViewResult,
+  MapFrontierResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
@@ -139,6 +144,10 @@ export interface ReadOperands {
    * write sends back as `expectedRevision`. See `reads/settings.ts`.
    */
   readonly 'settings.read': NoOperands;
+  /** Custody's rows at the scopes the caller holds `custody:manage` (C31). */
+  readonly 'secret.list': NoOperands;
+  /** The connections at the scopes the caller holds `connection:read` (MP-14-7a). */
+  readonly 'connection.fleet': NoOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -147,6 +156,10 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /** A map's sections, tickets and versions (WF-1). */
+  readonly 'map.view': { readonly recordId: string };
+  /** A map's frontier and fog, from their read models (WF-2). */
+  readonly 'map.frontier': { readonly recordId: string };
   /**
    * A conversation at its address (AW-03): the owner's, or a holder of the
    * read-any grant's. After the body purges it answers the wrap-up.
@@ -184,6 +197,8 @@ export interface ReadOperands {
   readonly 'harness.read': { readonly runId: string };
   /** The business's team invitations, under `access:share` (C39-T). */
   readonly 'invitation.list': NoOperands;
+  /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
+  readonly 'automation.registry': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -213,6 +228,8 @@ export type ReadResult =
   | AwaitingReviewResult
   | PresetPlanResult
   | SettingsReadResult
+  | SecretListResult
+  | ConnectionFleetResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
@@ -229,6 +246,8 @@ export type ReadResult =
   | InboxReadResult
   | InboxCountResult
   | InvitationListResult
+  | MapViewResult
+  | MapFrontierResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
   | {
       readonly ok: true;
@@ -238,4 +257,5 @@ export type ReadResult =
         readonly complete: boolean;
       };
     }
-  | { readonly ok: true; readonly harness: TriggerReading };
+  | { readonly ok: true; readonly harness: TriggerReading }
+  | AutomationRegistryResult;

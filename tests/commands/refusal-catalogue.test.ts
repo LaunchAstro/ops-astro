@@ -102,6 +102,10 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['CREDENTIAL_ALREADY_REVOKED', 409, 'caller'],
   ['CLIENT_NAME_TAKEN', 409, 'caller'],
   ['ACCESS_LAST_MANAGER', 409, 'caller'],
+  ['CLIENT_REQUEST_REQUIRED', 422, 'caller'],
+  ['PROVIDER_NOT_ASSESSED', 409, 'caller'],
+  ['CLIENT_HANDLES_HEALTH', 409, 'caller'],
+  ['CLIENT_NO_AGENT_EDITS', 403, 'caller'],
   ['AUTH_CROSS_SITE', 403, 'caller'],
   ['AUTH_SESSION_MISMATCH', 403, 'caller'],
   ['DELEGATION_EXCLUDES_OPERATION', 403, 'caller'],
@@ -175,6 +179,12 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   // AW-08, the launch gate and its client sign-off.
   ['LAUNCH_NOT_DECIDED', 409, 'caller'],
   ['CLIENT_SIGNOFF_REQUIRED', 409, 'caller'],
+  // C80's rows, read after the table from `site/refusal-rows.ts`.
+  ['CHANGE_ENVELOPE_EXCEEDED', 422, 'caller'],
+  ['APPROVER_NOT_CONFIGURED', 409, 'caller'],
+  ['APPROVER_NOT_CONFIGURED_ONE', 403, 'caller'],
+  ['SELF_APPROVAL_REFUSED', 403, 'caller'],
+  ['CORRECTION_PARTY_MISMATCH', 409, 'caller'],
 ];
 
 /**

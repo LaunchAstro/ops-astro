@@ -7,8 +7,53 @@
 
 import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { BrokerRoute, Broker, ProviderAdapter } from './broker-types.ts';
-import type { CustodyOutcome } from './custody.ts';
-import { fromVerifiedSender, type DeliverRefusal } from './email-class.ts';
+import type { Custody, CustodyOutcome } from './custody.ts';
+import type { DeliverRefusal } from './email-class.ts';
+import { isLoopbackMock } from './email-mock-custody.ts';
+
+/** RFC 5322's dot-atom in ASCII: a from's local part, never a display name, space or line break. */
+const DOT_ATOM = /^[\w!#$%&'*+/=?^`{|}~-]+(?:\.[\w!#$%&'*+/=?^`{|}~-]+)*$/u;
+/** Printable ASCII: a domain that lower-cases to the verified subdomain only if it already is one. */
+const ASCII = /^[!-~]+$/u;
+/** RFC 5321's limits in octets; both checks above take ASCII only, so a character is one octet. */
+const MAX_LOCAL_OCTETS = 64;
+const MAX_ADDRESS_OCTETS = 254;
+
+/**
+ * The report vouches for one subdomain: mail from anything but one bare address on it, within
+ * RFC 5321's lengths, is not verified, and only a report that says it is not from the fake
+ * source (`mock`) counts.
+ */
+export function fromVerifiedSender(
+  from: string,
+  sender: { readonly verified: boolean; readonly subdomain: string; readonly mock: boolean },
+): boolean {
+  const [local = '', domain = '', ...rest] = from.split('@');
+  return (
+    sender.verified &&
+    sender.mock === false &&
+    DOT_ATOM.test(local) &&
+    local.length <= MAX_LOCAL_OCTETS &&
+    from.length <= MAX_ADDRESS_OCTETS &&
+    rest.length === 0 &&
+    ASCII.test(domain) &&
+    domain.toLowerCase() === sender.subdomain.toLowerCase()
+  );
+}
+
+/**
+ * The sender gate as one send sees it: a mock report counts as unmocked only
+ * when the send's custody is the loopback mock `email-mock-custody.ts` started;
+ * over any other custody it is refused, as `fromVerifiedSender` refuses every mock report.
+ */
+export function senderVerifiedFor(
+  from: string,
+  sender: Parameters<typeof fromVerifiedSender>[1],
+  custody: Custody,
+): boolean {
+  const mockHere = sender.mock && isLoopbackMock(custody);
+  return fromVerifiedSender(from, mockHere ? { ...sender, mock: false } : sender);
+}
 
 /** The catalogued name the send dispatches by. */
 export const EMAIL_OPERATION = 'email.send';
@@ -33,14 +78,15 @@ export function sendRoute(
   broker: Broker,
   mail: { readonly from: string; readonly sender: SenderReport },
 ): Routed | DeliverRefusal {
-  if (!fromVerifiedSender(mail.from, mail.sender)) return 'SENDER_NOT_VERIFIED';
+  if (!senderVerifiedFor(mail.from, mail.sender, broker.custody)) return 'SENDER_NOT_VERIFIED';
   return routed(broker) ?? 'OPERATION_NOT_CATALOGUED';
 }
 
-/** What came back: the provider's message id, or the fault's kind. Never the answer's body. */
+/** What came back: the message id (whose: `source`), or the fault's kind. Never the body. */
 export function observed(
   outcome: CustodyOutcome,
   operation: ModelOperation,
+  source: 'provider' | 'mock',
 ): { readonly state: 'accepted' | 'failed'; readonly evidence: string } {
   if (outcome.kind === 'refused') return { state: 'failed', evidence: 'refused' };
   if (outcome.kind === 'worker_lost') return { state: 'failed', evidence: 'worker_lost' };
@@ -53,5 +99,5 @@ export function observed(
   }
   const answer = operation.answer(body);
   if (answer === undefined) return { state: 'failed', evidence: 'malformed' };
-  return { state: 'accepted', evidence: `provider:${answer.text}` };
+  return { state: 'accepted', evidence: `${source}:${answer.text}` };
 }

@@ -62,12 +62,25 @@ export function dmarcPolicy(records: readonly string[]): DmarcPolicy {
   const dmarc = records.filter((text) => /^v=DMARC1\s*(?:;|$)/u.test(text.trim()));
   if (dmarc.length === 0) return 'missing';
   if (dmarc.length > 1) return 'invalid';
-  const tags = (dmarc[0] ?? '').split(';').map((tag) => tag.trim().split('='));
+  // A tag is split at its first '=' only, so `p=reject=invalid` is not reject.
+  const tags = (dmarc[0] ?? '').split(';').map((tag) => {
+    const [name = '', ...rest] = tag.split('=');
+    return rest.length === 0 ? [name] : [name, rest.join('=')];
+  });
   const policy = tags
     .find(([name]) => name?.trim() === 'p')?.[1]
     ?.trim()
     .toLowerCase();
   return policy === 'reject' || policy === 'quarantine' || policy === 'none' ? policy : 'invalid';
+}
+
+/**
+ * Whether the setup check can verify `subdomain` under `root` at all: both host names whose
+ * labels are letters, digits and inner hyphens, and the subdomain inside the root. A start
+ * that names a sender reads this, so it refuses what every check would.
+ */
+export function checkableSender(subdomain: string, root: string): boolean {
+  return HOST.test(subdomain) && HOST.test(root) && subdomain.endsWith(`.${root}`);
 }
 
 /**
@@ -88,9 +101,7 @@ export async function checkSender(
     dmarc: 'missing',
     mock: source.mock,
   };
-  if (!HOST.test(subdomain) || !HOST.test(root) || !subdomain.endsWith(`.${root}`)) {
-    return unverified;
-  }
+  if (!checkableSender(subdomain, root)) return unverified;
   let answer: unknown;
   let txt: readonly string[];
   try {
