@@ -102,7 +102,8 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
    charged, a request is charged once however many times the envelope retries,
    and its concurrent slot is given back when the request ends
    (`withQuotaScope`, installed on every request by `composeApi`); a live
-   stream holds it until the stream ends (`liveStream`). The presence routes,
+   stream holds its credential's slot until the stream ends (`liveStream`), its
+   person's and business's coming back with the answer. The presence routes,
    which resolve their caller as a stream's recheck does (`withStanding`), are
    charged the same way; a recheck inside a charged request is not. The limits,
    and the page size a list read may ask for, are the one table `QUOTAS`;

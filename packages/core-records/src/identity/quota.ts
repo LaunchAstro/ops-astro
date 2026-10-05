@@ -78,8 +78,11 @@ export interface QuotaHolders {
 
 export type QuotaRefusal = CommandRefusal<'QUOTA_EXCEEDED'>;
 
+/** Gives slots back: every one still held, or only `holder`'s. */
+type Release = (holder?: Holder) => void;
+
 type Taken =
-  | { readonly ok: true; readonly release: () => void }
+  | { readonly ok: true; readonly release: Release }
   | { readonly ok: false; readonly refusal: QuotaRefusal };
 
 export interface QuotaGate {
@@ -127,13 +130,7 @@ export function createQuotaGate(options: QuotaOptions = {}): QuotaGate {
         windows.set(key, log);
         inFlight.set(key, (inFlight.get(key) ?? 0) + 1);
       }
-      return {
-        ok: true,
-        release: releaser(
-          inFlight,
-          keys.map(([, key]) => key),
-        ),
-      };
+      return { ok: true, release: releaser(inFlight, keys) };
     },
   };
 }
@@ -146,7 +143,7 @@ function overConcurrent(limits: QuotaLimits, holder: Holder): QuotaRefusal {
     'QUOTA_EXCEEDED',
     ['concurrent', holder],
     [
-      `Too many calls at once for this ${holder}. The limit is ${most} at a time; send again once one has answered.`,
+      `Too many calls at once for this ${holder}. The limit is ${most} at a time, an open live stream counting as one; send again once one has answered or closed.`,
     ],
   );
 }
@@ -164,13 +161,16 @@ function overRequests(limits: QuotaLimits, holder: Holder, waitMs: number): Quot
   );
 }
 
-/** Gives the call's slots back, once, however often it is called. */
-function releaser(inFlight: Map<string, number>, keys: readonly string[]): () => void {
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    for (const key of keys) {
+/** Gives each of the call's slots back once, however often it is called. */
+function releaser(
+  inFlight: Map<string, number>,
+  keys: readonly (readonly [Holder, string])[],
+): Release {
+  const held = new Map(keys);
+  return (only) => {
+    for (const [holder, key] of held) {
+      if (only !== undefined && holder !== only) continue;
+      held.delete(holder);
       const left = (inFlight.get(key) ?? 1) - 1;
       if (left > 0) inFlight.set(key, left);
       else inFlight.delete(key);
@@ -186,8 +186,8 @@ function keyOf(holder: Holder, holders: QuotaHolders): string {
 
 interface Scope {
   readonly gate: QuotaGate;
-  release: (() => void) | undefined;
-  /** A stream answered and still running: its end gives the slot back, not the answer. */
+  release: Release | undefined;
+  /** A stream answered and still running: its end gives its credential's slot back. */
   held: boolean;
 }
 
@@ -204,13 +204,16 @@ export async function withQuotaScope<T>(gate: QuotaGate, run: () => Promise<T>):
     return await scopes.run(scope, run);
   } finally {
     if (!scope.held) scope.release?.();
+    else for (const holder of HOLDERS) if (holder !== 'credential') scope.release?.(holder);
   }
 }
 
 /**
- * Keep this request's slot past its answer: a live stream answers at once and
- * runs on, and it is one call at once until it ends. The function returned
- * gives the slot back; the stream calls it when it ends, however it ends.
+ * Keep this request's credential slot past its answer: a live stream answers
+ * at once and runs on, and it is one call at once for its login until it ends.
+ * Its person's and business's slots come back with the answer, so open tabs
+ * never hold a person's or a business's other calls. The function returned
+ * gives the credential's slot back; the stream calls it when it ends.
  */
 export function holdQuotaSlot(): () => void {
   const scope = scopes.getStore();
