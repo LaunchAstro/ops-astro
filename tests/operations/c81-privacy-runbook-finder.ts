@@ -14,6 +14,8 @@ export interface Hit {
   readonly table: string;
   readonly id: string;
   readonly columns: readonly string[];
+  /** The people whose ids the row holds; empty for a row found by its text alone. */
+  readonly people: readonly string[];
   readonly row?: Record<string, unknown>;
 }
 

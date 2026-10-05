@@ -28,6 +28,7 @@
     "tests/operations/scan-login-token-and-shared-login.proof.test.ts"
   ],
   "conformance": [
+    "tests/operations/find-copies-seeds-and-erasure.test.ts",
     "tests/operations/find-copies-values-only.proof.test.ts",
     "tests/operations/scan-login-cleanup-mapping-race.test.ts",
     "tests/operations/scan-login-cleanup-subject-race.proof.test.ts"
