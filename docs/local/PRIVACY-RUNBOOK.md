@@ -129,9 +129,11 @@ by kind. A copy not on the list is a copy the reply missed.
    so a row naming the person by id alone is still found once their own rows
    are gone. A hit that holds neither the text nor an id given with `--id`
    (`text` and `given` both false), and whose people list names only another
-   person, is that person's row, not a missed copy. A hit that holds the text
-   is the owner's to judge, and the owner records whose it is. Any other hit
-   outside a lawfully kept copy means the erasure is not done.
+   person, is that person's row, not a missed copy. A hit that holds an id
+   given with `--id` (`given` true) is a missed copy unless it is lawfully
+   kept. A hit that holds the text but no given id is the owner's to judge,
+   and the owner records whose it is. Any other hit outside a lawfully kept
+   copy means the erasure is not done.
 
 ### Export
 
