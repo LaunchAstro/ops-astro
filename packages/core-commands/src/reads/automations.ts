@@ -22,9 +22,7 @@ export async function readAutomationRegistry(tx: TenantQuery): Promise<Automatio
         .map(({ definitionId: _definition, ...version }) => version),
       activations: activations
         .filter((activation) => activation.definitionId === id)
-        .map(({ definitionId: _definition, ...activation }) =>
-          Object.assign(activation, { approval: null }),
-        ),
+        .map(({ definitionId: _definition, ...activation }) => activation),
     })),
   };
 }

@@ -31,6 +31,7 @@ export {
   listRegistry,
   type Registry,
   type RegistryActivation,
+  type RegistryApproval,
   type RegistryDefinition,
   type RegistryVersion,
 } from './registry.ts';
