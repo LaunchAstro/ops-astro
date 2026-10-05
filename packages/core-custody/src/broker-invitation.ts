@@ -36,6 +36,7 @@ import { observed, sendRoute } from './broker-email-route.ts';
 import type { MailSettings } from './broker-email.ts';
 import type { Broker } from './broker-types.ts';
 import { lapsed, readClocks, roomFor, type DeliverRefusal, type Reading } from './email-class.ts';
+import { isLoopbackMock } from './email-mock-custody.ts';
 
 /** The acts an invitation's send answers, one email each. */
 export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'invitation.resend'];
@@ -184,6 +185,7 @@ export async function sendInvitation(
           maxResponseBytes: operation.maxResponseBytes,
         }),
         operation,
+        isLoopbackMock(broker.custody) ? 'mock' : 'provider',
       );
   // An answer is evidence about the message, never a place a link's token is kept: this
   // send's, an earlier send's or any other business's, all of one shape.

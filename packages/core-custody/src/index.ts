@@ -24,6 +24,7 @@ export {
   type OutboundRequest,
 } from './egress.ts';
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
+export { onThisMachine, startLoopbackMockCustody } from './email-mock-custody.ts';
 export { raiseBudgetWait, stopWords } from './broker-wait.ts';
 export { giveBack, giveBackReleased } from './broker-give-back.ts';
 export {
@@ -53,6 +54,7 @@ export {
   type EmailResult,
   type MailSettings,
 } from './broker-email.ts';
+export { fromVerifiedSender } from './broker-email-route.ts';
 export { landEmailEvent, type EmailHookOutcome } from './broker-email-hook.ts';
 export { tellCommentClients } from './broker-email-mention.ts';
 export {

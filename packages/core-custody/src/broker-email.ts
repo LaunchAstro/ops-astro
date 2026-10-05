@@ -18,8 +18,9 @@
 //    never a decision. A send that paused past the fence since its ask was
 //    reserved sends nothing and records `failed`, `expired` (`lapsed`).
 // 3. Record what came back as each item's next observation: `accepted`
-//    with the provider's message id, or `failed` with the fault's kind. No
-//    answer body, address or link is kept, returned or written anywhere.
+//    with the provider's message id (`mock:` before it over the loopback
+//    mock, never `provider:`), or `failed` with the fault's kind. No answer
+//    body, address or link is kept, returned or written anywhere.
 //
 // Nothing here reads a provider answer as an instruction, and no path from
 // an answer reaches the item's work state or any gate: an attempt never
@@ -51,6 +52,7 @@ import {
   windowSpent,
   type Room,
 } from './email-class.ts';
+import { isLoopbackMock } from './email-mock-custody.ts';
 
 export { recordAsked, stillReadable, type CheckedItem, type Room } from './email-class.ts';
 
@@ -212,6 +214,7 @@ export async function deliver<R extends string>(
           maxResponseBytes: operation.maxResponseBytes,
         }),
         operation,
+        isLoopbackMock(broker.custody) ? 'mock' : 'provider',
       );
   const attemptIds = await database.withBusiness(businessId, async (tx) => {
     const ids: string[] = [];
@@ -232,13 +235,9 @@ export async function sendInboxEmail(
   broker: Broker,
   mail: MailSettings,
 ): Promise<EmailResult> {
-  const sent = await deliver(
-    database,
-    businessId,
-    broker,
-    mail,
-    async (tx, room) => await askOne(tx, itemId, room),
-  );
+  const ask = async (tx: TenantQuery, room: Room): Promise<Asked | EmailRefusal> =>
+    await askOne(tx, itemId, room);
+  const sent = await deliver(database, businessId, broker, mail, ask);
   return emailResult(sent);
 }
 
