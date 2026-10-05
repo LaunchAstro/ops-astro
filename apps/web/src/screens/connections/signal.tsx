@@ -16,7 +16,7 @@
 // unavailable too.
 
 import type { ReactElement } from 'react';
-import { Empty, SectionHead } from '@launchastro/ui';
+import { Empty, SectionHead, StatusLine, type MarkTone } from '@launchastro/ui';
 import type {
   ConnectionSignalResult,
   NightStepView,
@@ -135,12 +135,28 @@ function Cite(props: { readonly cite: NonNullable<NightStepView['cite']> }): Rea
   );
 }
 
+/** A step's tone as the kit's timeline node, and in words where it was not plain. */
+const STEP_TONE: Readonly<Record<NightStepView['tone'], MarkTone>> = {
+  plain: 'idle',
+  watch: 'warn',
+  bad: 'bad',
+};
+const STEP_WORDS: Readonly<Record<NightStepView['tone'], string | null>> = {
+  plain: null,
+  watch: 'Worth a look: ',
+  bad: 'Did not go cleanly: ',
+};
+
 function NightStep(props: { readonly step: NightStepView }): ReactElement {
   const { step } = props;
+  const words = STEP_WORDS[step.tone];
   return (
     <li data-night-step={step.id}>
       <time className="mono">{clock(step.at)}</time>{' '}
-      <span className="nr__dot" data-tone={step.tone} aria-label={step.tone} />{' '}
+      <span data-tone={step.tone}>
+        <StatusLine tone={STEP_TONE[step.tone]} node />
+      </span>{' '}
+      {words === null ? null : <span className="visually-hidden">{words}</span>}
       <strong>{step.what}</strong> <span className="t-2">{step.who}</span> {step.say}{' '}
       {step.cite === null ? null : <Cite cite={step.cite} />}
     </li>
@@ -211,7 +227,7 @@ export function SignalSections(props: {
     deps: [],
   });
   return (
-    <div data-signal>
+    <div className="secs" data-signal>
       <RecordState
         state={state}
         subject="signal"

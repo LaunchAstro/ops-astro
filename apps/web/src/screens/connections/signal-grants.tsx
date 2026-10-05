@@ -88,10 +88,11 @@ export function GrantsSection(props: {
   readonly now: number;
 }): ReactElement {
   const { grants, grantCounts } = props.signal;
+  const lede = grantsLede(grantCounts.live, grantCounts.liveExec);
   return (
     <section id="grants" data-section="006">
       <SectionHead index="006" title="Grants" right="What is live right now" />
-      <p className="grl__lede">{grantsLede(grantCounts.live, grantCounts.liveExec)}</p>
+      {lede === null ? null : <p className="grl__lede">{lede}</p>}
       {grants.length === 0 ? <p>No grants you can see.</p> : null}
       {GROUPS.map((group) => {
         const rows = grants.filter((one) => one.state === group.state);

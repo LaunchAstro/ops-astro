@@ -5,6 +5,7 @@
 // a grant taken back and the lede sentences.
 
 import type { GrantView } from '../../../../../packages/core-wire/src/index.ts';
+import { BUSINESS_CLOCK } from '../task/due-dates.ts';
 
 const HOUR = 60;
 
@@ -31,10 +32,19 @@ export function countdownOf(grant: GrantView, now: number): Countdown {
 }
 
 export const stamp = (at: string): string =>
-  new Date(at).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' });
+  new Date(at).toLocaleString('en-AU', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: BUSINESS_CLOCK,
+  });
 
 export const clock = (at: string): string =>
-  new Date(at).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
+  new Date(at).toLocaleTimeString('en-AU', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: BUSINESS_CLOCK,
+  });
 
 const CAUSE_WORDS: Readonly<Record<string, string>> = {
   authority_lost: 'the delegating person lost the authority',
@@ -48,11 +58,13 @@ export const causeOf = (cause: string | null): string =>
 export const plural = (count: number, one: string, many = `${one}s`): string =>
   `${count} ${count === 1 ? one : many}`;
 
-export function grantsLede(live: number, liveExec: number): string {
+/** Null when nothing is live: the absence line beside it says so once. */
+export function grantsLede(live: number, liveExec: number): string | null {
+  if (live === 0) return null;
   // The read answers what the caller may see, which may be some clients only.
   const held = `${plural(live, 'grant')} live that you can see.`;
   if (liveExec === 0) return `${held} None of them carries execute access.`;
-  return `${held} ${liveExec} of them carry execute access; none can act until the executor is connected.`;
+  return `${held} ${liveExec} of them ${liveExec === 1 ? 'carries' : 'carry'} execute access.`;
 }
 
 export function tripwiresLede(armed: number, cannotBeArmed: number): string {
@@ -64,6 +76,7 @@ export function nightLede(roundOn: string, notClean: number): string {
   const day = new Date(`${roundOn}T12:00:00Z`).toLocaleDateString('en-AU', {
     day: 'numeric',
     month: 'short',
+    timeZone: 'UTC',
   });
   const window = `${day} · 23:00 to 08:10`;
   if (notClean === 0) return `${window}.`;
