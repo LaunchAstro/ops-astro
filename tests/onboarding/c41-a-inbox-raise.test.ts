@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one ticket's named cases over one seeded world */
 //
 // C41-A's inbox raise (U38, #495; CS-15.4 `inbox item raised (owns_the_move)`):
 // a person step or a client-wait step that opens parks the onboarding with an
@@ -17,6 +18,7 @@ import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { createControls, type Controls } from '../api/controls-fixture.ts';
+import { raiseInboxItem } from '../../packages/core-records/src/index.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const RECORD_CANARY = `record-canary-${randomUUID()}`;
@@ -92,6 +94,19 @@ describe.skipIf(serverUrl === undefined)('C41-A inbox raise', () => {
     );
     return Number(task?.revision);
   };
+
+  // An item about a task raised straight to one person, as a mention is.
+  const mention = async (to: Member, taskId: string): Promise<string> =>
+    await controls.fixture.db.app.withBusiness(
+      controls.fixture.business,
+      async (tx) =>
+        await raiseInboxItem(tx, {
+          recipientPersonId: to.personId,
+          subjectRecordId: taskId,
+          reason: 'mention',
+          fact: { kind: 'record', id: randomUUID() },
+        }),
+    );
 
   // Every item on this onboarding's tasks, read as the database holds it.
   const itemsOn = async (steps: Map<string, string>): Promise<readonly Item[]> => [
@@ -236,30 +251,83 @@ describe.skipIf(serverUrl === undefined)('C41-A inbox raise', () => {
     expect(JSON.stringify(seen.body)).not.toContain(String(item?.id));
   });
 
-  it('C41-A isolation: a holder scoped to one client is raised nothing and shown nothing of either client’s steps', async () => {
-    const reader = await as(clientAReader, 'inbox.read', {});
-    expect(reader.status).toBe(200);
-    const said = JSON.stringify(reader.body);
-    for (const id of [...stepsA.values(), ...stepsB.values()]) expect(said).not.toContain(id);
-    expect(said).not.toContain(RECORD_CANARY);
+  it('C41-A isolation: a holder scoped to one client is raised no step’s move, and shown its own client’s step item but never another client’s', async () => {
+    // The owner rule raises the holder nothing of either client's steps.
     const raised = await controls.fixture.db.admin.execute<{ readonly n: string }>(
       'select count(*)::text as n from public.inbox_items where recipient_person_id = $1',
       [clientAReader.personId],
     );
     expect(raised[0]?.n).toBe('0');
+    // One item about each client's step, both raised to the holder.
+    const ownTask = String(stepsA.get('site-setup'));
+    const own = await mention(clientAReader, ownTask);
+    const foreign = await mention(clientAReader, String(stepsB.get('site-setup')));
+
+    const read = await as(clientAReader, 'inbox.read', {});
+    expect(read.status).toBe(200);
+    const listed = read.body['inbox'] as readonly Record<string, unknown>[];
+    // The control: client A's item is listed, readable, and counted.
+    expect(listed.find((one) => one['id'] === own)).toMatchObject({
+      access: 'readable',
+      subjectRecordId: ownTask,
+    });
+    // The crossing: client B's item, its step and its client are never told.
+    const said = JSON.stringify(read.body);
+    for (const id of [foreign, ...stepsB.values(), clientB, RECORD_CANARY]) {
+      expect(said).not.toContain(id);
+    }
+    const count = await as(clientAReader, 'inbox.count', {});
+    expect(count.status).toBe(200);
+    expect(Number(count.body['owed'])).toBe(1);
+
+    const opened = await as(clientAReader, 'inbox.seen', { itemId: own });
+    expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+    const crossed = await as(clientAReader, 'inbox.seen', { itemId: foreign });
+    expect({ status: crossed.status, code: crossed.body['code'] }).toStrictEqual({
+      status: 404,
+      code: 'NOT_FOUND',
+    });
+    expect(JSON.stringify(crossed.body)).not.toContain(RECORD_CANARY);
+    const stamped = await controls.fixture.db.admin.execute<{ readonly item: string }>(
+      'select item_id::text as item from public.inbox_attention where person_id = $1',
+      [clientAReader.personId],
+    );
+    expect(stamped.map((row) => row.item)).toStrictEqual([own]);
   });
 
-  it('C41-A isolation: an agent under a live delegation on a step’s task reads no inbox and is told no step', async () => {
+  it('C41-A isolation: an agent under a live delegation on one client’s step task reads that task, no inbox, and nothing of another client’s steps', async () => {
     const task = String(stepsA.get('site-setup'));
     const proposal = await controls.propose(task, await revisionOf(task), 'onboarding_step');
     const picked = await controls.pickup(await controls.approve(proposal));
+    const credential = String(picked['credential']);
+    const unnamed = [...stepsB.values(), clientB, RECORD_CANARY];
+
+    // The control: its own task, client A's step.
+    const own = await controls.asAgent('task.read', { recordId: task }, credential);
+    expect(own.status, JSON.stringify(own.body)).toBe(200);
+    expect(JSON.stringify(own.body)).toContain(task);
+
+    // The crossing: client B's step task, really there and out of its purpose.
+    const foreign = await controls.asAgent(
+      'task.read',
+      { recordId: stepsB.get('site-setup') },
+      credential,
+    );
+    expect({ status: foreign.status, code: foreign.body['code'] }).toStrictEqual({
+      status: 403,
+      code: 'DELEGATION_OUT_OF_PURPOSE',
+    });
+    expect(JSON.stringify(foreign.body)).not.toContain(clientB);
+    expect(JSON.stringify(foreign.body)).not.toContain(RECORD_CANARY);
+
+    // No inbox at all, so neither client's step is named there.
     for (const name of ['inbox.read', 'inbox.count'] as const) {
       // oxlint-disable-next-line no-await-in-loop -- one read, then the other
-      const answer = await controls.asAgent(name, {}, String(picked['credential']));
+      const answer = await controls.asAgent(name, {}, credential);
       expect(answer.status, name).not.toBe(200);
       const said = JSON.stringify(answer.body);
       expect(said).not.toContain(task);
-      expect(said).not.toContain(RECORD_CANARY);
+      for (const id of unnamed) expect(said, name).not.toContain(id);
     }
   });
 });

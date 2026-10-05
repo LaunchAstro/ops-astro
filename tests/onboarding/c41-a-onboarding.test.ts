@@ -106,24 +106,47 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
     return answer.body;
   };
 
-  // An agent picked up on this task: its delegation's purpose is the task.
-  const asDelegatedAgent = async (
-    taskId: string,
-    body: Readonly<Record<string, unknown>>,
-  ): Promise<Answer> => {
+  // An agent picked up on this task: its delegation's purpose is the task. The
+  // agent holds one live delegation per purpose, so each case names its own.
+  const delegateOn = async (taskId: string, purpose = 'onboarding_step'): Promise<string> => {
     const task = await controls.fixture.db.admin.execute<{ readonly revision: string }>(
       'select revision::text as revision from public.records where id = $1',
       [taskId],
     );
-    const proposal = await controls.propose(taskId, Number(task[0]?.revision), 'onboarding_step');
+    const proposal = await controls.propose(taskId, Number(task[0]?.revision), purpose);
     const picked = await controls.pickup(await controls.approve(proposal));
-    const answer = await controls.asAgent(
-      'onboarding.step_result',
-      { operationId: randomUUID(), ...body },
-      String(picked['credential']),
-    );
+    return String(picked['credential']);
+  };
+
+  const asAgentWith = async (
+    credential: string,
+    name: string,
+    body: Readonly<Record<string, unknown>>,
+  ): Promise<Answer> => {
+    const answer = await controls.asAgent(name, { operationId: randomUUID(), ...body }, credential);
     answers.push(answer);
     return answer;
+  };
+
+  const asDelegatedAgent = async (
+    taskId: string,
+    body: Readonly<Record<string, unknown>>,
+  ): Promise<Answer> => await asAgentWith(await delegateOn(taskId), 'onboarding.step_result', body);
+
+  // Each step of an onboarding as it stands now, and its first ready agent step.
+  const stepStates = async (started: Answer): Promise<readonly Record<string, unknown>[]> => [
+    ...(await controls.fixture.db.admin.execute<Record<string, unknown>>(
+      `select step_key, kind, state, failures, task_id::text as task_id
+         from public.onboarding_steps where onboarding_id = $1 order by position`,
+      [String(detail(started)['onboardingId'])],
+    )),
+  ];
+  const readyAgentStep = async (started: Answer): Promise<string> => {
+    const found = (await stepStates(started)).find(
+      (one) => one['kind'] === 'agent' && one['state'] === 'ready',
+    );
+    expect(found).toBeDefined();
+    return String(found?.['task_id']);
   };
 
   // A step of this onboarding that takes a result now, read at the time
@@ -423,6 +446,12 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
       { clientId: randomUUID(), templateKey: 'standard' },
       'bravo',
     );
+    // The refusal itself, not only its likeness to a fabricated id's: a key
+    // fault further in would answer both alike too.
+    expect({ status: foreign.status, code: foreign.body['code'] }).toStrictEqual({
+      status: 404,
+      code: 'NOT_FOUND',
+    });
     expect(foreign.status).toBe(fabricated.status);
     expect(foreign.body).toStrictEqual(fabricated.body);
     const step = stepsOf(startedA)[0];
@@ -455,28 +484,36 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
   });
 
   it('C41-A isolation: an agent under a live delegation for one task writes nothing on another client’s steps', async () => {
-    const task = await controls.createTask('agent crossing');
-    const proposal = await controls.propose(task.id, task.revision);
-    const picked = await controls.pickup(await controls.approve(proposal));
-    const credential = String(picked['credential']);
-    const before = await tableRows('onboarding_steps');
-    const foreignStep = stepsOf(startedB).find((one) => one.state === 'ready');
+    // Its delegation is on one client's agent step, a task linked to that client;
+    // client B's agent step is ready beside it, one it could close were it reachable.
+    const ownTask = await readyAgentStep(await start(await newClient('Made-up Client Agent Side')));
+    const credential = await delegateOn(ownTask, 'onboarding_crossing');
+    const foreignTask = await readyAgentStep(startedB);
+    const before = await stepStates(startedB);
+    const commentsBefore = commentBodies(await readTask(admin, foreignTask));
     for (const [name, body] of [
-      ['onboarding.step_result', { recordId: foreignStep?.taskId, outcome: 'done', result: 'x' }],
+      ['onboarding.step_result', { recordId: foreignTask, outcome: 'done', result: 'crossing' }],
       ['onboarding.start', { clientId: clientB, templateKey: 'standard' }],
       ['record.create', { type: 'client', fields: { name: 'agent made' } }],
     ] as const) {
       // eslint-disable-next-line no-await-in-loop -- one crossing at a time
-      const answer = await controls.asAgent(
-        name,
-        { operationId: randomUUID(), ...body },
-        credential,
-      );
-      answers.push(answer);
+      const answer = await asAgentWith(credential, name, body);
       expect(answer.status, name).toBe(403);
       expect(JSON.stringify(answer.body)).not.toContain(RECORD_CANARY);
+      if (name === 'onboarding.step_result') {
+        expect(answer.body['code']).toBe('DELEGATION_OUT_OF_PURPOSE');
+      }
     }
-    expect(await tableRows('onboarding_steps')).toBe(before);
+    expect(await stepStates(startedB)).toStrictEqual(before);
+    expect(commentBodies(await readTask(admin, foreignTask))).toStrictEqual(commentsBefore);
+    // The control: the same credential records its own client's agent step.
+    const own = await asAgentWith(credential, 'onboarding.step_result', {
+      recordId: ownTask,
+      outcome: 'done',
+      result: 'own side',
+    });
+    expect(own.status, JSON.stringify(own.body)).toBe(200);
+    expect(commentBodies(await readTask(admin, ownTask))).toContain('own side');
   });
 
   it('C41-A canary: a secret in a step result never reaches the audit payload, logs or another caller', async () => {
