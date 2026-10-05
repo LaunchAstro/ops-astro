@@ -58,6 +58,10 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 
 const unknownActivation = (): HandlerOutcome => refused(refuseNotFound(['activationId']));
 
+const SIGNED_OUT = 'sign in again: this session was signed out';
+const SIGNED_OUT_KEPT =
+  'The session that sent this change was signed out before it applied; nothing changed.';
+
 /** The activation at the revision the caller read, or the refusal to answer. */
 async function activationAt(
   tx: TenantQuery,
@@ -95,7 +99,9 @@ async function lockedAuthority(
  * that clock, the grants still held, and the session that sent the change must
  * not have ended meanwhile: a sign-out here writes its own audit event, so it
  * either committed before this lock and refuses the change, or waits for it.
- * A refusal rolls the change's rows back with the handler's savepoint.
+ * A refusal rolls the change's rows back with the handler's savepoint. The
+ * register keeps it as a scope refusal: the same attempt sent again from a
+ * later sign-in is not told that its own session ended.
  */
 async function standsAtCommit(
   tx: TenantQuery,
@@ -103,9 +109,10 @@ async function standsAtCommit(
 ): Promise<HandlerOutcome | null> {
   await advisoryLock(tx, tx.businessId.toLowerCase());
   if (await sessionEndedSince(tx, context.session)) {
-    return refused(
-      refuseCommand('AUTH_SESSION_EXPIRED', [], ['sign in again: this session was signed out']),
-    );
+    return {
+      refusal: refuseCommand('AUTH_SESSION_EXPIRED', [], [SIGNED_OUT]),
+      kept: refuseCommand('SCOPE_NOT_GRANTED', [], [SIGNED_OUT_KEPT]),
+    };
   }
   return await askAutomationAuthority(tx, context);
 }
