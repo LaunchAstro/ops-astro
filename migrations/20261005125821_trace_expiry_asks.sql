@@ -93,3 +93,13 @@ alter table public.trace_expiry_batches
     'target_unreachable', 'target_redirect', 'target_timeout', 'target_oversized_reply',
     'target_oversized_body', 'target_malformed_reply', 'target_refused', 'target_forbidden',
     'expiry_unconfirmed'));
+
+-- One export per business at a time (#963): an export takes a lease on its
+-- business's cursor row before it reads, renews it before each body and gives
+-- it up when it advances or records its gap. Another export takes it only
+-- once it has expired, so two exports never deliver at once.
+alter table public.trace_export_cursors
+  add column lease_holder uuid,
+  add column lease_until timestamptz,
+  add constraint trace_export_cursors_lease_whole
+    check ((lease_holder is null) = (lease_until is null));

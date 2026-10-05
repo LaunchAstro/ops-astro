@@ -1908,10 +1908,17 @@ and codes, never a sentence, to a trace target an operator reads.
   (`pg_snapshot_xmin`): every transaction below it has finished and any later
   write has a higher id, so an event that commits late never lands behind
   the cursor. A long transaction anywhere on the cluster holds the export
-  back until it ends; it never loses an event. The read also takes the cursor
-  row's version (`xmin`), and the advance lands only on that version, so two
-  exports at once that read the same batch never move it back (the upsert's
-  row lock orders them, the version under it decides). `trace_export_gaps`: append only (a trigger refuses
+  back until it ends; it never loses an event. One export per business at a
+  time (`trace-lease.ts`, #963): the read's transaction first takes a lease on
+  the row (`lease_holder`, `lease_until`, 60 s), only when no export holds it
+  or its lease has expired, read under the row lock by `clock_timestamp()`;
+  another export meanwhile is `held` and sends nothing. The holder renews the
+  lease before each body, on the row's version (`xmin`) it last wrote, and
+  gives it up when it advances or records its gap; the advance lands only on
+  that version. A takeover or a retention step back gives the row a new
+  version, so the old holder sends nothing more and its advance changes
+  nothing. A failing export can delay a healthy one's tick, never undo it.
+  `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and
   insert, and update the cursor.
 - The port is custody's egress (`apps/api/trace-exporter.ts`): a custody

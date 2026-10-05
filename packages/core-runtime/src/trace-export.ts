@@ -14,10 +14,14 @@
 // and bounds the reply by time and bytes. Anything short of a 2xx JSON reply
 // to every body is recorded as a gap with a fixed code and the cursor stays
 // where it was; an export with no reachable target is never reported as success.
+//
+// One export per business at a time, by a lease on its cursor row
+// (`trace-lease.ts`): another export meanwhile is `held` and sends nothing.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { gapOf, type Deliver, type GapCode } from './trace-delivery.ts';
+import { release, renew, take, type Cursor } from './trace-lease.ts';
 import { owedSince } from './trace-owed.ts';
 import {
   TRACE_ERRORS,
@@ -30,8 +34,11 @@ import {
   type TraceSpan,
 } from './trace-span.ts';
 
+export type { Cursor } from './trace-lease.ts';
+
 export type ExportOutcome =
   | { readonly kind: 'idle' }
+  | { readonly kind: 'held' }
   | { readonly kind: 'delivered'; readonly spans: number }
   | { readonly kind: 'gap'; readonly code: GapCode; readonly spans: number };
 
@@ -59,10 +66,12 @@ export interface TraceDatabase {
 }
 
 /**
- * One export for one business: read a batch after the cursor, register each
- * run's copy, deliver, then advance the cursor or record the gap. The read
- * and the advance are separate transactions and delivery is between them, so
- * no transaction is open while the target is asked. The events owed again
+ * One export for one business: take the lease, read a batch after the cursor,
+ * register each run's copy, deliver, then advance the cursor or record the
+ * gap and give the lease up. The read and the advance are separate
+ * transactions and delivery is between them, so no transaction is open while
+ * the target is asked; each body renews the lease first, and an export that
+ * has lost it stops, `held`. The events owed again
  * (`owedSince`) go first, in bodies of at most `TRACE_BATCH` in the cursor's
  * order, the batch's own events with the last; one refused body stops the
  * rest, and the next export sends them all again.
@@ -79,9 +88,12 @@ export async function exportOnce(
   key: Buffer,
   deliver: Deliver,
 ): Promise<ExportOutcome> {
-  const { from, batch, sent } = await database.withBusiness(businessId, async (tx) => {
-    const cursor = await cursorOf(tx);
+  const holder = randomUUID();
+  const read = await database.withBusiness(businessId, async (tx) => {
+    const cursor = await take(tx, holder);
+    if (cursor === null) return null;
     const rows = await pending(tx, cursor);
+    if (rows.length === 0) await release(tx, holder);
     for (const runId of new Set(rows.filter((row) => !row.past).map((row) => row.runId))) {
       // eslint-disable-next-line no-await-in-loop -- one registration per run, in order
       await registerTraceCopy(tx, runId);
@@ -90,11 +102,19 @@ export async function exportOnce(
     const fresh = rows.filter((row) => !row.past);
     return { from: cursor, batch: rows, sent: bodiesOf(owed, fresh) };
   });
+  if (read === null) return { kind: 'held' };
+  const { from, batch, sent } = read;
   const last = batch.at(-1);
   if (last === undefined) return { kind: 'idle' };
+  const renewed = async (at: string | null): Promise<string | null> =>
+    await database.withBusiness(businessId, async (tx) => await renew(tx, holder, at));
+  let { version } = from;
   let code: GapCode | null = null;
   let spans = 0;
   for (const body of sent) {
+    // eslint-disable-next-line no-await-in-loop -- the lease before each body
+    version = await renewed(version);
+    if (version === null) return { kind: 'held' };
     spans += body.length;
     // eslint-disable-next-line no-await-in-loop -- one body after another, in the cursor's order
     code = await send(
@@ -104,8 +124,9 @@ export async function exportOnce(
     if (code !== null) break;
   }
   await database.withBusiness(businessId, async (tx) => {
-    if (code === null) await advance(tx, last, from.version);
+    if (code === null) await advance(tx, last, holder, version);
     else await recordGap(tx, code, from, batch.length);
+    await release(tx, holder);
   });
   return code === null ? { kind: 'delivered', spans } : { kind: 'gap', code, spans };
 }
@@ -142,26 +163,6 @@ const EVENT_CELLS = `ev.id, ev.run_id as "runId", ev.kind, ev.position::float8 a
                 and prev.position < ev.position
               order by prev.position desc limit 1) as "previousMs",
             ev.detail ->> 'cause' as cause`;
-
-/**
- * The cursor as one read saw it: its place `(tx, id)`, both null before the
- * first advance, and its row's version (`xmin`), null before the row exists.
- * Every write to the row gives it a new version.
- */
-export interface Cursor {
-  readonly tx: string | null;
-  readonly id: string | null;
-  readonly version: string | null;
-}
-
-async function cursorOf(tx: TenantQuery): Promise<Cursor> {
-  const [row] = await tx.query<Cursor>(
-    `select after_tx::text as tx, after_id as id, xmin::text as version
-       from public.trace_export_cursors where business_id = $1`,
-    [tx.businessId],
-  );
-  return row ?? { tx: null, id: null, version: null };
-}
 
 /**
  * The batch after `from`, the cursor this export read: its gap, if it has one,
@@ -257,22 +258,26 @@ async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> 
 }
 
 /**
- * The advance lands only on the cursor version its batch was read under;
- * otherwise it changes nothing and the next read starts wherever the row now
- * is. Two exports that read the same batch: the slower never moves the
- * cursor back. Retention's step back (`sendAgain` in `trace-retention.ts`): an
- * export that read before it, and may have delivered before the delete, never
- * moves the cursor past the events the step sends again. The row lock orders
- * them; the version under it decides.
+ * The advance lands only while `holder` holds the lease, on the version it
+ * last wrote; otherwise it changes nothing and the next read starts wherever
+ * the row now is. Retention's step back (`sendAgain` in `trace-retention.ts`)
+ * gives the row a new version: an export that read before it, and may have
+ * delivered before the delete, never moves the cursor past the events the
+ * step sends again. The row lock orders them; the version under it decides.
  */
-async function advance(tx: TenantQuery, last: Row, version: string | null): Promise<void> {
+async function advance(
+  tx: TenantQuery,
+  last: Row,
+  holder: string,
+  version: string | null,
+): Promise<void> {
   await tx.query(
-    `insert into public.trace_export_cursors (business_id, after_tx, after_id)
-     select $1, tx, id from public.run_events where business_id = $1 and id = $2
-     on conflict (business_id) do update
-       set after_tx = excluded.after_tx, after_id = excluded.after_id, updated_at = now()
-       where trace_export_cursors.xmin = $3::xid`,
-    [tx.businessId, last.id, version],
+    `update public.trace_export_cursors c
+        set after_tx = ev.tx, after_id = ev.id, updated_at = now()
+       from public.run_events ev
+      where c.business_id = $1 and ev.business_id = $1 and ev.id = $2
+        and c.lease_holder = $3 and c.xmin = $4::xid`,
+    [tx.businessId, last.id, holder, version],
   );
 }
 
