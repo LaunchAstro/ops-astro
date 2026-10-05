@@ -821,7 +821,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
   // upkeep identity runs it. The ending's commit time (20261004181806) is a
   // trigger on the subject-wide endings that only moves a new row's time later.
-  // The reset token lookup (20261005030427, C40B) is the reset's one read
+  // The reset token lookup (20261005061303, C40B) is the reset's one read
   // across businesses, made with no business: two ids for a hash exactly one business holds,
   // nulls otherwise, and only the application group runs it. The pickup path (SL11-30,
   // 20261004040200) is the one way a lease is written, in the caller's own business

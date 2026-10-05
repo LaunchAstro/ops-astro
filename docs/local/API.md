@@ -2883,7 +2883,7 @@ password with a reset link's one-time token (C40, ORCH77-C40B,
 businesses and the broker; `main()` does not mount it yet). No provider
 session is read, trusted, opened or answered: the token is the authority, and
 no cookie or bearer is read or set. A token is 32 random bytes, base64url,
-kept only as its SHA-256 in `password_reset_tokens` (20261005030427), for one
+kept only as its SHA-256 in `password_reset_tokens` (20261005061303), for one
 login of one business, good for 30 minutes and spent once. The reset asks
 for one is C40 P2. The token is found by `password_reset_token_find`, a
 narrow security definer function the application group alone runs (the
@@ -2901,7 +2901,7 @@ row lock, the token is read again at that moment: spent or past its life is
 401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403
 `RESET_NEEDS_SUPPORT` with nothing spent. Otherwise every live token of the
 login is spent and the reset's window opens (`ops.subject_resets`,
-20261005030427): every session of the login, in every business, is ended up to
+20261005061303): every session of the login, in every business, is ended up to
 the moment the window settles, and until then up to five minutes on. The
 password is set at the provider through custody under the catalogued
 `auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
