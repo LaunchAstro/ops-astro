@@ -65,12 +65,7 @@ it.skipIf(noDatabase)(
         sent[who] += 1;
         return await t.target.deliver(body);
       };
-    const a = exportOnce(
-      pausedAfter(s.db.app, 2, pausedA),
-      s.business,
-      TRACE_KEY,
-      counting('a'),
-    );
+    const a = exportOnce(pausedAfter(s.db.app, 2, pausedA), s.business, TRACE_KEY, counting('a'));
     let y: ReturnType<typeof exportOnce> | undefined;
     try {
       await pausedA.reached;
@@ -79,9 +74,9 @@ it.skipIf(noDatabase)(
       await pausedY.reached;
       expect(sent, 'Y sent its first two bodies; A sent nothing yet').toEqual({ a: 0, y: 2 });
       await ageLease(s);
-      expect(await exportOnce(zConnection, s.business, TRACE_KEY, t.target.deliver)).toMatchObject(
-        { kind: 'delivered' },
-      );
+      expect(await exportOnce(zConnection, s.business, TRACE_KEY, t.target.deliver)).toMatchObject({
+        kind: 'delivered',
+      });
       await land();
       expect(t.target.stored.has(traceR), 'the queued delete took the whole trace').toBe(false);
       pausedA.release();

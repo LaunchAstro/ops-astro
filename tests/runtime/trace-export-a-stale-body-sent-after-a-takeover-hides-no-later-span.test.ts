@@ -82,10 +82,9 @@ it.skipIf(noDatabase)(
     const fresh = (await eventIds(runId)).filter((id) => !before.has(id));
     expect(fresh).toHaveLength(152);
     expect(sentByA, 'A sent its stale first body').toHaveLength(1);
-    expect(
-      fresh.filter(held),
-      'the stale body restored E1..E100 only',
-    ).toEqual(fresh.slice(0, 100));
+    expect(fresh.filter(held), 'the stale body restored E1..E100 only').toEqual(
+      fresh.slice(0, 100),
+    );
 
     for (let round = 0; round < 3; round += 1) {
       // eslint-disable-next-line no-await-in-loop -- retention, then export, in turn
