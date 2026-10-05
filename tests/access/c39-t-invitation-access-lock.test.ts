@@ -12,8 +12,12 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
-import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { lockAccess, revokeGrant } from '../../packages/core-records/src/index.ts';
+import { advisoryLock, connect } from '../../packages/core-records/src/tenancy/database.ts';
+import {
+  lockAccess,
+  revokeGrant,
+  type TenantQuery,
+} from '../../packages/core-records/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { addressFor, c, codeOf, invite, noDatabase, useInvitationWorld, w } from './c39-t-world.ts';
 
@@ -107,6 +111,63 @@ async function act(
   } as never);
 }
 
+/**
+ * Lock order, seen rather than raced: `hold` taken on its own connection,
+ * `first` started and seen waiting on it, then `second`, each on its own
+ * connection as Avery Admin. Once both wait: how many wait on the holder
+ * directly. Then both answers, after the holder lets go.
+ */
+async function lockOrder(
+  hold: (tx: TenantQuery) => Promise<void>,
+  first: Readonly<Record<string, unknown>>,
+  second: Readonly<Record<string, unknown>>,
+): Promise<{ onHolder: number; answers: CommandResult[] }> {
+  const pools = [connect(w.db.appUrl, { log: w.db.log }), connect(w.db.appUrl, { log: w.db.log })];
+  const holder = connect(w.db.appUrl);
+  const held = latch();
+  const release = latch();
+  let pid = 0;
+  const holding = holder.withBusiness(w.alpha, async (tx) => {
+    const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
+    pid = row?.pid ?? 0;
+    await hold(tx);
+    held.release();
+    await release.promise;
+  });
+  const onHolderSql =
+    'select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))';
+  const waitingSql = `select count(*)::int as n from pg_stat_activity
+     where datname = current_database() and pid <> $1 and cardinality(pg_blocking_pids(pid)) > 0`;
+  const countOn = async (sql: string): Promise<number> => {
+    const [row] = await w.db.admin.execute<{ n: number }>(sql, [pid]);
+    return row?.n ?? -1;
+  };
+  const until = async (sql: string, n: number): Promise<void> => {
+    const by = Date.now() + 5000;
+    while ((await countOn(sql)) !== n) {
+      if (Date.now() >= by) throw new Error('Timed out waiting for the database schedule');
+      await delay(20);
+    }
+  };
+  const acts: Promise<CommandResult>[] = [];
+  try {
+    await held.promise;
+    acts.push(act(pools[0]!, first));
+    await until(onHolderSql, 1);
+    acts.push(act(pools[1]!, second));
+    await until(waitingSql, 2);
+    const onHolder = await countOn(onHolderSql);
+    release.release();
+    return { onHolder, answers: await Promise.all(acts) };
+  } finally {
+    release.release();
+    await holding;
+    await Promise.allSettled(acts);
+    await holder.close();
+    await Promise.all(pools.map(async (pool) => await pool.close()));
+  }
+}
+
 async function countOf(sql: string, value: string): Promise<number> {
   const [row] = await w.db.admin.execute<{ n: number }>(sql, [value]);
   return row?.n ?? -1;
@@ -164,7 +225,7 @@ describe.skipIf(noDatabase)('C39-T invitation acts wait for a revocation in flig
     expect(row?.state).toBe('pending');
   });
 
-  it("a create locks its address's pending invitations before the access lock, as a revoke does", async () => {
+  it("a create locks its address's pending invitations first, as a revoke does", async () => {
     // SEC-P3B-5: a create took the access lock before a lapsed invitation's
     // row, a revoke takes the row first; the two could deadlock.
     const address = addressFor('lapsed');
@@ -173,59 +234,38 @@ describe.skipIf(noDatabase)('C39-T invitation acts wait for a revocation in flig
       "update public.invitations set expires_at = clock_timestamp() - interval '1 second' where id = $1",
       [id],
     );
-    const creating = connect(w.db.appUrl, { log: w.db.log });
-    const revoking = connect(w.db.appUrl, { log: w.db.log });
-    const holder = connect(w.db.appUrl);
-    const held = latch();
-    const release = latch();
-    let pid = 0;
-    const holding = holder.withBusiness(w.alpha, async (tx) => {
-      const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
-      pid = row?.pid ?? 0;
-      await lockAccess(tx);
-      held.release();
-      await release.promise;
-    });
-    const waiting = async (sql: string, n: number): Promise<void> => {
-      const until = Date.now() + 5000;
-      for (;;) {
-        const [row] = await w.db.admin.execute<{ n: number }>(sql, [pid]);
-        if (row?.n === n) return;
-        if (Date.now() >= until) throw new Error('Timed out waiting for the database schedule');
-        await delay(20);
-      }
-    };
-    const onHolder =
-      'select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))';
-    const blocked =
-      'select count(*)::int as n from pg_stat_activity where cardinality(pg_blocking_pids(pid)) > 0 and $1 <> pid';
-    const acts: Promise<CommandResult>[] = [];
-    try {
-      await held.promise;
-      const created = act(creating, {
-        command: 'invitation.create',
-        name: 'Ivy Again',
-        email: address,
-        role: 'member',
-      });
-      acts.push(created);
-      await waiting(onHolder, 1);
-      const revoked = act(revoking, { command: 'invitation.revoke', invitationId: id });
-      acts.push(revoked);
-      await waiting(blocked, 2);
-      // The revoke waits on the create's row lock, not beside it on the access lock.
-      const [direct] = await w.db.admin.execute<{ n: number }>(onHolder, [pid]);
-      expect(direct?.n).toBe(1);
-      release.release();
-      expect(codeOf(await created)).toBe('applied');
-      expect(codeOf(await revoked)).toBe('TRANSITION_NOT_PERMITTED');
-    } finally {
-      release.release();
-      await holding;
-      await Promise.allSettled(acts);
-      await holder.close();
-      await revoking.close();
-      await creating.close();
-    }
+    const { onHolder, answers } = await lockOrder(
+      async (tx) => {
+        await lockAccess(tx);
+      },
+      { command: 'invitation.create', name: 'Ivy Again', email: address, role: 'member' },
+      { command: 'invitation.revoke', invitationId: id },
+    );
+    // The revoke waits on the create's row lock, not beside it on the access lock.
+    expect(onHolder).toBe(1);
+    expect(answers.map((answer) => codeOf(answer))).toStrictEqual([
+      'applied',
+      'TRANSITION_NOT_PERMITTED',
+    ]);
+  });
+
+  it("a create locks its address's pending invitations before the address limiter, as a resend does", async () => {
+    // SEC-P3B-6: a create took the address limiter, then the pending rows; a
+    // resend takes its row, then the same limiter; the two could deadlock.
+    const address = addressFor('pending');
+    const id = await invite(c.admin, address);
+    const { onHolder, answers } = await lockOrder(
+      async (tx) => {
+        await advisoryLock(tx, `limit:${w.alpha}:invitation:address:${address}`);
+      },
+      { command: 'invitation.create', name: 'Ivy Again', email: address, role: 'member' },
+      { command: 'invitation.resend', invitationId: id },
+    );
+    // The resend waits on the create's row lock, not beside it on the limiter.
+    expect(onHolder).toBe(1);
+    expect(answers.map((answer) => codeOf(answer))).toStrictEqual([
+      'UNIQUE_VALUE_TAKEN',
+      'applied',
+    ]);
   });
 });
