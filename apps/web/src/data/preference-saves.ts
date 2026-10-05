@@ -2,17 +2,20 @@
 //
 // The order of one person's preference saves (MP-2-11's one store). Each save
 // leaves only once the client's last one has answered, so the server stores
-// them in the order the person made them and the last choice is the one kept. A save is tagged (`data/owned.ts`), and a read's
-// answer asks `savedSince` which keys a save touched while the read could not
-// see it (sent after the read left, or still unanswered when it left), so its
-// older answer does not undo them. The same value saved again after an answer
-// that never arrived carries the same operation id (`Intents`).
+// one client's saves in the order the person made them and the last choice is
+// the one kept. A save is tagged (`data/owned.ts`), and a read's answer asks
+// `savedSince` which keys a save touched while the read could not see it (sent
+// after the read left, or still unanswered when it left), so its older answer
+// does not undo them. The same value saved again after an answer that never
+// arrived carries the same operation id (`Intents`).
 //
 // The ledger of what was saved is the owner's, not the client's: a step-up
 // gives the same person a new client, and a save still unanswered through the
 // old one is still theirs. A sign-out or a switch of the tab's owner drops
 // every ledger. Only the order is the client's, so a save that never answers
-// holds back that client's later saves, never a new sign-in's.
+// holds back that client's later saves, never a new sign-in's. The price, as
+// before this ledger: a save the old client sent can still land after the new
+// client's save of the same key, and the server then keeps the older choice.
 
 import {
   isUnavailable,
