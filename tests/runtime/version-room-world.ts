@@ -54,6 +54,28 @@ export async function unknownCall(
   );
 }
 
+/** A model call the broker sent on the hold under its lease, never answered; its id. */
+export async function dispatchedCall(
+  s: Schedules,
+  reservationId: unknown,
+  reserved: number,
+): Promise<string> {
+  const id = randomUUID();
+  await s.db.admin.execute(
+    `insert into public.model_calls
+       (business_id, id, run_id, step_id, lease_id, version_id, reservation_id, operation_key,
+        route_key, route_reach, credential_kind, state, reserved_minor, started_at)
+     select r.business_id, $2, r.run_id, a.step_id, r.lease_id, r.version_id, r.id,
+            'written_off_dispatched', 'replay', 'local', 'replay', 'dispatched', $3,
+            clock_timestamp()
+       from public.reservations r
+       join public.attempts a on a.business_id = r.business_id and a.reservation_id = r.id
+      where r.id = $1`,
+    [reservationId, id, reserved],
+  );
+  return id;
+}
+
 /** A model call the broker reserved on the hold under its lease and never sent; its id. */
 export async function unsentCall(
   s: Schedules,
