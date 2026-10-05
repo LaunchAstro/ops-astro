@@ -12,7 +12,10 @@
 // task, a map or a map's ticket, which no client view shows (WF-1). Every
 // join is on the business as well as the id, beside the tenancy policy.
 //
-// A grant is a delegation (0008). Its client is its purpose task's client
+// A grant is a delegation (0008). It is live while it stands as the
+// authority asks it to (`DELEGATION_STANDS`): a child whose parent ended is
+// taken back or ran out with its parent, though its own row stays open (AW-11).
+// Its client is its purpose task's client
 // (`uuid_7`, the slot a party-scoped grant resolves against), named from
 // `clients`. Its redemptions are the applied calls its agent made on that
 // task while it held the delegation, less the pickup that minted it: the
@@ -21,6 +24,7 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Scope } from '../authority/grants.ts';
+import { DELEGATION_STANDS } from '../authority/delegations.ts';
 import { wayfinderCondition } from '../tasks/wayfinder.ts';
 
 export type SignalGrantState = 'live' | 'ran_out' | 'taken_back';
@@ -108,19 +112,28 @@ interface GrantDbRow {
 
 const GRANTS_SQL = `with visible as (
      select d.business_id, d.id, d.agent_actor_id, d.purpose, d.collections, d.actions,
-            d.purpose_scope_id, d.granted_at, d.expires_at, d.revoked_at, d.settled_at,
-            d.revocation_cause, t.uuid_7 as client_id,
+            d.purpose_scope_id, d.granted_at, d.expires_at, t.uuid_7 as client_id,
+            case when o.ended then coalesce(d.revoked_at, d.settled_at)
+                 else coalesce(p.revoked_at, p.settled_at) end as ended_at,
+            case when o.ended then d.revocation_cause else p.revocation_cause end
+              as revocation_cause,
             case when d.revoked_at is not null then 'taken_back'
-                 when d.settled_at is not null or d.expires_at <= now() then 'ran_out'
-                 else 'live' end as state
+                 when o.ended then 'ran_out'
+                 when ${DELEGATION_STANDS} then 'live'
+                 when p.revoked_at is not null then 'taken_back'
+                 else 'ran_out' end as state
        from public.delegations d
+       cross join lateral (select d.revoked_at is not null or d.settled_at is not null
+                                  or d.expires_at <= now() as ended) o
+       left join public.delegations p
+         on p.business_id = d.business_id and p.id = d.parent_delegation_id
        left join public.records t on t.business_id = d.business_id and t.id = d.purpose_scope_id
       where d.business_id = (select public.app_business_id())
         and ($1::boolean or (t.uuid_7 = any($2::uuid[]) and t.deleted_at is null
                              and not ${wayfinderCondition('t')})))
    select v.id, v.agent_actor_id, v.purpose, v.collections, v.actions, v.client_id,
           k.name as client_label, v.granted_at, v.expires_at,
-          coalesce(v.revoked_at, v.settled_at) as ended_at, v.revocation_cause, v.state,
+          v.ended_at, v.revocation_cause, v.state,
           (select count(*) from public.audit_events a
             where a.business_id = v.business_id
               and a.actor_id = v.agent_actor_id
@@ -128,8 +141,7 @@ const GRANTS_SQL = `with visible as (
               and a.outcome = 'applied'
               and a.command <> 'task.pickup'
               and a.occurred_at >= v.granted_at
-              and a.occurred_at <= least(v.expires_at,
-                                         coalesce(v.revoked_at, v.settled_at, 'infinity'))
+              and a.occurred_at <= least(v.expires_at, coalesce(v.ended_at, 'infinity'))
           ) as redemptions
      from visible v
      left join public.clients k on k.business_id = v.business_id and k.id = v.client_id

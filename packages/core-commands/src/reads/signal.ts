@@ -38,10 +38,7 @@ const grantView = (row: SignalGrantRow): GrantView => ({
   purpose: row.purpose,
   collections: row.collections,
   access: row.actions.every((action) => action === 'read') ? 'read' : 'exec',
-  client:
-    row.clientId === null || row.clientLabel === null
-      ? null
-      : { id: row.clientId, label: row.clientLabel },
+  client: row.clientId === null ? null : { id: row.clientId, label: row.clientLabel },
   grantedAt: row.grantedAt.toISOString(),
   expiresAt: row.expiresAt.toISOString(),
   endedAt: row.endedAt?.toISOString() ?? null,

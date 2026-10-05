@@ -9,7 +9,9 @@
  * `redemptions` counts its agent's applied calls on its task inside its
  * window, less the pickup; nothing records what each reached. `client` is
  * null for a fleet grant; its label is the client's name as `clients` holds
- * it, not the tripwire and step columns' closed grammar.
+ * it, not the tripwire and step columns' closed grammar, and null when no
+ * `clients` row answers its id (`records.uuid_7` has no foreign key). A child
+ * grant whose parent ended is not live, though its own row is open.
  */
 export interface GrantView {
   readonly id: string;
@@ -17,7 +19,7 @@ export interface GrantView {
   readonly purpose: string;
   readonly collections: readonly string[];
   readonly access: 'read' | 'exec';
-  readonly client: { readonly id: string; readonly label: string } | null;
+  readonly client: { readonly id: string; readonly label: string | null } | null;
   readonly grantedAt: string;
   readonly expiresAt: string;
   readonly endedAt: string | null;
