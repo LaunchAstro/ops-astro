@@ -159,3 +159,50 @@ it.each([
 ])('a place whose rank is %s never reads live', (_, where) => {
   expect(showsAt('Contact', where, 'Contact', 'Contcat')).toBe(false);
 });
+
+// A build reads each of these as a fence too (or as frontmatter of another kind), so any line
+// that could open or close frontmatter without being a plain `---` leaves the page with no place.
+it.each([
+  ['a no-break space', "---\nconst old = 'Contcat';\n\u00A0---\n"],
+  ['a form feed', "\f---\nconst old = 'Contcat';\n\f---\n"],
+  ['a zero-width space', "\u200B---\nconst old = 'Contcat';\n\u200B---\n"],
+  ['a comment after the fence', "--- // start\nconst old = 'Contcat';\n--- // end\n"],
+  ['carriage returns alone', "---\rconst old = 'Contcat';\r---\r"],
+  [
+    'one odd closer after a fence in code',
+    "---\nconst md = `\n---\n`;\nconst old = 'Contcat';\n--- // end\n",
+  ],
+  ['TOML fences', '+++\ntitle = "Contcat"\n+++\n\n'],
+])('a fence written with %s leaves the page with no place', (_, frontmatter) => {
+  const before = `${frontmatter}<h1>Contcat</h1>\n`;
+  const after = before.replace('<h1>Contcat', '<h1>Contact');
+  expect(
+    readsLive(before, after, 'Contcat', 'Contact', '<h1>Contcat</h1><footer>Contact</footer>'),
+  ).toBe(false);
+  const where = occurrenceOf(
+    { files: [{ path: target.path, before, after }] },
+    { path: target.path, word: 'Contcat', replacement: 'Contact' },
+  );
+  expect(where).toBeUndefined();
+});
+
+it('a long run of spaces in another line is read in linear time', () => {
+  const run = (count: number) => {
+    const before = `<h1>Contcat</h1>\n<p>${' '.repeat(count)}x</p>\n`;
+    const started = performance.now();
+    occurrenceOf(
+      { files: [{ path: target.path, before, after: before.replace('Contcat', 'Contact') }] },
+      { path: target.path, word: 'Contcat', replacement: 'Contact' },
+    );
+    return performance.now() - started;
+  };
+  run(1_000);
+  expect(run(160_000)).toBeLessThan(5_000);
+});
+
+it('a place read back without its words never reads live', () => {
+  const stored: unknown = JSON.parse('{"left":"","right":"","index":0}');
+  expect(showsAt('Home Contact Contcat Call us.', stored as never, 'Contact', 'Contcat')).toBe(
+    false,
+  );
+});
