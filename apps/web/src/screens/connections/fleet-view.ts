@@ -61,6 +61,11 @@ export function showMore(view: FleetView): FleetView {
   return { ...view, shown: view.shown + PAGE };
 }
 
+/** Open these rows, leaving any already open as they are. */
+export function withOpen(view: FleetView, ids: readonly string[]): FleetView {
+  return { ...view, open: new Set([...view.open, ...ids]) };
+}
+
 export function toggleOpen(view: FleetView, id: string): FleetView {
   const open = new Set(view.open);
   if (open.has(id)) open.delete(id);
@@ -71,12 +76,11 @@ export function toggleOpen(view: FleetView, id: string): FleetView {
 const DAY = 86_400_000;
 
 /**
- * How far behind a connection's data is, and its tone. The tone is read
- * against the connection's own cadence: within one cadence it is on time
- * (`idle` for a source that syncs less often than daily, since it is not
- * expected to have moved, `ok` otherwise); up to four cadences late it is
- * `warn`; beyond that, or never synced, `bad`. For a daily source that is the
- * mockup's T-1 ok, T-4 warn, worse bad.
+ * How far behind a connection's data is, and its tone, counted in whole
+ * cadences behind (AG-C15: T-1 ok, T-4 warn, worse bad, for a daily source).
+ * Up to one cadence behind it is on time (`idle` for a source that syncs less
+ * often than daily, since it is not expected to have moved, `ok` otherwise);
+ * up to four it is `warn`; beyond that, or never synced, `bad`.
  */
 export function freshnessOf(
   row: { readonly lastSyncedAt: string | null; readonly cadenceMinutes: number },
@@ -86,14 +90,19 @@ export function freshnessOf(
   const age = Math.max(0, now - Date.parse(row.lastSyncedAt));
   const cadence = row.cadenceMinutes * 60_000;
   const daysBehind = Math.floor(age / DAY);
-  if (age <= cadence) return { daysBehind, tone: cadence > DAY ? 'idle' : 'ok' };
-  if (age <= 4 * cadence) return { daysBehind, tone: 'warn' };
+  const behind = Math.floor(age / cadence);
+  if (behind <= 1) return { daysBehind, tone: cadence > DAY ? 'idle' : 'ok' };
+  if (behind <= 4) return { daysBehind, tone: 'warn' };
   return { daysBehind, tone: 'bad' };
 }
 
-/** A source that has stopped: broken, or its data out beyond four cadences. */
+/**
+ * A source that is behind, failed or never synced (LIVE-SYNC.md: where the
+ * fallback Sync shows): not active, or its data warn or bad.
+ */
 export function isStuck(row: ConnectionView, now: number): boolean {
-  return row.status === 'broken' || freshnessOf(row, now).tone === 'bad';
+  const { tone } = freshnessOf(row, now);
+  return row.status !== 'active' || tone === 'warn' || tone === 'bad';
 }
 
 const STATUS_RANK: Readonly<Record<ConnectionView['status'], number>> = {

@@ -8,6 +8,12 @@
 // (`docs/design-system/research/LIVE-SYNC.md`): nothing on it acts. There is
 // no "Run all syncs now" (removed from the mockup's AG-C3).
 //
+// Section 001 draws three of the mockup's five tiles (AG-C9), the three the
+// fleet read derives. Open alerts waits on MP-14-8's tripwires and Clients
+// fully wired has no derivation yet (the mockup types it, D-A7); the verdict
+// strip (AG-C8, quota burn and credential runway) and the footnote naming
+// "the five above" (AG-C10) come with them.
+//
 // Sections 003 to 005 (credentials and quota, data quality, band health) draw
 // on data the phase 6 sources bring; until MP-14-7b they say so. The sections
 // after them (signal, skill costing, the per-client region) are later pieces.
@@ -17,7 +23,7 @@
 // drops an answer that belongs to an earlier grant.
 
 import { useRef, useState, type ReactElement } from 'react';
-import { Banner, InDevelopment, Kpi, SectionHead } from '@launchastro/ui';
+import { Banner, Empty, InDevelopment, Kpi, SectionHead } from '@launchastro/ui';
 import type {
   ConnectionFleetResult,
   ConnectionView,
@@ -28,12 +34,7 @@ import { useCommand } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { FleetTable } from './connections/fleet-table.tsx';
 import type { RepairControl } from './connections/fleet-row.tsx';
-import {
-  initialFleetView,
-  toggleOpen,
-  withFacet,
-  type FleetView,
-} from './connections/fleet-view.ts';
+import { initialFleetView, withFacet, withOpen, type FleetView } from './connections/fleet-view.ts';
 
 const FAILURE_WORDS: Readonly<Record<string, string>> = {
   auth_expired: 'its authorisation has expired',
@@ -169,7 +170,12 @@ function Shown(props: {
   // Fix now opens the repair flow for the sources the banner names: the
   // broken facet, with each of them open at its Repair button.
   const fix = (): void => {
-    setView(broken.reduce((open, row) => toggleOpen(open, row.id), withFacet(view, 'broken')));
+    setView(
+      withOpen(
+        withFacet(view, 'broken'),
+        broken.map((row) => row.id),
+      ),
+    );
   };
   return (
     <>
@@ -211,6 +217,7 @@ export function ConnectionsScreen(props: {
   const { state, reload } = useRead<ConnectionFleetResult>({
     grantKey: props.grantKey,
     run: () => client.read<ConnectionFleetResult>('connection.fleet', {}),
+    isEmpty: (value) => value.connections.length === 0,
     deps: [],
   });
   const repair = useRepair(client, reload);
@@ -223,7 +230,18 @@ export function ConnectionsScreen(props: {
           {lastPass(held.connections)}
         </p>
       )}
-      <RecordState state={state} subject="fleet" onRetry={reload} keep>
+      <RecordState
+        state={state}
+        subject="fleet"
+        onRetry={reload}
+        keep
+        empty={
+          <Empty
+            title="No connectors yet."
+            description="Sources join the fleet as they are connected."
+          />
+        }
+      >
         {(fleet) => <Shown fleet={fleet} now={now} repair={repair} />}
       </RecordState>
       <NotConnected />

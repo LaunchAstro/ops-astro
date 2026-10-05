@@ -147,6 +147,31 @@ export function Detail(props: {
   );
 }
 
+/** The row's disclosure as a button, so a keyboard reaches what a click opens. */
+function Disclosure(props: {
+  readonly id: string;
+  readonly label: string;
+  readonly open: boolean;
+  readonly toggle: () => void;
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      className="btn btn--ghost btn--sm"
+      data-connection-toggle={props.id}
+      aria-expanded={props.open}
+      aria-label={`${props.open ? 'Hide' : 'Show'} ${props.label}'s clients`}
+      onClick={(event) => {
+        // The row's own click toggles too; this press counts once.
+        event.stopPropagation();
+        props.toggle();
+      }}
+    >
+      ›
+    </button>
+  );
+}
+
 export function Row(props: {
   readonly row: ConnectionView;
   readonly open: boolean;
@@ -179,7 +204,9 @@ export function Row(props: {
       <td className="t-2" title="Quota burn arrives with the phase 6 sources (MP-14-7b).">
         not connected
       </td>
-      <td aria-hidden="true">›</td>
+      <td>
+        <Disclosure label={row.label} id={row.id} open={props.open} toggle={props.toggle} />
+      </td>
     </tr>
   );
 }
