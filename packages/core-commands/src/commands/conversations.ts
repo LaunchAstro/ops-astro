@@ -223,7 +223,7 @@ export async function messageConversation(
     [tx.businessId, messageId, fields.conversationId, context.session.actorId, fields.body],
   );
   await tx.query(
-    `update conversations set last_activity_at = greatest(now(), last_activity_at)
+    `update conversations set last_activity_at = greatest(clock_timestamp(), last_activity_at)
       where business_id = $1 and id = $2`,
     [tx.businessId, fields.conversationId],
   );

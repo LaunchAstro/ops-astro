@@ -208,9 +208,11 @@ export async function publishLegalVersion(
   if (row.approved_at === null) return 'not-approved';
   const register = await registerRefusal(tx, row);
   if (register !== undefined) return register;
+  // Stamped when the publish runs, not when its transaction began: the last
+  // version published is the current one, whichever transaction started first (#444).
   await tx.query(
     `update public.legal_document_versions
-        set published_at = now(), published_by_actor = $3
+        set published_at = clock_timestamp(), published_by_actor = $3
       where business_id = $1 and id = $2`,
     [tx.businessId, versionId, actorId],
   );

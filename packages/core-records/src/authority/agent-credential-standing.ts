@@ -33,7 +33,8 @@ export interface CredentialStanding {
 export type CredentialNotLive = 'not-live';
 
 /**
- * The credential a secret is, in this business, if it is live at `now`: not
+ * The credential a secret is, in this business, if it is live at `now`, or at
+ * the database's instant once its row is held when that is later: not
  * revoked, not past its expiry, its agent actor active and its issuer still
  * a member. Found by its digest, so the secret itself is never compared or
  * kept. The row is locked `for share` for the rest of the call, so a
@@ -46,7 +47,13 @@ export async function resolveAgentCredential(
   now: Date,
 ): Promise<CredentialStanding | CredentialNotLive> {
   const row = await standingRow(tx, secret, 'for share of c');
-  if (row === undefined || !liveAt(row, now)) return 'not-live';
+  if (row === undefined) return 'not-live';
+  // Judged once the row is held, on the database's clock read after the wait
+  // as well as the caller's instant: a credential that expired while this
+  // waited for the row is not served (#444).
+  const [clock] = await tx.query<{ readonly at: Date }>('select clock_timestamp() as at');
+  const at = clock === undefined || clock.at < now ? now : clock.at;
+  if (!liveAt(row, at)) return 'not-live';
   return {
     credentialId: row.id,
     agentActorId: row.agent_actor_id,
