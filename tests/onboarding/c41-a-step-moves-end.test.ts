@@ -13,7 +13,7 @@ const serverUrl = databaseUrlFromEnvironment();
 
 // eslint-disable-next-line max-lines-per-function -- one world, the two ends that share it
 describe.skipIf(serverUrl === undefined)('C41-A step moves at stop and restore', () => {
-  const { the, as, onboard, done, revisionOf, openOn } = useMoveWorld('c41aend');
+  const { the, as, onboard, done, revisionOf, assign, openOn, race } = useMoveWorld('c41aend');
 
   /** Every assignment item on these tasks: recipient and state, read past row security. */
   const itemsOn = async (tasks: readonly string[]): Promise<readonly unknown[]> =>
@@ -31,6 +31,9 @@ describe.skipIf(serverUrl === undefined)('C41-A step moves at stop and restore',
     await done(steps, 'welcome-email');
     await done(steps, 'kickoff-call');
     const parked = [on('access-grant'), on('site-setup')];
+    // A blocked step's task assigned meanwhile: an ordinary assignment, no step's move.
+    const assigned = await assign(the.admin, on('access-check'), the.assignee.personId);
+    expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
     expect(await Promise.all(parked.map(async (task) => await openOn(task)))).toStrictEqual([
       [the.admin.personId],
       [the.admin.personId],
@@ -49,6 +52,7 @@ describe.skipIf(serverUrl === undefined)('C41-A step moves at stop and restore',
         .toSorted()
         .map((task) => ({ task, recipient: the.admin.personId, work_state: 'withdrawn' })),
     );
+    expect(await openOn(on('access-check'))).toStrictEqual([the.assignee.personId]);
     const late = await as(the.admin, 'onboarding.step_result', {
       recordId: on('access-grant'),
       outcome: 'done',
@@ -76,6 +80,28 @@ describe.skipIf(serverUrl === undefined)('C41-A step moves at stop and restore',
       batchId: detail(trashed)['batchId'],
     });
     expect(restored.status, JSON.stringify(restored.body)).toBe(200);
+    expect(await itemsOn([kickoff])).toEqual([
+      { task: kickoff, recipient: the.admin.personId, work_state: 'open' },
+    ]);
+  });
+
+  it('C41-A races: a restore racing the result that opens its task’s step leaves the step parked with its owner', async () => {
+    const steps = await onboard('Made-up Client Restore Race');
+    const kickoff = String(steps.get('kickoff-call'));
+    const trashed = await as(the.admin, 'task.trash', {
+      recordId: kickoff,
+      expectedRevision: await revisionOf(kickoff),
+    });
+    expect(trashed.status, JSON.stringify(trashed.body)).toBe(200);
+    // The restore holds the task's row, uncommitted, while the result opens its step.
+    const answers = await race(
+      { name: 'task.restore', body: { batchId: detail(trashed)['batchId'] } },
+      {
+        name: 'onboarding.step_result',
+        body: { recordId: steps.get('welcome-email'), outcome: 'done', result: 'opened' },
+      },
+    );
+    expect(answers.map((answer) => answer.status)).toStrictEqual([200, 200]);
     expect(await itemsOn([kickoff])).toEqual([
       { task: kickoff, recipient: the.admin.personId, work_state: 'open' },
     ]);
