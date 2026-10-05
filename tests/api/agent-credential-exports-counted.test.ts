@@ -104,7 +104,7 @@ it('invitation list exports contribute their record count to the security detect
   );
   expect(listed.code).toBe('ok');
   const invitations = listed.body['invitations'] as readonly { invitationId: string }[];
-  expect(invitations.map((one) => one.invitationId)).toContain(created.body['invitationId']);
+  expect(invitations.map((one) => one.invitationId)).toContain(created.body['recordId']);
   expect(signals.filter((signal) => signal.kind === 'export')).toEqual([
     expect.objectContaining({ kind: 'export', business: 'alpha', items: invitations.length }),
   ]);
