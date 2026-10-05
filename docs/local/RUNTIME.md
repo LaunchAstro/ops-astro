@@ -1460,7 +1460,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:855-866`). With neither setting present, the
+  rewrites it (`local-seed.mjs:859-870`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1835,7 +1835,14 @@ or delete.
   is the core's one rule (`four-eyes.ts`), the one T2e's top-up and T3c's
   write-off use: the band is `four_eyes_threshold` in the envelope currency's
   major unit, read `for share` under the locks, null is off and no stored row
-  is the shipped 500. Above it the first approval is recorded and applies
+  is the shipped 500; the settings install lock (`lockSettingsInstall`,
+  advisory key `<business id>:business_settings`) is held shared first, so a
+  first row cannot commit under a decision that read none. Both are held
+  before the locked instant is read (`lockedInstant(tx, ['four_eyes_threshold'])`
+  in the top-up, the write-off and the budget-stop answer), so a grant that
+  ends while the decision waits on them no longer counts. Postgres floors the
+  band exactly to whole minor units, so a band of 500.005 makes 500.01 need
+  two people. Above it the first approval is recorded and applies
   nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
   threshold, a different amount is `FIELD_VALUE_INVALID`, and a second,
   distinct holder approving the same amount completes it, but only while the
@@ -1995,6 +2002,40 @@ and codes, never a sentence, to a trace target an operator reads.
   ([AUTHORITY.md](AUTHORITY.md#trace-readers-aw-13)). The trace target's own
   logins (the owner, and the second operator after the timed restore
   rehearsal) are the installation's, not the product's.
+
+## The email hook
+
+The provider's delivery and bounce events reach `POST /api/hooks/email`
+(AW-07b, `apps/api/mail-hook.ts`). `main` mounts the route only when
+`EMAIL_HOOK_SECRET` holds a secret in the provider's form (`whsec_` and its
+base64 key); a malformed one stops the server, naming the setting and never
+the value. There is no sign-in on the route: the signature is the authority,
+checked over the raw bytes before the body is parsed
+(`packages/core-connectors/src/email-hook.ts`), within five minutes either side
+of now. A verified event moves only the attempt of the business that sent the
+message (`landEmailEvent`, `core-custody/src/broker-email-hook.ts`):
+`email.delivered` moves an accepted attempt to delivered, and `email.bounced`
+moves an accepted or delivered one to failed, which is final in either arrival
+order (a delivery is the receiving server's acceptance, and a bounce can follow
+it); `sent`, `opened` and `clicked` move
+nothing, and no hook path writes a decision. The hosted function
+(`apps/api/function.ts`) does not mount the hook yet, as it does not wire the
+model broker.
+
+Two parts are Stage 1 only, held for Sol in `stage1/SOL-OWED.md`:
+
+- **The sender check is a mock.** The sending subdomain's setup check (DKIM,
+  SPF, the return-path MX) and the root's DMARC policy are read from the fake
+  source (`email-sender-fake.ts`), and every report from it says `mock: true`.
+  The send refuses `SENDER_NOT_VERIFIED` until the report verified. The real
+  read needs a GET through custody, which is POST-only today; it is its own
+  sensitive piece.
+- **A replay of an event that moved nothing is refused from memory.** A
+  replayed event id that moved an attempt is refused by the database, across
+  processes. One that moved nothing (a `sent`, an `opened`, an event for an
+  attempt already settled) is held only in the process that took it, for
+  twice the timestamp window, so a second process could take it once more.
+  It moves nothing either time, so local and staging accept it.
 
 ## An automation occurrence's run
 
@@ -2177,7 +2218,13 @@ launch of the reviewed output is the only decision an effect waits on.
   and writes nothing), and the dispatch recheck refuses every lease of the
   business with the same code, whatever approved it. The setting's row is held
   `for share` before it is read, so a change in flight is waited for and then
-  seen. The client's own sign-off is MP-11-5's (phase 8); until the portal
+  seen. A missing row locks nothing, so the business's settings install lock
+  (`lockSettingsInstall`, advisory key `<business id>:business_settings`) is
+  held shared first; the install takes it exclusive before adding rows, so a
+  first row cannot commit between the check and the dispatch marker
+  (catalogue #463). Dispatch and the decision hold both before they read the
+  locked instant (`lockedInstant(tx, ['client_sign_off_required'])`), so a
+  lease, delegation or grant that ends during that wait is judged ended. The client's own sign-off is MP-11-5's (phase 8); until the portal
   exists the work stays held, visibly, under that code.
 - **The receipt link.** The worker reads the provider's answer
   (`readProviderAnswer`, `apps/worker/usage.ts`): a status outside 2xx (a

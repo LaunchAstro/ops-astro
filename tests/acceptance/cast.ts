@@ -115,6 +115,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'record',
   // MP-2-11: the four-eyes threshold asks `spend:decide`, a money action.
   'spend',
+  // Custody (C31): `custody:manage` is the owner's and administrators'.
+  'custody',
 ];
 
 /**

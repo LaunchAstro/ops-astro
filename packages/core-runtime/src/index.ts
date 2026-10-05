@@ -237,6 +237,7 @@ export {
 } from './refusals.ts';
 export {
   delegationCredentialKeys,
+  custodySealingKey,
   gateSigningKey,
   readBusinessCapId,
   runtimeKeys,

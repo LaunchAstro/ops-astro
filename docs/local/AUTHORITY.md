@@ -274,7 +274,16 @@ over every declaration. It is off `UNPRODUCED_CODES` (`core-records/src/register
 
 It is also the answer to an agent call that presents no delegation credential,
 which is an agent before any pickup (`authorise`). Such a call reaches
-`task.queue` and `task.pickup` (`BEFORE_PICKUP`) and nothing else. `task.decide`
+`task.queue` and `task.pickup` (`BEFORE_PICKUP`) and nothing else. While the
+agent holds a live delegation, credential presented or not, its `task.queue`
+shows only the work of that task's client (#169, `queue` in
+`core-runtime/src/pickup.ts`): the queue never shows it another client's
+reservation, purpose slug or held amount, and a repeated read is served again
+rather than replayed. The narrowing is the queue's alone: `task.pickup` of a
+reservation the agent already knows is not narrowed. A helper delegation
+(AW-11) narrows its helper's queue to the parent's client while it stands, so
+a parent that names another agent as its helper narrows that agent's queue
+while the child stands (at most until the child's expiry). `task.decide`
 without a credential is `DELEGATION_EXCLUDES_DECISION`, so a decision is still
 named as one. `session.capabilities` is in `AGENT_SURFACE` but not in
 `BEFORE_PICKUP`, so before a pickup it is refused the same way. After a pickup
@@ -296,7 +305,7 @@ answers `DELEGATION_EXCLUDES_OPERATION` without receipt content, and a presented
 credential that is not live stays `DELEGATION_NOT_LIVE` (`replaySettledHandback`,
 reached through `releaseReplay` in `commands/agent-replay.ts`). A capabilities
 replay is authorised as a fresh call and projected again for the credential
-presented now (`replayCapabilities`, same file), so a replay under another
+presented now (`serveAgain`, same file), so a replay under another
 delegation never releases the first delegation's `purposeScope`. A pickup replay
 is the one exception to "no credential, no call"
 ([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).
@@ -306,7 +315,10 @@ is the one exception to "no credential, no call"
 `AGENT_OPERATIONS`), and the matrix's case (i) asserts the saved comment
 identity. The agent may write in the `internal` audience only
 (`AGENT_AUDIENCES`). A `client` comment is `AUDIENCE_NOT_PERMITTED` 422, which
-the same case asserts. Internal-only is Nathan's ruling (OWNER-CARD section 6),
+the same case asserts. An agent credential (API-2) runs the person handlers as
+its agent and is held the same way: internal comments, the agent's update
+fields and the assignee only (`updateTask`, `assignTask` and `commentOnTask`,
+#420). Internal-only is Nathan's ruling (OWNER-CARD section 6),
 and `tests/acceptance/comment-rulings.test.ts` holds it over HTTP.
 
 **`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
@@ -474,11 +486,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:740-766`, run at `:899-907`). It gets a login and an acting identity,
-  and no membership and no business grant (`:158-161`, `:311-313`). The seed
+  user (`:744-770`, run at `:903-911`). It gets a login and an acting identity,
+  and no membership and no business grant (`:162-165`, `:315-317`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:760-789`, `:928-938`).
+  (`:764-793`, `:932-942`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -766,8 +778,12 @@ names the person it acts for. Every grant check asks the key within the ticked
 ones and the person's grants as they are now (`subjectsOf`, `askedFor`); the
 credential has no sign-in assurance, so a money step-up is never met. It
 reaches the rows an agent may reach under a delegation that need no lease
-(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.comment`, `task.propose`
-and `session.capabilities`); anything else is `DELEGATION_EXCLUDES_OPERATION`,
+(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.update`, `task.assign`,
+`task.set_scores`, `task.set_adhoc`, `task.set_category`, `task.comment`,
+`task.edit_comment`, `task.delete_comment`, `task.propose`,
+`run.child_handback` and `session.capabilities`), held to a delegated agent's
+limits where the handler has them (`updateTask`, `assignTask`, `commentOnTask`);
+anything else is `DELEGATION_EXCLUDES_OPERATION`,
 `run.revise_state` included by name (`OUTSIDE_REACH`), though a run's delegation
 reaches it.
 A create asks the person's business-wide `task:write` within the ticked keys; it

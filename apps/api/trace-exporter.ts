@@ -44,6 +44,7 @@ import {
   type TraceDatabase,
 } from '../../packages/core-runtime/src/index.ts';
 import type { CustodyOutcome } from '../../packages/core-custody/src/index.ts';
+import { faultCode } from './alerts/sink.ts';
 
 export const TRACE_EXPORT_SWITCH = 'TRACE_EXPORT';
 export const TRACE_EXPORT_SETTINGS = [
@@ -239,10 +240,17 @@ export async function retainDeployment(
   key: Buffer,
   ports: ExpiryPorts,
 ): Promise<void> {
+  let failed: { readonly cause: unknown } | undefined;
   for (const businessId of await businesses()) {
-    // eslint-disable-next-line no-await-in-loop -- one business after another
-    await expireOnce(database, businessId, key, ports);
+    try {
+      // eslint-disable-next-line no-await-in-loop -- one business after another
+      await expireOnce(database, businessId, key, ports);
+    } catch (cause) {
+      failed ??= { cause };
+    }
   }
+  // The pass still fails, after every business has had its turn.
+  if (failed !== undefined) throw failed.cause;
 }
 
 /** A job on an interval that never overlaps itself and logs a failure by its kind only. */
@@ -253,8 +261,8 @@ function every(ms: number, what: string, job: () => Promise<void>): NodeJS.Timeo
     running = true;
     void job()
       .catch((cause: unknown) => {
-        // The kind only: a database error's text can carry a value.
-        console.error(`api: ${what} failed: ${cause instanceof Error ? cause.name : 'unknown'}`);
+        // A listed code only: a database error's text, or a custom name, can carry a value.
+        console.error(`api: ${what} failed: ${faultCode(cause)}`);
       })
       .finally(() => {
         running = false;

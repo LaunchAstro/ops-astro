@@ -40,22 +40,30 @@ export const spentNowOf = (r: string): string =>
        from public.model_calls c
       where c.business_id = ${r}.business_id and c.reservation_id = ${r}.id))`;
 
+/** A hold's spend to date, and the calls it counted while still unsent. */
+export interface Spent {
+  readonly spent: number;
+  /** The `reserved` calls counted at their maximum, for `giveBackReleased`. */
+  readonly unsent: readonly string[];
+}
+
 /**
  * The reservation's spend to date, as the broker counts it
  * (`core-custody/src/broker-facts.ts`, `committedMinor`): settled calls at
  * their actual, and calls still open at the maximum they hold, so a call in
  * flight at the stop is never released as unspent.
  */
-export async function spentOn(tx: TenantQuery, reservationId: string): Promise<number> {
-  const [row] = await tx.query<{ readonly spent: string }>(
+export async function spentOn(tx: TenantQuery, reservationId: string): Promise<Spent> {
+  const [row] = await tx.query<{ readonly spent: string; readonly unsent: string[] | null }>(
     `select coalesce(sum(case when state = 'settled' then actual_minor
                               when state in ('reserved', 'dispatched', 'liability_unknown')
                                 then reserved_minor
-                              else 0 end), 0)::text as spent
+                              else 0 end), 0)::text as spent,
+            array_agg(id::text) filter (where state = 'reserved') as unsent
        from public.model_calls where business_id = $1 and reservation_id = $2`,
     [tx.businessId, reservationId],
   );
-  return Number(row?.spent ?? 0);
+  return { spent: Number(row?.spent ?? 0), unsent: row?.unsent ?? [] };
 }
 
 export interface Remaining {

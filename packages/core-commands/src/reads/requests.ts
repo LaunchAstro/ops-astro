@@ -47,12 +47,15 @@ import type {
   AllowanceResult,
   ConversationReadResult,
   SettingsReadResult,
+  SecretListResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
   UnattendedView,
   TaskSearchResult,
   TaskLedgerResult,
+  MapViewResult,
+  MapFrontierResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
@@ -138,6 +141,8 @@ export interface ReadOperands {
    * write sends back as `expectedRevision`. See `reads/settings.ts`.
    */
   readonly 'settings.read': NoOperands;
+  /** Custody's rows at the scopes the caller holds `custody:manage` (C31). */
+  readonly 'secret.list': NoOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -146,6 +151,10 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /** A map's sections, tickets and versions (WF-1). */
+  readonly 'map.view': { readonly recordId: string };
+  /** A map's frontier and fog, from their read models (WF-2). */
+  readonly 'map.frontier': { readonly recordId: string };
   /**
    * A conversation at its address (AW-03): the owner's, or a holder of the
    * read-any grant's. After the body purges it answers the wrap-up.
@@ -210,6 +219,7 @@ export type ReadResult =
   | AwaitingReviewResult
   | PresetPlanResult
   | SettingsReadResult
+  | SecretListResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
@@ -225,6 +235,8 @@ export type ReadResult =
   | AttributionResult
   | InboxReadResult
   | InboxCountResult
+  | MapViewResult
+  | MapFrontierResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
   | {
       readonly ok: true;

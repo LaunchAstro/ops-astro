@@ -142,7 +142,7 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 privacy incident's `whatHappened`, `foundBy` and `affected`, a legal
 document version's `body`, an overseas service's `service`, `receives`,
 `where`, `trainsOnIt` and `contract`, a data class's `dataClass`,
-`purpose`, `disclosures`, `retention` and `deletion`, a client's `name`, and a client's written request's `requestedBy` and `requestLink` (C60), holding U+0000 or an unpaired surrogate, in any string or key, are
+`purpose`, `disclosures`, `retention` and `deletion`, a client's `name`, a client's written request's `requestedBy` and `requestLink` (C60), and a map revision's `destination`, `notes`, `addFog` and `addOutOfScope`, holding U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
@@ -1251,21 +1251,28 @@ deployment started a broker, `composeApi` mounts `answerConversation` beside
 `executeModelCall`, and after `conversation.start` or `conversation.message`
 is applied on the person path the API asks it for the agent's answer, after
 the command has committed: the message stays kept whatever the answer is. It
-resolves the caller again, finds the message as the caller's own person
-message in a conversation of this business whose body is kept, and sends its
+resolves the caller again, asks that they still hold `conversation:write` (as
+`conversation.read` asks of an owner), finds the message as the caller's own
+person message in a conversation of this business whose body is kept, and
+sends its
 words through AW-01's conversation seam (`callModelInConversation`,
 `model.conversation_answer`, the owner's own session, local routes only,
 nothing held). The answer is kept as an `agent` message whose
 `answers_message_id` names the question (0099: one reply per message, in the
 same conversation), in a second transaction under the conversation's row
-lock. The HTTP answer then carries `reply` beside the command's own fields:
+lock, which then holds the caller's conversation grants for share without
+waiting (a revocation either is seen there or waits for the reply to commit; a
+grant being changed at that moment, even by a revocation then refused, keeps
+nothing, and the person asks again) and asks the grant again at
+the clock after the locks, so a grant that lapsed while it waited no longer
+counts. The HTTP answer then carries `reply` beside the command's own fields:
 `{ answered: true, messageId, body }`, or `{ answered: false, code, words }`
 in fixed words (`LOCAL_MODEL_REQUIRED`: models are off for this material and
 nothing was sent, AW-03 egress off; `RATE_LIMITED`; anything else, an answer
 that could not be used and nothing kept). No `reply` means nothing answers: no
-broker, or the message is not the caller's to have answered. A repeat of the
-same operation finds the reply kept and answers with it; the model is not
-asked again. The register stores the command's answer only, so the model's
+broker, the grant revoked, or the message is not the caller's to have
+answered. A repeat of the same operation finds the reply kept and answers with
+it while the grant holds; the model is not asked again. The register stores the command's answer only, so the model's
 words are in the reply's row and nowhere else.
 
 Two system operations, the worker's and no person's command
@@ -1654,6 +1661,9 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `session.capabilities`                     | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                                                                                                                         |
 | `settings.set_four_eyes_threshold`         | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `settings.set_client_sign_off`             | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `secret.list`                              | `listCustodySecrets` (`reads/custody.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `secret.set`                               | `setCustodySecret` (`commands/custody-secrets.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.log`                                 | `logTimeEntry` (`commands/tasks-time.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -2226,8 +2236,9 @@ answers today's refusal (for example `DELEGATION_NARROWED` or
 `DELEGATION_NOT_LIVE`), with no stored detail, once the grant, delegation or
 expiry has changed. Those rows of `AGENT_OPERATIONS` replay as `reauthorise`,
 and `releaseReplay` (`commands/agent-replay.ts`) runs `authorise` again. A
-capabilities replay is projected again for the credential presented now
-(`replayCapabilities`). A pickup replay is checked against the delegation it
+`session.capabilities` or `task.queue` replay is served again for the rights
+held now (`serveAgain`), so a queue read before a pickup and repeated under a
+delegation answers the narrowed queue (#169). A pickup replay is checked against the delegation it
 minted (`replayPickup`). A handback settles its own delegation, so its receipt
 is returned only to the credential that settled it (`replaySettledHandback`).
 All three are in `commands/agent-replay.ts`. The register row is left as it
@@ -2608,7 +2619,7 @@ agent answer keeps its payload under `detail`.
 The agent answer's `grants` is read on every call and on every replay: a
 replay is authorised as a fresh call and projected again for the credential
 presented now, so a replay under another delegation answers that delegation's
-scope and never the first one's (`replayCapabilities`).
+scope and never the first one's (`serveAgain`).
 `tests/commands/agent-capabilities-intersection.test.ts` holds both over HTTP.
 `tests/api/capabilities-shape.test.ts` asserts the one shape on both prefixes
 and on a replay ("answers flattened beside ok on both, and on a replay").
@@ -2735,10 +2746,10 @@ Named so they are not read as settled:
   verifies; only the gate and lineage checks stand against it. The key
   resolver holds one key: rows under an earlier key id fail the read.
 - **An agent comments in the `internal` audience only.** The `task.comment` row
-  passes `AGENT_AUDIENCES` (`commands/agent-operations.ts`) to
-  `writeTaskComment` (`commands/tasks-comment.ts`), which refuses `client` as
-  `AUDIENCE_NOT_PERMITTED`. This is Nathan's ruling (OWNER-CARD section 6), not
-  an open item.
+  passes `AGENT_AUDIENCES` (`commands/tasks-comment.ts`) to `writeTaskComment`,
+  which refuses `client` as `AUDIENCE_NOT_PERMITTED`. An agent credential
+  (API-2) reaches `commentOnTask` as its agent and gets the same set. This is
+  Nathan's ruling (OWNER-CARD section 6), not an open item.
 - **One lane choice awaits root or owner confirmation.** The heartbeat bounds are 1 hour a beat and 8 hours in total
   (`MAXIMUM_RENEWAL_SECONDS` and `MAXIMUM_LEASE_LIFETIME_SECONDS`,
   `core-runtime/src/heartbeat.ts`). Root ruling 6 at dd30aa8 covers bare agent
@@ -3275,3 +3286,19 @@ line alike. The check runs under the task's row lock, so a content write
 holding that lock lands wholly before it (the change is refused) or wholly
 after it (the write is stale against the change's revision and retried). A
 trashed task still answers `NOT_FOUND`.
+
+## Custody (C31)
+
+Three rows, `custody:manage` each and never an agent. [CUSTODY.md](CUSTODY.md)
+has the table, the sealing and the compromise runbook.
+
+| Operation      | Route           | Body                                                                                                | Answer or refusals                                                                                                                                                                                                                                         |
+| -------------- | --------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `secret.list`  | `/secret/list`  | `{}`                                                                                                | `{ ok: true, secrets: [{ id, name, clientId, state, setAt, lastUsedAt, revision }], canChange }` (`canChange`: the key is held business-wide); `SCOPE_NOT_GRANTED` 403                                                                                     |
+| `secret.set`   | `/secret/set`   | `operationId`, `name`, `value` (one line of 8 to 8192 characters), `clientId?`, `expectedRevision?` | `detail: { secretId, name, clientId, state }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (`clientId` not this business's), `VERSION_STALE` 409, `GATE_SHUT` 409 (real data, first-client gate open), `FIELD_VALUE_INVALID` 422, `DEPENDENCY_NOT_LANDED` 501 |
+| `secret.clear` | `/secret/clear` | `operationId`, `secretId`, `expectedRevision?`                                                      | `detail: { secretId, state }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `VERSION_STALE` 409                                                                                                                                                               |
+
+No answer carries a value, and a refusal names the field, never what was sent.
+No audit row holds a set's value either, a refusal's attempted values included.
+A set's `expectedRevision` is the revision `secret.list` showed, or `0` for a
+name the list did not hold: `0` is refused `VERSION_STALE` when the name exists.

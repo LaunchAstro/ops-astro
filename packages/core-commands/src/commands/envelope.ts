@@ -28,7 +28,7 @@
 // the transport above it.
 
 import { createHash } from 'node:crypto';
-import { advisoryLock, withSession } from '../../../core-records/src/index.ts';
+import { advisoryLock, standingOf, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -154,6 +154,8 @@ export async function runCommand(
   session: Session,
   entryPoint: EntryPoint,
   request: UncheckedRequest,
+  /** The person's sign-in, asked again once the handler has done its work. */
+  presented?: VerifiedSubject,
 ): Promise<CommandResult> {
   const declaration = declarationOf(request.command);
   return await enter(tx, session, request, {
@@ -164,7 +166,7 @@ export async function runCommand(
         const refusal = refuseCommand('EXPECTED_REVISION_REQUIRED', [], REVISION_FIXES);
         return await settle(tx, session, identified, digest, refusal);
       }
-      return await attempt(tx, session, entryPoint, identified, digest, declaration);
+      return await attempt(tx, session, entryPoint, identified, digest, declaration, presented);
     },
   });
 }
@@ -262,7 +264,7 @@ async function callOnce(
     database,
     businessId,
     presented,
-    async (tx, session) => await runCommand(tx, session, entryPoint, request),
+    async (tx, session) => await runCommand(tx, session, entryPoint, request, presented),
   );
   // An unresolved login has no actor to attribute an audit event to, and
   // `audit_events.actor_id` is not null. The refusal is returned as it is; the
@@ -464,40 +466,29 @@ async function attempt(
   request: IdentifiedRequest,
   digest: string,
   declaration: CommandDeclaration,
+  presented: VerifiedSubject | undefined,
 ): Promise<CommandResult> {
   await tx.query('savepoint command_attempt');
   try {
     const outcome = await attemptWork(tx, session, entryPoint, request, declaration);
-    if (isRefused(outcome)) {
-      // The register stores what the caller was **shown**, not the refusal the
-      // operation produced. A replay returns the stored result verbatim, so
-      // storing the untranslated one would hand a second caller an audit-only
-      // code the first caller never saw — the one mechanism the visibility
-      // column exists for, defeated on the replay path. A review found this.
-      const kept = outcome.kept ?? outcome.refusal;
-      await register(tx, session, request, digest, asCallerVisible(kept), null);
-      const { refusal, attempted } = outcome;
-      return await settle(tx, session, request, digest, refusal, 'registered', attempted);
+    const answer = await answerOf(tx, session, request, digest, declaration, outcome);
+    // The handler and the audit chain can wait on locks after the door let the
+    // call in, and the session can end in that wait. Writes re-check at commit
+    // (OWNER-3 A): after the last wait, a session ended by then keeps nothing,
+    // and its refusal holds no operation id, so signing in again can retry it.
+    const standing =
+      presented === undefined || (isRefused(outcome) && outcome.retains !== true)
+        ? undefined
+        : await standingOf(tx, presented, 'required');
+    if (
+      standing === undefined ||
+      !('refused' in standing) ||
+      standing.code !== 'AUTH_SESSION_EXPIRED'
+    ) {
+      return answer;
     }
-    const handle: CommandHandle = {
-      command: request.command,
-      recordId: outcome.recordId,
-      revision: outcome.revision,
-      detail: outcome.detail,
-    };
-    await register(tx, session, request, digest, withoutSecret(handle), outcome.recordId);
-    await tx.query('release savepoint command_attempt');
-    if (!declaration.audited) return handle;
-    await writeAuditEvent(tx, {
-      actorId: session.actorId,
-      command: request.command,
-      operationId: request.operationId,
-      outcome: 'applied',
-      subjectRecordId: outcome.recordId,
-      payloadDigest: digest,
-      originConversationId: outcome.originConversationId ?? null,
-    });
-    return handle;
+    await tx.query('rollback to savepoint command_attempt');
+    return await settle(tx, session, request, digest, standing, 'none');
   } catch (cause) {
     // The savepoint is rolled back so the statement log reads honestly, and
     // then the fault leaves: this driver has already condemned the
@@ -506,6 +497,46 @@ async function attempt(
     await tx.query('rollback to savepoint command_attempt').catch(() => undefined);
     throw cause;
   }
+}
+
+/** The attempt's answer: a refusal registered and settled, or the applied row and its audit. */
+async function answerOf(
+  tx: TenantQuery,
+  session: Session,
+  request: IdentifiedRequest,
+  digest: string,
+  declaration: CommandDeclaration,
+  outcome: Applied | Refused,
+): Promise<CommandResult> {
+  if (isRefused(outcome)) {
+    // The register stores what the caller was **shown**, not the refusal the
+    // operation produced. A replay returns the stored result verbatim, so
+    // storing the untranslated one would hand a second caller an audit-only
+    // code the first caller never saw — the one mechanism the visibility
+    // column exists for, defeated on the replay path. A review found this.
+    const kept = outcome.kept ?? outcome.refusal;
+    await register(tx, session, request, digest, asCallerVisible(kept), null);
+    const { refusal, attempted } = outcome;
+    return await settle(tx, session, request, digest, refusal, 'registered', attempted);
+  }
+  const handle: CommandHandle = {
+    command: request.command,
+    recordId: outcome.recordId,
+    revision: outcome.revision,
+    detail: outcome.detail,
+  };
+  await register(tx, session, request, digest, withoutSecret(handle), outcome.recordId);
+  if (!declaration.audited) return handle;
+  await writeAuditEvent(tx, {
+    actorId: session.actorId,
+    command: request.command,
+    operationId: request.operationId,
+    outcome: 'applied',
+    subjectRecordId: outcome.recordId,
+    payloadDigest: digest,
+    originConversationId: outcome.originConversationId ?? null,
+  });
+  return handle;
 }
 
 /**
@@ -598,6 +629,9 @@ export async function register(
  */
 export type IdentityStanding = 'register' | 'registered' | 'none';
 
+/** A body that carries a secret (C31): no refusal puts any of its values in the audit. */
+const SEALED_BODIES: ReadonlySet<string> = new Set(['secret.set']);
+
 /**
  * Record the refusal, then hand the caller the version they are allowed to
  * see. The one way a refusal is settled on either prefix.
@@ -629,7 +663,7 @@ export async function settle(
     refusalCode: refusal.code,
     subjectRecordId: null,
     payloadDigest: digest,
-    attempted: attempted ?? null,
+    attempted: SEALED_BODIES.has(request.command) ? null : (attempted ?? null),
   });
   return visible;
 }

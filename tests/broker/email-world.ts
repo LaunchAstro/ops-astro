@@ -42,9 +42,23 @@ export const noDatabase: boolean = databaseUrlFromEnvironment() === undefined;
 /** A short timeout, declared on the test's own catalogue entry, so a slow answer ends quickly. */
 export const TEST_EMAIL_SEND: ModelOperationDeclaration = { ...EMAIL_SEND, timeoutMs: 600 };
 
+/**
+ * A sending subdomain a provider's setup check verified, made up here: the
+ * send's own cases start past that gate. Not `mock`, which never verifies.
+ */
+export const VERIFIED_SENDER: MailSettings['sender'] = {
+  subdomain: 'send.example.test',
+  verified: true,
+  records: { dkim: 'verified', spf: 'verified', returnPathMx: 'verified' },
+  dmarc: 'reject',
+  mock: false,
+};
+
 export const MAIL: MailSettings = {
   appOrigin: 'https://ops.example.test',
-  from: 'hello@example.test',
+  // On the verified subdomain, built from it (the send refuses any other domain).
+  from: `hello@${VERIFIED_SENDER.subdomain}`,
+  sender: VERIFIED_SENDER,
 };
 
 export interface EmailWorld {
