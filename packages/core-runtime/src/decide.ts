@@ -283,6 +283,7 @@ interface FoundGate {
   readonly run_id: string;
   readonly task_id: string;
   readonly state: string;
+  readonly held_grants: readonly string[];
 }
 
 /**
@@ -302,7 +303,7 @@ async function findGate(
   tx: TenantQuery,
   request: DecideRequest,
 ): Promise<RuntimeResult<FoundGate>> {
-  const discovered = await tx.query<FoundGate>(
+  const discovered = await tx.query<Omit<FoundGate, 'held_grants'>>(
     `select g.lineage_id, g.version_id, g.run_id, r.task_id, l.state
        from public.gates g
        join public.planned_runs r on r.business_id = g.business_id and r.id = g.run_id
@@ -327,8 +328,8 @@ async function findGate(
       'A person with decide authority on this task decides it.',
     );
   }
-  await holdDecideAuthority(tx, request);
-  return { ok: true, value: found };
+  const heldGrants = await holdDecideAuthority(tx, request);
+  return { ok: true, value: { ...found, held_grants: heldGrants } };
 }
 
 interface LockedDecision {
@@ -631,7 +632,7 @@ async function recheckWork(
       'Approve it, reject it, or escalate under the accepted rule. A third round is not taken here.',
     );
   }
-  const escalation = await recheckEscalation(tx, request, found.task_id, locked.lockedAt, atBound);
+  const escalation = await recheckEscalation(tx, request, found, locked.lockedAt, atBound);
   if (!escalation.ok) return escalation;
   if (request.decision === 'approve') {
     const room = await budgetRoom(tx, {

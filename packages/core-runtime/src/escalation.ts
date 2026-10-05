@@ -11,6 +11,7 @@
 import { refuseCommand } from '../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../core-records/src/index.ts';
 import { checkAuthorityAt, holdCoveringGrants } from './recovery.ts';
+import { AffectedSetChanged } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** What the escalation checks read from a decision request (`DecideRequest`). */
@@ -22,6 +23,12 @@ export interface EscalationAsk {
   readonly decidedByActorId: string;
   /** Escalate's recipient: a person who must hold decide at business scope. */
   readonly recipientPersonId?: string;
+}
+
+/** The gate's task, and the grant ids `holdDecideAuthority` held before the locks. */
+export interface HeldDiscovery {
+  readonly task_id: string;
+  readonly held_grants: readonly string[];
 }
 
 /** An escalation's answer: not the gate's decision, so no signed row and no hash. */
@@ -66,7 +73,7 @@ export async function escalatedDecider(
 export async function recheckEscalation(
   tx: TenantQuery,
   request: EscalationAsk,
-  taskId: string,
+  found: HeldDiscovery,
   lockedAt: string,
   atBound: () => Promise<boolean>,
 ): Promise<RuntimeResult<null>> {
@@ -78,7 +85,7 @@ export async function recheckEscalation(
       'Approve, reject or request changes; escalate at the bound.',
     );
   }
-  return await recheckRecipient(tx, request, taskId, lockedAt);
+  return await recheckRecipient(tx, request, found, lockedAt);
 }
 
 /**
@@ -96,12 +103,17 @@ export async function recheckEscalation(
  * serialises it; with no such grant the re-check refuses anyway. Holding the
  * actor too would take it before the runtime set, where `access.end` updates
  * it after its own, and the two orders could close a cycle.
+ *
+ * Returns the held ids: a grant issued after this statement is not held, so
+ * `recheckRecipient` rests only on these.
  */
-export async function holdDecideAuthority(tx: TenantQuery, request: EscalationAsk): Promise<void> {
+export async function holdDecideAuthority(
+  tx: TenantQuery,
+  request: EscalationAsk,
+): Promise<readonly string[]> {
   const recipient = request.decision === 'escalate' ? request.recipientPersonId : undefined;
   if (recipient === undefined) {
-    await holdCoveringGrants(tx, request.subjects, request.collection);
-    return;
+    return await holdCoveringGrants(tx, request.subjects, request.collection);
   }
   // Every person actor of theirs, active or not: a superset of what the
   // re-check counts, so no grant it reads is left unheld.
@@ -109,7 +121,7 @@ export async function holdDecideAuthority(tx: TenantQuery, request: EscalationAs
     `select id from public.actors where business_id = $1 and person_id = $2 and kind = 'person'`,
     [tx.businessId, recipient],
   );
-  await holdCoveringGrants(
+  return await holdCoveringGrants(
     tx,
     [
       ...request.subjects,
@@ -150,7 +162,7 @@ export async function assignedTo(
 async function recheckRecipient(
   tx: TenantQuery,
   request: EscalationAsk,
-  taskId: string,
+  found: HeldDiscovery,
   lockedAt: string,
 ): Promise<RuntimeResult<null>> {
   const ineligible = {
@@ -183,7 +195,13 @@ async function recheckRecipient(
     { collection: request.collection, action: 'decide', scope: { kind: 'business', id: null } },
     lockedAt,
   );
-  if (!held.ok || (await assignedTo(tx, taskId, recipient))) return ineligible;
+  if (!held.ok) return ineligible;
+  // A covering grant issued after the hold is not held, so its revocation would
+  // not wait for this write: roll back, and the retry holds it.
+  if (held.value.some((grant) => !found.held_grants.includes(grant.id))) {
+    throw new AffectedSetChanged('escalate: a recipient grant appeared after the grant hold');
+  }
+  if (await assignedTo(tx, found.task_id, recipient)) return ineligible;
   return { ok: true, value: null };
 }
 
