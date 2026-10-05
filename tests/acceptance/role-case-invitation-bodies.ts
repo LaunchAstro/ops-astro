@@ -7,9 +7,14 @@
 // run of many cells never meets the 30-an-hour limit on one account.
 
 import { randomUUID } from 'node:crypto';
-import type { SetupContext } from './role-case-setup.ts';
-
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
+import type { Answer } from './world.ts';
+
+/** What these recipes need from the world: the admin's call and, where it can, a fresh inviter. */
+interface InvitationContext {
+  asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
+  freshInviter?(): Promise<void>;
+}
 
 type InvitationCommand = 'invitation.create' | 'invitation.resend' | 'invitation.revoke';
 
@@ -25,7 +30,7 @@ const invitee = (): Record<string, unknown> => ({
 
 export async function invitationBody(
   name: InvitationCommand,
-  context: SetupContext,
+  context: InvitationContext,
 ): Promise<{ readonly body: Record<string, unknown> }> {
   await context.freshInviter?.();
   if (name === 'invitation.create') return { body: invitee() };
