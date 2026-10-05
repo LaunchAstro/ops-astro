@@ -22,6 +22,8 @@ const NOT_DRAWN = new Set([
   // WF-1: no screen draws a map until the WF-3/4 map views (P20).
   'map.view',
   'map.frontier',
+  // C31: the Keys panel that draws custody's list is P01b's.
+  'secret.list',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {

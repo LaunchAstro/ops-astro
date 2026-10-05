@@ -146,11 +146,18 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // are append only.
   ['siu', 'live_corrections'],
   ['si', 'live_correction_receipts'],
+  // 20261005003850 (C33): a definition, a released version and an occurrence
+  // are written once and never changed; an activation's setting moves by the
+  // column grant in COLUMN_UPDATES.
+  ['si', 'activation_occurrences activations automation_definitions definition_versions'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
   ['siud', 'record_links record_types record_unique_values'],
   ['siud', 'records'],
+  // 20261005023013 (C31): custody's select is a column grant without the sealed
+  // columns, proved by name in `tests/custody/c31-credentials.test.ts`.
+  ['siu', 'custody_secrets'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

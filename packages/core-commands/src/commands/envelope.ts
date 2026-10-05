@@ -599,6 +599,9 @@ export async function register(
  */
 export type IdentityStanding = 'register' | 'registered' | 'none';
 
+/** A body that carries a secret (C31): no refusal puts any of its values in the audit. */
+const SEALED_BODIES: ReadonlySet<string> = new Set(['secret.set']);
+
 /**
  * Record the refusal, then hand the caller the version they are allowed to
  * see. The one way a refusal is settled on either prefix.
@@ -630,7 +633,7 @@ export async function settle(
     refusalCode: refusal.code,
     subjectRecordId: null,
     payloadDigest: digest,
-    attempted: attempted ?? null,
+    attempted: SEALED_BODIES.has(request.command) ? null : (attempted ?? null),
   });
   return visible;
 }
