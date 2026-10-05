@@ -11,6 +11,9 @@ const HEX = '0123456789abcdef';
 export const WHITE =
   '\t\n\v\f\r \u0085\u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF';
 
+/** Whether one character is a letter or a digit, by its Unicode category. */
+const isLetterOrDigit = (character) => /^[\p{L}\p{N}]$/u.test(character);
+
 /** The text with each run of white space as one space, and none at its ends. */
 function spaced(text) {
   const words = [];
@@ -63,8 +66,11 @@ export function parse(args) {
       options[key] = key === 'text' ? spaced(value) : value;
     }
   }
-  if (options.text !== undefined && options.text.length < 4) {
-    return { error: '--text needs at least 4 characters that name the person' };
+  if (
+    options.text !== undefined &&
+    [...options.text].filter((character) => isLetterOrDigit(character)).length < 4
+  ) {
+    return { error: '--text needs at least 4 letters or digits that name the person' };
   }
   if (options.text === undefined && options.ids.length === 0) {
     return { error: '--text or --id needs to name the person' };

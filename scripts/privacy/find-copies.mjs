@@ -26,7 +26,8 @@
 //
 // Each hit is one JSON line: the table, the row's id (or its physical address
 // when the table has no id), the columns holding the text or an id, the people
-// whose ids it holds, and whether it holds the text. The row itself is printed
+// whose ids it holds, whether it holds the text, and whether it holds an id
+// given with --id. The row itself is printed
 // only with --export, credential hashes withheld. The summary on stderr ends
 // with a line per person, saying every way they were found, of the --id flags
 // that find them after their own rows are erased. The list is printed once
@@ -125,7 +126,7 @@ const TEXT = `s.held like lower($1::text)`;
 /** Whether `s.held` holds the text ($1, or null) or a seed id ($3). */
 const HOLDS = `(${TEXT} or exists (select from unnest($3::text[]) i where strpos(s.held, i) > 0))`;
 
-/** Rows of business $2 holding the text or a seed ($3, standing for people $4). */
+/** Rows of business $2 holding the text or a seed ($3, standing for people $4; $5 the given ids). */
 const copies = (table) => `select t.ctid::text as address, to_jsonb(t) as row,
       array(select c.key from jsonb_each(to_jsonb(t)) c
              where exists (select from ${values('c.value')} where ${HOLDS})
@@ -133,11 +134,23 @@ const copies = (table) => `select t.ctid::text as address, to_jsonb(t) as row,
       array(select distinct seed.person from unnest($3::text[], $4::text[]) seed(id, person)
              where exists (select from ${values('to_jsonb(t)')} where strpos(s.held, seed.id) > 0)
              order by 1) as people,
-      exists (select from ${values('to_jsonb(t)')} where ${TEXT}) as text
+      exists (select from ${values('to_jsonb(t)')} where ${TEXT}) as text,
+      exists (select from ${values('to_jsonb(t)')}
+               where exists (select from unnest($5::text[]) g where strpos(s.held, g) > 0)) as given
     from public."${table}" t
    where t.business_id = $2
      and exists (select from ${values('to_jsonb(t)')} where ${HOLDS})
    order by t.ctid`;
+
+/** The public schema's tables, materialised views and foreign tables, never a partition. */
+const TABLES = `select c.relname as name, c.relkind as kind,
+              exists (select 1 from pg_attribute a
+                       where a.attrelid = c.oid and a.attname = 'business_id'
+                         and not a.attisdropped) as scoped
+         from pg_class c
+         join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public' and c.relkind in ('r', 'p', 'm', 'f') and not c.relispartition
+        order by c.relname`;
 
 /** The row as an export carries it, with the table's withheld columns marked. */
 function exported(table, row) {
@@ -156,16 +169,7 @@ async function scan(admin, { business, text, ids, exportRows }) {
     const [owner] = await execute(`select id from public.businesses where key = $1`, [business]);
     if (owner === undefined) return null;
     const seeds = await execute(SEEDS, [owner.id, text ?? null, ids]);
-    const tables = await execute(
-      `select c.relname as name, c.relkind as kind,
-              exists (select 1 from pg_attribute a
-                       where a.attrelid = c.oid and a.attname = 'business_id'
-                         and not a.attisdropped) as scoped
-         from pg_class c
-         join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'public' and c.relkind in ('r', 'p', 'm', 'f') and not c.relispartition
-        order by c.relname`,
-    );
+    const tables = await execute(TABLES);
     const lines = [];
     for (const { name, kind, scoped } of tables) {
       if (!SAFE.test(name)) throw new Refusal(`unexpected table name ${JSON.stringify(name)}`);
@@ -181,9 +185,17 @@ async function scan(admin, { business, text, ids, exportRows }) {
         owner.id,
         seeds.map((seed) => seed.id),
         seeds.map((seed) => seed.person),
+        ids,
       ]);
-      for (const { address, row, columns, people, text: holdsText } of rows) {
-        const found = { table: name, id: row.id ?? address, columns, people, text: holdsText };
+      for (const { address, row, columns, people, text: holdsText, given } of rows) {
+        const found = {
+          table: name,
+          id: row.id ?? address,
+          columns,
+          people,
+          text: holdsText,
+          given,
+        };
         if (exportRows) found.row = exported(name, row);
         lines.push(`${JSON.stringify(found)}\n`);
       }

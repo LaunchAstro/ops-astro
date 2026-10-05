@@ -46,7 +46,8 @@ by kind. A copy not on the list is a copy the reply missed.
   rejected, holds the text as whole words (`--text Anna` names no Joanna),
   anyone a merge not reversed joined them to, their actors, the logins they
   still hold and the agent of each credential they issued. Each hit names the
-  people whose ids it holds and whether a value of it holds the text (`text`);
+  people whose ids it holds, whether a value of it holds the text (`text`)
+  and whether it holds an id given with `--id` (`given`);
   a hit naming no one was found by its text alone, so the owner checks whose
   it is. The list ends with one line per person of the `--id` flags that find
   them, saying every way the person was found (named by the text, given by
@@ -112,9 +113,9 @@ by kind. A copy not on the list is a copy the reply missed.
 3. Search every copy again, and a backup restored from before the erasure, for
    the person: the finder with the same `--text` and the `--id` flags from
    step 1, so a row naming the person by id alone is still found once their
-   own rows are gone. A hit that does not hold the text (`text` false) and
-   whose people list names only another person is that person's row, not a
-   missed copy. A hit that holds the text is the owner's to judge, and the
+   own rows are gone. A hit that holds neither the text nor an id given with
+   `--id` (`text` and `given` both false), and whose people list names only
+   another person, is that person's row, not a missed copy. A hit that holds the text is the owner's to judge, and the
    owner records whose it is. Any other hit outside a lawfully kept copy means
    the erasure is not done.
 
