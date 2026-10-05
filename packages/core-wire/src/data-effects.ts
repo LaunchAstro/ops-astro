@@ -5,7 +5,7 @@
 // hand, are in `data-effects-types.ts`, re-exported here.
 
 import type { CommandName } from './surface.ts';
-import type { DataEffects, OutsideEffect, RecordWrite } from './data-effects-types.ts';
+import { business, client, writing, type DataEffects } from './data-effects-types.ts';
 
 export type {
   ClassedEffects,
@@ -17,15 +17,6 @@ export type {
   RecordWrite,
 } from './data-effects-types.ts';
 export { classOf } from './data-effects-types.ts';
-
-const business = (...kinds: string[]): RecordWrite[] =>
-  kinds.map((kind) => ({ kind, scope: 'business' }));
-const client = (...kinds: string[]): RecordWrite[] =>
-  kinds.map((kind) => ({ kind, scope: 'client' }));
-const writing = (
-  writes: readonly RecordWrite[],
-  outside: readonly OutsideEffect[] = [],
-): DataEffects => ({ writes, intake: [], outside, access: false });
 
 const READ = writing([]);
 // A task is a row of `records`, with its unique values beside it.
