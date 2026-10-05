@@ -205,18 +205,26 @@ pnpm cli map frontier <id>
 - `--business`, `--api` and `--agent` and the environment work as for an
   operation. Exit codes are the same.
 - A write prints `ok <operation> <id> r<revision>`; pass that revision to the
-  next write on the same task.
+  next write on the same task. A write that got no answer, or a fault, prints
+  its `operationId`; send the same line again with `--operation <id>` and the
+  first result is replayed, never made twice.
 - Reads take a detail level. `brief` is id, title and state. `standard` (the
   default) adds the summary, description, blockers and the latest five
   comments. `full` is everything, the whole thread and history included. A
+  reader outside the business (an external party) gets the same levels of its
+  shared view: its shared fields and client comments, never the detail. A
   blocker the reader may not read is never listed. An agent is told how many
   as `blockersWithheld`; a member reading through record grants (a client
   login, owner answer 22) is told no count, as on the board.
 - Output is terse text. `--json` prints minimal JSON, and `--fields` keeps only
   the fields named.
-- `task list` pages 20 at a time (at most 100 with `--limit`). A page ends with
-  `next: <token>`; pass it as `--page` for the next one. A task added meanwhile
-  joins a later page, and none repeats.
+- `task list` pages 20 at a time (at most 100 with `--limit`); both numbers are
+  the quota table's (`QUOTAS.pageSize`, or the one `composeApi` was given). A
+  page ends with `next: <token>`; pass it as `--page` for the next one. A task
+  added after the pages so far joins a later page. If the list has been
+  reordered before the token, or a task it showed is gone, the token is
+  refused (`FIELD_VALUE_INVALID` on `page`): list again from the start, so no
+  task repeats and none is left out.
 - The API takes the same `detail`, `limit` and `page` body fields on
   `task.read` and `task.board`. Without them it answers as before.
 - `task link` and `task resolve` join with the WF-2 commands they map onto;

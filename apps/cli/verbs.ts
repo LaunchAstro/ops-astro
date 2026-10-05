@@ -30,6 +30,7 @@ export interface VerbRow {
 }
 
 const EXIT = { ok: 0, refused: 1, usage: 2, transport: 3, fault: 4 } as const;
+const REPLAY = '; send the same line with --operation <that id> to replay';
 const DETAILS = new Set(['brief', 'standard', 'full']);
 const SWITCHES = new Set(['json']);
 
@@ -139,6 +140,7 @@ export function verbHelp(): string {
   return [
     'pnpm cli <verb> [args]. Writes print "ok <command> <id> r<revision>"; pass that revision',
     'to the next write. Refusals print one line; exit 0 ok, 1 refused, 2 usage, 3 no answer, 4 fault.',
+    'No answer or a fault prints the operationId; send the same line with --operation <id> to replay.',
     ...VERB_TABLE.map((row) => `  ${row.verb} ${row.usage}`),
   ].join('\n');
 }
@@ -198,6 +200,17 @@ function shape(row: VerbRow, answered: Readonly<Record<string, unknown>>, flags:
   return asJson ? JSON.stringify(view) : text(view);
 }
 
+/**
+ * One id per intent: a write, or any agent call, carries the one it was given
+ * to replay, or a new one; a person's read has nothing to replay.
+ */
+function operationOf(row: VerbRow, flags: Flags, agent: boolean): Body {
+  const given = maybe(flags, 'operation');
+  if (isWrite(row.command) || agent) return { operationId: given ?? randomUUID() };
+  if (given !== undefined) throw new UsageError('--operation is for writes');
+  return {};
+}
+
 export function createVerbCli(options: CliOptions & { readonly address?: string }): {
   readonly run: (argv: readonly string[]) => Promise<VerbAnswer>;
 } {
@@ -216,25 +229,30 @@ export function createVerbCli(options: CliOptions & { readonly address?: string 
         row = VERB_TABLE.find((one) => one.verb === `${group} ${verb ?? ''}`);
         if (row === undefined) throw new UsageError(`no verb ${group} ${verb ?? ''}; run help`);
         if (extra.length > 0) throw new UsageError(`unexpected ${extra[0] as string}`);
-        request = row.body(id, flags);
+        request = { ...operationOf(row, flags, agent), ...row.body(id, flags) };
       } catch (cause) {
         if (!(cause instanceof UsageError)) throw cause;
         return { exit: EXIT.usage, out: `usage: ${cause.message}` };
       }
-      const operationId = isWrite(row.command) || agent ? { operationId: randomUUID() } : {};
+      // The caller's only way to replay a write whose answer never arrived.
+      const { operationId } = request;
+      const replay = typeof operationId === 'string' ? `; operationId ${operationId}${REPLAY}` : '';
       let answer;
       try {
-        answer = await cli.run(row.command, { ...operationId, ...request });
+        answer = await cli.run(row.command, request);
       } catch {
         // Never the failure's own text: it can carry the address's secret part
         // or a bearer the request could not carry (T2 canary token).
-        return { exit: EXIT.transport, out: `no answer from ${options.address ?? 'the API'}` };
+        return {
+          exit: EXIT.transport,
+          out: `no answer from ${options.address ?? 'the API'}${replay}`,
+        };
       }
       const body = (answer.body ?? {}) as Readonly<Record<string, unknown>>;
       if (isRefusal(answer))
         return { exit: EXIT.refused, out: refusalLine(body, keyOf(row.command)) };
       if (answer.status < 200 || answer.status >= 300 || answer.body === undefined) {
-        return { exit: EXIT.fault, out: `fault ${String(answer.status)}` };
+        return { exit: EXIT.fault, out: `fault ${String(answer.status)}${replay}` };
       }
       return { exit: EXIT.ok, out: shape(row, body, flags) };
     },

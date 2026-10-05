@@ -32,7 +32,6 @@
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { createAgentQuota, DEFAULT_AGENT_LIMITS, type AgentLimits } from './auth/agent-quota.ts';
 import {
@@ -90,7 +89,6 @@ import type { LiveSignal, LiveTopics } from './live.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
 import {
   BOARD,
-  endsWithRequest,
   follow as followTopics,
   RECHECK_MS,
   seatFor,
@@ -102,6 +100,7 @@ import {
   type Watching,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
+import { liveStream } from './live-stream.ts';
 import { recordsIn } from './records-in.ts';
 import { mountFactorRoutes, mountPublicLegal } from './account-routes.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
@@ -522,8 +521,7 @@ export function createApi(options: ApiOptions): Hono {
       if (taskId === undefined) throw new Error('the door answered no topic');
       if (typeof taskId !== 'string') return refuse(context, taskId);
       // Batch 1's dedicated task stream: its frames carry no identifier (REVB1ENDFIXAPID).
-      return streamSSE(context, async (stream) => {
-        endsWithRequest(stream, context.req.raw.signal);
+      return liveStream(context, async (stream) => {
         await follow(
           stream,
           live,
@@ -561,8 +559,7 @@ export function createApi(options: ApiOptions): Hono {
       const none = watched.length === 0 && joined === undefined;
       if (none && refused !== undefined && isCommandRefusal(refused))
         return refuse(context, refused);
-      return streamSSE(context, async (stream) => {
-        endsWithRequest(stream, context.req.raw.signal);
+      return liveStream(context, async (stream) => {
         for (const watch of tasks.filter((each) => !watched.includes(each))) {
           // eslint-disable-next-line no-await-in-loop -- written in the order named.
           await stream.writeSSE({ event: 'closed', data: watch.label });
@@ -752,8 +749,7 @@ async function boardStream(
 ): Promise<Response> {
   const joined = await mayJoinBoard(options, context, businessId);
   if (isCommandRefusal(joined)) return refuse(context, joined);
-  return streamSSE(context, async (stream) => {
-    endsWithRequest(stream, context.req.raw.signal);
+  return liveStream(context, async (stream) => {
     await followBoardOn(stream, options, live, context, businessId, joined);
   });
 }

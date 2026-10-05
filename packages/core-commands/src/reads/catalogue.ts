@@ -61,7 +61,7 @@ import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
 import { boardPage } from './board-rows.ts';
-import { isRefusal, parsePaging, readerBlockers, taskAt } from './detail.ts';
+import { isRefusal, parsePaging, readerBlockers, sharedRead, taskAt } from './detail.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -391,7 +391,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
           recordId,
           spine.taskCommentTypeId,
         );
-        return sharedTask === undefined ? refuseNotFound() : { ok: true, sharedTask };
+        return sharedTask === undefined
+          ? refuseNotFound()
+          : sharedRead(operands.detail, sharedTask);
       }
       // An agent credential's call stands as its person but is an agent's
       // (API-2, I09): it reads what the agent prefix reads, never as an

@@ -554,6 +554,39 @@ async function coveringMap(
   return facts.mapId === id ? undefined : facts.mapId;
 }
 
+/**
+ * The caller's grant for this command, or its refusal: at the scope the
+ * declaration names, or for a task, at the scope of the map covering it (W12),
+ * named in `viaMap` with the refusal that stands if the task leaves that map.
+ * A `self` row asks no grant: its handler reaches the caller's own rows only.
+ */
+async function grantOf(
+  tx: TenantQuery,
+  session: Session,
+  request: UncheckedRequest,
+  declaration: CommandDeclaration,
+): Promise<{ readonly viaMap?: { readonly id: string; readonly refusal: Refused } } | Refused> {
+  if (declaration.authorisedOn === 'self') return {};
+  const asked = {
+    // From the declaration, never written in here: see `CommandDeclaration`.
+    collection: declaration.collection,
+    action: declaration.action,
+    scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
+  };
+  const authorised = await checkAuthority(tx, subjectsOf(session), asked);
+  if (authorised.ok) return {};
+  // A grant scoped to a map covers the map and its tickets: asked again at the
+  // map's scope, and the first refusal stands when that fails too.
+  const map = await coveringMap(tx, request, declaration);
+  if (map === undefined) return refused(authorised.refusal);
+  const again = await checkAuthority(tx, subjectsOf(session), {
+    ...asked,
+    scope: { kind: 'record', id: map },
+  });
+  if (!again.ok) return refused(authorised.refusal);
+  return { viaMap: { id: map, refusal: refused(authorised.refusal) } };
+}
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -588,33 +621,9 @@ export async function prepareCommand(
   }
   // The map whose grant admitted this, and the refusal that stands if the
   // target has left it by the time it is locked.
-  let viaMap: { readonly id: string; readonly refusal: Refused } | undefined;
-  // A `self` row asks no grant: its handler reaches the caller's own rows only.
-  if (declaration.authorisedOn !== 'self') {
-    const asked = {
-      // From the declaration, never written in here: see `CommandDeclaration`.
-      collection: declaration.collection,
-      action: declaration.action,
-      scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
-    };
-    let authorised = await checkAuthority(tx, subjectsOf(session), asked);
-    // A grant scoped to a map covers the map and its tickets (W12): asked again
-    // at the map's scope, and the first refusal stands when that fails too.
-    if (!authorised.ok) {
-      const map = await coveringMap(tx, request, declaration);
-      if (map !== undefined) {
-        const again = await checkAuthority(tx, subjectsOf(session), {
-          ...asked,
-          scope: { kind: 'record', id: map },
-        });
-        if (again.ok) {
-          viaMap = { id: map, refusal: refused(authorised.refusal) };
-          authorised = again;
-        }
-      }
-    }
-    if (!authorised.ok) return refused(authorised.refusal);
-  }
+  const granted = await grantOf(tx, session, request, declaration);
+  if ('refusal' in granted) return granted;
+  const { viaMap } = granted;
   // The one step-up (C59), inside the grant check and straight after it: only
   // a key in the money set, and the switch when switching it off, is asked, so
   // a caller without the grant is told that first, and nothing after this line
@@ -660,6 +669,13 @@ export async function prepareCommand(
     // runtime-locked target is asked again at record scope under those locks.
     if (viaMap !== undefined && (await coveringMap(tx, request, declaration)) !== viaMap.id) {
       return viaMap.refusal;
+    }
+    // The grant was read before the wait for the target's lock: a revocation
+    // that committed in that wait is read now, after it (OWNER-3 A: writes
+    // re-check). A runtime-locked target is asked again under its own locks.
+    if (declaration.targetLock === 'command') {
+      const still = await grantOf(tx, session, request, declaration);
+      if ('refusal' in still) return still;
     }
     // A comment on a trashed task is answered as one on a missing task, before
     // the revision: the trash bumped it, and naming the current revision would

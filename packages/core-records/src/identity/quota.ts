@@ -83,6 +83,7 @@ type Taken =
   | { readonly ok: false; readonly refusal: QuotaRefusal };
 
 export interface QuotaGate {
+  readonly limits: QuotaLimits;
   take(holders: QuotaHolders): Taken;
 }
 
@@ -109,6 +110,7 @@ export function createQuotaGate(options: QuotaOptions = {}): QuotaGate {
   }
 
   return {
+    limits,
     take(holders) {
       const at = now();
       // A key nobody has called with for a whole window holds nothing: dropped
@@ -185,21 +187,43 @@ function keyOf(holder: Holder, holders: QuotaHolders): string {
 interface Scope {
   readonly gate: QuotaGate;
   release: (() => void) | undefined;
+  /** A stream answered and still running: its end gives the slot back, not the answer. */
+  held: boolean;
 }
 
 const scopes = new AsyncLocalStorage<Scope>();
 
 /**
  * One served request, charged at most once. Its slot is given back when the
- * request ends, however it ends: answered, refused or faulted.
+ * request ends, however it ends: answered, refused or faulted. A request held
+ * open past its answer (`holdQuotaSlot`) gives it back when that ends instead.
  */
 export async function withQuotaScope<T>(gate: QuotaGate, run: () => Promise<T>): Promise<T> {
-  const scope: Scope = { gate, release: undefined };
+  const scope: Scope = { gate, release: undefined, held: false };
   try {
     return await scopes.run(scope, run);
   } finally {
-    scope.release?.();
+    if (!scope.held) scope.release?.();
   }
+}
+
+/**
+ * Keep this request's slot past its answer: a live stream answers at once and
+ * runs on, and it is one call at once until it ends. The function returned
+ * gives the slot back; the stream calls it when it ends, however it ends.
+ */
+export function holdQuotaSlot(): () => void {
+  const scope = scopes.getStore();
+  if (scope === undefined) return nothingHeld;
+  scope.held = true;
+  return () => scope.release?.();
+}
+
+const nothingHeld = (): void => {};
+
+/** A list read's page sizes: the table this request is served under, else `QUOTAS`'. */
+export function pageSizes(): QuotaLimits['pageSize'] {
+  return scopes.getStore()?.gate.limits.pageSize ?? QUOTAS.pageSize;
 }
 
 /**

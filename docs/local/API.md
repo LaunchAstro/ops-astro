@@ -101,7 +101,10 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
    the call's own transaction, and nothing else runs. A refused call is not
    charged, a request is charged once however many times the envelope retries,
    and its concurrent slot is given back when the request ends
-   (`withQuotaScope`, installed on every request by `composeApi`). The limits,
+   (`withQuotaScope`, installed on every request by `composeApi`); a live
+   stream holds it until the stream ends (`liveStream`). The presence routes,
+   which resolve their caller as a stream's recheck does (`withStanding`), are
+   charged the same way; a recheck inside a charged request is not. The limits,
    and the page size a list read may ask for, are the one table `QUOTAS`;
    `composeApi` takes another table and clock only as the `quota` option.
    Charging comes after the door on purpose: before it, a caller the business

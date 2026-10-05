@@ -11,8 +11,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { composeApi } from '../../apps/api/server.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
-import { PAGE_SIZE } from '../../packages/core-commands/src/reads/detail.ts';
-import { QUOTAS, type QuotaLimits } from '../../packages/core-records/src/index.ts';
+import { pageSizes, QUOTAS, type QuotaLimits } from '../../packages/core-records/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { DELEGATION_HEADER, PREFIX } from '../../packages/core-wire/src/index.ts';
 import { ISSUER, tokenFor } from '../api/fixture.ts';
@@ -293,7 +292,8 @@ describe.skipIf(serverUrl === undefined)('API-3 quota', () => {
   });
 
   it('API-3 quota: page size is set in the one quota table, and a larger page is refused', async () => {
-    expect(PAGE_SIZE).toBe(QUOTAS.pageSize);
+    // Outside a served request, the table itself.
+    expect(pageSizes()).toStrictEqual(QUOTAS.pageSize);
     const api = app(QUOTAS);
     const over = await call(api, ann, '/task/board', {
       ...board,

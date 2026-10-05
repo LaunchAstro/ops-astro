@@ -286,6 +286,12 @@ function recordIdOperand(
   };
 }
 
+/** `task.read`'s id rule: a non-string id refused in the words the person read uses. */
+const taskReadId = recordIdOperand((request) => {
+  const read = READ_CATALOGUE['task.read'].parse(request);
+  return read.ok ? undefined : read.refusal;
+});
+
 /**
  * The request's system-owned fields refused, then its operands read.
  *
@@ -709,16 +715,18 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       subjectTask: 'record',
       replay: 'reauthorise',
       identifiers: READ_CATALOGUE['task.read'].identifiers,
-      // The person read's own operand rule, so the two prefixes refuse a
-      // non-string id in one body.
-      operands: recordIdOperand((request) => {
-        const read = READ_CATALOGUE['task.read'].parse(request);
-        return read.ok ? undefined : read.refusal;
-      }),
+      // The person read's own operand rules, so the two prefixes refuse a
+      // non-string id, then a level, size or page it does not take, in one body.
+      operands: (request) => {
+        const id = taskReadId(request);
+        if (isOperandRefusal(id)) return id;
+        const paging = parsePaging(request as unknown as Readonly<Record<string, unknown>>);
+        return isRefusal(paging) ? refused(paging) : id;
+      },
       serve: async (tx, call, _operands, _delegation, taskId) => {
         if (taskId === undefined) return NOT_FOUND();
         const spine = await readTaskSpine(tx);
-        // The level the person read takes, already checked by its parse above.
+        // The level the person read takes, already checked by the operands above.
         const paging = parsePaging(call.request as unknown as Readonly<Record<string, unknown>>);
         const level = isRefusal(paging) ? undefined : paging.detail;
         let task: Awaited<ReturnType<typeof readTaskDetail>>;

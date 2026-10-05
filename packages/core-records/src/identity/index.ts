@@ -11,7 +11,14 @@ export {
   type AgentSession,
 } from './agent-login.ts';
 export { recordAuthenticationAttempt, recordBodyRefusal } from './authentication-attempts.ts';
-export { admitQuota, createQuotaGate, QUOTAS, withQuotaScope } from './quota.ts';
+export {
+  admitQuota,
+  createQuotaGate,
+  holdQuotaSlot,
+  pageSizes,
+  QUOTAS,
+  withQuotaScope,
+} from './quota.ts';
 export type { QuotaLimits, QuotaOptions, QuotaRefusal } from './quota.ts';
 export {
   NO_MEMBERSHIP_FIXES,
