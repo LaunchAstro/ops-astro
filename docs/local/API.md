@@ -3456,9 +3456,11 @@ reads them.
 
 Core's check at an effect (`standingMandateVerdict`, core-runtime) share-locks
 the client's row, the class's graduation row and the client's not-revoked
-mandates, in that order. The mandate writers take the client's row for update
+mandates, in that order. Every mandate's insert takes the client's row `for no
+key update` (`standing_mandates_lock_client`), and the mandate writers take it
 first, so a revoke or a refusal being filed waits for an effect already past its
-check, and the next check sees it. Expiry is judged on the database's clock
+check, and the next check sees it. Its place in the global lock order is in
+`core-runtime/src/locks.ts`. Expiry is judged on the database's clock
 after that lock wait. A mandate word is `*`, a family word or an action class,
 compared whole; the database refuses any other word
 (`standing_mandate_words_known`). A live matching refusal wins
@@ -3467,6 +3469,8 @@ record is not `never` (otherwise `not-graduable`), and only a value within its
 ceiling in the same currency (`over-ceiling`, `other-currency`); anything else
 is left to the ordinary gate (`none`). A malformed class, currency, client or
 value throws before anything is read. A mandate is written once: the
-application role may revoke it, never edit, backdate or revive it
-(`standing_mandates_written_once`). No effect names an action class yet
+application role may revoke it, never edit, backdate or revive it; the database
+stamps the revocation's time and moves the revision by one
+(`standing_mandates_written_once`). A class whose record is `never` shows
+`never` in the region whatever is filed, as core treats it. No effect names an action class yet
 (AW-01/AW-02), so today no mandate pre-approves anything.

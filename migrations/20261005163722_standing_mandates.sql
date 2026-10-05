@@ -36,11 +36,13 @@
 --
 -- Core checks class, client, ceiling, expiry and revocation at every effect.
 -- It share-locks the client's row, then that class's graduation row, then the
--- client's not-revoked mandates; the mandate writers lock the client's row for
--- update first. So a revoke, or a refusal filed, either waits for an effect
--- already checking or is seen by the next one. A mandate is written once:
--- `standing_mandates_written_once` refuses any change but its revocation, and
--- a revocation is never undone.
+-- client's not-revoked mandates; every mandate filed takes the client's row
+-- `for no key update` in its own insert (`standing_mandates_lock_client`), and
+-- the mandate writers take it first. So a revoke, or a refusal filed, either
+-- waits for an effect already checking or is seen by the next one. A mandate
+-- is written once: `standing_mandates_written_once` refuses any change but its
+-- revocation, which the database stamps, moves the revision by one, and is
+-- never undone.
 
 -- Each word of a mandate's list, whole: `*`, a family word or an action class
 -- in `graduation_classes_class_shape`'s form.
@@ -48,10 +50,10 @@ create function public.standing_mandate_words_known(words text[]) returns boolea
   language sql immutable
   set search_path = pg_catalog
   as $$
-    select coalesce(bool_and(
+    select coalesce(bool_and(coalesce(
              word = '*'
              or word ~ '^[a-z][a-z0-9_]{0,31}\.\*$'
-             or word ~ '^[a-z][a-z0-9_]{0,31}(\.[a-z][a-z0-9_]{0,31}){1,3}$'), false)
+             or word ~ '^[a-z][a-z0-9_]{0,31}(\.[a-z][a-z0-9_]{0,31}){1,3}$', false)), false)
       from unnest(words) as word
   $$;
 
@@ -130,7 +132,8 @@ create table public.standing_mandates (
   constraint standing_mandates_expires_after_filing check (expires_at > created_at),
   constraint standing_mandates_label_length check (char_length(label) between 1 and 500),
   constraint standing_mandates_graduation_is_one_class
-    check (graduation_class is null or (not refuses and classes = array[graduation_class])),
+    check (graduation_class is null or (not refuses and classes = array[graduation_class]
+           and graduation_class ~ '^[a-z][a-z0-9_]{0,31}(\.[a-z][a-z0-9_]{0,31}){1,3}$')),
   constraint standing_mandates_revoked_by_someone
     check ((revoked_at is null) = (revoked_by_actor_id is null)),
   constraint standing_mandates_revision_positive check (revision >= 1)
@@ -152,9 +155,14 @@ create function public.standing_mandates_written_once() returns trigger
         old.authored_by_actor_id, old.created_at)
        or (old.revoked_at is not null
            and (new.revoked_at, new.revoked_by_actor_id)
-               is distinct from (old.revoked_at, old.revoked_by_actor_id)) then
+               is distinct from (old.revoked_at, old.revoked_by_actor_id))
+       or new.revision is distinct from old.revision + 1 then
       raise exception 'IMMUTABLE_FIELD: a standing mandate is written once'
         using errcode = 'restrict_violation';
+    end if;
+    -- The revocation's time is the database's, read after the row lock.
+    if old.revoked_at is null and new.revoked_at is not null then
+      new.revoked_at := clock_timestamp();
     end if;
     return new;
   end;
@@ -165,6 +173,26 @@ revoke execute on function public.standing_mandates_written_once() from public;
 create trigger standing_mandates_written_once
   before update on public.standing_mandates
   for each row execute function public.standing_mandates_written_once();
+
+-- Every mandate filed takes its client's row first, in the insert itself, so
+-- a refusal waits for a check already holding that row and the next check
+-- sees it, whichever writer files it.
+create function public.standing_mandates_lock_client() returns trigger
+  language plpgsql
+  as $$
+  begin
+    perform 1 from public.clients
+      where business_id = new.business_id and id = new.client_id
+      for no key update;
+    return new;
+  end;
+  $$;
+
+revoke execute on function public.standing_mandates_lock_client() from public;
+
+create trigger standing_mandates_lock_client
+  before insert on public.standing_mandates
+  for each row execute function public.standing_mandates_lock_client();
 
 alter table public.graduation_classes enable row level security;
 alter table public.graduation_classes force row level security;

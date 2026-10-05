@@ -45,10 +45,12 @@ export async function lockClientMandates(
 
 /**
  * What core's check asks about one class of one client, locked in one order:
- * the client's row for share (the mandate writers take it for update first,
- * so a refusal being filed waits for this check, or this check for it), then
- * the class's graduation row for share, then the client's mandates. `earned`
- * is null when the class is not on the client's list.
+ * the client's row for share (every mandate's insert takes it `for no key
+ * update`, and the mandate writers take it first, so a refusal being filed
+ * waits for this check, or this check for it), then the class's graduation
+ * row for share, then the client's mandates. `earned` is null when the class
+ * is not on the client's list. The guarantee is read committed's, the
+ * application's level: after a wait, the next statement sees what committed.
  */
 export async function lockMandateQuestion(
   tx: TenantQuery,

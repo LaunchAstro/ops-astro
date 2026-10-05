@@ -7,15 +7,16 @@
 // on the graduation list shows is derived here from the class's earned record
 // and the live mandates for its client (`deriveGraduation`):
 //
-// - a live refusal matching the class holds it, if it earned the bar;
+// - a class whose record is `never` shows `never`, whatever is filed;
+// - a live refusal matching the class holds it, if it is ready or promoted;
 // - a live mandate filed by promoting that class makes it run unattended;
 // - otherwise the class shows what its record earned.
 //
 // Core's effect check (`standingMandateVerdict`) reads the same words
 // (`classMatches`) and the same liveness, and covers only a class on its
-// client's own list whose record is not `never`: a direct approval may cover a
-// class the list shows as `short` or `none` (a person filed it), never one a
-// rule stopped and never one the client does not have.
+// client's own list whose record is not `never`: a direct approval may cover
+// any other class on the list (`ready`, `short`, `mixed` or `none`; a person
+// filed it), never one a rule stopped and never one the client does not have.
 //
 // "Live" is not revoked and not past its expiry, judged on the database's
 // clock (`clock_timestamp()`), never a time handed in. Every list here is
@@ -115,6 +116,7 @@ export function deriveGraduation(
   row: GraduationClassRow,
   mandates: readonly MandateRow[],
 ): Derived {
+  if (row.earned === 'never') return { state: 'never', heldBy: null, promotedBy: null };
   const live = mandates.filter((one) => one.clientId === row.clientId && one.live);
   const promotedBy =
     live.find((one) => !one.refuses && one.graduationClass === row.actionClass) ?? null;
