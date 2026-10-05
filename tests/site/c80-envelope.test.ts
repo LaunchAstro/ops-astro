@@ -88,39 +88,37 @@ const refusals: [string, ProposedChange][] = [
 ];
 
 describe('C80 envelope refusal', () => {
-  it('accepts the agreed change: one file, one line, one word in a text node', async () => {
-    expect(await checkEnvelope(change(AGREED), TARGET)).toEqual({
+  it('accepts the agreed change: one file, one line, one word in a text node', () => {
+    expect(checkEnvelope(change(AGREED), TARGET)).toEqual({
       ok: true,
       value: { path: TARGET.path, line: 6, before: 'alongside', after: 'beside' },
     });
   });
 
-  it.each(refusals)('refuses %s with CHANGE_ENVELOPE_EXCEEDED', async (_name, proposed) => {
-    const result = await checkEnvelope(proposed, TARGET);
+  it.each(refusals)('refuses %s with CHANGE_ENVELOPE_EXCEEDED', (_name, proposed) => {
+    const result = checkEnvelope(proposed, TARGET);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe('CHANGE_ENVELOPE_EXCEEDED');
   });
 
-  it('refuses the word inside a comment, a script or a style block, which are not body copy', async () => {
+  it('refuses the word inside a comment, a script or a style block, which are not body copy', () => {
     const hostile = [
       '<p>We walk <!-- alongside --> you.</p>',
       '<script>const a = "alongside";</script>',
       '<style>.alongside{}</style>',
       '<p title="walk\nalongside">x</p>',
     ];
-    const results = await Promise.all(
-      hostile.map(async (line) => {
-        const after = `${line.replace('alongside', 'beside')}\n`;
-        return [line, await checkEnvelope(change(after, `${line}\n`), TARGET)] as const;
-      }),
-    );
-    for (const [line, result] of results) expect(result.ok, line).toBe(false);
+    for (const line of hostile) {
+      const before = `${line}\n`;
+      const after = `${line.replace('alongside', 'beside')}\n`;
+      expect(checkEnvelope(change(after, before), TARGET).ok, line).toBe(false);
+    }
   });
 
-  it('refuses a target that is not a single word, whatever the caller supplies', async () => {
+  it('refuses a target that is not a single word, whatever the caller supplies', () => {
     const bad = { ...TARGET, replacement: 'right beside' };
-    expect(await checkEnvelope(change(AGREED), bad)).toMatchObject({
+    expect(checkEnvelope(change(AGREED), bad)).toMatchObject({
       ok: false,
       code: 'CHANGE_ENVELOPE_EXCEEDED',
     });

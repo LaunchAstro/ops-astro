@@ -89,3 +89,18 @@ describe('the capture comparison binds page identity and status', () => {
     ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['decoy'] });
   });
 });
+
+describe('the comparison is bounded', () => {
+  it('fails a capture whose text is larger than it compares', () => {
+    const filler = 'x'.repeat(300_000);
+    expect(
+      compareCaptures({
+        before: page({ text: `${filler} We walk alongside you.` }),
+        after: page({ documentDigest: 'sha256:doc-after', text: `${filler} We walk beside you.` }),
+        decoyBefore: decoy,
+        decoyAfter: { ...decoy },
+        target: TARGET,
+      }),
+    ).toMatchObject({ ok: false, fields: ['page'] });
+  });
+});

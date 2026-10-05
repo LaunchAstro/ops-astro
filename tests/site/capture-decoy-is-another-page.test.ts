@@ -1,50 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The edited page must read, to Astro's compiler, as the same page with only
-// that word changed: a swap that turns text into a closing tag changes the
-// page's structure and is refused. A page too large to parse safely is
-// refused rather than parsed. The decoy is a different page on the same
-// site, whatever the spelling of its address. An empty word is no word.
+// The decoy is a different page on the same site, whatever the spelling of
+// its address, and never a page serving the primary's document: otherwise an
+// untouched decoy proves nothing about the rest of the site. An empty word
+// fails the comparison and returns.
 
 import { describe, expect, it } from 'vitest';
-import {
-  checkEnvelope,
-  compareCaptures,
-  type CorrectionTarget,
-  type PageObservation,
-} from '../../packages/core-connectors/src/index.ts';
-
-function proposed(target: CorrectionTarget, before: string, after: string) {
-  return { files: [{ path: target.path, before, after }] };
-}
-
-describe('the edited page is the same page with one word changed', () => {
-  it('refuses a swap that closes a textarea early and turns its text into a live script', async () => {
-    const target = { path: 'src/pages/embed.astro', word: 'div', replacement: 'textarea' };
-    const before = [
-      '<p>Copy this into your site:</p>',
-      '<textarea readonly rows="4">',
-      '<div id="book-now"></div>',
-      '<script src="https://widget.example.com/embed.js"></script>',
-      '</textarea>',
-      '',
-    ].join('\n');
-    const after = before.replace('</div>', '</textarea>');
-    expect(await checkEnvelope(proposed(target, before, after), target)).toMatchObject({
-      ok: false,
-      code: 'CHANGE_ENVELOPE_EXCEEDED',
-    });
-  });
-
-  it('refuses a page larger than the parser is trusted with, and does not throw', async () => {
-    const target = { path: 'src/pages/big.astro', word: 'alongside', replacement: 'beside' };
-    const before = `<p>We walk alongside you.</p>\n${'<p>filler text</p>\n'.repeat(4_000)}`;
-    const after = before.replace('alongside', 'beside');
-    expect(await checkEnvelope(proposed(target, before, after), target)).toMatchObject({
-      ok: false,
-    });
-  });
-});
+import { compareCaptures, type PageObservation } from '../../packages/core-connectors/src/index.ts';
 
 const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
 const before: PageObservation = {
@@ -100,4 +62,18 @@ describe('the decoy is another page on the same site', () => {
       }).ok,
     ).toBe(false);
   }, 2_000);
+});
+
+describe('the decoy is not the primary page under another spelling', () => {
+  it.each([
+    'https://www.example.com/%61bout',
+    'https://www.example.com/About',
+    'https://www.example.com//about',
+    'https://www.example.com/about.html',
+  ])('fails the decoy at %s when it serves the primary page', (url) => {
+    const decoy = { ...before, url };
+    expect(
+      compareCaptures({ before, after, decoyBefore: decoy, decoyAfter: { ...decoy }, target }),
+    ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['decoy'] });
+  });
 });

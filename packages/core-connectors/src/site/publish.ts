@@ -125,7 +125,7 @@ async function beforeDispatch(
     decision.versionDigest === job.version.digest &&
     versionDigestOf(job) === job.version.digest;
   if (!bound) return refused('PROPOSAL_SUPERSEDED');
-  if (!(await checkEnvelope(job.change, job.target)).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
+  if (!checkEnvelope(job.change, job.target).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
   if (back.state !== 'absent') return undefined;
   const current = await ports.readSource();
   if (current.kind !== 'ok') return refused('CONTENT_DRIFT_UNCHECKED');
