@@ -125,7 +125,8 @@
         "tests/runtime/trace-export-a-stale-body-sent-after-a-takeover-hides-no-later-span.test.ts",
         "tests/runtime/trace-export-a-timed-out-body-stored-after-its-hold-hides-no-later-span.test.ts",
         "tests/runtime/trace-retention-two-stale-bodies-cannot-hide-a-missing-middle.test.ts",
-        "tests/runtime/trace-retention-later-recovery-tests-reject-an-old-span-for-the-fresh-one.test.ts"
+        "tests/runtime/trace-retention-later-recovery-tests-reject-an-old-span-for-the-fresh-one.test.ts",
+        "tests/runtime/trace-export-a-stalled-exporter-cannot-renew-while-another-holds-the-lease.test.ts"
       ],
       "rules": {
         "max-lines-per-function": "off",
