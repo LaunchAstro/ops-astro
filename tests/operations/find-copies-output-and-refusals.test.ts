@@ -86,6 +86,14 @@ it('after an erasure, a row naming only an id given back with --id is marked giv
   expect(hit?.given, 'the row holds an id the operator gave back for the erased person').toBe(true);
 });
 
+it('a short name written with combining marks counts its marks as letters', async () => {
+  for (const text of ['सीता', 'कुमार', 'นิ่ม']) {
+    // oxlint-disable-next-line no-await-in-loop
+    const found = await findCopies(world.adminUrl, ['--text', text], 'alpha');
+    expect(found.code, text).toBe(0);
+  }
+});
+
 it('a large export reaches its reader whole', async () => {
   const bulk = word('bulk');
   const filler = 'x'.repeat(20_000);
