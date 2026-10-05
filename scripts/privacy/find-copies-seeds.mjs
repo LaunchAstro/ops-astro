@@ -39,7 +39,7 @@ const EXACTLY = (value) =>
 
 /** How a person is found by the text: as whole words, or only loosely. */
 const NAMED = (...values) => `case when ${values.map((value) => EXACTLY(value)).join(' or ')}
-      then 'named by the text' else 'named loosely by the text, its words in a long value' end`;
+      then 'named by the text' else 'named loosely by the text, its words anywhere' end`;
 
 /**
  * The seeds ($2 the text or null, $3 the given ids, in business $1): each id
