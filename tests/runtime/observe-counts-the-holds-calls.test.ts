@@ -205,6 +205,7 @@ it('an observation and a hand-back on one lease finish without a deadlock, the c
   const holder = await holdRows(s, 'reservations', [String(w.decision['reservationId'])]);
   const [observing, handing] = [racer(s), racer(s)];
   let observed: unknown;
+  let handedBack: unknown;
   try {
     const observation = observeOn(w, observing);
     await until(async () => (await waiting()) >= 1);
@@ -215,7 +216,7 @@ it('an observation and a hand-back on one lease finish without a deadlock, the c
     expect(await waiting()).toBe(2);
 
     await holder.release();
-    [observed] = await Promise.all([observation, handback]);
+    [observed, handedBack] = await Promise.all([observation, handback]);
   } finally {
     await observing.close();
     await handing.close();
@@ -227,6 +228,15 @@ it('an observation and a hand-back on one lease finish without a deadlock, the c
     state: 'settled',
     spentMinor: COMMENT_COST,
   });
+  // Both operations committed: the hand-back's report is there, not only the observation's money.
+  const handed = appliedDetail(handedBack as never, 'task.handback');
+  const reports = await rows(
+    s,
+    `select 1 from public.handback_reports where business_id = $1 and lease_id = $2`,
+    [s.business, w.picked['leaseId']],
+  );
+  expect(handed).toBeDefined();
+  expect(reports).toHaveLength(1);
   expect(await money(w)).toMatchObject({
     state: 'actual',
     actual: String(COMMENT_COST),

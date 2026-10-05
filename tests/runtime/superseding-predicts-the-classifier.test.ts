@@ -8,9 +8,31 @@
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { releasedOnClosing } from '../../packages/core-runtime/src/budget-ledger.ts';
-import { appliedDetail, asPerson, liveWork, rows, type Work } from './schedules-harness.ts';
+import { acquire } from '../../packages/core-runtime/src/locks.ts';
+import { callModel, type Broker } from '../../packages/core-custody/src/index.ts';
+import { writeAuditEvent } from '../../packages/core-commands/src/commands/audit.ts';
+import {
+  appliedDetail,
+  asPerson,
+  liveWork,
+  rows,
+  type Schedules,
+  type Work,
+} from './schedules-harness.ts';
 import { t2dHarness } from './t2d-harness.ts';
-import { call, gated, noDatabase, s, useBrokerWorld, world } from '../broker/broker-world.ts';
+import { openSecond } from './t3b-harness.ts';
+import {
+  broker,
+  call,
+  digestOf,
+  gated,
+  noDatabase,
+  requestFor,
+  s,
+  stepOf,
+  useBrokerWorld,
+  world,
+} from '../broker/broker-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -121,4 +143,101 @@ it('preflight predicts what the classifier gives back (in flight, unmarked)', as
     custody.open();
     await inFlight;
   }
+});
+
+interface Held {
+  readonly version: string;
+  readonly reservation: string;
+  readonly envelope: string;
+  readonly held: bigint;
+  readonly spent: bigint;
+}
+
+/** The world's broker, auditing as `on`'s own agent, so another business's call is its own. */
+const brokerOf = (on: Schedules): Broker => ({
+  ...broker,
+  audit: async (tx, note) => {
+    await writeAuditEvent(tx, {
+      actorId: on.agentActorId,
+      command: note.action,
+      outcome: note.outcome,
+      refusalCode: note.refusalCode,
+      payloadDigest: digestOf(note.detail),
+      attempted: note.outcome === 'refused' ? note.detail : null,
+    });
+  },
+});
+
+/** A held 500 with one settled call, in `on`'s business, through the real broker. */
+const heldWithCall = async (on: Schedules): Promise<Held> => {
+  const work = await liveWork(on, `crossing ${randomUUID()}`, 500);
+  await stepOf(work);
+  world.provider.mode('answer');
+  const called = await callModel(
+    on.db.app,
+    on.business,
+    {
+      actorId: on.agentActorId,
+      delegationId: String(work.picked['delegationId']),
+      attendedByPersonId: null,
+    },
+    requestFor(work),
+    brokerOf(on),
+  );
+  if (!called.ok) throw new Error(`the priced replay call was refused ${called.code}`);
+  const [row] = await rows<{ envelope: string; held: string; spent: string }>(
+    on,
+    `select r.envelope_id as envelope, r.held_minor::text as held,
+            (select coalesce(sum(c.actual_minor), 0) from public.model_calls c
+              where c.business_id = r.business_id and c.reservation_id = r.id
+                and c.state = 'settled')::text as spent
+       from public.reservations r where r.business_id = $1 and r.id = $2`,
+    [on.business, work.decision['reservationId']],
+  );
+  if (row === undefined) throw new Error('no reservation for the work');
+  return {
+    version: String(work.decision['versionId']),
+    reservation: String(work.decision['reservationId']),
+    envelope: row.envelope,
+    held: BigInt(row.held),
+    spent: BigInt(row.spent),
+  };
+};
+
+const ledgerOf = async (on: Schedules, held: Held): Promise<unknown> =>
+  await rows(
+    on,
+    `select r.state, r.held_minor::text, r.actual_minor::text, e.held_minor::text as e_held,
+            e.actual_minor::text as e_actual, e.maximum_minor::text as e_max
+       from public.reservations r
+       join public.task_envelopes e on e.business_id = r.business_id and e.id = r.envelope_id
+      where r.business_id = $1 and r.id = $2`,
+    [on.business, held.reservation],
+  );
+
+it('business to business: a foreign version gives back nothing and moves nothing', async () => {
+  const other = await openSecond(s, `crossing-${randomUUID().slice(0, 8)}`);
+  const a = await heldWithCall(s);
+  const b = await heldWithCall(other);
+  expect(a.spent).toBeGreaterThan(0n);
+  expect(b.spent).toBeGreaterThan(0n);
+  const before = await ledgerOf(other, b);
+
+  const asked = await s.db.app.withBusiness(s.business, async (tx) => {
+    await acquire(tx, [
+      { lockClass: 'envelope', id: a.envelope },
+      { lockClass: 'reservation', id: a.reservation },
+    ]);
+    return {
+      foreignOnly: await releasedOnClosing(tx, [b.version], b.envelope),
+      mixed: await releasedOnClosing(tx, [a.version, b.version], a.envelope),
+      own: await releasedOnClosing(tx, [a.version], a.envelope),
+    };
+  });
+
+  const ownBack = a.held - a.spent;
+  expect(asked.foreignOnly).toStrictEqual({ released: 0n, fromEnvelope: 0n });
+  expect(asked.mixed).toStrictEqual({ released: ownBack, fromEnvelope: ownBack });
+  expect(asked.own).toStrictEqual({ released: ownBack, fromEnvelope: ownBack });
+  expect(await ledgerOf(other, b)).toStrictEqual(before);
 });
