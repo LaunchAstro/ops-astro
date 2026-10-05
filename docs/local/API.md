@@ -3398,11 +3398,18 @@ reads them.
 | `connection.graduation` | `/connection/graduation` | `{}` | `{ ok: true, clients: [{ id, label, scopes }], rows: [{ id, clientId, actionClass, classLabel, clearance, state, heldBy, neverWhy, promotedAt, approved, edited, rejected, since, note, revision }], mandates: [{ id, clientId, classes, refuses, ceiling: { amountMinor, currency } \| null, expiresAt, expired, label, graduationClass, authoredBy, createdAt, revision }] }`; `SCOPE_NOT_GRANTED` 403 |
 
 Core's check at an effect (`standingMandateVerdict`, core-runtime) share-locks
-the client's not-revoked mandates, so a revoke waits for an effect already past
-its check and the next check no longer sees the mandate, then judges expiry on
-the database's clock after that lock wait. A scope word covers an action class
-only as `*`, the class's own family word or the class itself, compared whole. A
-live matching refusal wins; an approval covers a value only within its ceiling
-in the same currency; anything else is left to the ordinary gate. No effect
-names an action class yet (AW-01/AW-02), so today no mandate pre-approves
-anything.
+the client's row, the class's graduation row and the client's not-revoked
+mandates, in that order. The mandate writers take the client's row for update
+first, so a revoke or a refusal being filed waits for an effect already past its
+check, and the next check sees it. Expiry is judged on the database's clock
+after that lock wait. A mandate word is `*`, a family word or an action class,
+compared whole; the database refuses any other word
+(`standing_mandate_words_known`). A live matching refusal wins
+(`refused`); an approval covers only a class on the client's own list whose
+record is not `never` (otherwise `not-graduable`), and only a value within its
+ceiling in the same currency (`over-ceiling`, `other-currency`); anything else
+is left to the ordinary gate (`none`). A malformed class, currency, client or
+value throws before anything is read. A mandate is written once: the
+application role may revoke it, never edit, backdate or revive it
+(`standing_mandates_written_once`). No effect names an action class yet
+(AW-01/AW-02), so today no mandate pre-approves anything.

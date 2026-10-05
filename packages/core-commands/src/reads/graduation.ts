@@ -10,7 +10,8 @@
 // (`listGraduation`); a caller holding the key nowhere is refused rather than
 // shown an empty region. The scopes are `heldScopes`', the grant check's own
 // walk, as the fleet read takes them. Each row's state is derived by
-// `deriveGraduation`, the one rule core's effect check also reads.
+// `deriveGraduation`, from the same words and liveness core's effect check
+// reads (`classMatches`, judged on the database's clock).
 
 import {
   deriveGraduation,

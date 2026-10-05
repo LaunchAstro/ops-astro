@@ -29,9 +29,34 @@
 -- 0055), so neither can point at another business's client, and the name the
 -- region shows is the client's own.
 --
--- Core checks class, client, ceiling, expiry and revocation at every effect,
--- reading these rows under a share lock, so a revoke either waits for an
--- effect already checking or is seen by the next one.
+-- A mandate's words are the three a client's scope list offers, and nothing
+-- else: the whole-account word `*`, a family word (`social.*`) or one action
+-- class, each checked whole by `standing_mandate_words_known`, so no word that
+-- matches nothing can be filed as a refusal that holds nothing.
+--
+-- Core checks class, client, ceiling, expiry and revocation at every effect.
+-- It share-locks the client's row, then that class's graduation row, then the
+-- client's not-revoked mandates; the mandate writers lock the client's row for
+-- update first. So a revoke, or a refusal filed, either waits for an effect
+-- already checking or is seen by the next one. A mandate is written once:
+-- `standing_mandates_written_once` refuses any change but its revocation, and
+-- a revocation is never undone.
+
+-- Each word of a mandate's list, whole: `*`, a family word or an action class
+-- in `graduation_classes_class_shape`'s form.
+create function public.standing_mandate_words_known(words text[]) returns boolean
+  language sql immutable
+  set search_path = pg_catalog
+  as $$
+    select coalesce(bool_and(
+             word = '*'
+             or word ~ '^[a-z][a-z0-9_]{0,31}\.\*$'
+             or word ~ '^[a-z][a-z0-9_]{0,31}(\.[a-z][a-z0-9_]{0,31}){1,3}$'), false)
+      from unnest(words) as word
+  $$;
+
+revoke execute on function public.standing_mandate_words_known(text[]) from public;
+grant execute on function public.standing_mandate_words_known(text[]) to ops_astro_app;
 
 create table public.graduation_classes (
   business_id  uuid        not null,
@@ -95,6 +120,7 @@ create table public.standing_mandates (
     references public.actors (business_id, id),
   constraint standing_mandates_classes_listed
     check (cardinality(classes) between 1 and 20 and array_position(classes, null) is null),
+  constraint standing_mandates_words_known check (public.standing_mandate_words_known(classes)),
   -- A refusal has no ceiling; an approval has one, in one currency.
   constraint standing_mandates_ceiling_only_on_approval check (refuses = (ceiling_minor is null)),
   constraint standing_mandates_ceiling_has_currency check ((ceiling_minor is null) = (currency is null)),
@@ -112,6 +138,33 @@ create table public.standing_mandates (
 
 create index standing_mandates_live_idx
   on public.standing_mandates (business_id, client_id) where revoked_at is null;
+
+create function public.standing_mandates_written_once() returns trigger
+  language plpgsql
+  as $$
+  begin
+    if (new.business_id, new.id, new.client_id, new.classes, new.refuses, new.ceiling_minor,
+        new.currency, new.expires_at, new.label, new.graduation_class,
+        new.authored_by_actor_id, new.created_at)
+       is distinct from
+       (old.business_id, old.id, old.client_id, old.classes, old.refuses, old.ceiling_minor,
+        old.currency, old.expires_at, old.label, old.graduation_class,
+        old.authored_by_actor_id, old.created_at)
+       or (old.revoked_at is not null
+           and (new.revoked_at, new.revoked_by_actor_id)
+               is distinct from (old.revoked_at, old.revoked_by_actor_id)) then
+      raise exception 'IMMUTABLE_FIELD: a standing mandate is written once'
+        using errcode = 'restrict_violation';
+    end if;
+    return new;
+  end;
+  $$;
+
+revoke execute on function public.standing_mandates_written_once() from public;
+
+create trigger standing_mandates_written_once
+  before update on public.standing_mandates
+  for each row execute function public.standing_mandates_written_once();
 
 alter table public.graduation_classes enable row level security;
 alter table public.graduation_classes force row level security;
@@ -133,5 +186,9 @@ create policy authority_standing_mandates on public.standing_mandates
   as permissive for all using (true) with check (true);
 
 grant select, update (revision) on public.graduation_classes to ops_astro_app;
-grant select, insert, update (revoked_at, revoked_by_actor_id, revision)
+-- Filed with its own fields only: `created_at` is the database's, and a
+-- mandate is filed live, at revision 1.
+grant select, update (revoked_at, revoked_by_actor_id, revision),
+  insert (business_id, id, client_id, classes, refuses, ceiling_minor, currency, expires_at, label,
+          graduation_class, authored_by_actor_id)
   on public.standing_mandates to ops_astro_app;

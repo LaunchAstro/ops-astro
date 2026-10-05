@@ -5,12 +5,17 @@
 // A mandate is structured: action classes and one client picked from lists, a
 // value ceiling, an expiry, and a sentence that is its label only. What a row
 // on the graduation list shows is derived here from the class's earned record
-// and the live mandates for its client, in one place, so the read and core's
-// effect check cannot disagree about what holds a class:
+// and the live mandates for its client (`deriveGraduation`):
 //
-// - a live refusal matching the class holds it, whatever it earned;
+// - a live refusal matching the class holds it, if it earned the bar;
 // - a live mandate filed by promoting that class makes it run unattended;
 // - otherwise the class shows what its record earned.
+//
+// Core's effect check (`standingMandateVerdict`) reads the same words
+// (`classMatches`) and the same liveness, and covers only a class on its
+// client's own list whose record is not `never`: a direct approval may cover a
+// class the list shows as `short` or `none` (a person filed it), never one a
+// rule stopped and never one the client does not have.
 //
 // "Live" is not revoked and not past its expiry, judged on the database's
 // clock (`clock_timestamp()`), never a time handed in. Every list here is
@@ -26,6 +31,27 @@ export type GraduationState = Earned | 'promoted' | 'held';
 
 /** The whole-account word, a family (`social.*`) or one class (`social.post`). */
 export const ALL_CLASSES = '*';
+
+const WORD_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789_';
+
+/** One part of an action class: a small letter, then up to 31 small letters, digits or `_`. */
+const isClassPart = (part: string): boolean =>
+  part.length >= 1 &&
+  part.length <= 32 &&
+  part[0] !== undefined &&
+  part[0] >= 'a' &&
+  part[0] <= 'z' &&
+  [...part].every((one) => WORD_CHARS.includes(one));
+
+/**
+ * Whether text is an action class: two to four parts joined by `.`, each
+ * `isClassPart` (the same form as `graduation_classes_class_shape`). Read part
+ * by part against the allowed characters; anything else is not a class.
+ */
+export function isActionClass(text: string): boolean {
+  const parts = text.split('.');
+  return parts.length >= 2 && parts.length <= 4 && parts.every(isClassPart);
+}
 
 /** A class's family word: `social.*` for `social.post`. */
 const familyOf = (actionClass: string): string => `${actionClass.split('.')[0]}.*`;
@@ -241,4 +267,32 @@ export async function lockClientMandates(
     [locked.map((row) => row.id)],
   );
   return rows.map(mandateOf);
+}
+
+/**
+ * What core's check asks about one class of one client, locked in one order:
+ * the client's row for share (the mandate writers take it for update first,
+ * so a refusal being filed waits for this check, or this check for it), then
+ * the class's graduation row for share, then the client's mandates. `earned`
+ * is null when the class is not on the client's list.
+ */
+export async function lockMandateQuestion(
+  tx: TenantQuery,
+  clientId: string,
+  actionClass: string,
+): Promise<{ readonly earned: Earned | null; readonly mandates: readonly MandateRow[] }> {
+  await tx.query(
+    `select k.id from public.clients k
+      where k.business_id = (select public.app_business_id()) and k.id = $1
+      for share`,
+    [clientId],
+  );
+  const record = await tx.query<{ readonly earned: Earned }>(
+    `select g.earned from public.graduation_classes g
+      where g.business_id = (select public.app_business_id())
+        and g.client_id = $1 and g.action_class = $2
+      for share`,
+    [clientId, actionClass],
+  );
+  return { earned: record[0]?.earned ?? null, mandates: await lockClientMandates(tx, clientId) };
 }
