@@ -124,7 +124,7 @@ async function topUpRefusal(
       'End the work instead. A terminal plan takes no top-up.',
     );
   }
-  if (locked.reservation_state !== 'held' && locked.reservation_state !== 'actual') {
+  if (!['held', ...CLOSED_STOPS].includes(locked.reservation_state)) {
     return refuse(
       'TRANSITION_NOT_PERMITTED',
       'this run holds no reservation to raise',
@@ -176,7 +176,7 @@ async function raiseHold(
   request: BudgetStopTopUpRequest,
   { locked }: Opened,
 ): Promise<number> {
-  if (locked.reservation_state === 'actual') return await holdTopUp(tx, request, locked);
+  if (CLOSED_STOPS.includes(locked.reservation_state)) return await holdTopUp(tx, request, locked);
   const { spent, unsent } = await spentOn(tx, locked.reservation_id);
   let heldMinor = Number(locked.held_minor) + request.amountMinor - spent;
   await tx.query(
@@ -200,9 +200,15 @@ async function raiseHold(
 }
 
 /**
- * A stop raised because the step's calls spent its whole hold (`budget-stop.ts`):
- * that hold is settled, so the top-up is the step's fresh hold, on the envelope
- * raised by it, and the run goes back for its pickup. Under the cap and
+ * The closed holds a stop can be raised on (`budget-stop.ts`): one the step's
+ * calls spent whole, or a replacement's target the version had no room for,
+ * which may have closed at nothing. The closed hold stays closed.
+ */
+const CLOSED_STOPS: readonly string[] = ['actual', 'abandoned'];
+
+/**
+ * A stop raised on a closed hold (`CLOSED_STOPS`): the top-up is the step's
+ * fresh hold, on the envelope raised by it, and the run goes back for its pickup. Under the cap and
  * envelope locks the answer holds; the cap was checked for the amount.
  */
 async function holdTopUp(
