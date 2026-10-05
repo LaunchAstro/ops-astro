@@ -6,6 +6,8 @@
 // the word, never by the word anywhere on it.
 
 import type { ProviderResult } from '../call.ts';
+import { html as markup, parse, type DefaultTreeAdapterTypes as Tree } from 'parse5';
+import { readDocument } from '../capture/page.ts';
 import { wordOffsets, type CorrectionTarget, type ProposedChange } from './envelope.ts';
 import { siteOperation } from './operations.ts';
 
@@ -67,23 +69,57 @@ export interface Occurrence {
   readonly index?: number;
 }
 
-const BLOCK =
-  /<\/?(?:address|article|aside|blockquote|br|dd|div|dt|figcaption|footer|h[1-6]|header|hr|li|main|nav|p|section|td|th)\b[^>]*>/giu;
-const ENTITY = /&(?:#(\d{1,6})|#x([\da-f]{1,5})|(\w+));/giu;
-const NAMED: Record<string, string> = { amp: '&', apos: "'", gt: '>', lt: '<', quot: '"' };
-const MARK = '\u0000';
+// Elements that start a rendered block of their own.
+const BLOCK = new Set(
+  (
+    'address article aside blockquote br dd div dt figcaption footer h1 h2 h3 h4 h5 h6 header ' +
+    'hr li main nav p section td th'
+  ).split(' '),
+);
+// Elements whose text the capture never reads (capture/page.ts): these in HTML, and script and
+// style anywhere.
+const HIDDEN = new Set('script style noscript template iframe noembed noframes'.split(' '));
+const MARK = '\uE000';
+const visible = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim();
 
-/** Markup as the page shows it, block by block: inline tags dropped, entities decoded. */
-const rendered = (html: string): string[] =>
-  html.split(BLOCK).map((block) =>
-    block
-      .replaceAll(/<[^>]*>/gu, '')
-      .replaceAll(ENTITY, (all, dec, hex, name) =>
-        name === undefined ? String.fromCodePoint(Number(dec ?? `0x${hex}`)) : (NAMED[name] ?? all),
-      )
-      .replaceAll(/\s+/gu, ' ')
-      .trim(),
-  );
+type Step = { readonly node: Tree.Node; readonly hidden: boolean } | { readonly block: boolean };
+
+/**
+ * Markup as the capture reads it, block by block: parse5's tree, so no hidden element's text
+ * counts and every character reference decodes as a browser decodes it. Undefined where the
+ * capture refuses the markup, or reads the whole page otherwise than these blocks joined.
+ */
+function rendered(html: string): string[] | undefined {
+  const whole = readDocument(html);
+  if (typeof whole === 'string') return undefined;
+  const blocks = [''];
+  const stack: Step[] = [{ node: parse(html), hidden: false }];
+  for (let step = stack.pop(); step !== undefined; step = stack.pop()) {
+    if ('block' in step) {
+      if (step.block) blocks.push('');
+      else blocks[blocks.length - 1] += ' ';
+      continue;
+    }
+    const { node, hidden } = step;
+    if (node.nodeName === '#text' && !hidden)
+      blocks[blocks.length - 1] += (node as Tree.TextNode).value;
+    if (!('childNodes' in node)) continue;
+    let hides = hidden;
+    if ('tagName' in node) {
+      const html5 = node.namespaceURI === markup.NS.HTML;
+      const name = node.tagName;
+      hides ||= HIDDEN.has(name) && (html5 || name === 'script' || name === 'style');
+      // An element breaks the text where it opens and closes, a block element into a new block.
+      const block = html5 && BLOCK.has(name);
+      if (block) blocks.push('');
+      else blocks[blocks.length - 1] += ' ';
+      stack.push({ block });
+    }
+    for (const child of node.childNodes.toReversed()) stack.push({ node: child, hidden: hides });
+  }
+  const page = blocks.map((block) => visible(block));
+  return visible(page.join(' ')) === whole.text ? page : undefined;
+}
 
 /** The approved occurrence's place, read from the one line the envelope let change. */
 export function occurrenceOf(
@@ -103,7 +139,8 @@ export function occurrenceOf(
   if (at === undefined) return undefined;
   before[index] = line.slice(0, at) + MARK + line.slice(end(at));
   const page = rendered(before.join('\n'));
-  const block = page.findIndex((text) => text.includes(MARK));
+  const block = page?.findIndex((text) => text.includes(MARK)) ?? -1;
+  if (page === undefined || page.join(' ').split(MARK).length !== 2) return undefined;
   const [left = '', right = ''] = page[block]?.split(MARK) ?? [];
   const prior = page.slice(0, block).join(' ');
   const earlier = [target.word, target.replacement].flatMap((word) =>
