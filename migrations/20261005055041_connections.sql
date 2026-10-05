@@ -23,7 +23,10 @@
 -- serve that client, and that client alone in each one's list.
 --
 -- Rows are written by the connector's own setup (MP-13-5, `connection:write`)
--- and the broker's sync (AW-01), neither built yet. This migration grants the
+-- and the broker's sync (AW-01), neither built yet. Those writers store
+-- `auth_method` only from a fixed set of method names and `scope` only from
+-- the requested or granted scope list, space-separated (a provider that
+-- answers with commas is split first), never a provider's message or token. This migration grants the
 -- application role select only on both tables: nothing here writes them.
 --
 -- `connection_repairs` records `connector repair started` (CS-14.12): who
@@ -57,13 +60,14 @@ create table public.connections (
     references public.custody_secrets (business_id, id),
   constraint connections_connector_key_shape check (connector_key ~ '^[a-z][a-z0-9_.-]{1,63}$'),
   constraint connections_label_length check (char_length(label) between 1 and 200),
-  -- The text the fleet draws is a closed grammar, refused whole when it is not
-  -- one: a label is printable text with no edge spaces; a method is words of
-  -- letters, digits and `._-`; a scope is the provider's tokens, one space
-  -- apart; a component is a lower-case name. Nothing a provider sends back
-  -- can ride in on them (SEC-P02-PR.3).
-  constraint connections_label_shape check (
-    label ~ '^[^[:space:][:cntrl:]]([^[:cntrl:]]*[^[:space:][:cntrl:]])?$'),
+  -- The text the fleet draws is a closed grammar, each column refused whole
+  -- unless it matches: a label is text with no control, format or bidi
+  -- character and no space at either end, the classes spelled out so the
+  -- check is the same under any locale; a method is words of letters, digits
+  -- and `._-`; a scope is tokens one space apart; a component is a lower-case
+  -- name. These bound the characters, not the meaning: what the writers may
+  -- put in them is in the header (SEC-P02-PR.3, SEC-P02-RB1.1-3).
+  constraint connections_label_shape check (label ~ '^[^\u0020\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000\u0001-\u001F\u007F-\u009F\u00AD\u061C\u200B\u200E\u200F\u2028-\u202E\u2060\u2066-\u2069\uFEFF]([^\u0001-\u001F\u007F-\u009F\u00AD\u061C\u200B\u200E\u200F\u2028-\u202E\u2060\u2066-\u2069\uFEFF]*[^\u0020\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000\u0001-\u001F\u007F-\u009F\u00AD\u061C\u200B\u200E\u200F\u2028-\u202E\u2060\u2066-\u2069\uFEFF])?$'),
   constraint connections_auth_method_shape check (char_length(auth_method) <= 40
     and auth_method ~ '^([A-Za-z0-9][A-Za-z0-9._-]*( [A-Za-z0-9._-]+)*)?$'),
   constraint connections_scope_shape check (char_length(scope) <= 2000
