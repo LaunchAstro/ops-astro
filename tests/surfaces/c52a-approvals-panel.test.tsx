@@ -32,7 +32,7 @@ const ROW = '[data-activation="a-1"]';
 
 // eslint-disable-next-line max-lines-per-function -- one stub server, the cases that share it
 describe('C52-A standing approvals on the Workflow triggers panel', () => {
-  it('C52-A owner check: turning an automation off goes through activation.turn_off at the shown revision, and a reload shows it off', async () => {
+  it('C52-A owner check: turning an automation off goes through activation.turn_off at the shown revision, and a reload shows it off, offering no approval', async () => {
     const stub = server();
     const client = clientOf(stub.fetch);
     const page = await mount(<TriggersPanel client={client} />);
@@ -47,8 +47,28 @@ describe('C52-A standing approvals on the Workflow triggers panel', () => {
     const again = await mount(<TriggersPanel client={client} />);
     await tick();
     expect(again.find(`${ROW}`)?.getAttribute('data-enabled')).toBe('false');
-    expect(again.find(`${ROW} [data-control="turn-off"]`)).toBeNull();
+    // Only an automation that is on is approved (C52-A): no adopt or roll back while off.
+    for (const control of ['turn-off', 'adopt', 'roll-back']) {
+      expect(again.find(`${ROW} [data-control="${control}"]`), control).toBeNull();
+    }
     expect(again.find(`${ROW} [data-trigger="approval"]`)?.textContent).toBe('not approved to run');
+    await again.unmount();
+  });
+
+  it('C52-A an automation turned off after an adoption offers no roll back', async () => {
+    const stub = server();
+    const client = clientOf(stub.fetch);
+    const page = await mount(<TriggersPanel client={client} />);
+    await tick();
+    await page.click(`${ROW} [data-control="adopt"]`);
+    await tick();
+    await page.click(`${ROW} [data-control="turn-off"]`);
+    await tick();
+    await page.unmount();
+    const again = await mount(<TriggersPanel client={client} />);
+    await tick();
+    expect(again.find(`${ROW}`)?.getAttribute('data-enabled')).toBe('false');
+    expect(again.find(`${ROW} [data-control="roll-back"]`)).toBeNull();
     await again.unmount();
   });
 
