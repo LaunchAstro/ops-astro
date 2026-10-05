@@ -78,6 +78,38 @@ const pair = (
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
 
+/** C33's three identifier cells: a foreign version, activation and definition. */
+function automationCells(f: IdentWorld['foreign']): [CommandName, ReturnType<typeof pair>][] {
+  const manual = { mode: 'manual', enabled: false } as const;
+  const release = {
+    contentDigest: 'e'.repeat(64),
+    contentSize: 1,
+    inputs: [],
+    operations: [],
+    modes: ['manual'],
+  } as const;
+  const { automation } = f;
+  return [
+    [
+      'activation.change',
+      pair('versionId', automation.versionId, (id) => ({ versionId: id, ...manual })),
+    ],
+    [
+      'activation.change',
+      pair('activationId', automation.activationId, (id) => ({
+        activationId: id,
+        versionId: f.alphaVersionId,
+        ...manual,
+        expectedRevision: 1,
+      })),
+    ],
+    [
+      'definition.release',
+      pair('definitionId', automation.definitionId, (id) => ({ definitionId: id, ...release })),
+    ],
+  ];
+}
+
 /** Every gate item recorded in alpha, the operator, so the mode may move to real (S0-5). */
 async function gateReady(w: IdentWorld, caller: Caller): Promise<void> {
   const links = await legalEvidence(w.h.world.db.admin, w.h.world.alpha);
@@ -406,6 +438,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         // An onboarding start on bravo's client and a result on bravo's step (C41-A).
         ['onboarding.start', pair('clientId', f.clientId, (id) => START(id))],
         ['onboarding.step_result', pair('recordId', f.stepTaskId, (id) => STEP(id))],
+        ...automationCells(f),
       );
       // AW-05's answers name the task and the run on it. Bravo's run is the
       // one its pickup claimed; alpha's task is named beside it, and then

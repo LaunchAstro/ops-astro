@@ -23,8 +23,9 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
-import { bravoRecords } from './ident-audit-bravo-rows.ts';
+import { bravoAutomation, bravoRecords } from './ident-audit-bravo-rows.ts';
 import { bravoStepTask } from './ident-audit-onboarding.ts';
+import type { SeededAutomation } from '../automations/seed.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import {
@@ -86,6 +87,8 @@ export interface IdentWorld {
     credentialId: string;
     clientId: string;
     stepTaskId: string;
+    automation: SeededAutomation;
+    alphaVersionId: string;
     /** A custody key of bravo's (C31). */
     secretId: string;
   }>;
@@ -252,7 +255,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
   );
 
   // bravo's own legal version, agent credential and client (C81, API-2, C32).
-  const bravoRows = await bravoRecords(world);
+  const bravoRows = { ...(await bravoRecords(world)), ...(await bravoAutomation(world)) };
 
   // alpha's second agent, with a live lease of its own.
   const secondAgent = await enrolAgent(world.db, world.alpha, world.ada.actorId as string);

@@ -6,14 +6,15 @@
 // as; a context that cannot write one gets a fabricated identifier, which the
 // recipe survives. Every client takes a name of its own (one name per
 // business). Reached from `role-case-positive-body.ts`'s last case, so that
-// file stays under the per-file cap; any other name goes on to `wayfinderBody`.
+// file stays under the per-file cap; any other name goes on to `laterBody`.
 //
 // A harness, not a suite: nothing here runs on its own.
 
 import { randomUUID } from 'node:crypto';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { BodyContext, Prepared } from './role-case-bodies.ts';
-import { wayfinderBody, type Target } from './role-case-wayfinder.ts';
+import { laterBody } from './role-case-automations.ts';
+import type { Target } from './role-case-wayfinder.ts';
 import type { Answer } from './world.ts';
 
 const detailOf = (answer: Answer): Readonly<Record<string, unknown>> =>
@@ -60,6 +61,6 @@ export async function onboardingBody(
         },
       };
     default:
-      return { body: await wayfinderBody(name, context, target) };
+      return { body: await laterBody(name, context, target) };
   }
 }

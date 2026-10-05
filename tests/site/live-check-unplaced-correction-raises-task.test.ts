@@ -1,0 +1,226 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable require-await -- the ports answer synchronously */
+//
+// A published correction whose approved occurrence has no place on the served
+// page can never be confirmed live by the check. It stays accepted, and a
+// recovery task asks a person to confirm the page by eye; it is never left
+// accepted with nobody told (catalogue #953). Here the place is lost because
+// the served page captured before dispatch does not show the source's copy of
+// the word where the source puts it, so the calibration keeps no place.
+
+import { expect, it } from 'vitest';
+import { readDocument } from '../../packages/core-connectors/src/capture/page.ts';
+import {
+  checkEnvelope,
+  contentDigest,
+  observeLanded,
+  publishCorrection,
+  versionDigestOf,
+  type Accepted,
+  type CorrectionTarget,
+  type PublishJob,
+  type PublishPorts,
+} from '../../packages/core-connectors/src/index.ts';
+
+const published = {
+  revision: 'def456',
+  deploymentId: 'dpl_953',
+  liveUrl: 'https://physio.example/contact/',
+};
+
+function seen(html: string): string {
+  const reading = readDocument(html);
+  if (typeof reading === 'string') throw new Error(`capture refused: ${reading}`);
+  return reading.text;
+}
+
+function approvedJob(target: CorrectionTarget, before: string): PublishJob {
+  const after = before.replace(target.word, target.replacement);
+  const pinned = {
+    target,
+    change: { files: [{ path: target.path, before, after }] },
+    preImageDigest: contentDigest(before),
+    baseRevision: 'abc123',
+    pageUrl: published.liveUrl,
+    seam: 'request-953-3',
+  };
+  const versionDigest = versionDigestOf(pinned);
+  return {
+    correctionId: 'correction-953-3',
+    ...pinned,
+    version: { versionId: 'version-1', digest: versionDigest },
+    decision: {
+      decisionId: 'decision-1',
+      decision: 'approve',
+      versionId: 'version-1',
+      versionDigest,
+    },
+  };
+}
+
+function observe(accepted: Accepted, target: CorrectionTarget, html: string) {
+  return observeLanded(accepted, target, {
+    raiseTask: async () => {},
+    readDeployment: async () => ({
+      kind: 'ok',
+      value: { revision: published.revision, served: true },
+    }),
+    capture: async () => ({ ok: true, value: { text: seen(html), url: published.liveUrl } }),
+  });
+}
+
+/** Publishes with `preImage` as the served page before dispatch, then observes each served page. */
+async function publishAndObserve(
+  target: CorrectionTarget,
+  before: string,
+  preImage: string,
+  served: Record<string, string>,
+  back: 'absent' | 'landed' = 'absent',
+) {
+  const job = approvedJob(target, before);
+  expect((await checkEnvelope(job.change, target)).ok).toBe(true);
+  const raised: string[] = [];
+  const base: Omit<PublishPorts, 'capture'> = {
+    readBack: async () =>
+      back === 'landed' ? { state: 'landed', value: published } : { state: 'absent' },
+    readSource: async () => ({ kind: 'ok', value: { content: before, revision: 'abc123' } }),
+    cancellation: async () => 'none',
+    publish: async () => ({ kind: 'ok', value: published }),
+    raiseTask: async (reason) => {
+      raised.push(reason);
+    },
+  };
+  const ports = {
+    ...base,
+    capture: async () => ({
+      ok: true as const,
+      value: { text: seen(preImage), url: published.liveUrl },
+    }),
+  };
+  const outcome = await publishCorrection(job, ports);
+  if (outcome.state !== 'accepted') return { outcome: outcome.state, raised: raised.length };
+  const observed = Object.fromEntries(
+    await Promise.all(
+      Object.entries(served).map(async ([name, html]) => [
+        name,
+        (await observe(outcome, target, html)).state,
+      ]),
+    ),
+  );
+  return { outcome: outcome.state, raised: raised.length, observed };
+}
+
+it('a correction the served page gives no place stays accepted and raises a recovery task', async () => {
+  const target = { path: 'src/pages/contact.astro', word: 'Contcat', replacement: 'Contact' };
+  const before =
+    "---\nimport Layout from '../layouts/Layout.astro';\n---\n<Layout>\n<h2>Contcat</h2>\n<p>Call us.</p>\n{closedForHolidays && <h2>Contcat</h2>}\n</Layout>\n";
+  const nav = '<header><nav><a href="/contact">Contact</a></nav></header>';
+  const result = await publishAndObserve(
+    target,
+    before,
+    `${nav}<main><h2>Contcat</h2><p>Call us.</p></main>`,
+    {
+      corrected: `${nav}<main><h2>Contact</h2><p>Call us.</p></main>`,
+      unchanged: `${nav}<main><h2>Contcat</h2><p>Call us.</p></main>`,
+    },
+  );
+  expect(result).toEqual({
+    outcome: 'accepted',
+    raised: 1,
+    observed: { corrected: 'accepted', unchanged: 'accepted' },
+  });
+});
+
+it('a correction whose word the served page does not show stays accepted and raises a recovery task', async () => {
+  const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
+  const before = '<p>We walk alongside you.</p>\n';
+  const result = await publishAndObserve(target, before, '<p>Page moved. See our new site.</p>', {
+    corrected: '<p>We walk beside you.</p>',
+  });
+  expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
+});
+
+it('a layout copy of the word ahead of the place raises a recovery task, never a place on the layout', async () => {
+  const target = { path: 'src/pages/contact.astro', word: 'Contcat', replacement: 'Contact' };
+  const before =
+    "---\nimport Layout from '../layouts/Layout.astro';\n---\n<Layout>\n<h2>Contcat</h2>\n<p>Call us.</p>\n</Layout>\n";
+  const nav = '<header><nav><a href="/contact">Contcat</a></nav></header>';
+  const result = await publishAndObserve(
+    target,
+    before,
+    `${nav}<main><h2>Contcat</h2><p>Call us.</p></main>`,
+    { corrected: `${nav}<main><h2>Contact</h2><p>Call us.</p></main>` },
+  );
+  expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
+});
+
+const navTypoPage = (heading: string) =>
+  `<header><nav><a href="/contact">Contcat</a></nav></header><main><h2>${heading}</h2><p>Call us.</p></main>`;
+
+it('a retry after the publish landed takes no place from the page and raises a recovery task', async () => {
+  // The page may already show the correction, so nothing read after a landing is a pre-image.
+  const target = { path: 'src/pages/contact.astro', word: 'Contcat', replacement: 'Contact' };
+  const before =
+    "---\nimport Layout from '../layouts/Layout.astro';\n---\n<Layout>\n<h2>Contcat</h2>\n<p>Call us.</p>\n{showForm && <h2>Contact</h2>}\n</Layout>\n";
+  const result = await publishAndObserve(
+    target,
+    before,
+    navTypoPage('Contact'),
+    { corrected: navTypoPage('Contact') },
+    'landed',
+  );
+  expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
+});
+
+it('a pre-image past the comparison bound leaves no place and raises a recovery task', async () => {
+  const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
+  const filler = `<p>${'Our clinic is open six days. '.repeat(10_000)}</p>`;
+  const result = await publishAndObserve(
+    target,
+    '<p>We walk alongside you.</p>\n',
+    `<p>We walk alongside you.</p>${filler}`,
+    { corrected: `<p>We walk beside you.</p>${filler}` },
+  );
+  expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
+});
+
+it('a publish answered with another page as live takes no place and raises a recovery task', async () => {
+  // The calibration read the catalogued page; a live address the provider names otherwise is
+  // not where it was read, so nothing read there may prove the place.
+  const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
+  const job = approvedJob(target, '<p>We walk alongside you.</p>\n');
+  const raised: string[] = [];
+  const outcome = await publishCorrection(job, {
+    readBack: async () => ({ state: 'absent' }),
+    readSource: async () => ({
+      kind: 'ok',
+      value: { content: '<p>We walk alongside you.</p>\n', revision: 'abc123' },
+    }),
+    cancellation: async () => 'none',
+    publish: async () => ({
+      kind: 'ok',
+      value: { ...published, liveUrl: 'https://physio.example/book/' },
+    }),
+    raiseTask: async (reason) => {
+      raised.push(reason);
+    },
+    capture: async () => ({
+      ok: true,
+      value: { text: 'We walk alongside you.', url: published.liveUrl },
+    }),
+  });
+  expect({
+    outcome: outcome.state,
+    raised: raised.length,
+    placed: 'occurrence' in outcome && outcome.occurrence !== undefined,
+  }).toEqual({ outcome: 'accepted', raised: 1, placed: false });
+});
+
+it('a word longer than the place search takes no place and raises a recovery task', async () => {
+  const word = 'a'.repeat(5000);
+  const target = { path: 'src/pages/about.astro', word, replacement: 'b'.repeat(5000) };
+  const result = await publishAndObserve(target, `<p>${word}</p>\n`, `<p>${word}</p>`, {
+    corrected: `<p>${'b'.repeat(5000)}</p>`,
+  });
+  expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
+});

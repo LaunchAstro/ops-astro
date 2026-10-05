@@ -14,18 +14,21 @@ const before: PageObservation = {
   status: 200,
   documentDigest: 'sha256:before',
   text: 'About us. We walk alongside you.',
+  html: 'About us. We walk alongside you.',
   stylesheets: {},
 };
 const after = {
   ...before,
   documentDigest: 'sha256:after',
   text: 'About us. We walk beside you.',
+  html: 'About us. We walk beside you.',
 };
 const decoyAt = (url: string): PageObservation => ({
   ...before,
   url,
   documentDigest: 'sha256:decoy',
   text: 'We work alongside your team.',
+  html: 'We work alongside your team.',
 });
 
 describe('the decoy is another page on the same site', () => {

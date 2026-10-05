@@ -205,3 +205,19 @@ export function mayCarry(
   }
   return { ok: true };
 }
+
+/**
+ * Custody's answer to a describe: the kind and account of the credential it
+ * holds for `destination`, never its value, which the broker records before a
+ * send (catalogue #439); refused when it holds no such credential there,
+ * exactly as a dispatch would be.
+ */
+export function described(
+  credential: StoredCredential | undefined,
+  destination: unknown,
+): Record<string, unknown> {
+  if (credential === undefined || credential.destination !== destination) {
+    return { type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' };
+  }
+  return { type: 'described', kind: credential.kind, account: credential.account };
+}

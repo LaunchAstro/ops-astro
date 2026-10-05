@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the reconciliation pass settles a present effect at the book's price plus the hold's settled model calls and leaves an unsettled call to a person"
+}

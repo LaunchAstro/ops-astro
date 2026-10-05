@@ -4,9 +4,11 @@
 // inbox items, the access check, mentions and the unattended list. The
 // package's index re-exports this list whole.
 
-export { readInboxItems, countOwedItems } from './read.ts';
+export { readInboxItems, countOwedItems, INBOX_HISTORY_PAGE, INBOX_HISTORY_SCAN } from './read.ts';
 export {
   INBOX_REASONS,
+  owes,
+  toldAtOnce,
   raiseInboxItem,
   stampSeen,
   recordDeliveryAttempt,
@@ -18,7 +20,7 @@ export {
   type InboxReason,
   type InboxWorkState,
 } from './items.ts';
-export { INTERNAL_ROLE_KEYS, readScopes, taskAccess } from './access.ts';
+export { INTERNAL_ROLE_KEYS, REACH, readScopes, taskAccess } from './access.ts';
 export {
   raiseAssignment,
   raiseDecision,

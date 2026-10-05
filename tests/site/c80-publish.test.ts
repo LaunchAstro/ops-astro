@@ -78,6 +78,11 @@ function ports(overrides: Partial<PublishPorts> = {}): PublishPorts & { calls: C
       calls.raised.push(reason);
       return Promise.resolve();
     },
+    capture: () =>
+      Promise.resolve({
+        ok: true,
+        value: { text: 'We walk alongside you.', url: 'https://agency.example/throwaway/' },
+      }),
     ...overrides,
   } as PublishPorts & { calls: Calls };
 }
@@ -239,7 +244,10 @@ describe('C80 late cancellation', () => {
 
 const served = () =>
   Promise.resolve({ kind: 'ok' as const, value: { revision: 'def456', served: true } });
-const shows = () => Promise.resolve({ ok: true as const, value: { text: 'We walk beside you.' } });
+const LIVE = 'https://www.example.com/throwaway';
+const noTask = { raiseTask: () => Promise.resolve() };
+const shows = () =>
+  Promise.resolve({ ok: true as const, value: { text: 'We walk beside you.', url: LIVE } });
 const notServed = () =>
   Promise.resolve({
     kind: 'ok' as const,
@@ -251,7 +259,7 @@ const otherRevision = () =>
     value: { revision: 'old', served: true },
   });
 const oldWord = () =>
-  Promise.resolve({ ok: true as const, value: { text: 'We walk alongside you.' } });
+  Promise.resolve({ ok: true as const, value: { text: 'We walk alongside you.', url: LIVE } });
 
 describe('C80 accepted not landed', () => {
   it('a successful publish response establishes accepted only', async () => {
@@ -266,26 +274,22 @@ describe('C80 accepted not landed', () => {
     deploymentId: 'dpl_1',
     liveUrl: 'https://www.example.com/throwaway',
     dispatchToken: 'x',
-    occurrence: { left: 'We walk ', right: ' you.' },
+    occurrence: { left: 'We walk ', right: ' you.', index: 0, observed: ['alongside'] },
   };
 
+  type Ports = Parameters<typeof observeLanded>[2];
+  const observe = (readDeployment: Ports['readDeployment'], capture: Ports['capture']) =>
+    observeLanded(accepted, TARGET, { ...noTask, readDeployment, capture });
+
   it('is live only when the deployment is served for that revision and the fenced capture shows the new word', async () => {
-    expect(
-      await observeLanded(accepted, TARGET, { readDeployment: served, capture: shows }),
-    ).toMatchObject({
+    expect(await observe(served, shows)).toMatchObject({
       state: 'live',
     });
-    expect(
-      await observeLanded(accepted, TARGET, { readDeployment: notServed, capture: shows }),
-    ).toMatchObject({
+    expect(await observe(notServed, shows)).toMatchObject({
       state: 'accepted',
     });
-    expect(
-      await observeLanded(accepted, TARGET, { readDeployment: otherRevision, capture: shows }),
-    ).toMatchObject({ state: 'accepted' });
-    expect(
-      await observeLanded(accepted, TARGET, { readDeployment: served, capture: oldWord }),
-    ).toMatchObject({
+    expect(await observe(otherRevision, shows)).toMatchObject({ state: 'accepted' });
+    expect(await observe(served, oldWord)).toMatchObject({
       state: 'accepted',
     });
   });

@@ -30,7 +30,7 @@ export const CASE = {
 } as const;
 
 /**
- * The forty-one operations that name no identifier, each with a minimal valid body.
+ * The forty-eight operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -149,9 +149,11 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['inbox.count', {}],
   ['inbox.unattended', {}],
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
+  // The Workflow triggers registry (C33) names no row.
+  ['automation.registry', {}],
 ];
 
-/** The forty-four identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The forty-nine identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -202,6 +204,9 @@ export const IDENTIFIER_BEARING: Readonly<
   'client.set_privacy': ['clientId', 'control'],
   'task.duplicate': ['recordId', 'duplicate'],
   'inbox.seen': ['itemId', 'control'],
+  // C33: a version and an activation, and a definition to release on.
+  'activation.change': ['versionId and activationId', 'control'],
+  'definition.release': ['definitionId', 'control'],
   // New client onboarding (C41-A): the client a start names, the step task a result names.
   'onboarding.start': ['clientId', 'control'],
   'onboarding.step_result': ['recordId', 'control'],

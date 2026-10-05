@@ -242,6 +242,10 @@
       "rules": { "no-promise-executor-return": "off", "sort-vars": "off" }
     },
     {
+      "files": ["tests/broker/reconcile-keeps-call-when-its-carrier-changes.test.ts"],
+      "rules": { "max-lines-per-function": "off", "no-promise-executor-return": "off" }
+    },
+    {
       "files": ["tests/surfaces/term-tip-test-detects-invisible-tooltip.mjs"],
       "rules": {
         "no-control-regex": "off",
