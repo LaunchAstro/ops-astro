@@ -19,3 +19,19 @@ alter table public.activation_occurrences
   add constraint activation_occurrences_outcome_known
     check (outcome in ('started', 'activation_off', 'no_standing_approval', 'approved',
                        'over_activation_rate', 'over_business_rate', 'over_intake_bound'));
+
+-- The batch 3 join 0097 deferred its origin keys to (its header: "joins at
+-- the batch 3 join, with that table"). Any application code may take the
+-- occurrence role for one statement, so the code alone does not hold an
+-- origin: a run names a real occurrence and definition of its own business,
+-- and a dispatch's run is a run of its own business. Each key reaches its
+-- table's (business_id, id) unique.
+alter table public.planned_runs
+  add constraint planned_runs_origin_occurrence_fkey foreign key (business_id, origin_occurrence_id)
+    references public.activation_occurrences (business_id, id),
+  add constraint planned_runs_origin_definition_fkey foreign key (business_id, origin_definition_id)
+    references public.automation_definitions (business_id, id);
+
+alter table public.occurrence_dispatches
+  add constraint occurrence_dispatches_run_fkey foreign key (business_id, run_id)
+    references public.planned_runs (business_id, id);
