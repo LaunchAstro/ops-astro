@@ -115,6 +115,7 @@
     "tests/runtime/t3f-expired-lease.test.ts",
     "tests/runtime/t3f-lease-edges.test.ts",
     "tests/runtime/trace-export-gap-records-the-cursor-its-batch-read.test.ts",
+    "tests/runtime/trace-export-overlapping-resend-steps-the-cursor-back.test.ts",
     "tests/runtime/trace-export-owed-tail-does-not-block-a-later-run.test.ts",
     "tests/runtime/trace-export-resends-a-run-whole-while-its-delete-is-owed.test.ts",
     "tests/runtime/trace-export-resends-every-fresh-event-of-an-owed-run.test.ts",

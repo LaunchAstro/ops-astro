@@ -10,7 +10,6 @@
 // goes again as two halves, so any target that takes a 100-span body never
 // holds the cursor.
 
-import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { TRACE_CREDENTIAL, TRACE_DESTINATION } from '../../apps/api/trace-exporter.ts';
 import type { Deliver, ExpiryPorts } from '../../packages/core-runtime/src/index.ts';
@@ -21,61 +20,10 @@ import {
   TRACE_WINDOW_DAYS,
 } from '../../packages/core-runtime/src/index.ts';
 import { liveWork, rows } from './schedules-harness.ts';
-import { age } from './aw-13-retention-world.ts';
+import { age, append, eventIds } from './aw-13-retention-world.ts';
 import { awaitDue, drain, noDatabase, spanIds, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
 
 useAw13World('trret_first_owed_span');
-
-/** The run's event ids, in the export's order. */
-async function eventIds(runId: string): Promise<string[]> {
-  return (
-    await rows<{ id: string }>(
-      t.alpha,
-      'select id from public.run_events where business_id = $1 and run_id = $2 order by tx, id',
-      [t.alpha.business, runId],
-    )
-  ).map((row) => row.id);
-}
-
-/** Appends `count` events to the run, each after its last. */
-async function append(runId: string, count: number): Promise<void> {
-  const s = t.alpha;
-  const [last] = await rows<{
-    taskId: string;
-    position: string;
-    leaseId: string;
-    attemptId: string;
-    actorId: string;
-  }>(
-    s,
-    `select task_id as "taskId", position::text as position, lease_id as "leaseId",
-            attempt_id as "attemptId", actor_id as "actorId"
-       from public.run_events ev where business_id = $1 and run_id = $2
-      order by ev.position desc limit 1`,
-    [s.business, runId],
-  );
-  if (last === undefined) throw new Error('no event to follow');
-  await s.db.app.withBusiness(s.business, async (tx) => {
-    for (let n = 1; n <= count; n += 1) {
-      // eslint-disable-next-line no-await-in-loop -- one event after another, in position order
-      await tx.query(
-        `insert into public.run_events
-           (business_id, id, run_id, task_id, position, kind, lease_id, attempt_id, actor_id, detail)
-         values ($1, $2, $3, $4, $5, 'claimed', $6, $7, $8, '{}'::jsonb)`,
-        [
-          s.business,
-          randomUUID(),
-          runId,
-          last.taskId,
-          Number(last.position) + n,
-          last.leaseId,
-          last.attemptId,
-          last.actorId,
-        ],
-      );
-    }
-  });
-}
 
 it.skipIf(noDatabase)(
   'Trace retention: a delete landing between two bodies of an owed resend is found and the tail sent again',

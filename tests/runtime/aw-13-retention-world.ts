@@ -2,9 +2,11 @@
 //
 // AW-13 retention's helpers over the AW-13 world: age a run's events past the
 // window (run events are append only, so the ageing runs as the admin with
-// triggers off for its one statement), read a business's recorded passes, and
-// list the trace ids the target was asked to delete.
+// triggers off for its one statement), read a business's recorded passes,
+// list the trace ids the target was asked to delete, and read or append a
+// run's events.
 
+import { randomUUID } from 'node:crypto';
 import { rows, type Schedules } from './schedules-harness.ts';
 import { t } from './aw-13-world.ts';
 
@@ -57,4 +59,55 @@ export function clearSeen(): void {
   ]) {
     list.length = 0;
   }
+}
+
+/** The run's event ids, in the export's order. */
+export async function eventIds(runId: string): Promise<string[]> {
+  return (
+    await rows<{ id: string }>(
+      t.alpha,
+      'select id from public.run_events where business_id = $1 and run_id = $2 order by tx, id',
+      [t.alpha.business, runId],
+    )
+  ).map((row) => row.id);
+}
+
+/** Appends `count` events to the run, each after its last. */
+export async function append(runId: string, count: number): Promise<void> {
+  const s = t.alpha;
+  const [last] = await rows<{
+    taskId: string;
+    position: string;
+    leaseId: string;
+    attemptId: string;
+    actorId: string;
+  }>(
+    s,
+    `select task_id as "taskId", position::text as position, lease_id as "leaseId",
+            attempt_id as "attemptId", actor_id as "actorId"
+       from public.run_events ev where business_id = $1 and run_id = $2
+      order by ev.position desc limit 1`,
+    [s.business, runId],
+  );
+  if (last === undefined) throw new Error('no event to follow');
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    for (let n = 1; n <= count; n += 1) {
+      // eslint-disable-next-line no-await-in-loop -- one event after another, in position order
+      await tx.query(
+        `insert into public.run_events
+           (business_id, id, run_id, task_id, position, kind, lease_id, attempt_id, actor_id, detail)
+         values ($1, $2, $3, $4, $5, 'claimed', $6, $7, $8, '{}'::jsonb)`,
+        [
+          s.business,
+          randomUUID(),
+          runId,
+          last.taskId,
+          Number(last.position) + n,
+          last.leaseId,
+          last.attemptId,
+          last.actorId,
+        ],
+      );
+    }
+  });
 }
