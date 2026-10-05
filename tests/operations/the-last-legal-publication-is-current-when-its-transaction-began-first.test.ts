@@ -24,18 +24,9 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
+import { latch } from '../support/lock-wait-race.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
-const noop = (): void => undefined;
-
-function gate(): { readonly promise: Promise<void>; readonly open: () => void } {
-  let open: () => void = noop;
-  const promise = new Promise<void>((resolve) => {
-    open = resolve;
-  });
-  return { promise, open };
-}
 
 describe.skipIf(serverUrl === undefined)('legal publication order', () => {
   let db: FreshDatabase;
@@ -79,10 +70,12 @@ describe.skipIf(serverUrl === undefined)('legal publication order', () => {
       return { first, last };
     });
 
-    const begun = gate();
-    const go = gate();
+    const begun = latch();
+    const go = latch();
+    let began = '';
     const publishingLast = early.withBusiness(businessId, async (tx) => {
-      await tx.query('select now()');
+      const [start] = await tx.query<{ readonly at: string }>('select now()::text as at');
+      began = start?.at ?? '';
       begun.open();
       await go.promise;
       return await publishLegalVersion(tx, versions.last.id, actorId);
@@ -103,10 +96,16 @@ describe.skipIf(serverUrl === undefined)('legal publication order', () => {
       businessId,
       async (tx) => await readPublishedLegal(tx, 'client-terms'),
     );
-    expect({ first, last, current: current?.version }).toEqual({
+    const [order] = await db.admin.execute<{ readonly beganFirst: boolean }>(
+      `select $2::timestamptz < published_at as "beganFirst"
+         from public.legal_document_versions where id = $1`,
+      [versions.first.id, began],
+    );
+    expect({ first, last, current: current?.version, ...order }).toEqual({
       first: undefined,
       last: undefined,
       current: '2.0',
+      beganFirst: true,
     });
   }, 30_000);
 });

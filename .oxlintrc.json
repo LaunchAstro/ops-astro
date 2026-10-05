@@ -94,6 +94,7 @@
         "tests/api/an-agent-credential-that-expires-during-its-row-lock-wait-is-not-served.test.ts",
         "tests/authority/a-money-protection-switch-waiting-at-sign-in-cannot-use-an-expired-step-up.test.ts",
         "tests/commands/a-duplicate-by-a-caller-who-cannot-read-the-source-takes-no-lock-on-it.test.ts",
+        "tests/commands/a-duplicate-does-not-rest-on-a-read-grant-issued-while-it-waits-for-the-source-row.test.ts",
         "tests/commands/a-duplicate-refuses-a-read-grant-that-expires-while-it-waits-for-the-source-row.test.ts",
         "tests/operations/the-last-legal-publication-is-current-when-its-transaction-began-first.test.ts"
       ],

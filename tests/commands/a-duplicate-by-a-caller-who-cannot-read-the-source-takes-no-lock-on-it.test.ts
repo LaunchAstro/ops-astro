@@ -8,13 +8,14 @@
 //
 // The old task's row is held `for update` on another connection. The
 // duplicate must be answered while the row is still held, and no backend may
-// be seen waiting on the holder.
+// be seen waiting on the holder. (Main asked first too; this guards the early
+// ask against a re-ask that moves it after the lock.)
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import { holdRow, type Held } from '../support/lock-wait-race.ts';
+import { holdRow, isWaitedOn } from '../support/lock-wait-race.ts';
 import {
   alpha,
   clientA,
@@ -29,17 +30,6 @@ import {
   tearDown,
 } from './duplicate-world.ts';
 import { grantTo } from './fixture.ts';
-
-/** Whether a backend of this database waits on a lock `held` holds now. */
-const waitsOn = async (held: Held): Promise<boolean> => {
-  const rows = await db.admin.execute<{ readonly n: number }>(
-    `select count(*)::int as n from pg_stat_activity a
-      where a.datname = current_database() and a.wait_event_type = 'Lock'
-        and $1::int = any(pg_blocking_pids(a.pid))`,
-    [held.pid],
-  );
-  return (rows[0]?.n ?? 0) > 0;
-};
 
 describe.skipIf(serverUrl === undefined)('duplicating a task the caller cannot read', () => {
   beforeAll(setUp, 180_000);
@@ -71,7 +61,7 @@ describe.skipIf(serverUrl === undefined)('duplicating a task the caller cannot r
       // oxlint-disable-next-line no-unmodified-loop-condition -- settled is set by the duplicate's answer
       for (let attempt = 0; attempt < 500 && !settled && !waited; attempt += 1) {
         // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
-        waited = await waitsOn(held);
+        waited = await isWaitedOn(db, held);
         // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
         if (!settled && !waited) await delay(10);
       }
