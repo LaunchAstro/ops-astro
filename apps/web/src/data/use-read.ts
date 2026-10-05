@@ -169,30 +169,32 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   return { state, reload, live: own && liveRef.current && state.outcome === 'loading' };
 }
 
-/** Floor ticks a read in flight is waited for before a tick asks again. */
-const ROLLUP_PATIENCE = 3;
+/** How long a read in flight is waited for before a floor tick asks again. */
+const ROLLUP_PATIENCE_MS = 3 * FLOOR_MS;
 
 /**
  * Re-read on the rollup floor (C4 CS-1.2). A tick waits for the read in flight
  * rather than superseding it: a newer read would retire its answer, so reads
  * slower than the floor would never land. Reads have no transport timeout, so
- * after `ROLLUP_PATIENCE` ticks a read that has not answered is superseded,
- * and a revoke still draws.
+ * a read still in flight `ROLLUP_PATIENCE_MS` after a tick first found it is
+ * superseded, and a revoke still draws. The wait is measured in time, from
+ * that read's own start as the floor saw it, so tab-shows and a read started
+ * by a retry do not shorten it.
  */
 function useRollup<T>(
   rollup: RollupFloor | undefined,
   readRef: { readonly current: AuthorisedRead<T> | null },
   reload: () => void,
 ): void {
-  const waited = useRef(0);
+  const waiting = useRef<{ state: ReadState<T> | null; since: number }>({ state: null, since: 0 });
   useEffect(
     () =>
       rollup?.follow(() => {
-        if (readRef.current?.state.outcome === 'loading' && waited.current < ROLLUP_PATIENCE) {
-          waited.current += 1;
-          return;
+        const state = readRef.current?.state;
+        if (state?.outcome === 'loading') {
+          if (waiting.current.state !== state) waiting.current = { state, since: Date.now() };
+          if (Date.now() - waiting.current.since < ROLLUP_PATIENCE_MS) return;
         }
-        waited.current = 0;
         reload();
       }),
     [rollup, readRef, reload],
