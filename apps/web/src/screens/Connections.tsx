@@ -19,8 +19,11 @@
 // after them (signal, skill costing, the per-client region) are later pieces.
 //
 // The screen is keyed on the grant in `screen-registry.tsx`, so a change of
-// business starts its view state and repair attempts over, and `useRead`
-// drops an answer that belongs to an earlier grant.
+// business or person starts its view state and repair attempts over, and
+// `useRead` drops an answer that belongs to an earlier grant. No topic reaches
+// the fleet, so it re-reads on the rollup floor (LIVE-SYNC.md): every 30 s
+// while the tab is visible, at once when shown again or back online; `keep`
+// holds the drawn fleet and its view through each re-read.
 
 import { useRef, useState, type ReactElement } from 'react';
 import { Banner, Empty, InDevelopment, Kpi, SectionHead } from '@launchastro/ui';
@@ -29,6 +32,7 @@ import type {
   ConnectionView,
 } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
+import type { RollupFloor } from '../data/rollup-floor.ts';
 import { useRead } from '../data/use-read.ts';
 import { useCommand } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
@@ -211,6 +215,7 @@ export function ConnectionsScreen(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly now?: () => number;
+  readonly rollup?: RollupFloor;
 }): ReactElement {
   const { client } = props;
   const now = (props.now ?? Date.now)();
@@ -218,6 +223,7 @@ export function ConnectionsScreen(props: {
     grantKey: props.grantKey,
     run: () => client.read<ConnectionFleetResult>('connection.fleet', {}),
     isEmpty: (value) => value.connections.length === 0,
+    ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
     deps: [],
   });
   const repair = useRepair(client, reload);

@@ -19,6 +19,7 @@ import {
   type RouteMatch,
 } from './routes.ts';
 import type { PanelId } from './panels.ts';
+import { tabRollupFloor } from './data/rollup-floor.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { ConnectionsScreen } from './screens/Connections.tsx';
 import { ConversationScreen } from './screens/Conversation.tsx';
@@ -96,10 +97,17 @@ export const SCREENS: {
       conversationId={context.params.conversation}
     />
   ),
-  // Keyed on the grant, so a change of business, person or session starts the
-  // fleet's view state, open rows and repair attempts over.
+  // Keyed on the grant, so a change of business or person, or a sign-out (the
+  // key's generation), starts the fleet's view state, open rows and repair
+  // attempts over; a step-up keeps the reader, as `grantKeyOf` does everywhere.
+  // An agency-wide rollup, so it re-reads on the tab's floor (LIVE-SYNC.md).
   'agency:connections': (context) => (
-    <ConnectionsScreen key={context.grantKey} client={context.client} grantKey={context.grantKey} />
+    <ConnectionsScreen
+      key={context.grantKey}
+      client={context.client}
+      grantKey={context.grantKey}
+      rollup={tabRollupFloor()}
+    />
   ),
   'agency:gallery': () => <Gallery />,
   // Settings ▸ General, then the person's own sessions (C58) and authenticator app (C59),
