@@ -3,11 +3,8 @@
 // The change envelope (release decision section 2, D21-2): one file, one
 // line, one contiguous word inside one text node, markup and style
 // unchanged. It is checked here at proposal time and refused by name, so a
-// grown diff never reaches a gate for someone to notice.
-//
-// And the captures' comparison: the word moved on the live page, the rest of
-// the page did not, the served stylesheets are equal and the decoy occurrence
-// elsewhere on the site is untouched (Receipt L fields 9 to 12).
+// grown diff never reaches a gate for someone to notice. The captures'
+// comparison is `captures.ts`.
 
 export interface CorrectionTarget {
   readonly path: string;
@@ -50,9 +47,12 @@ const WORD_CHARACTER = /[\p{L}\p{M}\p{N}_]/u;
 /** Offsets at which `word` stands alone in `text`, not as part of a longer word. */
 export function wordOffsets(text: string, word: string): number[] {
   const found: number[] = [];
+  if (word === '') return found;
   for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1)) {
-    const left = at === 0 ? '' : text.slice(at - 1, at);
-    const right = text.slice(at + word.length, at + word.length + 1);
+    // Whole characters, never one code unit: half a surrogate pair is no letter.
+    const left = Array.from(text.slice(Math.max(0, at - 2), at)).at(-1) ?? '';
+    const next = text.codePointAt(at + word.length);
+    const right = next === undefined ? '' : String.fromCodePoint(next);
     if (!WORD_CHARACTER.test(left) && !WORD_CHARACTER.test(right)) found.push(at);
   }
   return found;
@@ -138,74 +138,5 @@ export function checkEnvelope(change: ProposedChange, target: CorrectionTarget):
   return {
     ok: true,
     value: { path: file.path, line: index + 1, before: target.word, after: target.replacement },
-  };
-}
-
-/** What one fenced capture of a page observed. */
-export interface PageObservation {
-  readonly url: string;
-  readonly status: number;
-  readonly documentDigest: string;
-  /** The page's visible text, whitespace collapsed. */
-  readonly text: string;
-  /** Every stylesheet the page loads, by address, with its digest. */
-  readonly stylesheets: Readonly<Record<string, string>>;
-}
-
-export interface CaptureComparison {
-  readonly before: PageObservation;
-  readonly after: PageObservation;
-  readonly decoyBefore: PageObservation;
-  readonly decoyAfter: PageObservation;
-  readonly target: CorrectionTarget;
-}
-
-export interface NothingElseMoved {
-  readonly wordChanged: true;
-  readonly restOfPageUnchanged: true;
-  readonly stylesheetsUnchanged: true;
-  readonly decoyUnchanged: true;
-}
-
-export type ComparisonResult =
-  | { readonly ok: true; readonly value: NothingElseMoved }
-  | {
-      readonly ok: false;
-      readonly code: 'NOTHING_ELSE_MOVED_FAILED';
-      readonly fields: readonly ('word' | 'page' | 'stylesheets' | 'decoy')[];
-    };
-
-function sameStylesheets(left: PageObservation, right: PageObservation): boolean {
-  const keys = Object.keys(left.stylesheets).toSorted();
-  const other = Object.keys(right.stylesheets).toSorted();
-  return (
-    keys.length === other.length &&
-    keys.every(
-      (key, index) => key === other[index] && left.stylesheets[key] === right.stylesheets[key],
-    )
-  );
-}
-
-export function compareCaptures(input: CaptureComparison): ComparisonResult {
-  const { before, after, decoyBefore, decoyAfter, target } = input;
-  const failed: ('word' | 'page' | 'stylesheets' | 'decoy')[] = [];
-  if (after.text === before.text) failed.push('word');
-  else if (replacedAt(before.text, after.text, target) === undefined) failed.push('page');
-  if (!sameStylesheets(before, after)) failed.push('stylesheets');
-  const decoyHeld =
-    wordOffsets(decoyBefore.text, target.word).length > 0 &&
-    decoyAfter.text === decoyBefore.text &&
-    decoyAfter.documentDigest === decoyBefore.documentDigest &&
-    sameStylesheets(decoyBefore, decoyAfter);
-  if (!decoyHeld) failed.push('decoy');
-  if (failed.length > 0) return { ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: failed };
-  return {
-    ok: true,
-    value: {
-      wordChanged: true,
-      restOfPageUnchanged: true,
-      stylesheetsUnchanged: true,
-      decoyUnchanged: true,
-    },
   };
 }

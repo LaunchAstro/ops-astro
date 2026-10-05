@@ -146,13 +146,12 @@ export {
   siteCatalogue,
   siteOperation,
 } from './site/operations.ts';
+export { compareCaptures, type PageObservation } from './site/captures.ts';
 export {
   checkEnvelope,
-  compareCaptures,
   wordOffsets,
   type CorrectionTarget,
   type EnvelopeResult,
-  type PageObservation,
   type ProposedChange,
 } from './site/envelope.ts';
 export { approvedChange, contentDigest, versionDigestOf, type VersionPin } from './site/version.ts';
