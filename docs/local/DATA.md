@@ -897,3 +897,9 @@ run. Each count is read back from these rows under AW-01's durable limit
 of five activation runs in flight writes nothing: its occurrence stays
 `approved` with no dispatch, which is how it shows as waiting. When dispatch
 starts the run, AW-01 J writes it (`planned_runs.origin_occurrence_id`, 0097) and the dispatch row names it.
+The keys 0097 deferred join here: a run's origin occurrence and definition
+are rows of its own business (`planned_runs_origin_occurrence_fkey`,
+`planned_runs_origin_definition_fkey`), and a dispatch's run is the run its
+own occurrence started (`occurrence_dispatches_run_fkey` on business, run and
+occurrence). That the origin occurrence was approved is still the code's
+check, under the activation lock.
