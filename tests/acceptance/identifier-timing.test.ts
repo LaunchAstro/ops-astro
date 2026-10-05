@@ -144,6 +144,12 @@ const pause = async (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+/** An activation named at revision 1, as the seeded ones are (C52-A's cells). */
+const atFirst = (activationId: string): Record<string, unknown> => ({
+  activationId,
+  expectedRevision: 1,
+});
+
 describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
   let w: IdentWorld;
 
@@ -377,6 +383,17 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       operations: [],
       modes: ['manual'],
     }));
+    // C52-A: bravo's activation and approval named in an alpha adoption, rollback, turn-off and revoke.
+    const at = atFirst;
+    byAda('activation.adopt', 'activationId', f.automation.activationId, (activationId) => ({
+      ...at(activationId),
+      versionId: f.alphaVersionId,
+    }));
+    byAda('activation.roll_back', 'activationId', f.automation.activationId, at);
+    byAda('activation.turn_off', 'activationId', f.automation.activationId, at);
+    byAda('approval.revoke', 'approvalId', f.automation.approvalId, (approvalId) => ({
+      approvalId,
+    }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
       recordId: own.task.id,
@@ -491,11 +508,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 80 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 84 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(80);
-    expect(names).toHaveLength(80);
+    expect(new Set(names).size, 'distinct operations').toBe(84);
+    expect(names).toHaveLength(84);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

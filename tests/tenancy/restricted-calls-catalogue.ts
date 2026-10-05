@@ -10,14 +10,18 @@ import { OCCURRENCE_ROLE } from './restricted-calls-cases.ts';
 
 /**
  * Update granted column by column: the table, the columns, and the first migration that
- * grants them. Every other column-level privilege, to any role, is outside the contract.
+ * grants them; a table a later migration grants more columns on has a row for each. Every
+ * other column-level privilege, to any role, is outside the contract.
  */
-const COLUMN_UPDATES: Readonly<
-  Record<string, { readonly from: string; readonly columns: readonly string[] }>
-> = {
-  'public.planned_runs': { from: '0086', columns: ['state'] },
+const COLUMN_UPDATES: readonly {
+  readonly table: string;
+  readonly from: string;
+  readonly columns: readonly string[];
+}[] = [
+  { table: 'public.planned_runs', from: '0086', columns: ['state'] },
   // C33: an activation's setting, pin and switch, each change by a person.
-  'public.activations': {
+  {
+    table: 'public.activations',
     from: '20261005003850',
     columns: [
       'changed_at',
@@ -30,13 +34,20 @@ const COLUMN_UPDATES: Readonly<
       'version_id',
     ],
   },
-  'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
+  // C52-A: the standing approval an activation names, set by an adoption.
+  { table: 'public.activations', from: '20261005113804', columns: ['approval_id'] },
+  {
+    table: 'public.leases',
+    from: '20261004040200',
+    columns: ['expires_at', 'released_at', 'state'],
+  },
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
-  'public.clients': {
+  {
+    table: 'public.clients',
     from: '20261003000423',
     columns: ['handles_health', 'model_egress', 'model_providers', 'no_agent_edits'],
   },
-};
+];
 
 /**
  * Whether the migration `at` (its version, `0086_bootstrap_pins` or
@@ -48,9 +59,8 @@ const reached = (at: string, from: string): boolean =>
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
 export function columnUpdatesAt(at?: string): readonly string[] {
-  return Object.entries(COLUMN_UPDATES)
-    .filter(([, grant]) => at === undefined || reached(at, grant.from))
-    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
+  return COLUMN_UPDATES.filter((grant) => at === undefined || reached(at, grant.from))
+    .flatMap((grant) => grant.columns.map((column) => `${grant.table}.${column}`))
     .toSorted();
 }
 
