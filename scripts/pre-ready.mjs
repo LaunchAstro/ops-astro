@@ -203,9 +203,12 @@ function inSnapshot(cwd, head, use) {
     const owner = /^head-([1-9][0-9]*)-/u.exec(name);
     const entry = join(parent, name);
     // A real directory only: removing through a link would remove its target.
-    if (owner !== null && lstatSync(entry).isDirectory() && !running(Number(owner[1]))) {
-      removeSnapshot(cwd, entry);
-    }
+    // An entry another gate removed meanwhile is skipped.
+    const stale =
+      owner !== null &&
+      !running(Number(owner[1])) &&
+      lstatSync(entry, { throwIfNoEntry: false })?.isDirectory() === true;
+    if (stale) removeSnapshot(cwd, entry);
   }
   const dir = mkdtempSync(join(parent, `head-${process.pid}-`));
   try {
