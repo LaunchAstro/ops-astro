@@ -9,7 +9,8 @@
 // another device, the read below applies the stored value.
 
 import { useEffect } from 'react';
-import { savedSince, savesSoFar } from './data/preference-saves.ts';
+import { ownerOf, useDesk } from './data/owned.ts';
+import { savedSince } from './data/preference-saves.ts';
 import type { OperationsClient } from './operations/client.ts';
 import type { StorageLike } from './session/token.ts';
 
@@ -58,7 +59,8 @@ export function applyAppearance(
 /**
  * Once per signed-in session: read the person's own preferences and apply the
  * stored appearance. A refused or absent read changes nothing, and never throws;
- * nor does an answer older than an appearance saved since it was asked.
+ * nor does an answer for an owner the tab has left, or one older than an
+ * appearance saved while it was unanswered (#540; `data/owned.ts`).
  * Signed out, the tab's copy is dropped and the page follows the system again,
  * so one person's appearance never opens the next person's session.
  */
@@ -67,6 +69,7 @@ export function useStoredAppearance(
   grantKey: string | null,
   storage: StorageLike | null,
 ): void {
+  const desk = useDesk(ownerOf(client, grantKey ?? 'anonymous'));
   useEffect(() => {
     if (grantKey === null) {
       delete document.documentElement.dataset['themePreference'];
@@ -77,17 +80,15 @@ export function useStoredAppearance(
       }
       return;
     }
-    let current = true;
-    const mark = savesSoFar(client);
+    const tag = desk.read();
     void client.read<unknown>('preference.read', {}).then((answer) => {
       const value = 'value' in answer ? appearanceIn(answer.value) : null;
-      // A choice saved since the read left is newer than its answer.
-      const stale = savedSince(client, 'appearance', mark);
-      if (current && value !== null && !stale) applyAppearance(value, storage);
+      const drawn = desk.draws(tag) && !savedSince(client, 'appearance', tag);
+      if (drawn && value !== null) applyAppearance(value, storage);
       return answer;
     });
     return () => {
-      current = false;
+      desk.drop();
     };
-  }, [client, grantKey, storage]);
+  }, [client, grantKey, storage, desk]);
 }

@@ -12,17 +12,20 @@
 // signed in to the tab never reads the copy, and a switch or sign-out removes
 // it (session/token.ts). A key is saved once per release or fold, never per
 // move: the rail and the dock hold a moving value themselves. Saves leave in
-// order, each after the last has answered, so the last release is kept.
+// order, each after the last has answered, so the last release is kept. The
+// read and the saves are tagged for their business and person (`data/owned.ts`):
+// a read draws only while it is the newest for the owner it left under, and a
+// key saved while it was unanswered keeps the saved value (#541).
 
 import { useEffect, useRef, useState } from 'react';
-import { savePreference } from '../data/preference-saves.ts';
+import { useDesk } from '../data/owned.ts';
+import { savedSince, savePreference } from '../data/preference-saves.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import {
   grantKeyOf,
   isRecord,
   jsonSlot,
   layoutKey,
-  sessionGeneration,
   type Session,
   type StorageLike,
 } from '../session/token.ts';
@@ -70,35 +73,36 @@ export function useLayoutStore(
   // Another person, business or sign-in is another layout: read theirs.
   const current = held.owner === owner ? held : { owner, layout: copy.read() };
   if (current !== held) setHeld(current);
-  // Keys saved here since the read left: its answer does not undo them.
-  const savedHere = useRef<{ owner: string; layout: Layout }>({ owner, layout: {} });
-  if (savedHere.current.owner !== owner) savedHere.current = { owner, layout: {} };
+  const desk = useDesk({ business: session?.businessKey ?? '', person: owner });
+  // The layout on screen now, for a read's answer to keep its newer keys from.
+  const latest = useRef(current.layout);
+  latest.current = current.layout;
 
   useEffect(() => {
     if (session === null) return;
-    let live = true;
-    const generation = sessionGeneration();
+    const tag = desk.read();
     void client.read<{ readonly preferences?: unknown }>('preference.read', {}).then((answer) => {
-      if (!live || generation !== sessionGeneration() || !('value' in answer)) return answer;
-      const layout = { ...layoutIn(answer.value.preferences), ...savedHere.current.layout };
+      if (!desk.draws(tag) || !('value' in answer)) return answer;
+      const kept = Object.entries(latest.current).filter(([key]) => savedSince(client, key, tag));
+      const layout = { ...layoutIn(answer.value.preferences), ...Object.fromEntries(kept) };
       tabCopy(storage, session).write(layout);
       setHeld({ owner: grantKeyOf(session), layout });
       return answer;
     });
     return () => {
-      live = false;
+      desk.drop();
     };
-  }, [client, session, storage]);
+  }, [client, session, storage, desk]);
 
   return {
     layout: current.layout,
     save: (key, value) => {
       if (session === null) return;
-      savedHere.current = { owner, layout: { ...savedHere.current.layout, [key]: value } };
       const layout = { ...current.layout, [key]: value };
+      latest.current = layout;
       copy.write(layout);
       setHeld({ owner, layout });
-      void savePreference(client, key, value);
+      void savePreference(client, key, value, desk.save());
     },
   };
 }

@@ -19,79 +19,12 @@
 // because it has the same lifetime and the same rule: `sessionStorage`, never
 // `localStorage`, gone when the tab is.
 
-/** The narrow part of `Storage` the session and `/settings` use. */
-export interface StorageLike {
-  getItem: (key: string) => string | null;
-  setItem: (key: string, value: string) => void;
-  removeItem: (key: string) => void;
-}
+// Storage access moved whole to storage-slot.ts to keep this file under the
+// line limit; it is re-exported so every importer reads it from here as before.
+import { isRecord, jsonSlot, type JsonSlot, type StorageLike } from './storage-slot.ts';
 
-/** One JSON value kept under one key. */
-export interface JsonSlot<T> {
-  /** The value, or null when there is none, it is not JSON or the guard rejects it. */
-  readonly read: () => T | null;
-  readonly write: (value: T) => void;
-  readonly remove: () => void;
-}
-
-/**
- * The one place browser storage is read and written as JSON.
- *
- * A storage that throws — private mode, blocked site data — must not take the
- * tab with it: every call is caught, a failed read is "nothing kept", and a
- * failed write or removal leaves memory as the only copy, which it already is.
- * A stored value is read through `guard`, because the storage belongs to the
- * tab and not to this code.
- */
-export function jsonSlot<T>(
-  storage: StorageLike | null,
-  key: string,
-  guard: (value: unknown) => value is T,
-): JsonSlot<T> {
-  return {
-    read: () => {
-      try {
-        const raw = storage?.getItem(key) ?? null;
-        if (raw === null) return null;
-        const parsed: unknown = JSON.parse(raw);
-        return guard(parsed) ? parsed : null;
-      } catch {
-        return null;
-      }
-    },
-    write: (value) => {
-      try {
-        storage?.setItem(key, JSON.stringify(value));
-      } catch {
-        /* The tab keeps working on what it holds in memory. */
-      }
-    },
-    remove: () => {
-      try {
-        storage?.removeItem(key);
-      } catch {
-        /* Nothing to do: memory is already clear. */
-      }
-    },
-  };
-}
-
-/**
- * This tab's `sessionStorage`, or null where there is none or it is blocked.
- * Blocked site data makes the global throw on access, not only on use.
- */
-export function tabStorage(): Storage | null {
-  try {
-    return typeof sessionStorage === 'undefined' ? null : sessionStorage;
-  } catch {
-    return null;
-  }
-}
-
-/** Any JSON object. What a slot guard starts from. */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+export { isRecord, jsonSlot, tabStorage } from './storage-slot.ts';
+export type { JsonSlot, StorageLike } from './storage-slot.ts';
 
 export interface Session {
   /** `alpha` or `bravo`. It becomes the path prefix, never a body field. */
@@ -129,8 +62,29 @@ export const layoutKey = (businessKey: string): string => `ops-astro.layout.${bu
 let endings = 0;
 export const sessionGeneration = (): number => endings;
 
+/**
+ * How many times this tab's owner has changed: a session ended, or a sign-in
+ * to another business or as another person replaced the one held. An answer
+ * tagged under an earlier owner is that owner's alone (`data/owned.ts`).
+ */
+let owners = 0;
+export const tabOwnerGeneration = (): number => owners;
+
 /** Where to go back to once the person has signed in again. */
 const RETURN_KEY = 'ops-astro.return-to';
+
+/** Every business this sign-in has held in the tab, so sign-out reaches each one's copies. */
+const HELD_KEY = 'ops-astro.held-businesses';
+
+const isBusinessList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((each) => typeof each === 'string');
+
+/** What the tab keeps for one business: its confirmed settings, dock and layout copies. */
+function forgetBusiness(storage: StorageLike | null, businessKey: string): void {
+  for (const key of [settingsCacheKey, dockKey, layoutKey]) {
+    jsonSlot(storage, key(businessKey), isRecord).remove();
+  }
+}
 
 /**
  * The grant key the read projections are keyed on.
@@ -172,6 +126,7 @@ export class SessionStore {
   readonly #storage: StorageLike | null;
   readonly #kept: JsonSlot<Session>;
   readonly #returnTo: JsonSlot<Interruption>;
+  readonly #held: JsonSlot<string[]>;
   #session: Session | null = null;
   #interruption: Interruption | null = null;
 
@@ -179,6 +134,7 @@ export class SessionStore {
     this.#storage = storage;
     this.#kept = jsonSlot(storage, KEY, isSession);
     this.#returnTo = jsonSlot(storage, RETURN_KEY, isInterruption);
+    this.#held = jsonSlot(storage, HELD_KEY, isBusinessList);
     // A session kept before the cookie (S0-6c) also held its bearer: only the
     // fields a session has now are taken, and written back over the old copy.
     const kept = this.#kept.read();
@@ -221,13 +177,18 @@ export class SessionStore {
   set(session: Session): void {
     // Held in memory first, so a storage that refuses cannot take the sign-in
     // with it; the reload will ask again.
-    const leaving = this.#session?.businessKey;
-    // A switch keeps the sign-in: the dock of the business it leaves goes now,
-    // or sign-out, which clears only the business it ends in, would miss it.
-    if (leaving !== undefined && leaving !== session.businessKey) {
-      jsonSlot(this.#storage, dockKey(leaving), isRecord).remove();
-      jsonSlot(this.#storage, layoutKey(leaving), isRecord).remove();
+    const leaving = this.#session;
+    // A switch keeps the sign-in: what the tab holds for the business it
+    // leaves goes now, settings included (#888), and the business is listed
+    // so a sign-out after a reload still reaches an answer that lands late.
+    if (leaving !== null && leaving.businessKey !== session.businessKey) {
+      forgetBusiness(this.#storage, leaving.businessKey);
     }
+    if (leaving?.businessKey !== session.businessKey || leaving.email !== session.email) {
+      owners += 1;
+    }
+    const held = this.#held.read() ?? [];
+    if (!held.includes(session.businessKey)) this.#held.write([...held, session.businessKey]);
     this.#session = session;
     this.#kept.write(session);
   }
@@ -235,14 +196,14 @@ export class SessionStore {
   clear(): void {
     const ending = this.#session;
     endings += 1;
+    owners += 1;
     this.#session = null;
     this.#forgetInterruption();
     this.#kept.remove();
-    if (ending !== null) {
-      jsonSlot(this.#storage, settingsCacheKey(ending.businessKey), isRecord).remove();
-      jsonSlot(this.#storage, dockKey(ending.businessKey), isRecord).remove();
-      jsonSlot(this.#storage, layoutKey(ending.businessKey), isRecord).remove();
-    }
+    const held = new Set(this.#held.read() ?? []);
+    if (ending !== null) held.add(ending.businessKey);
+    for (const businessKey of held) forgetBusiness(this.#storage, businessKey);
+    this.#held.remove();
   }
 
   #forgetInterruption(): void {

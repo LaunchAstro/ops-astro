@@ -22,27 +22,37 @@
 //  - **`SCOPE_NOT_GRANTED` on a write closes the controls** whatever the
 //    capability read said, because a grant can be revoked between the read and
 //    the press and the write is the newer fact.
+//  - **A conflict whose reread did not answer holds every Save** until a
+//    reread does (#880): without the row, a write would carry no revision
+//    and silently replace the value that won.
 //  - **The browser's memory of its last confirmed write is the session's, and
 //    only for an unavailable read.** A refused `settings.read` drops it and
 //    holds until an authorised read answers (`confirmed.ts`), and a write
-//    answered after sign-out keeps nothing: the session generation it was
-//    pressed in has moved on.
+//    answered for an owner the tab has left (a sign-out, another business or
+//    person) keeps nothing: its tag no longer matches (`data/owned.ts`).
+//  - **One operation id per intent.** Save pressed again on the same value
+//    after an answer that never arrived carries the first attempt's id.
 //
-// The write itself goes through `useCommand`, which classifies the answer; this
-// file keeps only what settings does with each kind.
+// The write goes through `useMoneyCommand`, which classifies the answer and,
+// for the four-eyes threshold's money sign-in, holds it for the step-up code
+// and sends it once more on the new sign-in (#881); this file keeps only what
+// settings does with each kind.
 
 import { useEffect, useRef, useState } from 'react';
 import type { CommandOutcome, MutationOptions, OperationsClient } from '../../operations/client.ts';
-import type { ReadState } from '../../data/authorised-read.ts';
-import { sessionGeneration, type StorageLike } from '../../session/token.ts';
+import { Intents } from '../../data/intents.ts';
+import { ownerOf, useDesk, type Tag } from '../../data/owned.ts';
+import type { StorageLike } from '../../session/token.ts';
 import { useRead } from '../../data/use-read.ts';
-import { useCommand, type Settlement } from '../../records/use-command.ts';
+import type { Settlement } from '../../records/use-command.ts';
+import { useMoneyCommand } from '../../records/use-money-command.ts';
 import type {
   CapabilitiesResult,
   SettingsReadResult,
   SettingView,
 } from '../../../../../packages/core-wire/src/index.ts';
 import { remember, sessionMemory, type Confirmed, type Draft, type Which } from './confirmed.ts';
+import type { Conflict, SettingsModel } from './settings-model.ts';
 import {
   GRANT,
   KEY,
@@ -55,6 +65,7 @@ import {
 
 export type { StorageLike } from '../../session/token.ts';
 export type { Confirmed, Draft, Which } from './confirmed.ts';
+export type { Conflict, SettingsModel } from './settings-model.ts';
 
 const COMMAND = {
   'four-eyes': 'settings.set_four_eyes_threshold',
@@ -63,49 +74,11 @@ const COMMAND = {
   retention: 'settings.set_retention_window',
 } as const;
 
-/** A write the server would not take because somebody else wrote first. */
-export interface Conflict {
-  readonly which: Which;
-  readonly draft: Draft;
-  /** The server's refusal, verbatim, so the code can be quoted to somebody. */
-  readonly because: string;
-}
-
 /** The session's memory as this screen holds it, and which session it is. */
 interface Held {
   readonly grantKey: string;
   readonly confirmed: Confirmed;
   readonly denied: boolean;
-}
-
-export interface SettingsModel {
-  readonly read: ReadState<SettingsReadResult>;
-  readonly capabilities: ReadState<CapabilitiesResult>;
-  /** The read answered with rows, so the server's values may be drawn. */
-  readonly answered: boolean;
-  /**
-   * Nobody answered, so this session's own confirmed write is all there is.
-   * Never true for a refused read: the server declined, and nothing stands in.
-   */
-  readonly fallback: boolean;
-  readonly confirmed: Confirmed;
-  readonly closed: boolean;
-  readonly busy: Which | null;
-  /** Every row closed; `disabledFor` adds the row's own grant (four-eyes: spend:decide). */
-  readonly disabled: boolean;
-  readonly disabledFor: (which: Which) => boolean;
-  readonly because: string | null;
-  readonly conflict: Conflict | null;
-  readonly rowFor: (which: Which) => SettingView | null;
-  readonly save: (which: Which, value: Draft) => void;
-  /** The second explicit press: the person choosing to overwrite what they saw. */
-  readonly writeOver: () => void;
-  /** Asks the settings read again, after it did not come back. */
-  readonly retry: () => void;
-  /** Something this screen decided, not the server. Never dressed as a refusal. */
-  readonly complain: (text: string) => void;
-  /** Read the settings again, as a write elsewhere on the page asks. */
-  readonly reload: () => void;
 }
 
 export function useSettings(
@@ -149,17 +122,22 @@ export function useSettings(
   const latest = useRef<Held | null>(null);
   const current = (): Held => inHand(latest.current ?? fromMemory());
   const { confirmed } = inHand(held);
-  const command = useCommand();
+  const command = useMoneyCommand(client);
+  const desk = useDesk(ownerOf(client, grantKey));
+  const intents = useRef(new Intents()).current;
   const [pressed, setPressed] = useState<Which>('four-eyes');
   const [complaint, setComplaint] = useState<string | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const busy = command.busy ? pressed : null;
   // A stale write is the conflict, drawn with its draft, not a reason line.
   const failure = command.failure?.kind === 'stale' ? null : command.failure;
-  // A stale sign-in on a money setting is answered with the fix alone: the
-  // person signs in again, and the code means nothing to them (MP-2-11).
+  // A stale sign-in on a money setting is answered with the step-up prompt,
+  // or where the tab cannot step up, with the fix alone: the code means
+  // nothing to the person (MP-2-11).
   const stepUp =
-    failure?.kind === 'failed' && failure.refusal.code === 'STEP_UP_REQUIRED'
+    command.stepUp === null &&
+    failure?.kind === 'failed' &&
+    failure.refusal.code === 'STEP_UP_REQUIRED'
       ? failure.refusal.fixes.join(' ')
       : null;
   const because = complaint ?? stepUp ?? failure?.because ?? null;
@@ -204,11 +182,11 @@ export function useSettings(
     which: Which,
     value: Draft,
     settlement: Settlement<CommandOutcome>,
-    pressedIn: number,
+    tag: Tag,
   ): void => {
-    // Answered after the session that pressed Save ended: the sign-out has
-    // removed what the tab held, and this answer must not put it back.
-    if (sessionGeneration() !== pressedIn) return;
+    // Answered for an owner the tab or the screen has left: the sign-out or
+    // the switch removed what the tab held, and this answer must not put it back.
+    if (!desk.owns(tag)) return;
     if (settlement.kind === 'stale') {
       // Reread, so the conflict shows what the row holds *now* rather than the
       // value this attempt was made against.
@@ -240,15 +218,28 @@ export function useSettings(
 
   const save = (which: Which, value: Draft): void => {
     if (command.locked || !mayFor(which)) return;
+    if (conflict !== null && read.outcome !== 'ready') {
+      setComplaint(
+        'Somebody else changed these settings and they could not be read again, so saving now would write over a value you have not seen. Read the settings again first.',
+      );
+      return;
+    }
     const revision = rowFor(which)?.revision;
     const options: MutationOptions = revision === undefined ? {} : { expectedRevision: revision };
     setPressed(which);
     setComplaint(null);
-    const pressedIn = sessionGeneration();
+    const tag = desk.save();
+    // The id is taken as each attempt leaves: a step-up's resend follows an
+    // answer, so it is a new attempt; a lost answer keeps the id for this value.
+    let sent = '';
     command.run(
-      () => client.mutate(COMMAND[which], { value }, options),
+      (to) => {
+        sent = intents.idFor(which, value);
+        return to.mutate(COMMAND[which], { value }, { ...options, operationId: sent });
+      },
       (settlement) => {
-        settle(which, value, settlement, pressedIn);
+        if (settlement.kind !== 'unknown') intents.answered(which, sent);
+        settle(which, value, settlement, tag);
       },
     );
   };
@@ -265,6 +256,7 @@ export function useSettings(
     disabled: everyRow,
     disabledFor: (which) => everyRow || !mayFor(which),
     because,
+    stepUp: command.stepUp,
     conflict,
     rowFor,
     save,
