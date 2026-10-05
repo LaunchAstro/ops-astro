@@ -72,6 +72,20 @@ export const suitePart = (text: string | undefined): Part =>
 /** Whether the case at this index belongs to the part. */
 export const inPart = (index: number, part: Part): boolean => index % part.count === part.index - 1;
 
+/** Each run item's weight in the split: its recorded seconds, or the median of the timed items when it has none. */
+export const shardWeight = (
+  seconds: Readonly<Record<string, number>>,
+): ((item: string) => number) => {
+  const known = Object.values(seconds)
+    .filter((n) => typeof n === 'number' && n > 0)
+    .toSorted((a, b) => a - b);
+  const fallback = known[Math.floor(known.length / 2)] ?? 1;
+  return (item) => {
+    const n = Object.hasOwn(seconds, item) ? seconds[item] : undefined;
+    return typeof n === 'number' && n > 0 ? n : fallback;
+  };
+};
+
 /**
  * The run items split into `count` shards: longest first onto the shard
  * with the least time so far, the lower shard on a tie. Each shard keeps the
@@ -83,14 +97,7 @@ export const assignShards = (
   seconds: Readonly<Record<string, number>>,
   count: number,
 ): string[][] => {
-  const known = Object.values(seconds)
-    .filter((n) => typeof n === 'number' && n > 0)
-    .toSorted((a, b) => a - b);
-  const fallback = known[Math.floor(known.length / 2)] ?? 1;
-  const weight = (item: string): number => {
-    const n = Object.hasOwn(seconds, item) ? seconds[item] : undefined;
-    return typeof n === 'number' && n > 0 ? n : fallback;
-  };
+  const weight = shardWeight(seconds);
   const weighed = items
     .map((item, index) => ({ item, index, weight: weight(item) }))
     .toSorted((a, b) => b.weight - a.weight || a.index - b.index);

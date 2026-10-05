@@ -16,6 +16,7 @@ import {
   parseShard,
   planItems,
   readPlan,
+  shardWeight,
   suitePart,
 } from '../../scripts/db-shards.ts';
 import { readNamedSuites } from '../../scripts/named-suites.ts';
@@ -63,7 +64,7 @@ function balance(
   seconds: Readonly<Record<string, number>>,
   count: number,
 ): { heaviest: number; bound: number } {
-  const weight = (item: string) => seconds[item] ?? 0;
+  const weight = shardWeight(seconds);
   const loads = assignShards(list, seconds, count).map((shard) =>
     shard.reduce((sum, item) => sum + weight(item), 0),
   );
