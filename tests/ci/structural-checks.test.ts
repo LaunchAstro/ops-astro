@@ -72,8 +72,15 @@ function pull(clone: string, files: Record<string, string>): string {
   return commit(clone, files, 'pull request');
 }
 
+// A runner's account has no name for git to fall back on (run 37301955057: empty ident name).
+const RUNNER: NodeJS.ProcessEnv = { ...ENV, GIT_AUTHOR_NAME: '', GIT_COMMITTER_NAME: '' };
+
 function script(cwd: string, ...args: string[]) {
-  const run = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, env: ENV, encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [SCRIPT, ...args], {
+    cwd,
+    env: RUNNER,
+    encoding: 'utf8',
+  });
   return { status: run.status, stdout: run.stdout.trim(), out: `${run.stdout}${run.stderr}` };
 }
 

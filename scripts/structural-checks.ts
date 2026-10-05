@@ -43,8 +43,16 @@ const fail = (message: string): never => {
   process.exit(1);
 };
 
+// Git asks for an identity before any merge, even one it never commits, and a runner has none.
+const IDENTITY = {
+  GIT_AUTHOR_NAME: 'structural checks',
+  GIT_AUTHOR_EMAIL: 'structural@example.invalid',
+  GIT_COMMITTER_NAME: 'structural checks',
+  GIT_COMMITTER_EMAIL: 'structural@example.invalid',
+};
+
 function git(...args: string[]): { ok: boolean; out: string } {
-  const ran = spawnSync('git', args, { encoding: 'utf8' });
+  const ran = spawnSync('git', args, { encoding: 'utf8', env: { ...process.env, ...IDENTITY } });
   return { ok: ran.status === 0, out: `${ran.stdout}${ran.stderr}`.trim() };
 }
 
