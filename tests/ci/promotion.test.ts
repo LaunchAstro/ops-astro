@@ -9,7 +9,7 @@
 // fixture service-manager output, the way S0-1a's report is tested.
 import { spawnSync } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   parseService,
@@ -225,9 +225,11 @@ describe('S0-1 promotion migrates stopped app', () => {
       'start launchd:org.example.prod-auth',
       'start docker:prod-api',
     ]);
-    // Production points at the store's copy named by the digest staging ran (#497).
+    // Production points at the copy, beside its link, named by the digest staging ran (#497).
     const digest = recordedStamp(join(req.store, named(STAGED))).digest;
-    expect(outcome.artefactPath).toBe(join(req.store, 'served', String(digest).slice(7)));
+    expect(outcome.artefactPath).toBe(
+      join(dirname(req.current ?? ''), 'served', String(digest).slice(7)),
+    );
     expect(outputDigest(outcome.artefactPath)).toBe(digest);
     expect(outcome.record).toMatchObject({ version: STAGED, line: LINE, dryRun: false });
   });

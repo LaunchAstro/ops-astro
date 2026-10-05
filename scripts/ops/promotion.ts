@@ -23,20 +23,10 @@
 // Every act on the machine goes through `PromotionEffects`, so the decisions
 // here are tested with the effects watched and the command stays thin.
 
-import {
-  chmodSync,
-  cpSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from 'node:fs';
-import { join, resolve } from 'node:path';
+import { lstatSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { outputDigest, recordedStamp } from './build-output.ts';
+import { frozenCopy, holds } from './served-copy.ts';
 
 /** A service as the service manager names it. */
 export interface ServiceRef {
@@ -88,9 +78,6 @@ export type PromotionOutcome =
 /** A promotable build identifier: S0-1c's stamp, without `-dirty`. */
 const CLEAN_BUILD = /^[0-9a-f]{12}$/u;
 const LONGEST_LINE = 200;
-// Where production's copies live in the store, each named by its digest.
-const SERVED = 'served';
-
 const SERVICE = /^(?<manager>docker|launchd):(?<name>[A-Za-z0-9][A-Za-z0-9_.-]*)$/u;
 
 const definition = JSON.parse(
@@ -145,7 +132,8 @@ export function storedArtefact(version: string, store: string): StoredArtefact |
   const path = resolve(store, name);
   let isDirectory = false;
   try {
-    isDirectory = statSync(path).isDirectory();
+    // The folder itself, never a link to one: a link's bytes live elsewhere.
+    isDirectory = lstatSync(path).isDirectory();
   } catch {
     // Not there is refused below, the same as not a directory.
   }
@@ -192,20 +180,18 @@ export function promote(request: PromotionRequest, effects: PromotionEffects): P
       reason: `${problems.join('; ')}. Stop the API and the auth server with the service manager, then run the promotion again. Nothing was migrated or promoted.`,
     };
   }
-  const served = frozenCopy(selected, request.store);
-  if (served === undefined) {
-    return {
-      kind: 'refused',
-      reason: `${selected.name} changed while it was copied for production; nothing was migrated or promoted`,
-    };
+  const copied = frozenCopy(selected, current);
+  if ('why' in copied) {
+    return { kind: 'refused', reason: `${copied.why}; nothing was migrated or promoted` };
   }
+  const served = copied.path;
   if (!effects.migrate()) {
     return {
       kind: 'failed',
       reason: `the migration did not complete; nothing was promoted and the API and the auth server are left stopped`,
     };
   }
-  if (outputDigest(served) !== selected.digest) {
+  if (!holds(served, selected.digest)) {
     return {
       kind: 'failed',
       reason: `the copy of ${selected.name} for production changed during the migration; nothing was promoted and the API and the auth server are left stopped`,
@@ -225,62 +211,4 @@ function notStopped(states: readonly ServiceState[], wanted: readonly ServiceRef
       return [`the service manager cannot find ${label(service)}, so it cannot say it is stopped`];
     return found.running ? [`${label(service)} is running`] : [];
   });
-}
-
-/**
- * The validated bytes, copied where production reads them: a folder of the
- * store's `served/` named by their digest, copied whole under a temporary name
- * with the artefact's own mode, hashed, and renamed into place only if it holds
- * that digest. Production points here, so a later write to the store's
- * artefact never changes what is served (#497). `served/` and a copy already
- * there count only as real folders, never links, and a copy only while it holds
- * that digest. Undefined when no such copy can be had.
- */
-function frozenCopy(selected: StoredArtefact, store: string): string | undefined {
-  const folder = resolve(store, SERVED);
-  const path = join(folder, selected.digest.slice('sha256:'.length));
-  const holds = (copy: string): boolean => {
-    try {
-      return realFolder(copy) && outputDigest(copy) === selected.digest;
-    } catch {
-      // A link or pipe that reached the copy: not the bytes the check passed.
-      return false;
-    }
-  };
-  if (!existsSync(folder)) mkdirSync(folder, { recursive: true });
-  if (!realFolder(folder)) return undefined;
-  if (!lexists(path)) {
-    const copy = mkdtempSync(join(folder, '.copy-'));
-    try {
-      cpSync(selected.path, copy, { recursive: true, errorOnExist: true, force: false });
-      chmodSync(copy, statSync(selected.path).mode & 0o777);
-      if (holds(copy)) renameSync(copy, path);
-    } catch (error) {
-      // Only another promotion of the same digest renaming its copy first.
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'ENOTEMPTY' && code !== 'EEXIST') throw error;
-    } finally {
-      rmSync(copy, { recursive: true, force: true });
-    }
-  }
-  return holds(path) ? path : undefined;
-}
-
-/** Whether `path` is a folder itself, not a link to one. */
-function realFolder(path: string): boolean {
-  try {
-    return lstatSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-/** Whether anything, a dangling link included, is at `path`. */
-function lexists(path: string): boolean {
-  try {
-    lstatSync(path);
-    return true;
-  } catch {
-    return false;
-  }
 }

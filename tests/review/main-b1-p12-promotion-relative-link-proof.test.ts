@@ -69,11 +69,11 @@ it('p12-2 a promotion run with a relative --artefacts leaves production linked t
     existsSync(current),
     `DEFECT p12-2: after migrating, the promotion pointed production's link at the relative ${join(given, named(STAGED))}, which resolves from the link's own folder and dangles`,
   ).toBe(true);
-  // Since #497 production's link names the store's copy of the staged bytes,
+  // Since #497 production's link names a copy of the staged bytes beside it,
   // by their digest; it must still resolve from the link's own folder.
   if (outcome.kind !== 'promoted') return;
   expect(realpathSync(current)).toBe(realpathSync(outcome.artefactPath));
-  expect(
-    realpathSync(outcome.artefactPath).startsWith(realpathSync(join(absolute, 'served'))),
-  ).toBe(true);
+  expect(realpathSync(outcome.artefactPath).startsWith(realpathSync(join(folder, 'served')))).toBe(
+    true,
+  );
 });
