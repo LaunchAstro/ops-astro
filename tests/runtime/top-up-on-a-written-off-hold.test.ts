@@ -73,8 +73,10 @@ afterAll(async () => {
 const UNUSED = (): never => {
   throw new Error('the late settle dispatches nothing');
 };
+// Not annotated, so custody's other members (`describe` on main) need no listing here.
+const NO_CUSTODY = { pid: 0, dispatch: UNUSED, describe: UNUSED, stderr: () => '', raw: UNUSED };
 const LATE_BROKER: Broker = {
-  custody: { pid: 0, dispatch: UNUSED, stderr: () => '', raw: UNUSED, kill: UNUSED, stop: UNUSED },
+  custody: { ...NO_CUSTODY, kill: UNUSED, stop: UNUSED },
   operations: catalogue([REPLAY_COMPOSE]),
   providers: new Map(),
   routes: [CLOUD],
