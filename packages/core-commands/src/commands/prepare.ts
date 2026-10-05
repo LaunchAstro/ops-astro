@@ -46,7 +46,6 @@ import {
   isUuid,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-records/src/index.ts';
-import { AffectedSetChanged, holdCoveringGrants } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
@@ -588,32 +587,6 @@ async function grantOf(
   return { viaMap: { id: map, refusal: refused(authorised.refusal) } };
 }
 
-/**
- * Writes re-check at commit (OWNER-3 A). The grants this command's authority
- * rests on are held `for share` from here to its commit, then read again: a
- * revocation that committed before now is read and refuses it, and one after
- * waits for this command to commit, through every later wait (the target's
- * lock, the audit chain's). `nowait`: this may hold its target's lock
- * already, so it never waits on a grant row; a grant being changed right now
- * rolls back to the envelope's one retry.
- */
-async function grantHeld(
-  tx: TenantQuery,
-  session: Session,
-  request: UncheckedRequest,
-  declaration: CommandDeclaration,
-): Promise<Refused | undefined> {
-  if (declaration.authorisedOn === 'self') return undefined;
-  try {
-    await holdCoveringGrants(tx, subjectsOf(session), declaration.collection, 'nowait');
-  } catch (cause) {
-    if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
-    throw new AffectedSetChanged(`${declaration.name}: a grant it rests on is changing; retry`);
-  }
-  const still = await grantOf(tx, session, request, declaration);
-  return 'refusal' in still ? still : undefined;
-}
-
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -697,9 +670,13 @@ export async function prepareCommand(
     if (viaMap !== undefined && (await coveringMap(tx, request, declaration)) !== viaMap.id) {
       return viaMap.refusal;
     }
-    // The grant was read before the wait for the target's lock: held and read again now.
-    const held = await grantHeld(tx, session, request, declaration);
-    if (held !== undefined) return held;
+    // The grant was read before the wait for the target's lock: a revocation
+    // that committed in that wait is read now, after it (OWNER-3 A: writes
+    // re-check). A runtime-locked target is asked again under its own locks.
+    if (declaration.targetLock === 'command') {
+      const still = await grantOf(tx, session, request, declaration);
+      if ('refusal' in still) return still;
+    }
     // A comment on a trashed task is answered as one on a missing task, before
     // the revision: the trash bumped it, and naming the current revision would
     // tell the caller the task is there (OWNER-CARD section 6). The handler
@@ -721,10 +698,6 @@ export async function prepareCommand(
     // again, so a retype that committed while this waited is refused, and none
     // commits before the task is filed under it (the handler holds it `for share` too).
     return viaMap.refusal;
-  }
-  if (!declaration.targetsExistingRecord) {
-    const held = await grantHeld(tx, session, request, declaration);
-    if (held !== undefined) return held;
   }
 
   if ('refusal' in parsed) return refused(parsed.refusal);

@@ -882,13 +882,6 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   `grant.revoke` commits over HTTP. The read finishes with its content, and the
   next call is `AUTH_NO_MEMBERSHIP` for an external party or
   `SCOPE_NOT_GRANTED` for a member on a record grant.
-- A write is stricter than a read (OWNER-3 A). Every command but a `self` row
-  holds the grants its authority rests on `for share` from its last check to
-  its commit (`grantHeld`, `commands/prepare.ts`, after the target's lock) and
-  reads them again: a revocation that committed in the wait for the target is
-  read and refuses it, and one after waits for the write to commit, the audit
-  chain's wait included. The hold never waits (`nowait`); a grant being
-  changed at that moment rolls back to the envelope's one retry.
 - A revocation that leaves an attempt without work authority releases its
   lease and classifies its hold `authority_revoked` in the same transaction
   ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)). Work

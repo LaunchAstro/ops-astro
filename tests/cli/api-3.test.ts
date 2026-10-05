@@ -76,20 +76,6 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
     expect(ranked, JSON.stringify(ranked)).not.toHaveProperty('refused');
   }
 
-  /** Waits until `n` statements on this database wait on a lock, or `done()`; throws past the deadline. */
-  async function lockWaiters(n: number, done: () => boolean, deadline: number): Promise<void> {
-    const [row] = await w.db.admin.execute<{ readonly n: string }>(
-      `select count(*)::text as n from pg_stat_activity
-        where datname = current_database() and state = 'active' and wait_event_type = 'Lock'`,
-    );
-    if (done() || Number(row?.n ?? 0) >= n) return;
-    if (Date.now() > deadline) throw new Error(`fewer than ${String(n)} lock waiters`);
-    await new Promise((resolve) => {
-      setTimeout(resolve, 25);
-    });
-    await lockWaiters(n, done, deadline);
-  }
-
   /** Waits until some statement on this database waits on a lock; throws past the deadline. */
   async function blockedOnLock(deadline: number): Promise<void> {
     const rows = await w.db.admin.execute<{ readonly pid: number }>(
@@ -403,69 +389,6 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
       const audit = await w.audit();
       const last = audit.filter((line) => line.command === 'task.update' && line.subject === id);
       expect(last.map((line) => line.outcome)).not.toContain('applied');
-    } finally {
-      release?.();
-      await holder.catch(() => null);
-    }
-  });
-
-  it('API-3 a write grant revoked while the update waits for the audit chain waits for the update to commit', async () => {
-    const writer = await w.member('audit-wait-writer', ['read', 'write']);
-    const id = await create(cli, 'revoke during the audit wait');
-    const revision = await rev(id);
-    let release: (() => void) | undefined;
-    const released = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let holding: (() => void) | undefined;
-    const held = new Promise<void>((resolve) => {
-      holding = resolve;
-    });
-    // Another transaction holds the business's audit chain (`audit_events_chain`'s lock).
-    const holder = w.db.app.withBusiness(w.business, async (tx) => {
-      await tx.query('select pg_advisory_xact_lock(hashtextextended($1::text, 0))', [w.business]);
-      holding?.();
-      await released;
-    });
-    try {
-      await held;
-      const writes = await w.person(writer);
-      const update = writes.run(
-        'task',
-        'update',
-        id,
-        '--revision',
-        revision,
-        '--title',
-        'before the revoke',
-      );
-      await blockedOnLock(Date.now() + 10_000);
-      let revoked = false;
-      const revoking = w.db.admin
-        .execute(
-          `update public.grants set revoked_at = now()
-            where business_id = $1 and subject_kind = 'person' and subject_id = $2
-              and collection = 'task' and action = 'write' and revoked_at is null
-            returning id`,
-          [w.business, writer.personId],
-        )
-        .then((rows) => {
-          revoked = true;
-          return rows;
-        });
-      // The revocation either commits now or waits on the update's hold: two waiters.
-      await lockWaiters(2, () => revoked, Date.now() + 10_000);
-      expect(revoked, 'the revocation committed while the update was still waiting').toBe(false);
-      release?.();
-      await holder;
-      const answer = await update;
-      expect(answer.exit, answer.out).toBe(0);
-      expect(await revoking).toHaveLength(1);
-      const [row] = await w.db.admin.execute<{ readonly title: string }>(
-        `select data->>'title' as title from public.records where business_id = $1 and id = $2`,
-        [w.business, id],
-      );
-      expect(row?.title).toBe('before the revoke');
     } finally {
       release?.();
       await holder.catch(() => null);
