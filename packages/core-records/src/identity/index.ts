@@ -12,6 +12,7 @@ export {
 } from './agent-login.ts';
 export { recordAuthenticationAttempt, recordBodyRefusal } from './authentication-attempts.ts';
 export {
+  ENDED_FIXES,
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
   standingOf,

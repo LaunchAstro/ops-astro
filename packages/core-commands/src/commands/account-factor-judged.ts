@@ -6,7 +6,7 @@
 // Who is asking (`FactorCaller`) is declared here, so the modules split from
 // `account-factor.ts` take it from here and none imports that file back.
 
-import { withSession } from '../../../core-records/src/index.ts';
+import { ENDED_FIXES, sessionEnded, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -17,7 +17,7 @@ import type {
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { recordCode } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
-import { asCallerVisible, type CommandRefusal } from './refusal.ts';
+import { asCallerVisible, refuseCommand, type CommandRefusal } from './refusal.ts';
 
 /** Who is asking and what they presented, as the API door admitted them. */
 export interface FactorCaller {
@@ -56,18 +56,28 @@ export async function judged(
     caller.businessId,
     caller.presented,
     async (tx, session) => {
-      const refusal = await check(tx, session);
-      await recordCode(tx, session, caller, stage, refusal);
-      if (stage === 'before' && refusal === undefined) return;
-      await writeAuditEvent(tx, {
-        actorId: session.actorId,
-        command: act,
-        operationId: caller.attempt ?? caller.operation ?? null,
-        outcome: refusal === undefined ? 'applied' : 'refused',
-        refusalCode: refusal?.code ?? null,
-        payloadDigest: payloadDigest({ command: act, person: session.personId }),
-      });
-      return refusal;
+      const settle = async (refusal: CommandRefusal | undefined) => {
+        await recordCode(tx, session, caller, stage, refusal);
+        if (stage === 'before' && refusal === undefined) return;
+        await writeAuditEvent(tx, {
+          actorId: session.actorId,
+          command: act,
+          operationId: caller.attempt ?? caller.operation ?? null,
+          outcome: refusal === undefined ? 'applied' : 'refused',
+          refusalCode: refusal?.code ?? null,
+          payloadDigest: payloadDigest({ command: act, person: session.personId }),
+        });
+        return refusal;
+      };
+      await tx.query('savepoint factor_act');
+      const refusal = await settle(await check(tx, session));
+      // The session asked again after the act's last wait (the factor lock,
+      // the audit chain): one signed out meanwhile undoes the act, and the
+      // refusal is recorded in its place (#443).
+      if (refusal !== undefined || stage === 'before') return refusal;
+      if (!(await sessionEnded(tx, caller.presented))) return undefined;
+      await tx.query('rollback to savepoint factor_act');
+      return await settle(refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES));
     },
     'enrolling',
   );
