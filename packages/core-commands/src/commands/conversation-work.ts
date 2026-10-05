@@ -80,7 +80,7 @@ async function runWork(tx: TenantQuery, conversationId: string): Promise<readonl
     ended_at: Date | null;
   }>(
     `select run.id, run.task_id, run.state,
-            coalesce(run.ended_at, case when run.state = 'planned' then least(
+            coalesce(run.ended_at, case when run.state in ('planned', 'claimed') then least(
               lin.terminal_at, version.superseded_at,
               (select case when g.state = 'expired' then g.decided_at
                            when g.state = 'pending' and g.expires_at <= now() then g.expires_at
@@ -89,8 +89,9 @@ async function runWork(tx: TenantQuery, conversationId: string): Promise<readonl
                 where g.business_id = run.business_id and g.version_id = run.version_id
                 order by g.round desc limit 1)) end) as ended_at
        from planned_runs run
-       join proposal_lineages lin on lin.business_id = run.business_id and lin.id = run.lineage_id
-       join proposal_versions version
+       left join proposal_lineages lin
+         on lin.business_id = run.business_id and lin.id = run.lineage_id
+       left join proposal_versions version
          on version.business_id = run.business_id and version.id = run.version_id
       where run.business_id = $1 and run.origin_conversation_id = $2 order by run.id`,
     [tx.businessId, conversationId],
@@ -130,8 +131,10 @@ async function gateWork(tx: TenantQuery, conversationId: string): Promise<readon
  * The runs and gates the conversation started, each pointing at its task. A
  * run ends when it is handed back or cancelled, at the instant the server
  * stamped (`ended_at`); a claim after a hand-back opens it again. A run
- * never started has ended when its plan died first: the lineage ended, the
- * version superseded, or its gate expired. A run waiting at a budget stop for
+ * planned or claimed has ended when its plan died under it: the lineage
+ * ended, the version superseded, or its gate expired; pickup refuses all
+ * three, so it never starts or resumes. An occurrence run has no plan. A run
+ * waiting at a budget stop for
  * a person's answer is still open. A gate ends at its decision, or at its
  * expiry when it is left pending past it.
  */
