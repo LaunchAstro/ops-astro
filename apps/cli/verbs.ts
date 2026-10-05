@@ -225,7 +225,7 @@ export function createVerbCli(options: CliOptions & { readonly address?: string 
       let answer;
       try {
         answer = await cli.run(row.command, { ...operationId, ...request });
-      } catch (cause) {
+      } catch {
         // Never the failure's own text: it can carry the address's secret part
         // or a bearer the request could not carry (T2 canary token).
         return { exit: EXIT.transport, out: `no answer from ${options.address ?? 'the API'}` };
