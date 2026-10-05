@@ -15,7 +15,7 @@
 import { parseDocument } from 'yaml';
 import { read } from './merge-group-repo.ts';
 
-export type Value = string | boolean | null | Value[];
+export type Value = string | number | boolean | null | Value[];
 export type Ctx = { event: string; on: string | undefined };
 
 export const LOCAL: string[] = ['self-hosted', 'Linux', 'ops-merge-m5'];
@@ -57,7 +57,8 @@ export const SWITCH: (string | undefined)[] = [
 ];
 const isOn = (v: string | undefined) => v?.toLowerCase() === 'on';
 
-const truthy = (v: Value) => v !== null && v !== false && v !== '';
+// Falsy as GitHub reads it: null, false, '', 0, -0 and NaN.
+const truthy = (v: Value) => v !== null && v !== false && v !== '' && v !== 0 && !Number.isNaN(v);
 const equal = (a: Value, b: Value) => {
   if (typeof a !== 'string' || typeof b !== 'string') {
     throw new TypeError(

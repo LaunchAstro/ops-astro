@@ -239,7 +239,9 @@ describe('merge group: the M5 takes the merge queue alone, behind OPS_CI_LOCAL',
     );
     expect([...behindRequired(jobs)].toSorted()).toStrictEqual(want.toSorted());
   });
+});
 
+describe('merge group route: the guard refuses every planted form', () => {
   it.each(PLANTS)('refuses %s', (_form, swaps, reason) => {
     expect(routeProblems(planted(...swaps)).join('\n')).toContain(reason);
   });

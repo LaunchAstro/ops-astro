@@ -53,8 +53,8 @@ concurrency:
 # never reach our runner (CIRUNNER). This file cannot be that barrier, as a
 # pull request can edit it; the runner brings its own (a check before any
 # step that refuses every job but this repository's merge group, a throwaway
-# machine per job, approval for every outside contributor's run), and the
-# variable stays unset until it does. Job names are unchanged, so the required
+# machine per job), the repository requires approval for every outside
+# contributor's run, and the variable stays unset until both hold. Job names are unchanged, so the required
 # checks still match. Pull requests, pushes and the jobs no required check
 # waits on stay hosted. tests/ci/merge-group-runner.test.ts holds every job
 # to this.
