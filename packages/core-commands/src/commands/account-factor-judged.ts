@@ -6,7 +6,12 @@
 // Who is asking (`FactorCaller`) is declared here, so the modules split from
 // `account-factor.ts` take it from here and none imports that file back.
 
-import { ENDED_FIXES, sessionEnded, withSession } from '../../../core-records/src/index.ts';
+import {
+  ENDED_FIXES,
+  endProviderSession,
+  sessionEnded,
+  withSession,
+} from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -76,11 +81,14 @@ export async function judged(
       // it decided (a refusal can change records too: a verify's losing
       // enrolment is removed), and the refusal is recorded in its place (#443).
       if (stage === 'before') return refusal;
-      if (!(await sessionEnded(tx, caller.presented))) return refusal;
+      const { sessionId } = caller.presented;
+      if (sessionId === undefined || !(await sessionEnded(tx, caller.presented))) return refusal;
       await tx.query('rollback to savepoint factor_act');
       // The rollback also takes back the ending `sessionEnded` records for a
-      // session refused while a reset is open; asked again, it stands.
-      await sessionEnded(tx, caller.presented);
+      // session refused while a reset is open, so the session is ended here,
+      // whatever ended it: an ended session stays ended, and asking again
+      // could miss a reset that settled since.
+      await endProviderSession(tx, sessionId);
       return await settle(refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES));
     },
     'enrolling',
