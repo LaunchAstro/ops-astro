@@ -53,6 +53,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -155,22 +156,42 @@ function unchanged({ cwd, head }) {
   return green(`the working tree is still clean at ${short(head)}.`);
 }
 
-/** Each cleanup action on its own, so one failing does not skip the rest. */
-function tryEach(...actions) {
+/** Removes a snapshot: each action on its own, so one failing does not skip the rest. */
+function removeSnapshot(cwd, dir) {
+  const actions = [
+    // The link only, never what it points at, and never a tracked directory.
+    () => {
+      const link = join(dir, 'node_modules');
+      if (lstatSync(link).isSymbolicLink()) rmSync(link);
+    },
+    () => git(cwd, 'worktree', 'remove', '--force', dir),
+    () => rmSync(dir, { recursive: true, force: true }),
+  ];
   for (const action of actions) {
     try {
       action();
     } catch {
-      // The next action still runs; a leftover worktree is pruned by git.
+      // The next action still runs.
     }
+  }
+}
+
+/** Whether a process with this pid is running. */
+function running(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
   }
 }
 
 /**
  * Runs `use` on a detached worktree of `head`, with the lane's node_modules
- * linked in, and removes it after, on a signal too. The worktree sits in the
- * repository's own git directory, never a shared temporary directory whose
- * parents another user could write to.
+ * linked in, and removes it after. The worktree sits in the repository's own
+ * git directory, never a shared temporary directory whose parents another user
+ * could write to. Its name carries this process's pid: a gate killed mid-run
+ * leaves its snapshot, and the next run removes those whose process is gone.
  */
 function inSnapshot(cwd, head, use) {
   const parent = join(
@@ -178,29 +199,17 @@ function inSnapshot(cwd, head, use) {
     'pre-ready',
   );
   mkdirSync(parent, { recursive: true });
-  const dir = mkdtempSync(join(parent, 'head-'));
-  const link = join(dir, 'node_modules');
-  const cleanUp = () =>
-    tryEach(
-      // The link only, never what it points at, and never a tracked directory.
-      () => lstatSync(link).isSymbolicLink() && rmSync(link),
-      () => git(cwd, 'worktree', 'remove', '--force', dir),
-      () => rmSync(dir, { recursive: true, force: true }),
-    );
-  const onSignal = (signal) => {
-    cleanUp();
-    process.kill(process.pid, signal);
-  };
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
+  for (const name of readdirSync(parent)) {
+    const owner = /^head-([1-9][0-9]*)-/u.exec(name);
+    if (owner !== null && !running(Number(owner[1]))) removeSnapshot(cwd, join(parent, name));
+  }
+  const dir = mkdtempSync(join(parent, `head-${process.pid}-`));
   try {
     git(cwd, 'worktree', 'add', '-q', '--detach', dir, head);
-    symlinkSync(join(cwd, 'node_modules'), link);
+    symlinkSync(join(cwd, 'node_modules'), join(dir, 'node_modules'));
     return use(dir);
   } finally {
-    process.off('SIGINT', onSignal);
-    process.off('SIGTERM', onSignal);
-    cleanUp();
+    removeSnapshot(cwd, dir);
   }
 }
 
