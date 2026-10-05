@@ -225,7 +225,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'definition.attribution': READ,
   'trace.read': READ,
   'harness.read': READ,
-  // C39-T: sends nothing itself; a create writes its person, expiring a lapsed same-address one.
+  // C39-T: admits no outsider, sends nothing; a create writes its person, expiring a lapsed one.
   'invitation.create': writing(business('people', 'invitations', 'actors')),
   'invitation.resend': writing(business('invitations')),
   'invitation.revoke': writing(business('invitations')),
