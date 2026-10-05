@@ -87,7 +87,28 @@ and runs as k items, each with `SUITE_PART=i/k`; the suite registers only its
 part's cases (`inPart`), so each case runs once, in one part.
 `tests/acceptance/d06-generated.test.ts`, about 15 minutes whole, runs in six.
 `tests/ci/db-shards.test.ts` proves every item lands in exactly one shard and
-every case of a split suite in exactly one part. Each shard still checks the
+every case of a split suite in exactly one part.
+
+Since CI-SPEED (the owner, 4 October 2026) there are 16 shards, and
+`node scripts/db-census.ts` lists every run item's tests with vitest and shows
+the 8-way and 16-way splits hold each item once and the same number of tests.
+Each shard also starts from one migrated template rather than migrating every
+database from empty: `tests/support/migrated-template.ts` migrates
+`migrated_<digest>` from empty once (the conformance runner builds it before
+its first counter read, locking in `postgres`, and a suite's global setup only
+reads it beside the configured database, so rule 7's counter does not move,
+even with `postgres` configured:
+`tests/ci/database-free-suite-refused-on-postgres.proof.test.mjs`), and
+`createFreshDatabase` clones it.
+`tests/support/migrated-template.test.ts` proves a clone equals a database
+migrated from empty, catalogue and privileges alike, and
+`tests/support/template-lock-and-clone-catalogue.test.ts` that builders share
+one lock, leave template1 free, and that the comparison sees disabled triggers
+and membership options. A suite that must migrate
+itself passes `fromEmpty` or its own `migrationsDirectory`, and
+`OPS_ASTRO_DB_TEMPLATE=off` sends every suite the old way. The Postgres 18
+look-ahead runs the same suites each night (`.github/workflows/lookahead.yml`),
+not on pull requests or the queue, and reports a failure on one standing issue. Each shard still checks the
 whole manifest for rules 2 and 3 below, and applies every other rule to its
 own items, one at a time.
 
@@ -251,8 +272,9 @@ one vitest process per suite instead of one for the manifest, and that cost is
 what makes the number belong to a path rather than to a total.
 
 Nothing vitest runs before a suite may use that database. The vitest global
-setup, `tests/support/global-setup.ts`, creates the cluster-wide roles through
-`postgres` for this reason. Run through the configured database, it moved the
+setup, `tests/support/global-setup.ts`, ensures the migrated template, which
+creates the cluster-wide roles. The runner has built it already, so the setup
+only reads it, beside the configured database. Run through the configured database, it moved the
 counter by 15 on a new cluster and by 3 on a warm one, so a suite that never
 touched the database looked as if it had.
 

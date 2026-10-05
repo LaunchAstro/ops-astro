@@ -90,6 +90,10 @@ export {
  * hold, a sibling call held unknown since, or a client put on the task since,
  * sends nothing. The hold is then released, never started, with the route it
  * would have taken and no start time. Only then is the call marked `dispatched`.
+ * Both updates move only a `reserved` call, and the start sends only when its
+ * update moved one: a retried or concurrent send of the same hold, or one the
+ * sweep released meanwhile, finds none and sends nothing
+ * (`EFFECT_NOT_RECONCILABLE`). A release that moved nothing records nothing.
  */
 async function markStarted(
   database: Database,
@@ -105,13 +109,15 @@ async function markStarted(
     const unknown = facts.ok && (await heldUnknown(tx, facts.facts.reservationId));
     const checked = startable(facts, request, reserved, unknown);
     if (!checked.ok) {
-      await tx.query(
+      const released = await tx.query(
         `update public.model_calls
             set state = 'released', ended_at = clock_timestamp(),
                 route_key = $3, route_reach = $4, credential_kind = $5
-          where business_id = $1 and id = $2 and state = 'reserved'`,
+          where business_id = $1 and id = $2 and state = 'reserved'
+          returning id`,
         [tx.businessId, reserved.callId, ...route],
       );
+      if (released.length === 0) return checked.code;
       await broker.audit(tx, {
         action: 'model.call_released',
         outcome: 'refused',
@@ -121,13 +127,15 @@ async function markStarted(
       return checked.code;
     }
     if (!(await promptCopyRegistered(tx, reserved.callId))) return 'COPY_NOT_REGISTERED';
-    await tx.query(
+    const started = await tx.query(
       `update public.model_calls
           set state = 'dispatched', started_at = clock_timestamp(),
               route_key = $3, route_reach = $4, credential_kind = $5
-        where business_id = $1 and id = $2 and state = 'reserved'`,
+        where business_id = $1 and id = $2 and state = 'reserved'
+        returning id`,
       [tx.businessId, reserved.callId, ...route],
     );
+    if (started.length === 0) return 'EFFECT_NOT_RECONCILABLE';
     return { fields: checked.fields };
   });
 }

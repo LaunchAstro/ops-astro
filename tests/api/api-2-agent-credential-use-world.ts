@@ -23,6 +23,7 @@ import {
 import { testSignIn } from '../support/sign-in.ts';
 import { ACCEPTANCE_ISSUER, agentPath, call, type Answer } from '../acceptance/world.ts';
 import { detailOf, harness, issue, issueBody } from './api-2-agent-credential-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 export type Api = ReturnType<typeof createApi>;
 
@@ -118,9 +119,7 @@ export function apiWith(overrides: Partial<ApiOptions>): Api {
 
 const lines: string[] = [];
 const keep = (...parts: unknown[]): void => {
-  lines.push(
-    parts.map((part) => (part instanceof Error ? String(part.stack) : String(part))).join(' '),
-  );
+  lines.push(consoleLine(...parts));
 };
 
 /** Every line written to the console while `run` runs, as one text. */

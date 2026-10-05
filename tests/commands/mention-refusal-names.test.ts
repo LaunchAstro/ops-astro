@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // INB-1: a mention of someone who cannot read the comment is refused, naming
-// them, but only to a caller who could already see that person: staff, or a
-// person on a client the caller reads. Anyone else is echoed back by the
-// identifier as sent, under the same refusal, so a commenter cannot learn the
-// name behind another client's person.
+// them, but only to a caller who could already see that person: a staff
+// member to a caller who reads the people directory (`person:read`, #419), a
+// client's person to a caller who reads that client. Anyone else is echoed
+// back by the identifier as sent, under the same refusal, so a commenter
+// cannot learn the name behind another client's person.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

@@ -21,7 +21,7 @@
 // (TC:108). The rows are the acceptance world's own, one per table, taken once
 // from a full-schema world and written by the owner with triggers and foreign
 // keys off, since an intermediate prefix has no journey to write them; the
-// three tables the journey leaves empty get a row made here. They are removed
+// tables the journey leaves empty get a row made here. They are removed
 // again before the next migration, so no migration meets a row it did not
 // expect. The worker role is created by 0008, but roles belong to
 // the cluster rather than the database, so on a server where any database has
@@ -110,6 +110,29 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     run_id: randomUUID(),
     task_id: randomUUID(),
     reactivated: false,
+  },
+  'public.live_corrections': {
+    party_id: randomUUID(),
+    task_id: randomUUID(),
+    requested_by_actor_id: randomUUID(),
+    requested_by_person_id: randomUUID(),
+    target_path: 'src/pages/about.md',
+    word: 'friendly',
+    replacement: 'welcoming',
+    page_url: 'https://agency.example/about/',
+    pre_image_digest: 'sha256:seed',
+    base_revision: 'rev-1',
+    seam: 'seam-seed',
+    version_id: randomUUID(),
+    version_digest: 'sha256:seed',
+  },
+  'public.live_correction_receipts': {
+    correction_id: randomUUID(),
+    lease_id: randomUUID(),
+    fence: 1,
+    step: 'publish',
+    outcome: 'live',
+    observations: {},
   },
   // The journey records no check (MP-6-1); the row is written with foreign
   // keys off, as every reference row is.
@@ -349,6 +372,57 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // 0067: nothing in the journey saves a preference yet.
   'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
+  // Automations (C33, 20261005003850): the journey releases and fires none.
+  'public.automation_definitions': {
+    kind: 'automation',
+    name: 'restricted calls',
+    created_by_actor_id: randomUUID(),
+  },
+  'public.definition_versions': {
+    definition_id: randomUUID(),
+    number: 1,
+    content_digest: 'a'.repeat(64),
+    content_size: 0,
+    inputs: [],
+    operations: [],
+    modes: ['manual'],
+    released_by_actor_id: randomUUID(),
+  },
+  'public.activations': {
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    mode: 'manual',
+    changed_by_actor_id: randomUUID(),
+  },
+  'public.activation_occurrences': {
+    activation_id: randomUUID(),
+    version_id: randomUUID(),
+    due_at: '2026-09-29T00:00:00Z',
+    outcome: 'activation_off',
+  },
+  // WF-1: the journey charts no map.
+  'public.map_components': {
+    map_id: randomUUID(),
+    kind: 'destination',
+    body: 'restricted calls seed',
+    position: 1,
+    created_version: 1,
+  },
+  'public.map_versions': {
+    map_id: randomUUID(),
+    version: 1,
+    changed: [randomUUID()],
+    actor_id: randomUUID(),
+  },
+  'public.map_summaries': {
+    map_id: randomUUID(),
+    version: 1,
+    open_tickets: 0,
+    closed_tickets: 0,
+    fog: 0,
+    out_of_scope: 0,
+  },
+  'public.map_frontier': { map_id: randomUUID(), ticket_id: randomUUID(), position: 1 },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

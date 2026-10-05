@@ -58,12 +58,15 @@ describe.skipIf(serverUrl === undefined)('MP-4-4 subtask stored', () => {
         `select id from public.record_types where business_id = $1 and key = 'task'`,
         [alpha],
       );
-      return await readTaskFamily(counted, types[0]?.id ?? '', ids['parent'] ?? '');
+      return await readTaskFamily(counted, types[0]?.id ?? '', ids['parent'] ?? '', [
+        { kind: 'person', id: owner.personId },
+        { kind: 'actor', id: owner.actorId },
+      ]);
     });
     expect(queries).toBe(1);
     expect(family.parent?.id).toBe(ids['parent']);
-    // The stray child is this business's, so the stored family holds it; the
-    // grant filter on the read decides who is shown it.
+    // The stray child is this business's and the owner reads the whole
+    // business, so the family holds it; the grant filter is in that one query.
     expect(family.children.map((child) => child.id).toSorted()).toStrictEqual(
       [ids['first'], ids['second'], ids['stray']].toSorted(),
     );

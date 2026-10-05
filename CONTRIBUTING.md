@@ -117,9 +117,9 @@ the next line.
 
 A pull request's checks are the light set, and they flag issues early. Every
 required check still reports on a pull request under its own name, but there
-`local checks` runs every step of `pnpm check` except the build, with the
-tests the change reaches in place of the full test run; the full test run,
-the build and the heavy steps after it,
+`local checks` runs every step of `pnpm check`, the build before the tests
+because tests read its bundle, with the tests the change reaches in place of
+the full test run; the full test run,
 `isolation tests` and the database conformance shards run in the merge queue,
 and `database conformance` passes on the shards' skip when the contamination
 gate passed (a failed gate fails it). The full set runs in the
@@ -144,6 +144,15 @@ change or a reopen runs them too, so the hold lasts until the next such event.
 To send back a later head, remove the label and add it again. A held head
 cannot enter the merge queue, but one already queued is not stopped: remove it
 from the queue as well.
+
+A pull request whose head commit is a merge-queue commit, the tip of a
+`gh-readonly-queue/` branch, fails `contamination gate` whatever its branch is
+called, so no light pass lands beside the group's own (#724): every ci check
+that waits on the gate is skipped, and `database conformance`, which runs
+always(), fails. `review evidence for this revision` waits on no gate, so it
+runs the same check and fails too. Each lists the queue branches on every
+pull request run; when it cannot, or cannot read the head commit, it fails,
+and a re-run tries again.
 
 A conformance proof is a separate condition. For changes to the domain
 model, tenancy wrapper, queue and delivery contracts, gate engine, credential
