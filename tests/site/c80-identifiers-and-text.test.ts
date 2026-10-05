@@ -4,7 +4,8 @@
 // or task as its lower-case spelling and gets the same decision; a correction
 // id that is no UUID names no correction, as a fabricated one does; and request
 // text the stores cannot hold (a NUL) is refused by name on the person and the
-// agent route, so none of them becomes a database fault.
+// agent route, so none of them becomes a database fault. A quoted brace in
+// unchanged frontmatter leaves the paragraph below it body copy (Sol R2.2).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -88,3 +89,16 @@ describe.skipIf(serverUrl === undefined)(
     });
   },
 );
+
+describe.skipIf(serverUrl === undefined)('C80 body copy after frontmatter', () => {
+  it('stores the one-word correction below frontmatter that quotes an opening brace', async () => {
+    const before = "---\nconst marker = '{';\n---\n<p>We are a friendly studio.</p>\n";
+    const made = await w.request(w.ava, {
+      path: 'src/pages/about.astro',
+      before,
+      after: before.replace('friendly', 'welcoming'),
+    });
+    expect(codeOf(made)).toBe('not-a-refusal');
+    expect(await w.stateOf(String(detailOf(made)['correctionId']))).toBe('requested');
+  });
+});

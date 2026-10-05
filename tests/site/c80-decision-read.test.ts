@@ -8,6 +8,8 @@
 // an id that names nothing: another business, another client party in the
 // same business, a client outside the business, and an agent under another
 // person's live delegation, which reads none (the read is never an agent's).
+// The read's audit event names the correction it disclosed, and a refused
+// read's names none (Sol R2.3).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -158,5 +160,26 @@ describe.skipIf(serverUrl === undefined)('C80 decision read, no run:write', () =
     const refusedReal = await readAs(w.admin, asked.id);
     expect(readCode(refusedReal)).toBe('SCOPE_NOT_GRANTED');
     expect(refusedReal).toStrictEqual(await readAs(w.admin, randomUUID()));
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C80 decision read, its audit event', () => {
+  const readEvents = async (member: Member) =>
+    await w.world.db.admin.execute<{ readonly outcome: string; readonly subject: string | null }>(
+      `select outcome, subject_record_id::text as subject from public.audit_events
+        where business_id = $1 and actor_id = $2 and command = 'live_correction.read'
+        order by seq`,
+      [w.world.business, member.actorId],
+    );
+
+  it('names the correction a read disclosed, and none on a refusal', async () => {
+    const asked = await requested(w.ava);
+    expect(readCode(await readAs(w.ava, asked.id))).toBe('not-a-refusal');
+    expect((await readEvents(w.ava)).at(-1)).toStrictEqual({
+      outcome: 'applied',
+      subject: asked.id,
+    });
+    expect(readCode(await readAs(w.dee, asked.id))).toBe('NOT_FOUND');
+    expect((await readEvents(w.dee)).at(-1)).toStrictEqual({ outcome: 'refused', subject: null });
   });
 });

@@ -116,6 +116,31 @@ describe('C80 envelope refusal', () => {
     }
   });
 
+  // Sol R2.2 (F11): the scan starts after the frontmatter's closing fence, so
+  // a quoted brace in unchanged frontmatter leaves the paragraph body copy.
+  // The fence is a line of its own: one that never closes refuses everything.
+  it('reads body copy after frontmatter that holds a quoted brace', () => {
+    const before = "---\nconst marker = '{';\n---\n<p>We walk alongside you.</p>\n";
+    const after = before.replace('alongside', 'beside');
+    expect(checkEnvelope(change(after, before), TARGET)).toEqual({
+      ok: true,
+      value: { path: TARGET.path, line: 4, before: 'alongside', after: 'beside' },
+    });
+  });
+
+  it('refuses the word while the frontmatter fence is open or not a fence line', () => {
+    const hostile = [
+      "---\nconst marker = '{';\n<p>We walk alongside you.</p>\n",
+      '---\nconst a = 1;\n---x\n<p>We walk alongside you.</p>\n',
+      "\n---\nconst a = 'alongside';\n---\n<p>x</p>\n",
+      "---\r\nconst a = 'alongside';\r\n---\r\n<p>x</p>\r\n",
+    ];
+    for (const before of hostile) {
+      const after = before.replace('alongside', 'beside');
+      expect(checkEnvelope(change(after, before), TARGET).ok, before).toBe(false);
+    }
+  });
+
   it('refuses a target that is not a single word, whatever the caller supplies', () => {
     const bad = { ...TARGET, replacement: 'right beside' };
     expect(checkEnvelope(change(AGREED), bad)).toMatchObject({
