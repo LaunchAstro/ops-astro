@@ -76,8 +76,16 @@ const RETURN_KEY = 'ops-astro.return-to';
 /** Every business this sign-in has held in the tab, so sign-out reaches each one's copies. */
 const HELD_KEY = 'ops-astro.held-businesses';
 
-const isBusinessList = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.every((each) => typeof each === 'string');
+/**
+ * A business key as this tab names one in storage: lower-case letters, digits,
+ * `_` and `-`, starting with a letter or digit. The list is the tab's, not this
+ * code's, so each entry is read on its own and any other is skipped, never
+ * the whole list (the business a sign-in ends in is cleared whatever it holds).
+ */
+const BUSINESS_KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/u;
+
+const businessesIn = (value: unknown[]): string[] =>
+  value.filter((each): each is string => typeof each === 'string' && BUSINESS_KEY.test(each));
 
 /** What the tab keeps for one business: its confirmed settings, dock and layout copies. */
 function forgetBusiness(storage: StorageLike | null, businessKey: string): void {
@@ -126,7 +134,7 @@ export class SessionStore {
   readonly #storage: StorageLike | null;
   readonly #kept: JsonSlot<Session>;
   readonly #returnTo: JsonSlot<Interruption>;
-  readonly #held: JsonSlot<string[]>;
+  readonly #held: JsonSlot<unknown[]>;
   #session: Session | null = null;
   #interruption: Interruption | null = null;
 
@@ -134,7 +142,7 @@ export class SessionStore {
     this.#storage = storage;
     this.#kept = jsonSlot(storage, KEY, isSession);
     this.#returnTo = jsonSlot(storage, RETURN_KEY, isInterruption);
-    this.#held = jsonSlot(storage, HELD_KEY, isBusinessList);
+    this.#held = jsonSlot(storage, HELD_KEY, Array.isArray);
     // A session kept before the cookie (S0-6c) also held its bearer: only the
     // fields a session has now are taken, and written back over the old copy.
     const kept = this.#kept.read();
@@ -187,7 +195,7 @@ export class SessionStore {
     if (leaving?.businessKey !== session.businessKey || leaving.email !== session.email) {
       owners += 1;
     }
-    const held = this.#held.read() ?? [];
+    const held = businessesIn(this.#held.read() ?? []);
     if (!held.includes(session.businessKey)) this.#held.write([...held, session.businessKey]);
     this.#session = session;
     this.#kept.write(session);
@@ -200,7 +208,7 @@ export class SessionStore {
     this.#session = null;
     this.#forgetInterruption();
     this.#kept.remove();
-    const held = new Set(this.#held.read() ?? []);
+    const held = new Set(businessesIn(this.#held.read() ?? []));
     if (ending !== null) held.add(ending.businessKey);
     for (const businessKey of held) forgetBusiness(this.#storage, businessKey);
     this.#held.remove();

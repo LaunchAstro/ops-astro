@@ -224,18 +224,24 @@ export function useSettings(
       );
       return;
     }
-    const revision = rowFor(which)?.revision;
-    const options: MutationOptions = revision === undefined ? {} : { expectedRevision: revision };
+    const seen = rowFor(which)?.revision;
     setPressed(which);
     setComplaint(null);
     const tag = desk.save();
     // The id is taken as each attempt leaves: a step-up's resend follows an
-    // answer, so it is a new attempt; a lost answer keeps the id for this value.
+    // answer, so it is a new attempt; a lost answer keeps the id for this
+    // value, and the revision it was first sent at, so a reread in between
+    // cannot turn the replay into `OPERATION_ID_REUSED` (WEB.md).
     let sent = '';
     command.run(
       (to) => {
-        sent = intents.idFor(which, value);
-        return to.mutate(COMMAND[which], { value }, { ...options, operationId: sent });
+        const { id, sentWith: revision } = intents.attempt(which, value, seen);
+        sent = id;
+        const options: MutationOptions =
+          revision === undefined
+            ? { operationId: id }
+            : { operationId: id, expectedRevision: revision };
+        return to.mutate(COMMAND[which], { value }, options);
       },
       (settlement) => {
         if (settlement.kind !== 'unknown') intents.answered(which, sent);
