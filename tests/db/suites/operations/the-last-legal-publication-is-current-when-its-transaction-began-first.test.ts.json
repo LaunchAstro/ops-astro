@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the last legal publication is current when its transaction began before the earlier one"
+}
