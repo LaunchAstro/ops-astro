@@ -43,6 +43,7 @@ import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
 import { callsSpentOf, remainingOf, stopAtSpentHold } from './budget-stop.ts';
+import { COUNTED_CAUSES, countedHold } from '../../core-custody/src/broker-give-back.ts';
 
 export interface QueueEntry {
   readonly reservationId: string;
@@ -502,11 +503,11 @@ const NO_ROOM = "this run's spend and holds already fill the version's approved 
 /**
  * What the run may still hold under its version: the approved ceiling, raised
  * by the run's applied top-ups, less what its reservations of the version
- * committed (a live hold whole, a closed one at its spend). A closed hold's
- * spend is its calls as `spentOn` counts them when they exceed its actual: a
- * top-up moved that spend off a held hold, which then closes at nothing. Read
- * under the run lock. A replacement is held at most this, whatever the newest-hold order
- * says of rows written before replacements were stamped at insertion.
+ * committed (a live hold whole, a closed one at its spend). A closed hold
+ * custody counted (`countedHold`: a top-up moved its spend, or the end) is at
+ * its calls as `spentOn` counts them when above its actual; any other at its
+ * actual, its unsent calls never counted. Read under the run lock. A
+ * replacement is held at most this, whatever the newest-hold order says.
  */
 async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
   const [row] = await tx.query<{ readonly room: string }>(
@@ -515,14 +516,16 @@ async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
                           where a.business_id = ver.business_id and a.run_id = $3
                             and a.kind = 'top_up'), 0)
              - coalesce((select sum(case when r.state in ('held', 'quarantined') then r.held_minor
-                                         else greatest(coalesce(r.actual_minor, 0),
-                                                       ${callsSpentOf('r')}) end)
+                                         when ${countedHold('$4')}
+                                           then greatest(coalesce(r.actual_minor, 0),
+                                                         ${callsSpentOf('r')})
+                                         else coalesce(r.actual_minor, 0) end)
                            from public.reservations r
                           where r.business_id = ver.business_id and r.version_id = ver.id
                             and r.run_id = $3), 0))::text as room
        from public.proposal_versions ver
       where ver.business_id = $1 and ver.id = $2`,
-    [tx.businessId, found.version_id, found.run_id],
+    [tx.businessId, found.version_id, found.run_id, COUNTED_CAUSES],
   );
   return BigInt(row?.room ?? '0');
 }
