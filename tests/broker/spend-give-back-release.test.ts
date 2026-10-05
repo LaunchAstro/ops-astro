@@ -4,7 +4,9 @@
 // at a budget stop counted at its maximum gives that maximum back when it is
 // released unsent, once, whichever path releases it:
 // - its own start, retried after the hold moved on (`markStarted`);
-// - the model-call sweep, its lease ended at the stop (`sweepModelCalls`).
+// - the model-call sweep, its lease ended at the stop (`sweepModelCalls`), and
+//   only with its hold and envelope locked: while another transaction holds
+//   them it is left for the next pass.
 // The lost-worker sweep (`holdLostCalls`) never meets one: a stop releases the
 // lease (`broker-wait.ts`), and that sweep finds only live leases run out.
 // Through the real broker, top-up, end, pickup and sweeps.
@@ -24,7 +26,7 @@ import {
   topUpAtBudgetStop,
 } from '../../packages/core-runtime/src/index.ts';
 import { grantTo } from '../commands/fixture.ts';
-import { asAgent, codeOf, liveWork, rows, type Work } from '../runtime/schedules-harness.ts';
+import { asAgent, codeOf, liveWork, racer, rows, type Work } from '../runtime/schedules-harness.ts';
 import { openBilling } from '../runtime/t3d1-harness.ts';
 import {
   broker,
@@ -197,4 +199,43 @@ it('a call released before any top-up or end gives nothing back, and a later top
   expect(await envelopeActual(work)).toBe(before);
   expect(await topUp(work)).toMatchObject({ ok: true, value: { state: 'applied' } });
   expect(await envelopeActual(work), 'nothing counted, nothing given').toBe(before);
+});
+
+it('a counted call whose hold another transaction holds is left to the next sweep, which gives back once', async () => {
+  const { work, before } = await stoppedUnsent();
+  expect(await end(work)).toMatchObject({ ok: true, value: { spentMinor: 500 } });
+  const other = racer(s);
+  let locked: (() => void) | undefined;
+  let release: (() => void) | undefined;
+  const holding = new Promise<void>((resolve) => {
+    locked = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const holder = other.withBusiness(s.business, async (tx) => {
+    await tx.query(
+      'select 1 from public.reservations where business_id = $1 and id = $2 for update',
+      [tx.businessId, reservationOf(work)],
+    );
+    locked?.();
+    await gate;
+  });
+  try {
+    await holding;
+    await sweepCalls();
+    expect(await calls(work), 'skipped while its hold is held').toMatchObject([
+      { state: 'reserved' },
+    ]);
+    expect(await envelopeActual(work)).toBe(before + 500);
+  } finally {
+    release?.();
+    await holder;
+    await other.close();
+  }
+
+  await sweepCalls();
+
+  expect(await calls(work)).toMatchObject([{ state: 'released' }]);
+  expect(await envelopeActual(work), 'given back once').toBe(before);
 });
