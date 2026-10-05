@@ -70,13 +70,13 @@ export default defineConfig({
     // scan-login and backup revocation proofs), the OW-002 proofs written beside
     // them, Sol's two PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
     // c59-factor-routes-world (byte for byte but for one cookie-jar split CQ-11
-    // asks for), Sol's six F2 lost-answer retry proofs and Sol's two F3
-    // save-order proofs open their worlds with no skip, as do Sol's three
-    // template lock and clone catalogue proofs and the cases written beside
-    // them, and C31's Sol proof files; without a database they are left out
-    // here, and the manifests run them where there is one. C31's corrupted
-    // audit chain fails by design: only the proof that spawns it from inside a
-    // test worker collects it.
+    // asks for), Sol's six F2 lost-answer retry proofs, Sol's two F3
+    // save-order proofs and Sol's OW-016 route proof open their worlds with no
+    // skip, as do Sol's three template lock and clone catalogue proofs and the
+    // cases written beside them, and C31's Sol proof files; without a database
+    // they are left out here, and the manifests run them where there is one.
+    // C31's corrupted audit chain fails by design: only the proof that spawns
+    // it from inside a test worker collects it.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
@@ -142,6 +142,8 @@ export default defineConfig({
             'tests/api/receipt-link-held-credentials-crossings.test.ts',
             'tests/api/receipt-link-keeps-no-credential.test.ts',
             'tests/api/receipt-link-literal-percent-and-held-digests.test.ts',
+            'tests/broker/reconcile-keeps-call-when-its-carrier-changes.test.ts',
+            'tests/broker/reconcile-uses-carrying-route.test.ts',
             'tests/api/held-attempt-calls-provider-once.test.ts',
             'tests/api/held-answer-sign-off.proof.test.ts',
             'tests/api/applied-comment-settles-after-sign-off.proof.test.ts',
