@@ -36,3 +36,18 @@ it.each([
     ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['page'] });
   },
 );
+
+it('fails the decoy when its only occurrence sits inside a longer word', () => {
+  const before: PageObservation = {
+    url: 'https://www.example.com/about',
+    status: 200,
+    documentDigest: 'sha256:before',
+    text: 'We walk alongside you.',
+    stylesheets: {},
+  };
+  const after = { ...before, documentDigest: 'sha256:after', text: 'We walk beside you.' };
+  const decoy = { ...decoyBefore, text: 'We work \u{1D400}alongside your team.' };
+  expect(
+    compareCaptures({ before, after, decoyBefore: decoy, decoyAfter: { ...decoy }, target }),
+  ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['decoy'] });
+});

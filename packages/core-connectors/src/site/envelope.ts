@@ -49,8 +49,10 @@ export function wordOffsets(text: string, word: string): number[] {
   const found: number[] = [];
   if (word === '') return found;
   for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1)) {
-    const left = at === 0 ? '' : text.slice(at - 1, at);
-    const right = text.slice(at + word.length, at + word.length + 1);
+    // Whole characters, never one code unit: half a surrogate pair is no letter.
+    const left = Array.from(text.slice(Math.max(0, at - 2), at)).at(-1) ?? '';
+    const next = text.codePointAt(at + word.length);
+    const right = next === undefined ? '' : String.fromCodePoint(next);
     if (!WORD_CHARACTER.test(left) && !WORD_CHARACTER.test(right)) found.push(at);
   }
   return found;
