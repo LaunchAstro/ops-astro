@@ -133,6 +133,8 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   ['access', 'share'],
   ['time', 'write'],
   ['tag', 'write'],
+  // C33: releasing a definition version, the owner's and administrators'.
+  ['automation', 'manage'],
 ];
 
 export async function tokenFor(
