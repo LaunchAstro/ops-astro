@@ -210,25 +210,48 @@ const reachOf = (scopes: readonly Scope[]): [boolean, readonly (string | null)[]
   scopes.filter((scope) => scope.kind === 'party').map((scope) => scope.id),
 ];
 
-const CLIENTS_SQL = `select k.id, k.name as label from public.clients k
-  where k.business_id = (select public.app_business_id())
-    and ($1::boolean or k.id = any($2::uuid[]))
-  order by k.name, k.id`;
+// One statement, so the client list, the graduation rows and the mandates
+// come from one snapshot: a client committed mid-read is in all three or in
+// none (Sol 1017 R2). Each list is a JSON array in the statement's order.
+const GRADUATION_SQL = `select
+  (select coalesce(json_agg(c order by c.label, c.id), '[]'::json)
+     from (select k.id, k.name as label from public.clients k
+            where k.business_id = (select public.app_business_id())
+              and ($1::boolean or k.id = any($2::uuid[]))) c) as clients,
+  (select coalesce(json_agg(g order by g.client_name, g.client_id, g.action_class), '[]'::json)
+     from (select g.id, g.client_id, g.action_class, g.class_label,
+                  g.clearance, g.earned, g.never_why, g.approved, g.edited, g.rejected,
+                  g.since::text as since, g.note, g.revision::text as revision,
+                  k.name as client_name
+             from public.graduation_classes g
+             join public.clients k on k.business_id = g.business_id and k.id = g.client_id
+            where g.business_id = (select public.app_business_id())
+              and ($1::boolean or g.client_id = any($2::uuid[]))) g) as classes,
+  (select coalesce(json_agg(m order by m.created_at, m.id), '[]'::json)
+     from (select ${MANDATE_COLUMNS}
+             from public.standing_mandates m
+            where m.business_id = (select public.app_business_id()) and m.revoked_at is null
+              and ($1::boolean or m.client_id = any($2::uuid[]))) m) as mandates`;
 
-const CLASSES_SQL = `select g.id, g.client_id, g.action_class, g.class_label,
-        g.clearance, g.earned, g.never_why, g.approved, g.edited, g.rejected,
-        g.since::text as since, g.note, g.revision
-   from public.graduation_classes g
-   join public.clients k on k.business_id = g.business_id and k.id = g.client_id
-  where g.business_id = (select public.app_business_id())
-    and ($1::boolean or g.client_id = any($2::uuid[]))
-  order by k.name, g.client_id, g.action_class`;
+/** A mandate row as JSON carries it: times as text, bigints as numbers. */
+type MandateJsonRow = Omit<
+  MandateDbRow,
+  'ceiling_minor' | 'expires_at' | 'created_at' | 'revision'
+> & {
+  readonly ceiling_minor: number | null;
+  readonly expires_at: string;
+  readonly created_at: string;
+  readonly revision: number;
+};
 
-const MANDATES_SQL = `select ${MANDATE_COLUMNS}
-   from public.standing_mandates m
-  where m.business_id = (select public.app_business_id()) and m.revoked_at is null
-    and ($1::boolean or m.client_id = any($2::uuid[]))
-  order by m.created_at, m.id`;
+const mandateOfJson = (row: MandateJsonRow): MandateRow =>
+  mandateOf({
+    ...row,
+    ceiling_minor: row.ceiling_minor === null ? null : String(row.ceiling_minor),
+    expires_at: new Date(row.expires_at),
+    created_at: new Date(row.created_at),
+    revision: String(row.revision),
+  });
 
 /**
  * The clients the scopes reach (each, whether or not it has a graduation
@@ -242,16 +265,15 @@ export async function listGraduation(
   readonly classes: readonly GraduationClassRow[];
   readonly mandates: readonly MandateRow[];
 }> {
-  const reach = reachOf(scopes);
-  const clients = await tx.query<{ readonly id: string; readonly label: string }>(
-    CLIENTS_SQL,
-    reach,
-  );
-  const classes = await tx.query<ClassDbRow>(CLASSES_SQL, reach);
-  const mandates = await tx.query<MandateDbRow>(MANDATES_SQL, reach);
+  const [read] = await tx.query<{
+    readonly clients: readonly { readonly id: string; readonly label: string }[];
+    readonly classes: readonly ClassDbRow[];
+    readonly mandates: readonly MandateJsonRow[];
+  }>(GRADUATION_SQL, reachOf(scopes));
+  if (read === undefined) throw new Error('listGraduation: the statement returned no row');
   return {
-    clients,
-    classes: classes.map((row) => classOf(row)),
-    mandates: mandates.map((row) => mandateOf(row)),
+    clients: read.clients.map((client) => ({ id: client.id, label: client.label })),
+    classes: read.classes.map((row) => classOf(row)),
+    mandates: read.mandates.map((row) => mandateOfJson(row)),
   };
 }
