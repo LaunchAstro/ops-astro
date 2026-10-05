@@ -121,25 +121,18 @@ describe('the comparison is bounded', () => {
 
 describe('the comparison is linear', () => {
   it('compares a page of many one-letter words in linear time', () => {
-    const many = 'a '.repeat(120_000);
-    const one = { ...TARGET, word: 'q', replacement: 'z' };
+    // At the text bound, the last of 131,072 'a's replaced: main's filter rebuilt the page per 'a'.
+    const many = 'a '.repeat(131_071);
     const start = performance.now();
-    compareCaptures({
-      before: page({ text: `${many}q ${many}` }),
-      after: page({ documentDigest: 'sha256:doc-after', text: `${many}z ${many}` }),
-      decoyBefore: page({ ...decoy, text: 'We work q your team.' }),
-      decoyAfter: page({ ...decoy, text: 'We work q your team.' }),
-      target: one,
-    });
-    const words = { ...TARGET, word: 'a', replacement: 'b' };
-    compareCaptures({
-      before: page({ text: many }),
-      after: page({ documentDigest: 'sha256:doc-after', text: `b ${many.slice(2)}` }),
+    const result = compareCaptures({
+      before: page({ text: `${many}a` }),
+      after: page({ documentDigest: 'sha256:doc-after', text: `${many}b` }),
       decoyBefore: page({ ...decoy, text: 'We work a your team.' }),
       decoyAfter: page({ ...decoy, text: 'We work a your team.' }),
-      target: words,
+      target: { ...TARGET, word: 'a', replacement: 'b' },
     });
     expect(performance.now() - start).toBeLessThan(150);
+    expect(result.ok).toBe(true);
   });
 });
 
