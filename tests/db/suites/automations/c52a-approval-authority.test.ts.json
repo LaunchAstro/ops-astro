@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "PORT-P11 (C52-A standing approvals): who may approve, and when: a revocation or an expiry of the automation:manage grant while a change waits on the activation refuses it, and an automation that is off is never approved; each request on its own connection."
+}

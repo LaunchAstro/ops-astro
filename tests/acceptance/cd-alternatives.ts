@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 17 of the 66. For each of the other 49 this file
+// `recordId`, which reaches 17 of the 70. For each of the other 53 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -155,7 +155,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The forty-nine identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The fifty-three identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -211,6 +211,11 @@ export const IDENTIFIER_BEARING: Readonly<
   // C33: a version and an activation, and a definition to release on.
   'activation.change': ['versionId and activationId', 'control'],
   'definition.release': ['definitionId', 'control'],
+  // C52-A: an activation and the version it adopts, and an approval to revoke.
+  'activation.adopt': ['activationId and versionId', 'control'],
+  'activation.roll_back': ['activationId', 'control'],
+  'activation.turn_off': ['activationId', 'control'],
+  'approval.revoke': ['approvalId', 'control'],
 };
 
 /**

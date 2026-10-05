@@ -152,6 +152,7 @@ const revertInput = {
     right: ' you.',
     index: 0,
     observed: ['beside'],
+    offsets: [0],
     liveAt: PUBLISHED.liveUrl,
   },
   seam: 'revert-of-def456',
@@ -232,7 +233,9 @@ it('a pending revert keeps the original decision time until observation', async 
 });
 
 it('a replacement decoy does not establish that the target word landed', async () => {
-  const accepted = await publishCorrection(approvedJob(), publishPorts([]));
+  // The page before the change already held the other copy: the place is calibrated on it.
+  const before = page('Parking beside the clinic. We walk alongside you.');
+  const accepted = await publishCorrection(approvedJob(), publishPorts([], { capture: before }));
   if (accepted.state !== 'accepted') throw new Error(`not accepted: ${accepted.state}`);
   const observe = (text: string) =>
     observeLanded(accepted, TARGET, {

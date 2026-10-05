@@ -821,6 +821,21 @@ Settings ▸ Workflow triggers (C33) reads the business's automations under
 and none ever an agent's. A definition carries no client, so a grant at one
 client's scope reaches none of the three. Switching an activation to a
 schedule or an event starts nothing; a run waits on C52-A's standing approval.
+Adopting a version (`activation.adopt`), rolling back
+(`activation.roll_back`), turning an automation off (`activation.turn_off`)
+and revoking a standing approval (`approval.revoke`) are each
+`automation:manage`, asked of the whole business and never an agent's. Only
+an adoption grants an approval; `settings:manage` can end one (a change of
+the pin, mode, schedule or event, or a switch off), never give one. Each of
+the four holds the caller's `automation` grants for share before any
+automation row, so a revocation of one waits for the change, and asks the key
+again after it has locked the activation, at the clock after that wait: a
+grant that ran out while it waited refuses it. Once its rows are written it
+takes the audit chain's lock, its last wait, and asks again at that clock,
+refusing too if the session that sent it was signed out meanwhile. An
+automation that is off is
+never approved, so switching one on under `settings:manage` carries no
+approval.
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a

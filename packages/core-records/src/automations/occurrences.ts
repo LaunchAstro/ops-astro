@@ -3,10 +3,12 @@
 // Occurrences (C33, U36; migration 20261004091552): each due schedule time or matching
 // event, written once. The database's uniqueness on the activation and its
 // due time or event id holds that, so a claimer that races another commits
-// one row and learns the other's, never a second.
+// one row and learns the other's, never a second. An occurrence under a
+// standing approval (C52-A, migration 20261005193201) names it.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { readStandingApproval } from './approvals.ts';
 import {
   ACTIVATION_COLUMNS,
   activationOf,
@@ -14,7 +16,7 @@ import {
   type ActivationMode,
 } from './automations.ts';
 
-export type OccurrenceOutcome = 'started' | 'activation_off' | 'no_standing_approval';
+export type OccurrenceOutcome = 'started' | 'activation_off' | 'no_standing_approval' | 'approved';
 
 export interface OccurrenceRow {
   readonly id: string;
@@ -63,9 +65,11 @@ export type OccurrenceClaim =
  *
  * A second claim of the same cause, whether a replayed event, a restarted
  * scheduler or a racing one, commits nothing and answers `replayed` with the
- * first occurrence. No run starts here yet: the run is the agent engine's
- * (AW-01), and it starts only on C52-A's standing approval for exactly this
- * version, so every occurrence records why it did not start.
+ * first occurrence. No run starts here: an occurrence on an activation that is
+ * on, under a standing approval that is not revoked (C52-A), is `approved`
+ * and names that approval, and dispatch (`dispatch.ts`) rechecks it under the
+ * activation's lock before any run; every other occurrence records why it
+ * will not start one.
  */
 export async function claimOccurrence(
   tx: TenantQuery,
@@ -82,16 +86,23 @@ export async function claimOccurrence(
   if (activation.mode !== (scheduled ? 'scheduled' : 'event')) {
     return { kind: 'not_firing', mode: activation.mode };
   }
-  const outcome: OccurrenceOutcome = activation.enabled ? 'no_standing_approval' : 'activation_off';
+  // In a statement of its own, after the lock: one that waited on an adoption
+  // sees the new pin, but anything else it reads keeps the snapshot it began with.
+  const standing = await readStandingApproval(tx, activation.id);
+  let outcome: OccurrenceOutcome = 'activation_off';
+  if (activation.enabled) {
+    outcome = standing === null || standing.revoked ? 'no_standing_approval' : 'approved';
+  }
+  const approvalId = outcome === 'approved' ? (standing?.id ?? null) : null;
   const dueAt = scheduled ? cause.dueAt : null;
   const eventId = scheduled ? null : cause.eventId;
   const inserted = await tx.query<OccurrenceDbRow>(
     `insert into public.activation_occurrences
-       (business_id, id, activation_id, version_id, due_at, event_id, outcome)
-     values ((select public.app_business_id()), $1, $2, $3, $4, $5, $6)
+       (business_id, id, activation_id, version_id, due_at, event_id, outcome, approval_id)
+     values ((select public.app_business_id()), $1, $2, $3, $4, $5, $6, $7)
      on conflict do nothing
      returning ${OCCURRENCE_COLUMNS}`,
-    [randomUUID(), activation.id, activation.versionId, dueAt, eventId, outcome],
+    [randomUUID(), activation.id, activation.versionId, dueAt, eventId, outcome, approvalId],
   );
   if (inserted[0] !== undefined) return { kind: 'claimed', occurrence: occurrenceOf(inserted[0]) };
   const first = await tx.query<OccurrenceDbRow>(

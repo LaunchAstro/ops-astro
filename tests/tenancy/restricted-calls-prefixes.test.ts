@@ -265,6 +265,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.trace_export_cursors': {},
   'public.trace_export_gaps': { code: 'target_unreachable', events: 1 },
   'public.trace_expiry_batches': { window_days: 30, runs: 1, expired_run_ids: [randomUUID()] },
+  'public.trace_expiry_asks': { run_id: randomUUID(), after_tx: '1', after_id: randomUUID() },
   'public.bootstrap_bytes': {
     content_digest: SEED_DIGEST,
     content_size: 4,
@@ -371,7 +372,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
   },
-  // 20261005192529 (C59): no journey resets a factor.
+  // 20261005235557 (C59): no journey resets a factor.
   'public.factor_resets': {
     person_id: randomUUID(),
     login_id: randomUUID(),
@@ -417,6 +418,24 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     activation_id: randomUUID(),
     version_id: randomUUID(),
     due_at: '2026-09-29T00:00:00Z',
+    outcome: 'activation_off',
+  },
+  // Standing approvals (C52-A, 20261005193201): the journey adopts, revokes and dispatches none.
+  'public.standing_approvals': {
+    activation_id: randomUUID(),
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    previous_version_id: randomUUID(),
+    act: 'adopted',
+    sequence: 2,
+    decided_by_actor_id: randomUUID(),
+  },
+  'public.standing_approval_revocations': {
+    approval_id: randomUUID(),
+    revoked_by_actor_id: randomUUID(),
+  },
+  'public.occurrence_dispatches': {
+    occurrence_id: randomUUID(),
     outcome: 'activation_off',
   },
   // WF-1: the journey charts no map.
