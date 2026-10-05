@@ -18,3 +18,5 @@ export {
   type ConversationTypes,
 } from './conversations.ts';
 export { readPositionOf, type ReadPosition } from './read-position.ts';
+// Chat writes and access changes queue on the one access lock (C71-D).
+export { shareAccessLock } from '../authority/access.ts';

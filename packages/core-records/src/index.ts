@@ -56,7 +56,6 @@ export {
   grantAccess,
   lastManager,
   lockAccess,
-  shareAccessLock,
   otherManagers,
   type AccessGrant,
 } from './authority/access.ts';
