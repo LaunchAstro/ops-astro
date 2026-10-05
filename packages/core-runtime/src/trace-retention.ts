@@ -107,7 +107,7 @@ async function readOwed(
   page: number,
 ): Promise<readonly RetentionBatch[]> {
   const batches: RetentionBatch[] = [];
-  const reading: Reading = { firsts: new Map(), unanswered: [], quiet: 0 };
+  const reading: Reading = { sent: new Map(), unanswered: [], quiet: 0 };
   let after: OwedFrom | null = null;
   while (reading.quiet < UNANSWERED) {
     const from: OwedFrom | null = after;
@@ -116,7 +116,7 @@ async function readOwed(
       businessId,
       async (tx) => await owedAsks(tx, windowDays, from, page),
     );
-    for (const row of owed) if (row.first !== null) reading.firsts.set(row.runId, row.first);
+    for (const row of owed) if (row.sent !== null) reading.sent.set(row.runId, row.sent);
     const due = owed.filter((row) => !asked.has(row.runId));
     const runs = due.map((row) => row.runId);
     // eslint-disable-next-line no-await-in-loop -- one page after another; the store is not hurried

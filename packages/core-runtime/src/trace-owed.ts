@@ -5,9 +5,9 @@
 // place or later, and for as long as its run has an event after that place
 // inside the window: a confirmation proves one delete landed, never that no
 // other is still queued, and a queued delete takes whatever the trace holds
-// when it lands. Retention reads the owed asks back each pass; the export
-// sends a run with one whole, its earliest event first, so retention reads
-// that event's span: a delete that lands partway through the sending takes it.
+// when it lands. Retention reads the owed asks back each pass, by every span
+// the export has sent of the run since its place: a body sent before the
+// delete may still be stored after it, and restores only its own spans.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 
@@ -35,14 +35,15 @@ interface Place {
 }
 
 /**
- * One owed ask: its run, its place, the run's earliest event after the place
- * that the export has sent and the window still holds, and its turn: when a
- * read of it last went unanswered, as ISO 8601 text in UTC to the microsecond
- * whatever the session's settings, or `-infinity` when none did.
+ * One owed ask: its run, its place, the run's events after the place that the
+ * export has sent and the window still holds, newest first (null for none),
+ * and its turn: when a read of it last went unanswered, as ISO 8601 text in
+ * UTC to the microsecond whatever the session's settings, or `-infinity` when
+ * none did.
  */
 export type Owed = {
   readonly runId: string;
-  readonly first: string | null;
+  readonly sent: readonly string[] | null;
   readonly turn: string;
 } & Place;
 
@@ -61,19 +62,19 @@ export async function owedAsks(
   page: number,
 ): Promise<readonly Owed[]> {
   return await tx.query<Owed>(
-    `select run_id as "runId", after_tx::text as tx, after_id as id, first,
+    `select run_id as "runId", after_tx::text as tx, after_id as id, sent,
             case when isfinite(turn)
                  then to_char(turn at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
                  else turn::text end as turn
        from (
        select o.*,
-              (select ev.id from public.run_events ev
+              (select array_agg(ev.id::text order by ev.tx desc, ev.id desc)
+                 from public.run_events ev
                  join public.trace_export_cursors cur on cur.business_id = $1
                 where ev.business_id = $1 and ev.run_id = o.run_id
                   and (ev.tx, ev.id) > (o.after_tx, o.after_id)
                   and (ev.tx, ev.id) <= (cur.after_tx, cur.after_id)
-                  and ev.created_at >= now() - make_interval(days => $3)
-                order by ev.tx, ev.id limit 1) as first,
+                  and ev.created_at >= now() - make_interval(days => $3)) as sent,
               coalesce((select max(b.recorded_at) from public.trace_expiry_batches b
                          where b.business_id = $1 and b.unanswered_run_ids @> array[o.run_id]),
                        '-infinity') as turn

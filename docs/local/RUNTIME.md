@@ -1926,7 +1926,9 @@ and codes, never a sentence, to a trace target an operator reads.
   say the target took nothing; a target that stores a body and answers 5xx
   anyway is not held off, nor is a store later than the lease. The lease has no
   token the target checks: a holder stalled for most of a minute between its
-  renewal and custody's send could still send after a takeover. A cursor row
+  renewal and custody's send could still send after a takeover. Such a body,
+  stored after a delete, restores only its own spans, and retention's
+  read-back of every sent span (below) finds the rest gone. A cursor row
   with no place yet (the lease creates it) owes no expiry ask.
   `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and
@@ -1984,9 +1986,14 @@ and codes, never a sentence, to a trace target an operator reads.
   while the run has an event after that place inside the window: a
   confirmation proves one delete landed, never that no other is still
   queued. Each pass reads back every owed ask it did not just make, page
-  after page; a run the export has sent an event of since its place (one
-  the window still holds) is read by its earliest such event's span, so a
-  delete that landed between two bodies of a resend counts as gone. Three
+  after page; a run the export has sent events of since its place (ones
+  the window still holds) is read by each such event's span, newest first,
+  until one is not there. A delete that landed between two bodies of a
+  resend, or before a stale body landed (one a stalled export sent after a
+  takeover, or one the target stored after a timeout and the hold), leaves
+  some span missing, and the trace only grows until the run is sent again,
+  so the run counts as gone. Each owed run costs one read per such event
+  each pass. Three
   reads in a row the store does not answer end the pass, and the runs it
   did not answer go on a batch row (`unanswered_run_ids`, code
   `expiry_unconfirmed`, nothing confirmed): the next pass reads every other
@@ -2001,8 +2008,8 @@ and codes, never a sentence, to a trace target an operator reads.
   earliest first, in bodies of at most 100 owed events with the export's own
   (up to 100 more) in the last, a body over 100 that the target refuses as
   too large (413) going again as two halves in order, so a delete landing between two exports leaves the trace whole
-  and one landing between two bodies takes the earliest span the read looks
-  for. A confirmation covers only
+  and one landing between two bodies takes spans the read looks for. A
+  confirmation covers only
   the events up to its place: a run with a later event, even one committed
   after the pass, is due again once that event is past the window. Two
   passes at once are harmless: deletion by derived id is idempotent, and a

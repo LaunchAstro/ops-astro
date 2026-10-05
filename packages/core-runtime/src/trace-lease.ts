@@ -10,7 +10,9 @@
 // so a late store lands before the next export sends; one later than the
 // lease is not held off. The lease is time only, with no token the target
 // checks: a holder stalled for most of the lease between its renewal and
-// custody's send could still send after a takeover.
+// custody's send could still send after a takeover. Either late body, stored
+// after a delete, restores only its own spans; retention reads back every
+// span sent since the run's place (`trace-store.ts`) and finds the rest gone.
 //
 // Every statement takes the row lock and reads the time after the lock wait
 // (`clock_timestamp()`, never the transaction's start). A renewal holds only
