@@ -39,6 +39,7 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/web/src/session/use-signed-in.ts':
     "threads that fetch to the held-address offer, the product's own API",
   'apps/web/src/screens/SignIn.tsx': "threads that fetch to the product's own sign-in route",
+  'apps/web/src/screens/Enrol.tsx': "threads that fetch to the product's own enrol route",
   'apps/cli/main.ts': "the command line calls the product's own API",
   // Main's core after the slice's base (rebase onto 8eba5e6):
   'apps/cli/client.ts':

@@ -2427,8 +2427,9 @@ Auth mail (a reset among it) has no attempt yet and is not sent (C40).
 `POST /api/enrol` with `token` and `password` accepts an invitation
 (`acceptInvitation`, mounted by `mountEnrolment` with the deployment's
 businesses and a broker cataloguing `auth.create_user` and
-`auth.update_user`, custody routing the one PUT
-`/auth/v1/admin/users/*`). No sign-in and no
+`auth.update_user`, custody's `auth` destination taking no POST but its
+listed `POST /auth/v1/admin/users`, and the PUT `/auth/v1/admin/users/*`).
+No sign-in and no
 grant: the one-time token is the authority, its SHA-256 looked up once by
 `enrolment_token_find`, the one security definer function that answers a
 business, an invitation and a token id for a hash exactly one business holds
@@ -2994,7 +2995,7 @@ the moment the window settles, and until then up to five minutes on. The
 password is set at the provider through custody under the catalogued
 `auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
 held by custody alone, whose `auth` destination lists that route and takes no
-POST, `post: false`; the answer must name the same user). In each business
+POST but the accept's listed one, `post: false`; the answer must name the same user). In each business
 the login is mapped in, one transaction ends the sessions seen there. Last,
 whatever happened, one transaction in the token's business settles the window
 (`clock_timestamp()`; a sign-in after it is served) and, only when the
