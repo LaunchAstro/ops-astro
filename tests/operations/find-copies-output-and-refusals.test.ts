@@ -138,7 +138,7 @@ it('the finder refuses an id that is not a UUID, a repeated option and an unknow
     ['--text', '--export'],
     ['--id', '--export'],
     ['--text', 'a  b'],
-    ['--text', '\u00A0ab\u00A0\u00A0c'],
+    ['--text', '\u00A0a\u00A0\u00A0b\u00A0'],
   ]) {
     // oxlint-disable-next-line no-await-in-loop
     const refused = await findCopies('postgres://finder:unused@127.0.0.1:1/none', args, 'alpha');
