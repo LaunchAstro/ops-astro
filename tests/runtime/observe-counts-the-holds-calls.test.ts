@@ -32,7 +32,7 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('obscalls');
 
-const { work, applied, observeOf, money } = t2dHarness(() => s);
+const { work, applied, observeOf, money, auditsOf } = t2dHarness(() => s);
 
 const pause = async (ms: number): Promise<void> => {
   await new Promise<void>((resolve) => {
@@ -117,6 +117,10 @@ it('a model call lost mid-flight keeps the whole hold at observation', async () 
   const observed = await observeOf(w, { usage: PRICED });
 
   keptWhole(observed);
+  // The retained refusal keeps the attempt's own priced cost apart from the hold's total, so the
+  // person recording the outcome sees what the agent's work was priced at.
+  const retained = (await auditsOf('refused')).map((one) => one.attempted);
+  expect(retained).toContainEqual(expect.objectContaining({ costMinor: COMMENT_COST }));
   // Observed again, the held attempt is refused in words that still name the open call.
   const again = await observeOf(w, { usage: PRICED });
   expect(codeOf(again)).toBe('BUDGET_UNAVAILABLE');

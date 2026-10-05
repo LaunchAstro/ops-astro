@@ -45,7 +45,9 @@ it("a present effect settles the hold at the book's price plus its settled model
   await t3b.expire(w);
   await t3b.sweep();
 
-  expect(await pass.reconcile()).toMatchObject([{ attemptId: w.attemptId, answer: 'present' }]);
+  const [answered] = await pass.reconcile();
+  expect(answered).toMatchObject({ attemptId: w.attemptId, answer: 'present' });
+  expect(answered?.reason).toContain(String(BOOK + spent));
 
   expect(await synthetic.money(w)).toMatchObject({
     state: 'actual',
@@ -54,4 +56,23 @@ it("a present effect settles the hold at the book's price plus its settled model
     envelope_held: '0',
     envelope_actual: String(BOOK + spent),
   });
+});
+
+// A call on the hold that was never settled leaves the hold to a person even when the register
+// proves the effect present, and the pass says that is why, not that the book cannot price it.
+it('a present effect on a hold with an unsettled model call is left whole, naming the call', async () => {
+  const w = await synthetic.work();
+  world.provider.mode('cut');
+  await call(w);
+  world.provider.mode('answer');
+  await synthetic.applied(w);
+  await t3b.expire(w);
+  await t3b.sweep();
+  const before = await synthetic.money(w);
+
+  const [answered] = await pass.reconcile(async () => await Promise.resolve(true));
+
+  expect(answered).toMatchObject({ attemptId: w.attemptId, answer: 'unanswered' });
+  expect(answered?.reason).toContain('never settled');
+  expect(await synthetic.money(w)).toStrictEqual(before);
 });
