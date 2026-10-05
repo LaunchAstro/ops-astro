@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import {
   purgeConversation,
@@ -16,6 +17,7 @@ import {
 import { localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
 import { createControls, type Controls } from './controls-fixture.ts';
 import { grantTo } from '../commands/fixture.ts';
+import type { Answer } from './fixture.ts';
 
 // Conversation retention holds for created work, decided gates and an unreadable window.
 let w: ConversationWorld;
@@ -193,4 +195,44 @@ it('a run whose plan is rejected before it starts has ended at the rejection', a
     outcome: await purge(conversationId),
     messages: await messages(conversationId),
   }).toMatchObject({ outcome: { ok: false, code: 'NOT_DUE' }, messages: 1 });
+});
+
+/** Waits until a backend in this database waits on a lock. */
+async function someoneWaits(): Promise<void> {
+  for (let tries = 0; tries < 200; tries += 1) {
+    // eslint-disable-next-line no-await-in-loop -- polling the server
+    const n = await w.count(
+      `select count(*) as n from pg_stat_activity
+        where datname = current_database() and wait_event_type = 'Lock'`,
+      [],
+    );
+    if (n >= 1) return;
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(25);
+  }
+  throw new Error('no backend ever waited on the conversation lock');
+}
+
+it('a task created from a conversation racing its purge waits on the conversation lock and is refused; no task names a purged conversation', async () => {
+  const conversationId = await started(w, w.owner, { body: 'Purge me while a task is made' });
+  await w.age(conversationId, 8);
+  expect(await wrap(conversationId)).toMatchObject({ ok: true, written: true });
+  let racer: Promise<Answer> | undefined;
+  const purged = await second.withBusiness(w.fixture.business, async (tx) => {
+    const outcome = await purgeConversation(tx, { conversationId, operationId: randomUUID() });
+    racer = w.as(w.owner, 'task.create', { fields: { title: 'Raced work' }, conversationId });
+    await someoneWaits();
+    return outcome;
+  });
+  if (racer === undefined) throw new Error('the create never started');
+  const created = await racer;
+  expect(purged).toMatchObject({ ok: true, replayed: false, messagesPurged: 1 });
+  expect(created.body['code']).toBe('NOT_FOUND');
+  expect(
+    await w.count(
+      `select count(*) as n from public.audit_events
+        where origin_conversation_id = $1 and command = 'task.create'`,
+      [conversationId],
+    ),
+  ).toBe(0);
 });
