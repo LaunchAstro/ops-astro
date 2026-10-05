@@ -286,6 +286,13 @@ as another user: every folder from `/` down to the link's folder must let them
 search it. The promotion does not know the services' user, so it does not
 check that; a folder they cannot search fails at their start.
 
+`served/` itself is set to 0755 on every promotion, and the copies' files are
+0644, so every local user can read a release: keep secrets out of release
+outputs. Run one promotion at a time. Two at once can move each other's copy
+aside, and a copy that cannot take its name whose earlier copy then cannot go
+back loses that earlier copy; either way the services fail at their start,
+never serving bytes the promotion did not check.
+
 ## Alerts
 
 Nothing deploys before the alerts reach the owner (ticket S0-2). The watcher

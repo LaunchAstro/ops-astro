@@ -171,6 +171,8 @@ function replaced(
   try {
     renameSync(copy, path);
   } catch (error) {
+    // If the put-back fails too, the earlier copy goes with the temporary
+    // folder; one promotion at a time (the runbook) leaves no one to take the name.
     if (lexists(earlier) && !lexists(path)) renameSync(earlier, path);
     throw error;
   }
@@ -229,7 +231,12 @@ function writable(path: string): boolean {
   }
 }
 
-/** Gives every real folder under `root`, and `root`, mode 0700, so it can be removed. */
+/**
+ * Gives every real folder under `root`, and `root`, mode 0700, so it can be
+ * removed. It walks by path: inside served/ every entry is the promoter's, so
+ * none can turn into a link under it. An earlier copy holding another user's
+ * folder could only come from outside the trust boundary (OPS497ACL).
+ */
 function ownerWrites(root: string): void {
   const entry = lstatSync(root);
   if (!entry.isDirectory()) return;
