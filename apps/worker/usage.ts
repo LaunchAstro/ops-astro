@@ -32,7 +32,8 @@ export const SYNTHETIC_USAGE: UsageReporter = {
  * T3e1: what the step calls once it is marked, before its effect. The shipped
  * provider always answers; a fault is injected only at construction, as the
  * reporter is, so no setting turns one on. A worker that meets a
- * `ProviderFault` hands back `dropped` with its cause; the call may have acted,
+ * `ProviderFault` hands back `dropped` with its cause, and any other rejection
+ * as `connection_lost` on its next pass; the call may have acted,
  * so the whole hold stays unknown until a person records what happened: the
  * register holds only the comment and cannot prove the provider did nothing.
  */

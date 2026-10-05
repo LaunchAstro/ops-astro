@@ -50,10 +50,11 @@ if (status !== '') {
   );
 }
 
-// 2. The branch is not the base. A ticket has its own branch.
-if (branch === base) {
+// 2. The branch is not the base, nor main when the base is given as a sha.
+// A ticket has its own branch.
+if (branch === base || branch === 'main') {
   problems.push(
-    `you are on ${base}. A ticket runs on its own branch in its own worktree;\n` +
+    `you are on ${branch}. A ticket runs on its own branch in its own worktree;\n` +
       '    that is one of the three rules in AGENTS.md.',
   );
 }

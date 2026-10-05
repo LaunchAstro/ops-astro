@@ -296,3 +296,4 @@ export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
 export { loginLiveElsewhere } from './identity/shared-login.ts';
 export * from './site/index.ts';
 export * from './automations/index.ts';
+export * from './custody/surface.ts';
