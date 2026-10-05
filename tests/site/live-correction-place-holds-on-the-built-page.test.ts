@@ -155,7 +155,8 @@ it('a source the reading admits in moments is placed in moments', () => {
     { files: [{ path: target.path, before, after: before.replace('alongside', 'beside') }] },
     target,
   );
-  expect(performance.now() - started).toBeLessThan(5_000);
+  // Placed in the reading's own time: 2-6 s, by runner. parse5's default adapter takes 64 s.
+  expect(performance.now() - started).toBeLessThan(15_000);
 });
 
 // Astro reads each of these as frontmatter, so none of its text is on the built page.
