@@ -81,7 +81,8 @@
     },
     {
       "files": [
-        "tests/api/a-credential-write-waiting-on-its-task-lock-is-refused-once-its-grant-is-revoked.test.ts"
+        "tests/api/a-credential-write-waiting-on-its-task-lock-is-refused-once-its-grant-is-revoked.test.ts",
+        "tests/api/an-agent-run-state-write-whose-delegation-was-revoked-during-the-run-lock-wait-is-refused.test.ts"
       ],
       "rules": { "max-lines-per-function": "off" }
     },
