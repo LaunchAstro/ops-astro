@@ -871,7 +871,8 @@ async function openEnvelope(
  * second copy of this arithmetic is a second place W05 can drift. W05's
  * two distinct reasons live here: `BUDGET_UNAVAILABLE` is "this envelope has
  * no room", `BUDGET_EXHAUSTED` is "the cap behind it has none". A caller told
- * the wrong one raises the wrong ceiling.
+ * the wrong one raises the wrong ceiling. `created_at` is the insert's clock,
+ * so under the run lock the newest hold of a run is the one written last.
  */
 export async function reserve(
   tx: TenantQuery,
@@ -926,8 +927,8 @@ export async function reserve(
   const reservationId = randomUUID();
   await tx.query(
     `insert into public.reservations
-       (business_id, id, envelope_id, version_id, run_id, held_minor)
-     values ($1, $2, $3, $4, $5, $6)`,
+       (business_id, id, envelope_id, version_id, run_id, held_minor, created_at)
+     values ($1, $2, $3, $4, $5, $6, clock_timestamp())`,
     [tx.businessId, reservationId, of.envelopeId, of.versionId, of.runId, held.toString()],
   );
 
