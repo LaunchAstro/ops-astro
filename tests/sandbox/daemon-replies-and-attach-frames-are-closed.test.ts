@@ -36,6 +36,8 @@ it('reads _ping only as 200 with the body OK', () => {
   expect(readPing(200, bytes('OK'))).toMatchObject({ ok: true });
   expect(readPing(200, bytes('OK\n'))).toMatchObject(internal);
   expect(readPing(200, bytes('ok'))).toMatchObject(internal);
+  expect(readPing(200, bytes('OX'))).toMatchObject(internal);
+  expect(readPing(200, bytes('XK'))).toMatchObject(internal);
   expect(readPing(500, bytes('OK'))).toMatchObject(internal);
 });
 
@@ -201,4 +203,20 @@ it('takes an empty frame, last or not, as a valid frame', () => {
   expect(end).toMatchObject({ ok: true });
   if (!end.ok) return;
   expect(joined(end.stdout)).toBe('ok');
+});
+
+it('treats a reply that is null, not an object, as a daemon fault without throwing', () => {
+  expect(readCreatedId(bytes('null'))).toMatchObject(internal);
+  expect(readOomKilled(bytes('null'))).toMatchObject(internal);
+});
+
+it('keeps an output refusal when a bad frame follows it', () => {
+  const frames = new AttachFrames(1);
+  frames.push(frame(1, bytes('ab')), frame(0, bytes('x')), frame(1, bytes('c')));
+  expect(frames.end()).toMatchObject({ ok: false, reason: 'output refused' });
+});
+
+it('treats an id given as a list as a daemon fault', () => {
+  expect(readCreatedId(bytes(`{"Id":["${ID}"]}`))).toMatchObject(internal);
+  expect(readContainerIds(bytes(`[{"Id":["${ID}"]}]`))).toMatchObject(internal);
 });

@@ -72,6 +72,9 @@ it.each([
   ["an escape that is not one of JSON's", '"\\x0041"'],
   ['a unicode escape with non-hex digits', '"\\u12zz"'],
   ['a low surrogate first', '"\\udc00\\udc00"'],
+  ['a high surrogate followed by text, not an escape', '"\\ud800xxdc00"'],
+  ['a misspelt literal', '[trux]'],
+  ['a key with no colon', '{"a"x1}'],
   ['a high surrogate followed by an escape above the low range', '"\\ud800\\ue000"'],
   ['a high surrogate followed by an escape outside the low range', '"\\ud800\\u0041"'],
   ['a leading zero', '[01]'],
@@ -86,9 +89,15 @@ it.each([
   ['a second value after the first', '{} {}'],
   ['a comment', '{/*c*/}'],
   ['an unterminated array', '[1'],
+  ['an unterminated string', '"abc'],
   ['nothing at all', ''],
 ])('refuses %s', (_name, text) => {
   expect(parseStrictJson(bytes(text))).toMatchObject({ ok: false, reason: 'internal' });
+});
+
+it('reads every simple escape and a plain unicode escape', () => {
+  const text = '"\\"\\\\\\/\\b\\f\\n\\r\\t\\u0041\\u00e9"';
+  expect(parseStrictJson(bytes(text))).toEqual({ ok: true, value: '"\\/\b\f\n\r\tA\u00E9' });
 });
 
 it('reads an escaped surrogate pair as one character', () => {

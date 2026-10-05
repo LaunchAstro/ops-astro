@@ -168,6 +168,22 @@ it('refuses a site.prepare body that carries a site variable', () => {
   expect(matchCreateBody(body, [S2])).toMatchObject({ ok: false, why: 'create body' });
 });
 
-it('refuses a body that is not an object', () => {
-  expect(matchCreateBody([APPENDIX_S1] as Json, [S1])).toMatchObject({ ok: false });
+it.each([
+  ['a list', [APPENDIX_S1]],
+  ['null', null],
+])('refuses a body that is %s as a create body', (_name, body) => {
+  expect(matchCreateBody(body as Json, [S1])).toMatchObject({ ok: false, why: 'create body' });
+});
+
+it('refuses a key named __proto__ in place of an expected key', () => {
+  const body = copy();
+  delete body['Labels'];
+  Object.defineProperty(body, '__proto__', { value: {}, enumerable: true });
+  expect(matchCreateBody(body as Json, [S1])).toMatchObject({ ok: false, why: 'create body' });
+});
+
+it('refuses an object with a length key in place of a list, without throwing', () => {
+  const body = copy();
+  body['Entrypoint'] = { length: 1, 0: '/opt/launcher/entrypoint' };
+  expect(matchCreateBody(body as Json, [S1])).toMatchObject({ ok: false, why: 'create body' });
 });

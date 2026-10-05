@@ -125,6 +125,14 @@ it.each([
   ['POST on inspect', `POST ${V}/containers/${ID}/json HTTP/1.1`, 'unknown route'],
   ['DELETE on image inspect', `DELETE ${V}/images/${IMAGE}/json HTTP/1.1`, 'unknown route'],
   ['POST on image inspect', `POST ${V}/images/${IMAGE}/json HTTP/1.1`, 'unknown route'],
+  ['a path past a health path', `GET ${V}/_ping/x HTTP/1.1`, 'unknown route'],
+  ['a create sent with GET', `GET ${V}/containers/create HTTP/1.1`, 'unknown route'],
+  ['a path past load', `POST ${V}/images/load/x HTTP/1.1`, 'unknown route'],
+  [
+    'an image path under another collection',
+    `GET ${V}/things/${IMAGE}/json HTTP/1.1`,
+    'unknown route',
+  ],
 ])('refuses %s', (_name, line, why) => {
   expect(read(request(line))).toMatchObject({ ok: false, why });
 });
@@ -155,5 +163,52 @@ it('refuses a header line with no colon even where it would spell an allowed nam
   expect(read(request(`GET ${V}/_ping HTTP/1.1`, ['Hostx']))).toMatchObject({
     ok: false,
     why: 'header',
+  });
+});
+
+it.each([
+  ['Upgrade alone', ['Host: docker', 'Upgrade: tcp']],
+  ['Connection alone', ['Host: docker', 'Connection: Upgrade']],
+])('refuses %s on a request that is not an attach', (_name, headers) => {
+  expect(read(request(`GET ${V}/_ping HTTP/1.1`, headers))).toMatchObject({
+    ok: false,
+    why: 'header',
+  });
+});
+
+it('refuses an attach that carries a content type', () => {
+  const line = `POST ${V}/containers/${ID}/attach?stream=1&stdin=1&stdout=1&stderr=1 HTTP/1.1`;
+  const headers = [
+    'Host: docker',
+    'Connection: Upgrade',
+    'Upgrade: tcp',
+    'Content-Type: application/json',
+  ];
+  expect(read(request(line, headers))).toMatchObject({ ok: false, why: 'body' });
+});
+
+it('refuses a length with a leading zero', () => {
+  const body = json(S1);
+  const line = `POST ${V}/containers/create HTTP/1.1`;
+  const headers = [
+    'Host: docker',
+    'Content-Type: application/json',
+    `Content-Length: 0${body.length}`,
+  ];
+  expect(read(request(line, headers, body))).toMatchObject({ ok: false, why: 'body' });
+});
+
+it('takes tabs and spaces around a header value, and a zero length on a bodiless request', () => {
+  expect(read(request(`GET ${V}/_ping HTTP/1.1`, ['Host:\t docker \t']))).toEqual({
+    ok: true,
+    op: { kind: 'ping' },
+  });
+  expect(
+    read(
+      request(`POST ${V}/containers/${ID}/start HTTP/1.1`, ['Host: docker', 'Content-Length: 0']),
+    ),
+  ).toEqual({
+    ok: true,
+    op: { kind: 'start', id: ID },
   });
 });
