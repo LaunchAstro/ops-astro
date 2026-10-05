@@ -6,7 +6,8 @@
 // spans, so retention reads the run's earliest owed span back, finds it gone
 // and sends the tail again. That read goes through custody's one observation
 // route: one identifier segment, any other shape refused before a socket. A
-// body the target refuses as too large (413) is a gap with its own code.
+// body the target refuses as too large (413) is a gap with its own code, and
+// goes again as two halves, so no target limit holds the cursor for good.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
@@ -190,5 +191,49 @@ it.skipIf(noDatabase)(
       [s.business],
     );
     expect(gap?.code).toBe('target_oversized_body');
+  },
+);
+
+it.skipIf(noDatabase)(
+  'Trace export: a body the target refuses as too large goes again in halves, so an owed tail never holds the cursor',
+  async () => {
+    const s = t.alpha;
+    const work = await liveWork(s, 'trace export body halves', 1_000);
+    const runId = String(work.picked['runId']);
+    const traceR = derivedId(TRACE_KEY, ['trace', s.business, runId], 32);
+    await drain(s);
+    await age(runId, TRACE_WINDOW_DAYS + 1);
+    const before = new Set(await eventIds(runId));
+    const timeout: ExpiryPorts = {
+      expire: () => Promise.resolve({ ok: false, fault: 'timeout', status: null }),
+      present: t.target.expiry.present,
+    };
+    expect((await expireOnce(s.db.app, s.business, TRACE_KEY, timeout)).at(-1)).toMatchObject({
+      code: 'target_timeout',
+    });
+
+    // 151 fresh events of the owed run; the target stores at most 150 spans a body.
+    await append(runId, 151);
+    await awaitDue(s);
+    const bodies: number[] = [];
+    const limited: Deliver = async (body) => {
+      const count = spanIds([body]).length;
+      bodies.push(count);
+      return count > 150 ? { ok: true, status: 413, body: '{}' } : await t.target.deliver(body);
+    };
+    for (let round = 0; round < 6; round += 1) {
+      // eslint-disable-next-line no-await-in-loop -- one export after another
+      if ((await exportOnce(s.db.app, s.business, TRACE_KEY, limited)).kind === 'idle') break;
+    }
+    expect(bodies, 'the refused 151-span body goes again as two halves').toEqual([
+      100, 151, 76, 75,
+    ]);
+    const held = t.target.spans.get(traceR) ?? new Set<string>();
+    const fresh = (await eventIds(runId)).filter((id) => !before.has(id));
+    expect(fresh).toHaveLength(151);
+    expect(
+      fresh.filter((id) => !held.has(derivedId(TRACE_KEY, ['span', s.business, id], 16))),
+      'every fresh span is held',
+    ).toEqual([]);
   },
 );
