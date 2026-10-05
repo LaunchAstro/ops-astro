@@ -288,3 +288,28 @@ it('a stop whose removal by id is refused fails, naming the container, even when
   expect(readdirSync(containers)).toEqual([ID]);
   rmSync(join(cidfile, '..'), { recursive: true, force: true });
 }, 40_000);
+
+it('a stop whose removal by id is refused only until the client has closed does not fail', async () => {
+  standIn(
+    [
+      `echo ${ID} > "$cid"`,
+      `: > "${containers}/${ID}"`,
+      '/bin/sleep 30 & s=$!',
+      "trap 'kill $s; exit 0' TERM INT",
+      'wait',
+    ],
+    3,
+  );
+  const { run, arg } = await started();
+  const cidfile = arg('--cidfile=');
+  for (let tries = 0; tries < 200; tries += 1) {
+    if (existsSync(cidfile) && readFileSync(cidfile, 'utf8').trim() === ID) break;
+    // oxlint-disable-next-line no-await-in-loop -- wait for the stand-in to write the id
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+  }
+  await run.stop();
+  expect(readdirSync(containers)).toEqual([]);
+  rmSync(join(cidfile, '..'), { recursive: true, force: true });
+}, 40_000);
