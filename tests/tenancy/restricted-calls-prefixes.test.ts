@@ -394,7 +394,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     due_at: '2026-09-29T00:00:00Z',
     outcome: 'activation_off',
   },
-  // 20261005004230: nothing in the journey opens a team conversation (C71-D).
+  // 20261005044122: nothing in the journey opens a team conversation (C71-D).
   'public.team_conversation_members': { conversation_id: randomUUID(), person_id: randomUUID() },
   // WF-1: the journey charts no map.
   'public.map_components': {

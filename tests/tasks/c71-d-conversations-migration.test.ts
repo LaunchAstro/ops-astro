@@ -30,7 +30,7 @@ import {
 
 const ALL = readMigrations('migrations');
 /** The team conversations migration's UTC timestamp ID (ORCH69-MIGTS). */
-const CONVERSATIONS = '20261005004230';
+const CONVERSATIONS = '20261005044122';
 const BEFORE = ALL.filter((m) => m.version < CONVERSATIONS);
 const CONVERSATIONS_MIGRATION = ALL.find((m) => m.version.startsWith(CONVERSATIONS));
 

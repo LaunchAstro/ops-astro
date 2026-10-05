@@ -7,7 +7,7 @@
 // is between. Its messages are comments on the one comment record
 // (`tasks/comments.ts`), anchored by the comment's `conversation` field in
 // place of a task, so no other table or store holds a message body (RA-12).
-// Who is in it is `team_conversation_members` (20261005004230): each member from
+// Who is in it is `team_conversation_members` (20261005044122): each member from
 // `joined_at` to `left_at`, with their own read marker.
 //
 // **Membership is the filter, inside every query.** A conversation is read,
