@@ -24,7 +24,11 @@ import {
   createClient,
   type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
-import { connect } from '../../packages/core-records/src/tenancy/database.ts';
+import {
+  connect,
+  connectAsAdmin,
+  type AdminConnection,
+} from '../../packages/core-records/src/tenancy/database.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { standingMandateVerdict } from '../../packages/core-runtime/src/index.ts';
 import type {
@@ -74,6 +78,7 @@ const recording = (tx: TenantQuery, sent: string[]): TenantQuery => ({
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandate check', () => {
   let controls: Controls;
+  let probe: AdminConnection;
   let admin: Member;
   let clientReader: Member;
   let plain: Member;
@@ -206,20 +211,21 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
    * Wait, bounded, until a backend is parked on a lock `holder` holds, running
    * a statement on `table`. Until then nothing shows the competing statement
    * reached the lock while it was held, and a case proves a sequence, not a
-   * wait. The owner's connection asks; recursion, since the lint forbids
-   * awaiting in a loop.
+   * wait. `probe` asks: the fixture's owner connection is one session, which
+   * a case's holder or its competing revoke occupies. Recursion, since the
+   * lint forbids awaiting in a loop.
    */
   const blockedBy = async (
     holder: number,
     table: string,
     deadline = Date.now() + 10_000,
   ): Promise<void> => {
-    const waiting = await controls.count(
-      `select count(*) as n from pg_stat_activity
+    const waiting = await probe.execute(
+      `select pid from pg_stat_activity
         where $1::int = any(pg_blocking_pids(pid)) and query like '%' || $2 || '%'`,
       [holder, table],
     );
-    if (waiting > 0) return;
+    if (waiting.length > 0) return;
     if (Date.now() > deadline) {
       throw new Error(`mp-14-10a: no statement on ${table} ever waited on backend ${holder}`);
     }
@@ -238,6 +244,9 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
   beforeAll(async () => {
     controls = await createControls('mp1410a');
     const { db, business } = controls.fixture;
+    const owner = new URL(String(serverUrl));
+    owner.pathname = `/${db.name}`;
+    probe = connectAsAdmin(owner.toString());
     alpha = business;
     admin = controls.manager;
     clientReader = await enrol(db.app, business, 'clientreader');
@@ -275,6 +284,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
   }, 120_000);
 
   afterAll(async () => {
+    await probe?.close();
     await controls?.drop();
   });
 
@@ -534,11 +544,13 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     await locked.promise;
     const checking = verdict({ actionClass: 'email.send', valueMinor: 1 });
     const liveNow = async (): Promise<number> =>
-      await controls.count(
-        `select count(*) as n from public.standing_mandates
-          where id = $1 and expires_at > clock_timestamp()`,
-        [mandateId],
-      );
+      (
+        await probe.execute(
+          `select id from public.standing_mandates
+            where id = $1 and expires_at > clock_timestamp()`,
+          [mandateId],
+        )
+      ).length;
     try {
       // The check is parked on the lock while the mandate is still live ...
       await blockedBy(holder, 'standing_mandates');
