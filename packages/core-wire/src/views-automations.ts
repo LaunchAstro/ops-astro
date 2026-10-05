@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Settings ▸ Workflow triggers' read result (C33), as it crosses the wire.
+// Settings ▸ Workflow triggers' read result (C33, C52-A), as it crosses the wire.
 // Types only, beside `views.ts`, which is at its line cap.
 
 /**
@@ -42,4 +42,15 @@ export interface ActivationView {
   readonly changedBy: string;
   readonly changedAt: string;
   readonly revision: number;
+  /** The standing approval the activation names (C52-A), revoked or not, or null. */
+  readonly approval: StandingApprovalView | null;
+}
+
+/** An adoption of the pinned version: who decided it, and whether it is revoked. */
+export interface StandingApprovalView {
+  readonly id: string;
+  readonly versionId: string;
+  readonly act: 'adopted' | 'rolled_back';
+  readonly decidedBy: string;
+  readonly revoked: boolean;
 }

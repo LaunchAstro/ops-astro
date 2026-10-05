@@ -76,6 +76,7 @@ function server(options: { readonly refuse?: boolean; readonly lose?: number } =
     changedBy: 'p-1',
     changedAt: '2026-09-29T00:00:00.000Z',
     revision: 3,
+    approval: null,
   };
   const answer = (at: string, body: string): Response => {
     sent.push(`${at} ${body}`);
@@ -188,7 +189,14 @@ describe('C33 Workflow triggers panel', () => {
     await tick();
     expect(page.find('[data-activation="a-1"]')?.textContent).toContain('Weekly report');
     await act(async () => {
-      held[0]?.(json(registryOf({ id: 'a-9', versionId: 'v-1', versionNumber: 1 }, 'Alpha only')));
+      held[0]?.(
+        json(
+          registryOf(
+            { id: 'a-9', versionId: 'v-1', versionNumber: 1, approval: null },
+            'Alpha only',
+          ),
+        ),
+      );
       await Promise.resolve();
     });
     await tick();

@@ -1691,6 +1691,10 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `automation.registry` | `readAutomationRegistry` (`reads/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
 | `activation.change` | `changeActivationAsPerson` (`commands/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
 | `definition.release` | `releaseDefinitionVersion` (`commands/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.adopt` | `adoptActivationVersion` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.roll_back` | `rollBackActivation` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.turn_off` | `turnOffActivationAsPerson` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `approval.revoke` | `revokeStandingApproval` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
 
@@ -2960,14 +2964,17 @@ row lock, the token is read again at that moment: spent or past its life is
 401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403
 `RESET_NEEDS_SUPPORT` with nothing spent. Otherwise every live token of the
 login is spent and the reset's window opens (`ops.subject_resets`,
-20261005144947): every session of the login, in every business, is ended up to
+20261005144947), under the login's session-ending key, so a write that read
+one of its sessions live commits first (C52-A): every session of the login, in
+every business, is ended up to
 the moment the window settles, and until then up to five minutes on. The
 password is set at the provider through custody under the catalogued
 `auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
 held by custody alone, whose `auth` destination lists that route and takes no
 POST, `post: false`; the answer must name the same user). In each business
 the login is mapped in, one transaction ends the sessions seen there. Last,
-whatever happened, one transaction in the token's business settles the window
+whatever happened, one transaction in the token's business, holding the login's
+session-ending keys first, settles the window
 (`clock_timestamp()`; a sign-in after it is served) and, only when the
 password was set and every business's ending committed, audits
 `account.password_changed` there, once, as the person that business maps. The
@@ -3416,7 +3423,8 @@ version permits (checked by the command and again by the database). Without an
 activation at the revision the caller read, compared in the update itself, so
 two changes sent at one revision apply once. Changing a mode starts nothing:
 no occurrence and no planned run, since a run needs an occurrence and C52-A's
-standing approval.
+standing approval (below). A change of the pin, mode, schedule or event, or a
+switch off, ends the approval that stood.
 
 Every value is checked against a closed grammar before anything is written,
 and refused `FIELD_VALUE_INVALID` naming its field: a digest is 64 lower-case
@@ -3427,11 +3435,59 @@ no control character, line break, bidi mark or override, or lone surrogate).
 Another business's definition, version or activation answers exactly as a
 fabricated identifier does.
 
-| Operation             | Route                  | Body                                                                                        | Answer or refusals                                                                                                                                                                                                                                                                         |
-| --------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `automation.registry` | `/automation/registry` | `{}`                                                                                        | `{ ok: true, definitions: [{ id, kind, name, versions: [{ id, number, contentDigest, contentSize, modes, releasedBy, releasedAt }], activations: [{ id, versionId, versionNumber, mode, everyMinutes, eventKind, enabled, changedBy, changedAt, revision }] }] }`; `SCOPE_NOT_GRANTED` 403 |
-| `activation.change`   | `/activation/change`   | `{ activationId?, versionId, mode, everyMinutes?, eventKind?, enabled, expectedRevision? }` | `{ activationId, versionId, mode, enabled }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for a mode the version does not permit or another definition's version; `VERSION_STALE` 409                                                      |
-| `definition.release`  | `/definition/release`  | `{ definitionId? \| name, kind, contentDigest, contentSize, inputs, operations, modes }`    | `{ definitionId, versionId, number }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404 for a definition not in the business; `VERSION_STALE` 409 when three releases in a row find their number taken                                                                          |
+| Operation             | Route                  | Body                                                                                        | Answer or refusals                                                                                                                                                                                                                                                                                   |
+| --------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `automation.registry` | `/automation/registry` | `{}`                                                                                        | `{ ok: true, definitions: [{ id, kind, name, versions: [{ id, number, contentDigest, contentSize, modes, releasedBy, releasedAt }], activations: [{ id, versionId, versionNumber, mode, everyMinutes, eventKind, enabled, changedBy, changedAt, revision, approval }] }] }`; `SCOPE_NOT_GRANTED` 403 |
+| `activation.change`   | `/activation/change`   | `{ activationId?, versionId, mode, everyMinutes?, eventKind?, enabled, expectedRevision? }` | `{ activationId, versionId, mode, enabled }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for a mode the version does not permit or another definition's version; `VERSION_STALE` 409                                                                |
+| `definition.release`  | `/definition/release`  | `{ definitionId? \| name, kind, contentDigest, contentSize, inputs, operations, modes }`    | `{ definitionId, versionId, number }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404 for a definition not in the business; `VERSION_STALE` 409 when three releases in a row find their number taken                                                                                    |
+
+## Standing approvals (C52-A)
+
+Adopting a version, rolling back, revoking an approval and turning an
+automation off are each `automation:manage`, held business-wide and never an
+agent's; a holder at one client's scope is refused all four
+(`tests/automations/c52a-authority.test.ts`). An adoption pins an exact
+released version of the activation's own definition, in a mode that version
+permits, and is the standing approval for every later occurrence on that pin.
+A rollback adopts again the highest-numbered version below the pin that this
+activation adopted before under an approval nobody revoked, recorded as
+`rolled_back`; a version never adopted, or adopted and revoked, is never its
+target. The newer version and every earlier adoption stay in history.
+Revoking an approval is its own act and leaves the pin; turning an automation
+off ends its approval with it, and so does any `activation.change` of the pin,
+mode, schedule or event, or a switch off (the database's
+`activations_approval_stands`). Only an automation that is on is approved:
+adopting or rolling back one that is off is refused `TRANSITION_NOT_PERMITTED`
+naming `enabled=false`. Each change is compared with the revision the caller
+read, again under the activation's lock, so two sent at one revision apply
+once. The caller's `automation:manage` grants are held from before any
+automation row, so a revocation of one waits for the change; under the
+activation's lock the key is asked again at the clock after the wait, so a
+grant that ran out meanwhile refuses it, and a rollback picks its target
+there, after any revocation of an approval that held the lock. Once its rows
+are written, the change takes the audit chain's lock and asks the key a last
+time at that clock: a grant that ran out while it waited there, or a session
+signed out while it waited (`AUTH_SESSION_EXPIRED`), refuses it and nothing
+applies. A repeat is
+refused: a revoked approval, or an automation already off, answers
+`TRANSITION_NOT_PERMITTED`; the same `operationId` sent again is replayed. The
+registry shows each activation's
+`approval: { id, versionId, act, decidedBy, revoked }`, or null.
+
+An occurrence claimed while its activation is on under an unrevoked standing
+approval is `approved` and names it. Dispatch rechecks, holding the
+activation's lock, that the activation is on and that the approval is still
+the one standing and unrevoked, and records once what it found
+(`occurrence_dispatches`): a run started, or `activation_off`,
+`approval_revoked` or `approval_ended`. Starting the run itself through the
+agent engine (AW-01 J) is not wired yet.
+
+| Operation              | Route                   | Body                                            | Answer or refusals                                                                                                                                                                                                                                                 |
+| ---------------------- | ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `activation.adopt`     | `/activation/adopt`     | `{ activationId, versionId, expectedRevision }` | `{ activationId, versionId, approvalId, act }`; `FIELD_VALUE_INVALID` 422 naming `expectedRevision`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for another definition's version, a mode it does not permit or an automation that is off; `VERSION_STALE` 409 |
+| `activation.roll_back` | `/activation/roll_back` | `{ activationId, expectedRevision }`            | as `activation.adopt`, with `act: 'rolled_back'`; `TRANSITION_NOT_PERMITTED` 409 when no earlier version was adopted and left unrevoked                                                                                                                            |
+| `activation.turn_off`  | `/activation/turn_off`  | `{ activationId, expectedRevision }`            | `{ activationId, enabled: false }`; `FIELD_VALUE_INVALID` 422 naming `expectedRevision`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already off; `VERSION_STALE` 409                                                                                     |
+| `approval.revoke`      | `/approval/revoke`      | `{ approvalId }`                                | `{ approvalId, revoked: true }`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already revoked                                                                                                                                                              |
 
 ## Custody (C31)
 
