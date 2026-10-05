@@ -31,7 +31,12 @@
 //    answered for an owner the tab has left (a sign-out, another business or
 //    person) keeps nothing: its tag no longer matches (`data/owned.ts`).
 //  - **One operation id per intent.** Save pressed again on the same value
-//    after an answer that never arrived carries the first attempt's id.
+//    after an answer that never arrived carries the first attempt's id. The
+//    intents are the owner's: a business or person change starts them afresh.
+//  - **A write's answer is its owner's.** Its refusal, its step-up prompt and
+//    a refusal that closes the controls are drawn only while the screen still
+//    answers to the owner it was sent for, and a step-up's resend for an owner
+//    the screen has left is never sent.
 //
 // The write goes through `useMoneyCommand`, which classifies the answer and,
 // for the four-eyes threshold's money sign-in, holds it for the step-up code
@@ -40,7 +45,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { CommandOutcome, MutationOptions, OperationsClient } from '../../operations/client.ts';
-import { Intents } from '../../data/intents.ts';
 import { ownerOf, useDesk, type Tag } from '../../data/owned.ts';
 import type { StorageLike } from '../../session/token.ts';
 import { useRead } from '../../data/use-read.ts';
@@ -73,6 +77,9 @@ const COMMAND = {
   conversation: 'settings.set_conversation_window',
   retention: 'settings.set_retention_window',
 } as const;
+
+/** Why a write held for an owner the screen has left went nowhere. */
+const LEFT = 'This change was made for a business or person this tab has left, so it was not sent.';
 
 /** The session's memory as this screen holds it, and which session it is. */
 interface Held {
@@ -124,20 +131,24 @@ export function useSettings(
   const { confirmed } = inHand(held);
   const command = useMoneyCommand(client);
   const desk = useDesk(ownerOf(client, grantKey));
-  const intents = useRef(new Intents()).current;
   const [pressed, setPressed] = useState<Which>('four-eyes');
   const [complaint, setComplaint] = useState<string | null>(null);
   const [conflict, setConflict] = useState<Conflict | null>(null);
+  // The command's last write and the refusal that closed the controls, each
+  // drawn only for the owner it was sent for: the command outlives a switch.
+  const [ran, setRan] = useState<Tag | null>(null);
+  const [closedBy, setClosedBy] = useState<Tag | null>(null);
+  const ours = ran === null || desk.owns(ran);
+  const closed = closedBy !== null && desk.owns(closedBy);
   const busy = command.busy ? pressed : null;
   // A stale write is the conflict, drawn with its draft, not a reason line.
-  const failure = command.failure?.kind === 'stale' ? null : command.failure;
+  const failure = !ours || command.failure?.kind === 'stale' ? null : command.failure;
+  const prompt = ours ? command.stepUp : null;
   // A stale sign-in on a money setting is answered with the step-up prompt,
   // or where the tab cannot step up, with the fix alone: the code means
   // nothing to the person (MP-2-11).
   const stepUp =
-    command.stepUp === null &&
-    failure?.kind === 'failed' &&
-    failure.refusal.code === 'STEP_UP_REQUIRED'
+    prompt === null && failure?.kind === 'failed' && failure.refusal.code === 'STEP_UP_REQUIRED'
       ? failure.refusal.fixes.join(' ')
       : null;
   const because = complaint ?? stepUp ?? failure?.because ?? null;
@@ -187,6 +198,7 @@ export function useSettings(
     // Answered for an owner the tab or the screen has left: the sign-out or
     // the switch removed what the tab held, and this answer must not put it back.
     if (!desk.owns(tag)) return;
+    if (settlement.kind === 'closed') setClosedBy(tag);
     if (settlement.kind === 'stale') {
       // Reread, so the conflict shows what the row holds *now* rather than the
       // value this attempt was made against.
@@ -217,7 +229,7 @@ export function useSettings(
   };
 
   const save = (which: Which, value: Draft): void => {
-    if (command.locked || !mayFor(which)) return;
+    if (command.busy || closed || !mayFor(which)) return;
     if (conflict !== null && read.outcome !== 'ready') {
       setComplaint(
         'Somebody else changed these settings and they could not be read again, so saving now would write over a value you have not seen. Read the settings again first.',
@@ -228,6 +240,8 @@ export function useSettings(
     setPressed(which);
     setComplaint(null);
     const tag = desk.save();
+    const { intents } = desk;
+    setRan(tag);
     // The id is taken as each attempt leaves: a step-up's resend follows an
     // answer, so it is a new attempt; a lost answer keeps the id for this
     // value, and the revision it was first sent at, so a reread in between
@@ -235,6 +249,8 @@ export function useSettings(
     let sent = '';
     command.run(
       (to) => {
+        // A resend after the screen moved to another owner is not theirs to send.
+        if (!desk.owns(tag)) return Promise.resolve({ unavailable: true as const, because: LEFT });
         const { id, sentWith: revision } = intents.attempt(which, value, seen);
         sent = id;
         const options: MutationOptions =
@@ -250,19 +266,19 @@ export function useSettings(
     );
   };
 
-  const everyRow = busy !== null || command.closed || rereading;
+  const everyRow = busy !== null || closed || rereading;
   return {
     read,
     capabilities: caps,
     answered: read.outcome === 'ready',
     fallback: read.outcome === 'unavailable',
     confirmed,
-    closed: command.closed,
+    closed,
     busy,
     disabled: everyRow,
     disabledFor: (which) => everyRow || !mayFor(which),
     because,
-    stepUp: command.stepUp,
+    stepUp: prompt,
     conflict,
     rowFor,
     save,

@@ -23,7 +23,9 @@
 // **A save is one operation id per intent** (`Intents`, intents.ts). The same value saved
 // again after an answer that never arrived is a retry of the same intent and
 // carries the same id, so the server replays a stored success instead of
-// storing it twice. Any answer, or another value, starts a new intent.
+// storing it twice. Any answer, or another value, starts a new intent, and so
+// does a move to another owner: the desk holds its owner's intents and drops
+// them with the rest of what it held.
 //
 // `AuthorisedRead` (authorised-read.ts) is the read projection's form of the
 // same rule: its generation is the request number, its grant key the owner.
@@ -31,6 +33,7 @@
 import { useRef } from 'react';
 import { tabOwnerGeneration } from '../session/token.ts';
 import type { OperationsClient } from '../operations/client.ts';
+import { Intents } from './intents.ts';
 
 /** Who a screen answers to now. */
 export interface Owner {
@@ -83,6 +86,7 @@ const sameOwner = (a: Owner, b: Owner): boolean =>
 export class Desk {
   #owner: Owner;
   #newestRead = 0;
+  #intents = new Intents();
 
   constructor(owner: Owner) {
     this.#owner = owner;
@@ -92,11 +96,17 @@ export class Desk {
     return this.#owner;
   }
 
+  /** The saves in flight for the owner the screen has now, by intent. */
+  get intents(): Intents {
+    return this.#intents;
+  }
+
   /** Move the screen to `owner`. True when it changed: every earlier tag stops matching. */
   moveTo(owner: Owner): boolean {
     if (sameOwner(owner, this.#owner)) return false;
     this.#owner = owner;
     this.#newestRead = 0;
+    this.#intents = new Intents();
     return true;
   }
 
