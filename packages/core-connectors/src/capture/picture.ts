@@ -175,7 +175,8 @@ const PICTURED_EQUIV = new Set([
 function mayDropSheet(document: Tree.Document): boolean {
   const stack: Tree.Node[] = [document];
   for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
-    if ('childNodes' in node) stack.push(...node.childNodes);
+    // One at a time: a wide node's children spread into one call pass the argument limit.
+    if ('childNodes' in node) for (const child of node.childNodes) stack.push(child);
     if (!('attrs' in node)) continue;
     const attribute = (name: string) => node.attrs.find((one) => one.name === name)?.value;
     const titled = (attribute('title') ?? '') !== '';
@@ -277,7 +278,7 @@ export async function capturePicture(
   if (typeof reading === 'string') return { ok: false, code: reading };
   // The reading held the markup within the capture's bounds, so parse5 may read it once more.
   if (mayDropSheet(parse(page.value.body))) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
-  state.read.push(...named(reading, page.value.url));
+  for (const href of named(reading, page.value.url)) state.read.push(href);
   let png: Uint8Array;
   try {
     png = await browser(page.value.url, pictureRoute(url, page.value, fenced, state));
