@@ -67,18 +67,21 @@ by kind. A copy not on the list is a copy the reply missed.
   anyone a merge not reversed joined them to, their actors, the logins they
   still hold, each delegation acting for them, and the agent of each
   credential they issued or delegation acting for them with the logins it
-  still holds. An agent that a credential or delegation of anyone else names
-  too acts for several people and is shared: it stands for no one, the
-  summary names it, and each row holding its id is listed with it under
-  `shared` and outside the people list, so the owner judges which of them are
-  the person's work. It also lists
+  still holds. An agent that a credential or delegation of anyone other than
+  the person and those merged with them names too acts for several people
+  and is shared (so is an agent two people named by one text both use): it
+  stands for no one, the summary names it, and each row holding its id is
+  listed with it under `shared` and outside the people list, so the owner
+  judges which of them are the person's work. The same holds at the search
+  after an erasure for an agent given back with `--id`, and for a login given
+  back that is linked to an agent no longer standing for the person. It also lists
   every row holding the stored name of one of those people as whole words,
   when that name has four letters or digits. Each hit
   names the people whose ids it holds, the shared agents whose ids it holds
   (`shared`), whether a value of it holds the text or
   such a stored name (`text`) and whether it holds an id given with `--id`
-  (`given`); a hit naming no one was found by its text alone, so the owner
-  checks whose it is. The list ends with
+  (`given`); a hit naming no one was found by its text, a stored name or a
+  shared agent's id alone, so the owner checks whose it is. The list ends with
   one line per person of the `--id` flags that find them, saying every way the
   person was found (named by the text, given by `--id`, or merged with a named
   person), kept for the erasure's re-search. The text is matched with the
@@ -151,7 +154,8 @@ by kind. A copy not on the list is a copy the reply missed.
    kept; an agent id given back that has since come to act for others too is
    shared, and marks no hit `given`. A hit that holds the text or a shared
    agent's id but no given id is the owner's to judge, and the owner records
-   whose it is. Any other hit outside a lawfully kept
+   whose it is; a shared agent's row the owner judged to be the person's in
+   step 1 is a copy, so keep its id and add it with `--id` here. Any other hit outside a lawfully kept
    copy means the erasure is not done.
 
 ### Export

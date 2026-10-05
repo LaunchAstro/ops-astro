@@ -13,8 +13,10 @@
 // Their ids follow to their actors, the logins they still hold, each
 // delegation acting for them, and the agent of each credential they issued or
 // delegation acting for them, with the logins it still holds. An agent that a
-// credential or delegation of someone else names too is shared: it stands for
-// no one, and a row holding its id is listed for the owner to judge. A row is a
+// credential or delegation of anyone outside the person's merges names too is
+// shared, given with --id or not, as is a login given that is linked to an
+// agent standing for no one: a shared id stands for no one, and a row holding
+// it is listed for the owner to judge. A row is a
 // copy when one of its values, at any depth, holds the text anywhere, the
 // stored name of one of those people as whole words (when it has four letters
 // or digits, as the text needs), or one of those ids in any letter case; a
