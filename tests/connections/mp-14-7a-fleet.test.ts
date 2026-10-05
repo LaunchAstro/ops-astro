@@ -81,21 +81,29 @@ function afterFirst(tx: TenantQuery, between: () => Promise<void>): TenantQuery 
 /** The starter's authority at the records layer, where these cases call `startRepair` itself. */
 const admitted = async (): Promise<boolean> => await Promise.resolve(true);
 
-/** The repair's first read of the connection, the statement the races below pause after. */
+/** The repair's first read of the connection, where most races below pause. */
 const CONNECTION_READ = 'select status, revision from public.connections';
+/** The envelope's grant check, the first effective-grant walk of the command. */
+const GRANT_CHECK = 'with recursive effective as';
+/** The clock read once the start holds its grants (`lockedInstant`). */
+const HELD = 'select clock_timestamp()::text as at';
 
 /**
- * `database`, with `paused` awaited once per transaction straight after that
- * transaction's first connection read returns, savepoints included. The
+ * `database`, with `paused` awaited once per transaction straight after the
+ * first statement containing `statement` returns, savepoints included. The
  * command runs through it end to end; nothing else is stood in for.
  */
-function pausingAfterRead(database: Database, paused: () => Promise<void>): Database {
-  const pausing = (tx: TransactionQuery, state: { read: boolean }): TransactionQuery => ({
+function pausingAfter(
+  database: Database,
+  statement: string,
+  paused: () => Promise<void>,
+): Database {
+  const pausing = (tx: TransactionQuery, state: { met: boolean }): TransactionQuery => ({
     businessId: tx.businessId,
     async query<Row>(text: string, parameters?: readonly unknown[]) {
       const rows = await tx.query<Row>(text, parameters);
-      if (!state.read && text.includes(CONNECTION_READ)) {
-        state.read = true;
+      if (!state.met && text.includes(statement)) {
+        state.met = true;
         await paused();
       }
       return rows;
@@ -112,10 +120,7 @@ function pausingAfterRead(database: Database, paused: () => Promise<void>): Data
       await database.close();
     },
     withBusiness: async (businessId, run) =>
-      await database.withBusiness(
-        businessId,
-        async (tx) => await run(pausing(tx, { read: false })),
-      ),
+      await database.withBusiness(businessId, async (tx) => await run(pausing(tx, { met: false }))),
   };
 }
 
@@ -162,13 +167,14 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
   };
 
   // The races: the same composed boundary on an application pool of its own,
-  // `max` connections wide, pausing each transaction after its connection read.
-  const pausedApi = (max: number, paused: () => Promise<void>) => {
+  // `max` connections wide, pausing each transaction after `statement` (its
+  // connection read unless a case names another).
+  const pausedApi = (max: number, paused: () => Promise<void>, statement = CONNECTION_READ) => {
     const pool = connect(controls.fixture.db.appUrl, { source: 'runtime', max });
     const api = controls.fixture.compose(
       { custody: pair.key },
       undefined,
-      pausingAfterRead(pool, paused),
+      pausingAfter(pool, statement, paused),
     );
     const repairVia = async (who: Member, connectionId: string): Promise<Answer> => {
       const answer = await post(
@@ -807,13 +813,22 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     expect((await attempt('revision = revision + 1'))[0]).toBe('stale');
   });
 
-  it('MP-14-7a a repair whose one custody:manage grant is revoked after its read is refused and records nothing', async () => {
-    // Sol PRV-oa-978-R1.1: the starter holds exactly one business-wide
-    // custody:manage grant; the administrator revokes it, through the real
-    // command on its own connection, while the start sits after its read.
+  // A broken connection, and a new member whose one grant is business-wide
+  // custody:manage: the starter the authority races below revoke.
+  const soleCustodian = async (
+    key: string,
+  ): Promise<{
+    readonly connection: Seeded;
+    readonly starter: Member;
+    readonly grantId: string;
+  }> => {
     const { db } = controls.fixture;
-    const fresh = await seed(alpha, { label: 'Revoked source', status: 'broken', clients: [] });
-    const starter = await enrol(db.app, alpha, 'revokedstarter');
+    const connection = await seed(alpha, {
+      label: 'Revoked source',
+      status: 'broken',
+      clients: [],
+    });
+    const starter = await enrol(db.app, alpha, key);
     let grantId = '';
     await db.app.withBusiness(alpha, async (tx) => {
       grantId = await grantTo(
@@ -825,20 +840,84 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
         'custody',
       );
     });
+    return { connection, starter, grantId };
+  };
+  const repairsOf = async (connectionId: string): Promise<number> =>
+    await controls.count(
+      'select count(*) as n from public.connection_repairs where connection_id = $1',
+      [connectionId],
+    );
+
+  it('MP-14-7a a repair whose one custody:manage grant is revoked after its read is refused and records nothing', async () => {
+    // Sol PRV-oa-978-R1.1: the starter holds exactly one business-wide
+    // custody:manage grant; the administrator revokes it, through the real
+    // command on its own connection, while the start sits after its read.
+    const { connection, starter, grantId } = await soleCustodian('revokedstarter');
     let revoked: Answer | undefined;
     const race = pausedApi(1, async () => {
       revoked = await as(admin, 'access.revoke', { grantId });
     });
-    const answer = await race.repairVia(starter, fresh.id).finally(race.close);
+    const answer = await race.repairVia(starter, connection.id).finally(race.close);
     expect(revoked?.status).toBe(200);
     expect(answer.status).toBe(403);
     expect(answer.body['code']).toBe('SCOPE_NOT_GRANTED');
-    expect(
-      await controls.count(
-        'select count(*) as n from public.connection_repairs where connection_id = $1',
-        [fresh.id],
-      ),
-    ).toBe(0);
+    expect(await repairsOf(connection.id)).toBe(0);
+  });
+
+  it('MP-14-7a a starter revoked after the envelope check learns nothing of the connection', async () => {
+    // SEC-P02-RB8.1: the grant goes, and the connection moves on, after the
+    // envelope's grant check and before the start reads the connection. The
+    // answer is the refusal of authority, never the revision or the status.
+    const { connection, starter, grantId } = await soleCustodian('lateststarter');
+    let revoked: Answer | undefined;
+    const race = pausedApi(
+      1,
+      async () => {
+        revoked = await as(admin, 'access.revoke', { grantId });
+        await controls.fixture.db.admin.execute(
+          `update public.connections set revision = revision + 1 where id = $1`,
+          [connection.id],
+        );
+      },
+      GRANT_CHECK,
+    );
+    const answer = await race.repairVia(starter, connection.id).finally(race.close);
+    expect(revoked?.status).toBe(200);
+    expect([answer.status, answer.body['code']]).toStrictEqual([403, 'SCOPE_NOT_GRANTED']);
+    expect(JSON.stringify(answer.body)).not.toContain('revision=');
+    expect(await repairsOf(connection.id)).toBe(0);
+  });
+
+  it('MP-14-7a a revoke that comes second waits for the repair start holding the grant', async () => {
+    // SEC-P02-RB8.2: the start holds its grant; a revoke sent then must not
+    // finish until the start commits, so the repair is never recorded after it.
+    const { connection, starter, grantId } = await soleCustodian('heldstarter');
+    let revoking: Promise<Answer> | undefined;
+    let watched: Promise<void> | undefined;
+    let revokedWhileHeld = false;
+    const race = pausedApi(
+      1,
+      async () => {
+        let settled = false;
+        const sent = as(admin, 'access.revoke', { grantId });
+        revoking = sent;
+        watched = (async () => {
+          await sent;
+          settled = true;
+        })();
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 500);
+        });
+        revokedWhileHeld = settled;
+      },
+      HELD,
+    );
+    const answer = await race.repairVia(starter, connection.id).finally(race.close);
+    await watched;
+    expect(revokedWhileHeld).toBe(false);
+    expect(answer.status).toBe(200);
+    expect((await revoking)?.status).toBe(200);
+    expect(await repairsOf(connection.id)).toBe(1);
   });
 
   it('MP-14-7a nothing leaves before the approval gate: a started repair sends nothing and uses no credential', async () => {
