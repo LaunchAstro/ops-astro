@@ -85,7 +85,7 @@ function job(target: CorrectionTarget, before: string): PublishJob {
 /** Publish ports with the served page before dispatch as `preImage`. */
 function ports(source: string, preImage: string, raised: string[] = []) {
   const captured: string[] = [];
-  const base: PublishPorts = {
+  const base: Omit<PublishPorts, 'capture'> = {
     readSource: async () => ({ kind: 'ok', value: { content: source, revision: 'base-revision' } }),
     readBack: async () => ({ state: 'absent' }),
     publish: async () => ({ kind: 'ok', value: published }),

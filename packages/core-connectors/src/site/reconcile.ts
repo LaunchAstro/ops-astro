@@ -65,6 +65,11 @@ export interface Occurrence {
   readonly left: string;
   readonly right: string;
   readonly index?: number;
+  /**
+   * The word at each equal match on the served page before the change, in order. Only a place
+   * calibrated on that page has it, and only such a place is ever observed.
+   */
+  readonly observed?: readonly string[];
 }
 
 const BLOCK =
@@ -85,11 +90,19 @@ const rendered = (html: string): string[] =>
       .trim(),
   );
 
-/** The approved occurrence's place, read from the one line the envelope let change. */
-export function occurrenceOf(
+/** The words at the place's equal matches in `text`, among `words`, in page order. */
+function equalsOf(text: string, where: Occurrence, words: readonly string[]): string[] {
+  const found = words.flatMap((word) =>
+    wordOffsets(text, where.left + word + where.right).map((at) => ({ at, word })),
+  );
+  return found.toSorted((a, b) => a.at - b.at).map(({ word }) => word);
+}
+
+/** The approved occurrence's place on the source's render, and the word at each equal there. */
+function sourcePlace(
   change: ProposedChange,
   target: CorrectionTarget,
-): Occurrence | undefined {
+): { readonly where: Occurrence; readonly words: string[] } | undefined {
   const [file] = change.files;
   const before = (file?.before ?? '').split('\n');
   const after = (file?.after ?? '').split('\n');
@@ -105,23 +118,59 @@ export function occurrenceOf(
   const page = rendered(before.join('\n'));
   const block = page.findIndex((text) => text.includes(MARK));
   const [left = '', right = ''] = page[block]?.split(MARK) ?? [];
-  const prior = page.slice(0, block).join(' ');
-  const earlier = [target.word, target.replacement].flatMap((word) =>
-    wordOffsets(prior, left + word + right),
-  );
-  return { left, right, index: earlier.length };
+  const words = [target.word, target.replacement];
+  const where = {
+    left,
+    right,
+    index: equalsOf(page.slice(0, block).join(' '), { left, right }, words).length,
+  };
+  return { where, words: equalsOf(page.join(' ').replace(MARK, target.word), where, words) };
 }
 
-/** The page's match of the approved occurrence, counted among its equals, holds `shown`. */
+/** The approved occurrence's place on the source alone: never observed until it is calibrated. */
+export function occurrenceOf(
+  change: ProposedChange,
+  target: CorrectionTarget,
+): Occurrence | undefined {
+  return sourcePlace(change, target)?.where;
+}
+
+/**
+ * The place, calibrated on the served page captured before the change: kept only when that page
+ * shows exactly the source's equal matches, so text the build drops or a layout adds never lines
+ * the counts up (catalogue #953). Undefined is no place: the correction is never read live.
+ */
+export function calibrated(
+  change: ProposedChange,
+  target: CorrectionTarget,
+  preImage: string | undefined,
+): Occurrence | undefined {
+  const source = sourcePlace(change, target);
+  if (source === undefined || preImage === undefined) return undefined;
+  const observed = equalsOf(preImage, source.where, [target.word, target.replacement]);
+  const same =
+    observed[source.where.index ?? 0] === target.word &&
+    observed.length === source.words.length &&
+    observed.every((word, at) => word === source.words[at]);
+  return same ? { ...source.where, observed } : undefined;
+}
+
+/**
+ * The page holds `shown` at the calibrated place and every other equal match as it was observed
+ * before the change; an uncalibrated place never shows.
+ */
 export function showsAt(
   text: string,
   where: Occurrence | undefined,
   shown: string,
   gone: string,
 ): boolean {
-  if (where === undefined) return false;
-  const found = [shown, gone].flatMap((word) =>
-    wordOffsets(text, where.left + word + where.right).map((at) => ({ at, word })),
+  const observed = where?.observed;
+  if (where === undefined || observed === undefined) return false;
+  const index = where.index ?? 0;
+  const found = equalsOf(text, where, [shown, gone]);
+  return (
+    found.length === observed.length &&
+    found.every((word, at) => (at === index ? word === shown : word === observed[at]))
   );
-  return found.toSorted((a, b) => a.at - b.at)[where.index ?? 0]?.word === shown;
 }

@@ -15,6 +15,7 @@ import {
   type PublishJob,
   type PublishPorts,
 } from '../../packages/core-connectors/src/index.ts';
+import { calibrated } from '../../packages/core-connectors/src/site/reconcile.ts';
 
 type RevertPorts = Parameters<typeof revertCorrection>[1];
 
@@ -74,6 +75,8 @@ function publishPorts(sent: string[], overrides: Partial<PublishPorts> = {}): Pu
       ),
     cancellation: () => Promise.resolve('none' as const),
     raiseTask: () => Promise.resolve(),
+    capture: () =>
+      Promise.resolve({ ok: true as const, value: { text: 'We walk alongside you.' } }),
     ...overrides,
   };
   return ports;
@@ -143,7 +146,7 @@ const REVERTED = { revision: 'rev789', deploymentId: 'dpl_2' };
 const revertInput = {
   publishedRevision: 'def456',
   target: TARGET,
-  change: CHANGE,
+  occurrence: calibrated(CHANGE, TARGET, 'We walk alongside you.'),
   seam: 'revert-of-def456',
   decidedAt: T0,
 };

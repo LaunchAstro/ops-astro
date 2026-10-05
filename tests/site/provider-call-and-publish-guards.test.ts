@@ -16,6 +16,7 @@ import {
   type TransportAnswer,
   type TransportRequest,
 } from '../../packages/core-connectors/src/index.ts';
+import { calibrated } from '../../packages/core-connectors/src/site/reconcile.ts';
 
 const target = { path: 'src/pages/about.astro', word: 'friendly', replacement: 'welcoming' };
 const before = '<p>We are a friendly studio.</p>\n';
@@ -61,6 +62,7 @@ function ports(overrides: Partial<PublishPorts> = {}): PublishPorts {
     }),
     cancellation: async () => 'none',
     raiseTask: async () => {},
+    capture: async () => ({ ok: true, value: { text: 'We are a friendly studio.' } }),
     ...overrides,
     publish: async (input) => {
       attempted = true;
@@ -237,7 +239,7 @@ it('an unknown revert is not dispatched blind on retry', async () => {
     publishedRevision: published.revision,
     target,
     seam: 'revert-request',
-    change: job().change,
+    occurrence: calibrated(job().change, target, 'We are a friendly studio.'),
     decidedAt: Date.parse('2026-10-04T00:00:00Z'),
   };
   expect((await revertCorrection(input, p)).state).toBe('unknown');
@@ -266,7 +268,7 @@ it('a pending revert keeps the original decision time until observation', async 
     publishedRevision: published.revision,
     target,
     seam: 'revert-request',
-    change: job().change,
+    occurrence: calibrated(job().change, target, 'We are a friendly studio.'),
     decidedAt: Date.parse('2026-10-04T00:00:00Z'),
   };
   const pending = await revertCorrection(input, p);
@@ -288,7 +290,7 @@ it('a replacement decoy does not establish that the target word landed', async (
     state: 'accepted' as const,
     ...published,
     dispatchToken: 'publish-token',
-    occurrence: { left: 'We are a ', right: ' studio.' },
+    occurrence: { left: 'We are a ', right: ' studio.', index: 0, observed: ['friendly'] },
   };
   const result = await observeLanded(accepted, target, {
     readDeployment: async () => ({
@@ -309,7 +311,7 @@ it('an unrelated replacement word does not prevent observing a correct revert', 
       publishedRevision: published.revision,
       target,
       seam: 'revert-request',
-      change: job().change,
+      occurrence: calibrated(job().change, target, 'We are a friendly studio.'),
       decidedAt: Date.parse('2026-10-04T00:00:00Z'),
     },
     {

@@ -78,7 +78,7 @@ async function publishAndObserve(
   const job = approvedJob(target, before);
   expect((await checkEnvelope(job.change, target)).ok).toBe(true);
   const raised: string[] = [];
-  const base: PublishPorts = {
+  const base: Omit<PublishPorts, 'capture'> = {
     readBack: async () => ({ state: 'absent' }),
     readSource: async () => ({ kind: 'ok', value: { content: before, revision: 'abc123' } }),
     cancellation: async () => 'none',

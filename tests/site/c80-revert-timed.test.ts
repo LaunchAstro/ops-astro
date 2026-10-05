@@ -9,6 +9,7 @@ import {
   revertCorrection,
   type CorrectionTarget,
 } from '../../packages/core-connectors/src/index.ts';
+import { calibrated } from '../../packages/core-connectors/src/site/reconcile.ts';
 
 const TARGET: CorrectionTarget = {
   path: 'src/pages/throwaway.astro',
@@ -30,7 +31,7 @@ const CHANGE = {
 const INPUT = {
   publishedRevision: 'def456',
   target: TARGET,
-  change: CHANGE,
+  occurrence: calibrated(CHANGE, TARGET, 'We walk alongside you.'),
   seam: 'revert-of-def456',
   decidedAt: DECIDED,
 };

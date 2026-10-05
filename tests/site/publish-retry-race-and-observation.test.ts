@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* eslint-disable require-await -- the proof bodies are kept as written */
 import { expect, it } from 'vitest';
+import { readDocument } from '../../packages/core-connectors/src/capture/page.ts';
 import {
   contentDigest,
   observeLanded,
@@ -10,6 +11,7 @@ import {
   type PublishJob,
   type PublishPorts,
 } from '../../packages/core-connectors/src/index.ts';
+import { calibrated } from '../../packages/core-connectors/src/site/reconcile.ts';
 
 const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
 const before = '<p>We walk alongside you.</p>\n';
@@ -47,6 +49,13 @@ function job(source = before): PublishJob {
   };
 }
 
+/** Visible text of the served page, as the fenced capture reads it. */
+function seen(html: string): string {
+  const reading = readDocument(html);
+  if (typeof reading === 'string') throw new Error(`capture refused: ${reading}`);
+  return reading.text;
+}
+
 function ports(overrides: Partial<PublishPorts> = {}, source = before): PublishPorts {
   return {
     readSource: async () => ({ kind: 'ok', value: { content: source, revision: 'base-revision' } }),
@@ -54,6 +63,7 @@ function ports(overrides: Partial<PublishPorts> = {}, source = before): PublishP
     publish: async () => ({ kind: 'ok', value: published }),
     cancellation: async () => 'none',
     raiseTask: async () => {},
+    capture: async () => ({ ok: true, value: { text: seen(source) } }),
     ...overrides,
   };
 }
@@ -110,7 +120,7 @@ it('concurrent absent reads cannot dispatch the same revert twice', async () => 
   const input = {
     publishedRevision: published.revision,
     target,
-    change: job().change,
+    occurrence: calibrated(job().change, target, seen(before)),
     seam: 'revert-1',
     decidedAt,
   };
@@ -157,7 +167,7 @@ it('an isolated text node does not make unrelated words block publish or revert 
     {
       publishedRevision: published.revision,
       target,
-      change: approved.change,
+      occurrence: accepted.occurrence,
       seam: 'revert-1',
       decidedAt,
     },
