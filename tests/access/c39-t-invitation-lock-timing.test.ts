@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { advisoryLock, connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { sendInvitation } from '../../packages/core-custody/src/index.ts';
+import { enrol, grantTo } from '../commands/fixture.ts';
 import {
   addressFor,
   c,
@@ -84,6 +85,56 @@ describe.skipIf(noDatabase)(
       const result = await pastExpiry(id, async () => await send(id));
       expect(result).toStrictEqual({ ok: false, code: 'INVITATION_NOT_PENDING' });
       expect(w.provider.received.length).toBe(before);
+    });
+
+    it('an administrator invitation waiting at the address limiter is refused once its inviter loses access:manage', async () => {
+      // Sol PRV-oa-1018-R1.1: authority is asked again once the limiter is held.
+      const inviter = await enrol(w.db.app, w.alpha, 'Pat Promoted');
+      const manage = await w.db.app.withBusiness(w.alpha, async (tx) => {
+        await grantTo(tx, inviter, 'share', undefined, false, 'access');
+        return await grantTo(tx, inviter, 'manage', undefined, false, 'access');
+      });
+      const address = addressFor('promoted');
+      const blocker = connect(w.db.appUrl);
+      const held = latch();
+      const release = latch();
+      let pid = 0;
+      const holding = blocker.withBusiness(w.alpha, async (tx) => {
+        const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
+        pid = row?.pid ?? 0;
+        await advisoryLock(tx, `limit:${w.alpha}:invitation:address:${address}`);
+        held.release();
+        await release.promise;
+      });
+      let result: Awaited<ReturnType<typeof as>> | undefined;
+      try {
+        await held.promise;
+        const running = as(inviter, 'invitation.create', {
+          name: 'Ivy Admin',
+          email: address,
+          role: 'admin',
+        });
+        await waitUntil(async () => {
+          const [row] = await w.db.admin.execute<{ ready: boolean }>(
+            'select exists (select 1 from pg_stat_activity where $1 = any(pg_blocking_pids(pid))) as ready',
+            [pid],
+          );
+          return row?.ready === true;
+        });
+        expect(codeOf(await as(c.admin, 'access.revoke', { grantId: manage }))).toBe('applied');
+        release.release();
+        result = await running;
+      } finally {
+        release.release();
+        await holding;
+        await blocker.close();
+      }
+      expect(codeOf(result)).toBe('SCOPE_NOT_GRANTED');
+      const [made] = await w.db.admin.execute<{ n: number }>(
+        'select count(*)::int as n from public.invitations where address = $1',
+        [address],
+      );
+      expect(made?.n).toBe(0);
     });
 
     it('a create waiting at the address limiter replaces an invitation that lapsed meanwhile', async () => {
