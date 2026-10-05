@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The inbox's records: its items, who may read them, raising, mentions,
-// clearing and the unattended read. The other packages reach them through the
-// package index, which re-exports this file whole.
+// The inbox's way into the records package: reading, raising and clearing
+// inbox items, the access check, mentions and the unattended list. The
+// package's index re-exports this list whole.
 
 export { readInboxItems, countOwedItems, INBOX_HISTORY_PAGE, INBOX_HISTORY_SCAN } from './read.ts';
 export {
