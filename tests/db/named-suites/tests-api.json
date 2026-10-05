@@ -48,6 +48,7 @@
     "tests/api/c71-d-direct-message-races.test.ts",
     "tests/api/c71-d-direct-messages.test.ts",
     "tests/api/c71-d-isolation.test.ts",
+    "tests/api/c71-d-mark-newest-tie.test.ts",
     "tests/api/capabilities-shape.test.ts",
     "tests/api/cli-reach.test.ts",
     "tests/api/controls-revoke.test.ts",
