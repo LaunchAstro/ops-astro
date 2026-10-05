@@ -128,6 +128,26 @@ describe.skipIf(serverUrl === undefined)('C80 approver, the approved version sta
     expect(await w.stateOf(correctionId)).toBe('approved');
   });
 
+  it('refuses a request worked under a task the requester cannot read, as if absent', async () => {
+    const hidden = await w.as(w.cal, { command: 'task.create', fields: { title: 'private' } });
+    const taskId = 'recordId' in hidden ? String(hidden.recordId) : '';
+    const outsider = await w.world.decider('gil');
+    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+      await tx.query(
+        `update public.grants set revoked_at = now()
+          where subject_id = $1 and collection = 'task' and action = 'read'`,
+        [outsider.personId],
+      );
+      await grantTo(tx, outsider, 'write', { kind: 'business', id: null }, false, 'run');
+    });
+    const refused = await w.request(outsider, { taskId });
+    expect(codeOf(refused)).toBe('NOT_FOUND');
+    const absent = await w.request(outsider, { taskId: '00000000-0000-4000-8000-000000000002' });
+    expect(JSON.stringify(refused)).toBe(JSON.stringify(absent));
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C80 approver, the version the publish rebuilds', () => {
   it('stores a version the publish can rebuild, its own seam bound in', async () => {
     const { correctionId } = await requested();
     const [row] = await w.world.db.admin.execute<Record<string, string>>(
@@ -145,24 +165,6 @@ describe.skipIf(serverUrl === undefined)('C80 approver, the approved version sta
     expect(approvedChange(pin, BEFORE, String(row?.['version_digest']))).toStrictEqual({
       files: [{ path: ABOUT, before: BEFORE, after: AFTER }],
     });
-  });
-
-  it('refuses a request worked under a task the requester cannot read, as if absent', async () => {
-    const hidden = await w.as(w.cal, { command: 'task.create', fields: { title: 'private' } });
-    const taskId = 'recordId' in hidden ? String(hidden.recordId) : '';
-    const outsider = await w.world.decider('gil');
-    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
-      await tx.query(
-        `update public.grants set revoked_at = now()
-          where subject_id = $1 and collection = 'task' and action = 'read'`,
-        [outsider.personId],
-      );
-      await grantTo(tx, outsider, 'write', { kind: 'business', id: null }, false, 'run');
-    });
-    const refused = await w.request(outsider, { taskId });
-    expect(codeOf(refused)).toBe('NOT_FOUND');
-    const absent = await w.request(outsider, { taskId: '00000000-0000-4000-8000-000000000002' });
-    expect(JSON.stringify(refused)).toBe(JSON.stringify(absent));
   });
 });
 

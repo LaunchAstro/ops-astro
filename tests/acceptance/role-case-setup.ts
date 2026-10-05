@@ -41,10 +41,7 @@ async function custodyBody(name: CommandName, context: SetupContext): Promise<Bo
 }
 
 /** A fixed literal's, a setup command's or C80's positive body; undefined for every other command. */
-export async function tableBody(
-  name: CommandName,
-  context: BodyContext,
-): Promise<Body | Prepared> {
+export async function tableBody(name: CommandName, context: BodyContext): Promise<Body | Prepared> {
   const fixed = FIXED_BODIES[name];
   if (fixed !== undefined) return { body: { ...fixed } };
   if (C80_NAMES.has(name)) return await c80PositiveBody(name, context);
