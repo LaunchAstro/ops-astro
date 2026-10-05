@@ -159,13 +159,15 @@ function waitsOn(locked: Locked, askId: string | undefined): boolean {
   return open && (askId === undefined || askId === locked.ask_id);
 }
 
-/** The run's task, lineage, and the reservation, envelope and cap its latest ask stopped. */
+/**
+ * The run's task, lineage, and the reservation, envelope and cap its latest
+ * ask stopped. A trashed task is found: its hold is still counted, and the end
+ * is how it is given back. The top-up refuses it under the task lock.
+ */
 async function discover(tx: TenantQuery, runId: string): Promise<Found | undefined> {
   const [found] = await tx.query<Found>(
     `select run.task_id, run.lineage_id, k.reservation_id, res.envelope_id, e.cap_id
        from public.planned_runs run
-       join public.records t
-         on t.business_id = run.business_id and t.id = run.task_id and t.deleted_at is null
        join lateral (select reservation_id from public.budget_asks
                       where business_id = run.business_id and run_id = run.id
                       order by ask_number desc limit 1) k on true
