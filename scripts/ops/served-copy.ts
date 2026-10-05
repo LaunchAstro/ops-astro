@@ -12,8 +12,10 @@
 // repaired: the operator names a link under folders only they and root write.
 // The check reads owners and mode bits, so it cannot see a write granted any
 // other way: the path must carry no ACL that grants write, and must not be on
-// a network share or a volume that ignores ownership. That is the boundary's
-// stated limit (OPS497ACL), not something the walk proves.
+// a network share or a volume that ignores ownership, and production's link
+// carries no immutable flag (`chflags uchg`, which stops its swap after the
+// migration). That is the boundary's stated limit (OPS497ACL), not something
+// the walk proves.
 
 import {
   accessSync,
@@ -155,10 +157,10 @@ function swapBlocked(link: string): string | undefined {
   return undefined;
 }
 
-/** Whether this user may write the folder `path`. */
+/** Whether this user may make entries in the folder `path`: write it and search it. */
 function writable(path: string): boolean {
   try {
-    accessSync(path, constants.W_OK);
+    accessSync(path, constants.W_OK | constants.X_OK);
     return true;
   } catch {
     return false;
