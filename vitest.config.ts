@@ -86,6 +86,8 @@ export default defineConfig({
             'tests/api/end-others-provider-clock-skew.test.ts',
             'tests/api/end-others-delayed-ending.test.ts',
             'tests/api/end-others-ended-session-leaves-live-list.test.ts',
+            'tests/api/end-others-leaves-session-list-in-every-business.test.ts',
+            'tests/identity/session-list-subject-wide-ending.test.ts',
             'tests/api/agent-credential-exports-counted.test.ts',
             'tests/review/role-repair-drops-inherited-access-proof.test.ts',
             'tests/review/staging-logins-*-proof.test.ts',

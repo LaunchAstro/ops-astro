@@ -61,6 +61,7 @@
     "tests/api/credential-within-reads.test.ts",
     "tests/api/end-others-delayed-ending.test.ts",
     "tests/api/end-others-ended-session-leaves-live-list.test.ts",
+    "tests/api/end-others-leaves-session-list-in-every-business.test.ts",
     "tests/api/end-others-provider-clock-skew.test.ts",
     "tests/api/envelope-faults.test.ts",
     "tests/api/expiry-bound.test.ts",
