@@ -797,7 +797,7 @@ definer with its search path pinned and no argument, run as `ops_astro_upkeep`,
 a role no one logs in as that holds execute on it and nothing else. PUBLIC and the
 application may not run it.
 
-## Send Email hook messages claimed (20261005140704, C39-T)
+## Send Email hook messages claimed (20261005180512, C39-T)
 
 `ops.auth_hook_messages` holds one row per login-provider Send Email hook
 message that an invitation send took: a SHA-256 digest of the message id.
