@@ -63,6 +63,8 @@ describe.skipIf(serverUrl === undefined)('the agent work queue under a delegatio
   let sameClient: Queued;
   /** Client B's queued work, whose slug names client B. */
   let otherClient: Queued;
+  /** More of client B's work, which the second agent picks up. */
+  let otherClientPicked: Queued;
   /** The agent's queue read before any pickup, which a replay repeats. */
   const coldRead = { command: 'task.queue', operationId: randomUUID() };
   /** A second agent login of the business, which holds no delegation. */
@@ -185,6 +187,7 @@ describe.skipIf(serverUrl === undefined)('the agent work queue under a delegatio
     delegated = await queuedOn(clientA, `reply_for_client_a_${randomUUID().slice(0, 8)}`, 3_000);
     sameClient = await queuedOn(clientA, `chase_for_client_a_${randomUUID().slice(0, 8)}`, 2_000);
     otherClient = await queuedOn(clientB, CLIENT_B_SLUG, CLIENT_B_HELD);
+    otherClientPicked = await queuedOn(clientB, `${CLIENT_B_SLUG}_second`, 1_500);
     otherAgent = await secondAgent();
   }, 120_000);
 
@@ -240,6 +243,24 @@ describe.skipIf(serverUrl === undefined)('the agent work queue under a delegatio
       expect(reservations(queue)).toEqual(
         expect.arrayContaining([sameClient.reservationId, otherClient.reservationId]),
       );
+    });
+
+    it('keeps client B out of the agent’s queue when another agent is delegated client B’s work', async () => {
+      ok(
+        await otherAgent({
+          command: 'task.pickup',
+          operationId: randomUUID(),
+          reservationId: otherClientPicked.reservationId,
+        }),
+        'task.pickup',
+      );
+      // The second agent, delegated for client B, sees client B's work.
+      const theirs = queueOf(
+        await otherAgent({ command: 'task.queue', operationId: randomUUID() }),
+      );
+      expect(reservations(theirs)).toContain(otherClient.reservationId);
+      showsNothingOfClientB(await agentQueue(credential));
+      showsNothingOfClientB(await agentQueue());
     });
 
     it('still shows the delegated agent its own client’s other queued work', async () => {
