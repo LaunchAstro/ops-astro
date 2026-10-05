@@ -400,6 +400,97 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
     }
   });
 
+  /**
+   * A write held at the business's audit chain (`audit_events_chain`'s lock,
+   * taken by another transaction on a connection of its own) while its
+   * writer's only write grant is revoked: the revocation waits for the write
+   * to commit, and the write commits under the grant it was judged on.
+   */
+  async function revokeAtAuditChain<T>(
+    name: string,
+    write: (caller: Caller) => Promise<T>,
+  ): Promise<T> {
+    const writer = await w.member(name, ['read', 'write']);
+    let release: (() => void) | undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let holding: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      holding = resolve;
+    });
+    const side = connect(w.db.appUrl, { max: 1 });
+    const holder = side.withBusiness(w.business, async (tx) => {
+      await tx.query('select pg_advisory_xact_lock(hashtextextended($1::text, 0))', [w.business]);
+      holding?.();
+      await released;
+    });
+    try {
+      await held;
+      const writing = write(await w.person(writer));
+      await blockedOnLock(Date.now() + 10_000);
+      let revoked = false;
+      const revoking = w.db.admin
+        .execute(
+          `update public.grants set revoked_at = now()
+            where business_id = $1 and subject_kind = 'person' and subject_id = $2
+              and collection = 'task' and action = 'write' and revoked_at is null
+            returning id`,
+          [w.business, writer.personId],
+        )
+        .then((rows) => {
+          revoked = true;
+          return rows;
+        });
+      await lockWaiters(2, () => revoked, Date.now() + 10_000);
+      expect(revoked, 'the revocation committed while the write waited').toBe(false);
+      release?.();
+      await holder;
+      const answer = await writing;
+      expect(await revoking).toHaveLength(1);
+      return answer;
+    } finally {
+      release?.();
+      await holder.catch(() => null);
+      await side.close();
+    }
+  }
+
+  /** Waits until `n` statements on this database wait on a lock, or `done()`; throws past the deadline. */
+  async function lockWaiters(n: number, done: () => boolean, deadline: number): Promise<void> {
+    const [row] = await w.db.admin.execute<{ readonly n: string }>(
+      `select count(*)::text as n from pg_stat_activity
+        where datname = current_database() and state = 'active' and wait_event_type = 'Lock'`,
+    );
+    if (done() || Number(row?.n ?? 0) >= n) return;
+    if (Date.now() > deadline) throw new Error(`fewer than ${String(n)} lock waiters`);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 25);
+    });
+    await lockWaiters(n, done, deadline);
+  }
+
+  it('API-3 a task update whose write grant is revoked while it waits for the audit chain commits before the revocation', async () => {
+    const id = await create(cli, 'before-revoke');
+    const revision = await rev(id);
+    const answer = await revokeAtAuditChain('audit-wait-writer', (writes) =>
+      writes.run('task', 'update', id, '--revision', revision, '--title', 'after-revoke'),
+    );
+    expect(answer.exit, answer.out).toBe(0);
+    const [row] = await w.db.admin.execute<{ readonly title: string }>(
+      `select data->>'title' as title from public.records where business_id = $1 and id = $2`,
+      [w.business, id],
+    );
+    expect(row?.title).toBe('after-revoke');
+  });
+
+  it('API-3 a task create whose write grant is revoked while it waits for the audit chain commits before the revocation', async () => {
+    const answer = await revokeAtAuditChain('audit-wait-creator', (writes) =>
+      writes.run('task', 'create', '--title', 'made before the revoke'),
+    );
+    expect(answer.exit, answer.out).toBe(0);
+  });
+
   it('API-3 a refusal reads in plain words with the missing key named, in one line', async () => {
     const reader = await w.person(await w.member('reader-only', ['read']));
     const answer = await reader.run('task', 'create', '--title', 'not mine to make');
