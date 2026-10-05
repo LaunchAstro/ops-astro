@@ -36,6 +36,7 @@ import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
 import type { PrivacyRequest } from './requests-privacy.ts';
 import type { SelfRequest } from './requests-self.ts';
+import type { AutomationRequest } from './automation-requests.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -294,4 +295,5 @@ export type CommandRequest =
   // Time tracking (MP-4-6), in `requests-time.ts`.
   | TimeRequest<Envelope>
   // Tags (MP-4-11), in `requests-tags.ts`.
-  | TagRequest<Envelope>;
+  | TagRequest<Envelope>
+  | AutomationRequest<Envelope>;

@@ -224,4 +224,10 @@ export type CommandName =
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
   | 'trace.read'
   // The harness adoption test's result on one run (AW-12): the team's.
-  | 'harness.read';
+  | 'harness.read'
+  // Settings ▸ Workflow triggers (C33): the registry is one read by
+  // `settings:read`; changing an activation is `settings:manage` and releasing
+  // a definition version `automation:manage`, neither an agent's.
+  | 'automation.registry'
+  | 'activation.change'
+  | 'definition.release';

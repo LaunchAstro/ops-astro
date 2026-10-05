@@ -284,4 +284,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_type': writing(MAP_TASK.writes.concat(client('inbox_items'))),
   // The map and every ticket under it carry the client.
   'map.scope': MAP_TASK,
+  // Settings ▸ Workflow triggers (C33): a definition carries no client, so its
+  // versions and activations are the business's own rows.
+  'automation.registry': READ,
+  'activation.change': writing(business('activations')),
+  'definition.release': writing(business('automation_definitions', 'definition_versions')),
 };
