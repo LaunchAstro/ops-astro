@@ -22,6 +22,9 @@
 // stored name of one of those people as whole words (when it has four letters
 // or digits, as the text needs), or one of those ids in any letter case; a
 // column's or a JSON field's name never counts ("granted_at" names no Grant).
+// A value over 16,000 bytes, too long for the parser, holds a name's words
+// when it holds each of them anywhere (more listed, never less); a stored
+// name that long is not searched, and the summary says so.
 // Letters are folded by the database, and each run of white space is one
 // space, so the text is matched as the database's locale cases it.
 //
@@ -47,7 +50,7 @@
 import process from 'node:process';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { WHITE, namesSomeone, parse } from './find-copies-arguments.mjs';
-import { SEEDS, STORED_NAMES } from './find-copies-seeds.mjs';
+import { PARSED, SEEDS, STORED_NAMES, wholeWords } from './find-copies-seeds.mjs';
 
 const { argv, env, stderr, stdout } = process;
 const SAFE = /^[a-z_][a-z0-9_]{0,62}$/u;
@@ -78,7 +81,8 @@ const values = (json) => `(select ${folded("v #>> '{}'")} as held
 
 /** Whether `s.held` holds the text ($1, or null) or a stored name's words ($6) in order. */
 const TEXT = `(s.held like lower($1::text)
-      or cardinality($6::tsquery[]) > 0 and to_tsvector('simple', s.held) @@ any($6::tsquery[]))`;
+      or exists (select from jsonb_to_recordset($6::jsonb) n(words tsquery, lexemes text[])
+                  where ${wholeWords('s.held', 'n.words', 'n.lexemes')}))`;
 
 /** Whether `s.held` holds the text ($1, or null), a stored name ($6), a seed id ($3) or a shared id ($7). */
 const HOLDS = `(${TEXT} or exists (select from unnest($3::text[] || $7::text[]) i where strpos(s.held, i) > 0))`;
@@ -125,9 +129,17 @@ function exported(table, row) {
   return { ...row, ...Object.fromEntries(withheld.map((column) => [column, 'withheld'])) };
 }
 
+/** One copy as its JSON line, the row itself only with --export. */
+function hitLine(table, { address, row, columns, people, shared, text, given }, exportRows) {
+  const hit = { table, id: row.id ?? address, columns, people, shared, text, given };
+  if (exportRows) hit.row = exported(table, row);
+  return `${JSON.stringify(hit)}\n`;
+}
+
 /**
- * The business's copies as JSON lines, and the seeds by person; null when
- * no business has the key.
+ * The business's copies as JSON lines, the seeds by person, the shared ids
+ * and the people whose stored names are too long to search; null when no
+ * business has the key.
  */
 async function scan(admin, { business, text, ids, exportRows }) {
   return await admin.transaction(async (execute) => {
@@ -140,6 +152,7 @@ async function scan(admin, { business, text, ids, exportRows }) {
     const shared = found.filter((seed) => seed.shared);
     const sharedIds = new Set(shared.map((seed) => seed.id));
     const names = await execute(STORED_NAMES, [owner.id, seeds.map((seed) => seed.person)]);
+    const searched = names.filter(({ name, words }) => words !== null && namesSomeone(name));
     const tables = await execute(TABLES);
     const lines = [];
     for (const { name, kind, scoped } of tables) {
@@ -157,26 +170,41 @@ async function scan(admin, { business, text, ids, exportRows }) {
         seeds.map((seed) => seed.id),
         seeds.map((seed) => seed.person),
         ids.filter((id) => !sharedIds.has(id)),
-        names.filter(({ name }) => namesSomeone(name)).map(({ words }) => words),
+        JSON.stringify(searched.map(({ words, lexemes }) => ({ words, lexemes }))),
         [...sharedIds],
       ]);
-      for (const { address, row, columns, people, shared: agents, text: holdsText, given } of rows) {
-        const hit = {
-          table: name,
-          id: row.id ?? address,
-          columns,
-          people,
-          shared: agents,
-          text: holdsText,
-          given,
-        };
-        if (exportRows) hit.row = exported(name, row);
-        lines.push(`${JSON.stringify(hit)}\n`);
-      }
+      for (const copy of rows) lines.push(hitLine(name, copy, exportRows));
     }
     const byPerson = Map.groupBy(seeds, (seed) => seed.person);
-    return { lines, byPerson, shared };
+    const unparsed = names.filter(({ words }) => words === null).map(({ person }) => person);
+    return { lines, byPerson, shared, unparsed };
   });
+}
+
+/** The summary on stderr: the count, each person's --id flags, names not searched, shared ids. */
+function summarise(found) {
+  stderr.write(`find-copies: ${String(found.lines.length)} row(s) hold the text or an id\n`);
+  // One line per person, so an erasure carries its own person's ids only.
+  for (const [person, seeds] of found.byPerson) {
+    const flags = seeds.map((seed) => `--id ${seed.id}`).join(' ');
+    const how = seeds[0].how;
+    stderr.write(
+      `find-copies: to search again for ${person} (${how}) after an erasure, add: ${flags}\n`,
+    );
+  }
+  for (const person of found.unparsed) {
+    stderr.write(
+      `find-copies: ${person}'s stored name is over ${PARSED.toLocaleString('en-AU')} bytes, too long to search for as words; search for it by hand\n`,
+    );
+  }
+  // A shared agent stands for no one: its rows are listed under `shared`, for the owner to judge.
+  for (const { id, person } of found.shared) {
+    stderr.write(
+      id === person
+        ? `find-copies: ${id}, given with --id, is shared (an agent acting for others too, or a login an agent not standing for the given ids holds or held), so it stands for no one; see shared\n`
+        : `find-copies: agent ${id} acts for ${person} and for others, so it stands for no one; see shared\n`,
+    );
+  }
 }
 
 async function main() {
@@ -199,23 +227,7 @@ async function main() {
       return 2;
     }
     stdout.write(found.lines.join(''));
-    stderr.write(`find-copies: ${String(found.lines.length)} row(s) hold the text or an id\n`);
-    // One line per person, so an erasure carries its own person's ids only.
-    for (const [person, seeds] of found.byPerson) {
-      const flags = seeds.map((seed) => `--id ${seed.id}`).join(' ');
-      const how = seeds[0].how;
-      stderr.write(
-        `find-copies: to search again for ${person} (${how}) after an erasure, add: ${flags}\n`,
-      );
-    }
-    // A shared agent stands for no one: its rows are listed under `shared`, for the owner to judge.
-    for (const { id, person } of found.shared) {
-      stderr.write(
-        id === person
-          ? `find-copies: ${id}, given with --id, is shared (an agent acting for others too, or a login an agent not standing for the given ids holds or held), so it stands for no one; see shared\n`
-          : `find-copies: agent ${id} acts for ${person} and for others, so it stands for no one; see shared\n`,
-      );
-    }
+    summarise(found);
     return 0;
   } catch (error) {
     // A driver's error can carry the address, password and all, so only the

@@ -4,12 +4,28 @@
 // people a request names, and their stored names. Moved whole out of the
 // finder for the 300-line limit.
 
+/** The longest value, in bytes, the parser reads whole: under its 16,383 word positions and its 1 MiB vector. */
+export const PARSED = 16_000;
+
 /**
- * Whether `value` holds the text ($2) as whole words, in order: both go
- * through the database's own text-search parser, so the words are its words
- * and its letter folding ("Anna" is in "Anna-Maria Lee", never in "Joanna").
+ * Whether `value` holds the words of `query` in order: both go through the
+ * database's own text-search parser, so the words are its words and its
+ * letter folding ("Anna" is in "Anna-Maria Lee", never in "Joanna"). A longer
+ * value would overflow the parser or lose its word order, so it holds them
+ * when it holds each of `lexemes`, the query's words, anywhere: a looser
+ * match, listing more for the owner to judge and never less.
  */
-const NAMES = (value) => `to_tsvector('simple', ${value}) @@ phraseto_tsquery('simple', $2)`;
+export const wholeWords = (value, query, lexemes) => `(cardinality(${lexemes}) > 0 and case
+      when octet_length(${value}) <= ${PARSED} then to_tsvector('simple', ${value}) @@ ${query}
+      else not exists (select from unnest(${lexemes}) w where strpos(lower(${value}), w) = 0) end)`;
+
+/** Whether `value` holds the text ($2) as whole words, in order. */
+const NAMES = (value) =>
+  wholeWords(
+    value,
+    `phraseto_tsquery('simple', $2)`,
+    `tsvector_to_array(to_tsvector('simple', $2))`,
+  );
 
 /**
  * The seeds ($2 the text or null, $3 the given ids, in business $1): each id
@@ -119,7 +135,14 @@ export const SEEDS = `with recursive named(id, root, how) as (
    where l.business_id = $1 and l.active
   order by 2, 1`;
 
-/** The stored names of the seeds' people ($2) in business $1, each with its words as a query. */
-export const STORED_NAMES = `select p.display_name as name, phraseto_tsquery('simple', p.display_name)::text as words
+/**
+ * The stored names of the seeds' people ($2) in business $1, each with its
+ * words as a query and as lexemes; null for a name too long to parse.
+ */
+export const STORED_NAMES = `select p.id::text as person, p.display_name as name,
+      case when octet_length(p.display_name) <= ${PARSED}
+           then phraseto_tsquery('simple', p.display_name)::text end as words,
+      case when octet_length(p.display_name) <= ${PARSED}
+           then tsvector_to_array(to_tsvector('simple', p.display_name)) end as lexemes
     from public.people p
    where p.business_id = $1 and p.id = any($2::uuid[])`;

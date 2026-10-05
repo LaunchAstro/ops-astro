@@ -78,7 +78,11 @@ by kind. A copy not on the list is a copy the reply missed.
   their own agent, or the person, holds it now); the summary names each such
   id as shared. It also lists
   every row holding the stored name of one of those people as whole words,
-  when that name has four letters or digits. Each hit
+  when that name has four letters or digits. A value over 16,000 bytes is too
+  long for the database to read as words: it holds the text or a name as
+  whole words when it holds each of its words anywhere, so more is listed,
+  never less, and a stored name that long is not searched (the summary names
+  the person; search for it by hand). Each hit
   names the people whose ids it holds, the shared ids it holds (agents acting for others too, and logins given back that an agent not standing for the person holds or held)
   (`shared`), whether a value of it holds the text or
   such a stored name (`text`) and whether it holds an id given with `--id`
