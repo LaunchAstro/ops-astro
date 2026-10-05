@@ -12,6 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
+import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { grantTo, enrol, type Member } from '../commands/fixture.ts';
 import {
   authorised,
@@ -70,9 +71,9 @@ export interface Controls {
   drop(): Promise<void>;
 }
 
-export async function createControls(part: string): Promise<Controls> {
+export async function createControls(part: string, keys?: Partial<RuntimeKeys>): Promise<Controls> {
   const fixture = await createApiFixture(part);
-  const api = fixture.compose();
+  const api = fixture.compose(keys);
   const manager = fixture.member;
   const reader = await enrol(fixture.db.app, fixture.business, 'reader');
   let readerGrantId = '';

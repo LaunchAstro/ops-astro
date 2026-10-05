@@ -20,8 +20,12 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { queue } from '../../../core-runtime/src/index.ts';
 import type { QueuedWork } from '../../../core-wire/src/index.ts';
 
-export async function readQueue(tx: TenantQuery): Promise<readonly QueuedWork[]> {
-  const entries = await queue(tx);
+/** `agentActorId` is an agent's own read, narrowed under its live delegations (`queue`). */
+export async function readQueue(
+  tx: TenantQuery,
+  agentActorId?: string,
+): Promise<readonly QueuedWork[]> {
+  const entries = await queue(tx, agentActorId);
   return entries.map((entry) => ({
     reservationId: entry.reservationId,
     taskId: entry.taskId,

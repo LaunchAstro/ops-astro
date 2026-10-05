@@ -28,6 +28,8 @@ export interface GoTrueFactorOptions {
   readonly maxBytes?: number;
   /** Injected for tests; the platform's `fetch` otherwise. */
   readonly fetch?: typeof fetch;
+  /** The hosted project's publishable key, sent as `apikey`: public; absent, none. */
+  readonly projectKey?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -92,6 +94,7 @@ function requestGoTrue(options: GoTrueFactorOptions, timeoutMs: number): Request
           authorization: `Bearer ${accessToken}`,
           'content-type': 'application/json',
           accept: 'application/json',
+          ...(options.projectKey === undefined ? {} : { apikey: options.projectKey }),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
