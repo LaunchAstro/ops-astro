@@ -1,53 +1,88 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The manual privacy runbook's copy finder (C81, docs/local/PRIVACY-RUNBOOK.md):
-// every row of one business that holds a person's text in a value (never a
-// column's or a JSON field's name), in any table, in any letter case,
-// including the records' search column, and every row naming by
-// id a person whose own row or identifier holds it, or their acting identity
-// or sign-in (their memberships, logins and grants), or the agent of a
-// credential they issued. It reads with the owner's connection from
-// DATABASE_ADMIN_URL, with row security off, so a table
-// the connection cannot read in full is an error rather than a silent gap. Every
-// query names the business, and a table with no business column is an error,
-// so no other business's row reaches the list or the export.
+// The manual privacy runbook's copy finder (C81, docs/local/PRIVACY-RUNBOOK.md,
+// 'Every copy of a person'): every row of one business that holds a request's
+// text or an id of the people it names.
 //
 //   node scripts/privacy/find-copies.mjs --business <key> \
-//     --text <what names the person> [--export]
+//     [--text <what names the person>] [--id <uuid>]... [--export]
+//
+// The people are seeded from the business's own rows: a person whose name, or
+// an identifier not rejected, holds the text as whole words (Anna names no
+// Joanna), and each --id as given. Their ids follow to their actors, the
+// logins they still hold and the agent of each credential they issued. A row
+// is a copy when one of its values, at any depth, holds the text anywhere or
+// one of those ids in any letter case; a column's or a JSON field's name never
+// counts ("granted_at" names no Grant). Letters are folded by the database,
+// so the text is matched as the database's locale cases it.
+//
+// One read-only snapshot answers every query, with the owner's connection from
+// DATABASE_ADMIN_URL and row security off, so a row committed mid-search is in
+// all of the list or none of it, and a table the connection cannot read in
+// full is an error rather than a silent gap. Every query names the business,
+// and a table with no business column is an error.
 //
 // Each hit is one JSON line: the table, the row's id (or its physical address
-// when the table has no id) and the columns holding the text. The row itself
-// is printed only with --export, for the request's file; the list alone never
-// spreads the person's details further. The connection string is never
-// printed.
+// when the table has no id), the columns holding the text or an id, and the
+// people whose ids it holds. The row itself is printed only with --export. The
+// summary on stderr ends with the --id flags that find the same people after
+// their own rows are erased. The connection string is never printed.
 
 import { argv, env, exit, stderr, stdout } from 'node:process';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 
 const SAFE = /^[a-z_][a-z0-9_]{0,62}$/u;
+const HEX = '0123456789abcdef';
+
+/** A failure the operator is told about in words; any other is reported without its detail. */
+class Refusal extends Error {}
+
+/** The id in canonical lower case, or null unless it is 8-4-4-4-12 hex digits. */
+function uuid(text) {
+  const id = text.toLowerCase();
+  if (id.length !== 36) return null;
+  for (let at = 0; at < id.length; at += 1) {
+    const dash = at === 8 || at === 13 || at === 18 || at === 23;
+    if (dash ? id[at] !== '-' : !HEX.includes(id[at])) return null;
+  }
+  return id;
+}
 
 function parse(args) {
-  let text;
-  let business;
-  let exportRows = false;
+  const options = { business: undefined, text: undefined, ids: [], exportRows: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === '--export') exportRows = true;
-    else if (arg === '--text') {
-      index += 1;
-      text = args[index];
-    } else if (arg === '--business') {
-      index += 1;
-      business = args[index];
-    } else return { error: `unknown argument ${JSON.stringify(arg)}` };
+    if (arg === '--export') {
+      if (options.exportRows) return { error: '--export is given twice' };
+      options.exportRows = true;
+      continue;
+    }
+    if (arg !== '--business' && arg !== '--text' && arg !== '--id') {
+      return { error: `unknown argument ${JSON.stringify(arg)}` };
+    }
+    index += 1;
+    const value = args[index];
+    if (value === undefined) return { error: `${arg} needs a value` };
+    if (arg === '--id') {
+      const id = uuid(value);
+      if (id === null) return { error: `--id needs a UUID, not ${JSON.stringify(value)}` };
+      options.ids.push(id);
+    } else {
+      const key = arg === '--text' ? 'text' : 'business';
+      if (options[key] !== undefined) return { error: `${arg} is given twice` };
+      options[key] = value;
+    }
   }
-  if (typeof text !== 'string' || text.trim().length < 4) {
+  if (options.text !== undefined && options.text.trim().length < 4) {
     return { error: '--text needs at least 4 characters that name the person' };
   }
-  if (typeof business !== 'string' || business === '') {
+  if (options.text === undefined && options.ids.length === 0) {
+    return { error: '--text or --id needs to name the person' };
+  }
+  if (options.business === undefined || options.business === '') {
     return { error: '--business needs the key of the business the request is for' };
   }
-  return { text, business, exportRows };
+  return options;
 }
 
 /** The text as a LIKE pattern matching itself alone, wherever it appears. */
@@ -56,59 +91,73 @@ function containing(text) {
 }
 
 /**
- * Whether row `t` holds $1 in a value, at any depth: a column's or a JSON
- * field's name is never the person's text ("granted_at" names no Grant).
+ * Whether `value` holds the text ($2) as whole words, in order: both go
+ * through the database's own text-search parser, so the words are its words
+ * and its letter folding ("Anna" is in "Anna-Maria Lee", never in "Joanna").
  */
-const HOLDS = `exists (select from jsonb_path_query(to_jsonb(t), 'strict $.**') v
-    where jsonb_typeof(v) not in ('object', 'array') and lower(v::text) like $1)`;
-
-/** Whether a column's value holds the text or an id, at any depth, never by a field's name. */
-function holds(value, needle, ids) {
-  if (value !== null && typeof value === 'object')
-    return Object.values(value).some((inner) => holds(inner, needle, ids));
-  const held = JSON.stringify(value).toLowerCase();
-  return held.includes(needle) || ids.some((id) => held.includes(id));
-}
+const NAMES = (value) => `to_tsvector('simple', ${value}) @@ phraseto_tsquery('simple', $2)`;
 
 /**
- * The ids standing for the people the text names ($1, in business $2): those
- * whose own row or an identifier holds it, their actors, their logins and the
- * agent actor of each credential they issued (that actor has no person_id).
- * None of these leads to another person, so the set is closed.
+ * The seeds ($2 the text or null, $3 the given ids, in business $1): each id
+ * standing for a person the request names, with that person. A person is
+ * named by their name or an identifier not rejected; their actors, the logins
+ * they still hold and the agent actor of each credential they issued stand for
+ * them. None of these leads to another person, so the set is closed.
  */
-const PERSON_IDS = `with persons as (
-    select t.id from public.people t
-     where t.business_id = $2 and ${HOLDS}
+const SEEDS = `with persons as (
+    select p.id from public.people p
+     where p.business_id = $1 and $2::text is not null and ${NAMES('p.display_name')}
     union
-    select t.person_id from public.person_identifiers t
-     where t.business_id = $2 and ${HOLDS})
-  select id::text as id from persons
+    select i.person_id from public.person_identifiers i
+     where i.business_id = $1 and $2::text is not null and i.review_state <> 'rejected'
+       and (${NAMES('i.value')} or ${NAMES('i.observed_value')})
+    union
+    select unnest($3::uuid[]))
+  select id::text as id, id::text as person from persons
   union
-  select a.id::text from public.actors a
-   where a.business_id = $2 and a.person_id in (select id from persons)
+  select a.id::text, a.person_id::text from public.actors a
+   where a.business_id = $1 and a.person_id in (select id from persons)
   union
-  select l.login_id::text from public.person_logins l
-   where l.business_id = $2 and l.person_id in (select id from persons)
+  select l.login_id::text, l.person_id::text from public.person_logins l
+   where l.business_id = $1 and l.active and l.person_id in (select id from persons)
   union
-  select c.agent_actor_id::text from public.agent_credentials c
-   where c.business_id = $2 and c.issued_by_person_id in (select id from persons)`;
+  select c.agent_actor_id::text, c.issued_by_person_id::text from public.agent_credentials c
+   where c.business_id = $1 and c.issued_by_person_id in (select id from persons)
+  order by 1, 2`;
+
+/** Each value held at any depth of `json`, folded, as `held`; never a field's name. */
+const values = (
+  json,
+) => `(select lower(v #>> '{}') as held from jsonb_path_query(${json}, 'strict $.**') v
+    where jsonb_typeof(v) not in ('object', 'array', 'null')) s`;
+
+/** Whether `s.held` holds the text ($1, or null) or a seed id ($3). */
+const HOLDS = `(s.held like lower($1::text) or exists (select from unnest($3::text[]) i where strpos(s.held, i) > 0))`;
+
+/** Rows of business $2 holding the text or a seed ($3, standing for people $4). */
+const copies = (table) => `select t.ctid::text as address, to_jsonb(t) as row,
+      array(select c.key from jsonb_each(to_jsonb(t)) c
+             where exists (select from ${values('c.value')} where ${HOLDS})
+             order by c.key) as columns,
+      array(select distinct seed.person from unnest($3::text[], $4::text[]) seed(id, person)
+             where exists (select from ${values('to_jsonb(t)')} where strpos(s.held, seed.id) > 0)
+             order by 1) as people
+    from public."${table}" t
+   where t.business_id = $2
+     and exists (select from ${values('to_jsonb(t)')} where ${HOLDS})
+   order by t.ctid`;
 
 /**
- * The business's rows holding the needle, one JSON line each; answers how
- * many, or null when no business has the key.
+ * The business's copies as JSON lines, and the seed ids; null when no
+ * business has the key.
  */
-async function scan(admin, business, needle, exportRows) {
-  let hits = null;
-  await admin.transaction(async (execute) => {
-    await execute('set transaction read only');
+async function scan(admin, { business, text, ids, exportRows }) {
+  return await admin.transaction(async (execute) => {
+    await execute('set transaction isolation level repeatable read, read only');
     await execute('set local row_security = off');
     const [owner] = await execute(`select id from public.businesses where key = $1`, [business]);
-    if (owner === undefined) return;
-    hits = 0;
-    // A row naming the person by id alone (a membership, their login, a grant
-    // to their actor) is a copy of them too.
-    const named = await execute(PERSON_IDS, [containing(needle), owner.id]);
-    const ids = named.map((row) => row.id);
+    if (owner === undefined) return null;
+    const seeds = await execute(SEEDS, [owner.id, text ?? null, ids]);
     const tables = await execute(
       `select c.relname as name,
               exists (select 1 from pg_attribute a
@@ -116,29 +165,28 @@ async function scan(admin, business, needle, exportRows) {
                          and not a.attisdropped) as scoped
          from pg_class c
          join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'public' and c.relkind in ('r', 'p')
+        where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relispartition
         order by c.relname`,
     );
+    const lines = [];
     for (const { name, scoped } of tables) {
-      if (!SAFE.test(name)) throw new Error(`find-copies: unexpected table name ${name}`);
-      if (!scoped) throw new Error(`find-copies: table ${name} has no business_id`);
+      if (!SAFE.test(name)) throw new Refusal(`unexpected table name ${JSON.stringify(name)}`);
+      if (!scoped) throw new Refusal(`table ${name} has no business_id`);
       // oxlint-disable-next-line no-await-in-loop
-      const rows = await execute(
-        `select t.ctid::text as address, to_jsonb(t) as row from public."${name}" t
-          where t.business_id = $2
-            and (${HOLDS} or to_jsonb(t)::text like any($3::text[]))`,
-        [containing(needle), owner.id, ids.map((id) => `%${id}%`)],
-      );
-      for (const { address, row } of rows) {
-        const columns = Object.keys(row).filter((column) => holds(row[column], needle, ids));
-        const found = { table: name, id: row.id ?? address, columns };
+      const rows = await execute(copies(name), [
+        text === undefined ? null : containing(text),
+        owner.id,
+        seeds.map((seed) => seed.id),
+        seeds.map((seed) => seed.person),
+      ]);
+      for (const { address, row, columns, people } of rows) {
+        const found = { table: name, id: row.id ?? address, columns, people };
         if (exportRows) found.row = row;
-        stdout.write(`${JSON.stringify(found)}\n`);
-        hits += 1;
+        lines.push(`${JSON.stringify(found)}\n`);
       }
     }
+    return { lines, seeds: [...new Set(seeds.map((seed) => seed.id))] };
   });
-  return hits;
 }
 
 async function main() {
@@ -152,22 +200,30 @@ async function main() {
     stderr.write('find-copies: DATABASE_ADMIN_URL is unset\n');
     return 2;
   }
-  const admin = connectAsAdmin(url, { source: 'privacy-find-copies' });
-  // Rows are searched in their JSON form, so the text is escaped the same way
-  // (a quote or backslash in a name is found as the row holds it).
-  const needle = JSON.stringify(options.text.toLowerCase()).slice(1, -1);
-  let hits = null;
+  let admin;
   try {
-    hits = await scan(admin, options.business, needle, options.exportRows);
+    admin = connectAsAdmin(url, { source: 'privacy-find-copies' });
+    const found = await scan(admin, options);
+    if (found === null) {
+      stderr.write(`find-copies: no business has the key ${JSON.stringify(options.business)}\n`);
+      return 2;
+    }
+    stdout.write(found.lines.join(''));
+    stderr.write(`find-copies: ${String(found.lines.length)} row(s) hold the text or an id\n`);
+    if (found.seeds.length > 0) {
+      const flags = found.seeds.map((id) => `--id ${id}`).join(' ');
+      stderr.write(`find-copies: to search again after an erasure, add: ${flags}\n`);
+    }
+    return 0;
+  } catch (error) {
+    // A driver's error can carry the address, password and all, so only the
+    // finder's own refusals are printed in words.
+    const why = error instanceof Refusal ? error.message : 'the search failed';
+    stderr.write(`find-copies: ${why}\n`);
+    return 1;
   } finally {
-    await admin.close();
+    await admin?.close().catch(() => null);
   }
-  if (hits === null) {
-    stderr.write(`find-copies: no business has the key ${JSON.stringify(options.business)}\n`);
-    return 2;
-  }
-  stderr.write(`find-copies: ${String(hits)} row(s) hold the text\n`);
-  return 0;
 }
 
 exit(await main());

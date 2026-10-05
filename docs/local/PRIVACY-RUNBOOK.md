@@ -40,7 +40,14 @@ by kind. A copy not on the list is a copy the reply missed.
   credential they issued and that agent's rows, records and their fields,
   incidents). Found with
   `node scripts/privacy/find-copies.mjs --business <key> --text <name>`, which
-  searches the request's business only and refuses to run without one.
+  searches the request's business only and refuses to run without one. It
+  lists every row holding the text in a value, and every row holding an id of
+  the people the text names: a person whose name, or an identifier not
+  rejected, holds the text as whole words (`--text Anna` names no Joanna),
+  their actors, the logins they still hold and the agent of each credential
+  they issued. Each hit names the people whose ids it holds; a hit naming none
+  was found by its text alone, so the owner checks whose it is. The list ends
+  with the `--id` flags for those people, kept for the erasure's re-search.
 - **Sign-in security rows:** three installation-wide `ops` tables keyed by
   the SHA-256 of the login's subject, with no name or email:
   `ops.second_factor_codes` (one row per code sent, and one per code answered
@@ -84,7 +91,8 @@ by kind. A copy not on the list is a copy the reply missed.
 
 ### Erasure
 
-1. Find every copy and export it for the request's file.
+1. Find every copy and export it for the request's file, with the `--id`
+   flags the finder prints at the end of its list.
 2. Delete each copy, or record the lawful reason it is kept (below). By hand,
    in one transaction on the application's connection for that business:
    - a person: their `person_identifiers` rows, then their `people` row;
@@ -94,8 +102,10 @@ by kind. A copy not on the list is a copy the reply missed.
      leases) is refused by the database; keep it, with the reason recorded,
      until the copy register's erasure fan-out (C84) is live.
 3. Search every copy again, and a backup restored from before the erasure, for
-   the person. Any hit outside a lawfully kept copy means the erasure is not
-   done.
+   the person: the finder with the same `--text` and the `--id` flags from
+   step 1, so a row naming the person by id alone is still found once their
+   own rows are gone. Any hit outside a lawfully kept copy means the erasure is
+   not done.
 
 ### Export
 
