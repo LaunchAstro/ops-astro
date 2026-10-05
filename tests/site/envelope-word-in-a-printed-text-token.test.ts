@@ -44,6 +44,22 @@ describe('a template the page nests must end as it began', () => {
     expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: false });
   });
 
+  it('refuses a word after an expression that names the tag a less-than opens', async () => {
+    // The browser reads `<script>`; the text a tokenizer sees without the expression is `<>`.
+    const before = '<div>{true && <span>a <{"script"}></span>}<b>Hello there</b></div>\n';
+    expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: false });
+  });
+
+  it('refuses a word after one nested template ends on a less-than the next one names', async () => {
+    const before = '<div>{true && <>a <</>}{true && <>textarea></>}<b>Hello there</b></div>\n';
+    expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: false });
+  });
+
+  it('refuses a page whose expression prints raw markup inside a condition', async () => {
+    const before = '<div>{true ? $$unescapeHTML("<b>") : ""}</div>\n<p>Hello there</p>\n';
+    expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: false });
+  });
+
   it('still accepts a word after nested templates that close', async () => {
     const before = '<div>{true && <span>a</span>}<><i>b</i></><b>Hello there</b></div>\n';
     expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: true });
