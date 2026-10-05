@@ -79,6 +79,7 @@ export async function pane(overrides: Partial<AgentPaneProps> = {}): Promise<Mou
     onJobList: ignore,
     busy: false,
     refusal: null,
+    decideClosed: false,
     onDecide: ignore,
     onReject: ignore,
     onCancel: ignore,

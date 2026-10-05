@@ -677,9 +677,17 @@ describe.skipIf(serverUrl === undefined)(
         fields: { assignee: replacement.personId },
       });
       await taskHeld.promise;
+      const subdomain = 'send.example.test';
       const mailing = sendInboxEmail(mailDb, w.business, item?.id ?? '', broker, {
         appOrigin: 'https://ops.example.test',
-        from: 'hello@example.test',
+        from: `hello@${subdomain}`,
+        sender: {
+          subdomain,
+          verified: true,
+          records: { dkim: 'verified', spf: 'verified', returnPathMx: 'verified' },
+          dmarc: 'reject',
+          mock: false,
+        },
       });
       const outcomes = Promise.allSettled([assigning, mailing]);
       await itemHeld.promise;

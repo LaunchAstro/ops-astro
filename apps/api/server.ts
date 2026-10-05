@@ -49,7 +49,11 @@ import {
   KEY_FILE_VARIABLE,
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
-import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
+import type {
+  AdminConnection,
+  BusinessId,
+  Database,
+} from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
@@ -72,6 +76,7 @@ import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { siteCatalogue } from '../../packages/core-connectors/src/index.ts';
 import type { AgentLimits } from './auth/agent-quota.ts';
 import { createGoTrueFactors } from './auth/factors.ts';
+import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink, type ErrorSinkLink } from './health/error-sink-link.ts';
 import { createLangfuseHealth } from './health/tracing.ts';
 import { goTrueLogins, providerAdminKey } from './auth/provider-logins.ts';
@@ -83,6 +88,7 @@ import {
 import { startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
+import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
@@ -211,6 +217,8 @@ export interface ApiConfig {
    * mounted. Its check is `admitReads` unless a test hands in its own to count.
    */
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
+  /** The email provider's delivery hook (AW-07b); absent, the hook route is not mounted. */
+  readonly mailHook?: MailHookOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -308,6 +316,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
     });
   }
 
+  // AW-07b: the provider's delivery and bounce events, verified by signature,
+  // as system work with no sign-in (`mail-hook.ts`).
+  if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);
+
   server.route(
     '/',
     createApi({
@@ -337,7 +349,11 @@ export function composeApi(config: ApiConfig): ComposedApi {
         ? {}
         : { answerConversation: config.answerConversation }),
       // The provider GoTrue is: the one destination its factor calls reach.
-      factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
+      // A hosted gateway refuses them without the project's publishable key.
+      factors: createGoTrueFactors({
+        baseUrl: config.signIn.issuer,
+        ...(key === '' ? {} : { projectKey: key }),
+      }),
       logins,
       // Only where a provider key is held (the local server): the Vercel
       // function has none, so it asks the owner nothing and leaves every
@@ -405,6 +421,15 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
+  // The hosted provider's public key: the page's sign-in and this server's
+  // own provider calls (factors, sign-out) carry it. Only a public key passes.
+  let providerKey: string;
+  try {
+    providerKey = publishableKey(environment['SUPABASE_PUBLISHABLE_KEY']);
+  } catch (error) {
+    console.error(`api: ${(error as Error).message}`);
+    process.exit(1);
+  }
   for (const [name, value] of [
     ['DATABASE_URL', databaseUrl],
     ['DATABASE_ADMIN_URL', adminUrl],
@@ -465,6 +490,16 @@ async function main(): Promise<void> {
     console.error(`api: ${(error as Error).message}`);
     process.exit(1);
   }
+  // AW-07b: the provider's delivery hook, mounted only with a hook secret in
+  // the provider's form; a malformed one stops the server, naming the setting.
+  const hookConfig = mailHookSettings(environment);
+  if (hookConfig.kind === 'invalid') {
+    console.error(`api: ${hookConfig.problem}`);
+    process.exit(1);
+  }
+  // The hook's events land over the businesses restart recovery resolves, set
+  // below before the port is bound.
+  let hookBusinesses: readonly BusinessId[] = [];
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -474,6 +509,7 @@ async function main(): Promise<void> {
     database,
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
+    providerKey,
     keys,
     live: { topics, presence: createLivePresence() },
     ...(broker === undefined
@@ -483,7 +519,16 @@ async function main(): Promise<void> {
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     errorSink,
     ...(alerts === undefined ? {} : { alerts }),
+    ...(hookConfig.kind === 'configured'
+      ? {
+          mailHook: {
+            secret: hookConfig.secret,
+            businesses: async () => await Promise.resolve(hookBusinesses),
+          },
+        }
+      : {}),
   });
+  console.log(`api: email hook ${hookConfig.kind === 'configured' ? 'mounted' : 'not mounted'}`);
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
   // bound: a process start is the resume entry, and a failure is a failed
@@ -509,6 +554,7 @@ async function main(): Promise<void> {
   // an interval; nothing on the wire reaches it. Started before the port is
   // bound, so a custody that cannot start stops the server first.
   const traced = recovered.businesses.map((business) => business.businessId);
+  hookBusinesses = traced;
   const tracer =
     traceConfig.kind === 'on'
       ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))
