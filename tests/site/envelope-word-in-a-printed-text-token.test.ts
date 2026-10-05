@@ -27,6 +27,29 @@ describe('a word the built page reads inside a tag is refused', () => {
   });
 });
 
+describe('a template the page nests must end as it began', () => {
+  it.each([
+    ['a fragment', '<div><>a <{""}textarea></><b>Hello there</b></div>\n'],
+    ['a named fragment', '<div><Fragment>a <{""}textarea></Fragment><b>Hello there</b></div>\n'],
+    ['a condition', '<div>{true && <>a <{""}textarea></>}<b>Hello there</b></div>\n'],
+    ['a choice', '<div>{true ? <>a <{""}textarea></> : null}<b>Hello there</b></div>\n'],
+    ['a list', '<div>{[1].map(() => <>a <{""}textarea></>)}<b>Hello there</b></div>\n'],
+    [
+      'an element in a condition',
+      '<div>{true && <span>a <{""}textarea></span>}<b>Hello there</b></div>\n',
+    ],
+    ['an attribute left open', '<div>{true && <>a <{""}p title="</>}<b>Hello there</b>"></div>\n'],
+    ["a component's children", '<div><Card>a <{""}textarea></Card><b>Hello there</b></div>\n'],
+  ])('refuses a word after %s that ends inside markup', async (_name, before) => {
+    expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: false });
+  });
+
+  it('still accepts a word after nested templates that close', async () => {
+    const before = '<div>{true && <span>a</span>}<><i>b</i></><b>Hello there</b></div>\n';
+    expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: true });
+  });
+});
+
 describe('a page holding a select is refused', () => {
   it.each([
     ['unclosed, before the word', 'amp', 'copy', '<div><select></div>Fish &<b></b>amp; chips\n'],
