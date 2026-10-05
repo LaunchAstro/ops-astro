@@ -9,8 +9,8 @@
 // The reader judges each byte as it arrives and keeps its first refusal,
 // so a refusal for the size cap means every earlier byte passed and one
 // byte went past the cap (F1's `output` crossing). A file's bytes are kept
-// in one buffer that doubles as they arrive, never booked from its
-// declared size, and copied, so the caller may reuse its chunk. Every header byte is
+// in one buffer that doubles as they arrive, never past the declared size
+// or what the cap still lets arrive, and copied, so the caller may reuse its chunk. Every header byte is
 // read: the pad and device fields hold only zeros or octal, and a name
 // field is never empty, so an entry's last segment fits the name field. Mode, owner and time are never read, except a
 // `prepare` file's owner-execute bit, which O2's layer rewrite keeps.
@@ -44,7 +44,7 @@ const RULES = {
 } as const;
 
 const BLOCK = 512;
-/** A file's first buffer; it doubles as bytes arrive, never past the declared size. */
+/** A file's first buffer; it doubles as bytes arrive, within the declared size and the cap. */
 const FIRST_BUFFER = 64 * 1024;
 const MAX_NAME = 255;
 const SEGMENT = /^[A-Za-z0-9._~@+-]+$/u;
@@ -147,7 +147,9 @@ export class UstarReader {
     }
     if (state.at === 'data') {
       if (state.fill + bytes.length > state.data.length) {
-        const grown = new Uint8Array(Math.min(state.size, 2 * (state.fill + bytes.length)));
+        // Never past the declared size, nor past what the cap still lets arrive.
+        const most = Math.min(state.size, state.fill + bytes.length + (this.cap - this.bytes));
+        const grown = new Uint8Array(Math.min(most, 2 * (state.fill + bytes.length)));
         grown.set(state.data.subarray(0, state.fill));
         state.data = grown;
       }
