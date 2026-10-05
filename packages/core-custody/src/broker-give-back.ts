@@ -26,7 +26,19 @@
 import type { TenantQuery } from '../../core-records/src/index.ts';
 
 /** The abandonment that counted the hold's open calls: the end at a budget stop. */
-const COUNTED_CAUSES = ['budget_stop_ended'];
+export const COUNTED_CAUSES = ['budget_stop_ended'];
+
+/**
+ * The hold `r` counted its open calls at their maximum: ended at a budget stop
+ * (`causes` names the parameter holding COUNTED_CAUSES), or topped up.
+ */
+export const countedHold = (causes: string): string =>
+  `((r.state = 'abandoned' and r.classified_cause = any(${causes}::text[]))
+     or (r.state in ('held', 'actual', 'abandoned') and exists (
+           select 1 from public.budget_answers ba
+             join public.budget_asks k on k.business_id = ba.business_id and k.id = ba.ask_id
+            where ba.business_id = r.business_id and k.reservation_id = r.id
+              and ba.kind = 'top_up')))`;
 
 interface Due {
   readonly reservation_id: string;
@@ -58,12 +70,7 @@ export async function giveBack(tx: TenantQuery, callId: string): Promise<void> {
        from public.model_calls c
        join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
       where c.business_id = $1 and c.id = $2 and c.state in ('settled', 'released')
-        and ((r.state = 'abandoned' and r.classified_cause = any($3::text[]))
-          or (r.state in ('held', 'actual', 'abandoned') and exists (
-                select 1 from public.budget_answers ba
-                  join public.budget_asks k on k.business_id = ba.business_id and k.id = ba.ask_id
-                 where ba.business_id = r.business_id and k.reservation_id = r.id
-                   and ba.kind = 'top_up')))
+        and ${countedHold('$3')}
         for update of r`,
     [tx.businessId, callId, COUNTED_CAUSES],
   );
