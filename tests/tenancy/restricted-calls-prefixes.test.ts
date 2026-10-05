@@ -98,6 +98,12 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // T3e2: the journey drops nothing.
   'public.outage_reports': { cause: 'worker_lost' },
+  // A cleared secret, whole with no sealed value (C31).
+  'public.custody_secrets': {
+    name: 'restricted-calls.seed',
+    scope_kind: 'business',
+    scope_id: null,
+  },
   'public.outage_runs': {
     outage_id: randomUUID(),
     attempt_id: randomUUID(),
@@ -353,7 +359,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
   },
-  // 20261005023105 (C59): no journey resets a factor.
+  // 20261005045316 (C59): no journey resets a factor.
   'public.factor_resets': {
     person_id: randomUUID(),
     login_id: randomUUID(),

@@ -30,6 +30,9 @@
     "tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts",
     "tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts",
     "tests/review/sl12-18-placement-lineage-proof.test.ts",
-    "tests/review/sl12-19-plan-record-restart-proof.test.ts"
+    "tests/review/sl12-19-plan-record-restart-proof.test.ts",
+    "tests/review/access-change-alerts.test.ts",
+    "tests/review/forwarder-replay-time-order.test.ts",
+    "tests/review/trace-jobs-log-and-retention.test.ts"
   ]
 }

@@ -96,7 +96,8 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
     },
     async close() {
       listening = false;
-      await closeAll(held, listener);
+      held.closing ??= closeAll(held, listener);
+      await held.closing;
     },
   };
 }
@@ -105,6 +106,8 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
 interface Held {
   readonly stops: Set<Stop>;
   stopping: Promise<void>[] | undefined;
+  /** The one shutdown, however many callers ask: each waits out every stream. */
+  closing?: Promise<void>;
 }
 
 /**

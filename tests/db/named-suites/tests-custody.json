@@ -1,0 +1,15 @@
+{
+  "comment": [
+    "Not named: c31-secret-set-not-task-content.test.ts reads the S0-5 world's content list and opens no database. c31-audit-chain-corrupted.test.ts runs C31's audit-chain case over corrupted hashes, so it fails by design; vitest.config.ts collects it only inside a test worker, as the child c31-audit-chain-test-catches-corruption.test.ts spawns. That parent spawns it with the database's environment and is named below, so the database conformance job runs it."
+  ],
+  "invariant": [],
+  "conformance": [
+    "tests/custody/c31-audit-chain-test-catches-corruption.test.ts",
+    "tests/custody/c31-credentials.test.ts",
+    "tests/custody/c31-last-used-moves-forward.test.ts",
+    "tests/custody/c31-revoked-list-and-revision-range.test.ts",
+    "tests/custody/c31-secret-set-absent.test.ts",
+    "tests/custody/c31-secret-set-guards.test.ts",
+    "tests/custody/c31-two-setters-overlap.test.ts"
+  ]
+}

@@ -69,6 +69,7 @@ export type { AgentIdentity, Caller } from './cast.ts';
 export { agentPath, bearer, call, personPath } from './drive.ts';
 export type { Answer } from './drive.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import { generateSealingPair } from '../../packages/core-records/src/custody/index.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { testSignIn } from '../support/sign-in.ts';
@@ -110,6 +111,12 @@ export interface World {
 export async function createWorld(part: string): Promise<World> {
   process.env['GATE_SIGNING_KEY_ID'] ??= `test/acceptance@1`;
   process.env['GATE_SIGNING_SECRET'] ??= randomUUID();
+  // The broker's public key custody seals to (C31). The world holds no private
+  // half: nothing in a proof opens a secret.
+  if (process.env['CUSTODY_PUBLIC_KEY'] === undefined) {
+    process.env['CUSTODY_KEY_ID'] = 'test/acceptance@1';
+    process.env['CUSTODY_PUBLIC_KEY'] = generateSealingPair('test/acceptance@1').publicRaw;
+  }
   // AW-04: the plan accept reads the run's instruction file from the server's
   // root. By directory, not `import.meta.url`: a jsdom suite's is not a file URL.
   process.env[INSTRUCTION_ROOT_VARIABLE] ??= join(
