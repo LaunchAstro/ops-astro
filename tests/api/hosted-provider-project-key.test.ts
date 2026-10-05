@@ -111,10 +111,18 @@ needsDatabase(
 );
 
 it('factor enrolment, check and removal send the configured project key, and none without one', async () => {
-  const sent: (string | null)[] = [];
-  const fetcher: typeof fetch = (_input, init) => {
-    sent.push(new Headers(init?.headers).get('apikey'));
-    return Promise.resolve(Response.json({}));
+  const sent: { readonly step: string; readonly apikey: string | null }[] = [];
+  const fetcher: typeof fetch = (input, init) => {
+    const { pathname } = new URL(input instanceof Request ? input.url : String(input));
+    const last = pathname.split('/').at(-1);
+    sent.push({
+      step: init?.method === 'DELETE' ? 'DELETE' : `${init?.method} ${last}`,
+      apikey: new Headers(init?.headers).get('apikey'),
+    });
+    // The challenge answers with an id, so the check goes on to its verification request.
+    return Promise.resolve(
+      Response.json(pathname.endsWith('/challenge') ? { id: 'test-only-challenge' } : {}),
+    );
   };
   for (const projectKey of [key, undefined]) {
     const factors = createGoTrueFactors({
@@ -129,8 +137,8 @@ it('factor enrolment, check and removal send the configured project key, and non
     // eslint-disable-next-line no-await-in-loop -- one call after another
     await factors.remove('test-only-access-token', randomUUID());
   }
-  expect(sent.length).toBeGreaterThanOrEqual(6);
-  const half = sent.length / 2;
-  expect(sent.slice(0, half).every((value) => value === key)).toBe(true);
-  expect(sent.slice(half).every((value) => value === null)).toBe(true);
+  const steps = ['POST factors', 'POST challenge', 'POST verify', 'DELETE'];
+  expect(sent.map(({ step }) => step)).toEqual([...steps, ...steps]);
+  expect(sent.slice(0, 4).map(({ apikey }) => apikey)).toEqual([key, key, key, key]);
+  expect(sent.slice(4).map(({ apikey }) => apikey)).toEqual([null, null, null, null]);
 });
