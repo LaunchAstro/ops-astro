@@ -4,9 +4,20 @@
 // of the validated bytes. A store artefact holding a symlink is refused (a
 // copied link would still serve the store's bytes); a `served/<digest>` that
 // is a link, planted before the promotion, is refused; and the copy is
-// readable by a service running as another user, as the artefact was.
+// readable by a service running as another user, as the artefact was. The
+// copies live beside production's link, in a folder only the promoting user
+// may write (round 2): a store another user writes never holds them.
 
-import { mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -36,14 +47,18 @@ function storeWith(extra: (artefact: string) => void = () => {}): string {
   return store;
 }
 
-function promoted(store: string): { outcome: ReturnType<typeof promote>; pointed: string[] } {
+function promoted(
+  store: string,
+  current = join(store, 'current'),
+  migrate = (): boolean => true,
+): { outcome: ReturnType<typeof promote>; pointed: string[] } {
   const pointed: string[] = [];
   const effects: PromotionEffects = {
     services: () => [
       { manager: 'docker', name: 'prod-api', running: false },
       { manager: 'docker', name: 'prod-auth', running: false },
     ],
-    migrate: () => true,
+    migrate,
     point: (_link, served) => pointed.push(served),
     start: () => {},
   };
@@ -55,7 +70,7 @@ function promoted(store: string): { outcome: ReturnType<typeof promote>; pointed
       dryRun: false,
       api: { manager: 'docker', name: 'prod-api' },
       auth: { manager: 'docker', name: 'prod-auth' },
-      current: join(store, 'current'),
+      current,
     },
     effects,
   );
@@ -94,4 +109,52 @@ it('the served copy is readable by a service running as another user', () => {
   expect(statSync(outcome.artefactPath).mode & 0o055).toBe(0o055);
   expect(statSync(join(outcome.artefactPath, 'static')).mode & 0o055).toBe(0o055);
   expect(statSync(join(outcome.artefactPath, 'static', 'index.html')).mode & 0o044).toBe(0o044);
+});
+
+it('a production folder others can write is refused, and nothing is promoted', () => {
+  const store = storeWith();
+  const home = mkdtempSync(join(tmpdir(), 'ops-astro-frozen-home-'));
+  stores.push(home);
+  chmodSync(home, 0o777);
+  const { outcome, pointed } = promoted(store, join(home, 'current'));
+  expect(outcome).toMatchObject({
+    kind: 'refused',
+    reason: expect.stringMatching(/written by others/u),
+  });
+  expect(pointed).toEqual([]);
+});
+
+it('a store artefact that is itself a link is refused', () => {
+  const store = storeWith();
+  const artefact = join(store, artefactName(VERSION));
+  renameSync(artefact, join(store, 'elsewhere'));
+  symlinkSync(join(store, 'elsewhere'), artefact);
+  expect(storedArtefact(VERSION, store)).toMatch(/no artefact/u);
+});
+
+it('a link put at the served copy during the migration fails the promotion', () => {
+  const store = storeWith();
+  const selected = storedArtefact(VERSION, store);
+  if (typeof selected === 'string') throw new Error(selected);
+  const served = join(store, 'served', selected.digest.slice('sha256:'.length));
+  const { outcome, pointed } = promoted(store, join(store, 'current'), () => {
+    renameSync(served, `${served}-moved`);
+    symlinkSync(`${served}-moved`, served);
+    return true;
+  });
+  expect(outcome.kind).toBe('failed');
+  expect(pointed).toEqual([]);
+});
+
+it('the served copy takes no group or other write, whatever the artefact had', () => {
+  const store = storeWith();
+  const artefact = join(store, artefactName(VERSION));
+  chmodSync(artefact, 0o777);
+  chmodSync(join(artefact, 'static'), 0o777);
+  chmodSync(join(artefact, 'static', 'index.html'), 0o666);
+  const { outcome } = promoted(store);
+  if (outcome.kind !== 'promoted') throw new Error(`not promoted: ${JSON.stringify(outcome)}`);
+  for (const path of ['', 'static', join('static', 'index.html')]) {
+    expect(statSync(join(outcome.artefactPath, path)).mode & 0o022, path).toBe(0);
+  }
 });
