@@ -152,3 +152,46 @@ it(
   },
   SLOW,
 );
+
+it(
+  'is red when the working tree is left changed after admission, though the head passes',
+  () => {
+    const { head } = at('clean');
+    const body = [
+      'Reviewer: Codex',
+      'Model: gpt-6-sol',
+      `Head SHA: ${head}`,
+      'Verdict: approve',
+      '',
+      'Review checkpoint',
+      '  branch:      work',
+      '  base:        main',
+      `  head:        ${head}`,
+      '  commits:     1',
+      '',
+      'Code review: no findings',
+      '',
+      `Security review: run against ${head}, no findings`,
+    ].join('\n');
+    const pr = {
+      body,
+      labels: '',
+      openIssues: '',
+      changedFiles: 'tests/ci/planted-clean.test.ts',
+      agentModels: 'claude-opus-5-5',
+    };
+    const lines: string[] = [];
+    const result = wholeGate({ cwd: tree, base, head, skip: true, pr }, (line: string) => {
+      lines.push(line);
+      // After admission, the lane edits a file and leaves it uncommitted.
+      if (line.startsWith('pre-ready: (preflight)')) {
+        writeFileSync(join(tree, 'tests/ci/planted-clean.test.ts'), '// an edit\n');
+      }
+    });
+    git('checkout', '-q', '--', '.');
+    expect(result.ok).toBe(false);
+    expect(result.failed, lines.join('\n')).toBe('unchanged');
+    expect(lines.join('\n')).toContain('(g) merge-tree against origin/main: green');
+  },
+  SLOW,
+);
