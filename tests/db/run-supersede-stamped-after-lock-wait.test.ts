@@ -2,10 +2,14 @@
 //
 // A claimed run whose plan version is replaced has no stamped end of its own:
 // conversation-work.ts `runWork` reads its end from the version's
-// `superseded_at`. A propose waits on the run's row lock before it supersedes,
-// so the supersede must not be stamped earlier than the instant that lock
-// released, or the conversation's body becomes purge-due before its window
-// has run from the run's real end.
+// `superseded_at`. A propose locks a run holding a live lease before it
+// supersedes, so the supersede must not be stamped earlier than the instant
+// that lock released, or the conversation's body becomes purge-due before its
+// window has run from the run's real end. This file proves the column's
+// stamp: the run lock taken first, then propose's own supersede statement.
+// That runWork reads a claimed run's end from the supersede is
+// tests/api/conversation-retention-work.test.ts's 'a run picked up and then
+// superseded by a new version has ended at the supersede'.
 
 import { expect, it } from 'vitest';
 import { awaitParked, barrier, racer } from '../runtime/schedules-harness.ts';

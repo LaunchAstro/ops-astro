@@ -21,9 +21,13 @@
 -- migration's instant (later than the true end, never earlier).
 --
 -- A claimed run whose plan version is replaced keeps its state, so its end is
--- the version's `superseded_at`. The propose that supersedes takes the run's
--- lock first, so the same clock rule holds there: the first supersede is
--- stamped with `clock_timestamp()`, whatever the statement supplies.
+-- the version's `superseded_at`. The propose (and the hand-back successor's
+-- supersede) first locks every run that holds a live lease, the only runs
+-- that can still act, so the same clock rule holds there: the first supersede
+-- an UPDATE writes is stamped with `clock_timestamp()`, whatever the statement
+-- supplies. An insert keeps the value it carries: no product path inserts a
+-- superseded version, and test worlds seed history that way. Versions
+-- superseded before this migration keep their transaction-start time.
 
 alter table public.planned_runs add column ended_at timestamptz;
 
