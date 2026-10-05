@@ -26,7 +26,7 @@
 import type { TenantQuery } from '../../core-records/src/index.ts';
 
 /** The abandonment that counted the hold's open calls: the end at a budget stop. */
-export const COUNTED_CAUSES = ['budget_stop_ended'];
+export const COUNTED_CAUSES: readonly string[] = ['budget_stop_ended'];
 
 /**
  * The hold `r` counted its open calls at their maximum: ended at a budget stop
