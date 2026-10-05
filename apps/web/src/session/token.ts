@@ -79,8 +79,8 @@ const HELD_KEY = 'ops-astro.held-businesses';
 /**
  * Each entry of the held list is read on its own, as a session's business key
  * is (`isSession`): any string is one, nothing else is, and an entry of
- * another shape is skipped, never the whole list. An entry is only ever used
- * to remove the tab's copies under their fixed prefixes, and the business a
+ * another shape is skipped, never the whole list. An entry serves only to
+ * remove the tab's copies under their fixed prefixes, and the business a
  * sign-in ends in is cleared whatever the list holds.
  */
 const businessesIn = (value: unknown[]): string[] =>
