@@ -113,7 +113,11 @@ const PLANTS: [string, [string, string, string][], string][] = [
     [gate('{ group: ops-merge-m5, labels: [self-hosted] }')],
     'runs-on unread',
   ],
-  ['a label one character off', [gate(ROUTE.replace('m5\\"', 'm6\\"'))], 'asks for'],
+  [
+    'a label one character off',
+    [gate(ROUTE.replace('merge-m5"', 'merge-m6"'))],
+    'asks for self-hosted,ops-merge-m6',
+  ],
   [
     'an expression inside a longer string',
     [gate('self-hosted-${{ vars.OPS_CI_LOCAL }}')],
