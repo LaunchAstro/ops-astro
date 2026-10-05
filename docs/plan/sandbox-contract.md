@@ -2,7 +2,7 @@
 
 Status: **draft for approval**. Drafted 5 October 2026 under
 [ADR 0048](../adr/0048-sandbox-launcher-contract-drafted-reviewed-not-built.md),
-revised the same day after two adversarial reviews. Nothing here is built.
+revised the same day after three adversarial reviews. Nothing here is built.
 Nathan approves the final version after the adversarial findings are
 resolved, and only then may implementation start. Until then untrusted
 package installation and headless execution stay unavailable, with no
@@ -15,7 +15,10 @@ Every grammar here is closed: what it does not name is refused.
 Terms, each used in one sense only:
 
 - **site record**: Ops Astro's record of one client site (section 3, I6);
-- **pin**: the site record's toolchain entry in `docs/supply-chain-pins.md`;
+- **pin**: the site record's toolchain entry in `docs/supply-chain-pins.md`
+  (lockfile digest, base and entrypoint digests per platform, image id);
+- **pin list**: the file the socket proxy reads the pinned image ids from,
+  written only by the deploy of a reviewed change;
 - **image store**: the Docker daemon's images;
 - **package registry**: an npm registry;
 - **tool registry**: Ops Astro's list of tools and their availability.
@@ -38,6 +41,9 @@ Building a site runs the site's code: its `astro.config.mjs`, integrations
   host's build, and nothing more. Hostile code inside a run can always write
   any output it likes, so the toolchain must be one a person approved: a pin
   changes only through a reviewed change, and the launcher never writes one.
+  The verdict also trusts the site's own code at `baseRevision` (its config,
+  integrations and components), which no pin covers, only as much as it is
+  already trusted by being live.
 - **T3.** Agent tools that run arbitrary code, headless browsers and any other
   user are out of scope. Each needs its own amendment and its own approval.
 
@@ -46,12 +52,14 @@ Building a site runs the site's code: its `astro.config.mjs`, integrations
 The launcher knows exactly three run classes. Any other request is refused.
 
 - **S0. `probe`**: our fixed probe image by digest and its fixed command,
-  under the same rules as the class it probes (section 8).
+  with the create body of the class it probes (section 8, appendix).
 - **S1. `site.build`**: build one site tree with its pinned image. The
   container command is fixed: the launcher's entrypoint (its own pinned
-  layer, B8) reads the input tar from stdin into `/work`, runs the site
-  record's build command with its stdout sent to stderr, and writes a tar of
-  `dist/` to the original stdout. Used twice per envelope check.
+  layer, B8) first checks that its environment is exactly B3 and exits
+  refused if not, then reads the input tar from stdin into `/work`, runs the
+  site record's build command with its stdout sent to stderr, and writes a
+  tar of `dist/` to the original stdout. No site code runs before that
+  check. Used twice per envelope check.
 - **S2. `site.prepare`**: install one site's dependencies, offline, into the
   layer its image is assembled from (B8). Runs only on the request of a
   reviewed pin change (T2), never during a check. It receives only
@@ -83,8 +91,9 @@ allow-list. Unknown keys, unknown values and extra fields are refused.
   - more than 20,000 entries or 50 MB;
   - any entry other than a regular file or a directory (no symlink, no
     submodule);
-  - a name outside O1's character set, a name that is not NFC, or two names
-    equal after ASCII case folding;
+  - a name outside O1's character set plus `[` and `]` (for dynamic routes
+    such as `[slug].astro`), a name that is not NFC, or two names equal
+    after ASCII case folding;
   - an entry named `node_modules`, `dist`, `.astro`, `.vercel` or `.netlify`
     at any depth;
   - a `.gitattributes`, `.npmrc`, `.yarnrc`, `.yarnrc.yml`,
@@ -96,18 +105,24 @@ allow-list. Unknown keys, unknown values and extra fields are refused.
   carry the same pair.
 - **I5. The lockfile grammar.** `site.prepare` accepts only
   `package-lock.json` with `lockfileVersion` 3 and a `package.json` with no
-  `packageManager` field. Every non-root package entry has a `resolved` URL
-  of the form `https://<host>/<name>/-/<file>.tgz`, where `<host>` is one of
-  the fixed package registry hosts in the launcher's configuration
-  (`registry.npmjs.org` and `npm.pkg.github.com`), and a `sha512`
-  `integrity`. A `link` entry is accepted only when it points inside the
-  tree. A git, `file:`, `http:` or other URL, a missing or weaker integrity,
-  or any other host is a refusal.
-- **I6. The site record** holds the build command, the output directory
-  (`dist`), the Node version, the names of the build environment variables,
-  `build.format`, `output` and the content allow-list. It equals the host's
-  production build (section 7, H1) and changes only through a reviewed
-  change.
+  `packageManager` field. Every non-root package entry has a `sha512`
+  `integrity` and a `resolved` URL of exactly one of two forms, where
+  `<name>` and `<version>` equal the entry's own `name` and `version` and
+  `<name>` follows npm's name grammar:
+  - `https://registry.npmjs.org/<name>/-/<base>-<version>.tgz`;
+  - `https://npm.pkg.github.com/download/<name>/<version>/<40 hex>`, with
+    `<name>` under a scope the site record lists.
+
+  Any other form, a `link` entry, a missing or weaker integrity, or any other
+  host is a refusal.
+
+- **I6. The site record** holds the build command, the host's install
+  command, the output directory (`dist`), the Node version, the build
+  environment variables and their values, `build.format`, `trailingSlash`,
+  `output`, the private package scopes and the content allow-list. It equals
+  the host's production build (H1) and changes only through a reviewed
+  change. No build variable whose value is a secret is ever recorded; a site
+  whose host build needs one is refused.
 
 ## 4. Isolation
 
@@ -115,8 +130,10 @@ Every run is one new container under gVisor (`runsc`), removed when the run
 ends, whatever the outcome.
 
 - **B1. Runtime.** `runsc` at the version and hash pinned in
-  `docs/supply-chain-pins.md`, registered with the daemon by a pinned path
-  and a pinned argument list: `--network=sandbox`, no host Unix socket or
+  `docs/supply-chain-pins.md`, installed at a path that contains its sha256
+  (`/opt/runsc/<sha256>/runsc`) on a read-only filesystem, which a VM boot
+  check hashes before the daemon starts. It is registered with the daemon by
+  that path and a pinned argument list: `--network=sandbox`, no host Unix socket or
   FIFO access, no flag override, no host-backed overlay, no debug log, and a
   named platform. Before every run the launcher reads the runtime entry
   through `GET /info` and refuses when the path or arguments differ from the
@@ -124,29 +141,33 @@ ends, whatever the outcome.
 - **B2. Network.** Network mode `none` for every run class: loopback only.
 - **B3. Environment**, exact per class, including what Docker and the base
   image add:
-  - S1: `PATH`, `HOME=/tmp/home`, `HOSTNAME` (a fixed name carrying no site
-    or client), `NODE_ENV=production`, `ASTRO_TELEMETRY_DISABLED=1`, the base
-    image's own Node variables, cache directories under `/tmp`, and the site
+  - S1: `PATH`, `HOME=/tmp/home`, `HOSTNAME=sandbox`, `NODE_ENV=production`,
+    `ASTRO_TELEMETRY_DISABLED=1`, the base image's own variables with the
+    values its pinned config gives (written out in the pin), and the site
     record's build environment variables with the values the record gives;
   - S2: the same without `NODE_ENV`, and with a npm user configuration the
     launcher writes (offline, `ignore-scripts`, cache path);
   - S0: as the class it probes.
   - No env file, no mounted credential, no Docker socket.
 - **B4. Host writes.** A read-only root filesystem; no bind mount, `Mounts`
-  entry or volume, named or anonymous; the base image declares no `VOLUME`.
-  The only writable places are `tmpfs` mounts at fixed paths (`/work`,
-  `/tmp`) with `nosuid,nodev` and a size inside the memory limit. The log
-  driver is `none`: output leaves only through attach.
+  entry or volume, named or anonymous; the assembled image declares no
+  `VOLUME`. The only writable places are `tmpfs` mounts at fixed paths
+  (`/work`, `/tmp`) with `nosuid,nodev` and a size inside the memory limit,
+  and Docker's `/dev/shm` at the appendix's fixed `ShmSize`. The mounts
+  Docker inserts (`/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`) are
+  read-only. The log driver is `none`: output leaves only through attach.
+  Vite's and Astro's caches land in `/work/node_modules/` (tmpfs), because
+  the installed packages sit at `/node_modules` (B8).
 - **B5. Privileges.** A fixed non-root uid and gid, every capability dropped,
   `no-new-privileges`, no devices, no host namespace (pid, ipc, uts,
   network, user, cgroup).
 - **B6. Caps per run:**
 
-  | Class | Wall  | Memory (no swap) | CPU | Processes | Input  | Output | stderr kept |
-  | ----- | ----- | ---------------- | --- | --------- | ------ | ------ | ----------- |
-  | S1    | 120 s | 1 GiB            | 1   | 256       | 50 MB  | 50 MB  | 64 KiB      |
-  | S2    | 600 s | 2 GiB            | 1   | 256       | 600 MB | 1 GB   | 64 KiB      |
-  | S0    | 60 s  | as probed class  | 1   | 256       | 1 MB   | 1 MB   | 64 KiB      |
+  | Class | Wall            | Memory (no swap) | CPU | Processes | Input  | Output | stderr kept |
+  | ----- | --------------- | ---------------- | --- | --------- | ------ | ------ | ----------- |
+  | S1    | 120 s           | 1 GiB            | 1   | 256       | 50 MB  | 50 MB  | 64 KiB      |
+  | S2    | 600 s           | 4 GiB            | 1   | 256       | 600 MB | 1 GB   | 64 KiB      |
+  | S0    | as probed class | as probed class  | 1   | 256       | 1 MB   | 1 MB   | 64 KiB      |
 
   The socket proxy enforces the wall clock from its own durable record, not
   only the launcher (P6).
@@ -154,28 +175,48 @@ ends, whatever the outcome.
 - **B7. Machine share.** One sandbox at a time, a queue of at most four and a
   queue wait of at most 300 s. Every sandbox runs with `OomScoreAdj` 1000.
 - **B8. Images.** No image is built by the daemon. The launcher assembles each
-  site image itself as an image archive of three parts: the Node base image's
-  layers and config (a file the launcher holds, its digest pinned per
-  platform), the launcher's entrypoint layer (pinned), and one
-  `node_modules` layer it writes from S2's output under O2's rules. It
-  computes the image id, loads the archive (P5) and refuses unless the image
-  store reports the same id. Site images are removed when their pin is
-  replaced, and at most 50 are kept.
+  site image itself as an image archive of three layers, bottom to top:
+  - the Node base image's layers and config, an archive that arrives through
+    the reviewed pin change and is checked against its pinned per-platform
+    digest at every assembly;
+  - one `node_modules` layer, unpacked at `/node_modules` only, which the
+    launcher writes from S2's output under O2's rules;
+  - the launcher's entrypoint layer (pinned) on top, so nothing below can
+    shadow it.
+
+  The assembled config sets no `Entrypoint`, `Cmd`, `Volumes`,
+  `Healthcheck`, `OnBuild` or `StopSignal` of its own. The VM's daemon uses
+  the classic overlay2 image store, and the image id is the sha256 of the
+  image config, which the launcher computes. That id enters the pin through
+  the same reviewed change (a second commit after F2), never from the
+  launcher. The load (P5) must report the same id. Site images are removed
+  when their pin is replaced, and at most 50 are kept.
+
 - **B9. Placement.** Sandboxes run in a dedicated Linux VM on the production
   machine that runs no live service, shares no host folder, holds no
-  credential, and has its own Docker daemon with automatic updates off. The
-  socket proxy talks only to that VM's daemon. A placement beside live
-  services needs its own amendment and approval.
+  credential, and has its own Docker daemon with automatic updates off.
+  - The daemon listens on no TCP port. Its socket reaches the machine only
+    as one path readable by the proxy's own uid alone (mode 0600), never
+    mounted into the launcher or any other unit.
+  - The daemon's default runtime is `runsc`, and its `daemon.json` is pinned
+    by hash and checked at VM boot.
+  - The VM has no network interface beyond the channel that carries the
+    daemon socket to the proxy, or one whose firewall drops everything else.
+
+  A placement beside live services needs its own amendment and approval.
 
 ## 5. Egress
 
 - **E1.** No run class has network access (B2). There is no egress relay and
   no network for sandboxes.
-- **E2.** Package tarballs reach `site.prepare` without network: the launcher,
-  outside any sandbox, fetches each lockfile entry's `resolved` URL (I5) from
-  the fixed host, through the credential broker for `npm.pkg.github.com`,
-  checks its `sha512`, and hands the tarballs in on stdin as an npm cache.
-  The launcher never unpacks a tarball. S2 runs
+- **E2.** Package tarballs reach `site.prepare` without network. The
+  credential broker's fetch operation, never the launcher, fetches each
+  lockfile entry's `resolved` URL (I5) from its fixed host. For
+  `npm.pkg.github.com` it fetches only names under the site record's
+  scopes, follows a redirect only to a fixed list of hosts, and never sends
+  the credential on a redirect. The launcher checks each tarball's `sha512`
+  and hands the tarballs in on stdin as an npm cache. It never unpacks one,
+  and it keeps question 2's single internal network and no other. S2 runs
   `npm ci --offline --ignore-scripts --include=dev`, so no lifecycle script
   runs.
 - **E3.** A site that needs a lifecycle script to build is refused.
@@ -202,7 +243,9 @@ checked values, never the bytes it received.
 - **P3. Create.** `POST /containers/create` with no query, and a body
   structurally equal to its class's fixed body in the appendix, with exactly
   one slot filled: `Image`, which must be `sha256:` plus 64 hex characters
-  and name an image the pin list holds for that class. Any other difference,
+  and name an image the pin list holds for that class. Before each create,
+  `GET /info` must report a container count equal to the proxy's record, or
+  the launcher is unavailable. Any other difference,
   a missing key, or a key added with the daemon's default value, is a
   refusal.
 - **P4. Run.** For a container whose full 64-hex id the proxy recorded
@@ -213,12 +256,19 @@ checked values, never the bytes it received.
   - `POST /containers/{id}/start`, `POST /containers/{id}/wait` and
     `POST /containers/{id}/kill`, each with no query and no body (kill is
     SIGKILL);
+  - `GET /containers/{id}/json`, no query, of which only `State.OOMKilled`
+    is read;
   - `DELETE /containers/{id}?force=1`.
-- **P5. Images.** `POST /images/load?quiet=1` of a launcher-assembled archive
-  (B8); `GET /images/{id}/json` and `DELETE /images/{id}` (no query) for site
-  images in the pin list, never the base image.
+- **P5. Images.** `POST /images/load?quiet=1` only after the proxy has parsed
+  the archive itself: its manifest names exactly B8's three layers in
+  order; the base and entrypoint layers equal their pinned digests byte for
+  byte; the `node_modules` layer passes O2's grammar, re-checked by the
+  proxy; there are no `RepoTags`; and the image id the proxy computes is in
+  the pin list. `GET /images/{id}/json` and `DELETE /images/{id}` (no query)
+  for site images in the pin list, never the base image.
 - **P6. Deadline and sweep.** The proxy kills any recorded container past its
-  class's wall clock, whatever the launcher does. On start, before it takes a
+  class's wall clock, measured in wall-clock time from the recorded start,
+  whatever the launcher does. On start, before it takes a
   request, it kills and removes every container in its record, and it refuses
   a create while any recorded container still exists.
 - **P7.** Everything else is refused: `/build`, `/session`, exec, commit,
@@ -233,9 +283,10 @@ extracted to disk.
 - **O1. `site.build` output** is one ustar stream:
   - type `0` (file) or `5` (directory) only; no PAX (`x`, `g`), GNU (`L`,
     `K`, `S`) or any other type;
-  - name plus prefix at most 255 bytes, octal size fields only, every header
-    checksum verified, exactly two zero blocks at the end and no byte after
-    them;
+  - magic `ustar\0` and version `00`; name plus prefix at most 255 bytes;
+    octal size fields only, and 0 for a directory; every header checksum
+    verified; exactly two zero blocks at the end and no byte after them;
+  - every file's parent directory has its own earlier entry;
   - every name canonical (no leading `./`, no empty or `.` or `..` segment,
     no trailing `/` on a file), matching `^dist(/[A-Za-z0-9._~@+-]+)*$`, NFC,
     and unique after ASCII case folding;
@@ -243,61 +294,80 @@ extracted to disk.
   - mode, owner and time fields ignored.
 - **O2. `site.prepare` output** follows O1 with root `node_modules`, up to
   200,000 entries and 1 GB. A symlink (type `2`) is accepted only when its
-  target is relative and, resolved against its parent's real path (after
-  every earlier symlink), stays inside `node_modules/`; an entry whose path
-  passes through a symlink entry is a refusal. The launcher writes the image
-  layer anew from the accepted entries: files 0644 or 0755, directories
-  0755, owner 0:0, a fixed time, no extended attributes.
-- **O3. Exit.** Success needs exit code 0 within every B6 cap. stderr is kept
-  for a person and never read into a decision.
+  link name is at most 100 bytes, relative, and, resolved against its
+  parent's real path (after every earlier symlink), stays inside
+  `node_modules/`; an entry whose path passes through a symlink entry is a
+  refusal. A name segment beginning `.wh.` is refused. The launcher writes
+  the image layer anew from the accepted entries: a file is 0755 when its
+  header's owner-execute bit is set and 0644 otherwise, directories 0755,
+  owner 0:0, a fixed time, no extended attributes.
+- **O3. Exit.** Success needs exit code 0 within every B6 cap, with
+  `State.OOMKilled` false. stderr is kept for a person and never read into a
+  decision.
 - **O4. Comparison**, for the envelope:
   - the two outputs carry exactly the same set of names;
   - the target file is `dist/` plus the catalogued page address mapped by the
-    site record's `build.format`; it exists in both and differs;
+    site record's `build.format` and `trailingSlash` (a site whose
+    `build.format` is `preserve` is refused); it exists in both and differs;
   - every other name's content bytes are equal;
   - the target's two versions then go to the envelope's token grammar.
-    O4 passing is necessary, not sufficient: the envelope's static layers must
-    pass too (D2).
-- **O5. Binding.** A verdict covers exactly (site, `baseRevision`, path,
-  sha256 of the new content, image id). The publish refuses unless the commit
-  it lands is a child of `baseRevision` whose tree differs from it in that one
-  blob. Anything else is a new check, never a reuse.
+
+  O4 passing is necessary, not sufficient: the envelope's static layers must
+  pass too (D2).
+
+- **O5. Binding.** A verdict covers exactly (site, the site record's digest,
+  `baseRevision`, path, sha256 of the new content, image id). The publish
+  lands only as a compare-and-swap update of the branch from exactly
+  `baseRevision` to a commit whose only parent is `baseRevision` and whose
+  tree differs from it only at the path, whose blob is the new content. A
+  merge, a squash or an update from any other head is refused, and the
+  verdict lapses. Anything else is a new check, never a reuse.
 - **H1. Host fidelity.** "Served" in O4 means built by the pinned toolchain
   under B3. The verdict carries over to the host only where the two match, so
   a site is refused when:
-  - its record's build command, Node version or build environment differs
-    from the host's production build;
+  - its record's build command, install command, Node version or build
+    environment differs from the host's production build, or the host's
+    install is not `npm ci --ignore-scripts` with the base image's npm;
   - its `output` is not `static`, it uses an adapter, or any page uses
     `server:defer`;
   - the host rewrites HTML after the build (section 12, question 4);
-  - its build tries to reach the network: the entrypoint answers name lookups
-    and connections on loopback with nothing, records each attempt, and any
-    attempt refuses the run. (Template dependencies that fetch at build time,
-    such as the astro-embed components, make a site refused, never a reason
-    to give `site.build` network.)
+  - its build tried to reach the network when the pin was made: F2's builds
+    run in CI under runsc's trace points, which record every non-loopback
+    connect or send and every name lookup outside the sandbox, and any record
+    refuses the pin. Template dependencies that fetch at build time, such as
+    the astro-embed components, make a site refused, never a reason to give
+    `site.build` network.
+
+  At check time a build has no network, so a fetch fails or falls back. The
+  residual, a fetch path that only the edited word reaches, is accepted only
+  because the word is letters only and sits in body copy (O4).
 
 ## 8. Preflight
 
 - **F1. Probe.** At start, every 15 minutes, and after any F3 difference, the
-  launcher runs S0 once per run class with that class's create body exactly
-  (only the image differs). From inside it proves each limit by crossing it:
+  launcher runs S0 once per run class with that class's create body (the
+  appendix gives the differences). From inside it proves each limit by
+  crossing it:
   - the kernel is gVisor's, and the only interface is loopback;
   - no address answers: a public address, the metadata address, the VM's and
     the machine's addresses, Docker's host gateway, the LAN, the proxy, and
     IPv6;
-  - the root filesystem refuses a write, and each tmpfs fills to ENOSPC at
-    its size;
+  - the root filesystem refuses a write, the complete writable set is
+    `/work`, `/tmp` and `/dev/shm`, and each fills to ENOSPC at its size;
   - the environment is exactly B3, and effective capabilities are zero;
   - allocating past the memory limit ends the run for memory, a fork past
     256 is refused, and outliving the wall clock ends in the kill;
-  - writing past the output cap gives the refusal.
+  - writing past the output cap gives the refusal;
+  - and, from the VM rather than the sandbox, the machine, the LAN and a
+    public address do not answer, and the launcher's uid cannot open the
+    daemon socket.
 - **F2. Reproducibility**, a precondition for recording a pin, not a safety
   control (every check re-proves equality under O4): three builds of the
   unchanged tree, compared as O4 compares, must be identical. It is repeated
   whenever the base, the entrypoint layer or the lockfile changes.
 - **F3. Drift.** Before every run, `GET /version` and `GET /info` (engine,
-  kernel, runtimes, image store) and the runsc hash must equal those at the
-  last passed probe. Any difference, or a failed probe, marks the launcher
+  kernel, runtimes with their hash-bearing paths and arguments, image store)
+  must equal those at the last passed probe. Any difference, or a failed probe, marks the launcher
   unavailable until a new probe passes.
 
 ## 9. Failure
@@ -364,14 +434,20 @@ is reviewed.
 4. **The host.** Which host serves client sites and whether it rewrites HTML
    after the build (H1) is not recorded. Until it is, every site fails H1 and
    is refused.
+5. **Unverified mechanisms.** Whether runsc's trace points can feed a sink in
+   CI (H1), whether GitHub Packages downloads redirect and to which hosts
+   (E2), and how runsc backs `/dev/shm`. Each is settled by a crossing test
+   before the line that needs it may pass; until then that line refuses.
 
 ## 13. Proof before merge of the implementation
 
-- Isolation lines (B, E, P6, F1) are proven by a real crossing in a real
-  `runsc` container: a real network attempt, a real write, a real secret
-  probe, a real cap.
-- Grammar lines (I, P1-P5, P7, O1, O2, O4, O5) are proven by a hostile-input
-  corpus with one fixture per refusal clause.
+Every numbered line is in exactly one of these two lists:
+
+- Crossings, in a real `runsc` container or VM: B1-B9, E1-E3, P6, F1, F2's
+  trace points, H1. A real network attempt, a real write, a real secret
+  probe, a real cap, a real load.
+- Corpus fixtures, one per refusal clause: T2's pin rule, S0-S2, I1-I6,
+  P1-P5, P7, O1-O5, F3, R1-R3, D1-D2.
 - Each test fails with its guarding clause removed, and the pull request
   lists that red under "Undo-red".
 - The suite runs in CI and on the production sandbox VM (section 11).
@@ -379,14 +455,20 @@ is reviewed.
 ## Appendix: the fixed create body
 
 The proxy holds this body for `site.build` and compares each request with it
-whole (P3). `site.prepare` and `probe` differ only in the values B6 and B3
-give them, written out in the implementation beside this one.
+whole (P3). The other bodies differ from it in these keys only, with these
+values, and in nothing else:
+
+- `site.prepare`: `Cmd` `["prepare"]`; `Env` the S2 list from B3;
+  `Memory` and `MemorySwap` 4294967296; `Tmpfs` `/work` size 2147483648 and
+  `/tmp` size 1073741824.
+- `probe`: `Image` the pinned probe image; `Cmd` `["probe", "<class>"]`;
+  every other key as the probed class's body.
 
 ```json
 {
   "Image": "<slot: sha256 id>",
-  "Cmd": ["/opt/launcher/entrypoint", "build"],
-  "Entrypoint": null,
+  "Entrypoint": ["/opt/launcher/entrypoint"],
+  "Cmd": ["build"],
   "User": "10001:10001",
   "WorkingDir": "/work",
   "Hostname": "sandbox",
@@ -413,6 +495,7 @@ give them, written out in the implementation beside this one.
     "NanoCpus": 1000000000,
     "PidsLimit": 256,
     "OomScoreAdj": 1000,
+    "ShmSize": 16777216,
     "Tmpfs": {
       "/work": "rw,nosuid,nodev,size=402653184",
       "/tmp": "rw,nosuid,nodev,size=268435456"
