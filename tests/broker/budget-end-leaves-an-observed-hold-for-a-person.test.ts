@@ -12,11 +12,16 @@
 // SEC P3 r3 N4: once that outcome says the step happened, the step is
 // finished. A top-up would hold it afresh and run it again, so it is refused
 // with nothing written, and the end still answers the stop.
+//
+// SEC P3 r4 R1: the same holds when the outcome's transaction began before
+// the stop raised its ask (a person's `happened` that waited on the run's lock
+// while the worker's call stopped the run), so its start time comes first.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { executeCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import { callModel } from '../../packages/core-custody/src/index.ts';
+import type { Database } from '../../packages/core-records/src/index.ts';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import {
   appliedDetail,
@@ -26,6 +31,7 @@ import {
   createTask,
   freshPurpose,
   proposeBody,
+  racer,
   revisionOf,
   type Detail,
 } from '../runtime/schedules-harness.ts';
@@ -94,8 +100,8 @@ const stateOf = async (runId: string, attemptId: string) => ({
   ])),
 });
 
-/** The effect applied, then one call settles and the next stops the run at its ceiling. */
-async function stoppedAfterItsEffect() {
+/** The effect applied and one call settled: the next call stops the run at its ceiling. */
+async function appliedWithOneCall() {
   const w = await personWork();
   const lease = { leaseId: w.picked['leaseId'], fence: w.picked['fence'] };
   appliedDetail(
@@ -115,6 +121,11 @@ async function stoppedAfterItsEffect() {
   );
   world.provider.mode('answer');
   expect((await personCall(w)).ok).toBe(true);
+  return { w, lease };
+}
+
+/** The next call stops the run at its ceiling and raises the ask, committed on its own connection. */
+async function stopIt(w: { taskId: string; picked: Detail }, lease: { leaseId: unknown }) {
   expect(await personCall(w)).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE' });
   const { run_id: runId } = await one<{ run_id: string }>(
     `select run_id from public.leases where id = $1`,
@@ -124,7 +135,13 @@ async function stoppedAfterItsEffect() {
     `select id from public.budget_asks where run_id = $1`,
     [runId],
   );
-  return { w, lease, runId, askId };
+  return { runId, askId };
+}
+
+/** The effect applied, then one call settles and the next stops the run at its ceiling. */
+async function stoppedAfterItsEffect() {
+  const { w, lease } = await appliedWithOneCall();
+  return { w, lease, ...(await stopIt(w, lease)) };
 }
 
 /** Observed at a priced cost above the hold, which is kept whole for a person. */
@@ -226,5 +243,57 @@ it('a top-up after the stopped step was recorded as happened is refused, and the
   expect(await answer(people.second, { command: 'run.end_at_budget_stop', ...ask })).toBe(
     'applied',
   );
+  expect(await moneyOf(runId)).toMatchObject({ run: 'cancelled', answers: 1 });
+});
+
+/** A `happened` through the command entry, in a transaction on its own connection begun before `stop`. */
+async function happenedBegunBefore<T>(
+  w: { taskId: string; attemptId: string },
+  stop: () => Promise<T>,
+) {
+  const held = racer(s);
+  try {
+    return await held.withBusiness(s.business, async (tx) => {
+      const [now] = await tx.query<{ began: Date }>('select now() as began');
+      const stopped = await stop();
+      const body = {
+        command: 'budget.record_outcome',
+        operationId: randomUUID(),
+        recordId: w.taskId,
+      };
+      const inTx = { ...held, withBusiness: async (_b, run) => await run(tx) } as Database;
+      const recorded = await asPerson(
+        s,
+        { ...body, attemptId: w.attemptId, outcome: 'happened' },
+        inTx,
+      );
+      return { ...stopped, began: now?.began, code: codeOf(recorded) };
+    });
+  } finally {
+    await held.close();
+  }
+}
+
+it('a top-up is refused when the happened was recorded in a transaction begun before the stop', async () => {
+  await setThreshold(null);
+  const { w, lease } = await appliedWithOneCall();
+  // Observed before the stop: the hold is kept whole, and the lease stays live for the next call.
+  expect(await observeOver(w, lease)).toBe('BUDGET_UNAVAILABLE');
+  const recorded = await happenedBegunBefore(w, async () => await stopIt(w, lease));
+  expect(recorded.code).toBe('applied');
+  const { runId, askId } = recorded;
+  const ask = { recordId: w.taskId, runId, askId };
+  const { raised } = await one<{ raised: Date }>(
+    `select raised_at as raised from public.budget_asks where id = $1`,
+    [askId],
+  );
+  expect(recorded.began?.getTime()).toBeLessThan(raised.getTime());
+  const before = { ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) };
+  expect(before).toMatchObject({ run: 'waiting_budget', reservation: 'actual', answers: 0 });
+  const topUp = { command: 'run.top_up', ...ask, amountMinor: 1_000, currency: 'AUD' };
+  expect(await answer(people.approver, topUp)).toBe('TRANSITION_NOT_PERMITTED');
+  expect({ ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) }).toEqual(before);
+  const end = { command: 'run.end_at_budget_stop', ...ask };
+  expect(await answer(people.second, end)).toBe('applied');
   expect(await moneyOf(runId)).toMatchObject({ run: 'cancelled', answers: 1 });
 });
