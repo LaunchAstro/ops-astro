@@ -210,3 +210,16 @@ it('a place read back without its words never reads live', () => {
     false,
   );
 });
+
+it('a marker character after the word in its own block leaves it with no place', () => {
+  const before = '<p>We walk alongside you \uE000.</p>\n';
+  const after = before.replace('alongside', 'beside');
+  expect(occurrenceOf({ files: [{ path: target.path, before, after }] }, target)).toBeUndefined();
+});
+
+it('a reference name as the word cannot borrow a layout that shows references as text', () => {
+  const before = '<p>A &amp; B</p>\n<p>A &amp;amp; B</p>\n';
+  const after = before.replace('<p>A &amp; B', '<p>A &lt; B');
+  const served = '<header>A &amp;lt; B</header><p>A &amp; B</p><p>A &amp;amp; B</p>';
+  expect(readsLive(before, after, 'amp', 'lt', served)).toBe(false);
+});
