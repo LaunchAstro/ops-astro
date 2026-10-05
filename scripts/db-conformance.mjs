@@ -133,9 +133,11 @@ const shareOf = ({ index, count }) =>
       )
     : (assignShards(items, plan.seconds, count)[index - 1] ?? []);
 const toRun = shard === undefined ? items : shareOf(shard);
+// Prints this shard's suites for tests/ci/ci-shards.test.ts. It runs none, so
+// it never exits 0: a stray --list in a CI command fails that shard.
 if (argv.includes('--list')) {
   for (const item of toRun) console.log(item);
-  process.exit(0);
+  process.exit(3);
 }
 const shardLabel =
   shard === undefined ? '' : `shard ${String(shard.index)}/${String(shard.count)} `;

@@ -4,7 +4,7 @@
     "Measured on the 10 green merge groups of 5 October 2026, runs 37293879648, 37293881497, 37297308181, 37298261748, 37301315979, 37302239162, 37305425466, 37305567460, 37309229516, 37309741358: the median of each.",
     "isolation: each isolation suite's seconds from the runner's 'moved the database counter by N in Ss' lines, and each ci.yml step beside the runner by its job step time.",
     "local.steps: each `pnpm check` step but the build and the tests (every shard runs those two) from its '=== label ===' line to the next, and each ci.yml step after `pnpm check` by its job step time.",
-    "local.files: each test file's own time in the vitest run, from its reporter line, for the 176 files at 1 s or more; any other file, a new one included, weighs fileUnder, the mean of the 1504 files under 1 s. wallPerFileSecond turns file time into the run's wall time: the vitest run took 1472 s for 2789 s of file time.",
+    "local.files: each test file's own time in the vitest run, from its reporter line, for the 176 files at 1 s or more; any other file, a new one included, goes to the shard a hash of its path picks; fileUnder, the mean of the 1504 files under 1 s, is what tests/ci/ci-shards.test.ts weighs each at. wallPerFileSecond turns file time into the run's wall time: the vitest run took 1472 s for 2789 s of file time.",
     "Only the balance reads these: a step or suite missing here still runs, at the median of its kind. Refresh from recent runs when the shards drift apart."
   ],
   "isolation": {

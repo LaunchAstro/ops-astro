@@ -117,6 +117,8 @@ const base = lightBase();
 const results = [];
 const env = { ...process.env };
 delete env[BUILT];
+// Read above; a step that runs pnpm check again (a test of it, say) runs it whole.
+delete env['CHECK_SHARD'];
 
 for (const [script, label, light] of STEPS) {
   const owner = EVERY_SHARD.includes(script) ? undefined : sharded?.owners.get(script);

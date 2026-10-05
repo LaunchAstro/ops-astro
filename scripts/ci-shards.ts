@@ -16,12 +16,13 @@
 // local checks: every shard runs the build, which the tests read, and its share
 // of the test files (vitest --shard, read by the sequencer in vitest.config.ts).
 // Every other `pnpm check` step (scripts/check-steps.ts) and every ci.yml step
-// after it runs in one shard. The steps are split first; the test files then
-// fill the shards from the steps' loads, so the two together balance.
+// after it runs in one shard. The steps are split first; the timed test files
+// then fill the shards from the steps' loads, so the two together balance.
 //
 // tests/ci/ci-shard-plan.json holds the measured times. Only the balance reads
 // them: a step or suite with no timing weighs the median of its kind, and a
-// test file with none weighs `fileUnder`, so nothing new is left out.
+// test file with none goes where a hash of its path puts it, so nothing new is
+// left out. `fileUnder` is what such a file weighs in the balance test.
 //
 // Usage: node scripts/ci-shards.ts <check> --shard i/n --step <name> -- <command> [args...]
 //        node scripts/ci-shards.ts <check> --shard i/n --step <name> --decide   (prints run or skip)
@@ -29,6 +30,7 @@
 //   and passes. A check or step it does not know is refused.
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { STEPS } from './check-steps.ts';
@@ -146,9 +148,11 @@ export const localStepShards = (plan: ShardPlan, count: number): string[][] =>
   assignShards(localSteps(), plan.steps, count);
 
 /**
- * The test files split into `count` shards: longest first onto the shard with
- * the least time so far, steps included, the lower shard on a tie. The result
- * depends only on the set of files, so every shard computes the same split.
+ * The test files split into `count` shards. The plan's timed files go longest
+ * first onto the shard with the least time so far, steps included, the lower
+ * shard on a tie; any other file goes by a hash of its path. So a file's shard
+ * depends on its path and the plan alone: a file one shard sees and another
+ * does not moves no other file, and every file runs in exactly one shard.
  */
 export function localFileShards(
   files: readonly string[],
@@ -156,22 +160,23 @@ export function localFileShards(
   count: number,
 ): string[][] {
   const stepWeight = shardWeight(plan.steps);
-  const shards = localStepShards(plan, count).map((steps) => ({
-    load: steps.reduce((sum, step) => sum + stepWeight(step), 0),
-    files: [] as string[],
-  }));
-  const weight = (file: string): number =>
-    (Object.hasOwn(plan.files, file) ? (plan.files[file] ?? 0) : plan.fileUnder) *
-    plan.wallPerFileSecond;
-  const weighed = [...new Set(files)]
-    .map((file) => ({ file, weight: weight(file) }))
-    .toSorted((a, b) => b.weight - a.weight || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
-  for (const { file, weight: w } of weighed) {
-    const least = shards.reduce((best, shard) => (shard.load < best.load ? shard : best));
-    least.load += w;
-    least.files.push(file);
+  const loads = localStepShards(plan, count).map((steps) =>
+    steps.reduce((sum, step) => sum + stepWeight(step), 0),
+  );
+  const timed = new Map<string, number>();
+  const longestFirst = Object.entries(plan.files).toSorted(
+    ([a, x], [b, y]) => y - x || (a < b ? -1 : a > b ? 1 : 0),
+  );
+  for (const [file, seconds] of longestFirst) {
+    const least = loads.indexOf(Math.min(...loads));
+    loads[least] = (loads[least] ?? 0) + seconds * plan.wallPerFileSecond;
+    timed.set(file, least);
   }
-  return shards.map((shard) => shard.files.toSorted());
+  const hashed = (file: string): number =>
+    createHash('sha256').update(file).digest().readUInt32BE(0) % count;
+  const shards = loads.map(() => [] as string[]);
+  for (const file of new Set(files)) shards[timed.get(file) ?? hashed(file)]?.push(file);
+  return shards.map((shard) => shard.toSorted());
 }
 
 /** The 1-based shard that runs `step` of `check`, refusing a check or step it does not know. */

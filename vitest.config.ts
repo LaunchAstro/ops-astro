@@ -34,8 +34,8 @@ const oneSuiteAtATime = process.env['SUITE_PART'] !== undefined;
 
 // `local checks` runs as shards (CI-SHARDS-2): `vitest run --shard i/n` runs
 // the test files scripts/ci-shards.ts gives shard i by measured time, where
-// vitest's own split counts files. Every shard splits the same file list the
-// same way, so each file runs in exactly one (tests/ci/ci-shards.test.ts).
+// vitest's own split counts files. A file's shard depends on its path and the
+// committed plan alone, so each file runs in exactly one (tests/ci/ci-shards.test.ts).
 class MeasuredShards extends BaseSequencer {
   override shard(files: TestSpecification[]): Promise<TestSpecification[]> {
     const { root, shard } = this.ctx.config;
