@@ -117,15 +117,25 @@ describe.skipIf(serverUrl === undefined)('C80 approver, the approved version sta
   it('refuses a change to what the request pinned, before or after the approval', async () => {
     await w.setApprover(w.ben.personId);
     const { correctionId, versionId } = await requested();
-    await w.approve(w.ben, correctionId, versionId);
-    await expect(
-      w.world.db.app.withBusiness(w.world.business, async (tx) => {
+    const edit = async () =>
+      await w.world.db.app.withBusiness(w.world.business, async (tx) => {
         await tx.query(`update public.live_corrections set replacement = 'hostile' where id = $1`, [
           correctionId,
         ]);
-      }),
-    ).rejects.toThrow(/live_corrections_pinned/u);
+      });
+    const replacement = async () =>
+      (
+        await w.world.db.admin.execute<{ readonly r: string }>(
+          'select replacement as r from public.live_corrections where id = $1',
+          [correctionId],
+        )
+      )[0]?.r;
+    await expect(edit(), 'while requested').rejects.toThrow(/live_corrections_pinned/u);
+    expect(await w.stateOf(correctionId)).toBe('requested');
+    expect(codeOf(await w.approve(w.ben, correctionId, versionId))).toBe('not-a-refusal');
+    await expect(edit(), 'once approved').rejects.toThrow(/live_corrections_pinned/u);
     expect(await w.stateOf(correctionId)).toBe('approved');
+    expect(await replacement()).toBe('welcoming');
   });
 
   it('refuses a request worked under a task the requester cannot read, as if absent', async () => {

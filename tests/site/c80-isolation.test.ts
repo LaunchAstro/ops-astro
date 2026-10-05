@@ -158,7 +158,7 @@ describe.skipIf(serverUrl === undefined)(
 );
 
 describe.skipIf(serverUrl === undefined)('C80 canary', () => {
-  it('keeps planted content out of refusals, the audit payload and the process output', async () => {
+  it('keeps planted content out of a stored request, refusals, the audit payload and the process output', async () => {
     const written: string[] = [];
     const spies = (['log', 'warn', 'error', 'info', 'debug'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
@@ -166,6 +166,13 @@ describe.skipIf(serverUrl === undefined)('C80 canary', () => {
       }),
     );
     try {
+      // A request that is stored, carrying the canary, inside the spies.
+      const stored = await w.request(w.ava, {
+        before: `${BEFORE}${CANARY}\n`,
+        after: `${AFTER}${CANARY}\n`,
+      });
+      expect(codeOf(stored)).toBe('not-a-refusal');
+      expect(JSON.stringify(stored)).not.toContain(CANARY);
       const refusedEnvelope = await w.request(w.ava, {
         before: `${BEFORE}${CANARY}\n`,
         after: `${AFTER}${CANARY}-changed\n`,

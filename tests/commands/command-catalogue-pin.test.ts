@@ -172,6 +172,14 @@ vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (or
   setBusinessSetting: recorder('setBusinessSetting'),
   setNotificationChannel: recorder('setNotificationChannel'),
 }));
+// C80's approver setting reads its writer's key again after the write (a database read).
+vi.mock(
+  '../../packages/core-commands/src/commands/live-correction-standing.ts',
+  async (original) => ({
+    ...(await original()),
+    writerStillHolds: () => Promise.resolve('stands'),
+  }),
+);
 vi.mock('../../packages/core-commands/src/commands/privacy-write.ts', async (original) => ({
   ...(await original<object>()),
   recordIncident: recorder('recordIncident'),
