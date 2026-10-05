@@ -111,3 +111,49 @@ it('refuses a header line of thousands of spaces in linear time', () => {
   for (let i = 0; i < 50; i += 1) expect(read(bytes)).toMatchObject({ ok: false });
   expect(performance.now() - started).toBeLessThan(500);
 });
+
+it.each([
+  ['a path past the action', `POST ${V}/containers/${ID}/start/x HTTP/1.1`, 'unknown route'],
+  ['POST on a health path', `POST ${V}/_ping HTTP/1.1`, 'unknown route'],
+  ['DELETE on a health path', `DELETE ${V}/info HTTP/1.1`, 'unknown route'],
+  [
+    'a delete of a container name',
+    `DELETE ${V}/containers/sandbox?force=1 HTTP/1.1`,
+    'container id',
+  ],
+  ['GET on start', `GET ${V}/containers/${ID}/start HTTP/1.1`, 'unknown route'],
+  ['POST on inspect', `POST ${V}/containers/${ID}/json HTTP/1.1`, 'unknown route'],
+  ['DELETE on image inspect', `DELETE ${V}/images/${IMAGE}/json HTTP/1.1`, 'unknown route'],
+  ['POST on image inspect', `POST ${V}/images/${IMAGE}/json HTTP/1.1`, 'unknown route'],
+])('refuses %s', (_name, line, why) => {
+  expect(read(request(line))).toMatchObject({ ok: false, why });
+});
+
+it('refuses a load sent with GET', () => {
+  const headers = ['Host: docker', 'Content-Type: application/x-tar', 'Content-Length: 10'];
+  expect(read(request(`GET ${V}/images/load?quiet=1 HTTP/1.1`, headers))).toMatchObject({
+    ok: false,
+    why: 'unknown route',
+  });
+});
+
+it('refuses a load naming an empty site', () => {
+  const headers = ['Host: docker', 'Content-Type: application/x-tar', 'Content-Length: 10'];
+  expect(read(request(`POST ${V}/images/load?quiet=1&site= HTTP/1.1`, headers))).toMatchObject({
+    ok: false,
+    why: 'query',
+  });
+});
+
+it('refuses an attach that carries a length', () => {
+  const line = `POST ${V}/containers/${ID}/attach?stream=1&stdin=1&stdout=1&stderr=1 HTTP/1.1`;
+  const headers = ['Host: docker', 'Connection: Upgrade', 'Upgrade: tcp', 'Content-Length: 0'];
+  expect(read(request(line, headers))).toMatchObject({ ok: false, why: 'body' });
+});
+
+it('refuses a header line with no colon even where it would spell an allowed name', () => {
+  expect(read(request(`GET ${V}/_ping HTTP/1.1`, ['Hostx']))).toMatchObject({
+    ok: false,
+    why: 'header',
+  });
+});

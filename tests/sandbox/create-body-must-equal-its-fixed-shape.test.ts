@@ -137,6 +137,10 @@ const mutations: readonly (readonly [string, (body: Mutable) => void])[] = [
   ],
   ['a bind mount', (b) => (b.HostConfig['Binds'] = ['/:/host'])],
   ['network mode bridge', (b) => (b.HostConfig['NetworkMode'] = 'bridge')],
+  [
+    'a string spelt as an object keyed by position',
+    (b) => (b.HostConfig['NetworkMode'] = { 0: 'n', 1: 'o', 2: 'n', 3: 'e' }),
+  ],
   ['the runc runtime', (b) => (b.HostConfig['Runtime'] = 'runc')],
   ['privileged true', (b) => (b.HostConfig['Privileged'] = true)],
   ['memory as a string', (b) => (b.HostConfig['Memory'] = '1073741824')],

@@ -11,6 +11,7 @@ import { parseStrictJson } from '../../packages/core-sandbox/src/strict-json.ts'
 
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 const nest = (depth: number): string => '['.repeat(depth) + ']'.repeat(depth);
+const objects = (depth: number): string => '{"a":'.repeat(depth) + '0' + '}'.repeat(depth);
 
 it('reads a well-formed object, keeping key order and value types', () => {
   const parsed = parseStrictJson(
@@ -50,6 +51,12 @@ it('takes exactly 32 levels and refuses 33', () => {
   expect(parseStrictJson(bytes(nest(33)))).toMatchObject({ ok: false, why: 'too deep' });
 });
 
+it('refuses 33 nested objects, and 150,000 of them without overflowing the stack', () => {
+  expect(parseStrictJson(bytes(objects(32)))).toMatchObject({ ok: true });
+  expect(parseStrictJson(bytes(objects(33)))).toMatchObject({ ok: false, why: 'too deep' });
+  expect(parseStrictJson(bytes(objects(150_000)))).toMatchObject({ ok: false, why: 'too deep' });
+});
+
 it('takes exactly 1 MiB and refuses one byte more', () => {
   const at = `"${'a'.repeat(1024 * 1024 - 2)}"`;
   expect(parseStrictJson(bytes(at))).toMatchObject({ ok: true });
@@ -62,6 +69,10 @@ it.each([
   ['a single-quoted string', "{'a':1}"],
   ['a bare control character in a string', '"a\u0001b"'],
   ['a lone surrogate escape', '"\\ud800"'],
+  ["an escape that is not one of JSON's", '"\\x0041"'],
+  ['a unicode escape with non-hex digits', '"\\u12zz"'],
+  ['a low surrogate first', '"\\udc00\\udc00"'],
+  ['a high surrogate followed by an escape above the low range', '"\\ud800\\ue000"'],
   ['a high surrogate followed by an escape outside the low range', '"\\ud800\\u0041"'],
   ['a leading zero', '[01]'],
   ['a plus sign', '[+1]'],

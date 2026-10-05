@@ -187,3 +187,18 @@ it('keeps stdout in blocks sized by the bytes kept, never one per frame', () => 
   expect(end.stdout).toHaveLength(1);
   expect(end.stdout[0]?.length).toBe(100_000);
 });
+
+it('treats a stream that ends inside a frame header as a daemon fault', () => {
+  const frames = new AttachFrames(1024);
+  frames.push(frame(1, bytes('ok')), frame(1, bytes('x')).slice(0, 4));
+  expect(frames.end()).toMatchObject({ ok: false, reason: 'internal' });
+});
+
+it('takes an empty frame, last or not, as a valid frame', () => {
+  const frames = new AttachFrames(1024);
+  frames.push(frame(1, bytes('ok')), frame(2, new Uint8Array()), frame(1, new Uint8Array()));
+  const end = frames.end();
+  expect(end).toMatchObject({ ok: true });
+  if (!end.ok) return;
+  expect(joined(end.stdout)).toBe('ok');
+});

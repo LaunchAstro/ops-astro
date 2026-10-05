@@ -24,7 +24,11 @@ export type ProxyOp =
   | {
       readonly kind: 'attach';
       readonly id: string;
-      /** Where the stdin stream starts in the bytes read: attach is the one stream (P1). */
+      /**
+       * Where the stdin stream starts in the bytes read: attach is the one
+       * stream (P1). The daemon drops stdin sent before its 101 reply, so
+       * the proxy holds these bytes until that reply.
+       */
       readonly bodyStart: number;
     }
   | {
