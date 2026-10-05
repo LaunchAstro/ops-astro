@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The page parser is bounded: checks do not grow the host's memory, a page
+// with more markup than the parser is trusted with is refused unparsed, and
+// a long line is refused before it is scanned. A word that opens its text
+// node straight after an expression or comment can join markup or a
+// character reference before it, so it is refused.
+
+import { describe, expect, it } from 'vitest';
+import { checkEnvelope } from '../../packages/core-connectors/src/index.ts';
+import { compiledApart } from '../../packages/core-connectors/src/site/page-transform.ts';
+
+const unparsed = {
+  ok: false,
+  reason: 'the page is larger than the parser is trusted with',
+} as const;
+
+async function edit(word: string, replacement: string, before: string) {
+  const path = 'src/pages/index.astro';
+  const after = before.replace(word, replacement);
+  return await checkEnvelope({ files: [{ path, before, after }] }, { path, word, replacement });
+}
+
+const ordinary = `${'<p>filler</p>\n'.repeat(999)}<p>Hello there</p>\n`;
+
+describe('the parser is bounded', () => {
+  it('checks of ordinary pages do not grow the host memory', async () => {
+    const start = process.memoryUsage().rss;
+    for (let check = 0; check < 25; check += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- one check at a time, as a host runs them
+      expect(await edit('Hello', 'Hi', ordinary)).toMatchObject({ ok: true });
+    }
+    expect(process.memoryUsage().rss - start).toBeLessThan(300 * 1024 * 1024);
+  }, 60_000);
+
+  it('a page that exhausts the parser ends only its worker, and the host lives on', async () => {
+    const huge = `<p>${'{'.repeat(20_000)}</p>\n`;
+    expect(await compiledApart(huge, huge)).toBeUndefined();
+    await new Promise((settled) => {
+      setTimeout(settled, 4000);
+    });
+    expect(await edit('Hello', 'Hi', ordinary)).toMatchObject({ ok: true });
+  }, 30_000);
+
+  it.each([
+    ['many elements', `${'<p>x</p>'.repeat(7000)}<p>Hello there</p>\n`],
+    ['deep nesting', `${'<b>'.repeat(3000)}Hello there${'</b>'.repeat(3000)}\n`],
+  ])(
+    'refuses a page of %s unparsed and the host lives on',
+    async (_name, before) => {
+      await edit('Hello', 'Hi', ordinary);
+      expect(await edit('Hello', 'Hi', before)).toMatchObject(unparsed);
+      await new Promise((settled) => {
+        setTimeout(settled, 4000);
+      });
+    },
+    30_000,
+  );
+});
+
+describe('scans are bounded', () => {
+  it('refuses a long line before it scans it', async () => {
+    const before = `<p>${'a '.repeat(500_000)}</p>\n`;
+    expect(await edit('a', 'b', before)).toMatchObject(unparsed);
+  }, 3000);
+});
+
+describe('a word at the edge of its text node', () => {
+  it.each([
+    [
+      'after an empty expression closing a tag opener',
+      'Hello',
+      'script',
+      '<p>a <{""}Hello there</p>\n',
+    ],
+    ['after an empty expression closing a reference', 'amp', 'lt', '<p>Fish &{""}amp; chips</p>\n'],
+    ['after a comment closing a tag opener', 'Hello', 'script', '<p>a <<!---->Hello there</p>\n'],
+    ['in text holding a bare less-than', 'Hello', 'Hi', '<p>a < Hello there</p>\n'],
+    ['in a numeric reference', 'xABC', 'xABD', '<p>Code &#xABC; here</p>\n'],
+    ['opening a fragment after a reference opener', 'amp', 'lt', '<p>Fish &<>amp; chips</></p>\n'],
+    ['after a component', 'amp', 'lt', '<p>Fish &<Empty />amp; chips</p>\n'],
+    ['after a slot', 'amp', 'lt', '<p>Fish &<slot />amp; chips</p>\n'],
+    ['after a hoisted script', 'amp', 'lt', '<p>Fish &<script>0</script>amp; chips</p>\n'],
+    ['behind a hash after a fragment', 'xABC', 'xABD', '<p>Code &<></>#xABC; here</p>\n'],
+    ['after a body element', 'amp', 'lt', '<div>Fish &<body></body>amp; chips</div>\n'],
+    [
+      'after an element moved to a named slot',
+      'amp',
+      'lt',
+      '<Card>Fish &<span slot="x"></span>amp; chips</Card>\n',
+    ],
+    ['opening a table row', 'amp', 'lt', '<div>Fish &<table><tr>amp; chips</tr></table></div>\n'],
+    ['after a custom element', 'amp', 'lt', '<p>Fish &<my-el></my-el>amp; chips</p>\n'],
+    [
+      'in a select, whose tags a browser drops',
+      'amp',
+      'lt',
+      '<select>Fish &<b></b>amp; chips</select>\n',
+    ],
+    [
+      'behind a slash after an expression',
+      'Hello',
+      'div',
+      '<div><p>a <{""}/Hello there</p></div>\n',
+    ],
+  ])('refuses a word %s', async (_name, word, replacement, before) => {
+    expect(await edit(word, replacement, before)).toMatchObject({ ok: false });
+  });
+
+  it('approves a word straight after an element', async () => {
+    expect(await edit('Hello', 'Hi', '<p><b>Note</b>Hello there</p>\n')).toMatchObject({
+      ok: true,
+    });
+  });
+});

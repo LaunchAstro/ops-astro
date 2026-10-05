@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The envelope reads the page the compiler prints, token by token, as a
+// browser does. A word passes only in a character token in data state,
+// inside a tag printed where the source has it, after a tag that follows the
+// last expression. Whatever the grammar does not know is refused.
+
+import { describe, expect, it } from 'vitest';
+import { checkEnvelope } from '../../packages/core-connectors/src/index.ts';
+import { swapsOnlyBodyCopy } from '../../packages/core-connectors/src/site/body-copy-tokens.ts';
+
+async function edit(word: string, replacement: string, before: string, path = 'src/pages/a.astro') {
+  const after = before.replace(word, replacement);
+  return await checkEnvelope({ files: [{ path, before, after }] }, { path, word, replacement });
+}
+
+describe('a word the built page reads inside a tag is refused', () => {
+  it.each([
+    ['an expression', '<p>Look <{""}img src="x" alt here</p>\n'],
+    ['an empty fragment', '<p>Look <<></>img src="x" alt here</p>\n'],
+    ['a component', '<p>Look <<Empty />img src="x" alt here</p>\n'],
+    ['an expression, behind a slash', '<p>Look </{""}img src="x" alt here</p>\n'],
+  ])('after a dangling less-than and %s', async (_name, before) => {
+    expect(await edit('here', 'hidden', before)).toMatchObject({ ok: false });
+  });
+});
+
+describe('a page holding a select is refused', () => {
+  it.each([
+    ['unclosed, before the word', 'amp', 'copy', '<div><select></div>Fish &<b></b>amp; chips\n'],
+    [
+      'closed, before the word',
+      'Hello',
+      'Hi',
+      '<select><option>One</option></select>\n<p>Hello there</p>\n',
+    ],
+    [
+      'after the word',
+      'Hello',
+      'Hi',
+      '<p>Hello there</p>\n<select><option>One</option></select>\n',
+    ],
+  ])('%s', async (_name, word, replacement, before) => {
+    expect(await edit(word, replacement, before)).toMatchObject({ ok: false });
+  });
+});
+
+describe('a word a browser does not show as body copy is refused', () => {
+  it.each([
+    ['in a template', '<template><p>Hello there</p></template>\n'],
+    ['in an svg', '<svg><text>Hello there</text></svg>\n'],
+    ['in a table cell', '<table><tr><td>Hello there</td></tr></table>\n'],
+    ['in a button', '<button>Hello there</button>\n'],
+    ['at the root of the page', 'Hello there\n'],
+    ['in a page that prints raw markup', '<div set:html={"<b>"} />\n<p>Hello there</p>\n'],
+    ['after an expression with no tag between', '<p>{"x"} and Hello there</p>\n'],
+    ['after a component with no tag between', '<p><Empty /> and Hello there</p>\n'],
+    ['after a reference opener in its own run', '<p>Fish &Hello there</p>\n'],
+    ['joined to a reference', '<p>&amp;Hello there</p>\n'],
+  ])('%s', async (_name, before) => {
+    expect(await edit('Hello', 'Hi', before)).toMatchObject({ ok: false });
+  });
+
+  it('refuses a word in a script the compiler keeps as text', async () => {
+    const before = '<script is:inline>const a = "Hello";</script>\n';
+    expect(await edit('Hello', 'Hi', before)).toMatchObject({ ok: false });
+  });
+});
+
+describe('body copy still passes', () => {
+  it.each([
+    ['in a paragraph', '<p>Hello there</p>\n'],
+    ['after an attribute expression', '<p class={["a"].join("")}>Hello there</p>\n'],
+    ['after a tag that follows an expression', '<p>{"x"} <b>and</b> Hello there</p>\n'],
+    ['in a layout', '<Layout title="x">\n  <section><p>Hello there</p></section>\n</Layout>\n'],
+    [
+      'under typed frontmatter',
+      '---\ninterface Props { a: string }\nconst { a } = Astro.props as Props;\n---\n<p>Hello there {a}</p>\n',
+    ],
+    [
+      'under a document of its own',
+      '<html><head><title>{"T"}</title></head><body><main><p>Hello there</p></main></body></html>\n',
+    ],
+  ])('%s', async (_name, before) => {
+    expect(await edit('Hello', 'Hi', before)).toMatchObject({ ok: true });
+  });
+});
+
+const module = (word: string) => `const a = $$render\`<p>${word} there</p>\`;\n`;
+
+describe('the compiled modules bind the word', () => {
+  const swap = { word: 'Hello', replacement: 'Hi' };
+
+  it('accepts one swap in the printed text', () => {
+    expect(swapsOnlyBodyCopy(module('Hello'), module('Hi'), swap)).toBe(true);
+  });
+
+  it('refuses modules that differ anywhere else', () => {
+    const after = `${module('Hi')}const b = 1;\n`;
+    expect(swapsOnlyBodyCopy(module('Hello'), after, swap)).toBe(false);
+  });
+
+  it('refuses a swap in code rather than in a render template', () => {
+    const before = 'const a = `Hello there`;\n';
+    expect(swapsOnlyBodyCopy(before, before.replace('Hello', 'Hi'), swap)).toBe(false);
+  });
+
+  it('refuses a module that is not plain JavaScript', () => {
+    const before = `${module('Hello')}enum E { A }\n`;
+    expect(swapsOnlyBodyCopy(before, before.replace('Hello', 'Hi'), swap)).toBe(false);
+  });
+});
