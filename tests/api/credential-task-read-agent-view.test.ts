@@ -58,3 +58,37 @@ it.skipIf(serverUrl === undefined)(
     expect(read.task).not.toHaveProperty('hasContent');
   },
 );
+
+/** A fresh task with all three marks at `mark`. */
+const scored = async (title: string, mark: number) => {
+  const task = await harness.freshTask(title);
+  const set = await harness.asPerson('task.set_scores', {
+    operationId: randomUUID(),
+    recordId: task.id,
+    expectedRevision: task.revision,
+    fields: { impact: mark, confidence: mark, ease: mark },
+  });
+  expect(set.code).toBe('ok');
+  return task.id;
+};
+
+/** The `#N` a task.read answer gives its task. */
+const rankOf = (text: string) =>
+  (JSON.parse(text) as { task: { rank: { number: number | null } } }).task.rank.number;
+
+it.skipIf(serverUrl === undefined)(
+  'a task:read credential ranks the task it reads alone, not among every task its person reaches',
+  async () => {
+    await scored('credential rank pool, the higher task', 10);
+    const lower = await scored('credential rank pool, the lower task', 1);
+    const owner = await harness.asPerson('task.read', { recordId: lower });
+    expect(owner.code).toBe('ok');
+    expect(rankOf(owner.text), 'the person ranks it among every task they reach').toBeGreaterThan(
+      1,
+    );
+    const credential = await issued({ scope: [{ collection: 'task', action: 'read' }] });
+    const agent = await asCredential('task.read', { recordId: lower }, bearer(credential.secret));
+    expect(agent.code).toBe('ok');
+    expect(rankOf(agent.text), 'the credential ranks the one task it reads').toBe(1);
+  },
+);
