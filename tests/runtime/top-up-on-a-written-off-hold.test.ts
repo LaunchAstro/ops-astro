@@ -135,16 +135,19 @@ describe.skipIf(serverUrl === undefined)('a top-up on a stop raised on a written
 });
 
 describe.skipIf(serverUrl === undefined)('a top-up after the written-off call settles late', () => {
-  it("tops up once the written-off call settles late, the settle leaving the envelope alone and the version room counting the hold at the write-off's 300", async () => {
+  it("refuses the top-up's replacement for room once the written-off call settles late, the room counting the hold at its calls' 450 until #992, money unmoved", async () => {
     const { work, versionId, first, c2, stopped } = await stopOnWrittenOff();
     const before = await envelopeOf(s, work);
     await answerLate(s, work.picked, c2, priced(150));
     const settled = { call: await callState(s, c2), envelope: await envelopeOf(s, work) };
     const topped = await topUp(s, work, first, 100);
-    // The top-up's fresh hold, picked up and stopped unspent: its replacement
-    // holds what the version has left, 600 less 300, 200 and nothing.
+    // The top-up's fresh hold, picked up and stopped unspent. The room counts
+    // the written-off hold at its calls (300 + 150), so 600 less 450 and
+    // R1's 200 leaves none: the safe side, until #992 says what a write-off's
+    // charge means for a call that prices later.
     const fresh = (await holdsOf(s, versionId)).find((hold) => hold.state === 'held');
     await stopWorker(s, await pickup(s, fresh?.id));
+    const unmoved = await moneyOf(s, work, versionId);
     const again = await asAgent(s, {
       command: 'task.pickup',
       operationId: randomUUID(),
@@ -159,13 +162,15 @@ describe.skipIf(serverUrl === undefined)('a top-up after the written-off call se
       again: codeOf(again),
       live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
       committed: committed(holds),
+      money: await moneyOf(s, work, versionId),
     }).toEqual({
       stopped: 'BUDGET_UNAVAILABLE',
       settled: { call: 'settled', envelope: before },
       topped: 'applied',
-      again: 'applied',
-      live: ['100'],
-      committed: 600,
+      again: 'BUDGET_UNAVAILABLE',
+      live: [],
+      committed: 500,
+      money: unmoved,
     });
   });
 });

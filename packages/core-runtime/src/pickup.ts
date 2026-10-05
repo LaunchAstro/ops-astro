@@ -42,7 +42,7 @@ import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } fr
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
-import { callsUnclosedSpentOf, remainingOf, stopAtSpentHold } from './budget-stop.ts';
+import { callsSpentOf, remainingOf, stopAtSpentHold } from './budget-stop.ts';
 import { COUNTED_CAUSES, countedHold } from '../../core-custody/src/broker-give-back.ts';
 
 export interface QueueEntry {
@@ -505,7 +505,7 @@ const NO_ROOM = "this run's spend and holds already fill the version's approved 
  * by the run's applied top-ups, less what its reservations of the version
  * committed (a live hold whole, a closed one at its spend). A closed hold
  * custody counted (`countedHold`: a top-up moved its spend, or the end) is at
- * its calls, those a person closed left out, when above its actual; any other at its
+ * its calls as `spentOn` counts them when above its actual; any other at its
  * actual, its unsent calls never counted. Read under the run lock. A
  * replacement is held at most this, whatever the newest-hold order says.
  */
@@ -518,7 +518,7 @@ async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
              - coalesce((select sum(case when r.state in ('held', 'quarantined') then r.held_minor
                                          when ${countedHold('$4')}
                                            then greatest(coalesce(r.actual_minor, 0),
-                                                         ${callsUnclosedSpentOf('r')})
+                                                         ${callsSpentOf('r')})
                                          else coalesce(r.actual_minor, 0) end)
                            from public.reservations r
                           where r.business_id = ver.business_id and r.version_id = ver.id
