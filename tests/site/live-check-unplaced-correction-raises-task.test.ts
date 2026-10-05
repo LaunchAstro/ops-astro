@@ -74,12 +74,14 @@ async function publishAndObserve(
   before: string,
   preImage: string,
   served: Record<string, string>,
+  back: 'absent' | 'landed' = 'absent',
 ) {
   const job = approvedJob(target, before);
   expect((await checkEnvelope(job.change, target)).ok).toBe(true);
   const raised: string[] = [];
   const base: Omit<PublishPorts, 'capture'> = {
-    readBack: async () => ({ state: 'absent' }),
+    readBack: async () =>
+      back === 'landed' ? { state: 'landed', value: published } : { state: 'absent' },
     readSource: async () => ({ kind: 'ok', value: { content: before, revision: 'abc123' } }),
     cancellation: async () => 'none',
     publish: async () => ({ kind: 'ok', value: published }),
@@ -144,6 +146,36 @@ it('a layout copy of the word ahead of the place raises a recovery task, never a
     before,
     `${nav}<main><h2>Contcat</h2><p>Call us.</p></main>`,
     { corrected: `${nav}<main><h2>Contact</h2><p>Call us.</p></main>` },
+  );
+  expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
+});
+
+const navTypoPage = (heading: string) =>
+  `<header><nav><a href="/contact">Contcat</a></nav></header><main><h2>${heading}</h2><p>Call us.</p></main>`;
+
+it('a retry after the publish landed takes no place from the page and raises a recovery task', async () => {
+  // The page may already show the correction, so nothing read after a landing is a pre-image.
+  const target = { path: 'src/pages/contact.astro', word: 'Contcat', replacement: 'Contact' };
+  const before =
+    "---\nimport Layout from '../layouts/Layout.astro';\n---\n<Layout>\n<h2>Contcat</h2>\n<p>Call us.</p>\n{showForm && <h2>Contact</h2>}\n</Layout>\n";
+  const result = await publishAndObserve(
+    target,
+    before,
+    navTypoPage('Contact'),
+    { corrected: navTypoPage('Contact') },
+    'landed',
+  );
+  expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
+});
+
+it('a pre-image past the comparison bound leaves no place and raises a recovery task', async () => {
+  const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
+  const filler = `<p>${'Our clinic is open six days. '.repeat(10_000)}</p>`;
+  const result = await publishAndObserve(
+    target,
+    '<p>We walk alongside you.</p>\n',
+    `<p>We walk alongside you.</p>${filler}`,
+    { corrected: `<p>We walk beside you.</p>${filler}` },
   );
   expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
 });

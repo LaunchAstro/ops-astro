@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* eslint-disable require-await -- the ports answer synchronously */
+/* eslint-disable max-lines, require-await -- one file per catalogue issue; the ports answer synchronously */
 //
 // The live-correction check places the approved occurrence on the source's
 // own render, but the built page drops text the source holds (a false
@@ -123,14 +123,15 @@ function observe(accepted: Accepted, target: CorrectionTarget, servedHtml: strin
   });
 }
 
-function revert(approved: PublishJob, accepted: Accepted, servedHtml: string) {
+/** A revert observed at the place an outcome carries: only a place seen live tracks the target. */
+function revert(approved: PublishJob, placed: Pick<Accepted, 'occurrence'>, servedHtml: string) {
   const input = {
     publishedRevision: published.revision,
     target: approved.target,
     change: approved.change,
     seam: 'revert-953',
     decidedAt,
-    occurrence: accepted.occurrence,
+    occurrence: placed.occurrence,
   };
   return revertCorrection(input, {
     now: () => decidedAt + 1000,
@@ -197,11 +198,12 @@ it('an honest page still reads live once corrected and reverted once reverted, a
   const { ports: p, captured } = ports(source, aboutPage('alongside'));
   const accepted = await publishCorrection(approved, p);
   if (accepted.state !== 'accepted') throw new Error(`fixture was ${accepted.state}`);
+  const corrected = await observe(accepted, about, aboutPage('beside'));
   const states = {
     unchanged: (await observe(accepted, about, aboutPage('alongside'))).state,
-    corrected: (await observe(accepted, about, aboutPage('beside'))).state,
-    stillCorrected: (await revert(approved, accepted, aboutPage('beside'))).state,
-    reverted: (await revert(approved, accepted, aboutPage('alongside'))).state,
+    corrected: corrected.state,
+    stillCorrected: (await revert(approved, corrected, aboutPage('beside'))).state,
+    reverted: (await revert(approved, corrected, aboutPage('alongside'))).state,
   };
   expect({ states, captured }).toEqual({
     states: {
@@ -264,17 +266,42 @@ it('an unchanged sentence never reads live when an equal match straddles the lin
 it('a refused publish never reads the page', async () => {
   const source = `${LAYOUT}<Layout>\n<p>We walk alongside you.</p>\n</Layout>\n`;
   const approved = job(about, source);
-  const read = async (attempt: PublishJob, content: string) => {
+  const read = async (
+    attempt: PublishJob,
+    content: string,
+    cancel: 'none' | 'requested' = 'none',
+  ) => {
     const { ports: p, captured } = ports(source, aboutPage('alongside'));
     const readSource = async () => ({ kind: 'ok' as const, value: { content, revision: 'base' } });
-    const outcome = await publishCorrection(attempt, { ...p, readSource });
+    const cancellation = async () => cancel;
+    const outcome = await publishCorrection(attempt, { ...p, readSource, cancellation });
     return { state: outcome.state, captured: captured.length };
   };
   expect({
     unapproved: await read({ ...approved, decision: undefined }, source),
     drifted: await read(approved, `${source}<p>Edited since.</p>\n`),
+    cancelled: await read(approved, source, 'requested'),
   }).toEqual({
     unapproved: { state: 'refused', captured: 0 },
     drifted: { state: 'refused', captured: 0 },
+    cancelled: { state: 'refused', captured: 0 },
+  });
+});
+
+it('a still-corrected page never reads reverted at a place the page was never seen to change', async () => {
+  // The heading is a client:only island's child, never in the served page; the layout nav's typo
+  // lines the counts up, so the place sits on the nav. Only a live reading proves a place.
+  const source = `${LAYOUT}<Layout>\n<Form client:only="react">\n<h2>Contcat</h2>\n</Form>\n${CALL}\n</Layout>\n`;
+  const served = `${NAV_TYPO}<main><astro-island client="only"></astro-island>${CALL}</main>`;
+  const { approved, accepted } = await accept(contact, source, served);
+  const observed = await observe(accepted, contact, served);
+  expect({
+    observed: observed.state,
+    fromAccepted: (await revert(approved, accepted, served)).state,
+    fromObserved: (await revert(approved, observed, served)).state,
+  }).toEqual({
+    observed: 'accepted',
+    fromAccepted: 'revert_accepted',
+    fromObserved: 'revert_accepted',
   });
 });
