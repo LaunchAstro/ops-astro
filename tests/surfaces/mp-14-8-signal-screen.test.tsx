@@ -659,6 +659,8 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     const zone = process.env['TZ'];
     process.env['TZ'] = 'Pacific/Auckland';
     try {
+      // The switch must take: in a pool where it cannot, the case fails here.
+      expect(new Date('2026-09-28T13:00:00Z').getTimezoneOffset()).toBe(-780);
       const { page } = await open({ ...body, nightRound: { ...round, steps: [late] } });
       expect(text(page, '[data-night-step="late"] time')).toBe('23:00');
       expect(text(page, '[data-night-lede]')).toContain('29 Sept');
@@ -679,5 +681,40 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     expect(none.page.find('.grl__lede')).toBeNull();
     expect(text(none.page, '#grants')).toContain('No grants you can see.');
     await none.page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B-RB4.1 each of sections 006 to 008 sits directly in a spaced column', async () => {
+    const { page } = await open(signalBody(ALL));
+    for (const section of ['#grants', '#tripwires', '#night-round']) {
+      expect(page.find(`${section}`)?.parentElement?.classList.contains('secs')).toBe(true);
+    }
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B-RB4.2 a ledger of ended grants says nothing is live', async () => {
+    const { page } = await open(
+      signalBody([grant('gone', 'ran_out', -60), grant('fleet-back', 'taken_back', 90)]),
+    );
+    expect(text(page, '#grants')).toContain('No grants live that you can see.');
+    expect(page.find('[data-grant-group="ran_out"]')).not.toBeNull();
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B-RB4.4 stamps read on the business clock, and many exec grants carry', async () => {
+    const zone = process.env['TZ'];
+    process.env['TZ'] = 'Pacific/Auckland';
+    try {
+      expect(new Date('2026-09-28T13:00:00Z').getTimezoneOffset()).toBe(-780);
+      const { page } = await open(
+        signalBody([grant('onex', 'live', 90), grant('twox', 'live', 90)]),
+      );
+      // fired last at 09:00Z on the 29th: 7:00 pm in Brisbane, 10:00 pm in Auckland.
+      expect(text(page, '[data-tripwire="fired"]')).toMatch(/7:00\s?pm/u);
+      expect(text(page, '.grl__lede')).toContain('2 of them carry execute access.');
+      await page.unmount();
+    } finally {
+      if (zone === undefined) delete process.env['TZ'];
+      else process.env['TZ'] = zone;
+    }
   });
 });
