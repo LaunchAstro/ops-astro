@@ -627,4 +627,57 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     expect(page.find('[data-grant="fleetx"] .visually-hidden')).toBeNull();
     await page.unmount();
   });
+
+  it('MP-14-8 CR-P04B.P1 each night step wears its tone as a mark, and a step that went wrong says so in words', async () => {
+    const { page } = await open(signalBody(ALL));
+    const node = (id: string): Element | null => page.find(`[data-night-step="${id}"] .snode`);
+    expect(node('bad-0')?.classList.contains('is-bad')).toBe(true);
+    expect(node('watch')?.classList.contains('is-warn')).toBe(true);
+    expect(node('open')?.classList.contains('is-idle')).toBe(true);
+    expect(page.find('[data-night-step="bad-0"] .visually-hidden')?.textContent).toBe(
+      'Did not go cleanly: ',
+    );
+    expect(page.find('[data-night-step="watch"] .visually-hidden')?.textContent).toBe(
+      'Worth a look: ',
+    );
+    expect(page.find('[data-night-step="open"] .visually-hidden')).toBeNull();
+    await page.unmount();
+  });
+
+  it('MP-14-8 CR-P04B.S1 sections 006 to 008 keep the page section gap', async () => {
+    const { page } = await open(signalBody(ALL));
+    expect(page.find('[data-signal]')?.classList.contains('secs')).toBe(true);
+    await page.unmount();
+  });
+
+  it('MP-14-8 CR-P04B.S3 step times are on the business clock the window is stated in', async () => {
+    const body = signalBody(ALL);
+    const round = body.nightRound as NonNullable<ConnectionSignalResult['nightRound']>;
+    const late: NightStepView = { ...step('late', 'plain', null), at: '2026-09-28T13:00:00Z' };
+    // A browser far from the business: the step and the round's day still
+    // read as the business clock says.
+    const zone = process.env['TZ'];
+    process.env['TZ'] = 'Pacific/Auckland';
+    try {
+      const { page } = await open({ ...body, nightRound: { ...round, steps: [late] } });
+      expect(text(page, '[data-night-step="late"] time')).toBe('23:00');
+      expect(text(page, '[data-night-lede]')).toContain('29 Sept');
+      await page.unmount();
+    } finally {
+      if (zone === undefined) delete process.env['TZ'];
+      else process.env['TZ'] = zone;
+    }
+  });
+
+  it('MP-14-8 CR-P04B.P2 the grants lede says only what the read gives, in the right number', async () => {
+    const one = await open(signalBody([grant('onex', 'live', 90)]));
+    expect(text(one.page, '.grl__lede')).toBe(
+      '1 grant live that you can see. 1 of them carries execute access.',
+    );
+    await one.page.unmount();
+    const none = await open(signalBody([]));
+    expect(none.page.find('.grl__lede')).toBeNull();
+    expect(text(none.page, '#grants')).toContain('No grants you can see.');
+    await none.page.unmount();
+  });
 });
