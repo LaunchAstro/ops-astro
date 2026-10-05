@@ -491,6 +491,7 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
     const foreignTask = await readyAgentStep(startedB);
     const before = await stepStates(startedB);
     const commentsBefore = commentBodies(await readTask(admin, foreignTask));
+    const rowsBefore = [await tableRows('onboardings'), await tableRows('onboarding_steps')];
     for (const [name, body] of [
       ['onboarding.step_result', { recordId: foreignTask, outcome: 'done', result: 'crossing' }],
       ['onboarding.start', { clientId: clientB, templateKey: 'standard' }],
@@ -506,6 +507,10 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
     }
     expect(await stepStates(startedB)).toStrictEqual(before);
     expect(commentBodies(await readTask(admin, foreignTask))).toStrictEqual(commentsBefore);
+    // Nor anywhere else: no onboarding and no step was added by the three crossings.
+    expect([await tableRows('onboardings'), await tableRows('onboarding_steps')]).toStrictEqual(
+      rowsBefore,
+    );
     // The control: the same credential records its own client's agent step.
     const own = await asAgentWith(credential, 'onboarding.step_result', {
       recordId: ownTask,
