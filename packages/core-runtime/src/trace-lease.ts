@@ -78,7 +78,11 @@ export async function renew(
   return row?.version ?? null;
 }
 
-/** The gaps whose body the target may have stored all the same. */
+/**
+ * The gaps whose body the target may have stored all the same. The rest are
+ * answers that say it took nothing; a target that stores a body and then
+ * answers 5xx anyway is not held off.
+ */
 const MAYBE_STORED: ReadonlySet<GapCode> = new Set<GapCode>([
   'target_timeout',
   'target_unreachable',
@@ -88,16 +92,25 @@ const MAYBE_STORED: ReadonlySet<GapCode> = new Set<GapCode>([
 
 /**
  * Ends `holder`'s export: gives the lease up, or after a gap whose body may
- * have been stored, keeps it to its end (`renew`).
+ * have been stored, keeps it to its end. The hold asks only that `holder`
+ * still has the lease, whatever the version: a retention step meanwhile
+ * gave the row a new one, and the stepped-back resend must still wait.
  */
 export async function letGo(
   tx: TenantQuery,
   holder: string,
-  version: string | null,
   code: GapCode | null,
 ): Promise<void> {
-  if (code !== null && MAYBE_STORED.has(code)) await renew(tx, holder, version);
-  else await release(tx, holder);
+  if (code === null || !MAYBE_STORED.has(code)) {
+    await release(tx, holder);
+    return;
+  }
+  await tx.query(
+    `update public.trace_export_cursors
+        set lease_until = clock_timestamp() + make_interval(secs => $3)
+      where business_id = $1 and lease_holder = $2`,
+    [tx.businessId, holder, TRACE_LEASE_SECONDS],
+  );
 }
 
 /** Gives up `holder`'s lease, if it still holds it. */

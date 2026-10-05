@@ -1920,9 +1920,11 @@ and codes, never a sentence, to a trace target an operator reads.
   nothing. A failing export can delay a healthy one's tick, never undo it. A
   gap whose body the target may still store (`target_timeout`,
   `target_unreachable`, `target_malformed_reply`, `target_oversized_reply`)
-  keeps the lease to its end, so a late store lands before the next export
-  sends; while the target times out, a business exports at most once a
-  lease. A store later than the lease is not held off, and the lease has no
+  keeps the lease to its end, even past a retention step meanwhile, so a late
+  store lands before the next export sends; while the target times out, a
+  business exports at most once a lease. The other codes are answers that
+  say the target took nothing; a target that stores a body and answers 5xx
+  anyway is not held off, nor is a store later than the lease. The lease has no
   token the target checks: a holder stalled for most of a minute between its
   renewal and custody's send could still send after a takeover. A cursor row
   with no place yet (the lease creates it) owes no expiry ask.

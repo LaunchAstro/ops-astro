@@ -127,7 +127,7 @@ export async function exportOnce(
   await database.withBusiness(businessId, async (tx) => {
     if (code === null) await advance(tx, last, holder, version);
     else await recordGap(tx, code, from, batch.length);
-    await letGo(tx, holder, version, code);
+    await letGo(tx, holder, code);
   });
   return code === null ? { kind: 'delivered', spans } : { kind: 'gap', code, spans };
 }
