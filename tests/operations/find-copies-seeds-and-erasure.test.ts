@@ -244,13 +244,13 @@ it('a person merged into another is the same person: the merge is followed, a re
   expect(found.code).toBe(0);
   expect(pairs(found.hits)).toContainEqual(['memberships', absorbed.membership]);
   expect(hitOn(found.hits, 'memberships', absorbed.membership)?.people).toEqual([absorbed.id]);
-  expect(found.stderr).toContain(
-    `${requested.id} (named by the text; merged with ${duplicate.id})`,
+  const line = (id: string) =>
+    found.stderr.split('\n').find((each) => each.includes(`for ${id} (`));
+  expect(line(requested.id)).toContain(
+    `(named by the text; merged with ${[absorbed.id, duplicate.id].toSorted().join('; merged with ')})`,
   );
-  expect(found.stderr).toContain(`${absorbed.id} (merged with ${requested.id})`);
-  expect(found.stderr).toContain(
-    `${duplicate.id} (named by the text; merged with ${requested.id})`,
-  );
+  expect(line(absorbed.id)).toContain(`(merged with ${requested.id})`);
+  expect(line(duplicate.id)).toContain(`(named by the text; merged with ${requested.id})`);
   expect(pairs(found.hits), 'the reversed merge joins no one').not.toContainEqual([
     'memberships',
     unmerged.membership,
