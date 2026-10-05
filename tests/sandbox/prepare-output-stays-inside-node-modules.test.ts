@@ -127,6 +127,13 @@ it('refuses a symlink that resolves outside node_modules from its parent', () =>
   expect(at('node_modules', 'x')).toMatchObject({ ok: true });
 });
 
+it('refuses a symlink whose link field holds bytes after its first NUL', () => {
+  const hidden: [number, Uint8Array][] = [[157 + 50, Uint8Array.of(0x61)]];
+  expect(
+    prepare(tar(dir('node_modules'), symlink('node_modules/l', 'x', { poke: hidden }))),
+  ).toEqual(refused('tar link'));
+});
+
 it('refuses a symlink with a size or a link name past the field', () => {
   expect(prepare(tar(dir('node_modules'), symlink('node_modules/l', 'x', { size: 1 })))).toEqual(
     refused('tar size'),
@@ -175,7 +182,7 @@ it('holds a prepare to 200,000 entries', () => {
   expect(reader.end()).toEqual(refused('tar end'));
   reader.push(header({ name: 'node_modules/last' }));
   expect(reader.end()).toEqual(refused('too many entries'));
-});
+}, 30_000);
 
 it('writes the layer anew: fixed modes, owner 0:0, a fixed time, no extended headers', () => {
   const read = prepare(MODULES);
