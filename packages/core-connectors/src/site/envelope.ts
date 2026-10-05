@@ -109,6 +109,16 @@ const ELEMENTS: ReadonlySet<string> = new Set([
   'fragment',
 ]);
 
+/**
+ * Whether `node` prints a tag of its own. A fragment, a component or a slot
+ * may print nothing, and a script or style may be hoisted out of the page.
+ */
+function printsTag(node: Node): boolean {
+  if (node.type !== 'element' && node.type !== 'custom-element') return false;
+  const name = node.name.toLowerCase();
+  return name !== 'slot' && !CODE_ELEMENTS.has(name);
+}
+
 function tooLarge(source: string): boolean {
   if (source.length > MOST_BYTES) return true;
   let openers = 0;
@@ -122,8 +132,9 @@ function tooLarge(source: string): boolean {
  * never the frontmatter, an expression, a comment, a script or style, or an
  * element whose children are raw or replaced. A text node holding '<', or
  * whose recorded position does not hold its own text, is not trusted; nor is
- * a word opening its node after an expression or comment, which can close a
- * tag opener or a character reference left before it.
+ * a word opening its node (or behind only a '#') where no printed tag comes
+ * before it, which can close a tag opener or a character reference left
+ * before it.
  */
 function textAt(node: Node, bytes: Uint8Array, start: number, end: number): TextNode | undefined {
   if (node.type === 'text') {
@@ -142,9 +153,9 @@ function textAt(node: Node, bytes: Uint8Array, start: number, end: number): Text
   for (const [index, child] of node.children.entries()) {
     const found = textAt(child, bytes, start, end);
     if (found === undefined) continue;
-    const previous = node.children[index - 1];
-    const opens = found === child && child.position?.start.offset === start;
-    return opens && previous !== undefined && !ELEMENTS.has(previous.type) ? undefined : found;
+    const lead = bytes.subarray(child.position?.start.offset ?? start, start);
+    const opens = found === child && /^#?$/u.test(new TextDecoder().decode(lead));
+    return opens && !printsTag(node.children[index - 1] ?? node) ? undefined : found;
   }
   return undefined;
 }

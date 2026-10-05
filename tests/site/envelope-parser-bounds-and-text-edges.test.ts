@@ -107,6 +107,11 @@ describe('a word at the edge of its text node', () => {
     ['after a comment closing a tag opener', 'Hello', 'script', '<p>a <<!---->Hello there</p>\n'],
     ['in text holding a bare less-than', 'Hello', 'Hi', '<p>a < Hello there</p>\n'],
     ['in a numeric reference', 'xABC', 'xABD', '<p>Code &#xABC; here</p>\n'],
+    ['opening a fragment after a reference opener', 'amp', 'lt', '<p>Fish &<>amp; chips</></p>\n'],
+    ['after a component', 'amp', 'lt', '<p>Fish &<Empty />amp; chips</p>\n'],
+    ['after a slot', 'amp', 'lt', '<p>Fish &<slot />amp; chips</p>\n'],
+    ['after a hoisted script', 'amp', 'lt', '<p>Fish &<script>0</script>amp; chips</p>\n'],
+    ['behind a hash after a fragment', 'xABC', 'xABD', '<p>Code &<></>#xABC; here</p>\n'],
   ])('refuses a word %s', async (_name, word, replacement, before) => {
     expect(await edit(word, replacement, before)).toMatchObject({ ok: false });
   });
