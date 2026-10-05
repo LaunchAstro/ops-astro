@@ -2,9 +2,10 @@
 //
 // The published version of a legal document is the one published last
 // (`readPublishedLegal`, newest `published_at`). The publication instant must
-// be the order the publications committed in, not the order their
-// transactions began: a publication whose transaction began first and
-// committed last is the current one.
+// be read when the publication is written, not when its transaction began: a
+// publication whose transaction began first and was written after another
+// committed is the current one. (Two publications written at once still stamp
+// in the order they were written, not the order they commit: SEC-B1B F6.)
 //
 // Version 2.0's transaction begins and holds; version 1.0 is published and
 // committed on another connection; then 2.0 is published and committed.
