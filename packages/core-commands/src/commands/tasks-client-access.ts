@@ -145,7 +145,8 @@ async function clientPeople(tx: TenantQuery, client: string): Promise<readonly s
     [tx.businessId, client],
   );
   const people: string[] = [];
-  for (const personId of new Set(candidates.map((row) => row.person_id))) {
+  // Locked in grant order, served in person order.
+  for (const personId of [...new Set(candidates.map((row) => row.person_id))].toSorted()) {
     // oxlint-disable-next-line no-await-in-loop
     const live = await effectiveGrants(tx, [{ kind: 'person', id: personId }], {
       collection: TASK,

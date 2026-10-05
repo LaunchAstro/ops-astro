@@ -886,9 +886,11 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         tx,
         { session, request, declaration, credential },
         _operands,
-        _held,
+        _delegation,
         taskId,
       ) => {
+        if (credential === undefined)
+          throw new Error('agent run state: served without a credential');
         const spine = await readTaskSpine(tx);
         return await reviseRunState(
           tx,
@@ -902,11 +904,12 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
           {
             id: session.actorId,
             // The delegation resolved again, not the one read before the wait:
-            // a revocation (which locks this run) commits first or not at all.
+            // one revoked or expired while this waited for the run refuses the
+            // write (#443).
             askAgain: async (task) => {
-              const now = await resolveDelegation(tx, session.actorId, credential ?? '');
-              if (!now.ok) return refused(now.refusal);
-              const still = await checkDelegatedAuthority(tx, now.value, {
+              const again = await resolveDelegation(tx, session.actorId, credential);
+              if (!again.ok) return refused(again.refusal);
+              const still = await checkDelegatedAuthority(tx, again.value, {
                 collection: declaration.collection,
                 action: declaration.action,
                 scope: { kind: 'record', id: task },
