@@ -279,6 +279,13 @@ set no file flag (`uchg`, `uappnd` or their system forms) on the link's
 folder, the link or `<link>.promoting`, or the swap fails after the
 migration.
 
+Each promotion copies the artefact afresh, folders 0755 and files 0644 whatever
+the promoter's umask, and replaces anything already at that digest's name, so
+an earlier copy's modes or files are never served. The services read the copy
+as another user: every folder from `/` down to the link's folder must let them
+search it. The promotion does not know the services' user, so it does not
+check that; a folder they cannot search fails at their start.
+
 ## Alerts
 
 Nothing deploys before the alerts reach the owner (ticket S0-2). The watcher
