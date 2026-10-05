@@ -163,6 +163,26 @@ describe('C39-T invite a team member on Settings ▸ Access', () => {
     expect(api.commands().map((call) => call.url)).toEqual(['/api/b/alpha/invitation/create']);
   });
 
+  it('C39-T invite a team member: what is typed while an invitation is out survives its success', async () => {
+    // Sol PRV-oa-1018-R1.3: Ivy's answer clears Ivy's draft, never Jo's.
+    const held = heldAnswer();
+    const api = server([json(access([ADA, MIA]))], () => held.promise, MANAGE_AND_SHARE);
+    const view = await open(api.fetch);
+    await fill(view);
+    await view.click(`${FORM} button[type="submit"]`);
+    await view.type(`${FORM} [data-field="name"] input`, 'Jo');
+    await view.type(`${FORM} [data-field="email"] input`, 'jo@example.test');
+    expect(api.commands().map((call) => call.body)).toEqual([
+      expect.objectContaining({ name: 'Ivy Invitee', email: 'ivy@example.test' }),
+    ]);
+    held.resolve(json({ recordId: 'i-1', revision: 1 }));
+    await settle();
+    await settle();
+    const value = (field: string): string | undefined =>
+      (view.find(`${FORM} [data-field="${field}"] input`) as HTMLInputElement | null)?.value;
+    expect([value('name'), value('email')]).toEqual(['Jo', 'jo@example.test']);
+  });
+
   it('C39-T admin invitation asks access:manage on the screen: with it both roles are offered', async () => {
     const api = server([json(access([ADA, MIA]))], undefined, MANAGE_AND_SHARE);
     const view = await open(api.fetch);
