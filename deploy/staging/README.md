@@ -182,6 +182,8 @@ node scripts/ops/service-report.mjs compare before.json after.json
 
 It exits 1 when a live service stopped, restarted, vanished, moved port or
 was reconfigured, and 0 when all are unchanged (`S0-1 services unchanged`).
+A snapshot that cannot be taken exits 2 with Docker's or launchd's own error
+and prints nothing; compare refuses the empty file the redirect leaves.
 
 ## The deploy
 

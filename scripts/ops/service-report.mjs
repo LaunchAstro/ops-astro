@@ -23,9 +23,13 @@
 //   node scripts/ops/service-report.mjs compare <before.json> <after.json>
 //
 // With no file, snapshot asks `docker inspect` and `launchctl list` itself; a
-// file holds that command's raw output instead. Compare exits 0 when every
-// live service is unchanged, 1 when one is not, and 2 when it cannot read a
-// snapshot, so a broken input is never green.
+// file holds that command's raw output instead. It inspects the containers a
+// batch at a time and keeps only each batch's fields, so the snapshot does not
+// grow with the size of all of Docker's output (161 containers printed 1.7 MB
+// on the production machine, past Node's default 1 MB buffer). A command that
+// fails stops the snapshot with its own error, exit 2, and prints nothing.
+// Compare exits 0 when every live service is unchanged, 1 when one is not, and
+// 2 when it cannot read a snapshot, so a broken input is never green.
 //
 // The deploy and the promotion import `snapshot` and `compare` and use them as
 // the command does; `compare` throws where the command exits 2.
@@ -50,13 +54,33 @@ function flag(args, name) {
   return at === -1 ? undefined : args[at + 1];
 }
 
-/** `docker inspect` of every container, running or not. */
-function dockerInspect() {
-  const ids = execFileSync('docker', ['ps', '-aq', '--no-trunc'], { encoding: 'utf8' })
-    .split('\n')
-    .filter(Boolean);
-  if (ids.length === 0) return '[]';
-  return execFileSync('docker', ['inspect', ...ids], { encoding: 'utf8' });
+const INSPECT_BATCH = 32;
+const CONTAINER_ID = /^[0-9a-f]{64}$/u;
+
+/** A command's output; its failure carries the command's own error, never its output. */
+function ask(command, args) {
+  try {
+    return execFileSync(command, args, {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    const said = typeof error.stderr === 'string' ? error.stderr.trim() : '';
+    // oxlint-disable-next-line preserve-caught-error -- its stdout can hold a container's environment
+    throw new Error(`${command} ${args[0]} failed: ${said || error.code || error.message}`);
+  }
+}
+
+/** Every container, running or not, inspected a batch at a time. */
+function dockerServices() {
+  const ids = ask('docker', ['ps', '-aq', '--no-trunc']).split('\n').filter(Boolean);
+  if (!ids.every((id) => CONTAINER_ID.test(id)))
+    throw new Error('docker ps printed something other than container ids');
+  const services = [];
+  for (let at = 0; at < ids.length; at += INSPECT_BATCH)
+    services.push(...fromDocker(ask('docker', ['inspect', ...ids.slice(at, at + INSPECT_BATCH)])));
+  return services;
 }
 
 function fromDocker(raw) {
@@ -100,11 +124,9 @@ function fromLaunchd(raw) {
 
 /** The live services as a snapshot, printed; a file holds its command's raw output instead. */
 export function snapshot({ dockerFile, launchdFile } = {}) {
-  const docker = dockerFile ? readFileSync(dockerFile, 'utf8') : dockerInspect();
-  const launchd = launchdFile
-    ? readFileSync(launchdFile, 'utf8')
-    : execFileSync('launchctl', ['list'], { encoding: 'utf8' });
-  const services = [...fromDocker(docker), ...fromLaunchd(launchd)];
+  const docker = dockerFile ? fromDocker(readFileSync(dockerFile, 'utf8')) : dockerServices();
+  const launchd = launchdFile ? readFileSync(launchdFile, 'utf8') : ask('launchctl', ['list']);
+  const services = [...docker, ...fromLaunchd(launchd)];
   return JSON.stringify({ taken: new Date().toISOString(), services }, undefined, 2);
 }
 
@@ -162,12 +184,16 @@ export function compare(beforeText, afterText) {
 if (import.meta.main) {
   const [command, ...rest] = process.argv.slice(2);
   if (command === 'snapshot') {
-    console.log(
-      snapshot({
+    let taken;
+    try {
+      taken = snapshot({
         dockerFile: flag(rest, '--docker-inspect'),
         launchdFile: flag(rest, '--launchctl'),
-      }),
-    );
+      });
+    } catch (error) {
+      refuse(`no snapshot: ${error.message}`);
+    }
+    console.log(taken);
   } else if (command === 'compare') {
     if (rest.length !== 2) refuse('compare needs a before and an after snapshot');
     let compared;
