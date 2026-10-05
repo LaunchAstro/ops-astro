@@ -194,7 +194,10 @@ it('a call settled before a budget top-up is counted once, by the top-up, never 
   expect((await call(w)).ok).toBe(true);
   const moved = (await callsOn(w)).settled;
   expect(moved).toBeGreaterThan(0);
+  const atStop = Number((await moneyOf(w))['envelope_actual']);
   const topped = await stopAndTopUp(w);
+  // The top-up counts the moved spend as actual, once.
+  expect((await moneyOf(topped))['envelope_actual']).toBe(String(atStop + moved));
   await applied(topped);
   const before = await moneyOf(topped);
 
