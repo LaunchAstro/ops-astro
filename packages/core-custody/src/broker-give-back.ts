@@ -71,22 +71,30 @@ export async function lockEnvelope(tx: TenantQuery, callId: string): Promise<voi
  * released meanwhile gives back here, under the envelope and hold the count
  * holds.
  */
-export async function giveBackReleased(tx: TenantQuery, unsent: readonly string[]): Promise<void> {
-  if (unsent.length === 0) return;
+export async function giveBackReleased(
+  tx: TenantQuery,
+  unsent: readonly string[],
+): Promise<number> {
+  if (unsent.length === 0) return 0;
   const rows = await tx.query<{ readonly id: string; readonly state: string }>(
     `select id, state from public.model_calls
       where business_id = $1 and id = any($2::uuid[]) order by id for update`,
     [tx.businessId, unsent],
   );
+  let back = 0;
   for (const { id, state } of rows) {
     // One call at a time, on the count's one connection.
     // eslint-disable-next-line no-await-in-loop
-    if (state === 'released') await giveBack(tx, id);
+    if (state === 'released') back += await giveBack(tx, id);
   }
+  return back;
 }
 
-/** Give back what the ended call did not spend, when its hold counted it at its maximum. */
-export async function giveBack(tx: TenantQuery, callId: string): Promise<void> {
+/**
+ * Give back what the ended call did not spend, when its hold counted it at its
+ * maximum; the amount given back, or 0.
+ */
+export async function giveBack(tx: TenantQuery, callId: string): Promise<number> {
   const [due] = await tx.query<Due>(
     `select r.id as reservation_id, r.envelope_id, r.state = 'held' as held,
             (c.reserved_minor - coalesce(c.actual_minor, 0))::text as back
@@ -97,7 +105,7 @@ export async function giveBack(tx: TenantQuery, callId: string): Promise<void> {
         for update of r`,
     [tx.businessId, callId, COUNTED_CAUSES],
   );
-  if (due === undefined || Number(due.back) <= 0) return;
+  if (due === undefined || Number(due.back) <= 0) return 0;
   if (due.held) {
     await tx.query(
       `update public.reservations set held_minor = held_minor + $3
@@ -111,4 +119,5 @@ export async function giveBack(tx: TenantQuery, callId: string): Promise<void> {
       where business_id = $1 and id = $2`,
     [tx.businessId, due.envelope_id, due.back, due.held ? due.back : 0],
   );
+  return Number(due.back);
 }

@@ -178,7 +178,7 @@ async function raiseHold(
 ): Promise<number> {
   if (locked.reservation_state === 'actual') return await holdTopUp(tx, request, locked);
   const { spent, unsent } = await spentOn(tx, locked.reservation_id);
-  const heldMinor = Number(locked.held_minor) + request.amountMinor - spent;
+  let heldMinor = Number(locked.held_minor) + request.amountMinor - spent;
   await tx.query(
     `update public.reservations set held_minor = $3 where business_id = $1 and id = $2`,
     [tx.businessId, locked.reservation_id, heldMinor],
@@ -190,7 +190,8 @@ async function raiseHold(
       where business_id = $1 and id = $2`,
     [tx.businessId, locked.envelope_id, request.amountMinor, spent],
   );
-  await giveBackReleased(tx, unsent);
+  // A call the sweep released since the count read it went back onto this hold.
+  heldMinor += await giveBackReleased(tx, unsent);
   await tx.query(
     `update public.planned_runs set state = 'planned' where business_id = $1 and id = $2`,
     [tx.businessId, request.runId],
@@ -270,7 +271,10 @@ export async function endAtBudgetStop(
         where business_id = $1 and id = $2`,
       [tx.businessId, locked.envelope_id, locked.held_minor, spentMinor],
     );
-    await giveBackReleased(tx, counted.unsent);
+    // A call the sweep released since the count read it is spent no longer.
+    const back = await giveBackReleased(tx, counted.unsent);
+    spentMinor -= back;
+    releasedMinor += back;
   }
   await tx.query(
     `update public.planned_runs set state = 'cancelled' where business_id = $1 and id = $2`,
