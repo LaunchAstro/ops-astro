@@ -16,7 +16,9 @@
 // stated limit (OPS497ACL), not something the walk proves.
 
 import {
+  accessSync,
   chmodSync,
+  constants,
   cpSync,
   lstatSync,
   mkdirSync,
@@ -48,16 +50,16 @@ export function frozenCopy(
   const home = dirname(link);
   const untrusted = untrustedChain(home, uid);
   if (untrusted !== undefined) return { why: untrusted };
+  if (!writable(home)) return { why: `${home} cannot be written by the promoter` };
   const folder = join(home, SERVED);
   if (!lexists(folder)) mkdirSync(folder, { mode: 0o755 });
   const why = untrustedFolder(folder, uid);
   if (why !== undefined) return { why: `${folder} ${why}` };
-  // Only a link is swapped for the new one; anything else there, `served/`
-  // itself in any letter case included, would stop the swap after the migration.
-  if (lexists(link) && !lstatSync(link).isSymbolicLink()) {
-    return { why: `${link} is there and is not a link` };
-  }
+  if (!writable(folder)) return { why: `${folder} cannot be written by the promoter` };
+  const blocked = swapBlocked(link);
+  if (blocked !== undefined) return { why: blocked };
   const path = join(folder, selected.digest.slice('sha256:'.length));
+  let failure: NodeJS.ErrnoException | undefined;
   if (!lexists(path)) {
     const copy = mkdtempSync(join(folder, '.copy-'));
     try {
@@ -66,16 +68,20 @@ export function frozenCopy(
       chmodSync(copy, lstatSync(selected.path).mode & 0o755);
       if (holds(copy, selected.digest)) renameSync(copy, path);
     } catch (error) {
-      // Another promotion of the same digest renaming its copy first is no
-      // failure; with nothing there, the artefact changed under the copy
-      // (answered below).
-      const code = (error as NodeJS.ErrnoException).code;
-      if (lexists(path) && code !== 'ENOTEMPTY' && code !== 'EEXIST') throw error;
+      // Answered below: another promotion renaming its copy first is no
+      // failure; otherwise the artefact changed, or the disk said why.
+      failure = error as NodeJS.ErrnoException;
     } finally {
+      // A copy of a folder without owner write cannot be emptied until it has it.
+      if (lexists(copy)) ownerWrites(copy);
       rmSync(copy, { recursive: true, force: true });
     }
   }
-  if (!lexists(path)) return { why: `${selected.name} changed while it was copied` };
+  if (!lexists(path)) {
+    return failure !== undefined && holds(selected.path, selected.digest)
+      ? { why: `${selected.name} could not be copied: ${failure.code ?? failure.message}` }
+      : { why: `${selected.name} changed while it was copied` };
+  }
   return holds(path, selected.digest)
     ? { path }
     : { why: `${path} is not a real folder holding the bytes ${selected.name} records` };
@@ -131,6 +137,40 @@ function withoutSharedWrite(root: string): void {
   if (entry.isDirectory()) {
     for (const name of readdirSync(root)) withoutSharedWrite(join(root, name));
   }
+}
+
+/**
+ * Why swapping `link` would fail after the migration, or undefined. Only a
+ * link is swapped for the new one; anything else there, `served/` itself in
+ * any letter case included, would stop the swap, and so would a folder at the
+ * swap's own name (promote.mjs's `point`).
+ */
+function swapBlocked(link: string): string | undefined {
+  if (lexists(link) && !lstatSync(link).isSymbolicLink())
+    return `${link} is there and is not a link`;
+  const next = `${link}.promoting`;
+  if (lexists(next) && lstatSync(next).isDirectory()) {
+    return `${next} is a folder; the link's swap needs that name`;
+  }
+  return undefined;
+}
+
+/** Whether this user may write the folder `path`. */
+function writable(path: string): boolean {
+  try {
+    accessSync(path, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Gives the owner full rights on every real folder under `root`, and `root`, so it can be removed. */
+function ownerWrites(root: string): void {
+  const entry = lstatSync(root);
+  if (!entry.isDirectory()) return;
+  chmodSync(root, entry.mode | 0o700);
+  for (const name of readdirSync(root)) ownerWrites(join(root, name));
 }
 
 /** Whether anything, a dangling link included, is at `path`. */
