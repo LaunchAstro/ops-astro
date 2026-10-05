@@ -103,7 +103,7 @@ export async function assignedTo(
 
 /**
  * The recipient holds the escalation role at the locked instant: decide at
- * business scope, through the person or any of their actors, and is not the
+ * business scope, through the person or their active person actor, and is not the
  * task's assignee, whom four eyes keeps from deciding. Anyone else, or nobody,
  * fails closed and the gate stays as it was, approve and reject still open.
  * The answer names the field and never echoes the presented id.
@@ -127,8 +127,11 @@ async function recheckRecipient(
   };
   const recipient = request.recipientPersonId;
   if (recipient === undefined) return ineligible;
+  // Their sign-in acts only through their one active person actor (0002), so a
+  // grant left on a deactivated actor of theirs decides nothing for them.
   const actors = await tx.query<{ readonly id: string }>(
-    `select id from public.actors where business_id = $1 and person_id = $2`,
+    `select id from public.actors
+      where business_id = $1 and person_id = $2 and kind = 'person' and active`,
     [tx.businessId, recipient],
   );
   if (actors.length === 0) return ineligible;
