@@ -379,7 +379,8 @@ async function lockDecision(
         ).map((row) => row.id)
       : [];
   const { locks, found: parents } = await lockRediscovered(tx, {
-    discover: async () => await decisionParents(tx, found.task_id, lineageVersions),
+    discover: async () =>
+      await decisionParents(tx, { taskId: found.task_id, gateId: request.gateId }, lineageVersions),
     locks: ({ envelope, held }) => [
       { lockClass: 'chain', id: 'gate_decisions' },
       { lockClass: 'cap', id: envelope?.capId ?? request.capId },
@@ -411,17 +412,23 @@ async function lockDecision(
  * The decision's accounting parents: the task's open envelope, with the cap it
  * draws on, and a rejection's affected holds. Both are rediscovered under the
  * locks, so an envelope another approval opened in between is a parent this
- * transaction did not lock, and it rolls back rather than draw on it.
+ * transaction did not lock, and it rolls back rather than draw on it. A gate
+ * decided in between draws on nothing, since the recheck refuses it, so its
+ * envelope is no parent of this decision.
  */
 async function decisionParents(
   tx: TenantQuery,
-  taskId: string,
+  of: { readonly taskId: string; readonly gateId: string },
   lineageVersions: readonly string[],
 ): Promise<{
   readonly envelope: { readonly id: string; readonly capId: string } | null;
   readonly held: readonly LockRequest[];
 }> {
-  const open = await openEnvelopeOf(tx, taskId);
+  const [gate] = await tx.query<{ readonly state: string }>(
+    `select state from public.gates where business_id = $1 and id = $2`,
+    [tx.businessId, of.gateId],
+  );
+  const open = gate?.state === 'pending' ? await openEnvelopeOf(tx, of.taskId) : undefined;
   return {
     envelope: open === undefined ? null : { id: open.id, capId: open.capId },
     held: await affectedByVersions(tx, lineageVersions),
