@@ -97,7 +97,7 @@ describe.skipIf(serverUrl === undefined)('legal publication order', () => {
       async (tx) => await readPublishedLegal(tx, 'client-terms'),
     );
     const [order] = await db.admin.execute<{ readonly beganFirst: boolean }>(
-      `select $2::timestamptz < published_at as "beganFirst"
+      `select $2::text::timestamptz < published_at as "beganFirst"
          from public.legal_document_versions where id = $1`,
       [versions.first.id, began],
     );

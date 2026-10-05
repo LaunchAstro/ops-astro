@@ -80,13 +80,16 @@ describe.skipIf(serverUrl === undefined)('agent reply activity order', () => {
       keptAt = await held.letGo();
     }
     const reply = await replying;
+    // The instants go in as text: bound as timestamptz, the driver passes
+    // them through a JavaScript Date, which keeps milliseconds only, and an
+    // activity left at the kept message's stamp would read as past it.
     const [after] = await w.fixture.db.admin.execute<{
       readonly beganFirst: boolean;
       readonly advanced: boolean;
       readonly order: readonly string[];
     }>(
-      `select $2::timestamptz < $3::timestamptz as "beganFirst",
-              c.last_activity_at > $3::timestamptz as advanced,
+      `select $2::text::timestamptz < $3::text::timestamptz as "beganFirst",
+              c.last_activity_at > $3::text::timestamptz as advanced,
               array(select m.role || ':' || left(m.body, 27) from public.conversation_messages m
                      where m.business_id = c.business_id and m.conversation_id = c.id
                      order by m.created_at, m.id) as "order"

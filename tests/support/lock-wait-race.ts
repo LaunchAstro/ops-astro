@@ -151,7 +151,7 @@ export async function blockedBefore(
   for (let attempt = 0; attempt < 500; attempt += 1) {
     // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
     const rows = await db.admin.execute<{ readonly before: boolean | null }>(
-      `select bool_and(a.xact_start < $2::timestamptz) as before ${WAITING_ON}`,
+      `select bool_and(a.xact_start < $2::text::timestamptz) as before ${WAITING_ON}`,
       [held.pid, deadline],
     );
     const before = rows[0]?.before;
@@ -167,7 +167,7 @@ export async function waitPast(db: EmptyDatabase, deadline: string): Promise<voi
   for (let attempt = 0; attempt < 1_000; attempt += 1) {
     // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
     const rows = await db.admin.execute<{ readonly past: boolean }>(
-      'select clock_timestamp() > $1::timestamptz as past',
+      'select clock_timestamp() > $1::text::timestamptz as past',
       [deadline],
     );
     if (rows[0]?.past === true) return;
