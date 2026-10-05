@@ -144,6 +144,15 @@ type Answer = ConnectionSignalResult | 'refused' | 'down';
 const clientOf = (businessKey: string, fetch: typeof globalThis.fetch): OperationsClient =>
   new OperationsClient({ origin: '', businessKey, signedIn: true, fetch });
 
+/** An answer the case lets go of when it chooses. */
+const gate = (): { readonly hold: Promise<void>; readonly release: () => void } => {
+  const opener: { release?: () => void } = {};
+  const hold = new Promise<void>((resolve) => {
+    opener.release = resolve;
+  });
+  return { hold, release: () => opener.release?.() };
+};
+
 const opened: Mounted[] = [];
 
 async function open(
@@ -251,7 +260,7 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     await liveOnly.page.unmount();
     const none = await open(signalBody([]));
     expect(none.page.all('[data-grant-group]')).toHaveLength(0);
-    expect(text(none.page, '#grants')).toContain('No grants on the ledger');
+    expect(text(none.page, '#grants')).toContain('No grants you can see');
     await none.page.unmount();
   });
 
@@ -394,7 +403,9 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
   it('MP-14-8 a ledger with nothing on it draws the empty state, not three blank sections', async () => {
     const { page } = await open(NOTHING);
     expect(outcome(page)).toBe('empty');
-    expect(text(page, '[data-signal]')).toContain('No grants, tripwires or night round yet');
+    expect(text(page, '[data-signal]')).toContain(
+      'No grants, tripwires or night round you can see yet',
+    );
     expect(page.find('#grants')).toBeNull();
     await page.unmount();
   });
@@ -543,6 +554,62 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     expect(ttl('closing')?.dataset['tone']).toBe('warn');
     expect(ttl('passed')?.textContent).not.toBe('Ran out');
     expect(ttl('passed')?.dataset['tone']).toBe('warn');
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B-RB1 a fleet grant wears a chip, which no client name can draw', async () => {
+    const { page } = await open(signalBody(ALL));
+    const mark = page.find('[data-grant="fleetx"] [data-grant-fleet]');
+    expect(mark?.classList.contains('chip')).toBe(true);
+    expect(page.find('[data-grant="live"] [data-grant-client]')?.classList.contains('chip')).toBe(
+      false,
+    );
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B-RB1.1 each absence says what the reader can see, never the whole ledger', async () => {
+    const { page } = await open({ ...NOTHING, roster: signalBody([]).roster });
+    expect(text(page, '#grants')).toContain('No grants you can see.');
+    expect(text(page, '#tripwires')).toContain('No checks you can see are watching.');
+    expect(text(page, '#night-round')).toContain('No night round you can see has run.');
+    for (const section of ['#grants', '#tripwires', '#night-round']) {
+      expect(text(page, section)).not.toMatch(/on the ledger|has run yet|are watching yet/u);
+    }
+    await page.unmount();
+  });
+
+  it('MP-14-8 SEC-P04B-RB1.3 an answer for the earlier grant that lands after the change draws nothing', async () => {
+    const late = (body: ConnectionSignalResult, hold: Promise<void>): typeof fetch =>
+      (async (url: string | URL): Promise<Response> => {
+        if (String(url).endsWith('/connection/signal')) {
+          await hold;
+          return json(body);
+        }
+        return json({
+          ok: true,
+          connections: [],
+          counts: { all: 0, active: 0, degraded: 0, broken: 0, clientConnections: 0 },
+        });
+      }) as typeof fetch;
+    const a = gate();
+    const b = gate();
+    const alpha = clientOf('alpha', late(signalBody([grant('alpha-only', 'live', 90)]), a.hold));
+    const bravo = clientOf('bravo', late(signalBody([grant('bravo-only', 'live', 90)]), b.hold));
+    const page = await mount(
+      <ConnectionsScreen client={alpha} grantKey="alpha:a@x:0" now={() => NOW} />,
+    );
+    opened.push(page);
+    await tick();
+    await page.render(<ConnectionsScreen client={bravo} grantKey="bravo:a@x:0" now={() => NOW} />);
+    a.release();
+    await tick();
+    expect(page.find('[data-grant="alpha-only"]')).toBeNull();
+    expect(outcome(page)).toBe('loading');
+    b.release();
+    await tick();
+    expect(page.all('[data-grant]').map((row) => (row as HTMLElement).dataset['grant'])).toEqual([
+      'bravo-only',
+    ]);
     await page.unmount();
   });
 });
