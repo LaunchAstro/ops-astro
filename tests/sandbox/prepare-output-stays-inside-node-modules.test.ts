@@ -25,6 +25,9 @@ const prepare = (...chunks: Uint8Array[]) => readOutput('prepare', OUTPUT_CAP.S2
 const ascii = (text: string): Uint8Array => new TextEncoder().encode(text);
 const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 
+const byName = (a: { name: string }, b: { name: string }) =>
+  Buffer.compare(Buffer.from(a.name), Buffer.from(b.name));
+
 const MODULES = tar(
   dir('node_modules'),
   dir('node_modules/.bin'),
@@ -189,7 +192,7 @@ it('writes the layer anew: fixed modes, owner 0:0, a fixed time, no extended hea
   if (!read.ok) throw new Error('fixture refused');
   const layer = Buffer.concat(writeLayer(read.entries));
   const again = prepare(layer);
-  expect(again).toEqual(read);
+  expect(again).toEqual({ ok: true, entries: read.entries.toSorted(byName) });
   expect(Buffer.concat(writeLayer(again.ok ? again.entries : []))).toEqual(layer);
 
   const headers: Buffer[] = [];
@@ -217,6 +220,18 @@ it('writes the layer anew: fixed modes, owner 0:0, a fixed time, no extended hea
     expect(field(block, 297, 32)).toBe('');
   }
   expect(layer.subarray(-1024)).toEqual(Buffer.alloc(1024));
+});
+
+it('writes the same layer whatever order the run sent its entries in', () => {
+  const one = prepare(tar(dir('node_modules'), dir('node_modules/b'), file('node_modules/a', 'x')));
+  const two = prepare(tar(dir('node_modules'), file('node_modules/a', 'x'), dir('node_modules/b')));
+  if (!one.ok || !two.ok) throw new Error('fixture refused');
+  expect(Buffer.concat(writeLayer(one.entries))).toEqual(Buffer.concat(writeLayer(two.entries)));
+});
+
+it('refuses a directory whose whole path sits in the prefix', () => {
+  const prefixOnly = header({ name: '', type: '5', prefix: `node_modules/${'a'.repeat(142)}` });
+  expect(prepare(tar(dir('node_modules'), prefixOnly))).toEqual(refused('tar name'));
 });
 
 it('drops set-id and sticky bits and keeps only the owner-execute choice', () => {

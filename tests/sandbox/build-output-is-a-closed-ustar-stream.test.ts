@@ -277,10 +277,21 @@ it('refuses a byte other than zero in the padding after a file', () => {
   expect(build(padded, END)).toEqual(refused('tar block'));
 });
 
-it('refuses for the cap at the header when its declared size cannot fit, before any data', () => {
+it('refuses for the cap only at the byte past it, never from a declared size', () => {
   const head = Buffer.concat([dir('dist'), header({ name: 'dist/big', size: 4096 })]);
-  expect(readOutput('build', 1024 + 4095, head)).toEqual(refused('too large'));
+  const cap = 1024 + 4095;
+  expect(readOutput('build', cap, head)).toEqual(refused('tar end'));
+  expect(readOutput('build', cap, head, new Uint8Array(4095))).toEqual(refused('tar end'));
+  expect(readOutput('build', cap, head, new Uint8Array(4096))).toEqual(refused('too large'));
   expect(readOutput('build', 1024 + 4096 + 1024, head, new Uint8Array(4096), END)).toMatchObject({
     ok: true,
   });
+});
+
+it("books a file's bytes as they arrive, not its declared size", () => {
+  const before = process.memoryUsage().arrayBuffers;
+  const reader = new UstarReader('prepare', OUTPUT_CAP.S2);
+  reader.push(dir('node_modules'), header({ name: 'node_modules/big', size: 999_000_000 }));
+  expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(10_000_000);
+  expect(reader.end()).toEqual(refused('tar end'));
 });
