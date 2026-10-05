@@ -332,8 +332,14 @@ describe('MP-14-7a Connections & signal fleet', () => {
     const { page } = await open();
     await page.click('[data-connection="c-11"]');
     await page.click('[data-connection="c-08"]');
-    expect(page.find('[data-connection="c-11"]')?.getAttribute('aria-expanded')).toBe('true');
-    expect(page.find('[data-connection="c-08"]')?.getAttribute('aria-expanded')).toBe('true');
+    expect(page.find('[data-connection-toggle="c-11"]')?.getAttribute('aria-expanded')).toBe(
+      'true',
+    );
+    expect(page.find('[data-connection-toggle="c-08"]')?.getAttribute('aria-expanded')).toBe(
+      'true',
+    );
+    // The state is announced once, on the button, not again on the row.
+    expect(page.find('[data-connection="c-11"]')?.hasAttribute('aria-expanded')).toBe(false);
     expect(page.all('[data-connection-detail]')).toHaveLength(2);
     const detail = page.find('[data-connection-detail="c-11"]')?.textContent ?? '';
     expect(detail).toContain('12 clients connected');
