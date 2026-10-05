@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C80's two commands: `live correction requested` and `live correction
-// approved` (the permissions table of #765).
-//
-// The request is checked against the envelope before anything is written, so a change of more
-// than one word on one line of one file is refused with nothing stored; what is stored is the
-// target, the digests and the version the approval must name, never the file's text. The approval
-// refuses a caller outside the staff roles before reading any correction (P27 L1), locks the row
-// at its party, reads the configured approver under a share lock on its setting, and refuses the
-// requester first: a person cannot approve their own change even when they are the configured
-// approver (release decision 3.4).
+// C80's two commands, `live correction requested` and `approved` (the permissions table of #765).
+// The request is checked against the envelope before anything is written, so a change of more than
+// one word on one line of one file is refused with nothing stored; what is stored is the target,
+// the digests and the version the approval must name, never the file's text. The approval refuses a
+// caller outside the staff roles before reading any correction (P27 L1), locks the row at its
+// party, reads the configured approver under a share lock on its setting, and refuses the requester
+// first: a person cannot approve their own change even when they are the configured approver
+// (release decision 3.4).
 //
 // Refusals carry fixed text only: no word, path, page or content reaches a refused caller.
 
@@ -117,6 +115,7 @@ export async function storeRequest(
   if (!(await taskExists(tx, taskTypeId, request.taskId))) return refused(TASK_ABSENT);
 
   const preImageDigest = contentDigest(request.before);
+  const seam = `seam-${randomUUID()}`;
   const stored = await insertLiveCorrection(tx, {
     partyId: request.partyId,
     taskId: request.taskId,
@@ -129,13 +128,14 @@ export async function storeRequest(
     pageUrl: request.pageUrl,
     preImageDigest,
     baseRevision: request.baseRevision,
-    seam: `seam-${randomUUID()}`,
+    seam,
     versionDigest: versionDigestOf({
       target,
       change,
       preImageDigest,
       baseRevision: request.baseRevision,
       pageUrl: request.pageUrl,
+      seam,
     }),
   });
   // The party is the task's client (P26 low 4): another is refused, and nothing is stored.
