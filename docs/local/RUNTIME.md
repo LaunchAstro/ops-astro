@@ -1540,7 +1540,7 @@ both tenancy-scoped with row security forced, and the fair share's count
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
   account. The application group may select, insert and update.
-- Carrier (`20261005025000_model_call_carrier`, catalogue #439, #943): the
+- Carrier (`20261005054843_model_call_carrier`, catalogue #439, #943): the
   route's provider (`provider`) and custody credential (`credential_ref`) are
   written with the route at every send, and the account custody names for
   that credential (`describe`) before the send, not only at a priced settle.
