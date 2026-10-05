@@ -84,15 +84,18 @@ export async function recheckEscalation(
 /**
  * Before the runtime set, in the grant class (`locks.ts`): the decider's
  * covering grants `for share`, and for an escalation the recipient's grants
- * and then their active person actor, the rows `recheckRecipient` rests on.
- * A deactivation or revocation that locked first is seen by that re-check;
- * one that comes second waits for this decision to commit. Grants before the
- * actor, the order `access.end` takes them in.
+ * and then their active person actor, the rows `recheckRecipient` rests on. A deactivation or revocation that
+ * locked first is seen by that re-check; one that comes second waits for this
+ * decision to commit. One statement holds them all in one id order, the order
+ * `access.end` locks a person's live grants in, so the two never wait on each
+ * other's grants crosswise.
  */
 export async function holdDecideAuthority(tx: TenantQuery, request: EscalationAsk): Promise<void> {
-  await holdCoveringGrants(tx, request.subjects, request.collection);
-  const recipient = request.recipientPersonId;
-  if (request.decision !== 'escalate' || recipient === undefined) return;
+  const recipient = request.decision === 'escalate' ? request.recipientPersonId : undefined;
+  if (recipient === undefined) {
+    await holdCoveringGrants(tx, request.subjects, request.collection);
+    return;
+  }
   // Every person actor of theirs, active or not: a superset of what the
   // re-check counts, so no grant it reads is left unheld.
   const actors = await tx.query<{ readonly id: string }>(
@@ -102,6 +105,7 @@ export async function holdDecideAuthority(tx: TenantQuery, request: EscalationAs
   await holdCoveringGrants(
     tx,
     [
+      ...request.subjects,
       { kind: 'person', id: recipient },
       ...actors.map((actor) => ({ kind: 'actor' as const, id: actor.id })),
     ],
