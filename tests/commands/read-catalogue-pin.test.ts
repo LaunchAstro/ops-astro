@@ -2,15 +2,12 @@
 //
 // The per-read facts, pinned as they stood at 06ab232.
 //
-// Written before the read facts were folded into one typed catalogue (thermo
-// review b483399, H3), and green before and after. Each read's identifiers and
-// whether an outsider is told NOT_FOUND are pinned by literal, and its operand
-// check by the exact refusal it gives each of a set of bodies, so a
-// refactor that moved a check, loosened one or changed its words fails here
-// before a caller sees it. Since the catalogue landed, each fact is read off
-// the read's row, and the row's spine, subject and authority mode are pinned
-// beside them. The refusal order itself is pinned by
-// `tests/acceptance/identifier-timing` and `identifier-negatives`.
+// Written before the read facts were folded into one typed catalogue (thermo review b483399, H3),
+// and green before and after. Identifiers and whether an outsider is told NOT_FOUND are pinned by
+// literal, and each operand check by the exact refusal it gives each body, so a refactor that
+// moved, loosened or reworded a check fails here first. Since the catalogue landed, each fact is
+// read off the read's row, with the row's spine, subject and authority mode pinned beside them.
+// The refusal order is pinned by `tests/acceptance/identifier-timing` and `identifier-negatives`.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.

@@ -164,7 +164,6 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_money_step_up': SETTINGS,
   'settings.set_conversation_window': SETTINGS,
   'settings.set_retention_window': SETTINGS,
-  // C80: the request and its decision are rows of the correction, at its party.
   'settings.set_live_correction_approver': SETTINGS,
   'live_correction.request': writing(client('live_corrections')),
   'live_correction.decide': writing(client('live_corrections')),
@@ -225,8 +224,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // MP-6-1's check on a task's run.
   'task.check': writing(client('run_checks')),
   // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap,
-  // AW-13's trace read, AW-12's harness result, AW-11's child work, and the
-  // accepted plan.
+  // AW-13's trace read, AW-12's harness result, AW-11's child work, the accepted plan.
   'conversation.allowance': READ,
   'definition.attribution': READ,
   'trace.read': READ,
