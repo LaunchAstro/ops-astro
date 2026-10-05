@@ -146,3 +146,41 @@ it('a provider answer whose comment answer was lost is kept through a sign-off r
   const [attempt] = await attempts(taskId);
   expect(attempt).toMatchObject({ state: 'settled', observed: true, link });
 });
+
+it('an applied comment is observed and settled while client sign-off stays on', async () => {
+  const { taskId, credential } = await launched();
+  await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
+    await installBusinessSettings(tx);
+  });
+  await clientSignOff('false');
+  const link = `https://${HOST}/effects/${randomUUID()}`;
+  const linked = linking(link);
+  let loseObserve = true;
+  const transport: Transport = async (path, body, bearer, delegation) => {
+    // The comment applied; observe's request never reaches the API.
+    if (path.endsWith('/task/observe') && loseObserve) {
+      loseObserve = false;
+      return new Response('{}', { status: 503 });
+    }
+    return await throughApi(path, body, bearer, delegation);
+  };
+  const worker = createWorker({
+    transport,
+    businessKey: 'alpha',
+    credential: r.agentToken,
+    delegation: credential,
+    reporter: SYNTHETIC_USAGE,
+    provider: linked,
+  });
+
+  expect(await worker.applyOnce(taskId)).toEqual({ fault: { status: 503 } });
+  await clientSignOff('true');
+  try {
+    expect(await worker.applyOnce(taskId)).toMatchObject({ applied: { taskId } });
+    expect(await appliedComments(taskId)).toEqual([{ n: '1' }]);
+    const [attempt] = await attempts(taskId);
+    expect(attempt).toMatchObject({ state: 'settled', observed: true, link });
+  } finally {
+    await clientSignOff('false');
+  }
+});
