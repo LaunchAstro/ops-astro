@@ -91,6 +91,7 @@ import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
+import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
   describeRecovered,
@@ -226,6 +227,8 @@ export interface ApiConfig {
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
   /** The email provider's delivery hook (AW-07b); absent, the hook route is not mounted. */
   readonly mailHook?: MailHookOptions;
+  /** C40's `POST /api/password/set` over these businesses and broker; absent, not mounted. */
+  readonly passwordSet?: PasswordSetOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -326,6 +329,8 @@ export function composeApi(config: ApiConfig): ComposedApi {
   // AW-07b: the provider's delivery and bounce events, verified by signature,
   // as system work with no sign-in (`mail-hook.ts`).
   if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);
+  // C40: a reset token's password set, mounted when given; `main()` does not yet.
+  if (config.passwordSet !== undefined) mountPasswordSet(server, database, config.passwordSet);
 
   server.route(
     '/',
