@@ -100,6 +100,8 @@ export default defineConfig({
             'tests/operations/scan-login-cleanup-subject-race.proof.test.ts',
             'tests/api/function-outbox-before-response.test.ts',
             'tests/api/function-outbox-waits-for-own-events.test.ts',
+            'tests/api/conversation-retention-work.test.ts',
+            'tests/db/conversation-run-end-retention.test.ts',
             'tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts',
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
