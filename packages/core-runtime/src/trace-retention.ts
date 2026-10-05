@@ -79,15 +79,13 @@ export async function expireOnce(
       database,
       businessId,
       ports,
-      { runs, ids, answer },
+      { selected, ids, answer },
       windowDays,
     );
-    // The store may finish a delete after answering: once the read-back
-    // has found the runs gone, anything sent meanwhile is sent again.
-    if (batch.confirmed > 0) {
-      // eslint-disable-next-line no-await-in-loop -- one page after another
-      await database.withBusiness(businessId, async (tx) => await resend(tx, selected));
-    }
+    // The store may finish a delete after answering: after the read-back,
+    // anything sent meanwhile is sent again.
+    // eslint-disable-next-line no-await-in-loop -- one page after another
+    await database.withBusiness(businessId, async (tx) => await resend(tx, selected));
     batches.push(batch);
     // A finished batch confirmed every run it asked, so the next page is new runs.
     if (batch.code !== null || runs.length < page) break;
@@ -138,6 +136,20 @@ async function due(tx: TenantQuery, windowDays: number, page: number): Promise<S
   };
 }
 
+/** The selection's runs with an event past the selection's cursor. */
+async function freshRuns(
+  tx: TenantQuery,
+  { runs, afterTx, afterId }: Selected,
+): Promise<readonly string[]> {
+  const rows = await tx.query<{ readonly run_id: string }>(
+    `select distinct ev.run_id from public.run_events ev
+      where ev.business_id = $1 and ev.run_id = any($4::uuid[])
+        and ($2::text is null or (ev.tx, ev.id) > ($2::text::xid8, $3::uuid))`,
+    [tx.businessId, afterTx, afterId, runs],
+  );
+  return rows.map((row) => row.run_id);
+}
+
 /**
  * When a run just deleted has an event past the selection's cursor (exported,
  * in flight or still to go): the cursor back to the selection's if it moved
@@ -167,26 +179,31 @@ async function confirmBatch(
   businessId: string,
   ports: ExpiryPorts,
   {
-    runs,
+    selected,
     ids,
     answer,
   }: {
-    readonly runs: readonly string[];
+    readonly selected: Selected;
     readonly ids: readonly string[];
     readonly answer: Delivered;
   },
   windowDays: number,
 ): Promise<RetentionBatch> {
+  const { runs } = selected;
   let code: ExpiryCode | null = gapOf(answer);
-  const confirmed: string[] = [];
+  let confirmed: string[] = [];
   if (code === null) {
     for (const [at, runId] of runs.entries()) {
       // eslint-disable-next-line no-await-in-loop -- one read at a time; the store is not hurried
       if ((await ports.present(ids[at] ?? '')) === 'absent') confirmed.push(runId);
     }
-    if (confirmed.length < runs.length) code = 'expiry_unconfirmed';
   }
   await database.withBusiness(businessId, async (tx) => {
+    // A run with an event written since its selection is sent again, so its
+    // trace is not gone: it is due again once that event is past the window.
+    const fresh = new Set(await freshRuns(tx, selected));
+    confirmed = confirmed.filter((runId) => !fresh.has(runId));
+    if (code === null && confirmed.length < runs.length) code = 'expiry_unconfirmed';
     await tx.query(
       `insert into public.trace_expiry_batches
          (business_id, id, window_days, runs, expired_run_ids, code)
