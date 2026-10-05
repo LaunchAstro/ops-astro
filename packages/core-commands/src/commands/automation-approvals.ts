@@ -71,9 +71,9 @@ const isOutcome = (value: ActivationRow | HandlerOutcome): value is HandlerOutco
 
 /**
  * The activation locked, then the declaration's key asked again at the clock
- * after that wait, the caller's grants still held: a grant revoked or run out
- * while this waited on the activation refuses the change. Nothing when it
- * still holds, or the refusal.
+ * after that wait, the caller's grants still held (so none was revoked
+ * meanwhile): a grant that ran out while this waited on the activation
+ * refuses the change. Nothing when it still holds, or the refusal.
  */
 async function lockedAuthority(
   tx: TenantQuery,

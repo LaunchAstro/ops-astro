@@ -3348,11 +3348,14 @@ mode, schedule or event, or a switch off (the database's
 adopting or rolling back one that is off is refused `TRANSITION_NOT_PERMITTED`
 naming `enabled=false`. Each change is compared with the revision the caller
 read, again under the activation's lock, so two sent at one revision apply
-once; under that lock the caller's `automation:manage` is asked again at the
-clock after the wait, so a grant revoked or run out meanwhile refuses it, and
-a rollback picks its target there, after any revocation that held the lock. A repeat is refused: a revoked approval, or an automation already
-off, answers `TRANSITION_NOT_PERMITTED`; the same `operationId` sent again is
-replayed. The registry shows each activation's
+once. The caller's `automation:manage` grants are held from before any
+automation row, so a revocation of one waits for the change; under the
+activation's lock the key is asked again at the clock after the wait, so a
+grant that ran out meanwhile refuses it, and a rollback picks its target
+there, after any revocation of an approval that held the lock. A repeat is
+refused: a revoked approval, or an automation already off, answers
+`TRANSITION_NOT_PERMITTED`; the same `operationId` sent again is replayed. The
+registry shows each activation's
 `approval: { id, versionId, act, decidedBy, revoked }`, or null.
 
 An occurrence claimed while its activation is on under an unrevoked standing
