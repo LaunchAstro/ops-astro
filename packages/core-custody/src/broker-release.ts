@@ -43,12 +43,14 @@ export async function releaseUnsent(tx: TenantQuery): Promise<readonly { readonl
         for update of c skip locked`,
     [tx.businessId, counted.map((row) => row.id)],
   );
+  // The release reads the lease again: a renewal committed since keeps its call reserved.
   const released = await tx.query<{ readonly id: string; readonly counted: boolean }>(
     `update public.model_calls c
         set state = 'released', ended_at = clock_timestamp()
-       from public.reservations r
+       from public.reservations r, public.leases l
       where c.business_id = $1 and r.business_id = c.business_id and r.id = c.reservation_id
-        and c.state = 'reserved'
+        and l.business_id = c.business_id and l.id = c.lease_id
+        and c.state = 'reserved' and (l.state <> 'live' or l.expires_at <= clock_timestamp())
         and (c.id = any($2::uuid[]) or (c.id = any($4::uuid[]) and not ${countedHold('$3')}))
       returning c.id, c.id = any($2::uuid[]) as counted`,
     [tx.businessId, counted.map((row) => row.id), COUNTED_CAUSES, unsent.map((row) => row.id)],

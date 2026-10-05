@@ -10,10 +10,17 @@
 // last saw, never a revision: a cap somebody else moved first is refused
 // `VERSION_STALE`, the page rereads and shows the new limit with the server's
 // words, and the next press is against that. Nothing is sent again unasked.
+//
+// **An answer is its owner's.** The money command outlives a business or
+// person switch on the still-mounted page, so its refusal, its step-up prompt
+// and a refusal that closes the control are drawn only while the page answers
+// to the owner the write was sent for, and a resend for an owner it has left
+// is never sent (`data/owned.ts`).
 
 import { useState, type ReactElement } from 'react';
-import type { OperationsClient } from '../../operations/client.ts';
+import type { CallResult, OperationsClient } from '../../operations/client.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
+import { LEFT_BEHIND, ownerOf, useDesk, type Tag } from '../../data/owned.ts';
 import { useMoneyCommand } from '../../records/use-money-command.ts';
 import { StepUpPrompt } from '../../views/step-up-prompt.tsx';
 import type {
@@ -46,6 +53,8 @@ const holdsBillingDecide = (caps: ReadState<CapabilitiesResult>): boolean =>
 
 export interface PlanningCapProps {
   readonly client: OperationsClient;
+  /** The sign-in the page answers to, with the client's business. */
+  readonly grantKey: string;
   readonly read: ReadState<SettingsReadResult>;
   readonly capabilities: ReadState<CapabilitiesResult>;
   readonly reload: () => void;
@@ -126,14 +135,47 @@ function CapForm(props: {
   );
 }
 
+/**
+ * The cap's money command, each write tagged for its owner: its words, its
+ * prompt and a closing refusal are drawn only for that owner, and a resend
+ * for an owner the page has left goes nowhere.
+ */
+function useCapWrite(client: OperationsClient, grantKey: string) {
+  const command = useMoneyCommand(client);
+  const desk = useDesk(ownerOf(client, grantKey));
+  const [ran, setRan] = useState<Tag | null>(null);
+  const [closedBy, setClosedBy] = useState<Tag | null>(null);
+  const ours = ran === null || desk.owns(ran);
+  const run = (send: (to: OperationsClient) => Promise<CallResult<unknown>>, then: () => void) => {
+    const tag = desk.save();
+    setRan(tag);
+    command.run(
+      (to) => (desk.owns(tag) ? send(to) : Promise.resolve(LEFT_BEHIND)),
+      (settlement) => {
+        if (!desk.owns(tag)) return;
+        if (settlement.kind === 'closed') setClosedBy(tag);
+        then();
+      },
+    );
+  };
+  return {
+    busy: command.busy,
+    saving: command.busy && ours,
+    closed: closedBy !== null && desk.owns(closedBy),
+    because: ours ? command.because : null,
+    stepUp: ours ? command.stepUp : null,
+    run,
+  };
+}
+
 export function PlanningCapSection(props: PlanningCapProps): ReactElement {
   const cap = rowsInHand(props.read)?.planningCap ?? null;
-  const command = useMoneyCommand(props.client);
+  const write = useCapWrite(props.client, props.grantKey);
   const [typed, setTyped] = useState('');
   const [complaint, setComplaint] = useState<string | null>(null);
   const may = holdsBillingDecide(props.capabilities);
-  const disabled = !may || command.locked || cap === null;
-  const because = complaint ?? command.because;
+  const disabled = !may || write.busy || write.closed || cap === null;
+  const because = complaint ?? write.because;
 
   const save = (): void => {
     if (disabled) return;
@@ -143,7 +185,7 @@ export function PlanningCapSection(props: PlanningCapProps): ReactElement {
       return;
     }
     setComplaint(null);
-    command.run(
+    write.run(
       (client) =>
         client.mutate('budget.set_planning_cap', {
           limitMinor,
@@ -159,12 +201,12 @@ export function PlanningCapSection(props: PlanningCapProps): ReactElement {
   return (
     <section className="sb__sect" data-settings="planning-cap">
       <CapNotes cap={cap} may={may} because={because} />
-      {command.stepUp === null ? null : <StepUpPrompt ask={command.stepUp} />}
+      {write.stepUp === null ? null : <StepUpPrompt ask={write.stepUp} />}
       <CapForm
         typed={typed}
         onType={setTyped}
         disabled={disabled}
-        busy={command.busy}
+        busy={write.saving}
         onSave={save}
       />
     </section>
