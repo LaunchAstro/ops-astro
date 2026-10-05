@@ -301,9 +301,12 @@ async function verbLine(argv: readonly string[], env: Environment, io: Io): Prom
     credential,
     entry: agent ? 'agent' : 'person',
     ...(delegation === undefined ? {} : { delegation }),
+    address: shownAddress(api),
   });
   const answer = await cli.run(rest);
-  (answer.exit === EXIT.usage ? io.err : io.out)(answer.out);
+  (answer.exit === EXIT.usage || answer.exit === EXIT.transport ? io.err : io.out)(
+    answer.exit === EXIT.transport ? `cli: ${answer.out}` : answer.out,
+  );
   return answer.exit;
 }
 
