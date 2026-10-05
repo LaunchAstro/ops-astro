@@ -285,6 +285,8 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
       clientB = await madeClient(tx, clientBLabel, admin.actorId);
       await grantTo(tx, admin, 'manage', whole, false, 'custody');
       await grantTo(tx, admin, 'read', whole, false, 'connection');
+      // The grant manager gives connection:read through access.grant below.
+      await grantTo(tx, admin, 'manage', whole, false, 'access');
       await grantTo(tx, reader, 'read', whole, false, 'connection');
       await grantTo(tx, reader, 'read', whole, false, 'custody');
       await grantTo(tx, reader, 'write', whole, false, 'custody');
