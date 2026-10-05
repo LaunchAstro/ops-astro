@@ -16,7 +16,30 @@ import {
   type ActivationMode,
 } from './automations.ts';
 
-export type OccurrenceOutcome = 'started' | 'activation_off' | 'no_standing_approval' | 'approved';
+export type OccurrenceOutcome =
+  | 'started'
+  | 'activation_off'
+  | 'no_standing_approval'
+  | 'approved'
+  | 'over_activation_rate'
+  | 'over_business_rate'
+  | 'over_intake_bound';
+
+/**
+ * C33's limits on firing (#483 point 4), the reviewed defaults, set here and
+ * changed only by a reviewed change. Each rate counts a rolling 60 minutes of
+ * the occurrence records; the ceiling and the queue count what is waiting now.
+ */
+export const FIRING_LIMITS = {
+  /** One a minute covers the shortest schedule and a normal event stream. */
+  activationPerHour: 60,
+  /** Ten busy automations without one business crowding the shared worker. */
+  businessPerHour: 600,
+  /** Activation runs in flight per business: one agency's automations at once. */
+  runsInFlight: 5,
+  /** Approved events waiting for their run per business: about 90 minutes at the business rate. */
+  eventQueue: 1000,
+} as const;
 
 export interface OccurrenceRow {
   readonly id: string;
@@ -113,4 +136,9 @@ export async function claimOccurrence(
   if (first[0] === undefined)
     throw new Error('claimOccurrence: a conflicting occurrence is not visible');
   return { kind: 'replayed', occurrence: occurrenceOf(first[0]) };
+}
+
+/** This business's approved occurrences with no dispatch yet, oldest first (C33). Not yet read. */
+export async function waitingOccurrences(_tx: TenantQuery, _limit = 50): Promise<OccurrenceRow[]> {
+  return await Promise.resolve([]);
 }

@@ -885,3 +885,15 @@ run (unique per run), or `activation_off`, `approval_revoked` or
 `approval_ended`. The application may select and insert the three tables and
 update `activations.approval_id` by column grant; nothing changes or deletes an
 approval, revocation or dispatch. Tenancy-keyed with the restrictive policy.
+
+## Occurrence intake (20261005185354, C33)
+
+An occurrence may also be `over_activation_rate`, `over_business_rate` or
+`over_intake_bound` (`activation_occurrences_outcome_known`): past its
+activation's 60 an hour, its business's 600 an hour, or its business's queue
+of 1,000 approved events with no dispatch. None names an approval or starts a
+run. Each count is read back from these rows under AW-01's durable limit
+(`hasRoom`), so there is no counter column. A run over the business's ceiling
+of five activation runs in flight writes nothing: its occurrence stays
+`approved` with no dispatch, which is how it shows as waiting. When dispatch
+starts the run, AW-01 J writes it (`planned_runs.origin_occurrence_id`, 0097) and the dispatch row names it.

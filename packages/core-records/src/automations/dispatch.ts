@@ -27,12 +27,44 @@ export interface RunRequest {
   readonly versionId: string;
 }
 
-/** Starts the run in the dispatch's own transaction and answers its id. */
-export type RunStarter = (tx: TenantQuery, run: RunRequest) => Promise<string>;
+/** A start the run's writer refused, by its refusal code; it wrote nothing. */
+export interface RunRefused {
+  readonly refused: string;
+}
+
+/** Starts the run in the dispatch's own transaction and answers its id, or the writer's refusal. */
+export type RunStarter = (tx: TenantQuery, run: RunRequest) => Promise<string | RunRefused>;
+
+/** What the run's writer (AW-01 J) is told about an occurrence's approval and version. */
+export interface OccurrenceFacts {
+  readonly approvalId: string;
+  readonly approvalState: 'standing' | 'revoked' | 'ended' | 'superseded';
+  readonly approverActorId: string;
+  readonly definitionId: string;
+  readonly definitionVersionId: string;
+  /** A released version is never withdrawn: it is immutable (20261005003850). */
+  readonly versionState: 'released';
+  readonly contentDigest: string;
+  readonly contentSize: number;
+  /** Definitions are the business's own work and carry no client. */
+  readonly clientId: null;
+  readonly title: string;
+}
+
+/** The facts the run's writer reads for an occurrence. Not yet read. */
+export async function readOccurrenceFacts(
+  _tx: TenantQuery,
+  _occurrenceId: string,
+): Promise<OccurrenceFacts | undefined> {
+  const none: OccurrenceFacts[] = [];
+  return await Promise.resolve(none[0]);
+}
 
 export type Dispatch =
   | { readonly kind: 'unknown' }
   | { readonly kind: 'not_approved'; readonly outcome: OccurrenceOutcome }
+  | { readonly kind: 'refused'; readonly code: string }
+  | { readonly kind: 'waiting' }
   | { readonly kind: 'dispatched' | 'replayed'; readonly dispatch: DispatchRow };
 
 interface ClaimedDbRow {
@@ -94,7 +126,7 @@ export async function dispatchOccurrence(
   if (earlier[0] !== undefined) return { kind: 'replayed', dispatch: dispatchOf(earlier[0]) };
   const standing = await readStandingApproval(tx, occurrence.activation_id);
   const outcome = dispatchOutcome(activation, standing, occurrence.approval_id);
-  const runId =
+  const started =
     outcome === 'started'
       ? await startRun(tx, {
           occurrenceId,
@@ -102,6 +134,7 @@ export async function dispatchOccurrence(
           versionId: occurrence.version_id,
         })
       : null;
+  const runId = typeof started === 'string' ? started : null;
   const written = await tx.query<DispatchDbRow>(
     `insert into public.occurrence_dispatches (business_id, id, occurrence_id, outcome, run_id)
      values ((select public.app_business_id()), $1, $2, $3, $4)

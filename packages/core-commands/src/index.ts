@@ -38,6 +38,8 @@ export {
   type OccurrenceRun,
   type ReadOccurrenceAuthority,
 } from './commands/occurrence-run.ts';
+// C52-A's dispatch hands the worker's occurrence to AW-01 J's write.
+export { occurrenceRunStarter } from './commands/automation-run.ts';
 export {
   GATE_ITEMS,
   gateDecision,
