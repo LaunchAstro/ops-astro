@@ -66,8 +66,8 @@ export interface RosterView {
 /** Every count is derived from the rows beside it. */
 export interface ConnectionSignalResult {
   readonly ok: true;
-  readonly leases: readonly GrantView[];
-  readonly leaseCounts: {
+  readonly grants: readonly GrantView[];
+  readonly grantCounts: {
     readonly live: number;
     readonly ranOut: number;
     readonly takenBack: number;

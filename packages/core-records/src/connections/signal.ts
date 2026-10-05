@@ -9,8 +9,8 @@
 // clients: a grant whose task carries that client, a tripwire or a step that
 // names it. Fleet rows (no client) are not theirs, since a fleet grant or a
 // fleet step reports on every client at once; nor is a grant on a trashed
-// task, a map or a map's ticket, which no client view shows (WF-1). Every join is on the business
-// as well as the id, beside the tenancy policy.
+// task, a map or a map's ticket, which no client view shows (WF-1). Every
+// join is on the business as well as the id, beside the tenancy policy.
 //
 // A grant is a delegation (0008). Its client is its purpose task's client
 // (`uuid_7`, the slot a party-scoped grant resolves against), named from
@@ -23,9 +23,9 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import type { Scope } from '../authority/grants.ts';
 import { wayfinderCondition } from '../tasks/wayfinder.ts';
 
-export type GrantState = 'live' | 'ran_out' | 'taken_back';
+export type SignalGrantState = 'live' | 'ran_out' | 'taken_back';
 
-export interface GrantRow {
+export interface SignalGrantRow {
   readonly id: string;
   readonly agentId: string;
   readonly purpose: string;
@@ -37,7 +37,7 @@ export interface GrantRow {
   readonly expiresAt: Date;
   readonly endedAt: Date | null;
   readonly revocationCause: string | null;
-  readonly state: GrantState;
+  readonly state: SignalGrantState;
   readonly redemptions: number;
 }
 
@@ -78,12 +78,12 @@ export interface AgentRow {
 }
 
 /** `$1` business-wide, `$2` the clients a party-scoped reader holds. */
-export interface Reach {
+interface Reach {
   readonly whole: boolean;
   readonly parties: readonly string[];
 }
 
-export const reachOf = (scopes: readonly Scope[]): Reach => ({
+const reachOf = (scopes: readonly Scope[]): Reach => ({
   whole: scopes.some((scope) => scope.kind === 'business'),
   parties: scopes.flatMap((scope) =>
     scope.kind === 'party' && scope.id !== null ? [scope.id] : [],
@@ -102,7 +102,7 @@ interface GrantDbRow {
   readonly expires_at: Date;
   readonly ended_at: Date | null;
   readonly revocation_cause: string | null;
-  readonly state: GrantState;
+  readonly state: SignalGrantState;
   readonly redemptions: string;
 }
 
@@ -136,8 +136,12 @@ const GRANTS_SQL = `with visible as (
     order by case v.state when 'live' then 0 when 'ran_out' then 1 else 2 end,
              v.expires_at desc, v.id`;
 
-/** The delegations this reach may read, newest first within each state. */
-export async function listGrants(tx: TenantQuery, reach: Reach): Promise<readonly GrantRow[]> {
+/** The delegations these scopes may read, latest expiry first within each state. */
+export async function listSignalGrants(
+  tx: TenantQuery,
+  scopes: readonly Scope[],
+): Promise<readonly SignalGrantRow[]> {
+  const reach = reachOf(scopes);
   const rows = await tx.query<GrantDbRow>(GRANTS_SQL, [reach.whole, reach.parties]);
   return rows.map((row) => ({
     id: row.id,
@@ -170,11 +174,12 @@ interface TripwireDbRow {
   readonly note: string | null;
 }
 
-/** The tripwires this reach may read, armed first. */
+/** The tripwires these scopes may read, armed first. */
 export async function listTripwires(
   tx: TenantQuery,
-  reach: Reach,
+  scopes: readonly Scope[],
 ): Promise<readonly TripwireRow[]> {
+  const reach = reachOf(scopes);
   const rows = await tx.query<TripwireDbRow>(
     `select id, what, rule, watching, state, blocked_reason, fired_count, last_fired_at,
             filed_item, filed_nothing, note
@@ -213,11 +218,15 @@ interface StepDbRow {
 }
 
 /**
- * The latest night round this reach may read, its steps in time order, or
+ * The latest night round these scopes may read, its steps in time order, or
  * null when none has run. "Latest" is taken over the visible steps only, so a
  * client-scoped reader cannot learn that a later round ran for someone else.
  */
-export async function readNightRound(tx: TenantQuery, reach: Reach): Promise<NightRound | null> {
+export async function readNightRound(
+  tx: TenantQuery,
+  scopes: readonly Scope[],
+): Promise<NightRound | null> {
+  const reach = reachOf(scopes);
   const rows = await tx.query<StepDbRow>(
     `with visible as (
        select id, round_on, at, tone, what, who, say, cite_kind, cite_ref, cite_label
@@ -255,9 +264,10 @@ export async function readNightRound(tx: TenantQuery, reach: Reach): Promise<Nig
  */
 export async function listAgents(
   tx: TenantQuery,
-  reach: Reach,
+  scopes: readonly Scope[],
   holders: readonly string[],
 ): Promise<readonly AgentRow[]> {
+  const reach = reachOf(scopes);
   return await tx.query<AgentRow>(
     `select id, active from public.actors
       where business_id = (select public.app_business_id()) and kind = 'agent'

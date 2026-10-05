@@ -4,7 +4,7 @@
 // Connections & signal, sections 006 to 008.
 //
 // Every list is filtered by the scopes the caller holds `connection:read` at,
-// inside its statement (`listGrants`, `listTripwires`, `readNightRound`,
+// inside its statement (`listSignalGrants`, `listTripwires`, `readNightRound`,
 // `listAgents`), and a caller holding the key nowhere is refused rather than
 // shown empty sections. The scopes are `heldScopes`', as the fleet's are. The
 // counts are taken from the rows returned beside them, and the roster counts
@@ -14,12 +14,11 @@
 import {
   heldScopes,
   listAgents,
-  listGrants,
+  listSignalGrants,
   listTripwires,
-  reachOf,
   readNightRound,
   subjectsOf,
-  type GrantRow,
+  type SignalGrantRow,
   type NightRound,
   type Session,
   type TenantQuery,
@@ -33,7 +32,7 @@ import type {
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
 import type { ReadResult } from './requests.ts';
 
-const grantView = (row: GrantRow): GrantView => ({
+const grantView = (row: SignalGrantRow): GrantView => ({
   id: row.id,
   agentId: row.agentId,
   purpose: row.purpose,
@@ -100,19 +99,18 @@ export async function readConnectionSignal(
       ['no live grant covers it', 'ask a holder who may delegate'],
     );
   }
-  const reach = reachOf(scopes);
-  const leases = (await listGrants(tx, reach)).map((row) => grantView(row));
-  const tripwires = (await listTripwires(tx, reach)).map((row) => tripwireView(row));
-  const nightRound = nightRoundView(await readNightRound(tx, reach));
-  const agents = await listAgents(tx, reach, [...new Set(leases.map((one) => one.agentId))]);
-  const live = leases.filter((one) => one.state === 'live');
+  const grants = (await listSignalGrants(tx, scopes)).map((row) => grantView(row));
+  const tripwires = (await listTripwires(tx, scopes)).map((row) => tripwireView(row));
+  const nightRound = nightRoundView(await readNightRound(tx, scopes));
+  const agents = await listAgents(tx, scopes, [...new Set(grants.map((one) => one.agentId))]);
+  const live = grants.filter((one) => one.state === 'live');
   const result: ConnectionSignalResult = {
     ok: true,
-    leases,
-    leaseCounts: {
+    grants,
+    grantCounts: {
       live: live.length,
-      ranOut: leases.filter((one) => one.state === 'ran_out').length,
-      takenBack: leases.filter((one) => one.state === 'taken_back').length,
+      ranOut: grants.filter((one) => one.state === 'ran_out').length,
+      takenBack: grants.filter((one) => one.state === 'taken_back').length,
       liveExec: live.filter((one) => one.access === 'exec').length,
     },
     tripwires,

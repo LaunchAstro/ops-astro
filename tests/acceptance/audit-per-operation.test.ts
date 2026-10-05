@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 129 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 130 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 129; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 130; on
 // the two that are his own account (C23) he is refused for naming someone. For
 // the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
@@ -530,7 +530,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     expect(names).toHaveLength(130);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 129.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 130.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

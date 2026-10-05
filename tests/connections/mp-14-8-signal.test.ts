@@ -32,7 +32,7 @@ const path = (business: string, name: string): string =>
   `/api/b/${business}/${name.replace('.', '/')}`;
 
 const grantOf = (result: ConnectionSignalResult, id: string): GrantView | undefined =>
-  result.leases.find((one) => one.id === id);
+  result.grants.find((one) => one.id === id);
 
 /** Text from code points, so no hostile character sits in this file as itself. */
 const cp = (...points: readonly number[]): string => String.fromCodePoint(...points);
@@ -330,11 +330,11 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       null,
     ]);
     const order = { live: 0, ran_out: 1, taken_back: 2 } as const;
-    const ranks = result.leases.map((one) => order[one.state]);
+    const ranks = result.grants.map((one) => order[one.state]);
     expect(ranks).toStrictEqual(ranks.toSorted((a, b) => a - b));
     expect(new Set(ranks)).toStrictEqual(new Set([0, 1, 2]));
-    const rows = result.leases;
-    expect(result.leaseCounts).toStrictEqual({
+    const rows = result.grants;
+    expect(result.grantCounts).toStrictEqual({
       live: rows.filter((one) => one.state === 'live').length,
       ranOut: rows.filter((one) => one.state === 'ran_out').length,
       takenBack: rows.filter((one) => one.state === 'taken_back').length,
@@ -489,7 +489,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     answers.push(answer);
     expect(answer.status).toBe(403);
     expect(answer.body['code']).toBe('SCOPE_NOT_GRANTED');
-    expect(answer.body['leases']).toBeUndefined();
+    expect(answer.body['grants']).toBeUndefined();
   });
 
   it('MP-14-8 isolation: an agent under a live delegation reads none of it', async () => {
@@ -497,13 +497,13 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     answers.push(answer);
     expect(answer.status).toBe(403);
     expect(answer.body['code']).toBe('DELEGATION_EXCLUDES_OPERATION');
-    expect(answer.body['leases']).toBeUndefined();
+    expect(answer.body['grants']).toBeUndefined();
   });
 
   it('MP-14-8 isolation: another business never sees or counts these grants, tripwires or steps', async () => {
     const theirs = await signal(bravoAdmin, 'bravo');
-    expect(theirs.leases).toStrictEqual([]);
-    expect(theirs.leaseCounts).toStrictEqual({ live: 0, ranOut: 0, takenBack: 0, liveExec: 0 });
+    expect(theirs.grants).toStrictEqual([]);
+    expect(theirs.grantCounts).toStrictEqual({ live: 0, ranOut: 0, takenBack: 0, liveExec: 0 });
     expect(theirs.tripwires.map((one) => one.what)).toStrictEqual([`Bravo watch ${BRAVO_CANARY}`]);
     expect(theirs.nightRound?.steps.map((one) => one.what)).toStrictEqual([
       `Bravo step ${BRAVO_CANARY}`,
@@ -519,19 +519,19 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
 
   it('MP-14-8 isolation: a client-scoped reader sees that client only, in rows, counts and roster', async () => {
     const result = await signal(clientReader);
-    expect(result.leases.map((one) => one.id)).toStrictEqual([grants.liveA]);
-    expect(result.leaseCounts).toStrictEqual({
+    expect(result.grants.map((one) => one.id)).toStrictEqual([grants.liveA]);
+    expect(result.grantCounts).toStrictEqual({
       live: 1,
       ranOut: 0,
       takenBack: 0,
-      liveExec: result.leases.filter((one) => one.access === 'exec').length,
+      liveExec: result.grants.filter((one) => one.access === 'exec').length,
     });
     expect(result.tripwires.map((one) => one.what)).toStrictEqual(['Quota near its ceiling']);
     expect(result.tripwireCounts).toStrictEqual({ armed: 1, cannotBeArmed: 0 });
     expect(result.nightRound?.roundOn).toBe('2026-09-29');
     expect(result.nightRound?.steps.map((one) => one.what)).toStrictEqual(['A fix for A stalled']);
     expect(result.roster).toStrictEqual([
-      { agentId: result.leases[0]?.agentId, active: true, liveGrants: 1 },
+      { agentId: result.grants[0]?.agentId, active: true, liveGrants: 1 },
     ]);
     const text = JSON.stringify(result);
     for (const foreign of [
