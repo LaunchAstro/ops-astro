@@ -22,7 +22,7 @@ import type { Action } from '../../packages/core-records/src/authority/grants.ts
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { DELEGATION_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
-import { bravoAutomation, bravoRecords } from './ident-audit-bravo-rows.ts';
+import { bravoAutomation, bravoRecords, type WithMandateRows } from './ident-audit-bravo-rows.ts';
 import type { SeededAutomation } from '../automations/seed.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
@@ -72,7 +72,7 @@ type AgentCall = (
 export interface IdentWorld {
   readonly h: Harness;
   /** What bravo owns that an alpha caller could be handed the identifier of. */
-  readonly foreign: Readonly<{
+  readonly foreign: WithMandateRows<{
     admin: Caller;
     task: Task;
     proposal: Proposed;
@@ -90,9 +90,6 @@ export interface IdentWorld {
     secretId: string;
     /** A broken connection of bravo's, owner-written (MP-14-7a). */
     connectionId: string;
-    /** A live standing mandate and a graduation row of bravo's client (MP-14-10a). */
-    mandateId: string;
-    classId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;

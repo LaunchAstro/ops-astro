@@ -41,7 +41,6 @@ import {
   revokeMandate,
   scopeChoices,
   subjectsOf,
-  type MandateFiling,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
 import {
@@ -51,10 +50,8 @@ import {
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
-import { storableText } from './values.ts';
+import { ceilingOf, classesOf, expiryOf, isRevision, labelOf } from './mandate-inputs.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-
-type Ceiling = NonNullable<MandateFiling['ceiling']>;
 
 const FIXES: Readonly<Record<string, string>> = {
   classes: 'Send classes as a list of distinct entries from the client scope list.',
@@ -90,9 +87,6 @@ const stale = (revision: number): HandlerOutcome =>
 const notPermitted = (state: string, fix: string): HandlerOutcome =>
   refused(refuseCommand('TRANSITION_NOT_PERMITTED', [`state=${state}`], [fix]));
 
-const isRevision = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isInteger(value) && value >= 1;
-
 /** `mandate:manage` business-wide, judged at the instant the grants are held. */
 async function stillManagesMandates(tx: TenantQuery, context: CommandContext): Promise<boolean> {
   const subjects = subjectsOf(context.session);
@@ -113,48 +107,6 @@ async function lockClassInOrder(tx: TenantQuery, classId: string) {
   if (clientId === null) return null;
   await lockClientForWrite(tx, clientId);
   return await lockGraduationClass(tx, classId);
-}
-
-/** Exactly `{ amountMinor, currency }`: a safe whole number and three capital letters. */
-function ceilingOf(value: unknown): Ceiling | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  const keys = Object.keys(value).toSorted();
-  if (keys.length !== 2 || keys[0] !== 'amountMinor' || keys[1] !== 'currency') return null;
-  const { amountMinor, currency } = value as Record<string, unknown>;
-  if (typeof amountMinor !== 'number' || !Number.isSafeInteger(amountMinor) || amountMinor < 0) {
-    return null;
-  }
-  const upper = typeof currency === 'string' && currency.length === 3;
-  if (!upper || [...currency].some((one) => one < 'A' || one > 'Z')) return null;
-  return { amountMinor, currency };
-}
-
-/**
- * One form only, the one `Date.prototype.toISOString` writes: a time that does
- * not read back as itself is refused, so no locale or partial date is guessed.
- * Whether it is far enough ahead is the insert's, on the database's clock.
- */
-function expiryOf(value: unknown): Date | null {
-  if (typeof value !== 'string') return null;
-  const at = new Date(value);
-  return Number.isNaN(at.getTime()) || at.toISOString() !== value ? null : at;
-}
-
-function labelOf(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const label = value.trim();
-  // Postgres text and jsonb (the audit row) refuse a NUL and a lone surrogate.
-  if (label.length === 0 || label.length > 500 || !storableText(label)) return null;
-  return label;
-}
-
-/** Distinct entries of the client's own scope list, compared whole. */
-function classesOf(value: unknown, choices: readonly string[]): readonly string[] | null {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 20) return null;
-  if (!value.every((one): one is string => typeof one === 'string' && choices.includes(one))) {
-    return null;
-  }
-  return new Set(value).size === value.length ? value : null;
 }
 
 export async function fileMandate(
