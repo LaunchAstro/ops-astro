@@ -1904,7 +1904,7 @@ or delete.
   with nothing written, saying a top-up cannot apply, and the end answers the
   stop (`recordedRefusal`). After `happened_differently` the work reopens
   and resume has already reserved its replacement, which the refusal leaves
-  held. A settle and ask made in one transaction would still top up, but no
+  held and the end releases. A settle and ask made in one transaction would still top up, but no
   path raises that today.
 - **The end** (`endAtBudgetStop`, `gate:decide` on the task, a person). One
   call with no confirmation (U7). The hold becomes `abandoned` with the cause
@@ -1912,12 +1912,17 @@ or delete.
   spend to date as actual. The run becomes `cancelled`. The task is not
   written: it stays open for a person. A trashed task is reached too: its
   hold is still counted, and the end is how it is given back. A hold a
-  lineage cancel already classified is not released again. A hold an
-  observation kept whole (the attempt `liability_unknown`, whether the step's
-  priced cost and its calls ran above the hold or a call on it is still open)
-  is not ended: the observed cost is counted nowhere yet, so the end is
-  refused `TRANSITION_NOT_PERMITTED` with nothing written, and the hold waits
-  for a person's recorded outcome (`budget.record_outcome`).
+  lineage cancel already classified is not released again. The run's other
+  holds on the envelope that never started (no lease, no call, every attempt
+  still reserved), such as the replacement resume reserved after
+  `happened_differently`, are abandoned with the same cause and given back
+  whole (`releaseUnstarted`); a leased or dispatched one is left as it is. A
+  hold with an attempt left `liability_unknown` is not ended: an observation
+  or a failed report kept it whole at a priced cost above the hold, or the
+  classifier or a lost worker left a call on it open. That cost is counted
+  nowhere yet, so the end is refused `TRANSITION_NOT_PERMITTED` with nothing
+  written, and the hold waits for a person's recorded outcome
+  (`budget.record_outcome`).
 - **The spend to date** is counted as the broker counts it: settled calls at
   their actual, calls still open at the maximum they hold.
 
