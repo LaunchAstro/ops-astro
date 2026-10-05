@@ -92,6 +92,7 @@ export default defineConfig({
             'tests/operations/find-copies-values-only.proof.test.ts',
             'tests/operations/find-copies-output-and-refusals.test.ts',
             'tests/operations/find-copies-seeds-and-erasure.test.ts',
+            'tests/operations/find-copies-stored-names.test.ts',
             'tests/operations/scan-login-token-and-shared-login.proof.test.ts',
             'tests/operations/scan-login-cleanup-mapping-race.test.ts',
             'tests/review/backup-read-part-appointment-proof.test.ts',

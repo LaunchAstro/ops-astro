@@ -86,3 +86,11 @@ export const pairs = (hits: readonly Hit[]): readonly (readonly [string, string]
 
 export const hitOn = (hits: readonly Hit[], table: string, id: string): Hit | undefined =>
   hits.find((hit) => hit.table === table && hit.id === id);
+
+/** The erasure as the runbook gives it: the person's identifiers, then their row. */
+export async function erasePerson(world: FinderWorld, personId: string): Promise<void> {
+  await world.db.admin.execute('delete from public.person_identifiers where person_id = $1', [
+    personId,
+  ]);
+  await world.db.admin.execute('delete from public.people where id = $1', [personId]);
+}

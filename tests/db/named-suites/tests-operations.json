@@ -16,6 +16,8 @@
     "tests/operations/c81-privacy-runbook.test.ts",
     "tests/operations/c81-register-isolation.test.ts",
     "tests/operations/c81-register.test.ts",
+    "tests/operations/find-copies-given-logins.test.ts",
+    "tests/operations/find-copies-shared-agents.test.ts",
     "tests/operations/s0-5-client-lock.test.ts",
     "tests/operations/s0-5-effect-metadata.test.ts",
     "tests/operations/s0-5-effect-money-paths.test.ts",
@@ -31,6 +33,7 @@
     "tests/operations/audit-proof-956-PRV-oa-956-R2-1.test.ts",
     "tests/operations/find-copies-output-and-refusals.test.ts",
     "tests/operations/find-copies-seeds-and-erasure.test.ts",
+    "tests/operations/find-copies-stored-names.test.ts",
     "tests/operations/find-copies-values-only.proof.test.ts",
     "tests/operations/scan-login-cleanup-mapping-race.test.ts",
     "tests/operations/scan-login-cleanup-subject-race.proof.test.ts"
