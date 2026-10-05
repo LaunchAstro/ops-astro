@@ -139,6 +139,8 @@ interface Stub {
   readonly holdRepair: () => () => void;
   /** Refuse every fleet read from now on, as a revoked `connection:read` would. */
   readonly refuseFleet: () => void;
+  /** Answer every fleet read from now on `ms` after it is asked. */
+  readonly delayFleet: (ms: number) => void;
 }
 
 function fleetOf(rows: readonly ConnectionView[], repaired: ReadonlySet<string>): unknown {
@@ -168,6 +170,7 @@ function server(fleets: Fleets = FLEETS): Stub {
   let repairHeld: Promise<void> | undefined;
   const queued: ('lost' | 'stale')[] = [];
   let refusing = false;
+  let fleetDelay = 0;
   const answer = async (url: string | URL, init?: RequestInit): Promise<Response> => {
     const at = String(url);
     sent.push(`${at} ${String(init?.body ?? '')}`);
@@ -176,6 +179,11 @@ function server(fleets: Fleets = FLEETS): Stub {
       const wait = held.get(business);
       held.delete(business);
       await wait;
+      if (fleetDelay > 0) {
+        await new Promise((resolve) => {
+          setTimeout(resolve, fleetDelay);
+        });
+      }
       if (refusing)
         return json({ refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] }, 403);
       return json(fleetOf(fleets[business] ?? [], repaired));
@@ -223,6 +231,9 @@ function server(fleets: Fleets = FLEETS): Stub {
     },
     refuseFleet: () => {
       refusing = true;
+    },
+    delayFleet: (ms) => {
+      fleetDelay = ms;
     },
   };
 }
@@ -696,6 +707,45 @@ describe('MP-14-7a Connections & signal fleet', () => {
       expect(reads()).toBe(4);
     } finally {
       await page.unmount();
+    }
+  });
+
+  it('MP-14-7a fleet reads slower than the floor still land: a tick waits for the read in flight', async () => {
+    vi.useFakeTimers({ now: NOW });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const stub = server();
+    const reads = (): number =>
+      stub.sent.filter((call) => call.includes('/connection/fleet')).length;
+    const page = await mount(SCREENS['agency:connections'](alphaContext(stub)));
+    try {
+      await pass(1);
+      await page.click('[data-fleet-facet="broken"]');
+      await page.click('[data-connection="c-11"]');
+      // Another person starts c-11's repair; from now on every fleet answer takes 31 s.
+      await someoneElseRepairs(stub, 'c-11');
+      stub.delayFleet(31_000);
+      // A re-read starts at 30 s; the tick at 60 s comes while it is in flight; it answers at 61 s.
+      await pass(FLOOR_MS);
+      await pass(FLOOR_MS);
+      await pass(1_000);
+      expect(page.find('[data-connection-detail="c-11"]')?.textContent).toContain('Repair started');
+      expect(reads()).toBe(2);
+      // By 121 s the next read, asked at 90 s, has answered.
+      await pass(FLOOR_MS * 2);
+      expect(reads()).toBe(3);
+      expect(page.find('[data-outcome="ready"]')).not.toBeNull();
+    } finally {
+      await page.unmount();
+    }
+    // A first read slower than the floor draws the fleet when it answers.
+    const slow = server();
+    slow.delayFleet(31_000);
+    const late = await mount(SCREENS['agency:connections'](alphaContext(slow)));
+    try {
+      await pass(FLOOR_MS + 1_000);
+      expect(shownIds(late)).toHaveLength(10);
+    } finally {
+      await late.unmount();
     }
   });
 
