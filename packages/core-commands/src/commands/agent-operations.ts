@@ -17,7 +17,8 @@ import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts'
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { requestAsAgent, requestOperands } from './live-corrections.ts';
+import { requestOperands } from './live-corrections.ts';
+import { requestAsAgent } from './live-correction-agent.ts';
 import { invalid, isFieldMap } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
@@ -82,7 +83,13 @@ interface AgentOperationRow<O extends object> {
   readonly operands: (request: AgentRequest) => O | Refused;
   /** How a stored success is released on replay (`agent-replay.ts`). */
   readonly replay:
-    'reauthorise' | 'pickup' | 'serveAgain' | 'settledHandback' | 'childPickup' | 'childHandback';
+    | 'reauthorise'
+    | 'correctionRequest'
+    | 'pickup'
+    | 'serveAgain'
+    | 'settledHandback'
+    | 'childPickup'
+    | 'childHandback';
   /** What an authority refusal keeps, when the operation keeps anything. */
   readonly onRefused?: (
     tx: TenantQuery,
@@ -870,7 +877,8 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     'live_correction.request',
     row({
       authority: 'purpose',
-      replay: 'reauthorise',
+      // Released only to a delegation that could make this request now.
+      replay: 'correctionRequest',
       operands: requestOperands,
       serve: async (tx, { session }, operands, delegation) =>
         await requestAsAgent(tx, session.actorId, operands, delegation),

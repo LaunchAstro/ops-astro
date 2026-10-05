@@ -62,6 +62,8 @@ import type { UncheckedRequest } from './requests.ts';
 const OUTSIDE_REACH: ReadonlySet<CommandName> = new Set<CommandName>([
   // A run's state is revised only inside a run's delegation; refused until proved (ORCH60).
   'run.revise_state',
+  // A live correction is an agent's only inside a pickup's delegation for its own task (C80).
+  'live_correction.request',
 ]);
 
 /** The rows an agent credential's call may reach. */

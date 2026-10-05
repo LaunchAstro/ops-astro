@@ -7,7 +7,9 @@
 // caller outside the staff roles before reading any correction (P27 L1), locks the row at its
 // party, reads the configured approver under a share lock on its setting, and refuses the requester
 // first: a person cannot approve their own change even when they are the configured approver
-// (release decision 3.4).
+// (release decision 3.4). Each write reads its authority again after its last
+// lock wait (`live-correction-standing.ts`); an agent's request is
+// `live-correction-agent.ts`.
 //
 // Refusals carry fixed text only: no word, path, page or content reaches a refused caller.
 
@@ -24,17 +26,19 @@ import {
   subjectsOf,
   writeCorrectionDecision,
 } from '../../../core-records/src/index.ts';
-import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts';
+import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import {
   checkEnvelope,
   contentDigest,
   versionDigestOf,
 } from '../../../core-connectors/src/index.ts';
 import { isInternalReader } from '../reads/tasks.ts';
-import { readTaskSpine, type CommandContext } from './context.ts';
+import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
+import { refuseUnstorable, unstorableOperands } from './values.ts';
 
 type Of<K extends CommandRequest['command']> = CommandRequest & { readonly command: K };
 
@@ -89,6 +93,8 @@ export interface Requester {
   readonly actorId: string;
   readonly personId: string;
   readonly delegationId: string | null;
+  /** Whose run:write the request rests on, read again after the insert's lock wait. */
+  readonly subjects: readonly Subject[];
 }
 
 export type RequestOperands = Omit<Of<'live_correction.request'>, 'command' | 'operationId'>;
@@ -113,7 +119,6 @@ export async function storeRequest(
     );
   }
   if (!(await taskExists(tx, taskTypeId, request.taskId))) return refused(TASK_ABSENT);
-
   const preImageDigest = contentDigest(request.before);
   const seam = `seam-${randomUUID()}`;
   const stored = await insertLiveCorrection(tx, {
@@ -140,12 +145,29 @@ export async function storeRequest(
   });
   // The party is the task's client (P26 low 4): another is refused, and nothing is stored.
   if ('code' in stored) return refused(PARTY);
+  const ended = await endedSince(tx, requester, stored.partyId);
+  if (ended !== undefined) return ended;
   return applied(stored.id, stored.revision, {
     correctionId: stored.id,
     versionId: stored.versionId,
     versionDigest: stored.versionDigest,
     state: stored.state,
   });
+}
+
+/** The requester's authority read again after the insert's lock wait (`live-correction-standing.ts`). */
+async function endedSince(
+  tx: TenantQuery,
+  requester: Requester,
+  partyId: string,
+): Promise<ReturnType<typeof refused> | undefined> {
+  const { delegationId } = requester;
+  const stood = await standsAfterWaits(tx, {
+    covering: { subjects: requester.subjects, collection: RUN_COLLECTION, action: 'write' },
+    partyId,
+    ...(delegationId === null ? {} : { delegationId }),
+  });
+  return stood === 'stands' ? undefined : refused(endedRefusal(stood, delegationId !== null));
 }
 
 export async function requestLiveCorrection(
@@ -167,7 +189,12 @@ export async function requestLiveCorrection(
   return await storeRequest(
     tx,
     context.spine.taskTypeId,
-    { actorId: session.actorId, personId: session.personId, delegationId: null },
+    {
+      actorId: session.actorId,
+      personId: session.personId,
+      delegationId: null,
+      subjects: subjectsOf(session),
+    },
     operands,
   );
 }
@@ -182,20 +209,23 @@ export async function decideLiveCorrection(
   }
   const { session } = context;
   if (!isInternalReader(session.roleKey)) return refused(NOT_THE_APPROVER);
-  const correction = await lockCoveredCorrection(tx, request.correctionId, {
-    subjects: subjectsOf(session),
-    collection: GATE_COLLECTION,
-    action: 'decide',
-  });
+  // A malformed id names no correction, as a fabricated one does.
+  if (!isUuid(request.correctionId)) return refused(NOT_VISIBLE);
+  const gate = { subjects: subjectsOf(session), collection: GATE_COLLECTION, action: 'decide' };
+  const correction = await lockCoveredCorrection(tx, request.correctionId, gate);
   if (correction === undefined) return refused(NOT_VISIBLE);
   if (correction.requestedByPersonId === session.personId) return refused(SELF);
   const approver = await lockConfiguredApprover(tx);
   if (approver === undefined || !(await isActiveMember(tx, approver))) {
     return refused(UNCONFIGURED);
   }
-  if (approver !== session.personId) return refused(NOT_THE_APPROVER);
+  if (approver.toLowerCase() !== session.personId) return refused(NOT_THE_APPROVER);
   if (correction.state !== 'requested') return refused(DECIDED);
-  if (correction.versionId !== request.versionId) return refused(STALE);
+  if (correction.versionId !== request.versionId.toLowerCase()) return refused(STALE);
+  // The gate grant again after the approver setting's wait: one that expired
+  // while the decision waited covers nothing, as a grant that never did.
+  const stood = await standsAfterWaits(tx, { covering: gate, partyId: correction.partyId });
+  if (stood !== 'stands') return refused(NOT_VISIBLE);
 
   const decided = await writeCorrectionDecision(tx, {
     id: correction.id,
@@ -224,7 +254,7 @@ const OPERAND_NAMES = [
 
 /**
  * The agent row's operands, taken as sent: their shape is judged after the
- * delegation (`requestAsAgent`), so a caller holding nothing is told that
+ * delegation (`live-correction-agent.ts`), so a caller holding nothing is told that
  * first, as every agent row answers.
  */
 export function requestOperands(
@@ -233,7 +263,11 @@ export function requestOperands(
   return Object.fromEntries(OPERAND_NAMES.map((name) => [name, request[name]]));
 }
 
-function typedOperands(
+/**
+ * The request's operands as both paths store them: identifiers in their
+ * canonical lower case, and every text one the stores can hold.
+ */
+export function typedOperands(
   operands: Readonly<Record<string, unknown>>,
 ): RequestOperands | ReturnType<typeof refused> {
   const wrong = OPERAND_NAMES.filter((name) =>
@@ -248,53 +282,8 @@ function typedOperands(
       ]),
     );
   }
-  return operands as unknown as RequestOperands;
-}
-
-const OUT_OF_PURPOSE = refuseCommand(
-  'DELEGATION_OUT_OF_PURPOSE',
-  ['taskId'],
-  ['A delegation reaches only the task it was minted for.'],
-);
-const OUTSIDE_DELEGATION = refuseCommand(
-  'DELEGATION_EXCLUDES_OPERATION',
-  ['live_correction.request'],
-  ['This delegation does not carry run:write on the task it was minted for.'],
-);
-
-/**
- * `live correction requested` by an agent, inside its delegation (the
- * permissions table: `run:write`, an agent may hold it inside its
- * delegation). The delegation must carry `run` and `write`, the correction is
- * worked under the delegation's own task, and the delegating person's live
- * grant must cover `run:write` at the named party now. The person recorded as
- * the requester is the delegating person, so they cannot approve it either.
- */
-export async function requestAsAgent(
-  tx: TenantQuery,
-  agentActorId: string,
-  sent: Readonly<Record<string, unknown>>,
-  delegation: Delegation,
-): Promise<HandlerOutcome> {
-  // Another task than the delegation's is outside its purpose, whatever it
-  // carries; then the delegation must carry run:write at all.
-  if (delegation.purposeScope.id !== sent['taskId']) return refused(OUT_OF_PURPOSE);
-  const carries =
-    delegation.collections.includes(RUN_COLLECTION) && delegation.actions.includes('write');
-  if (!carries) return refused(OUTSIDE_DELEGATION);
-  const operands = typedOperands(sent);
-  if ('refusal' in operands) return operands;
-  const covered = await checkAuthority(tx, [{ kind: 'person', id: delegation.delegatePersonId }], {
-    collection: RUN_COLLECTION,
-    action: 'write',
-    scope: { kind: 'party', id: operands.partyId },
-  });
-  if (!covered.ok) return refused(covered.refusal);
-  const spine = await readTaskSpine(tx);
-  return await storeRequest(
-    tx,
-    spine.taskTypeId,
-    { actorId: agentActorId, personId: delegation.delegatePersonId, delegationId: delegation.id },
-    operands,
-  );
+  const unstorable = unstorableOperands(operands, OPERAND_NAMES);
+  if (unstorable.length > 0) return refused(refuseUnstorable(unstorable));
+  const typed = operands as unknown as RequestOperands;
+  return { ...typed, partyId: typed.partyId.toLowerCase(), taskId: typed.taskId.toLowerCase() };
 }
