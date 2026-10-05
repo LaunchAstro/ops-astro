@@ -6,7 +6,8 @@
 // It calls the repository's own checkers and tests; it edits none of them and
 // re-implements none of their rules. In order, stopping at the first red:
 //
-//   preflight  scripts/review-preflight.mjs: committed, clean, on a branch.
+//   preflight  scripts/review-preflight.mjs: committed, clean, on a branch
+//              other than main.
 //   (a)  the whole `pnpm check`. It is heavy: run it on the M5 and pass
 //        --skip-check here, and the gate says it did not run it.
 //   (b)  changed-file lint: oxlint and prettier on the changed files, then
@@ -20,6 +21,11 @@
 //        local copy that may be stale.
 //   (f)  behaviour test names: tests/docs/test-files-by-behaviour.test.ts.
 //   (g)  `git merge-tree` against origin/main, naming any conflicted file.
+//
+// (b) to (g) run in a detached worktree of the head, with that head's own
+// checkers, so an edit to the lane's tree while the gate runs cannot change
+// what they judge. The preflight and (a) read the lane's tree; the gate ends
+// by checking that tree is still clean at the head it admitted.
 //
 // The pull request body, labels and commit messages are untrusted text. This
 // script parses none of them: the body goes to the evidence checker as it is,
@@ -39,15 +45,18 @@
 //                 exists or before you edit it.
 //   --skip-check  pnpm check already ran on this head elsewhere (the M5).
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import {
   behaviourNames,
   changedLint,
   commitTrailers,
   git,
+  green,
   mergeTree,
   preflight,
+  red,
   reviewEvidence,
   run,
   runGate,
@@ -125,29 +134,65 @@ function readOpenIssues() {
   return answer.stdout;
 }
 
+/** The lane's tree still clean at `head`, as admission found it. */
+function unchanged({ cwd, head }) {
+  const now = git(cwd, 'rev-parse', 'HEAD').trim();
+  if (now !== head)
+    return red(`HEAD moved from ${short(head)} to ${short(now)}; run the gate again.`);
+  const status = git(cwd, 'status', '--porcelain');
+  if (status !== '')
+    return red(`the working tree changed while the gate ran; run it again:\n${status}`);
+  return green(`the working tree is still clean at ${short(head)}.`);
+}
+
 /**
- * The whole gate, in order: admission, then (a) to (g). `pr` is the body,
- * labels and open issues; `log` takes each step's line.
+ * Runs `use` on a detached worktree of `head`, with the lane's node_modules
+ * linked in, and removes it after. Steps there read the committed bytes, so an
+ * edit to the lane's tree while they run cannot change their verdict.
+ */
+function inSnapshot(cwd, head, use) {
+  const dir = mkdtempSync(join(tmpdir(), 'pre-ready-head-'));
+  try {
+    git(cwd, 'worktree', 'add', '-q', '--detach', dir, head);
+    symlinkSync(join(cwd, 'node_modules'), join(dir, 'node_modules'));
+    return use(dir);
+  } finally {
+    // The link only, never what it points at.
+    rmSync(join(dir, 'node_modules'), { force: true });
+    run('git', ['-C', cwd, 'worktree', 'remove', '--force', dir]);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The whole gate, in order. Admission and (a) read the lane's tree, so the
+ * gate ends by checking that tree is still clean at `head`; (b) to (g) run in
+ * a snapshot of `head`, checkers included. `pr` is the body, labels and open
+ * issues; `log` takes each step's line.
  */
 export function gate({ cwd, base, head, skip, pr }, log) {
-  const range = { cwd, tools: cwd, base, head };
-  return runGate(
-    [
-      { id: 'preflight', name: 'review preflight', run: () => preflight(range) },
-      { id: 'a', name: 'pnpm check', run: () => wholeCheck({ cwd, skip }) },
-      { id: 'b', name: 'changed-file lint', run: () => changedLint(range) },
-      { id: 'c', name: 'named-suite registration', run: () => suiteRegistration(range) },
-      { id: 'd', name: 'commit trailers', run: () => commitTrailers(range) },
-      {
-        id: 'e',
-        name: 'review evidence',
-        run: () => reviewEvidence({ ...range, freshRef: 'origin/main', ...pr }),
-      },
-      { id: 'f', name: 'behaviour test names', run: () => behaviourNames(range) },
-      { id: 'g', name: 'merge-tree against origin/main', run: () => mergeTree(range) },
-    ],
-    log,
-  );
+  return inSnapshot(cwd, head, (tree) => {
+    const lane = { cwd, tools: tree, base, head };
+    const range = { cwd: tree, tools: tree, base, head };
+    return runGate(
+      [
+        { id: 'preflight', name: 'review preflight', run: () => preflight(lane) },
+        { id: 'a', name: 'pnpm check', run: () => wholeCheck({ cwd, skip }) },
+        { id: 'b', name: 'changed-file lint', run: () => changedLint(range) },
+        { id: 'c', name: 'named-suite registration', run: () => suiteRegistration(range) },
+        { id: 'd', name: 'commit trailers', run: () => commitTrailers(range) },
+        {
+          id: 'e',
+          name: 'review evidence',
+          run: () => reviewEvidence({ ...range, freshRef: 'origin/main', ...pr }),
+        },
+        { id: 'f', name: 'behaviour test names', run: () => behaviourNames(range) },
+        { id: 'g', name: 'merge-tree against origin/main', run: () => mergeTree(range) },
+        { id: 'unchanged', name: 'lane tree unchanged', run: () => unchanged({ cwd, head }) },
+      ],
+      log,
+    );
+  });
 }
 
 function main() {

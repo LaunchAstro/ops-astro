@@ -47,5 +47,6 @@ of new test files, commit trailers on every commit in the range (merge commits
 included), review evidence on the body with the checker taken fresh from
 `origin/main`, behaviour test names, and `git merge-tree` against
 `origin/main`. `pnpm check` is heavy: run it on the M5 and pass `--skip-check`;
-the gate then says it did not run it. The gate calls the existing checkers and
-changes none of them.
+the gate then says it did not run it. The steps after `pnpm check` run in a
+throwaway worktree of the head, and the gate goes red if your tree changed
+while it ran. The gate calls the existing checkers and changes none of them.

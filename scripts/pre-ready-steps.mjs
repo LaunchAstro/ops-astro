@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The steps of the pre-ready gate (scripts/pre-ready.mjs), one function each.
 // Each takes the tree to run in (`cwd`), where the checkers and binaries come
-// from (`tools`, the same tree when a lane runs the gate) and the range, and
-// returns { ok, message }. None edits or re-implements the checker it calls.
+// from (`tools`) and the range, and returns { ok, message }. None edits or
+// re-implements the checker it calls.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -51,11 +51,14 @@ export const red = (message, result) => ({
   message: result === undefined ? message : `${message}\n${tail(result)}`,
 });
 
-/** An environment with none of the checkers' variables, then `set`. */
-function checkerEnv(set) {
+/**
+ * Runs a checker, test file or `pnpm check` with none of the checkers'
+ * variables from the caller, then `set`. Every step launches through this.
+ */
+function check(command, args, { cwd, set = {}, stdio }) {
   const env = { ...process.env };
   for (const key of CHECKER_ENV) delete env[key];
-  return { ...env, ...set };
+  return run(command, args, { cwd, stdio, env: { ...env, ...set } });
 }
 
 /** Paths that differ between the merge base and head, by git's diff filter. */
@@ -73,14 +76,18 @@ function changedPaths(cwd, base, head, filter) {
  * own timeout keeps it.
  */
 function vitestFile(cwd, tools, file) {
-  return run(join(tools, 'node_modules', '.bin', 'vitest'), ['run', '--testTimeout=60000', file], {
-    cwd,
-  });
+  return check(
+    join(tools, 'node_modules', '.bin', 'vitest'),
+    ['run', '--testTimeout=60000', file],
+    {
+      cwd,
+    },
+  );
 }
 
 /** Admission: committed, clean and on its own branch, by scripts/review-preflight.mjs. */
 export function preflight({ cwd, tools, base }) {
-  const result = run(process.execPath, [join(tools, 'scripts', 'review-preflight.mjs'), base], {
+  const result = check(process.execPath, [join(tools, 'scripts', 'review-preflight.mjs'), base], {
     cwd,
   });
   return result.status === 0
@@ -112,7 +119,7 @@ export function wholeCheck({ cwd, skip }) {
   const isScript = execPath !== undefined && ['.js', '.cjs', '.mjs'].includes(extname(execPath));
   const command = execPath === undefined ? 'pnpm' : isScript ? process.execPath : execPath;
   const prefix = isScript ? [execPath] : [];
-  const result = run(command, [...prefix, 'check'], { cwd, stdio: 'inherit' });
+  const result = check(command, [...prefix, 'check'], { cwd, stdio: 'inherit' });
   if (result.error !== undefined) {
     return red(
       `could not start pnpm (${result.error.message}). Run pnpm check on the M5 and pass --skip-check.`,
@@ -129,20 +136,22 @@ export function changedLint({ cwd, tools, base, head }) {
   const bin = (name) => join(tools, 'node_modules', '.bin', name);
   const linted = files.filter((file) => LINTED.has(extname(file)));
   if (linted.length > 0) {
-    const lint = run(bin('oxlint'), ['--no-error-on-unmatched-pattern', '--', ...linted], {
+    const lint = check(bin('oxlint'), ['--no-error-on-unmatched-pattern', '--', ...linted], {
       cwd,
     });
     if (lint.status !== 0) return red(`oxlint failed on the changed files:`, lint);
   }
   if (files.length > 0) {
-    const format = run(bin('prettier'), ['--check', '--ignore-unknown', '--', ...files], { cwd });
+    const format = check(bin('prettier'), ['--check', '--ignore-unknown', '--', ...files], {
+      cwd,
+    });
     if (format.status !== 0) {
       return red('prettier --check found changed files that are not formatted:', format);
     }
   }
-  const ratchet = run(process.execPath, [join(tools, 'scripts', 'lint-ratchet.mjs')], {
+  const ratchet = check(process.execPath, [join(tools, 'scripts', 'lint-ratchet.mjs')], {
     cwd,
-    env: checkerEnv({ BASE_SHA: base }),
+    set: { BASE_SHA: base },
   });
   if (ratchet.status !== 0) return red('the lint ratchet failed:', ratchet);
   return green(`${files.length} changed file(s) lint and format clean; the ratchet holds.`);
@@ -170,10 +179,10 @@ export function suiteRegistration({ cwd, tools }) {
 
 /** (d) Subject and trailers on every commit in the range, merges included. */
 export function commitTrailers({ cwd, tools, base, head }) {
-  const result = run(process.execPath, [join(tools, 'scripts', 'commit-range-check.mjs')], {
+  const result = check(process.execPath, [join(tools, 'scripts', 'commit-range-check.mjs')], {
     cwd,
     // CI=1: the checker refuses to fall back to its basic rule without commitlint.
-    env: checkerEnv({ BASE_SHA: base, HEAD_SHA: head, CI: '1' }),
+    set: { BASE_SHA: base, HEAD_SHA: head, CI: '1' },
   });
   return result.status === 0
     ? green('every commit in the range carries its subject and trailers.')
@@ -220,7 +229,7 @@ export function reviewEvidence({
     if (base !== undefined) set.BASE_SHA = base;
     if (changedFiles !== undefined) set.CHANGED_FILES = changedFiles;
     if (agentModels !== undefined) set.AGENT_MODELS = agentModels;
-    const result = run(process.execPath, [join(dir, FRESH[0])], { cwd, env: checkerEnv(set) });
+    const result = check(process.execPath, [join(dir, FRESH[0])], { cwd, set });
     return result.status === 0
       ? green(`review evidence is bound to ${short(head)} (checker from ${freshRef}).`)
       : red(
