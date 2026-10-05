@@ -179,3 +179,41 @@ it('a pre-image past the comparison bound leaves no place and raises a recovery 
   );
   expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
 });
+
+it('a publish answered with another page as live takes no place and raises a recovery task', async () => {
+  // The calibration read the catalogued page; a live address the provider names otherwise is
+  // not where it was read, so nothing read there may prove the place.
+  const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
+  const job = approvedJob(target, '<p>We walk alongside you.</p>\n');
+  const raised: string[] = [];
+  const outcome = await publishCorrection(job, {
+    readBack: async () => ({ state: 'absent' }),
+    readSource: async () => ({
+      kind: 'ok',
+      value: { content: '<p>We walk alongside you.</p>\n', revision: 'abc123' },
+    }),
+    cancellation: async () => 'none',
+    publish: async () => ({
+      kind: 'ok',
+      value: { ...published, liveUrl: 'https://physio.example/book/' },
+    }),
+    raiseTask: async (reason) => {
+      raised.push(reason);
+    },
+    capture: async () => ({ ok: true, value: { text: 'We walk alongside you.' } }),
+  });
+  expect({
+    outcome: outcome.state,
+    raised: raised.length,
+    placed: 'occurrence' in outcome && outcome.occurrence !== undefined,
+  }).toEqual({ outcome: 'accepted', raised: 1, placed: false });
+});
+
+it('a word longer than the place search takes no place and raises a recovery task', async () => {
+  const word = 'a'.repeat(5000);
+  const target = { path: 'src/pages/about.astro', word, replacement: 'b'.repeat(5000) };
+  const result = await publishAndObserve(target, `<p>${word}</p>\n`, `<p>${word}</p>`, {
+    corrected: `<p>${'b'.repeat(5000)}</p>`,
+  });
+  expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
+});
