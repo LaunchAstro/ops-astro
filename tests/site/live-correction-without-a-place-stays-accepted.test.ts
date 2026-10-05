@@ -28,14 +28,8 @@ function text(html: string): string {
   return reading.text;
 }
 
-/** Publish `before` → `after`, calibrated on `preImage`, then observe `live` served. */
-async function publishAndObserve(
-  target: CorrectionTarget,
-  before: string,
-  after: string,
-  preImage: string,
-  live: string,
-) {
+/** An approved job for the one-file change `before` → `after`, inside the envelope. */
+async function approvedJob(target: CorrectionTarget, before: string, after: string) {
   const change = { files: [{ path: target.path, before, after }] };
   expect((await checkEnvelope(change, target)).ok).toBe(true);
   const pinned = {
@@ -58,6 +52,18 @@ async function publishAndObserve(
       versionDigest,
     },
   };
+  return job;
+}
+
+/** Publish `before` → `after`, calibrated on `preImage`, then observe `live` served. */
+async function publishAndObserve(
+  target: CorrectionTarget,
+  before: string,
+  after: string,
+  preImage: string,
+  live: string,
+) {
+  const job = await approvedJob(target, before, after);
   const raised: string[] = [];
   const published = { revision: 'def456', deploymentId: 'dpl_unplaced', liveUrl: PAGE };
   const raiseTask = (reason: string) => {
