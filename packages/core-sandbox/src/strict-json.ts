@@ -178,6 +178,7 @@ class Reader {
   }
 }
 
+// ignoreBOM keeps a leading byte-order mark in the text, where the grammar refuses it.
 const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 export function parseStrictJson(
@@ -191,7 +192,6 @@ export function parseStrictJson(
   } catch {
     return fault('not utf-8');
   }
-  if (text.startsWith('﻿')) return fault('json syntax');
   try {
     return { ok: true, value: new Reader(text, options.foldCase === true).document() };
   } catch (error) {

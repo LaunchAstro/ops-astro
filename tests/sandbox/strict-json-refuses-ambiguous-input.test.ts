@@ -50,7 +50,7 @@ it('takes exactly 1 MiB and refuses one byte more', () => {
 });
 
 it.each([
-  ['a byte-order mark', '﻿{}'],
+  ['a byte-order mark', '\uFEFF{}'],
   ['a trailing comma', '{"a":1,}'],
   ['a single-quoted string', "{'a':1}"],
   ['a bare control character in a string', '"a\u0001b"'],
