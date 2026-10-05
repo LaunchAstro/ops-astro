@@ -8,18 +8,20 @@
 //
 // The old task's row is held `for update` on another connection; the
 // duplicate is seen waiting on that holder with its transaction begun before
-// its first read grant's expiry; a second read grant, on the task's client, is
-// issued and committed meanwhile; the holder lets go once the database clock is
-// past the first.
+// its first read grant's expiry; a second, business-wide read grant is issued
+// and committed meanwhile (it answers the task's read, as the last assertion
+// shows); the holder lets go once the database clock is past the first.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { blockedBefore, holdRow, instantOf, waitPast } from '../support/lock-wait-race.ts';
 import {
   alpha,
   clientA,
   db,
+  detailOf,
   footprint,
   outcomeOf,
   owner,
@@ -69,10 +71,10 @@ describe.skipIf(serverUrl === undefined)(
       let startedLive = false;
       try {
         startedLive = await blockedBefore(db, held, expiry);
-        // At the client's scope: a record-scoped grant's key on the held row
-        // would wait on the holder itself.
+        // Business-wide, so it answers the record's read; a record-scoped
+        // grant's key on the held row would wait on the holder itself.
         await db.app.withBusiness(alpha, async (tx) => {
-          await grantTo(tx, reader, 'read', { kind: 'party', id: clientA });
+          await grantTo(tx, reader, 'read');
         });
         await waitPast(db, expiry);
       } finally {
@@ -83,10 +85,12 @@ describe.skipIf(serverUrl === undefined)(
         startedLive,
         outcome: outcomeOf(answer),
         footprint: await footprint(),
+        readsNow: !isCommandRefusal(await detailOf(reader, old)),
       }).toMatchObject({
         startedLive: true,
         outcome: { code: 'SCOPE_NOT_GRANTED' },
         footprint: before,
+        readsNow: true,
       });
     }, 30_000);
   },
