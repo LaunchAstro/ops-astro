@@ -195,31 +195,7 @@ export {
   savePreference,
   type PreferenceKey,
 } from './preferences/store.ts';
-export { readInboxItems, countOwedItems } from './inbox/read.ts';
-export {
-  INBOX_REASONS,
-  raiseInboxItem,
-  stampSeen,
-  recordDeliveryAttempt,
-  type DeliveryState,
-  type InboxAccess,
-  type InboxFactKind,
-  type InboxItem,
-  type InboxAlert,
-  type InboxReason,
-  type InboxWorkState,
-} from './inbox/items.ts';
-export { INTERNAL_ROLE_KEYS, readScopes, taskAccess } from './inbox/access.ts';
-export {
-  raiseAssignment,
-  raiseDecision,
-  raiseEscalation,
-  raiseIncident,
-  raiseRunSettled,
-} from './inbox/raise.ts';
-export { raiseMentions, readMentions, seenBy, type Mentioned } from './inbox/mentions.ts';
-export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
-export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
+export * from './inbox/index.ts';
 export {
   isSettingRevisionStale,
   lockSettingsInstall,
