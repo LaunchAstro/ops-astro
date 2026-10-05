@@ -278,3 +278,4 @@ export * from './custody/surface.ts';
 export * from './connections/fleet.ts';
 // Graduation and standing mandates (MP-14-10a): the region's rows and core's check.
 export * from './mandates/mandates.ts';
+export * from './mandates/question.ts';

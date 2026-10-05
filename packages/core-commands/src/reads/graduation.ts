@@ -104,6 +104,6 @@ export async function readConnectionGraduation(
     ok: true,
     clients: clientsOf(classes),
     rows: classes.map((row) => rowView(row, deriveGraduation(row, mandates))),
-    mandates: mandates.map(mandateView),
+    mandates: mandates.map((one) => mandateView(one)),
   };
 }

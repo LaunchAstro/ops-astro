@@ -36,7 +36,7 @@ const WORD_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789_';
 
 /** One part of an action class: a small letter, then up to 31 small letters, digits or `_`. */
 const isClassPart = (part: string): boolean =>
-  part.length >= 1 &&
+  part.length > 0 &&
   part.length <= 32 &&
   part[0] !== undefined &&
   part[0] >= 'a' &&
@@ -50,7 +50,7 @@ const isClassPart = (part: string): boolean =>
  */
 export function isActionClass(text: string): boolean {
   const parts = text.split('.');
-  return parts.length >= 2 && parts.length <= 4 && parts.every(isClassPart);
+  return parts.length >= 2 && parts.length <= 4 && parts.every((part) => isClassPart(part));
 }
 
 /** A class's family word: `social.*` for `social.post`. */
@@ -131,11 +131,11 @@ export function deriveGraduation(
 /** The scope list a mandate for this client may pick from. */
 export function scopeChoices(own: readonly string[]): readonly string[] {
   const classes = [...new Set(own)].toSorted();
-  const families = [...new Set(classes.map(familyOf))].toSorted();
+  const families = [...new Set(classes.map((one) => familyOf(one)))].toSorted();
   return [ALL_CLASSES, ...families, ...classes];
 }
 
-interface MandateDbRow {
+export interface MandateDbRow {
   readonly id: string;
   readonly client_id: string;
   readonly classes: readonly string[];
@@ -151,11 +151,11 @@ interface MandateDbRow {
   readonly revision: string;
 }
 
-const MANDATE_COLUMNS = `m.id, m.client_id, m.classes, m.refuses, m.ceiling_minor, m.currency,
+export const MANDATE_COLUMNS = `m.id, m.client_id, m.classes, m.refuses, m.ceiling_minor, m.currency,
   m.expires_at, m.expires_at > clock_timestamp() as live, m.label, m.graduation_class,
   m.authored_by_actor_id, m.created_at, m.revision`;
 
-const mandateOf = (row: MandateDbRow): MandateRow => ({
+export const mandateOf = (row: MandateDbRow): MandateRow => ({
   id: row.id,
   clientId: row.client_id,
   classes: row.classes,
@@ -237,62 +237,8 @@ export async function listGraduation(
   const reach = reachOf(scopes);
   const classes = await tx.query<ClassDbRow>(CLASSES_SQL, reach);
   const mandates = await tx.query<MandateDbRow>(MANDATES_SQL, reach);
-  return { classes: classes.map(classOf), mandates: mandates.map(mandateOf) };
-}
-
-/**
- * The not-revoked mandates of one client, share-locked: a revoke of any of
- * them waits for this transaction, and this read waits for a revoke already
- * under way, then drops the row it revoked. Whether each is live is judged in
- * a second statement, after the lock wait, so a mandate that expired while
- * this waited is not live.
- */
-export async function lockClientMandates(
-  tx: TenantQuery,
-  clientId: string,
-): Promise<readonly MandateRow[]> {
-  const locked = await tx.query<{ readonly id: string }>(
-    `select m.id from public.standing_mandates m
-      where m.business_id = (select public.app_business_id())
-        and m.client_id = $1 and m.revoked_at is null
-      order by m.created_at, m.id
-      for share`,
-    [clientId],
-  );
-  if (locked.length === 0) return [];
-  const rows = await tx.query<MandateDbRow>(
-    `select ${MANDATE_COLUMNS} from public.standing_mandates m
-      where m.business_id = (select public.app_business_id()) and m.id = any($1::uuid[])
-      order by m.created_at, m.id`,
-    [locked.map((row) => row.id)],
-  );
-  return rows.map(mandateOf);
-}
-
-/**
- * What core's check asks about one class of one client, locked in one order:
- * the client's row for share (the mandate writers take it for update first,
- * so a refusal being filed waits for this check, or this check for it), then
- * the class's graduation row for share, then the client's mandates. `earned`
- * is null when the class is not on the client's list.
- */
-export async function lockMandateQuestion(
-  tx: TenantQuery,
-  clientId: string,
-  actionClass: string,
-): Promise<{ readonly earned: Earned | null; readonly mandates: readonly MandateRow[] }> {
-  await tx.query(
-    `select k.id from public.clients k
-      where k.business_id = (select public.app_business_id()) and k.id = $1
-      for share`,
-    [clientId],
-  );
-  const record = await tx.query<{ readonly earned: Earned }>(
-    `select g.earned from public.graduation_classes g
-      where g.business_id = (select public.app_business_id())
-        and g.client_id = $1 and g.action_class = $2
-      for share`,
-    [clientId, actionClass],
-  );
-  return { earned: record[0]?.earned ?? null, mandates: await lockClientMandates(tx, clientId) };
+  return {
+    classes: classes.map((row) => classOf(row)),
+    mandates: mandates.map((row) => mandateOf(row)),
+  };
 }
