@@ -1,4 +1,0 @@
-{
-  "invariant": ["tests/journey/bundle.test.ts", "tests/journey/journey-twice.test.ts"],
-  "conformance": []
-}
