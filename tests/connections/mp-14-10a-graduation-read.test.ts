@@ -20,6 +20,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { createControls, type Controls } from '../api/controls-fixture.ts';
 import { classMatches, createClient } from '../../packages/core-records/src/index.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { standingMandateVerdict } from '../../packages/core-runtime/src/index.ts';
 import type {
@@ -476,6 +477,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
   });
 
   it('MP-14-10a a refusal being filed waits for a check under way, and the next check sees it', async () => {
+    const filingPool = connect(controls.fixture.db.appUrl, { source: 'runtime', max: 1 });
     const approval = await seedMandate({ classes: ['email.send'] });
     let filed = false;
     let filing: Promise<string> | undefined;
@@ -486,10 +488,21 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
         valueMinor: 1,
         currency: 'AUD',
       });
-      // The refusal is filed on the owner's own connection: the insert itself
-      // takes the client's row, whatever its writer remembers to lock.
+      // The refusal is filed as the application, on a connection of its own:
+      // the insert itself takes the client's row, under the application's own
+      // grants and tenancy, whatever its writer remembers to lock.
       filing = (async () => {
-        const id = await seedMandate({ classes: ['email.*'], refuses: true });
+        const id = randomUUID();
+        await filingPool.withBusiness(alpha, async (other) => {
+          await other.query(
+            `insert into public.standing_mandates
+               (business_id, id, client_id, classes, refuses, expires_at, label,
+                authored_by_actor_id)
+             values ((select public.app_business_id()), $1, $2, '{email.*}', true,
+                     now() + interval '1 day', 'No email runs on its own for A', $3)`,
+            [id, clientA, admin.actorId],
+          );
+        });
         filed = true;
         return id;
       })();
@@ -507,6 +520,26 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     });
     await revoke(refusal);
     await revoke(approval);
+    await filingPool.close();
+  });
+
+  it('MP-14-10a a graduation row revision moves by one or not at all', async () => {
+    const stepped = async (step: number): Promise<string> => {
+      try {
+        await controls.fixture.db.app.withBusiness(alpha, async (tx) => {
+          await tx.query(
+            'update public.graduation_classes set revision = revision + $2 where id = $1',
+            [cls['aInvoice'], step],
+          );
+        });
+        return 'ok';
+      } catch (error) {
+        return String((error as { readonly code?: unknown }).code);
+      }
+    };
+    expect(await stepped(5)).toBe('23001');
+    expect(await stepped(-1)).toBe('23001');
+    expect(await stepped(1)).toBe('ok');
   });
 
   it('MP-14-10a a promoted class whose record turns never shows never, as core treats it', async () => {
