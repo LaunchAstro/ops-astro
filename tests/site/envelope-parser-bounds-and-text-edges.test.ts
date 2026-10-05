@@ -14,6 +14,11 @@ import {
 } from '../../packages/core-connectors/src/index.ts';
 import { parsedApart } from '../../packages/core-connectors/src/site/page-parse.ts';
 
+const unparsed = {
+  ok: false,
+  reason: 'the page is larger than the parser is trusted with',
+} as const;
+
 async function edit(word: string, replacement: string, before: string) {
   const path = 'src/pages/index.astro';
   const after = before.replace(word, replacement);
@@ -56,7 +61,7 @@ describe('the parser is bounded', () => {
     'refuses a page of %s unparsed and the host lives on',
     async (_name, before) => {
       await edit('Hello', 'Hi', ordinary);
-      expect(await edit('Hello', 'Hi', before)).toMatchObject({ ok: false });
+      expect(await edit('Hello', 'Hi', before)).toMatchObject(unparsed);
       await new Promise((settled) => {
         setTimeout(settled, 4000);
       });
@@ -68,7 +73,7 @@ describe('the parser is bounded', () => {
 describe('scans are bounded', () => {
   it('refuses a long line before it scans it', async () => {
     const before = `<p>${'a '.repeat(500_000)}</p>\n`;
-    expect(await edit('a', 'b', before)).toMatchObject({ ok: false });
+    expect(await edit('a', 'b', before)).toMatchObject(unparsed);
   }, 3000);
 
   it('fails a capture whose text is larger than it compares', () => {
