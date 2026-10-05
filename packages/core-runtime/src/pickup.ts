@@ -62,7 +62,7 @@ export interface QueueEntry {
  *
  * `agentActorId` is an agent's own read. While it holds a live delegation it
  * is working for that task's client, so its queue is that client's work only
- * (#169): another client's task, purpose slug and held amount never reach it.
+ * (#169): it never shows another client's task, purpose slug or held amount.
  * The narrowing keys on the delegations the agent holds, not on the credential
  * it presents, so leaving the credential off does not widen it. With no live
  * delegation the agent reads the whole queue, as a person does.

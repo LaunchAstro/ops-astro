@@ -277,8 +277,13 @@ which is an agent before any pickup (`authorise`). Such a call reaches
 `task.queue` and `task.pickup` (`BEFORE_PICKUP`) and nothing else. While the
 agent holds a live delegation, credential presented or not, its `task.queue`
 shows only the work of that task's client (#169, `queue` in
-`core-runtime/src/pickup.ts`): another client's reservation, purpose slug and
-held amount never reach it. `task.decide`
+`core-runtime/src/pickup.ts`): the queue never shows it another client's
+reservation, purpose slug or held amount, and a repeated read is served again
+rather than replayed. The narrowing is the queue's alone: `task.pickup` of a
+reservation the agent already knows is not narrowed. A helper delegation
+(AW-11) narrows its helper's queue to the parent's client while it stands, so
+a parent that names another agent as its helper narrows that agent's queue
+until the child's expiry. `task.decide`
 without a credential is `DELEGATION_EXCLUDES_DECISION`, so a decision is still
 named as one. `session.capabilities` is in `AGENT_SURFACE` but not in
 `BEFORE_PICKUP`, so before a pickup it is refused the same way. After a pickup
