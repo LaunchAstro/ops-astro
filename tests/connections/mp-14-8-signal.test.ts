@@ -553,14 +553,19 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     expect(result.roster.find((one) => one.agentId === agentB)?.liveGrants).toBe(1);
   });
 
-  it('MP-14-8 a child grant stops counting live once its parent is taken back', async () => {
-    // Sol PRV-oa-1006-R1.1: a child delegation's own lifecycle fields stay
-    // open when its parent ends, and the child can no longer act.
+  // The task a delegation is scoped to.
+  const taskOf = async (delegationId: string): Promise<string | undefined> =>
+    (
+      await controls.fixture.db.admin.execute<{ readonly id: string }>(
+        `select purpose_scope_id as id from public.delegations where id = $1`,
+        [delegationId],
+      )
+    )[0]?.id;
+
+  // A helper agent with its own login, and a child delegation minted to it
+  // under the parent credential, as the authority mints one.
+  const mintHelperChild = async (parentCredential: string) => {
     const { db, business, agentActorId } = controls.fixture;
-    await db.app.withBusiness(business, async (tx) => {
-      await grantTo(tx, admin, 'write', undefined, true, 'run');
-    });
-    const [parentId, parentCredential] = await delegate('parent_fleet', null);
     const helper = randomUUID();
     const subject = `mp148-helper-${randomUUID()}`;
     const child = await db.app.withBusiness(business, async (tx) => {
@@ -585,22 +590,35 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       if (!minted.ok) throw new Error(`mp-14-8: the child was refused: ${minted.refusal.code}`);
       return minted.value;
     });
-    const recordId = (
-      await controls.fixture.db.admin.execute<{ readonly id: string }>(
-        `select purpose_scope_id as id from public.delegations where id = $1`,
-        [parentId],
-      )
-    )[0]?.id;
+    return { helper, subject, child };
+  };
+
+  // task.read on the agent path, as the agent logged in as `subject` under
+  // the delegation credential.
+  const taskReadAs = async (
+    subject: string,
+    credential: string,
+    recordId: string | undefined,
+  ): Promise<Answer> =>
+    await post(
+      controls.api,
+      agentPath('task.read'),
+      { operationId: randomUUID(), recordId },
+      { ...authorised(await tokenFor(subject)), 'x-agent-delegation': credential },
+    );
+
+  it('MP-14-8 a child grant stops counting live once its parent is taken back', async () => {
+    // Sol PRV-oa-1006-R1.1: a child delegation's own lifecycle fields stay
+    // open when its parent ends, and the child can no longer act.
+    const { db, business } = controls.fixture;
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, admin, 'write', undefined, true, 'run');
+    });
+    const [parentId, parentCredential] = await delegate('parent_fleet', null);
+    const { helper, subject, child } = await mintHelperChild(parentCredential);
+    const recordId = await taskOf(parentId);
     const readAsChild = async (): Promise<Answer> =>
-      await post(
-        controls.api,
-        agentPath('task.read'),
-        { operationId: randomUUID(), recordId },
-        {
-          ...authorised(await tokenFor(subject)),
-          'x-agent-delegation': child.credential,
-        },
-      );
+      await taskReadAs(subject, child.credential, recordId);
     expect((await readAsChild()).status).toBe(200);
     const before = await signal(admin);
     expect(grantOf(before, child.delegation.id)?.state).toBe('live');
@@ -639,11 +657,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     ]).toStrictEqual(['taken_back', parentEnd, 'delegation_revoked', 1]);
   });
 
-  it('MP-14-8 a child grant whose parent ran out ends at the parent expiry, and later calls count none', async () => {
-    // SEC-P04A-RB4.2: the parent's expiry bounds the child's end and its
-    // window, though the child's own expiry is an hour away. A child is
-    // minted under a live parent only (0100), so ran_out_for_b is live for
-    // the mint and runs out again after it.
+  // A read-only child of ran_out_for_b expiring in an hour. A child is
+  // minted under a live parent only (0100), so ran_out_for_b is live for the
+  // mint and runs out again after it.
+  const childOfRanOut = async (): Promise<string> => {
     const childId = randomUUID();
     const was = await controls.fixture.db.admin.execute<{ readonly expires_at: Date }>(
       `select expires_at from public.delegations where id = $1`,
@@ -669,11 +686,14 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       grants.ranOutB,
       was[0]?.expires_at,
     ]);
-    const task = await controls.fixture.db.admin.execute<{ readonly id: string }>(
-      `select purpose_scope_id as id from public.delegations where id = $1`,
-      [grants.ranOutB],
-    );
-    await applied(agentB, task[0]?.id, '30 minutes');
+    return childId;
+  };
+
+  it('MP-14-8 a child grant whose parent ran out ends at the parent expiry, and later calls count none', async () => {
+    // SEC-P04A-RB4.2: the parent's expiry bounds the child's end and its
+    // window, though the child's own expiry is an hour away.
+    const childId = await childOfRanOut();
+    await applied(agentB, await taskOf(grants.ranOutB), '30 minutes');
     const result = await signal(admin);
     const shown = grantOf(result, childId);
     const expired = grantOf(result, grants.ranOutB)?.expiresAt;
