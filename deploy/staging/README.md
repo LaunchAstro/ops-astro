@@ -73,8 +73,9 @@ which checks the list again. Neither hop ends TLS, so the worker and the
 forwarder still check each host's own certificate. The backup dump and the
 upkeep purge require TLS at the mode their address names: `sslmode=require`,
 as `staging-logins.mjs` writes it, encrypts without checking the pooler's
-certificate, and `verify-full` checks it once the runbook gives their
-containers the pooler's root certificate. Anything else is closed with
+certificate. `verify-full` would check it, but their throwaway containers
+hold no root certificate yet (no mount, no `PGSSLROOTCERT`), so an address
+that asks for it fails to connect. Anything else is closed with
 nothing sent on.
 
 Staging's database holds made-up data only (`S0-1 no production data`).

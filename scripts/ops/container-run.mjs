@@ -4,12 +4,13 @@
 // the backup's dump and every reach of the store (#489, OW-062.2, OW-062.3).
 // Its lifetime is the container's, never only the `docker run` client's: a
 // client killed or stopped leaves its container running, and psql or pg_dump
-// as PID 1 ignores the SIGTERM docker passes on. So each run writes its
-// container's id to a file of its own (`--cidfile`, which docker writes only
-// once it has made that container), and stopping removes the container by
-// that id. A name is never used to stop anything, so a run never removes
-// another's container. A run that ends by a signal, or with any code but 0,
-// has failed, and its container is removed too.
+// as PID 1 ignores the SIGTERM docker passes on. So each run has a file of its
+// own (`--cidfile`): docker opens it empty before it asks the daemon for the
+// container and writes the id once it has one, and deletes it if the create
+// is cancelled. Stopping removes the container by that id; a stop that finds a
+// create still under way waits for the id, and if none comes, removes the
+// run's own name (64 random bits, never another run's). A run that ends by a
+// signal, or with any code but 0, has failed, and its container is removed too.
 
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -58,7 +59,7 @@ export function runContainer(role, network, env, command, { stdin = false } = {}
   const folder = mkdtempSync(join(tmpdir(), 'ops-astro-run-'));
   const cidfile = join(folder, 'cid');
   const args = containerArgs(role, network, Object.keys(env), command, { stdin });
-  // Docker writes the id once it has made the container, and refuses to run if the file exists.
+  // Docker refuses to run if the file exists already.
   args.splice(1, 0, `--cidfile=${cidfile}`);
   const child = spawn('docker', args, {
     env: { ...process.env, ...env },
@@ -77,20 +78,37 @@ export function runContainer(role, network, env, command, { stdin = false } = {}
     rmSync(folder, { recursive: true, force: true });
     return succeeded;
   });
-  // psql and pg_dump ask the server to cancel the statement they are on when
-  // they get SIGINT, so the server's side ends as well (a backend blocked in a
-  // statement never notices its client go). The init passes the signal on.
-  // Whatever still runs after `GRACE_MS` is removed by its id, so the client
-  // sees it end; then the client is asked to end, and killed if it has not.
-  async function stop() {
-    if (await dockerOn(cidfile, ['kill', '--signal=INT'])) await settles(closed, GRACE_MS);
-    await removeContainer(cidfile);
-    child.kill('SIGTERM');
-    const kill = setTimeout(() => child.kill('SIGKILL'), GRACE_MS);
-    await exited;
-    clearTimeout(kill);
+  return { child, exited, stop: () => stopRun({ child, closed, exited, cidfile, name }) };
+}
+
+/**
+ * Stops a run. psql and pg_dump ask the server to cancel the statement they
+ * are on when they get SIGINT, so the server's side ends as well (a backend
+ * blocked in a statement never notices its client go); the init passes the
+ * signal on. Whatever still runs after `GRACE_MS` is removed by its id, so
+ * the client sees it end; then the client is asked to end, and killed if it
+ * has not. A create under way is not interrupted, since a client stopped then
+ * cancels its request and deletes the file while the daemon may still make
+ * the container: the stop waits for the id first, and if none comes, the
+ * run's name goes once the client has closed, and once more after a pause for
+ * a create the daemon finished late.
+ */
+async function stopRun({ child, closed, exited, cidfile, name }) {
+  const creating = existsSync(cidfile);
+  if (creating) await idOrClose(cidfile, closed);
+  if (await dockerOn(cidfile, ['kill', '--signal=INT'])) await settles(closed, GRACE_MS);
+  const removed = await removeContainer(cidfile);
+  child.kill('SIGTERM');
+  const kill = setTimeout(() => child.kill('SIGKILL'), GRACE_MS);
+  await exited;
+  clearTimeout(kill);
+  if (creating && !removed) {
+    await removeNamed(name);
+    await new Promise((resolve) => {
+      setTimeout(resolve, GRACE_MS);
+    });
+    await removeNamed(name);
   }
-  return { child, exited, stop };
 }
 
 /** Runs `docker <command> <id>` for the id in `cidfile`; whether there was one. */
@@ -119,17 +137,34 @@ function settles(promise, ms) {
   });
 }
 
+/** Waits, at most `STOP_MS`, until `cidfile` holds an id or is gone, or the client has closed. */
+async function idOrClose(cidfile, closed) {
+  for (const end = Date.now() + STOP_MS; Date.now() < end;) {
+    let id;
+    try {
+      id = readFileSync(cidfile, 'utf8').trim();
+    } catch {
+      return;
+    }
+    // oxlint-disable-next-line no-await-in-loop -- one look at the file after another
+    if (/^[0-9a-f]{64}$/u.test(id) || (await settles(closed, 100))) return;
+  }
+}
+
+/** Removes the container named `name`, if there is one. */
+function removeNamed(name) {
+  return new Promise((resolve) => {
+    execFile('docker', ['rm', '--force', '--volumes', name], { timeout: STOP_MS }, () => resolve());
+  });
+}
+
 /**
- * Removes the container whose id docker wrote to `cidfile`. Docker opens the
- * file empty before it asks the daemon to make the container and writes the
- * id once it has: with `name`, an empty file means a create under way, and the
- * container of that name goes. A run's name is its own (64 random bits), so it
- * is never another run's container. No file means docker made nothing.
+ * Removes the container whose id docker wrote to `cidfile`; whether there was
+ * one. With `name`, a file still empty means a create under way, and the
+ * container of that name goes. No file means docker made nothing.
  */
 async function removeContainer(cidfile, name) {
-  const remove = ['rm', '--force', '--volumes'];
-  if ((await dockerOn(cidfile, remove)) || name === undefined || !existsSync(cidfile)) return;
-  await new Promise((resolve) => {
-    execFile('docker', [...remove, name], { timeout: STOP_MS }, () => resolve());
-  });
+  if (await dockerOn(cidfile, ['rm', '--force', '--volumes'])) return true;
+  if (name !== undefined && existsSync(cidfile)) await removeNamed(name);
+  return false;
 }
