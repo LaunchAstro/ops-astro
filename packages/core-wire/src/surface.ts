@@ -802,6 +802,28 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['definitionId'],
   }),
+  // Standing approvals (C52-A): adopting a version, rolling back, turning off
+  // and revoking are `automation:manage`, business-wide, never an agent's.
+  declare('activation.adopt', 'manage', {
+    collection: 'automation',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId', 'versionId'],
+  }),
+  declare('activation.roll_back', 'manage', {
+    collection: 'automation',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId'],
+  }),
+  declare('activation.turn_off', 'manage', {
+    collection: 'automation',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId'],
+  }),
+  declare('approval.revoke', 'manage', {
+    collection: 'automation',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['approvalId'],
+  }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

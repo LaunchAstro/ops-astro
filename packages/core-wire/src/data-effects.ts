@@ -292,4 +292,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'map.revise': writing(MAP_TASK.writes.concat(client('map_components', 'map_versions'))),
   'map.view': READ,
   'map.frontier': READ,
+  // C52-A: an adoption pins and approves; a revocation is its own row.
+  'activation.adopt': writing(business('activations', 'standing_approvals')),
+  'activation.roll_back': writing(business('activations', 'standing_approvals')),
+  'activation.turn_off': writing(business('activations')),
+  'approval.revoke': writing(business('standing_approval_revocations')),
 };

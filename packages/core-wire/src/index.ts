@@ -172,6 +172,7 @@ export type {
   AutomationDefinitionView,
   AutomationRegistryResult,
   DefinitionVersionView,
+  StandingApprovalView,
 } from './views-automations.ts';
 // Custody's secrets as Settings ▸ Keys reads them (C31).
 export type { SecretListResult, SecretView } from './connection-views.ts';

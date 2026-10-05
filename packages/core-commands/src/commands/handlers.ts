@@ -71,6 +71,12 @@ import { stampOwnSeen } from './inbox-seen.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
 import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
 import { reviseMap } from './wayfinder-revision.ts';
+import {
+  adoptActivationVersion,
+  revokeStandingApproval,
+  rollBackActivation,
+  turnOffActivationAsPerson,
+} from './automation-approvals.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -241,6 +247,11 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // Settings ▸ Workflow triggers (C33), in `automations.ts`.
   'activation.change': changeActivationAsPerson,
   'definition.release': releaseDefinitionVersion,
+  // Standing approvals (C52-A), in `automation-approvals.ts`.
+  'activation.adopt': adoptActivationVersion,
+  'activation.roll_back': rollBackActivation,
+  'activation.turn_off': turnOffActivationAsPerson,
+  'approval.revoke': revokeStandingApproval,
 };
 
 function writeOwned(
