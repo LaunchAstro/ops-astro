@@ -6,4 +6,4 @@
 
 export { ONBOARDING_TEMPLATES, stepTaskTitle, type OnboardingTemplate } from './template.ts';
 export * from './onboardings.ts';
-export { closeStepMove, raiseStepMoves, reparkStepMove } from './moves.ts';
+export { closeStepMove, parkRestoredSteps, raiseStepMoves, reparkStepMove } from './moves.ts';

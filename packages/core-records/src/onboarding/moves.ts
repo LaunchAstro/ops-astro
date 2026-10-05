@@ -2,7 +2,8 @@
 //
 // An onboarding's moves (C41-A, CS-15.4): a person or client-wait step that
 // opens is parked with an inbox item to whoever owns its move, and the item
-// closes when the step's result is recorded.
+// closes when the step's result is recorded, or is withdrawn when the
+// onboarding stops.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { raiseInboxItem } from '../inbox/items.ts';
@@ -56,6 +57,36 @@ export async function raiseStepMoves(
 ): Promise<void> {
   if (keys.length === 0) return;
   await park(tx, 's.onboarding_id = $2 and s.step_key = any($3::text[])', [onboardingId, keys]);
+}
+
+/**
+ * Tasks back from the trash: a step among them that opened while its task was
+ * in the trash was parked with nobody (`MOVES` reads live tasks only), so each
+ * ready one is parked now. The restore holds each task's row, which `park`
+ * reads again; a result opening one of these steps waits on it there.
+ */
+export async function parkRestoredSteps(
+  tx: TenantQuery,
+  taskIds: readonly string[],
+): Promise<void> {
+  if (taskIds.length === 0) return;
+  await park(tx, 's.task_id = any($2::uuid[])', [taskIds]);
+}
+
+/**
+ * The onboarding stopped (its second failure): no step of it takes a result
+ * until a person restarts it, so every open move on its steps' tasks is
+ * withdrawn (withdrawn names nobody). The caller holds the onboarding's lock.
+ */
+export async function withdrawStepMoves(tx: TenantQuery, onboardingId: string): Promise<void> {
+  await tx.query(
+    `update public.inbox_items i set work_state = 'withdrawn', closed_at = now()
+       from public.onboarding_steps s
+      where i.business_id = $1 and s.business_id = $1 and s.onboarding_id = $2
+        and i.subject_record_id = s.task_id and i.reason = 'assignment'
+        and i.fact_kind = 'record' and i.fact_id = s.task_id and i.work_state = 'open'`,
+    [tx.businessId, onboardingId],
+  );
 }
 
 /**

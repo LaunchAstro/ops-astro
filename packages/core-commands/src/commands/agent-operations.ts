@@ -36,6 +36,7 @@ import { reviseRunState } from './run-state.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeStepResult } from './onboarding.ts';
+import { delegationStillHolds } from './onboarding-authority.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { proposeFor, type ProposeFields } from './tasks-propose.ts';
 import { deleteTaskComment, editTaskComment, type CommentChange } from './tasks-comment-edit.ts';
@@ -786,7 +787,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       subjectTask: 'record',
       replay: 'reauthorise',
       operands: recordIdOperand(() => refuseNotFound()),
-      serve: async (tx, { session, request }, _operands, _delegation, taskId) => {
+      serve: async (tx, { session, request }, _operands, delegation, taskId) => {
         if (taskId === undefined) return NOT_FOUND();
         const spine = await readTaskSpine(tx);
         return await writeStepResult(
@@ -796,6 +797,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             actorKind: 'agent',
             entryPoint: 'api',
             commentTypeId: spine.taskCommentTypeId,
+            stillHolds: delegationStillHolds(tx, delegation.id),
           },
           { recordId: taskId, outcome: request['outcome'], result: request['result'] },
         );

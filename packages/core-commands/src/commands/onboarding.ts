@@ -6,9 +6,11 @@
 // client, and records the onboarding and its steps in one transaction.
 // `onboarding.step_result` writes a step's result onto its own task as a
 // system comment and moves the onboarding on: a done step opens the steps
-// waiting on it, and a second failure stops the onboarding and says so. A
-// person or client-wait step that opens raises an inbox item to whoever owns
-// its move, closed with the step.
+// waiting on it, and a second failure stops the onboarding, says so and
+// withdraws its steps' open moves. A person or client-wait step that opens
+// raises an inbox item to whoever owns its move, closed with the step. The
+// result waits on its onboarding's lock after the envelope asked its
+// authority, so that authority is asked again once the lock is held.
 //
 // Nothing here runs, sends or spends: the agent step's run and gate, and the
 // client email's draft and send, are held by name in
@@ -39,6 +41,7 @@ import {
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
+import { grantsStillHold, type StillHolds } from './onboarding-authority.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { textOf } from './record-create.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
@@ -189,8 +192,9 @@ function parseResult(
 
 /**
  * A step's result, onto its own task, after the caller's `task:write` on it
- * (the envelope's, the delegation's). An agent, delegated or by its API-2
- * credential, records agent steps only; the rest are a person's (ORCH79).
+ * (the envelope's, the delegation's), asked again under the onboarding's lock
+ * (`stillHolds`). An agent, delegated or by its API-2 credential, records
+ * agent steps only; the rest are a person's (ORCH79).
  */
 export async function writeStepResult(
   tx: TenantQuery,
@@ -199,6 +203,7 @@ export async function writeStepResult(
     readonly actorKind: 'person' | 'agent';
     readonly entryPoint: EntryPoint;
     readonly commentTypeId: string | undefined;
+    readonly stillHolds: StillHolds;
   },
   request: { readonly recordId: string; readonly outcome?: unknown; readonly result?: unknown },
 ): Promise<HandlerOutcome> {
@@ -207,6 +212,8 @@ export async function writeStepResult(
   const { outcome, text, commentTypeId } = parsed;
   const found = await lockStepOfTask(tx, request.recordId.toLowerCase());
   if (found === undefined) return refused(refuseNotFound());
+  const lost = await author.stillHolds(found.clientId);
+  if (lost !== undefined) return refused(lost);
   if (author.actorKind === 'agent' && found.step.kind !== 'agent') return refused(AGENT_ONLY);
   if (found.onboardingState !== 'running') return notPermitted(found.onboardingState, NOT_RUNNING);
   if (found.step.state !== 'ready') {
@@ -250,6 +257,7 @@ export async function recordStepResult(
       actorKind: context.session.credentialScope === undefined ? 'person' : 'agent',
       entryPoint: context.entryPoint,
       commentTypeId: context.spine.taskCommentTypeId,
+      stillHolds: await grantsStillHold(tx, context.session),
     },
     request,
   );

@@ -33,9 +33,9 @@
 // installation-wide ones: each names a sign-in login, not a business, and is
 // taken first in its transaction, before any row or chain lock.
 // The grant rows an operation's authority rests on are the other class outside
-// the list, also taken first: decide, pickup and cancellation hold theirs `for
-// share` (`holdCoveringGrants`) and `grant.revoke` its own `for update`, before
-// `acquire`. A handler that re-reads a row this set already holds, as
+// the list, also taken first: decide, pickup, cancellation and a person's
+// onboarding step result hold theirs `for share` (`holdCoveringGrants`) and
+// `grant.revoke` its own `for update`, before `acquire`. A handler that re-reads a row this set already holds, as
 // `task.propose` re-reads its task `for update` to compare the revision,
 // takes no new lock.
 // A model call (AW-01) takes none of these: its run's task `for share` (the

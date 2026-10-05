@@ -3107,14 +3107,26 @@ A result is content on its task (S0-5): it locks the onboarding, then its
 steps, then the step's task, and asks again under the task's lock whether the
 task is still on the onboarding's client and out of the trash. A task moved to
 another client or trashed meanwhile is `NOT_FOUND` 404 and nothing is written;
-a move after a result is `CLIENT_LOCKED` 409.
+a move after a result is `CLIENT_LOCKED` 409. The result waits on the
+onboarding's lock after its authority was asked, so it asks again once the lock
+is held (`onboarding-authority.ts`): a person's or an API-2 credential's task
+grants are held for share before the lock, so a revocation that comes after
+waits for the result, and `task:write` at the step's client is asked at the
+clock under the lock, so a grant revoked or lapsed during the wait is
+`SCOPE_NOT_GRANTED` 403; a delegated agent's delegation is read `for share`
+under the lock, and one revoked or lapsed during the wait is
+`DELEGATION_NOT_LIVE` 403. Either refusal writes nothing.
 
 A person or client-wait step that opens is parked with an inbox item
 (`assignment`, on the step's task) to whoever owns its move: the task's
 assignee, else the person who started the onboarding. Assigning, unassigning or
 moving the task to another client parks it again under that rule
 (`reparkStepMove`, from `task.assign` and `task.set_party`), and the item closes
-when the step's result is recorded. The agent step's run and its gate, and the
+when the step's result is recorded. A step that opens while its task is in the
+trash is parked with nobody, and is parked under that rule when `task.restore`
+brings the task back (`parkRestoredSteps`). The second failure, which stops the
+onboarding, withdraws every open item on its steps' tasks (`withdrawStepMoves`),
+since no step of a stopped onboarding takes a result. The agent step's run and its gate, and the
 client email's draft and its one send path, are not built here;
 `tests/onboarding/c41-a-held.test.ts` holds each by name. S0-5's first-client
 gate runs on all three commands, each classed `client-data`: after authority on

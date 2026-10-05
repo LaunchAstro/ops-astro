@@ -11,6 +11,7 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { isRecordsRefusal } from '../records/refusals.ts';
 import { nextTaskKey, planTaskPlacement } from '../tasks/placement.ts';
 import type { StepKind, TemplateStep } from './template.ts';
+import { withdrawStepMoves } from './moves.ts';
 
 export type StepState = 'blocked' | 'ready' | 'done' | 'stopped';
 
@@ -169,6 +170,7 @@ export async function lockStepOfTask(
 ): Promise<
   | {
       readonly onboardingState: string;
+      readonly clientId: string;
       readonly step: OnboardingStepRow;
       readonly siblings: readonly OnboardingStepRow[];
     }
@@ -207,7 +209,7 @@ export async function lockStepOfTask(
   const [held] = onboarding;
   if (step === undefined || held === undefined) return undefined;
   if (task[0]?.client_id !== held.client_id) return undefined;
-  return { onboardingState: held.state, step, siblings: all };
+  return { onboardingState: held.state, clientId: held.client_id, step, siblings: all };
 }
 
 /**
@@ -251,7 +253,8 @@ export async function closeStep(
 /**
  * Count one failure. The second stops the step and the whole onboarding, so
  * nothing further runs until a person restarts it (CS-15.4: twice failed, it
- * stops and reports). Returns whether it stopped.
+ * stops and reports), and withdraws its steps' open moves, which no step takes
+ * a result for now. Returns whether it stopped.
  */
 export async function failStep(tx: TenantQuery, step: OnboardingStepRow): Promise<boolean> {
   const stops = step.failures + 1 >= 2;
@@ -268,6 +271,7 @@ export async function failStep(tx: TenantQuery, step: OnboardingStepRow): Promis
         where business_id = $1 and id = $2`,
       [tx.businessId, step.onboardingId],
     );
+    await withdrawStepMoves(tx, step.onboardingId);
   }
   return stops;
 }
