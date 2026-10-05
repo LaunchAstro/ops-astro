@@ -10,7 +10,7 @@
 
 import { refuseCommand } from '../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../core-records/src/index.ts';
-import { checkAuthorityAt } from './recovery.ts';
+import { checkAuthorityAt, holdCoveringGrants } from './recovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** What the escalation checks read from a decision request (`DecideRequest`). */
@@ -79,6 +79,40 @@ export async function recheckEscalation(
     );
   }
   return await recheckRecipient(tx, request, taskId, lockedAt);
+}
+
+/**
+ * Before the runtime set, in the grant class (`locks.ts`): the decider's
+ * covering grants `for share`, and for an escalation the recipient's grants
+ * and then their active person actor, the rows `recheckRecipient` rests on.
+ * A deactivation or revocation that locked first is seen by that re-check;
+ * one that comes second waits for this decision to commit. Grants before the
+ * actor, the order `access.end` takes them in.
+ */
+export async function holdDecideAuthority(tx: TenantQuery, request: EscalationAsk): Promise<void> {
+  await holdCoveringGrants(tx, request.subjects, request.collection);
+  const recipient = request.recipientPersonId;
+  if (request.decision !== 'escalate' || recipient === undefined) return;
+  // Every person actor of theirs, active or not: a superset of what the
+  // re-check counts, so no grant it reads is left unheld.
+  const actors = await tx.query<{ readonly id: string }>(
+    `select id from public.actors where business_id = $1 and person_id = $2 and kind = 'person'`,
+    [tx.businessId, recipient],
+  );
+  await holdCoveringGrants(
+    tx,
+    [
+      { kind: 'person', id: recipient },
+      ...actors.map((actor) => ({ kind: 'actor' as const, id: actor.id })),
+    ],
+    request.collection,
+  );
+  await tx.query(
+    `select 1 from public.actors
+      where business_id = $1 and person_id = $2 and kind = 'person' and active
+      order by id for share`,
+    [tx.businessId, recipient],
+  );
 }
 
 /** Whether the task is assigned to this person, or to their agent, read under the caller's task lock. */

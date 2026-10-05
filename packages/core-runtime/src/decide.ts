@@ -39,12 +39,7 @@ import { launchDecisionRefusal } from './launch-gate.ts';
 import { capCommitted, capVerdict, envelopeVerdict, openEnvelopeOf } from './budget.ts';
 import { roundsUsed } from './proposal-writer.ts';
 import { only } from './only.ts';
-import {
-  affectedByVersions,
-  checkAuthorityAt,
-  classifyVersions,
-  holdCoveringGrants,
-} from './recovery.ts';
+import { affectedByVersions, checkAuthorityAt, classifyVersions } from './recovery.ts';
 import type { LockSet } from './locks.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import {
@@ -64,6 +59,7 @@ import {
   assignedTo,
   escalateGate,
   escalatedDecider,
+  holdDecideAuthority,
   recheckEscalation,
   type Escalated,
 } from './escalation.ts';
@@ -299,7 +295,8 @@ interface FoundGate {
  * the decision would still commit after it. So this holds the decide grants
  * for share here, before the runtime set, as pickup holds its own. A
  * revocation that locked first is seen by the re-check under the locks, and
- * one that comes second waits for this decision to commit.
+ * one that comes second waits for this decision to commit. An escalation
+ * holds its recipient's grants and active actor the same way.
  */
 async function findGate(
   tx: TenantQuery,
@@ -330,7 +327,7 @@ async function findGate(
       'A person with decide authority on this task decides it.',
     );
   }
-  await holdCoveringGrants(tx, request.subjects, request.collection);
+  await holdDecideAuthority(tx, request);
   return { ok: true, value: found };
 }
 
