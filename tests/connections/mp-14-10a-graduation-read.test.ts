@@ -478,7 +478,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
   it('MP-14-10a a refusal being filed waits for a check under way, and the next check sees it', async () => {
     const approval = await seedMandate({ classes: ['email.send'] });
     let filed = false;
-    let filing: Promise<void> | undefined;
+    let filing: Promise<string> | undefined;
     const effect = await controls.fixture.db.app.withBusiness(alpha, async (tx) => {
       const checked = await standingMandateVerdict(tx, {
         clientId: clientA,
@@ -486,21 +486,20 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
         valueMinor: 1,
         currency: 'AUD',
       });
-      // A filing takes the client's row for update first, on its own connection.
+      // The refusal is filed on the owner's own connection: the insert itself
+      // takes the client's row, whatever its writer remembers to lock.
       filing = (async () => {
-        await controls.fixture.db.admin.transaction(async (execute) => {
-          await execute('select id from public.clients where id = $1 for no key update', [clientA]);
-          filed = true;
-        });
+        const id = await seedMandate({ classes: ['email.*'], refuses: true });
+        filed = true;
+        return id;
       })();
       await pause(400);
       expect(filed).toBe(false);
       return checked;
     });
     expect(effect).toStrictEqual({ covered: true, mandateId: approval });
-    await filing;
+    const refusal = String(await filing);
     expect(filed).toBe(true);
-    const refusal = await seedMandate({ classes: ['email.*'], refuses: true });
     expect(await verdict({ actionClass: 'email.send', valueMinor: 1 })).toStrictEqual({
       covered: false,
       reason: 'refused',
@@ -508,6 +507,70 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     });
     await revoke(refusal);
     await revoke(approval);
+  });
+
+  it('MP-14-10a a promoted class whose record turns never shows never, as core treats it', async () => {
+    const promote = await seedMandate({
+      classes: ['social.reply'],
+      graduationClass: 'social.reply',
+    });
+    expect((await rowOf(String(cls['aReply'])))?.state).toBe('promoted');
+    const setEarned = async (earned: string, why: string | null): Promise<void> => {
+      await controls.fixture.db.admin.execute(
+        'update public.graduation_classes set earned = $2, never_why = $3 where id = $1',
+        [cls['aReply'], earned, why],
+      );
+    };
+    await setEarned('never', 'audience');
+    const row = await rowOf(String(cls['aReply']));
+    expect([row?.state, row?.promotedAt]).toStrictEqual(['never', null]);
+    expect(await verdict({ actionClass: 'social.reply', valueMinor: 1 })).toStrictEqual({
+      covered: false,
+      reason: 'not-graduable',
+    });
+    await setEarned('ready', null);
+    await revoke(promote);
+  });
+
+  it('MP-14-10a a promotion names one action class, and every word in a list is known, a null one included', async () => {
+    await expect(seedMandate({ classes: ['*'], graduationClass: '*' })).rejects.toMatchObject({
+      code: '23514',
+    });
+    const known = await controls.fixture.db.admin.execute<{ readonly ok: boolean }>(
+      `select public.standing_mandate_words_known(array['*', null]::text[]) as ok`,
+    );
+    expect(known[0]?.ok).toBe(false);
+  });
+
+  it('MP-14-10a a revocation is stamped by the database and moves the revision by one', async () => {
+    const id = await seedMandate({ classes: ['social.post'] });
+    const started = await controls.fixture.db.admin.execute<{ readonly at: Date }>(
+      'select clock_timestamp() as at',
+    );
+    const stepped = async (step: number): Promise<string> => {
+      try {
+        await controls.fixture.db.app.withBusiness(alpha, async (tx) => {
+          await tx.query(
+            `update public.standing_mandates
+                set revoked_at = now() - interval '1 year', revoked_by_actor_id = $2,
+                    revision = revision + $3
+              where id = $1`,
+            [id, admin.actorId, step],
+          );
+        });
+        return 'ok';
+      } catch (error) {
+        return String((error as { readonly code?: unknown }).code);
+      }
+    };
+    expect(await stepped(5)).toBe('23001');
+    expect(await stepped(1)).toBe('ok');
+    const row = await controls.fixture.db.admin.execute<{
+      readonly revoked_at: Date;
+      readonly revision: string;
+    }>('select revoked_at, revision from public.standing_mandates where id = $1', [id]);
+    expect(row[0]?.revision).toBe('2');
+    expect(row[0]?.revoked_at.getTime()).toBeGreaterThanOrEqual(started[0]?.at.getTime() ?? 0);
   });
 
   it('MP-14-10a a mandate is written once: the application can revoke it, never edit, backdate or revive it', async () => {
