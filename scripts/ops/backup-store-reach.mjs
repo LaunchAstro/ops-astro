@@ -119,14 +119,14 @@ export function reachArgs(network, names = LOGIN) {
  * A reach through psql on `network`: `script` is text or pieces of text. With
  * `connectSeconds`, psql gives up connecting after that; with `timeoutMs`, the
  * run is stopped after that whatever it is waiting on. The store's reach has
- * neither.
+ * neither. A reach that stopped its run answers only once that stop is done,
+ * and fails if docker would not remove the container, however the client closed.
  */
 export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
   return async (url, script, onLine) => {
     const login = reachEnv(url, connectSeconds);
-    const run = runContainer('store', network, login, PSQL, { stdin: true });
-    const deadline =
-      timeoutMs === undefined ? undefined : setTimeout(() => stopQuietly(run), timeoutMs);
+    const run = stoppable(runContainer('store', network, login, PSQL, { stdin: true }));
+    const deadline = timeoutMs === undefined ? undefined : setTimeout(run.halt, timeoutMs);
     try {
       const pieces = typeof script === 'string' ? [script] : script;
       // One piece ahead at most: a piece can be one part's hex, 8 MiB.
@@ -140,6 +140,7 @@ export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
         sent,
         readOut(run, onLine),
       ]);
+      await run.halted();
       if (printed.error !== undefined) throw printed.error;
       if (!succeeded || !written) throw new Error('the store refused or could not be reached');
       return printed.text;
@@ -150,14 +151,21 @@ export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
 }
 
 /**
- * Stops `run` without waiting. A container left behind before the client
- * closed reaches the reach through `run.exited` when the client then fails; a
- * refused removal followed by a clean close, and a late removal by name (a
- * create still under way when the stop came), are not answered here, and the
- * runbook's sweep finds either.
+ * `run` with `halt()`, which starts its stop once however often it is asked,
+ * without waiting, and `halted()`, which settles when that stop is done (at
+ * once when none was asked) and rejects as the stop does.
  */
-function stopQuietly(run) {
-  run.stop().catch(() => {});
+function stoppable(run) {
+  let stopping;
+  return {
+    ...run,
+    halt() {
+      stopping ??= run.stop();
+      // `halted()` answers it; until then a rejection is not unhandled.
+      stopping.catch(() => {});
+    },
+    halted: () => stopping,
+  };
 }
 
 /** psql's output: whole, or line by line to `onLine`, stopping the run if `onLine` throws. */
@@ -174,7 +182,7 @@ async function readOut(run, onLine) {
       await onLine(line);
     } catch (thrown) {
       error = thrown;
-      stopQuietly(run);
+      run.halt();
     }
   }
   return { text: '', error };
