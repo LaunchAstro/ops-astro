@@ -45,7 +45,7 @@ import {
   classifyVersions,
   holdCoveringGrants,
 } from './recovery.ts';
-import type { LockSet } from './locks.ts';
+import type { LockRequest, LockSet } from './locks.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import {
   CHAIN_GENESIS,
@@ -337,7 +337,6 @@ async function findGate(
 interface LockedDecision {
   readonly locks: LockSet;
   readonly capId: string;
-  readonly existing: Awaited<ReturnType<typeof openEnvelopeOf>>;
   readonly lineageVersions: readonly string[];
   readonly lockedAt: string;
 }
@@ -370,21 +369,6 @@ async function lockDecision(
   request: DecideRequest,
   found: FoundGate,
 ): Promise<RuntimeResult<LockedDecision>> {
-  const existing = await openEnvelopeOf(tx, found.task_id);
-  // R2. The envelope's own cap is the cap this approval draws on, and the
-  // request's is a claim about it. Otherwise an existing envelope with room, a
-  // requested cap with room and an exhausted actual cap would pass preflight,
-  // write the signed decision and the approved gate, and then refuse on a cap
-  // nothing had locked. Refused here, before the locks and the first write, and the
-  // canonical cap is what everything below uses.
-  if (existing !== undefined && existing.capId !== request.capId) {
-    return refuse(
-      'CAP_BINDING_MISMATCH',
-      `this task's envelope draws on cap ${existing.capId}, and the request names ${request.capId}`,
-      "Decide against the envelope's own cap, or close that envelope through its authorised boundary first.",
-    );
-  }
-  const capId = existing?.capId ?? request.capId;
   const lineageVersions =
     request.decision === 'reject'
       ? (
@@ -394,12 +378,12 @@ async function lockDecision(
           )
         ).map((row) => row.id)
       : [];
-  const { locks } = await lockRediscovered(tx, {
-    discover: async () => await affectedByVersions(tx, lineageVersions),
-    locks: (held) => [
+  const { locks, found: parents } = await lockRediscovered(tx, {
+    discover: async () => await decisionParents(tx, found.task_id, lineageVersions),
+    locks: ({ envelope, held }) => [
       { lockClass: 'chain', id: 'gate_decisions' },
-      { lockClass: 'cap', id: capId },
-      ...(existing === undefined ? [] : [{ lockClass: 'envelope' as const, id: existing.id }]),
+      { lockClass: 'cap', id: envelope?.capId ?? request.capId },
+      ...(envelope === null ? [] : [{ lockClass: 'envelope' as const, id: envelope.id }]),
       { lockClass: 'task', id: found.task_id },
       { lockClass: 'run', id: found.run_id },
       { lockClass: 'lineage', id: found.lineage_id },
@@ -408,10 +392,48 @@ async function lockDecision(
     ],
     rule: 'covered',
     changed:
-      'decide: the holds on the rejected lineage changed under discovery; roll back and rediscover rather than extending the lock set',
+      "decide: the task's envelope or the holds on the rejected lineage changed under discovery; roll back and rediscover rather than extending the lock set",
   });
+  // R2. The envelope's own cap is the cap this approval draws on, and the
+  // request's is a claim about it. Otherwise an existing envelope with room, a
+  // requested cap with room and an exhausted actual cap would pass preflight,
+  // write the signed decision and the approved gate, and then refuse on a cap
+  // nothing had locked. Read under the locks and before the first write.
+  const envelope = parents.envelope;
+  if (envelope !== null && envelope.capId !== request.capId) {
+    return capBindingMismatch(envelope.capId, request.capId);
+  }
   const lockedAt = await lockedInstant(tx, ['client_sign_off_required']);
-  return { ok: true, value: { locks, capId, existing, lineageVersions, lockedAt } };
+  return { ok: true, value: { locks, capId: request.capId, lineageVersions, lockedAt } };
+}
+
+/**
+ * The decision's accounting parents: the task's open envelope, with the cap it
+ * draws on, and a rejection's affected holds. Both are rediscovered under the
+ * locks, so an envelope another approval opened in between is a parent this
+ * transaction did not lock, and it rolls back rather than draw on it.
+ */
+async function decisionParents(
+  tx: TenantQuery,
+  taskId: string,
+  lineageVersions: readonly string[],
+): Promise<{
+  readonly envelope: { readonly id: string; readonly capId: string } | null;
+  readonly held: readonly LockRequest[];
+}> {
+  const open = await openEnvelopeOf(tx, taskId);
+  return {
+    envelope: open === undefined ? null : { id: open.id, capId: open.capId },
+    held: await affectedByVersions(tx, lineageVersions),
+  };
+}
+
+function capBindingMismatch(envelopeCapId: string, capId: string): RuntimeResult<never> {
+  return refuse(
+    'CAP_BINDING_MISMATCH',
+    `this task's envelope draws on cap ${envelopeCapId}, and the request names ${capId}`,
+    "Decide against the envelope's own cap, or close that envelope through its authorised boundary first.",
+  );
 }
 
 interface Rechecked {
@@ -969,6 +991,8 @@ async function budgetRoom(
 ): Promise<RuntimeResult<null>> {
   const envelope = await openEnvelopeOf(tx, of.taskId);
   if (envelope !== undefined) {
+    // The envelope draws on the cap this decision checked and locked, or nothing.
+    if (envelope.capId !== of.capId) return capBindingMismatch(envelope.capId, of.capId);
     if (envelope.currency !== of.currency) {
       return refuse(
         'CAP_BINDING_MISMATCH',
