@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* eslint-disable max-lines-per-function -- Sol's proofs, kept as written */
+// Criterion 5's preview proof (#496) goes with #496's own pull request.
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { outputDigest, recordedStamp, stampOutput } from '../../scripts/ops/build-output.ts';
-import { requestPreview } from '../../scripts/ops/preview.ts';
 import { artefactName, promote } from '../../scripts/ops/promotion.ts';
 import { serveTestKeySetApart, signBearer, TEST_ISSUER } from '../support/sign-in.ts';
 
@@ -38,46 +38,6 @@ it('Sol proof, criterion 3: a malformed database address never prints its passwo
   } finally {
     await keys.close();
   }
-});
-
-it('Sol proof, criterion 5: concurrent preview requests build the commit each record names', async () => {
-  const versionA = 'a'.repeat(40);
-  const versionB = 'b'.repeat(40);
-  let branchHead = '';
-  let releaseFirst!: () => void;
-  const firstDelivery = new Promise<void>((resolve) => {
-    releaseFirst = resolve;
-  });
-  const built = new Map<string, string>();
-  let posts = 0;
-  const deps = {
-    env: {
-      PREVIEWS_VERCEL_PROJECT_ID: 'prj_sol065preview',
-      VERCEL_PROJECT_ID: 'prj_sol065staging',
-      PREVIEW_DEPLOY_HOOK:
-        'https://api.vercel.com/v1/integrations/deploy/prj_sol065preview/syntheticHook',
-    },
-    push: (version: string) => {
-      branchHead = version;
-      return true;
-    },
-    post: async () => {
-      const job = `job${++posts}`;
-      // The first HTTP request is in flight while the second caller pushes.
-      if (job === 'job1') await firstDelivery;
-      built.set(job, branchHead);
-      return Response.json({ job: { id: job } });
-    },
-  };
-  const first = requestPreview({ version: versionA }, deps);
-  const secondRequest = requestPreview({ version: versionB }, deps);
-  releaseFirst();
-  const [firstOutcome, second] = await Promise.all([first, secondRequest]);
-  expect(firstOutcome.kind).toBe('requested');
-  if (firstOutcome.kind !== 'requested') throw new Error('first fixture request refused');
-  // A concurrent request may safely be refused or queued behind the first.
-  if (second.kind === 'requested') expect(built.get(second.record.job)).toBe(second.record.version);
-  expect(built.get(firstOutcome.record.job)).toBe(firstOutcome.record.version);
 });
 
 it('Sol proof, criterion 5: promotion serves the validated bytes despite a store write during migration', () => {

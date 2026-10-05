@@ -24,8 +24,10 @@
 // here are tested with the effects watched and the command stays thin.
 
 import {
+  chmodSync,
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -154,7 +156,13 @@ export function storedArtefact(version: string, store: string): StoredArtefact |
     return `${name} carries ${carried}, not ${version}; production gets the build staging ran, never another`;
   }
   if (typeof digest !== 'string') return `${name} records no digest; it is not a release output`;
-  if (digest !== outputDigest(path)) return `${name} does not hold the bytes its digest records`;
+  let held: string;
+  try {
+    held = outputDigest(path);
+  } catch (error) {
+    return `${name}: ${(error as Error).message}; a release output holds nothing else, so it is not promoted`;
+  }
+  if (digest !== held) return `${name} does not hold the bytes its digest records`;
   return { path, name, digest };
 }
 
@@ -221,27 +229,58 @@ function notStopped(states: readonly ServiceState[], wanted: readonly ServiceRef
 
 /**
  * The validated bytes, copied where production reads them: a folder of the
- * store's `served/` named by their digest, copied whole under a temporary name,
- * hashed, and renamed into place only if it holds that digest. Production points here, so a
- * later write to the store's artefact never changes what is served (#497). A
- * folder already there by that name is used only while it holds that digest.
- * Undefined when the copy does not hold the digest the check passed.
+ * store's `served/` named by their digest, copied whole under a temporary name
+ * with the artefact's own mode, hashed, and renamed into place only if it holds
+ * that digest. Production points here, so a later write to the store's
+ * artefact never changes what is served (#497). `served/` and a copy already
+ * there count only as real folders, never links, and a copy only while it holds
+ * that digest. Undefined when no such copy can be had.
  */
 function frozenCopy(selected: StoredArtefact, store: string): string | undefined {
   const folder = resolve(store, SERVED);
   const path = join(folder, selected.digest.slice('sha256:'.length));
-  if (!existsSync(path)) {
-    mkdirSync(folder, { recursive: true });
+  const holds = (copy: string): boolean => {
+    try {
+      return realFolder(copy) && outputDigest(copy) === selected.digest;
+    } catch {
+      // A link or pipe that reached the copy: not the bytes the check passed.
+      return false;
+    }
+  };
+  if (!existsSync(folder)) mkdirSync(folder, { recursive: true });
+  if (!realFolder(folder)) return undefined;
+  if (!lexists(path)) {
     const copy = mkdtempSync(join(folder, '.copy-'));
     try {
       cpSync(selected.path, copy, { recursive: true, errorOnExist: true, force: false });
-      // Only a copy that holds the digest ever takes the digest's name.
-      if (outputDigest(copy) === selected.digest) renameSync(copy, path);
-    } catch {
-      // Another promotion of the same digest renamed its copy first; it is checked below.
+      chmodSync(copy, statSync(selected.path).mode & 0o777);
+      if (holds(copy)) renameSync(copy, path);
+    } catch (error) {
+      // Only another promotion of the same digest renaming its copy first.
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOTEMPTY' && code !== 'EEXIST') throw error;
     } finally {
       rmSync(copy, { recursive: true, force: true });
     }
   }
-  return existsSync(path) && outputDigest(path) === selected.digest ? path : undefined;
+  return holds(path) ? path : undefined;
+}
+
+/** Whether `path` is a folder itself, not a link to one. */
+function realFolder(path: string): boolean {
+  try {
+    return lstatSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** Whether anything, a dangling link included, is at `path`. */
+function lexists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
