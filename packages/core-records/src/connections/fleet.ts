@@ -165,12 +165,14 @@ async function connectionNow(
  * in between, nothing is inserted and the start is refused as the first
  * checks would refuse it now. Two starters on one revision serialise on the
  * unique key (connection, revision): the second insert waits for the first
- * to commit, does nothing, and both answer with the one repair.
+ * to commit, does nothing, and both answer with the one repair while the
+ * connection is still broken at that revision.
  *
- * `admitted` asks the starter's authority again after that first read and
- * before the insert, with the grants it rests on held, so a revocation that
- * committed since the envelope's check refuses the start and a later one
- * waits for it. After the insert the connection is read once more whatever
+ * `admitted` asks the starter's authority again straight after that first
+ * read, before any answer about the connection and before the insert, with
+ * the grants it rests on held: a revocation that committed since the
+ * envelope's check refuses the start and tells it nothing of the connection,
+ * and a later one waits for it. After the insert the connection is read once more whatever
  * the insert did: a repair already recorded for this revision is history and
  * is answered only while the connection is still broken at it.
  */
@@ -184,13 +186,13 @@ export async function startRepair(
   },
 ): Promise<RepairStarted | RepairRefusal> {
   const connection = await connectionNow(tx, start.connectionId);
+  if (!(await start.admitted())) return { refused: 'not-granted' };
   if (connection === undefined) return { refused: 'not-found' };
   const revision = Number(connection.revision);
   if (start.expectedRevision !== undefined && start.expectedRevision !== revision) {
     return { refused: 'stale', revision };
   }
   if (connection.status !== 'broken') return { refused: 'not-broken', status: connection.status };
-  if (!(await start.admitted())) return { refused: 'not-granted' };
   await tx.query(
     `insert into public.connection_repairs
        (business_id, id, connection_id, connection_revision, started_by_actor_id)

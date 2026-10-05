@@ -3,17 +3,17 @@
 // `connector.repair` (MP-14-7a, CS-14.12): record `connector repair started`.
 //
 // The envelope has already checked `custody:manage` business-wide and refused
-// every agent (the row is `agent: never`). What is left is the connection: it
-// must be one of this business's, broken, and at the revision the caller saw
-// if they named one. The repair is recorded against that exact revision and
-// nothing else happens: re-authorising is the broker's (AW-01), and it passes
-// the approval gate on this revision before anything leaves the system.
-//
-// The envelope's check is not held to the write, so `custody:manage` is asked
-// again inside the start, straight before its insert, with the caller's
-// custody grants held for share (`holdCoveringGrants`, as `task.duplicate`
-// holds its own): a revocation that committed first refuses the start, and one
-// that comes second waits for it to commit.
+// every agent (the row is `agent: never`). That check is not held to the
+// write, so the start asks `custody:manage` again straight after it reads the
+// connection, with the caller's custody grants held for share
+// (`holdCoveringGrants`, as `task.duplicate` holds its own): a revocation that
+// committed first refuses the start before it answers anything about the
+// connection, and one that comes second waits for it to commit. Then the
+// connection: it must be one of this business's, broken, and at the revision
+// the caller saw if they named one. The repair is recorded against that exact
+// revision and nothing else happens: re-authorising is the broker's (AW-01),
+// and it passes the approval gate on this revision before anything leaves the
+// system.
 
 import {
   isRepairRefusal,
