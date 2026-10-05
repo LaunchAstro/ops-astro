@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { readFileSync } from 'node:fs';
-import { configDefaults, defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig, type ViteUserConfig } from 'vitest/config';
 
 // With a database, the database-bound suites run. Each file's fresh database
 // is a clone of one template the run migrates from empty once
@@ -29,7 +29,7 @@ const clusterRoleSuites = [
 ];
 const oneSuiteAtATime = process.env['SUITE_PART'] !== undefined;
 
-export default defineConfig({
+const config: ViteUserConfig = defineConfig({
   test: {
     environment: 'node',
     globals: false,
@@ -161,3 +161,5 @@ export default defineConfig({
     ],
   },
 });
+
+export default config;
