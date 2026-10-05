@@ -215,6 +215,18 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select business_id, gen_random_uuid(), id, 'restricted calls seed', current_date,
             'https://files.example.test/seed.pdf', array['replay'], 'applied', created_by_actor_id
        from public.clients where business_id = $1 order by id limit 1 returning 1`,
+  // 20261005163722 (MP-14-10a): no journey graduates a class or files a
+  // mandate, so one of each is written here, on the business's seeded client,
+  // the mandate a live refusal by the client's author, so its own insert meets its keys.
+  'public.graduation_classes': `insert into public.graduation_classes
+       (business_id, id, client_id, action_class, class_label, earned)
+     select business_id, gen_random_uuid(), id, 'social.post', 'Social posts', 'none'
+       from public.clients where business_id = $1 order by id limit 1 returning 1`,
+  'public.standing_mandates': `insert into public.standing_mandates
+       (business_id, id, client_id, classes, refuses, expires_at, label, authored_by_actor_id)
+     select business_id, gen_random_uuid(), id, array['social.post'], true,
+            now() + interval '1 day', 'restricted calls seed', created_by_actor_id
+       from public.clients where business_id = $1 order by id limit 1 returning 1`,
   // C58: no journey ends a person's access, so an ending is written here for a
   // person's own login, as `access.end` writes one.
   'public.access_endings': `insert into public.access_endings
@@ -797,7 +809,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
         outcome = error instanceof RolledBack ? { kind: 'rows', n: error.n } : classify(error);
       } finally {
         // oxlint-disable-next-line no-await-in-loop
-        await asOwner(copyStatement(table), row);
+        await asOwner(copyStatement(table, true), row);
       }
       // oxlint-disable-next-line no-await-in-loop
       const after = await fingerprint(world.db.admin, table.qualified);
@@ -814,7 +826,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted five run', async () => {
+  it('calls every function as every caller, and only the granted six run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {

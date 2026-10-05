@@ -33,11 +33,29 @@ const COLUMN_UPDATES: Readonly<
     ],
   },
   'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
+  // MP-14-10a: promoting and demoting serialise on a class's revision.
+  'public.graduation_classes': { from: '20261005163722', columns: ['revision'] },
+  // MP-14-10a: a mandate is revoked, never edited; its trigger refuses the rest.
+  'public.standing_mandates': {
+    from: '20261005163722',
+    columns: ['revision', 'revoked_at', 'revoked_by_actor_id'],
+  },
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
   'public.clients': {
     from: '20261003000423',
     columns: ['handles_health', 'model_egress', 'model_providers', 'no_agent_edits'],
   },
+};
+
+/**
+ * Insert granted column by column, held in ROLE_COLUMN_GRANTS below. MP-14-10a: a
+ * mandate's `created_at` is the database's, and it is filed live, at revision 1.
+ */
+export const INSERT_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  'public.standing_mandates': [
+    ...'authored_by_actor_id business_id ceiling_minor classes client_id currency'.split(' '),
+    ...'expires_at graduation_class id label refuses'.split(' '),
+  ],
 };
 
 /**
@@ -164,6 +182,11 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
   ].map((column) => ({
     from: '20261005023013',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
+  })),
+  // MP-14-10a (20261005163722): a mandate is filed with its own columns alone.
+  ...(INSERT_COLUMNS['public.standing_mandates'] ?? []).map((column) => ({
+    from: '20261005163722',
+    line: `ops_astro_app INSERT public.standing_mandates.${column}`,
   })),
 ];
 

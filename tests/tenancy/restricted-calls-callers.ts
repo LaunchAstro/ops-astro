@@ -24,7 +24,11 @@ import {
   Rollback,
   asRole,
 } from './restricted-calls-cases.ts';
-import { type CatalogueTable, type CatalogueFunction } from './restricted-calls-catalogue.ts';
+import {
+  INSERT_COLUMNS,
+  type CatalogueTable,
+  type CatalogueFunction,
+} from './restricted-calls-catalogue.ts';
 
 /**
  * The callers. Every refusal position commits, so a write that should have
@@ -263,10 +267,15 @@ export function copyRowFinding(table: CatalogueTable, row: string): string | und
  * A whole row of the own business, re-sent as it stands. Unlike the bare
  * insert it satisfies every column constraint, so what refuses it from another
  * tenant is the tenancy check (or the trigger above), never a missing value.
+ * A table inserted into by column (MP-14-10a) is re-sent in its granted columns,
+ * unless `whole`: the owner putting a row back exactly.
  */
-export const copyStatement = (table: CatalogueTable): string =>
-  `insert into ${table.qualified}
-     select * from json_populate_record(null::${table.qualified}, $1::text::json) returning 1`;
+export const copyStatement = (table: CatalogueTable, whole = false): string => {
+  const columns = whole ? '*' : (INSERT_COLUMNS[table.qualified]?.join(', ') ?? '*');
+  return `insert into ${table.qualified}${columns === '*' ? '' : ` (${columns})`}
+     select ${columns} from json_populate_record(null::${table.qualified}, $1::text::json)
+     returning 1`;
+};
 
 export async function ownRowJson(
   admin: AdminConnection,
