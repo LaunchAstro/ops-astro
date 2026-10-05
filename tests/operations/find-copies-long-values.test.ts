@@ -6,6 +6,7 @@
 // failing the search, and the summary says what was matched loosely or not
 // at all (docs/local/PRIVACY-RUNBOOK.md, 'Every copy of a person').
 
+import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { findCopies } from './c81-privacy-runbook-finder.ts';
@@ -219,4 +220,30 @@ it('a stored name over 1,000 bytes is matched by its words in any order', async 
   const found = await findCopies(world.adminUrl, ['--id', id], 'alpha');
   expect(found.code).toBe(0);
   expect(hitOn(found.hits, 'records', record)?.text, 'its words, reversed').toBe(true);
+}, 180_000);
+
+it('a stored name of short words just under 1,000 bytes is read as a phrase, and stops no search', async () => {
+  // 249 hyphenated pairs, each a word and its two parts: about 750 levels of phrase.
+  const name = Array.from({ length: 249 }, () => 'a-b').join(' ');
+  const id = randomUUID();
+  const type = randomUUID();
+  const record = randomUUID();
+  await world.db.admin.execute(
+    `insert into public.people (business_id, id, display_name) values ($1, $2, $3)`,
+    [world.alpha, id, name],
+  );
+  await world.db.admin.execute(
+    `insert into public.record_types (business_id, id, key, name, origin, retention_class)
+     values ($1, $2, $3, 'Dense name', 'preset', 'work')`,
+    [world.alpha, type, `dense_${type.replaceAll('-', '').slice(0, 12)}`],
+  );
+  await world.db.admin.execute(
+    `insert into public.records (business_id, id, record_type_id, data)
+     values ($1, $2, $3, jsonb_build_object('note', $4::text))`,
+    [world.alpha, record, type, `About ${name}.`],
+  );
+  const found = await findCopies(world.adminUrl, ['--id', id], 'alpha');
+  expect(Buffer.byteLength(name)).toBeLessThanOrEqual(1000);
+  expect(found.code).toBe(0);
+  expect(hitOn(found.hits, 'records', record)?.text, 'the record holding the name').toBe(true);
 }, 180_000);
