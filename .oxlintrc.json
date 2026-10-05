@@ -70,6 +70,10 @@
     {
       "files": [
         "tests/runtime/trace-export-resends-a-run-whole-while-its-delete-is-owed.test.ts",
+        "tests/runtime/trace-export-resends-every-fresh-event-of-an-owed-run.test.ts",
+        "tests/runtime/trace-retention-keeps-recovering-while-a-second-delete-is-queued.test.ts",
+        "tests/runtime/trace-retention-recovery-reaches-a-later-owed-run-past-present-ones.test.ts",
+        "tests/runtime/trace-retention-recovery-tests-reject-an-old-span-for-the-fresh-one.test.ts",
         "tests/runtime/trace-retention-expires-a-late-committed-event-once-past-the-window.test.ts",
         "tests/runtime/trace-retention-recovers-a-delete-after-a-database-fault.test.ts",
         "tests/runtime/trace-retention-recovers-a-delete-that-lands-after-a-timeout.test.ts",
