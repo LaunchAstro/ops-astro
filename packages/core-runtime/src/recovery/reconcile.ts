@@ -166,6 +166,12 @@ async function answer(tx: TenantQuery, row: Unknown, lookup: EffectLookup): Prom
     const resumed = await resume(tx, row, true);
     return { attemptId, answer: 'absent', reason: resumed };
   }
+  return await settlePresent(tx, row);
+}
+
+/** The register proved the effect present: settle the hold by the book and its calls, once. */
+async function settlePresent(tx: TenantQuery, row: Unknown): Promise<Reconciled> {
+  const attemptId = row.attempt_id;
   const cost = priceAttempt(
     { priceBook: row.price_book, currency: row.currency },
     { item: row.step_kind, quantity: 1 },
