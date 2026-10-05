@@ -21,15 +21,18 @@
 // preview on the page is always the server's, never this screen's guess.
 // A refusal is shown in the server's words and changes nothing on the page.
 //
-// A fifth, C39-T's: "Invite a team member" sends `invitation.create` under
+// C39-T's: "Invite a team member" sends `invitation.create` under
 // `access:share`, drawn only when `session.capabilities` says the session
 // holds that key (`access/invite.tsx`); the server still refuses anyone else.
 // Under it, the business's invitations from `invitation.list`, each pending
 // one with `invitation.resend` and `invitation.revoke` (`access/invitations.tsx`).
-// An administrator's invitation, made or resent, also asks `access:manage`
+// It sits beside the access list, not inside it: `access.read` asks
+// `access:manage`, and a holder of `access:share` alone still invites. An
+// administrator's invitation, made or resent, also asks `access:manage`
 // (SEC27): without it the role is not offered and such a resend is not drawn.
+// Each section has its own outcome line and holds one act at a time.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { describeFailure, type SubmitResult } from '../records/submit.ts';
@@ -52,6 +55,9 @@ export interface AccessScreenProps {
 
 /** One write, then the list read again; a refusal changes nothing but the outcome line. */
 type Act = (send: () => Promise<SubmitResult>, done: string) => Promise<SubmitResult>;
+
+/** What an act answers while another of its section's is out: nothing was sent. */
+const HELD: SubmitResult = { unavailable: true, because: 'Another act is still being sent.' };
 
 const revokeWith =
   (client: OperationsClient, act: Act) =>
@@ -151,12 +157,6 @@ function AccessLists(props: {
   readonly busy: boolean;
   readonly act: Act;
   readonly outcome: ReactElement | null;
-  readonly canInvite: boolean;
-  /** The session holds `access:manage`, which an administrator's invitation asks. */
-  readonly canManage: boolean;
-  readonly grantKey: string;
-  /** Moved on after each act that worked, so the invitations are read again. */
-  readonly version: number;
 }): ReactElement {
   const { client, result, act } = props;
   const { confirmations, onEnd, onRevokeGrant } = usePending(client, act);
@@ -178,7 +178,6 @@ function AccessLists(props: {
       <section className="sec">
         <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
       </section>
-      {props.canInvite ? <InviteSection {...props} /> : null}
       <section className="sec">
         <ClientPrivacy
           result={result}
@@ -203,10 +202,12 @@ function InviteSection(props: {
   readonly canManage: boolean;
   readonly grantKey: string;
   readonly version: number;
+  readonly outcome: ReactElement | null;
 }): ReactElement {
   const { client, act } = props;
   return (
-    <section className="sec">
+    <section className="sec" data-access-section="invitations">
+      {props.outcome}
       <InviteMember
         busy={props.busy}
         canInviteAdmin={props.canManage}
@@ -218,29 +219,36 @@ function InviteSection(props: {
         version={props.version}
         onAct={actOnInvitationWith(client, act)}
         canManage={props.canManage}
+        busy={props.busy}
       />
     </section>
   );
 }
 
-/** One write at a time; after one that worked, the list and the invitations are read again. */
+/**
+ * One write at a time: a second while one is out sends nothing. After one that
+ * worked the list is read again; after any answer the invitations are.
+ */
 function useAct(reload: () => void) {
+  const out = useRef(false);
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0);
   const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
   const act: Act = async (send, done) => {
+    if (out.current) return HELD;
+    out.current = true;
     setBusy(true);
     const result = await send();
+    out.current = false;
     const failure = describeFailure(result);
     setBusy(false);
     setOutcome({ text: failure ?? done, refused: failure !== null });
-    if (failure === null) {
-      reload();
-      setVersion((was) => was + 1);
-    }
+    if (failure === null) reload();
+    setVersion((was) => was + 1);
     return result;
   };
-  return { act, busy, version, outcome };
+  const line = outcome === null ? null : <Outcome {...outcome} />;
+  return { act, busy, version, outcome: line };
 }
 
 export function AccessScreen(props: AccessScreenProps): ReactElement {
@@ -255,7 +263,8 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
     run: () => client.read<CapabilitiesResult>('session.capabilities', {}),
     deps: [client],
   });
-  const { act, busy, version, outcome } = useAct(reload);
+  const lists = useAct(reload);
+  const invites = useAct(reload);
   // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
     <div className="secs" data-screen="access" data-business={client.businessKey}>
@@ -268,17 +277,24 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
             <AccessLists
               client={client}
               result={result}
-              busy={busy}
-              act={act}
-              outcome={outcome === null ? null : <Outcome {...outcome} />}
-              canInvite={holdsAccess(capabilities.state, 'share')}
-              canManage={holdsAccess(capabilities.state, 'manage')}
-              grantKey={grantKey}
-              version={version}
+              busy={lists.busy}
+              act={lists.act}
+              outcome={lists.outcome}
             />
           </div>
         )}
       </RecordState>
+      {holdsAccess(capabilities.state, 'share') ? (
+        <InviteSection
+          client={client}
+          busy={invites.busy}
+          act={invites.act}
+          canManage={holdsAccess(capabilities.state, 'manage')}
+          grantKey={grantKey}
+          version={invites.version}
+          outcome={invites.outcome}
+        />
+      ) : null}
     </div>
   );
 }

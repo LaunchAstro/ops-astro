@@ -166,7 +166,12 @@ export type {
   PreReviewAttribution,
   PreReviewRun,
 } from './views-agent.ts';
-export type { InvitationListResult, InvitationState, InvitationView } from './views-invitations.ts';
+export type {
+  InvitationListResult,
+  InvitationRole,
+  InvitationState,
+  InvitationView,
+} from './views-invitations.ts';
 // Settings ▸ Workflow triggers' registry (C33).
 export type {
   ActivationView,

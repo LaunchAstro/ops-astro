@@ -20,17 +20,21 @@ import { Button, Card, Select, TextField } from '@launchastro/ui';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { isRefusal, type WireRefusal } from '../../operations/client.ts';
 import type { SubmitResult } from '../../records/submit.ts';
-import type { CapabilitiesResult } from '../../../../../packages/core-wire/src/index.ts';
+import type {
+  CapabilitiesResult,
+  InvitationRole,
+} from '../../../../../packages/core-wire/src/index.ts';
+import { holds } from '../settings/reads.ts';
 
 /** What `invitation.create` takes: its operands, `surface-operands.ts`. */
 export interface Invitation {
   readonly name: string;
   readonly email: string;
-  readonly role: string;
+  readonly role: InvitationRole;
 }
 
 /** The roles an invitation may name; an owner is never invited (`invitations.ts`). */
-const ROLES = [
+const ROLES: readonly { readonly value: InvitationRole; readonly label: string }[] = [
   { value: 'member', label: 'Team member' },
   { value: 'admin', label: 'Administrator' },
 ];
@@ -42,29 +46,31 @@ export const holdsAccess = (
   state: ReadState<CapabilitiesResult>,
   action: 'manage' | 'share',
 ): boolean =>
-  state.outcome === 'ready' &&
-  state.value.grants.some((each) => each.collection === 'access' && each.action === action);
+  state.outcome === 'ready' && holds(state.value.grants, { collection: 'access', action });
 
 /** The server's fixes, under the field its refusal names. */
 const errorOf = (refusal: WireRefusal | null, field: keyof Invitation): string | undefined =>
   refusal?.names.includes(field) === true ? refusal.fixes.join(' ') || 'Refused.' : undefined;
 
-/** The typed fields and the last refusal; cleared once an invitation is made. */
+/** The typed fields, the last refusal and whether this form's invitation is out. */
 function useInvite(onInvite: (invitation: Invitation) => Promise<SubmitResult>) {
   const [fields, setFields] = useState<Invitation>(BLANK);
   const [refusal, setRefusal] = useState<WireRefusal | null>(null);
+  const [sending, setSending] = useState(false);
   const set = (field: keyof Invitation) => (value: string) => {
     setFields((was) => ({ ...was, [field]: value }));
   };
   const submit = (event: FormEvent): void => {
     event.preventDefault();
+    setSending(true);
     void (async () => {
       const result = await onInvite(fields);
+      setSending(false);
       setRefusal(isRefusal(result) ? result : null);
       if ('ok' in result) setFields(BLANK);
     })();
   };
-  return { fields, refusal, set, submit };
+  return { fields, refusal, sending, set, submit };
 }
 
 export function InviteMember(props: {
@@ -73,7 +79,7 @@ export function InviteMember(props: {
   readonly canInviteAdmin: boolean;
   readonly onInvite: (invitation: Invitation) => Promise<SubmitResult>;
 }): ReactElement {
-  const { fields, refusal, set, submit } = useInvite(props.onInvite);
+  const { fields, refusal, sending, set, submit } = useInvite(props.onInvite);
   const text = (field: 'name' | 'email', label: string) => (
     <div data-field={field}>
       <TextField
@@ -103,7 +109,12 @@ export function InviteMember(props: {
             />
           </div>
           <div className="btnrow">
-            <Button type="submit" variant="primary" busy={props.busy ? 'Inviting…' : undefined}>
+            <Button
+              type="submit"
+              variant="primary"
+              busy={sending ? 'Inviting…' : undefined}
+              disabled={props.busy}
+            >
               Send invitation
             </Button>
           </div>

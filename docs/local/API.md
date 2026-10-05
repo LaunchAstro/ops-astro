@@ -2403,6 +2403,18 @@ counted from the applied audit events (`RATE_LIMITED` naming `email` or
 `{ invitationId, state }`. The business's worker expires lapsed invitations
 (`expireInvitations`, audited `invitation.expire`).
 
+The read `invitation.list` (`POST /api/b/<key>/invitation/list`, body `{}`)
+asks the same `access:share` for the whole business and no agent route serves
+it. It answers `{ ok: true, invitations }`, newest first, each
+`{ invitationId, name, address, role, state, createdAt, sentAt, expiresAt }`:
+`state` is `expired` once a pending invitation's lifetime has passed, before
+the worker ends it, and `sentAt` is the last attempt the provider accepted or
+delivered (`null` when none was). Only this business's invitations are listed,
+and no enrolment token or hash is part of the answer. Without the key it is
+`SCOPE_NOT_GRANTED` 403; a client-scoped grant does not count. Settings ▸
+Access draws the form and the list for a holder of `access:share`
+(`apps/web/src/screens/access/`).
+
 Each create and each resend allows one email: `sendInvitation`
 (`core-custody`) sends through the broker's `email.send` only while the
 invitation is pending and has an applied act no send has answered, mints a
@@ -2411,8 +2423,8 @@ against it. It shares the inbox email's ceiling: one limit, `email.send`'s
 catalogued concurrency, counts inbox and invitation emails in flight
 together, each ask until custody's timeout and a minute's grace have passed
 (`EMAIL_AT_CEILING` at it, writing nothing). Not here yet: the send mounted
-after the command, Auth's Send Email hook, the enrolment page and the Access
-screen (C39-T P2 and P3).
+after the command, Auth's Send Email hook and the enrolment page (C39-T P2 and
+P3).
 
 ## Tags
 
@@ -2454,7 +2466,7 @@ delegation.
 `person.list`, `team.list`, `tag.list`, `task.todos`, `preset.plan`, `settings.read`,
 `session.capabilities`, `access.read`, `inbox.read`, `inbox.count`, `inbox.unattended`,
 `conversation.read`, `conversation.list`, `conversation.allowance`, `definition.attribution`,
-`trace.read` and `harness.read` are declared in `COMMAND_SURFACE` with
+`trace.read`, `harness.read` and `invitation.list` are declared in `COMMAND_SURFACE` with
 `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 

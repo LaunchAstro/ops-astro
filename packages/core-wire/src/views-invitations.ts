@@ -4,6 +4,9 @@
 // Settings ▸ Access. Types only, as in `views.ts`. No token and no token hash
 // is ever part of it.
 
+/** The roles an invitation names; an owner is never invited. */
+export type InvitationRole = 'member' | 'admin';
+
 /** An invitation's state; `expired` is derived from its lifetime while it is still pending. */
 export type InvitationState = 'pending' | 'accepted' | 'revoked' | 'expired';
 
@@ -12,7 +15,7 @@ export interface InvitationView {
   readonly invitationId: string;
   readonly name: string;
   readonly address: string;
-  readonly role: string;
+  readonly role: InvitationRole;
   readonly state: InvitationState;
   readonly createdAt: string;
   /** The last delivery the provider took, or null when none has been taken. */

@@ -5,18 +5,20 @@
 // with its state (pending, accepted, revoked or expired) and its sent and
 // expiry times. A pending one has its two acts, `invitation.resend` and
 // `invitation.revoke`, the commands the API and the command line reach. After
-// an act the list is read again, so a state shown is always the server's.
+// an act, refused or not, the list is read again, so a state shown is always
+// the server's. While one act is out, every row's buttons are held.
 // Resending an administrator's invitation asks `access:manage` too (SEC27), so
 // without it that row offers Revoke alone and says why; a revoke stays
 // `access:share`.
 
-import type { ReactElement } from 'react';
+import { useEffect, useRef, type ReactElement } from 'react';
 import { Button, Card, Chip, Table, type MarkTone } from '@launchastro/ui';
 import { useRead } from '../../data/use-read.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import type {
   InvitationListResult,
+  InvitationRole,
   InvitationState,
   InvitationView,
 } from '../../../../../packages/core-wire/src/index.ts';
@@ -28,10 +30,14 @@ const TONE: Record<InvitationState, MarkTone> = {
   expired: 'warn',
 };
 
-const ROLE_WORDS: Readonly<Record<string, string>> = {
+const ROLE_WORDS: Readonly<Record<InvitationRole, string>> = {
   member: 'Team member',
   admin: 'Administrator',
 };
+
+/** A role in words; one the screen has no words for is drawn as the server named it. */
+const roleWords = (role: string): string =>
+  Object.hasOwn(ROLE_WORDS, role) ? ROLE_WORDS[role as InvitationRole] : role;
 
 /** A time as the server sent it, to the minute, in UTC. */
 const minute = (iso: string): string => `${iso.slice(0, 16).replace('T', ' ')} UTC`;
@@ -50,18 +56,25 @@ export type InvitationAct = (
   invitation: InvitationView,
 ) => void;
 
-function Acts(props: {
-  readonly row: InvitationView;
+/** What a row's acts take besides the row: the act, and what the session holds. */
+interface ActsProps {
   readonly onAct: InvitationAct;
   readonly canManage: boolean;
-}) {
+  readonly busy: boolean;
+}
+
+function Acts(props: ActsProps & { readonly row: InvitationView }) {
   if (props.row.state !== 'pending') return null;
   const resendable = props.canManage || props.row.role !== 'admin';
   return (
     <span data-invitation-acts={props.row.invitationId}>
       {resendable ? (
         <span data-act="resend">
-          <Button variant="ghost" onClick={() => props.onAct('invitation.resend', props.row)}>
+          <Button
+            variant="ghost"
+            disabled={props.busy}
+            onClick={() => props.onAct('invitation.resend', props.row)}
+          >
             Resend
           </Button>
         </span>
@@ -71,27 +84,29 @@ function Acts(props: {
         </span>
       )}
       <span data-act="revoke">
-        <Button onClick={() => props.onAct('invitation.revoke', props.row)}>Revoke</Button>
+        <Button disabled={props.busy} onClick={() => props.onAct('invitation.revoke', props.row)}>
+          Revoke
+        </Button>
       </span>
     </span>
   );
 }
 
-function rowOf(row: InvitationView, onAct: InvitationAct, canManage: boolean) {
+function rowOf(row: InvitationView, acts: ActsProps) {
   return {
     who: (
       <span data-invitation={row.invitationId}>
         {row.name} · {row.address}
       </span>
     ),
-    role: ROLE_WORDS[row.role] ?? row.role,
+    role: roleWords(row.role),
     state: (
       <span data-state={row.state}>
         <Chip tone={TONE[row.state]}>{row.state}</Chip>
       </span>
     ),
     when: `${row.sentAt === null ? 'Not sent' : minute(row.sentAt)} · ${minute(row.expiresAt)}`,
-    act: <Acts row={row} onAct={onAct} canManage={canManage} />,
+    act: <Acts row={row} {...acts} />,
   };
 }
 
@@ -103,14 +118,23 @@ export function Invitations(props: {
   readonly onAct: InvitationAct;
   /** The session holds `access:manage`, which resending an administrator's invitation asks. */
   readonly canManage: boolean;
+  /** An act of the section is out. */
+  readonly busy: boolean;
 }): ReactElement {
   const { client } = props;
   const { state, reload } = useRead<InvitationListResult>({
     grantKey: props.grantKey,
     run: () => client.read<InvitationListResult>('invitation.list', {}),
     isEmpty: (value) => value.invitations.length === 0,
-    deps: [client, props.version],
+    deps: [client],
   });
+  // Read again in place after each act, keeping the rows drawn meanwhile.
+  const seen = useRef(props.version);
+  useEffect(() => {
+    if (seen.current === props.version) return;
+    seen.current = props.version;
+    reload();
+  }, [props.version, reload]);
   return (
     <div data-access="invitations">
       <Card title="Invitations" sub="Each pending until accepted, resent, revoked or expired" flush>
@@ -119,7 +143,9 @@ export function Invitations(props: {
             <Table
               caption="Invitations"
               columns={COLUMNS}
-              rows={result.invitations.map((row) => rowOf(row, props.onAct, props.canManage))}
+              rows={result.invitations.map((row) =>
+                rowOf(row, { onAct: props.onAct, canManage: props.canManage, busy: props.busy }),
+              )}
             />
           )}
         </RecordState>
