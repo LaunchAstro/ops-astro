@@ -23,6 +23,7 @@
     "tests/db/lease-holder-guard.test.ts",
     "tests/db/reservation-stop-cause.test.ts",
     "tests/db/reviewed-output-proposer.test.ts",
+    "tests/db/run-end-stamped-after-lock-wait.test.ts",
     "tests/db/second-factor-codes-retention.test.ts",
     "tests/db/take-lease-path.test.ts"
   ],
