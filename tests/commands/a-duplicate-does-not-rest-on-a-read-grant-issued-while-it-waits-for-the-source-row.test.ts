@@ -8,8 +8,9 @@
 //
 // The old task's row is held `for update` on another connection; the
 // duplicate is seen waiting on that holder with its transaction begun before
-// its first read grant's expiry; a second read grant is issued and committed
-// meanwhile; the holder lets go once the database clock is past the first.
+// its first read grant's expiry; a second read grant, on the task's client, is
+// issued and committed meanwhile; the holder lets go once the database clock is
+// past the first.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -68,8 +69,10 @@ describe.skipIf(serverUrl === undefined)(
       let startedLive = false;
       try {
         startedLive = await blockedBefore(db, held, expiry);
+        // At the client's scope: a record-scoped grant's key on the held row
+        // would wait on the holder itself.
         await db.app.withBusiness(alpha, async (tx) => {
-          await grantTo(tx, reader, 'read', { kind: 'record', id: old });
+          await grantTo(tx, reader, 'read', { kind: 'party', id: clientA });
         });
         await waitPast(db, expiry);
       } finally {
