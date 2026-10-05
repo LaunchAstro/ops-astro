@@ -64,7 +64,8 @@ by kind. A copy not on the list is a copy the reply missed.
   finder lists every row holding the text in a value, and every row holding an
   id of the people the text names: a person whose name, or an identifier not
   rejected, holds the text as whole words (`--text Anna` names no Joanna;
-  loosely when either is too long, as below), anyone a merge not reversed joined them to, their actors, the logins they
+  loosely when the text, or the value it is sought in, is too long, as below),
+  anyone a merge not reversed joined them to, their actors, the logins they
   still hold, each delegation acting for them, and the agent of each
   credential they issued or delegation acting for them with the logins it
   still holds. An agent that a credential or delegation of anyone other than

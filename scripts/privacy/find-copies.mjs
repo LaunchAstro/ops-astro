@@ -9,7 +9,8 @@
 //
 // The people are seeded from the business's own rows: a person whose name, or
 // an identifier not rejected, holds the text as whole words (Anna names no
-// Joanna; loosely when either is too long, below), anyone a merge not reversed joined them to, and each --id as given.
+// Joanna; loosely when the text, or the value it is sought in, is too long,
+// below), anyone a merge not reversed joined them to, and each --id as given.
 // Their ids follow to their actors, the logins they still hold, each
 // delegation acting for them, and the agent of each credential they issued or
 // delegation acting for them, with the logins it still holds. An agent that a
