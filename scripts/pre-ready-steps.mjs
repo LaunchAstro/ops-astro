@@ -17,6 +17,7 @@ const FRESH = ['review-evidence-check.mjs', 'review-evidence-read.mjs'];
 /**
  * Variables the composed checkers read, cleared so the caller's shell cannot
  * change a verdict or hand a checker a token; the gate sets the ones it means.
+ * CHECK_SCOPE would switch pnpm check to its lighter set.
  */
 const CHECKER_ENV = [
   'PR_BODY',
@@ -32,6 +33,19 @@ const CHECKER_ENV = [
   'GITHUB_API_URL',
   'HUB_RANGE_INCLUDE_ROOT',
   'CI',
+  'CHECK_SCOPE',
+];
+/**
+ * Also cleared for the test files the gate runs, which need no database: with
+ * these set, the suite's global setup would reach the caller's server. pnpm
+ * check keeps them; the M5 hands it its database this way.
+ */
+const SUITE_ENV = [
+  'DATABASE_URL',
+  'DATABASE_ADMIN_URL',
+  'SUITE_PART',
+  'CONTAINER_SUITES',
+  'BROWSER_PROOFS',
 ];
 
 export const git = (cwd, ...args) =>
@@ -55,9 +69,9 @@ export const red = (message, result) => ({
  * Runs a checker, test file or `pnpm check` with none of the checkers'
  * variables from the caller, then `set`. Every step launches through this.
  */
-function check(command, args, { cwd, set = {}, stdio }) {
+function check(command, args, { cwd, set = {}, stdio, clear = [] }) {
   const env = { ...process.env };
-  for (const key of CHECKER_ENV) delete env[key];
+  for (const key of [...CHECKER_ENV, ...clear]) delete env[key];
   return run(command, args, { cwd, stdio, env: { ...env, ...set } });
 }
 
@@ -76,13 +90,8 @@ function changedPaths(cwd, base, head, filter) {
  * own timeout keeps it.
  */
 function vitestFile(cwd, tools, file) {
-  return check(
-    join(tools, 'node_modules', '.bin', 'vitest'),
-    ['run', '--testTimeout=60000', file],
-    {
-      cwd,
-    },
-  );
+  const vitest = join(tools, 'node_modules', '.bin', 'vitest');
+  return check(vitest, ['run', '--testTimeout=60000', file], { cwd, clear: SUITE_ENV });
 }
 
 /** Admission: committed, clean and on its own branch, by scripts/review-preflight.mjs. */

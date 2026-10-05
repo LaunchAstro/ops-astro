@@ -22,10 +22,13 @@
 //   (f)  behaviour test names: tests/docs/test-files-by-behaviour.test.ts.
 //   (g)  `git merge-tree` against origin/main, naming any conflicted file.
 //
-// (b) to (g) run in a detached worktree of the head, with that head's own
-// checkers, so an edit to the lane's tree while the gate runs cannot change
-// what they judge. The preflight and (a) read the lane's tree; the gate ends
-// by checking that tree is still clean at the head it admitted.
+// (b) to (g) run in a detached worktree of the head, so the files they judge
+// and the checkers' own source are the committed ones, whatever happens to the
+// lane's tree meanwhile. The installed tools (node_modules, linked in) are the
+// lane's. The preflight and (a) read the lane's tree, so the gate ends by
+// checking that tree is still clean at the head it admitted; an edit made and
+// undone while (a) runs is not seen, which is one more reason (a) belongs on
+// the M5.
 //
 // The pull request body, labels and commit messages are untrusted text. This
 // script parses none of them: the body goes to the evidence checker as it is,
@@ -45,8 +48,15 @@
 //                 exists or before you edit it.
 //   --skip-check  pnpm check already ran on this head elsewhere (the M5).
 
-import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   behaviourNames,
@@ -139,28 +149,58 @@ function unchanged({ cwd, head }) {
   const now = git(cwd, 'rev-parse', 'HEAD').trim();
   if (now !== head)
     return red(`HEAD moved from ${short(head)} to ${short(now)}; run the gate again.`);
-  const status = git(cwd, 'status', '--porcelain');
+  const status = git(cwd, 'status', '--porcelain', '--untracked-files=all', '--ignored=no');
   if (status !== '')
     return red(`the working tree changed while the gate ran; run it again:\n${status}`);
   return green(`the working tree is still clean at ${short(head)}.`);
 }
 
+/** Each cleanup action on its own, so one failing does not skip the rest. */
+function tryEach(...actions) {
+  for (const action of actions) {
+    try {
+      action();
+    } catch {
+      // The next action still runs; a leftover worktree is pruned by git.
+    }
+  }
+}
+
 /**
  * Runs `use` on a detached worktree of `head`, with the lane's node_modules
- * linked in, and removes it after. Steps there read the committed bytes, so an
- * edit to the lane's tree while they run cannot change their verdict.
+ * linked in, and removes it after, on a signal too. The worktree sits in the
+ * repository's own git directory, never a shared temporary directory whose
+ * parents another user could write to.
  */
 function inSnapshot(cwd, head, use) {
-  const dir = mkdtempSync(join(tmpdir(), 'pre-ready-head-'));
+  const parent = join(
+    git(cwd, 'rev-parse', '--path-format=absolute', '--git-common-dir').trim(),
+    'pre-ready',
+  );
+  mkdirSync(parent, { recursive: true });
+  const dir = mkdtempSync(join(parent, 'head-'));
+  const link = join(dir, 'node_modules');
+  const cleanUp = () =>
+    tryEach(
+      // The link only, never what it points at, and never a tracked directory.
+      () => lstatSync(link).isSymbolicLink() && rmSync(link),
+      () => git(cwd, 'worktree', 'remove', '--force', dir),
+      () => rmSync(dir, { recursive: true, force: true }),
+    );
+  const onSignal = (signal) => {
+    cleanUp();
+    process.kill(process.pid, signal);
+  };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
   try {
     git(cwd, 'worktree', 'add', '-q', '--detach', dir, head);
-    symlinkSync(join(cwd, 'node_modules'), join(dir, 'node_modules'));
+    symlinkSync(join(cwd, 'node_modules'), link);
     return use(dir);
   } finally {
-    // The link only, never what it points at.
-    rmSync(join(dir, 'node_modules'), { force: true });
-    run('git', ['-C', cwd, 'worktree', 'remove', '--force', dir]);
-    rmSync(dir, { recursive: true, force: true });
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+    cleanUp();
   }
 }
 
@@ -234,4 +274,7 @@ function main() {
   console.log(`pre-ready: green for ${short(head)} against origin/main ${short(base)}.${skipped}`);
 }
 
-if (process.argv[1] === import.meta.filename) main();
+// Compared by real path: run through a symlink, argv[1] is the path as typed.
+if (process.argv[1] !== undefined && realpathSync(process.argv[1]) === import.meta.filename) {
+  main();
+}
