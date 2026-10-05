@@ -96,8 +96,8 @@ it.each([
 });
 
 it('reads every simple escape and a plain unicode escape', () => {
-  const text = '"\\"\\\\\\/\\b\\f\\n\\r\\t\\u0041\\u00e9"';
-  expect(parseStrictJson(bytes(text))).toEqual({ ok: true, value: '"\\/\b\f\n\r\tA\u00E9' });
+  const text = '"\\"\\\\\\/\\b\\f\\n\\r\\t\\u0041\\u00e9\\ue000"';
+  expect(parseStrictJson(bytes(text))).toEqual({ ok: true, value: '"\\/\b\f\n\r\tA\u00E9\uE000' });
 });
 
 it('reads an escaped surrogate pair as one character', () => {

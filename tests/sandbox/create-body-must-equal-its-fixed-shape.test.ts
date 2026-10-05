@@ -119,6 +119,7 @@ it.each([
   ['63 hex characters', `sha256:${'a'.repeat(63)}`],
   ['no sha256 prefix', 'ab'.repeat(32)],
   ['a name and tag', 'node:22'],
+  ['a list holding a valid id', [`sha256:${'ab'.repeat(32)}`]],
   ['a number', 7],
 ])('refuses an Image slot holding %s', (_name, image) => {
   const body = copy();
