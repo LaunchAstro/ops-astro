@@ -42,25 +42,28 @@ by kind. A copy not on the list is a copy the reply missed.
   `node scripts/privacy/find-copies.mjs --business <key> --text <name>`,
   which searches the request's business only and refuses to run without one.
   Run it with `--export` for the person's name, then again for each email and
-  phone in their `person_identifiers` rows not marked rejected (a rejected one
-  is usually someone else's), once for the stored `value` and once for the
-  `observed_value` spelling: a row can name a person by those alone. A
-  spelling with other spacing or punctuation is not found, so search any the
-  owner knows of too. The person's copies are every run's rows together. It
-  lists every row holding the text in a value, and every row holding an id of
-  the people the text names: a person whose name, or an identifier not
-  rejected, holds the text as whole words (`--text Anna` names no Joanna),
-  anyone a merge not reversed joined them to, their actors, the logins they
-  still hold and the agent of each credential they issued. Each hit names the
-  people whose ids it holds, whether a value of it holds the text (`text`) and
-  whether it holds an id given with `--id` (`given`); a hit naming no one was
-  found by its text alone, so the owner checks whose it is. The list ends with
-  one line per person of the `--id` flags that find them, saying every way the
-  person was found (named by the text, given by `--id`, or merged with a named
-  person), kept for the erasure's re-search. The text is matched with the
-  white space around it dropped and each run of white space inside it, of any
-  kind, as one space. An export withholds the credential hashes of agent
-  credentials and delegations, which are the business's security material.
+  phone in the `person_identifiers` rows of the person and of anyone merged
+  with them, not marked rejected (a rejected one is usually someone else's),
+  once for the stored `value` and once for the `observed_value` spelling: a
+  row can name a person by those alone. A spelling with other spacing or
+  punctuation is not found, so search any the owner knows of too. Put every
+  run's rows together: a row whose people list names only another person, and
+  that holds none of the person's text, is that person's row for the owner to
+  set aside, not a copy. The finder lists every row holding the text in a
+  value, and every row holding an id of the people the text names: a person
+  whose name, or an identifier not rejected, holds the text as whole words
+  (`--text Anna` names no Joanna), anyone a merge not reversed joined them to,
+  their actors, the logins they still hold and the agent of each credential
+  they issued. Each hit names the people whose ids it holds, whether a value
+  of it holds the text (`text`) and whether it holds an id given with `--id`
+  (`given`); a hit naming no one was found by its text alone, so the owner
+  checks whose it is. The list ends with one line per person of the `--id`
+  flags that find them, saying every way the person was found (named by the
+  text, given by `--id`, or merged with a named person), kept for the
+  erasure's re-search. The text is matched with the white space around it
+  dropped and each run of white space inside it, of any kind, as one space. An
+  export withholds the credential hashes of agent credentials and delegations,
+  which are the business's security material.
 - **Sign-in security rows:** three installation-wide `ops` tables keyed by
   the SHA-256 of the login's subject, with no name or email:
   `ops.second_factor_codes` (one row per code sent, and one per code answered
