@@ -10,7 +10,7 @@ import { expect, it as vitestIt } from 'vitest';
 import { releasedOnClosing } from '../../packages/core-runtime/src/budget-ledger.ts';
 import { appliedDetail, asPerson, liveWork, rows, type Work } from './schedules-harness.ts';
 import { t2dHarness } from './t2d-harness.ts';
-import { call, noDatabase, s, useBrokerWorld, world } from '../broker/broker-world.ts';
+import { call, gated, noDatabase, s, useBrokerWorld, world } from '../broker/broker-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -77,3 +77,48 @@ for (const mode of ['answer', 'cut', 'none', 'marked'] as const) {
     expect(before - (await committedOf(work))).toBe(prediction);
   });
 }
+
+const callStates = async (work: Work): Promise<string> =>
+  (
+    await rows<{ state: string }>(
+      s,
+      `select state from public.model_calls where business_id = $1 and reservation_id = $2`,
+      [s.business, work.decision['reservationId']],
+    )
+  )
+    .map((one) => one.state)
+    .join();
+
+const untilDispatched = async (work: Work): Promise<void> => {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    // Polling is sequential by definition.
+    // eslint-disable-next-line no-await-in-loop
+    if ((await callStates(work)) === 'dispatched') return;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 25);
+    });
+  }
+};
+
+// A call with the provider is open but marks nothing (a lost call marks its step as one that may
+// have acted), so this case alone holds the open-call half of the rule.
+it('preflight predicts what the classifier gives back (in flight, unmarked)', async () => {
+  const work = await withCall('none');
+  const custody = gated();
+  const inFlight = call(work, {}, custody.broker);
+  try {
+    await untilDispatched(work);
+    expect(await callStates(work)).toBe('dispatched');
+    const prediction = await predicted(work);
+    const before = await committedOf(work);
+
+    await cancel(work);
+
+    expect(prediction).toBe(0n);
+    expect(before - (await committedOf(work))).toBe(prediction);
+  } finally {
+    custody.open();
+    await inFlight;
+  }
+});
