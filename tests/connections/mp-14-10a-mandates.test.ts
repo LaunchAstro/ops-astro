@@ -113,10 +113,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands', () => {
       classes: ['social.reply'],
       graduation_class: 'social.reply',
       ceiling_minor: '2000',
-      // The client's own name, read from `clients` under the class's lock.
+      // The client's own name, read under the class's lock; the audit names the mandate (PR.4).
       label: 'Run Class social.reply unattended for Client A',
     });
-    expect(await audited(w.admin.actorId, 'graduation.promote', String(w.cls['aReply']))).toBe(1);
+    expect(await audited(w.admin.actorId, 'graduation.promote', mandateId)).toBe(1);
 
     const demoted = await w.as(w.admin, 'graduation.demote', {
       classId: w.cls['aReply'],
@@ -127,7 +127,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands', () => {
       revoked_by_actor_id: w.admin.actorId,
       revision: '2',
     });
-    expect(await audited(w.admin.actorId, 'graduation.demote', String(w.cls['aReply']))).toBe(1);
+    expect(await audited(w.admin.actorId, 'graduation.demote', mandateId)).toBe(1);
   });
 
   it('MP-14-10a nothing files until classes, client, ceiling and expiry are set, each from its list', async () => {
