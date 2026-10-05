@@ -88,7 +88,7 @@ export function GrantsSection(props: {
   readonly now: number;
 }): ReactElement {
   const { grants, grantCounts } = props.signal;
-  const lede = grantsLede(grantCounts.live, grantCounts.liveExec);
+  const lede = grantsLede(grants.length, grantCounts.live, grantCounts.liveExec);
   return (
     <section id="grants" data-section="006">
       <SectionHead index="006" title="Grants" right="What is live right now" />

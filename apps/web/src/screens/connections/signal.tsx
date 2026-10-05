@@ -241,11 +241,13 @@ export function SignalSections(props: {
         }
       >
         {(signal) => (
-          <>
+          // RecordState wraps what it draws, so the column that spaces the
+          // three sections sits inside it, as Access does.
+          <div className="secs">
             <GrantsSection signal={signal} now={props.now} />
             <TripwiresSection signal={signal} />
             <NightSection signal={signal} />
-          </>
+          </div>
         )}
       </RecordState>
     </div>

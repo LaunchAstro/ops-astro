@@ -58,9 +58,13 @@ export const causeOf = (cause: string | null): string =>
 export const plural = (count: number, one: string, many = `${one}s`): string =>
   `${count} ${count === 1 ? one : many}`;
 
-/** Null when nothing is live: the absence line beside it says so once. */
-export function grantsLede(live: number, liveExec: number): string | null {
-  if (live === 0) return null;
+/**
+ * Null when there are no grants at all: the absence line says so once.
+ * With only ended grants it says nothing is live.
+ */
+export function grantsLede(total: number, live: number, liveExec: number): string | null {
+  if (total === 0) return null;
+  if (live === 0) return 'No grants live that you can see.';
   // The read answers what the caller may see, which may be some clients only.
   const held = `${plural(live, 'grant')} live that you can see.`;
   if (liveExec === 0) return `${held} None of them carries execute access.`;
