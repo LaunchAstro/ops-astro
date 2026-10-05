@@ -15,7 +15,8 @@
     "tests/ci/upgrade-drill-declared.test.ts",
     "tests/ci/upgrade-drill.test.ts",
     "tests/ci/operator-installation-gate.test.ts",
-    "tests/ci/drill-fetch-asks-again.test.ts"
+    "tests/ci/drill-fetch-asks-again.test.ts",
+    "tests/ci/operator-gate-lookup-refused.test.ts"
   ],
   "conformance": [
     "tests/ci/cq-15-security-gate.test.ts",

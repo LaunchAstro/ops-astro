@@ -26,7 +26,8 @@
     "tests/db/run-end-stamped-after-lock-wait.test.ts",
     "tests/db/run-supersede-stamped-after-lock-wait.test.ts",
     "tests/db/second-factor-codes-retention.test.ts",
-    "tests/db/take-lease-path.test.ts"
+    "tests/db/take-lease-path.test.ts",
+    "tests/db/admin-login-takes-identity-roles.test.ts"
   ],
   "conformance": [
     "tests/db/mp-6-2-run-states.test.ts",

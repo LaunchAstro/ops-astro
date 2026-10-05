@@ -682,7 +682,10 @@ That function is a security definer with its search path pinned, takes no
 argument and stamps the database's own time, never moving it back, so the
 drill cannot name a date. The drill takes the role by name on the owner's
 connection (`scripts/ops/tested-restore.ts`), as the business lookup takes
-0046's. The application may select the row and nothing more; PUBLIC holds
+0046's. Where the owner's login is not a superuser (hosted Supabase holds
+both with ADMIN OPTION alone), 20261005063514 grants it each of the two with
+SET and without INHERIT: it may take them by name and holds nothing of
+theirs otherwise. The application may select the row and nothing more; PUBLIC holds
 nothing on the table or the function. `operations.read` serves it as
 `lastTestedRestore` ([API.md](API.md)).
 
