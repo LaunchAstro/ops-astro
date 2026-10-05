@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a decision rediscovers its envelope and cap under the locks, so an envelope opened on another cap meanwhile ends in CAP_BINDING_MISMATCH with no decision or hold"
+}

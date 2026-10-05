@@ -136,7 +136,7 @@ async function approverOfLiveWork(): Promise<Member> {
 }
 
 describe.skipIf(serverUrl === undefined)("an escalation and its recipient's access.end", () => {
-  it("N1: holds the decider's and the recipient's grants in one id order, so access.end waits and nothing deadlocks", async () => {
+  it("holds the decider's and the recipient's grants in one id order, so access.end waits and nothing deadlocks", async () => {
     const recipient = await grantorOfTheDecider();
     const raced = await raceAccessEnd(
       s,
@@ -153,7 +153,7 @@ describe.skipIf(serverUrl === undefined)("an escalation and its recipient's acce
     });
   });
 
-  it("N2: takes no lock on the recipient's actor, so access.end's actor update after its runtime set closes no cycle", async () => {
+  it("takes no lock on the recipient's actor, so access.end's actor update after its runtime set closes no cycle", async () => {
     const recipient = await approverOfLiveWork();
     const raced = await raceAccessEnd(
       s,
