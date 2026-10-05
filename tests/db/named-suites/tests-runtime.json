@@ -127,6 +127,7 @@
     "tests/runtime/trace-retention-recovery-reaches-a-later-owed-run-past-present-ones.test.ts",
     "tests/runtime/trace-retention-recovery-tests-reject-an-old-span-for-the-fresh-one.test.ts",
     "tests/runtime/trace-retention-step-back-cannot-bring-back-a-confirmed-run.test.ts",
+    "tests/runtime/trace-retention-stops-reading-back-when-the-store-does-not-answer.test.ts",
     "tests/runtime/upgrade-guards.test.ts"
   ],
   "conformance": [
