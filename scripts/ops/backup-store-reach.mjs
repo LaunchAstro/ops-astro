@@ -46,7 +46,8 @@ const HOST = /^[A-Za-z0-9.-]+$/u;
  * mode in `SSLMODES` (staging-logins.ts writes `sslmode=require`). No other
  * parameter, fragment, host list or second path segment, since psql is
  * handed the parts alone and would drop anything else unseen (#408). The
- * refusal carries no part of the address (#446).
+ * parser must read it back exactly as written, so a dot segment it would
+ * drop is refused too. The refusal carries no part of the address (#446).
  */
 function loginParts(address) {
   let parsed;
@@ -56,6 +57,9 @@ function loginParts(address) {
     throw new Error(REFUSED);
   }
   const path = parsed.pathname.slice(1);
+  // Read back exactly as written: the parser drops dot segments, so
+  // `/store/../other` would otherwise name `other` (Sol PRV-oa-968-R1.3).
+  const asWritten = parsed.href === address;
   const query = [...parsed.searchParams];
   const sslmode = query[0]?.[1] ?? 'require';
   const shaped =
@@ -67,7 +71,8 @@ function loginParts(address) {
     parsed.username !== '' &&
     parsed.pathname.startsWith('/') &&
     path !== '' &&
-    !path.includes('/');
+    !path.includes('/') &&
+    asWritten;
   if (!shaped) throw new Error(REFUSED);
   let parts;
   try {
@@ -121,7 +126,7 @@ export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
     const login = reachEnv(url, connectSeconds);
     const run = runContainer('store', network, login, PSQL, { stdin: true });
     const deadline =
-      timeoutMs === undefined ? undefined : setTimeout(() => void run.stop(), timeoutMs);
+      timeoutMs === undefined ? undefined : setTimeout(() => stopQuietly(run), timeoutMs);
     try {
       const pieces = typeof script === 'string' ? [script] : script;
       // One piece ahead at most: a piece can be one part's hex, 8 MiB.
@@ -144,6 +149,11 @@ export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
   };
 }
 
+/** Stops `run` without waiting; a container left behind reaches the reach through `run.exited`. */
+function stopQuietly(run) {
+  run.stop().catch(() => {});
+}
+
 /** psql's output: whole, or line by line to `onLine`, stopping the run if `onLine` throws. */
 async function readOut(run, onLine) {
   if (onLine === undefined) {
@@ -158,7 +168,7 @@ async function readOut(run, onLine) {
       await onLine(line);
     } catch (thrown) {
       error = thrown;
-      void run.stop();
+      stopQuietly(run);
     }
   }
   return { text: '', error };

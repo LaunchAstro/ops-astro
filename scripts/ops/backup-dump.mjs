@@ -46,7 +46,7 @@ export function pgDump(sourceUrl) {
 function printed(run) {
   const { child } = run;
   const waiting = [];
-  let [ended, succeeded, wake] = [false, false, () => {}];
+  let [ended, failure, wake] = [false, undefined, () => {}];
   const started = new Promise((resolve, reject) => {
     child.stdout.on('data', (piece) => {
       waiting.push(piece);
@@ -54,11 +54,17 @@ function printed(run) {
       resolve();
       wake();
     });
-    void run.exited.then((ok) => {
-      [ended, succeeded] = [true, ok];
-      if (waiting.length === 0) reject(new Error('pg_dump failed'));
-      return wake();
-    });
+    // A container docker would not remove fails the dump with that reason.
+    void run.exited
+      .then(
+        (ok) => (ok ? undefined : new Error('pg_dump failed')),
+        (error) => error,
+      )
+      .then((error) => {
+        [ended, failure] = [true, error];
+        if (waiting.length === 0) reject(error ?? new Error('pg_dump failed'));
+        return wake();
+      });
   });
   const more = () =>
     new Promise((resolve) => {
@@ -73,7 +79,7 @@ function printed(run) {
       // oxlint-disable-next-line no-await-in-loop -- one piece at a time is the point
       else await more();
     }
-    if (!succeeded) throw new Error('pg_dump failed');
+    if (failure !== undefined) throw failure;
   }
   async function stop() {
     child.stdout.removeAllListeners('data').resume();

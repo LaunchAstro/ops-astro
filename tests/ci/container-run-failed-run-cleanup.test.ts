@@ -132,3 +132,22 @@ it('a removal that keeps failing fails the run, names the container and keeps it
   expect(readFileSync(cidfile, 'utf8').trim()).toBe(ID);
   rmSync(join(cidfile, '..'), { recursive: true, force: true });
 }, 15_000);
+
+it('a dump whose container docker will not remove fails with that reason', async () => {
+  standIn([`echo ${ID} > "$cid"`, `: > "${containers}/${ID}"`, 'exit 1'], 99);
+  const module = '../../scripts/ops/backup-dump.mjs';
+  const { pgDump } = (await import(
+    /* @vite-ignore */
+    module
+  )) as { pgDump: (url: string) => Promise<unknown> };
+  const failure = await pgDump('postgres://backup:fixture-only@source/app').then(
+    () => new Error('the dump answered'),
+    (error: unknown) => error as Error,
+  );
+  expect(failure.message).toContain(ID);
+  expect(readdirSync(containers)).toEqual([ID]);
+  // The id file it names is kept for that removal; the test clears it.
+  const kept = /its id file (\S+) is kept/u.exec(failure.message)?.[1] ?? '';
+  expect(readFileSync(kept, 'utf8').trim()).toBe(ID);
+  rmSync(join(kept, '..'), { recursive: true, force: true });
+}, 15_000);

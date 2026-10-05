@@ -124,12 +124,14 @@ it('skips the second-factor purge when its login is unset, and says so in the re
   expect(record['secondFactorCodes']).toStrictEqual({ outcome: 'not set' });
 });
 
+// Each stand-in answers a removal as docker does for a container that is gone: done, no run.
+const REMOVES = 'case "$1" in rm|kill) exit 0 ;; esac\n';
 const bin = mkdtempSync(join(tmpdir(), 'backup-expire-codes-'));
 afterAll(() => rmSync(bin, { recursive: true, force: true }));
 
 it('refuses an upkeep login off the listed pooler as that step only, before reaching it', () => {
   const calls = join(bin, 'calls');
-  writeFileSync(join(bin, 'docker'), `#!/bin/sh\necho reached >> "${calls}"\nexit 99\n`);
+  writeFileSync(join(bin, 'docker'), `#!/bin/sh\n${REMOVES}echo reached >> "${calls}"\nexit 99\n`);
   chmodSync(join(bin, 'docker'), 0o755);
   const run = spawnSync(process.execPath, ['scripts/ops/backup.mjs', 'expire'], {
     encoding: 'utf8',
@@ -172,6 +174,7 @@ it('a psql that never answers is stopped at the reach deadline; only a bounded r
     join(bin, 'docker'),
     [
       '#!/bin/sh',
+      REMOVES.trimEnd(),
       'init=no',
       'for arg in "$@"; do [ "$arg" = --init ] && init=yes; done',
       `if [ $init = yes ]; then trap 'kill $child; exit 143' TERM; else trap '' TERM; fi`,
@@ -207,7 +210,7 @@ it('the job reaches the store unbounded as before, then the purge with its conne
   writeFileSync(calls, '');
   writeFileSync(
     join(bin, 'docker'),
-    `#!/bin/sh\necho "\${PGCONNECT_TIMEOUT:-none}" >> "${calls}"\nexit 99\n`,
+    `#!/bin/sh\n${REMOVES}echo "\${PGCONNECT_TIMEOUT:-none}" >> "${calls}"\nexit 99\n`,
   );
   chmodSync(join(bin, 'docker'), 0o755);
   const run = spawnSync(process.execPath, ['scripts/ops/backup.mjs', 'expire'], {
