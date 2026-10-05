@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { cliWorld, idOf, type Caller, type CliWorld } from './api-3-world.ts';
 import { must } from '../wayfinder/world.ts';
-import { grantTo, type Member } from '../commands/fixture.ts';
+import { addClient, grantTo, type Member } from '../commands/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -21,12 +21,16 @@ describe.skipIf(serverUrl === undefined)('API-3 isolation', () => {
 
   beforeAll(async () => {
     w = await cliWorld('api3iso', 'api3iso');
-    lead = await w.member('lead', ['read', 'write', 'assign', 'comment', 'decide']);
+    // A map's client is a client change, asked under `share` (WF-1).
+    lead = await w.member('lead', ['read', 'write', 'assign', 'comment', 'decide', 'share']);
   }, 180_000);
 
   afterAll(async () => await w?.drop());
 
-  const map = async (title: string, client: string) => {
+  /** A map scoped to a new real client of the business. */
+  const map = async (title: string) => {
+    const client = randomUUID();
+    await addClient(w.db.app, w.business, client, lead);
     const made = must(
       await w.as(lead, { command: 'task.create', fields: { title }, taskType: 'map' }),
       title,
@@ -45,8 +49,8 @@ describe.skipIf(serverUrl === undefined)('API-3 isolation', () => {
 
   it('API-3 isolation', async () => {
     const lead0 = await w.person(lead);
-    const mapA = await map('canary-map-A', randomUUID());
-    const mapB = await map('canary-map-B', randomUUID());
+    const mapA = await map('canary-map-A');
+    const mapB = await map('canary-map-B');
     const ticketB = idOf(
       await lead0.run(
         'task',
