@@ -400,7 +400,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     due_at: '2026-09-29T00:00:00Z',
     outcome: 'activation_off',
   },
-  // Standing approvals (C52-A, 20261005132809): the journey adopts, revokes and dispatches none.
+  // Standing approvals (C52-A, 20261005144723): the journey adopts, revokes and dispatches none.
   'public.standing_approvals': {
     activation_id: randomUUID(),
     definition_id: randomUUID(),

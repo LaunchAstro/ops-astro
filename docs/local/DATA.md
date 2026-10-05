@@ -860,7 +860,7 @@ select and insert all four, and update an activation's setting, pin, switch and
 revision by column grant; nothing deletes a row. Tenancy-keyed with the
 restrictive policy. The records are `packages/core-records/src/automations/`.
 
-## Standing approvals (20261005132809, C52-A)
+## Standing approvals (20261005144723, C52-A)
 
 `standing_approvals` holds each adoption of an exact released version on an
 activation (`adopted`, or `rolled_back` for a rollback), its definition, the

@@ -150,7 +150,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // are written once and never changed; an activation's setting moves by the
   // column grant in COLUMN_UPDATES.
   ['si', 'activation_occurrences activations automation_definitions definition_versions'],
-  // 20261005132809 (C52-A): an adoption, a revocation and a dispatch are
+  // 20261005144723 (C52-A): an adoption, a revocation and a dispatch are
   // written once and never changed; an activation names its standing adoption
   // by the column grant in COLUMN_UPDATES.
   ['si', 'occurrence_dispatches standing_approval_revocations standing_approvals'],
