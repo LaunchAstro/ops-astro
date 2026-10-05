@@ -3344,9 +3344,13 @@ target. The newer version and every earlier adoption stay in history.
 Revoking an approval is its own act and leaves the pin; turning an automation
 off ends its approval with it, and so does any `activation.change` of the pin,
 mode, schedule or event, or a switch off (the database's
-`activations_approval_stands`). Each change is compared with the revision the
-caller read, again under the activation's lock, so two sent at one revision
-apply once. A repeat is refused: a revoked approval, or an automation already
+`activations_approval_stands`). Only an automation that is on is approved:
+adopting or rolling back one that is off is refused `TRANSITION_NOT_PERMITTED`
+naming `enabled=false`. Each change is compared with the revision the caller
+read, again under the activation's lock, so two sent at one revision apply
+once; under that lock the caller's `automation:manage` is asked again at the
+clock after the wait, so a grant revoked or run out meanwhile refuses it, and
+a rollback picks its target there, after any revocation that held the lock. A repeat is refused: a revoked approval, or an automation already
 off, answers `TRANSITION_NOT_PERMITTED`; the same `operationId` sent again is
 replayed. The registry shows each activation's
 `approval: { id, versionId, act, decidedBy, revoked }`, or null.
@@ -3359,12 +3363,12 @@ the one standing and unrevoked, and records once what it found
 `approval_revoked` or `approval_ended`. Starting the run itself through the
 agent engine (AW-01 J) is not wired yet.
 
-| Operation              | Route                   | Body                                            | Answer or refusals                                                                                                                                                                                                                      |
-| ---------------------- | ----------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `activation.adopt`     | `/activation/adopt`     | `{ activationId, versionId, expectedRevision }` | `{ activationId, versionId, approvalId, act }`; `FIELD_VALUE_INVALID` 422 naming `expectedRevision`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for another definition's version or a mode it does not permit; `VERSION_STALE` 409 |
-| `activation.roll_back` | `/activation/roll_back` | `{ activationId, expectedRevision }`            | as `activation.adopt`, with `act: 'rolled_back'`; `TRANSITION_NOT_PERMITTED` 409 when no earlier version was adopted and left unrevoked                                                                                                 |
-| `activation.turn_off`  | `/activation/turn_off`  | `{ activationId, expectedRevision }`            | `{ activationId, enabled: false }`; `FIELD_VALUE_INVALID` 422 naming `expectedRevision`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already off; `VERSION_STALE` 409                                                          |
-| `approval.revoke`      | `/approval/revoke`      | `{ approvalId }`                                | `{ approvalId, revoked: true }`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already revoked                                                                                                                                   |
+| Operation              | Route                   | Body                                            | Answer or refusals                                                                                                                                                                                                                                                 |
+| ---------------------- | ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `activation.adopt`     | `/activation/adopt`     | `{ activationId, versionId, expectedRevision }` | `{ activationId, versionId, approvalId, act }`; `FIELD_VALUE_INVALID` 422 naming `expectedRevision`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for another definition's version, a mode it does not permit or an automation that is off; `VERSION_STALE` 409 |
+| `activation.roll_back` | `/activation/roll_back` | `{ activationId, expectedRevision }`            | as `activation.adopt`, with `act: 'rolled_back'`; `TRANSITION_NOT_PERMITTED` 409 when no earlier version was adopted and left unrevoked                                                                                                                            |
+| `activation.turn_off`  | `/activation/turn_off`  | `{ activationId, expectedRevision }`            | `{ activationId, enabled: false }`; `FIELD_VALUE_INVALID` 422 naming `expectedRevision`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already off; `VERSION_STALE` 409                                                                                     |
+| `approval.revoke`      | `/approval/revoke`      | `{ approvalId }`                                | `{ approvalId, revoked: true }`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already revoked                                                                                                                                                              |
 
 ## Custody (C31)
 

@@ -212,6 +212,18 @@ export async function listApprovals(
   return rows.map((row) => approvalOf(row));
 }
 
+/** The activation an approval belongs to, or null for an approval this business has not got. */
+export async function approvalActivation(
+  tx: TenantQuery,
+  approvalId: string,
+): Promise<string | null> {
+  const found = await tx.query<{ readonly activation_id: string }>(
+    'select activation_id from public.standing_approvals where id = $1',
+    [approvalId],
+  );
+  return found[0]?.activation_id ?? null;
+}
+
 /**
  * Revokes an approval once. The activation it belongs to is locked first, so
  * a dispatch in flight finishes before the revoke and the next one sees it.
@@ -220,12 +232,9 @@ export async function revokeApproval(
   tx: TenantQuery,
   revocation: { readonly approvalId: string; readonly actorId: string },
 ): Promise<RevokeResult> {
-  const found = await tx.query<{ readonly activation_id: string }>(
-    'select activation_id from public.standing_approvals where id = $1',
-    [revocation.approvalId],
-  );
-  if (found[0] === undefined) return 'unknown';
-  await lockActivation(tx, found[0].activation_id);
+  const activationId = await approvalActivation(tx, revocation.approvalId);
+  if (activationId === null) return 'unknown';
+  await lockActivation(tx, activationId);
   const written = await tx.query(
     `insert into public.standing_approval_revocations (business_id, id, approval_id, revoked_by_actor_id)
      values ((select public.app_business_id()), $1, $2, $3)

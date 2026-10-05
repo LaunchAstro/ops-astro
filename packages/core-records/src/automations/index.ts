@@ -37,7 +37,9 @@ export {
 } from './registry.ts';
 export {
   adoptVersion,
+  approvalActivation,
   listApprovals,
+  lockActivation,
   readStandingApproval,
   revokeApproval,
   rollbackTarget,

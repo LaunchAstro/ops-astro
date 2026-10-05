@@ -818,7 +818,12 @@ Adopting a version (`activation.adopt`), rolling back
 and revoking a standing approval (`approval.revoke`) are each
 `automation:manage`, asked of the whole business and never an agent's. Only
 an adoption grants an approval; `settings:manage` can end one (a change of
-the pin, mode, schedule or event, or a switch off), never give one.
+the pin, mode, schedule or event, or a switch off), never give one. Each of
+the four holds the caller's `automation` grants for share before any
+automation row and asks the key again after it has locked the activation, at
+the clock after that wait: a grant revoked or run out while it waited refuses
+it. An automation that is off is never approved, so switching one on under
+`settings:manage` carries no approval.
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a
