@@ -276,11 +276,11 @@ export async function drain(s: Schedules): Promise<void> {
 
 /**
  * Runs out the business's export lease now, as time would (#963). The drain
- * runs out only the hold a gap whose body may have landed keeps: the
- * business's last gap has such a code, and the lease ends 60 to 90 s after
- * that gap's transaction began, as the hold its own transaction wrote does
- * (60 s from a clock read after the gap; up to 30 s of slack). A lease
- * written before the gap still fails it.
+ * runs out the hold a gap whose body may have landed keeps: the business's
+ * last gap has such a code, and the lease ends 60 to 65 s after that gap's
+ * transaction began, as the hold its own transaction wrote does (60 s from a
+ * clock read just after the gap). A lease written before the gap still fails
+ * it; one written within those 5 s after the gap's start passes too.
  */
 export async function ageLease(s: Schedules, onlyAfter?: string): Promise<void> {
   await rows(
@@ -294,7 +294,7 @@ export async function ageLease(s: Schedules, onlyAfter?: string): Promise<void> 
                               order by g.recorded_at desc limit 1) last
                where last.code = any($2::text[])
                  and c.lease_until >= last.recorded_at + interval '60 seconds'
-                 and c.lease_until < last.recorded_at + interval '90 seconds'))`,
+                 and c.lease_until < last.recorded_at + interval '65 seconds'))`,
     [s.business, onlyAfter === undefined ? null : `{${onlyAfter}}`],
   );
 }
