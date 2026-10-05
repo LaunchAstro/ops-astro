@@ -120,6 +120,8 @@ it('refuses a .git entry in any spelling git itself refuses to check out', () =>
     '.git./config',
     '.git../x',
     'GIT~1/config',
+    'git~1./config',
+    'GIT~1../x',
     'src/git~1',
   ])
     expect(withEntry(file(path))).toEqual(refused('tree config'));
