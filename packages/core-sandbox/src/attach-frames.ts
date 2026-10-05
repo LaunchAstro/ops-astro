@@ -7,15 +7,21 @@
 // ends inside a frame is a daemon fault (`internal`). Stdout past its class's
 // cap is `output refused`; stderr past 64 KiB is discarded, never refused.
 // Once refused, the reader keeps that refusal and reads nothing more.
+//
+// Stdout is kept in fixed 1 MiB blocks and handed back as those blocks, so
+// memory follows the bytes kept, never the number of frames, and nothing is
+// copied twice.
 
 import type { Why } from './refusal.ts';
 
 export const STDERR_KEPT: number = 64 * 1024;
+const BLOCK = 1024 * 1024;
 
 export type AttachEnd =
   | {
       readonly ok: true;
-      readonly stdout: Uint8Array;
+      /** Stdout in order, as blocks of at most 1 MiB. */
+      readonly stdout: readonly Uint8Array[];
       readonly stderr: Uint8Array;
       readonly stderrDiscarded: number;
     }
@@ -27,9 +33,10 @@ export class AttachFrames {
   private headerFill = 0;
   private stream = 0;
   private left = 0;
-  private readonly stdout: Uint8Array[] = [];
+  private readonly blocks: Uint8Array[] = [];
+  private blockFill = BLOCK;
   private stdoutBytes = 0;
-  private readonly stderr: Uint8Array[] = [];
+  private readonly stderr = new Uint8Array(STDERR_KEPT);
   private stderrBytes = 0;
   private discarded = 0;
   private refused: AttachEnd | null = null;
@@ -79,13 +86,27 @@ export class AttachFrames {
         this.refused = { ok: false, reason: 'output refused', why: 'too large' };
         return;
       }
-      this.stdout.push(bytes.slice());
+      this.keepStdout(bytes);
       return;
     }
-    const room = Math.max(0, STDERR_KEPT - this.stderrBytes);
-    if (room > 0) this.stderr.push(bytes.slice(0, room));
-    this.stderrBytes += Math.min(room, bytes.length);
-    this.discarded += Math.max(0, bytes.length - room);
+    const kept = Math.min(STDERR_KEPT - this.stderrBytes, bytes.length);
+    this.stderr.set(bytes.subarray(0, kept), this.stderrBytes);
+    this.stderrBytes += kept;
+    this.discarded += bytes.length - kept;
+  }
+
+  private keepStdout(bytes: Uint8Array): void {
+    let at = 0;
+    while (at < bytes.length) {
+      if (this.blockFill === BLOCK) {
+        this.blocks.push(new Uint8Array(BLOCK));
+        this.blockFill = 0;
+      }
+      const take = Math.min(BLOCK - this.blockFill, bytes.length - at);
+      this.blocks.at(-1)?.set(bytes.subarray(at, at + take), this.blockFill);
+      this.blockFill += take;
+      at += take;
+    }
   }
 
   end(): AttachEnd {
@@ -95,19 +116,11 @@ export class AttachFrames {
     }
     return {
       ok: true,
-      stdout: join(this.stdout, this.stdoutBytes),
-      stderr: join(this.stderr, this.stderrBytes),
+      stdout: this.blocks.map((block, index) =>
+        index === this.blocks.length - 1 ? block.subarray(0, this.blockFill) : block,
+      ),
+      stderr: this.stderr.subarray(0, this.stderrBytes),
       stderrDiscarded: this.discarded,
     };
   }
-}
-
-function join(parts: readonly Uint8Array[], length: number): Uint8Array {
-  const out = new Uint8Array(length);
-  let at = 0;
-  for (const part of parts) {
-    out.set(part, at);
-    at += part.length;
-  }
-  return out;
 }

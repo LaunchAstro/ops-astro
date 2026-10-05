@@ -10,6 +10,7 @@ import { expect, it } from 'vitest';
 import { type CreateShape, fixedCreateBody } from '../../packages/core-sandbox/src/create-body.ts';
 import {
   forwardBytes,
+  forwardLoadHead,
   type ProxyGrammar,
   readProxyRequest,
 } from '../../packages/core-sandbox/src/proxy-request.ts';
@@ -85,28 +86,36 @@ it('reads a forced delete of a full id', () => {
   });
 });
 
-it('reads both load forms, with the site taken out of what is forwarded', () => {
-  const load = (query: string) =>
-    read(
-      request(`POST ${V}/images/load?${query} HTTP/1.1`, [
-        'Host: docker',
-        'Content-Type: application/x-tar',
-        'Content-Length: 10240',
-      ]),
-    );
-  expect(load('quiet=1')).toEqual({
+it('reads both load forms, noting where the archive starts, with the site taken out', () => {
+  const head = (query: string) =>
+    request(`POST ${V}/images/load?${query} HTTP/1.1`, [
+      'Host: docker',
+      'Content-Type: application/x-tar',
+      'Content-Length: 10240',
+    ]);
+  const plain = head('quiet=1');
+  expect(read(new Uint8Array([...plain, 1, 2, 3]))).toEqual({
     ok: true,
-    op: { kind: 'load', site: null, contentLength: 10240 },
+    op: { kind: 'load', site: null, declaredLength: 10240, bodyStart: plain.length },
   });
-  const candidate = load('quiet=1&site=physio-north-2');
-  expect(candidate).toEqual({
+  const candidate = head('quiet=1&site=physio-north-2');
+  expect(read(candidate)).toEqual({
     ok: true,
-    op: { kind: 'load', site: 'physio-north-2', contentLength: 10240 },
+    op: {
+      kind: 'load',
+      site: 'physio-north-2',
+      declaredLength: 10240,
+      bodyStart: candidate.length,
+    },
   });
-  if (!candidate.ok) return;
-  expect(new TextDecoder().decode(forwardBytes(candidate.op, '1.47'))).toMatch(
-    /^POST \/v1\.47\/images\/load\?quiet=1 HTTP\/1\.1\r\n/u,
+});
+
+it('forwards a load head with the rebuilt archive length, never the declared one', () => {
+  expect(new TextDecoder().decode(forwardLoadHead(4096, '1.47'))).toBe(
+    'POST /v1.47/images/load?quiet=1 HTTP/1.1\r\nHost: docker\r\nContent-Type: application/x-tar\r\nContent-Length: 4096\r\n\r\n',
   );
+  expect(() => forwardLoadHead(2 ** 53, '1.47')).toThrow(RangeError);
+  expect(() => forwardLoadHead(-1, '1.47')).toThrow(RangeError);
 });
 
 it('reads image inspect and delete of a full image id', () => {
@@ -129,7 +138,7 @@ it('forwards a create rebuilt from the checked shape, never the bytes it receive
   const reordered = JSON.stringify(Object.fromEntries(Object.entries(fixed).toReversed()), null, 2);
   const result = read(create(reordered));
   expect(result.ok).toBe(true);
-  if (!result.ok) return;
+  if (result.ok !== true || result.op.kind === 'load') return;
   const body = json(S1);
   expect(new TextDecoder().decode(forwardBytes(result.op, '1.47'))).toBe(
     `POST /v1.47/containers/create HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\n\r\n${body}`,

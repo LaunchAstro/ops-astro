@@ -5,9 +5,18 @@
 // body read here and a body read by the Docker daemon could disagree; this
 // parser refuses that and every other ambiguity instead: duplicate keys at
 // any depth, more than 1 MiB, more than 32 levels, input that is not UTF-8,
-// a byte-order mark, a lone surrogate, and any number a double cannot hold.
-// With `foldCase`, two keys equal after ASCII case folding are duplicates
-// too, because Docker's decoder matches keys without regard to case.
+// a byte-order mark and a lone surrogate.
+//
+// A number is taken only when its text means the value read: an integer
+// written without a fraction or exponent and within 2^53, or a non-integer.
+// So `1.0`, `1e3`, `1073741824.00000000001` and `1e-400` (which a double
+// reads as an integer) are refused, and so is `9007199254740993`.
+//
+// With `foldCase` (a launcher request), every key is printable ASCII and two
+// keys equal after ASCII case folding are duplicates, because Docker's
+// decoder matches keys without regard to case. Go's folding also maps the
+// long s and the Kelvin sign onto ASCII letters, so a non-ASCII key is
+// refused rather than folded.
 //
 // A syntax error is `internal`: the caller that parses a launcher request
 // turns a refusal into `proxy refused` itself.
@@ -25,6 +34,7 @@ const STOP = Symbol('stop');
 /** Ends the read: the reason travels as the message, marked by its cause. */
 const stop = (why: StopWhy): Error => new Error(why, { cause: STOP });
 
+const PRINTABLE_ASCII = /^[ -~]*$/u;
 const NUMBER = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/uy;
 const ESCAPES: Readonly<Record<string, string>> = {
   '"': '"',
@@ -86,7 +96,11 @@ class Reader {
     if (match === null) throw stop('json syntax');
     this.at += match[0].length;
     const value = Number(match[0]);
-    if (!Number.isFinite(value)) throw stop('json syntax');
+    const plain = !/[.eE]/u.test(match[0]);
+    const exact = plain
+      ? Number.isSafeInteger(value)
+      : Number.isFinite(value) && !Number.isInteger(value);
+    if (!exact) throw stop('json syntax');
     return value;
   }
 
@@ -162,6 +176,7 @@ class Reader {
     for (;;) {
       this.space();
       const key = this.string();
+      if (this.foldCase && !PRINTABLE_ASCII.test(key)) throw stop('json syntax');
       const folded = this.foldCase ? key.toLowerCase() : key;
       if (seen.has(folded)) throw stop('duplicate key');
       seen.add(folded);

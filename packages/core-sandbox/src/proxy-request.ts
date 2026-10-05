@@ -21,7 +21,14 @@ export type ProxyOp =
   | { readonly kind: 'ping' | 'version' | 'info' }
   | { readonly kind: 'create'; readonly shape: CreateShape; readonly image: string }
   | { readonly kind: ContainerAction; readonly id: string }
-  | { readonly kind: 'load'; readonly site: string | null; readonly contentLength: number }
+  | {
+      readonly kind: 'load';
+      readonly site: string | null;
+      /** The launcher's declared archive length, which the proxy reads to and never forwards. */
+      readonly declaredLength: number;
+      /** Where the archive starts in the bytes read. */
+      readonly bodyStart: number;
+    }
   | { readonly kind: 'image-inspect' | 'image-delete'; readonly image: string };
 
 export type ProxyGrammar = {
@@ -31,12 +38,20 @@ export type ProxyGrammar = {
   readonly shapes: readonly CreateShape[];
 };
 
+/** Not all of the request has arrived: read again with more bytes. Never a refusal. */
+export type More = { readonly ok: 'more' };
+const MORE: More = { ok: 'more' };
+
+/** A request read whole, refused, or not yet complete. */
+export type ProxyRead = Result<{ op: ProxyOp }> | More;
+
 type Head = {
   readonly method: string;
   readonly path: string;
   readonly query: string | null;
   readonly headers: ReadonlyMap<string, string>;
   readonly rest: Uint8Array;
+  readonly bodyStart: number;
 };
 
 const MAX_HEAD = 8192;
@@ -47,7 +62,8 @@ const HOST = /^[A-Za-z0-9.-]+$/u;
 const SEGMENT = /^[A-Za-z0-9_.:-]+$/u;
 const CONTAINER_ID = /^[0-9a-f]{64}$/u;
 const IMAGE_ID = /^sha256:[0-9a-f]{64}$/u;
-const LENGTH = /^(?:0|[1-9]\d{0,15})$/u;
+// At most 15 digits, so every length is an exact integer.
+const LENGTH = /^(?:0|[1-9]\d{0,14})$/u;
 const ATTACH_QUERY = 'stream=1&stdin=1&stdout=1&stderr=1';
 const LOAD_QUERY = /^quiet=1(?:&site=([a-z0-9-]{1,64}))?$/u;
 const CONTAINER_ACTIONS: Readonly<Record<string, readonly [string, ContainerAction]>> = {
@@ -58,7 +74,7 @@ const CONTAINER_ACTIONS: Readonly<Record<string, readonly [string, ContainerActi
   json: ['GET', 'inspect'],
 };
 
-function readHead(bytes: Uint8Array): Result<{ head: Head }> {
+function readHead(bytes: Uint8Array): Result<{ head: Head }> | More {
   let end = -1;
   for (let i = 0; i + 3 < bytes.length && i < MAX_HEAD; i += 1) {
     if (bytes[i] === 13 && bytes[i + 1] === 10 && bytes[i + 2] === 13 && bytes[i + 3] === 10) {
@@ -66,7 +82,7 @@ function readHead(bytes: Uint8Array): Result<{ head: Head }> {
       break;
     }
   }
-  if (end < 0) return refuse('request line');
+  if (end < 0) return bytes.length < MAX_HEAD + 4 ? MORE : refuse('request line');
   const lines = new TextDecoder('latin1').decode(bytes.subarray(0, end)).split('\r\n');
   const line = REQUEST_LINE.exec(lines[0] ?? '');
   if (line === null) return refuse('request line');
@@ -90,6 +106,7 @@ function readHead(bytes: Uint8Array): Result<{ head: Head }> {
       query: mark < 0 ? null : target.slice(mark + 1),
       headers,
       rest: bytes.subarray(end + 4),
+      bodyStart: end + 4,
     },
   };
 }
@@ -144,7 +161,8 @@ function imageRoute(
   if (method === 'POST' && second === 'load' && third === undefined) {
     const load = LOAD_QUERY.exec(query ?? '');
     if (load === null) return refuse('query');
-    return { ok: true, op: { kind: 'load', site: load[1] ?? null, contentLength: 0 }, query };
+    const site = load[1] ?? null;
+    return { ok: true, op: { kind: 'load', site, declaredLength: 0, bodyStart: 0 }, query };
   }
   const inspect = method === 'GET' && third === 'json';
   const remove = method === 'DELETE' && third === undefined;
@@ -158,11 +176,7 @@ function imageRoute(
 }
 
 /** The body rules for one operation: its content type, its length, and nothing after it. */
-function readBody(
-  head: Head,
-  op: ProxyOp | 'create',
-  grammar: ProxyGrammar,
-): Result<{ op: ProxyOp }> {
+function readBody(head: Head, op: ProxyOp | 'create', grammar: ProxyGrammar): ProxyRead {
   const isCreate = op === 'create';
   const type = head.headers.get('content-type');
   const length = head.headers.get('content-length');
@@ -180,11 +194,9 @@ function readBody(
   const declared = Number(length);
   if (head.rest.length > declared) return refuse('second request');
   if (op !== 'create')
-    return {
-      ok: true,
-      op: { kind: 'load', site: op.kind === 'load' ? op.site : null, contentLength: declared },
-    };
-  if (declared > MAX_JSON_BYTES || head.rest.length < declared) return refuse('body');
+    return { ok: true, op: { ...op, declaredLength: declared, bodyStart: head.bodyStart } };
+  if (declared > MAX_JSON_BYTES) return refuse('body');
+  if (head.rest.length < declared) return MORE;
   const parsed = parseStrictJson(head.rest, { foldCase: true });
   if (!parsed.ok) return refuse(parsed.why);
   const match = matchCreateBody(parsed.value, grammar.shapes);
@@ -193,12 +205,9 @@ function readBody(
     : match;
 }
 
-export function readProxyRequest(
-  bytes: Uint8Array,
-  grammar: ProxyGrammar,
-): Result<{ op: ProxyOp }> {
+export function readProxyRequest(bytes: Uint8Array, grammar: ProxyGrammar): ProxyRead {
   const read = readHead(bytes);
-  if (!read.ok) return read;
+  if (read.ok !== true) return read;
   const { head } = read;
   const path = segmentsOf(head.path, grammar.apiVersion);
   if (!path.ok) return path;
@@ -208,7 +217,9 @@ export function readProxyRequest(
   return readBody(head, route.op, grammar);
 }
 
-const LINES: Readonly<Record<ProxyOp['kind'], (op: never) => readonly [string, string]>> = {
+const LINES: Readonly<
+  Record<Exclude<ProxyOp['kind'], 'load'>, (op: never) => readonly [string, string]>
+> = {
   ping: () => ['GET', '_ping'],
   version: () => ['GET', 'version'],
   info: () => ['GET', 'info'],
@@ -219,28 +230,41 @@ const LINES: Readonly<Record<ProxyOp['kind'], (op: never) => readonly [string, s
   kill: (op: { id: string }) => ['POST', `containers/${op.id}/kill`],
   inspect: (op: { id: string }) => ['GET', `containers/${op.id}/json`],
   delete: (op: { id: string }) => ['DELETE', `containers/${op.id}?force=1`],
-  load: () => ['POST', 'images/load?quiet=1'],
   'image-inspect': (op: { image: string }) => ['GET', `images/${op.image}/json`],
   'image-delete': (op: { image: string }) => ['DELETE', `images/${op.image}`],
 };
 
-/** The bytes the proxy sends the daemon for a checked operation. A load's archive follows the head. */
-export function forwardBytes(op: ProxyOp, apiVersion: string): Uint8Array {
+const encoder = new TextEncoder();
+const requestHead = (method: string, target: string, apiVersion: string, headers: string) =>
+  encoder.encode(`${method} /v${apiVersion}/${target} HTTP/1.1\r\nHost: docker\r\n${headers}\r\n`);
+
+/**
+ * The head of a forwarded load. Its length is the archive the proxy rebuilt
+ * (P5), never the length the launcher declared, so the daemon reads exactly
+ * that archive and nothing after it as a second request.
+ */
+export function forwardLoadHead(archiveLength: number, apiVersion: string): Uint8Array {
+  if (!Number.isSafeInteger(archiveLength) || archiveLength < 0)
+    throw new RangeError('archive length');
+  const headers = `Content-Type: application/x-tar\r\nContent-Length: ${archiveLength}\r\n`;
+  return requestHead('POST', 'images/load?quiet=1', apiVersion, headers);
+}
+
+/** The bytes the proxy sends the daemon for a checked operation other than a load. */
+export function forwardBytes(
+  op: Exclude<ProxyOp, { kind: 'load' }>,
+  apiVersion: string,
+): Uint8Array {
   const [method, target] = LINES[op.kind](op as never);
-  const encoder = new TextEncoder();
   let headers = '';
   let body = new Uint8Array();
   if (op.kind === 'create') {
     body = encoder.encode(JSON.stringify(fixedCreateBody(op.shape, op.image)));
     headers = `Content-Type: application/json\r\nContent-Length: ${body.length}\r\n`;
-  } else if (op.kind === 'load') {
-    headers = `Content-Type: application/x-tar\r\nContent-Length: ${op.contentLength}\r\n`;
   } else if (op.kind === 'attach') {
     headers = 'Connection: Upgrade\r\nUpgrade: tcp\r\n';
   }
-  const head = encoder.encode(
-    `${method} /v${apiVersion}/${target} HTTP/1.1\r\nHost: docker\r\n${headers}\r\n`,
-  );
+  const head = requestHead(method, target, apiVersion, headers);
   const out = new Uint8Array(head.length + body.length);
   out.set(head);
   out.set(body, head.length);

@@ -29,6 +29,7 @@ const frame = (stream: number, payload: Uint8Array, reserved = 0): Uint8Array =>
   out.set(payload, 8);
   return out;
 };
+const joined = (blocks: readonly Uint8Array[]): string => Buffer.concat(blocks).toString('utf8');
 const internal = { ok: false, reason: 'internal' };
 
 it('reads _ping only as 200 with the body OK', () => {
@@ -124,7 +125,7 @@ it('splits stdout and stderr across chunk boundaries anywhere', () => {
     const end = frames.end();
     expect(end).toMatchObject({ ok: true, stderrDiscarded: 0 });
     if (!end.ok) return;
-    expect(new TextDecoder().decode(end.stdout)).toBe('dist/x');
+    expect(joined(end.stdout)).toBe('dist/x');
     expect(new TextDecoder().decode(end.stderr)).toBe('warn');
   }
 });
@@ -169,5 +170,18 @@ it('keeps the first 64 KiB of stderr and discards the rest without refusing', ()
   expect(end).toMatchObject({ ok: true, stderrDiscarded: 10 });
   if (!end.ok) return;
   expect(end.stderr.length).toBe(64 * 1024);
-  expect(new TextDecoder().decode(end.stdout)).toBe('ok');
+  expect(joined(end.stdout)).toBe('ok');
+});
+
+it('keeps stdout in blocks sized by the bytes kept, never one per frame', () => {
+  const frames = new AttachFrames(2 * 1024 * 1024);
+  const one = frame(1, bytes('x'));
+  const many = new Uint8Array(one.length * 100_000);
+  for (let i = 0; i < 100_000; i += 1) many.set(one, i * one.length);
+  frames.push(many);
+  const end = frames.end();
+  expect(end.ok).toBe(true);
+  if (!end.ok) return;
+  expect(end.stdout).toHaveLength(1);
+  expect(end.stdout[0]?.length).toBe(100_000);
 });

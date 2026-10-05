@@ -14,11 +14,11 @@ const nest = (depth: number): string => '['.repeat(depth) + ']'.repeat(depth);
 
 it('reads a well-formed object, keeping key order and value types', () => {
   const parsed = parseStrictJson(
-    bytes('{"Id":"a","Count":3,"Ok":true,"None":null,"List":[1.5,-2e3]}'),
+    bytes('{"Id":"a","Count":3,"Ok":true,"None":null,"List":[1.5,-2.5e-3,9007199254740991]}'),
   );
   expect(parsed).toEqual({
     ok: true,
-    value: { Id: 'a', Count: 3, Ok: true, None: null, List: [1.5, -2000] },
+    value: { Id: 'a', Count: 3, Ok: true, None: null, List: [1.5, -0.0025, 9007199254740991] },
   });
 });
 
@@ -36,6 +36,13 @@ it('refuses keys equal after ASCII case folding when folding is asked for, and o
     why: 'duplicate key',
   });
   expect(parseStrictJson(bytes('{"Image":"a","image":"b"}'))).toMatchObject({ ok: true });
+});
+
+it('refuses a non-ASCII key in a request, which Go would fold onto an ASCII one, and only then', () => {
+  for (const key of ['Ho\u017Ft', 'Linu\u212A']) {
+    expect(parseStrictJson(bytes(`{"${key}":1}`), { foldCase: true })).toMatchObject({ ok: false });
+    expect(parseStrictJson(bytes(`{"${key}":1}`))).toMatchObject({ ok: true });
+  }
 });
 
 it('takes exactly 32 levels and refuses 33', () => {
@@ -59,6 +66,11 @@ it.each([
   ['a plus sign', '[+1]'],
   ['NaN', '[NaN]'],
   ['a number too large for a double', '[1e400]'],
+  ['an integer written with a fraction', '[1.0]'],
+  ['an integer written with an exponent', '[1e3]'],
+  ['a fraction a double rounds to an integer', '[1073741824.00000000001]'],
+  ['a number that underflows to zero', '[1e-400]'],
+  ['an integer past 2^53', '[9007199254740993]'],
   ['a second value after the first', '{} {}'],
   ['a comment', '{/*c*/}'],
   ['an unterminated array', '[1'],
