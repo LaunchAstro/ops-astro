@@ -27,7 +27,8 @@ it('a passing mutation check leaves no failure of the door-flood test in a CI lo
     },
   );
   const log = result.stdout + result.stderr;
-  expect(result.status, log).toBe(0);
+  // Shown only on a failure, with no line that the runner would read as an annotation.
+  expect(result.status, log.replaceAll(/^::/gmu, ': :')).toBe(0);
   expect(log, 'an annotation').not.toMatch(/^::error/mu);
   expect(log, 'a FAIL line').not.toMatch(/FAIL\s+tests\/api\/agent-quota-door-flood/u);
 }, 120_000);
