@@ -12,11 +12,12 @@
 -- record them, written with the route at every route write:
 --   provider        the provider the route sent the call to
 --   credential_ref  the custody credential the route presented
--- With them, and `account` (0085) as custody reported it when the call went
--- unknown, the pass asks only through the route that carried the call and
--- releases only when custody reports the same account. Rows written before
--- this have neither, and the pass releases none of them: a person records
--- their outcome.
+-- The broker also writes `account` (0085) at the send now, as custody names
+-- it for the credential before sending, where until now only a priced answer
+-- wrote it. With the three, the pass asks only through the route that carried
+-- the call and releases only when custody answers on the same account. A row
+-- missing any of them (written before this, or a `replay` credential, which
+-- has no account) releases nothing: a person records its outcome.
 -- No table, role, policy or grant is added: the columns live on the call's
 -- row, under its business's row security and the table's grants (0085).
 

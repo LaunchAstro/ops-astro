@@ -47,8 +47,7 @@ export type Settlement =
       readonly credentialKind: CredentialKind;
     }
   | { readonly kind: 'nothing'; readonly reason: string }
-  /** `account` is the one custody reported carrying the call; none when its worker was lost. */
-  | ({ readonly kind: 'unknown'; readonly account: string | null } & Failure);
+  | ({ readonly kind: 'unknown' } & Failure);
 
 /**
  * What custody's outcome means for the money: priced, positive proof that
@@ -61,23 +60,23 @@ export function settlementOf(
   operation: ModelOperation,
   adapter: ProviderAdapter,
 ): Settlement {
-  if (outcome.kind === 'worker_lost') return { kind: 'unknown', account: null, ...WORKER_LOST };
+  if (outcome.kind === 'worker_lost') return { kind: 'unknown', ...WORKER_LOST };
   if (outcome.kind === 'refused') return { kind: 'nothing', reason: outcome.code };
   if (!outcome.outbound.ok) {
     const failure = failureOf(outcome.outbound.fault, outcome.outbound.status);
     if (declaresNothing(operation, failure.providerCode)) {
       return { kind: 'nothing', reason: String(failure.providerCode) };
     }
-    return { kind: 'unknown', account: outcome.account, ...failure };
+    return { kind: 'unknown', ...failure };
   }
   let body: unknown;
   try {
     body = JSON.parse(outcome.outbound.body);
   } catch {
-    return { kind: 'unknown', account: outcome.account, ...MALFORMED };
+    return { kind: 'unknown', ...MALFORMED };
   }
   const answer = operation.answer(body);
-  if (answer === undefined) return { kind: 'unknown', account: outcome.account, ...MALFORMED };
+  if (answer === undefined) return { kind: 'unknown', ...MALFORMED };
   if (declaresNothing(operation, answer.providerCode)) {
     return { kind: 'nothing', reason: String(answer.providerCode) };
   }
@@ -117,18 +116,13 @@ const open = (state: string | undefined): boolean => state === 'reserved' || sta
 /** The answer to a close that found its call already closed: it moved nothing. */
 const closed = (callId: string): ModelCallResult => ({ ok: false, code: 'DECISION_STALE', callId });
 
-/**
- * Above the hold, or no answer: the maximum stays held as unknown liability
- * until a person records an outcome, or a lookup through the same account
- * proves nothing happened (`account`, as custody reported it; broker-reconcile.ts).
- */
+/** Above the hold, or no answer: the maximum stays held as unknown liability until a person records an outcome. */
 export async function hold(
   tx: TenantQuery,
   reserved: ReservedCall,
   observed: number | null,
   drop: (Settlement & { kind: 'unknown' }) | null,
   broker: Broker,
-  account: string | null,
 ): Promise<ModelCallResult> {
   const { callId, operation, reservedMinor } = reserved;
   // Above the hold is the provider's answer: its fault, with no drop and no code.
@@ -144,8 +138,7 @@ export async function hold(
     `update public.model_calls
         set state = 'liability_unknown', observed_minor = $3, fault = $4, drop_state = $5,
             drop_cause = $6, provider_code = $7, reconcile_mode = $8,
-            unknown_since = clock_timestamp(),
-            account = case when credential_kind = 'replay' then null else $9 end
+            unknown_since = clock_timestamp()
       where business_id = $1 and id = $2 and state in ('reserved', 'dispatched')
       returning id`,
     [
@@ -157,7 +150,6 @@ export async function hold(
       said.cause,
       said.providerCode,
       reconcileModeOf(operation, broker.providers.get(operation.provider)),
-      account,
     ],
   );
   if (moved.length === 0) return closed(callId);
@@ -262,8 +254,7 @@ export async function settle(
     const { callId, reservedMinor } = reserved;
     const state = await lockedState(tx, callId);
     if (state !== 'liability_unknown' && !open(state)) return closed(callId);
-    if (settlement.kind === 'unknown')
-      return await hold(tx, reserved, null, settlement, broker, settlement.account);
+    if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
     if (settlement.kind === 'nothing') {
       const released = await release(tx, reserved, settlement.reason, broker);
       await giveBack(tx, callId);
@@ -272,7 +263,7 @@ export async function settle(
     const { costMinor } = settlement;
     if (!Number.isSafeInteger(costMinor) || costMinor < 0 || costMinor > reservedMinor) {
       const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
-      return await hold(tx, reserved, observed, null, broker, settlement.account);
+      return await hold(tx, reserved, observed, null, broker);
     }
     await settlePriced(tx, reserved, settlement, broker);
     await giveBack(tx, callId);

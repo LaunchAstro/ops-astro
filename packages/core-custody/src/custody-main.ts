@@ -268,6 +268,17 @@ process.on('message', (message: unknown) => {
   const reply = (body: Record<string, unknown>): void => {
     process.send?.({ id, ...body });
   };
+  if (shape['type'] === 'describe' && id !== '') {
+    // What the broker records before a send: the kind and account, never the value.
+    const ref = shape['credentialRef'];
+    const credential = typeof ref === 'string' ? loaded.credentials.get(ref) : undefined;
+    if (credential === undefined || credential.destination !== shape['destination']) {
+      reply({ type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' });
+      return;
+    }
+    reply({ type: 'described', kind: credential.kind, account: credential.account });
+    return;
+  }
   if (shape['type'] !== 'dispatch' || id === '') {
     reply({ type: 'refused', code: 'CUSTODY_UNKNOWN_REQUEST' });
     return;

@@ -89,18 +89,19 @@ function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
 /**
  * The configured route that carried the call, as its row records it: key,
  * reach, credential kind, provider and credential (catalogue #439, #943),
- * and only while the operation still goes to that provider. A row with no
- * provider or credential (written before 20261005025000), or with no account
- * custody reported for a credential that has one, cannot name the account
- * that carried it, and an absence elsewhere proves nothing: a person records
- * the outcome.
+ * and only while the operation still goes to that provider. The account is
+ * the one custody named for the credential before the send (`describe`). A
+ * row with no provider or credential (written before 20261005025000), or no
+ * account (a `replay` credential has none, so one key cannot be told from
+ * another), cannot name the account that carried it, and an absence elsewhere
+ * proves nothing: a person records the outcome.
  */
 function carryingRoute(broker: Broker, call: Asked, provider: string): BrokerRoute | string {
   if (call.provider === null || call.credential_ref === null) {
     return 'its row names no provider or credential that carried it; a person records the outcome';
   }
-  if (call.credential_kind !== 'replay' && call.account === null) {
-    return 'custody reported no account carrying it; a person records the outcome';
+  if (call.account === null) {
+    return 'custody named no account carrying it; a person records the outcome';
   }
   if (call.provider !== provider) {
     return 'its operation now goes to another provider; a person records the outcome';

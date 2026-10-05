@@ -148,6 +148,7 @@ async function holdPlanning(
   request: ConversationCallRequest,
   operation: ModelOperation,
   route: BrokerRoute,
+  account: string | null,
 ): Promise<Held> {
   const cap = await lockedOrDefault(tx);
   if (await atCeiling(tx, operation, route)) {
@@ -163,8 +164,8 @@ async function holdPlanning(
     `insert into public.model_calls
        (business_id, id, conversation_id, planning_envelope_id, operation_key, state,
         reserved_minor, route_key, route_reach, credential_kind, provider, credential_ref,
-        started_at)
-     values ($1, $2, $3, $4, $5, 'dispatched', $6, $7, $8, $9, $10, $11, clock_timestamp())`,
+        account, started_at)
+     values ($1, $2, $3, $4, $5, 'dispatched', $6, $7, $8, $9, $10, $11, $12, clock_timestamp())`,
     [
       tx.businessId,
       callId,
@@ -177,6 +178,7 @@ async function holdPlanning(
       route.credentialKind,
       route.provider,
       route.credentialRef,
+      account,
     ],
   );
   await registerPromptCopy(tx, callId);
@@ -210,14 +212,13 @@ async function sendPlanning(
   });
   const settlement = settlementOf(outcome, operation, adapter);
   return await database.withBusiness(businessId, async (tx) => {
-    if (settlement.kind === 'unknown')
-      return await hold(tx, reserved, null, settlement, broker, settlement.account);
+    if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
     if (settlement.kind === 'nothing')
       return await release(tx, reserved, settlement.reason, broker);
     const { costMinor } = settlement;
     if (!Number.isSafeInteger(costMinor) || costMinor < 0 || costMinor > reservedMinor) {
       const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
-      return await hold(tx, reserved, observed, null, broker, settlement.account);
+      return await hold(tx, reserved, observed, null, broker);
     }
     await settlePriced(tx, reserved, settlement, broker);
     return {
@@ -250,9 +251,12 @@ export async function callModelForPlanning(
   const fields = outsideFields(request.fields);
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
+  const { route } = chosen;
+  const account = (await broker.custody.describe(route.credentialRef, operation.destination))
+    ?.account;
   const held = await database.withBusiness(
     businessId,
-    async (tx) => await holdPlanning(tx, request, operation, chosen.route),
+    async (tx) => await holdPlanning(tx, request, operation, route, account ?? null),
   );
   if (!('reserved' in held)) return held;
   return await sendPlanning(database, businessId, held.reserved, fields, broker);

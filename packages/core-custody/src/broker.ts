@@ -107,10 +107,11 @@ async function markStarted(
   request: ModelCallRequest,
   reserved: ReservedCall,
   broker: Broker,
+  account: string | null,
 ): Promise<{ readonly fields: readonly ResolvedField[] } | BrokerRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const { key, reach, credentialKind, provider, credentialRef } = reserved.route;
-    const route = [key, reach, credentialKind, provider, credentialRef];
+    const route = [key, reach, credentialKind, provider, credentialRef, account];
     await lockEnvelope(tx, reserved.callId);
     const facts = await lockFacts(tx, caller, request);
     const unknown = facts.ok && (await heldUnknown(tx, facts.facts.reservationId));
@@ -120,7 +121,7 @@ async function markStarted(
         `update public.model_calls
             set state = 'released', ended_at = clock_timestamp(),
                 route_key = $3, route_reach = $4, credential_kind = $5,
-                provider = $6, credential_ref = $7
+                provider = $6, credential_ref = $7, account = $8
           where business_id = $1 and id = $2 and state = 'reserved'
           returning id`,
         [tx.businessId, reserved.callId, ...route],
@@ -140,7 +141,7 @@ async function markStarted(
       `update public.model_calls
           set state = 'dispatched', started_at = clock_timestamp(),
               route_key = $3, route_reach = $4, credential_kind = $5,
-              provider = $6, credential_ref = $7
+              provider = $6, credential_ref = $7, account = $8
         where business_id = $1 and id = $2 and state = 'reserved'
         returning id`,
       [tx.businessId, reserved.callId, ...route],
@@ -205,7 +206,20 @@ export async function sendReservedCall(
   reserved: ReservedCall,
   broker: Broker,
 ): Promise<ModelCallResult> {
-  const started = await markStarted(database, businessId, caller, request, reserved, broker);
+  // The account custody will present, recorded before the send: the only
+  // proof a later lookup asks the account that carried it (broker-reconcile.ts).
+  const { credentialRef } = reserved.route;
+  const carrier = await broker.custody.describe(credentialRef, reserved.operation.destination);
+  const account = carrier?.account ?? null;
+  const started = await markStarted(
+    database,
+    businessId,
+    caller,
+    request,
+    reserved,
+    broker,
+    account,
+  );
   if (typeof started === 'string') return { ok: false, code: started, callId: reserved.callId };
   const adapter = broker.providers.get(reserved.operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${reserved.operation.provider}`);
