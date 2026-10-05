@@ -15,7 +15,7 @@ import {
   type ConversationWorld,
 } from './aw-03-fixture.ts';
 import { localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
-import { createControls, type Controls } from './controls-fixture.ts';
+import { createControls, PROPOSAL, type Controls } from './controls-fixture.ts';
 import { grantTo } from '../commands/fixture.ts';
 import type { Answer } from './fixture.ts';
 
@@ -235,4 +235,35 @@ it('a task created from a conversation racing its purge waits on the conversatio
       [conversationId],
     ),
   ).toBe(0);
+});
+
+it('a run picked up and then superseded by a new version has ended at the supersede', async () => {
+  const created = await c.createTask('run behind a superseded version');
+  const proposal = await c.propose(created.id, created.revision, 'run_superseded');
+  await c.pickup(await c.approve(proposal));
+  const conversationId = await started(w, w.owner, {
+    body: 'The claimed run is conversation work',
+  });
+  const [run] = await w.fixture.db.admin.execute<{ state: string }>(
+    `update public.planned_runs set origin_conversation_id = $2
+      where version_id = $1 returning state`,
+    [proposal['versionId'], conversationId],
+  );
+  expect(run).toEqual({ state: 'claimed' });
+  await w.age(conversationId, 8);
+  expect(await wrap(conversationId)).toMatchObject({ ok: true, written: true });
+  expect(await purge(conversationId)).toEqual({ ok: false, code: 'WORK_OPEN' });
+  const [record] = await w.fixture.db.admin.execute<{ revision: string }>(
+    'select revision::text as revision from public.records where id = $1',
+    [created.id],
+  );
+  const revised = await c.asPerson('task.propose', {
+    recordId: created.id,
+    expectedRevision: Number(record?.revision),
+    ...PROPOSAL,
+    purpose: 'run_superseded',
+    lineageId: proposal['lineageId'],
+  });
+  expect(revised.status).toBe(200);
+  expect(await purge(conversationId)).toEqual({ ok: false, code: 'NOT_DUE' });
 });
