@@ -98,3 +98,22 @@ describe('only an https address names a site', () => {
     ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['decoy'] });
   });
 });
+
+describe('the decoy itself is an https page', () => {
+  it.each(['blob:https://www.example.com/services', 'blob:https://www.example.com/about'])(
+    'fails a decoy at %s',
+    (url) => {
+      const decoy = decoyAt(url);
+      expect(
+        compareCaptures({ before, after, decoyBefore: decoy, decoyAfter: { ...decoy }, target }),
+      ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['decoy'] });
+    },
+  );
+
+  it('reads a path ending in a long run of slashes in linear time', () => {
+    const decoy = decoyAt(`https://www.example.com/${'/'.repeat(200_000)}a`);
+    const start = performance.now();
+    compareCaptures({ before, after, decoyBefore: decoy, decoyAfter: { ...decoy }, target });
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+});

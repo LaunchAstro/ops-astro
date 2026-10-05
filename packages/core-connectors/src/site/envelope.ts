@@ -57,11 +57,7 @@ export function wordOffsets(text: string, word: string): number[] {
 }
 
 /** The one standalone occurrence of `word` in `before` whose replacement gives `after`. */
-export function replacedAt(
-  before: string,
-  after: string,
-  target: CorrectionTarget,
-): number | undefined {
+function replacedAt(before: string, after: string, target: CorrectionTarget): number | undefined {
   const matches = wordOffsets(before, target.word).filter(
     (at) =>
       before.slice(0, at) + target.replacement + before.slice(at + target.word.length) === after,

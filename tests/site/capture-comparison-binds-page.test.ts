@@ -117,6 +117,48 @@ describe('the comparison is bounded', () => {
       }),
     ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['decoy'] });
   });
+});
+
+describe('the comparison is linear', () => {
+  it('compares a page of many one-letter words in linear time', () => {
+    const many = 'a '.repeat(120_000);
+    const one = { ...TARGET, word: 'q', replacement: 'z' };
+    const start = performance.now();
+    compareCaptures({
+      before: page({ text: `${many}q ${many}` }),
+      after: page({ documentDigest: 'sha256:doc-after', text: `${many}z ${many}` }),
+      decoyBefore: page({ ...decoy, text: 'We work q your team.' }),
+      decoyAfter: page({ ...decoy, text: 'We work q your team.' }),
+      target: one,
+    });
+    const words = { ...TARGET, word: 'a', replacement: 'b' };
+    compareCaptures({
+      before: page({ text: many }),
+      after: page({ documentDigest: 'sha256:doc-after', text: `b ${many.slice(2)}` }),
+      decoyBefore: page({ ...decoy, text: 'We work a your team.' }),
+      decoyAfter: page({ ...decoy, text: 'We work a your team.' }),
+      target: words,
+    });
+    expect(performance.now() - start).toBeLessThan(150);
+  });
+});
+
+describe('the comparison bounds the word', () => {
+  it('fails a replacement longer than it compares', () => {
+    const replacement = 'b'.repeat(65);
+    expect(
+      compareCaptures({
+        before,
+        after: page({
+          documentDigest: 'sha256:doc-after',
+          text: before.text.replace('alongside', replacement),
+        }),
+        decoyBefore: decoy,
+        decoyAfter: { ...decoy },
+        target: { ...TARGET, replacement },
+      }),
+    ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['page', 'decoy'] });
+  });
 
   it('fails a word longer than it compares', () => {
     const word = 'a'.repeat(65);
