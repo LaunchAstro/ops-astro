@@ -92,6 +92,22 @@ export async function observedRefusal(
   );
 }
 
+/** A `happened` recorded after the ask (`recovery/outcome.ts`): the step is done, never rerun. */
+export async function recordedRefusal(
+  tx: TenantQuery,
+  stop: { readonly reservation_id: string; readonly ask_id: string },
+): Promise<RuntimeResult<never> | null> {
+  const done = await tx.query(
+    `select 1 from public.attempts a join public.budget_asks k on k.business_id = a.business_id
+      where a.business_id = $1 and a.reservation_id = $2 and k.id = $3 and a.state = 'settled'
+        and a.outcome = 'completed' and a.settled_at > k.raised_at`,
+    [tx.businessId, stop.reservation_id, stop.ask_id],
+  );
+  if (done.length === 0) return null;
+  const why = "this step's outcome was recorded after the run stopped, so the step is finished";
+  return refuse('TRANSITION_NOT_PERMITTED', why, 'End the work instead.');
+}
+
 export interface Remaining {
   readonly heldMinor: number;
   readonly spentMinor: number;

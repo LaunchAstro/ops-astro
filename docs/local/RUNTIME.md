@@ -1896,7 +1896,10 @@ or delete.
   fresh reservation, so the run spends the raised ceiling once and the cap
   counts the spend once. A stop raised because the step's calls spent its
   whole hold (`budget-stop.ts`) has no hold left to raise: completing it holds
-  the amount on a fresh reservation for the step (`holdTopUp`).
+  the amount on a fresh reservation for the step (`holdTopUp`). A step a
+  person recorded as `happened` after the ask is finished, so its top-up is
+  refused `TRANSITION_NOT_PERMITTED` with nothing written, and the end answers
+  the stop (`recordedRefusal`).
 - **The end** (`endAtBudgetStop`, `gate:decide` on the task, a person). One
   call with no confirmation (U7). The hold becomes `abandoned` with the cause
   `budget_stop_ended`; the envelope releases the unspent part and keeps the

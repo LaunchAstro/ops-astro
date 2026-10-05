@@ -39,7 +39,7 @@ import {
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
-import { observedRefusal, spentOn } from './budget-stop.ts';
+import { observedRefusal, recordedRefusal, spentOn } from './budget-stop.ts';
 import { giveBackReleased } from '../../core-custody/src/index.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
@@ -142,6 +142,8 @@ async function topUpRefusal(
       NOT_WAITING_FIX,
     );
   }
+  const recorded = await recordedRefusal(tx, locked);
+  if (recorded !== null) return recorded;
   if (request.currency !== locked.currency) {
     return refuse(
       'CAP_BINDING_MISMATCH',
