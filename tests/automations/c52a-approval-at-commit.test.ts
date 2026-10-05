@@ -15,6 +15,7 @@
 // for the change to commit (PRV-oa-984-R2.1).
 
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { signOutSession } from '../../packages/core-commands/src/index.ts';
 import {
@@ -144,9 +145,9 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
   /**
    * Two endings through bravo, each with how many of the four writes it races:
    * the session's own sign-out (its key) races all four; an end of the login's
-   * other sessions (its subject's: bravo has seen none of them, so it ends
-   * none by key) races the first alone, since it ends every later sign-in of
-   * that login inside the clock-skew minute too.
+   * other sessions (its subject's: the sessions bravo has seen are already
+   * ended, so it ends none by key) races the first alone, since it ends every
+   * later sign-in of that login inside the clock-skew minute too.
    */
   const ENDINGS = [
     [
@@ -222,8 +223,9 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
       expect(raced).toStrictEqual(
         Array.from({ length: count }, () => [true, true, 200, [401, 'AUTH_SESSION_EXPIRED']]),
       );
+      // Each raced write applied: its row is no longer as it was.
       const applied = await stateOf(sends);
-      expect(applied.every((one, at) => one[0] !== untouched[at]?.[0])).toBe(true);
+      expect(applied.filter((one, at) => isDeepStrictEqual(one, untouched[at]))).toStrictEqual([]);
     },
     120_000,
   );
