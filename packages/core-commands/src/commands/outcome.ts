@@ -19,6 +19,12 @@ export interface Applied {
   readonly detail: Readonly<Record<string, unknown>>;
   /** The caller's own conversation a created task came from, for its audit event's origin (AW-03). */
   readonly originConversationId?: string;
+  /**
+   * The record the audit event names, where it is not `recordId`: a promote or
+   * demote answers the class (the revision the caller writes against) and its
+   * audit event names the mandate it filed or revoked (SEC-P05B-PR.4).
+   */
+  readonly auditSubjectId?: string;
 }
 
 export interface Refused {

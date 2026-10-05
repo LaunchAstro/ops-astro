@@ -533,7 +533,7 @@ async function answerOf(
     command: request.command,
     operationId: request.operationId,
     outcome: 'applied',
-    subjectRecordId: outcome.recordId,
+    subjectRecordId: outcome.auditSubjectId ?? outcome.recordId,
     payloadDigest: digest,
     originConversationId: outcome.originConversationId ?? null,
   });

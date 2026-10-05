@@ -163,3 +163,91 @@ export function refuseWrongValueType(
     'A link field takes the identifier of a record, not a label a person reads.',
   ]);
 }
+
+/** A run of code points, first and last inclusive. */
+type Span = readonly [number, number];
+
+// READABLE: the code points a name or a sentence a person reads may hold,
+// listed: printable ASCII and every later code point but the C1 controls, the
+// line and paragraph separators (U+2028-2029), the bidi marks and overrides
+// (U+061C, U+200E-200F, U+202A-202E, U+2066-2069) and the surrogates. So no
+// control character, line break or escape, and no text that reorders what an
+// admin reads; the joiners emoji need stay. A lone surrogate is one code point
+// outside every span, so it is refused too.
+const READABLE: readonly Span[] = [
+  [0x20, 0x7e],
+  [0xa0, 0x6_1b],
+  [0x6_1d, 0x20_0d],
+  [0x20_10, 0x20_27],
+  [0x20_2f, 0x20_65],
+  [0x20_6a, 0xd7_ff],
+  [0xe0_00, 0x10_ff_ff],
+];
+
+// What a label also leaves out of READABLE: the default-ignorable code points
+// (Unicode's DerivedCoreProperties), which draw as nothing, and the interlinear
+// annotation controls, but not the joiners (U+200C-200D), the variation
+// selectors (U+180B-180D, U+180F, U+FE00-FE0F, U+E0100-E01EF) and the tag
+// characters (U+E0020-E007F) that emoji and scripts need.
+const UNSEEN: readonly Span[] = [
+  [0xad, 0xad],
+  [0x3_4f, 0x3_4f],
+  [0x11_5f, 0x11_60],
+  [0x17_b4, 0x17_b5],
+  [0x18_0e, 0x18_0e],
+  [0x20_0b, 0x20_0b],
+  [0x20_60, 0x20_6f],
+  [0x31_64, 0x31_64],
+  [0xfe_ff, 0xfe_ff],
+  [0xff_a0, 0xff_a0],
+  [0xff_f0, 0xff_fb],
+  [0x1_bc_a0, 0x1_bc_a3],
+  [0x1_d1_73, 0x1_d1_7a],
+  [0xe_00_00, 0xe_00_1f],
+  [0xe_00_80, 0xe_00_ff],
+  [0xe_01_f0, 0xe_0f_ff],
+];
+
+/** The spans of `spans` with every code point of `holes` taken out. */
+function without(spans: readonly Span[], holes: readonly Span[]): readonly Span[] {
+  return holes.reduce<readonly Span[]>(
+    (kept, [from, to]) =>
+      kept.flatMap(([first, last]): Span[] => {
+        if (to < first || from > last) return [[first, last]];
+        const parts: Span[] = [];
+        if (first < from) parts.push([first, from - 1]);
+        if (to < last) parts.push([to + 1, last]);
+        return parts;
+      }),
+    spans,
+  );
+}
+
+const LABEL: readonly Span[] = without(READABLE, UNSEEN);
+
+const within = (spans: readonly Span[], value: string): boolean =>
+  [...value].every((one) => {
+    const code = one.codePointAt(0) ?? -1;
+    return spans.some(([first, last]) => code >= first && code <= last);
+  });
+
+/**
+ * Text a person reads as sent: every code point is on the READABLE list, so
+ * it holds no control, line break, escape or bidi control. The one definition;
+ * an automation's name and inputs and a mandate's label read it.
+ */
+export function readableText(value: string): boolean {
+  return within(READABLE, value);
+}
+
+// A letter, a number, punctuation or a symbol: something that draws.
+const VISIBLE = /[\p{L}\p{N}\p{P}\p{S}]/u;
+
+/**
+ * A label a person reads beside an approval: readable text with nothing that
+ * draws as nothing, and at least one character that draws, so what another
+ * person is shown is the statement that was filed.
+ */
+export function labelText(value: string): boolean {
+  return within(LABEL, value) && VISIBLE.test(value);
+}

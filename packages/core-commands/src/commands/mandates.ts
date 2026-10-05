@@ -50,7 +50,7 @@ import {
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
-import { ceilingOf, classesOf, expiryOf, isRevision, labelOf } from './mandate-inputs.ts';
+import { ceilingOf, classesOf, expiryOf, isRevision, labelOf, shownAs } from './mandate-inputs.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 
 const FIXES: Readonly<Record<string, string>> = {
@@ -218,14 +218,19 @@ export async function promoteClass(
     refuses: false,
     ceiling,
     expiresAt,
-    // Both labels are at most 200 characters (the migration's checks), so this fits the 500.
-    label: `Run ${row.classLabel} unattended for ${row.clientLabel}`,
+    // Each name is at most 200 characters (the migration's checks) and is shown
+    // only when it is a label's text, so this fits the 500 and the label grammar.
+    label: `Run ${shownAs(row.classLabel, row.actionClass)} unattended for ${shownAs(row.clientLabel, `client ${row.clientId}`)}`,
     graduationClass: row.actionClass,
     actorId: context.session.actorId,
   });
   if (mandate === null) return invalid('expiresAt');
   const revision = await bumpGraduationClass(tx, row.id);
-  return applied(row.id, revision, { classId: row.id, mandateId: mandate.id, state: 'promoted' });
+  // The class is the handle the caller writes against; the audit names the mandate filed.
+  return {
+    ...applied(row.id, revision, { classId: row.id, mandateId: mandate.id, state: 'promoted' }),
+    auditSubjectId: mandate.id,
+  };
 }
 
 export async function demoteClass(
@@ -243,15 +248,21 @@ export async function demoteClass(
   if (expectedRevision !== undefined && expectedRevision !== row.revision) {
     return stale(row.revision);
   }
-  const derived = deriveGraduation(row, await lockClientMandates(tx, row.clientId));
-  if (derived.state !== 'promoted' || derived.promotedBy === null) {
-    return notPermitted(derived.state, 'Only a class running unattended is demoted.');
+  const mandates = await lockClientMandates(tx, row.clientId);
+  // A promoted class a refusal is holding is demoted too: otherwise its
+  // promotion runs unattended again the moment the refusal ends.
+  const { state, promotedBy } = deriveGraduation(row, mandates);
+  if (promotedBy === null) {
+    return notPermitted(state, 'Only a class promoted to run unattended is demoted.');
   }
-  await revokeMandate(tx, derived.promotedBy.id, context.session.actorId);
+  await revokeMandate(tx, promotedBy.id, context.session.actorId);
   const revision = await bumpGraduationClass(tx, row.id);
-  return applied(row.id, revision, {
-    classId: row.id,
-    mandateId: derived.promotedBy.id,
-    state: 'ready',
-  });
+  const after = deriveGraduation(
+    row,
+    mandates.filter((one) => one.id !== promotedBy.id),
+  );
+  return {
+    ...applied(row.id, revision, { classId: row.id, mandateId: promotedBy.id, state: after.state }),
+    auditSubjectId: promotedBy.id,
+  };
 }

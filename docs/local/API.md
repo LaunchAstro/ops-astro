@@ -3530,17 +3530,23 @@ locks the client's row, then the class's graduation row, then the mandate (core'
 order), then asks `mandate:manage` again with the caller's grants held, so a
 grant revoked before it refuses it. A mandate is never edited: filed at revision
 1, revoked once at revision 2. Promoting files a one-class mandate for a class
-that shows `ready`; demoting revokes the mandate that promoted it; each steps the
-graduation row's revision by one, as does revoking a promoting mandate. Another
+that shows `ready`; demoting revokes the mandate that promoted it, also while a
+refusal holds the class, so the class does not run unattended again when the
+refusal ends; each steps the graduation row's revision by one, as does revoking
+a promoting mandate. A promote's or demote's audit event names the mandate it
+filed or revoked. Another
 business's client, class or mandate answers exactly as a made-up or malformed
 identifier does. Classes are picked from the client's own scope list, the
 ceiling is whole minor units of a three-letter currency, `expiresAt` is
-`toISOString()`'s form and must be at least a minute past the database's clock,
-and the label is 1 to 500 characters; each refusal names its field.
+`toISOString()`'s form for a year from 0001 to 9999 and must be at least a
+minute past the database's clock, and the label is 1 to 500 characters with no
+control character, line break, bidi control or character that draws as nothing;
+each refusal names its field. A promote's label shows the class and client by
+name, or by identifier where a name would not pass that rule.
 
-| Operation            | Route                 | Body                                                                                                  | Answer or refusals                                                                                                                                                                                                  |
-| -------------------- | --------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mandate.file`       | `/mandate/file`       | `operationId`, `clientId`, `classes`, `refuses?`, `ceiling` (none on a refusal), `expiresAt`, `label` | `detail: { mandateId, refuses }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                                                       |
-| `mandate.revoke`     | `/mandate/revoke`     | `operationId`, `mandateId`, `expectedRevision?`                                                       | `detail: { mandateId, state: 'revoked' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422       |
-| `graduation.promote` | `/graduation/promote` | `operationId`, `classId`, `ceiling`, `expiresAt`, `expectedRevision?`                                 | `detail: { classId, mandateId, state: 'promoted' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not `ready`), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 |
-| `graduation.demote`  | `/graduation/demote`  | `operationId`, `classId`, `expectedRevision?`                                                         | `detail: { classId, mandateId, state: 'ready' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not `promoted`), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 |
+| Operation            | Route                 | Body                                                                                                  | Answer or refusals                                                                                                                                                                                                                 |
+| -------------------- | --------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mandate.file`       | `/mandate/file`       | `operationId`, `clientId`, `classes`, `refuses?`, `ceiling` (none on a refusal), `expiresAt`, `label` | `detail: { mandateId, refuses }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                                                                      |
+| `mandate.revoke`     | `/mandate/revoke`     | `operationId`, `mandateId`, `expectedRevision?`                                                       | `detail: { mandateId, state: 'revoked' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                      |
+| `graduation.promote` | `/graduation/promote` | `operationId`, `classId`, `ceiling`, `expiresAt`, `expectedRevision?`                                 | `detail: { classId, mandateId, state: 'promoted' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not `ready`), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                |
+| `graduation.demote`  | `/graduation/demote`  | `operationId`, `classId`, `expectedRevision?`                                                         | `detail: { classId, mandateId, state: 'ready' \| 'held' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (nothing promotes it), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 |
