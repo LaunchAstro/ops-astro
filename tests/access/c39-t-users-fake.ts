@@ -13,7 +13,8 @@
 // id, a fault and slow. As a real provider does, every mode but `fault`
 // makes or sets the user before it answers; `fault` changes nothing, and
 // neither does `weak_password`, the provider's 422 for a password its rules
-// refuse (leaked, or short of a required character class).
+// refuse (leaked, or short of a required character class), on every request
+// or (`weak_on_update`) on an update alone.
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -29,6 +30,7 @@ export type FakeUsersMode =
   | 'other_id'
   | 'fault'
   | 'weak_password'
+  | 'weak_on_update'
   | 'slow'
   | 'made_late';
 
@@ -119,7 +121,7 @@ function respond(mode: FakeUsersMode, asked: Asked, response: ServerResponse, ke
     response.end(JSON.stringify(answer));
   };
   if (mode === 'fault') return json(500, { code: 500, msg: 'unexpected failure' });
-  if (mode === 'weak_password') {
+  if (mode === 'weak_password' || (mode === 'weak_on_update' && asked.method === 'PUT')) {
     return json(422, {
       code: 422,
       error_code: 'weak_password',
@@ -127,7 +129,9 @@ function respond(mode: FakeUsersMode, asked: Asked, response: ServerResponse, ke
     });
   }
   const made = honest(asked, kept);
-  if (mode === 'accept' || made.status !== 200) return json(made.status, made.answer);
+  if (mode === 'accept' || mode === 'weak_on_update' || made.status !== 200) {
+    return json(made.status, made.answer);
+  }
   const { id, email } = made.answer as { id: string; email: string };
   switch (mode) {
     case 'echo':

@@ -111,6 +111,26 @@ describe.skipIf(noDatabase)('C39-T enrolment recovery', () => {
     expect((await enrolVia(token)).body).toStrictEqual({ state: 'enrolled' });
   });
 
+  it('C39-T enrolment: a password the provider refuses at the adopting update is PASSWORD_INVALID, the stranded login keeps its password', async () => {
+    const address = addressFor('adopt-weak');
+    const { id, token } = await invited(c.admin, address);
+    const first = passwordFor();
+    await strand(token, first);
+    const made = String(e.users.users.get(address));
+    e.users.mode('weak_on_update');
+    const from = e.users.received.length;
+    expect(await enrolVia(token, passwordFor())).toStrictEqual({
+      status: 400,
+      body: { code: 'PASSWORD_INVALID' },
+      cookie: null,
+    });
+    expect(putsSince(from)).toStrictEqual([`/auth/v1/admin/users/${made}`]);
+    expect(e.users.passwords.get(made)).toBe(first);
+    expect(await boundTo(w.alpha, made)).toBeUndefined();
+    expect(await spentOf(id)).toMatchObject({ state: 'pending', spent: 0 });
+    e.users.mode('accept');
+  }, 30_000);
+
   it('C39-T no account oracle: an address whose login is someone else’s answers sign_in, and no password is changed', async () => {
     // One login made in bravo, one made at the provider outside the product.
     const inBravo = addressFor('bravo-login');
