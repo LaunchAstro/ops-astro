@@ -78,6 +78,16 @@ function vitestFile(cwd, tools, file) {
   });
 }
 
+/** Admission: committed, clean and on its own branch, by scripts/review-preflight.mjs. */
+export function preflight({ cwd, tools, base }) {
+  const result = run(process.execPath, [join(tools, 'scripts', 'review-preflight.mjs'), base], {
+    cwd,
+  });
+  return result.status === 0
+    ? green('committed, clean, on its own branch.')
+    : red('review-preflight refused:', result);
+}
+
 /** Runs each step in order and stops at the first red. */
 export function runGate(steps, log) {
   for (const step of steps) {

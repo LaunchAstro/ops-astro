@@ -40,15 +40,14 @@
 //   --skip-check  pnpm check already ran on this head elsewhere (the M5).
 
 import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import {
   behaviourNames,
   changedLint,
   commitTrailers,
   git,
-  green,
   mergeTree,
-  red,
+  preflight,
   reviewEvidence,
   run,
   runGate,
@@ -126,34 +125,29 @@ function readOpenIssues() {
   return answer.stdout;
 }
 
-/** The gate's steps over one range, in the order they run. */
-function gateSteps(range, skip, pr) {
-  const { cwd, base } = range;
-  return [
-    {
-      id: 'preflight',
-      name: 'review preflight',
-      run: () => {
-        const result = run(process.execPath, [join(cwd, 'scripts', 'review-preflight.mjs'), base], {
-          cwd,
-        });
-        return result.status === 0
-          ? green('committed, clean, on its own branch.')
-          : red('review-preflight refused:', result);
+/**
+ * The whole gate, in order: admission, then (a) to (g). `pr` is the body,
+ * labels and open issues; `log` takes each step's line.
+ */
+export function gate({ cwd, base, head, skip, pr }, log) {
+  const range = { cwd, tools: cwd, base, head };
+  return runGate(
+    [
+      { id: 'preflight', name: 'review preflight', run: () => preflight(range) },
+      { id: 'a', name: 'pnpm check', run: () => wholeCheck({ cwd, skip }) },
+      { id: 'b', name: 'changed-file lint', run: () => changedLint(range) },
+      { id: 'c', name: 'named-suite registration', run: () => suiteRegistration(range) },
+      { id: 'd', name: 'commit trailers', run: () => commitTrailers(range) },
+      {
+        id: 'e',
+        name: 'review evidence',
+        run: () => reviewEvidence({ ...range, freshRef: 'origin/main', ...pr }),
       },
-    },
-    { id: 'a', name: 'pnpm check', run: () => wholeCheck({ cwd, skip }) },
-    { id: 'b', name: 'changed-file lint', run: () => changedLint(range) },
-    { id: 'c', name: 'named-suite registration', run: () => suiteRegistration(range) },
-    { id: 'd', name: 'commit trailers', run: () => commitTrailers(range) },
-    {
-      id: 'e',
-      name: 'review evidence',
-      run: () => reviewEvidence({ ...range, freshRef: 'origin/main', ...pr }),
-    },
-    { id: 'f', name: 'behaviour test names', run: () => behaviourNames(range) },
-    { id: 'g', name: 'merge-tree against origin/main', run: () => mergeTree(range) },
-  ];
+      { id: 'f', name: 'behaviour test names', run: () => behaviourNames(range) },
+      { id: 'g', name: 'merge-tree against origin/main', run: () => mergeTree(range) },
+    ],
+    log,
+  );
 }
 
 function main() {
@@ -186,8 +180,7 @@ function main() {
       `pre-ready: this branch is ${behind} commit(s) behind origin/main. Steps (b) to (d) and (f) run the branch's own checkers; CI's queue runs main's.`,
     );
   }
-  const steps = gateSteps({ cwd, tools: cwd, base, head }, args.skip, pr);
-  const result = runGate(steps, (line) => console.log(line));
+  const result = gate({ cwd, base, head, skip: args.skip, pr }, (line) => console.log(line));
   if (!result.ok) {
     console.log(`pre-ready: red at (${result.failed}); fix it and run again before pushing.`);
     process.exit(1);
@@ -196,4 +189,4 @@ function main() {
   console.log(`pre-ready: green for ${short(head)} against origin/main ${short(base)}.${skipped}`);
 }
 
-main();
+if (process.argv[1] === import.meta.filename) main();
