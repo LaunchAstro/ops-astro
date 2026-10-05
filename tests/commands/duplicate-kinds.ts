@@ -107,6 +107,7 @@ export const DECLARED: Readonly<
   // A retype and back (WF-1): the old task keeps `type` and its `type_history`, the shell
   // neither; it ends untyped, so the share planted below still applies.
   'task.set_type': { carry: 'not carried', plant: retypedAndBack },
+  'map.revise': { carry: 'not carried', plant: 'revises a map; the duplicated task is none' },
   'task.start': {
     carry: 'not carried',
     plant: async (taskId) =>
@@ -195,6 +196,12 @@ export const DECLARED: Readonly<
   'budget.set_planning_cap': { carry: 'not carried', plant: 'a business setting' },
   'run.delegate_child': { carry: 'not carried', plant: 'needs a lease' },
   'run.child_handback': { carry: 'not carried', plant: 'needs a child run' },
+  // C33: an automation of the business, carrying no task.
+  'activation.change': { carry: 'not carried', plant: 'an automation, not task content' },
+  'definition.release': { carry: 'not carried', plant: 'an automation, not task content' },
+  // C31: a business's custody key, never task content.
+  'secret.set': { carry: 'not carried', plant: 'a business key, not task content' },
+  'secret.clear': { carry: 'not carried', plant: 'a business key, not task content' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

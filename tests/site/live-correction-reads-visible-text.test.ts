@@ -66,6 +66,11 @@ async function accepted(job: PublishJob) {
     publish: () => Promise.resolve({ kind: 'ok', value: published }),
     cancellation: () => Promise.resolve('none'),
     raiseTask: () => Promise.resolve(),
+    // The page as served before the change: the approved place is calibrated on it.
+    capture: async (url) => ({
+      ok: true,
+      value: { text: await capturedText(job.change.files[0]?.before ?? ''), url },
+    }),
   });
   if (outcome.state !== 'accepted') throw new Error(`Fixture refused: ${outcome.state}`);
   return outcome;
@@ -105,9 +110,10 @@ async function capturedText(html: string): Promise<string> {
 async function observed(job: PublishJob, served: string) {
   const text = await capturedText(served);
   return observeLanded(await accepted(job), target, {
+    raiseTask: () => Promise.resolve(),
     readDeployment: () =>
       Promise.resolve({ kind: 'ok', value: { revision: published.revision, served: true } }),
-    capture: () => Promise.resolve({ ok: true, value: { text } }),
+    capture: (url) => Promise.resolve({ ok: true, value: { text, url } }),
   });
 }
 
@@ -116,9 +122,10 @@ it('non-visible script copy cannot shift observation onto a replacement decoy', 
     '<script type="text/plain">We walk alongside you.</script>\n<p>We walk alongside you.</p>\n<p>We walk beside you.</p>\n';
   const job = approvedJob(source);
   const result = await observeLanded(await accepted(job), target, {
+    raiseTask: () => Promise.resolve(),
     readDeployment: () =>
       Promise.resolve({ kind: 'ok', value: { revision: published.revision, served: true } }),
-    capture: () => Promise.resolve({ ok: true, value: { text: paragraphText(source) } }),
+    capture: (url) => Promise.resolve({ ok: true, value: { text: paragraphText(source), url } }),
   });
   expect(paragraphText(source)).toBe('We walk alongside you. We walk beside you.');
   expect(result.state).toBe('accepted');
@@ -129,24 +136,26 @@ it('non-visible script copy cannot hide a completed publish or revert', async ()
     '<script type="text/plain">We walk alongside you.</script>\n<p>We walk alongside you.</p>\n';
   const job = approvedJob(source);
   const observedLive = await observeLanded(await accepted(job), target, {
+    raiseTask: () => Promise.resolve(),
     readDeployment: () =>
       Promise.resolve({ kind: 'ok', value: { revision: published.revision, served: true } }),
-    capture: () =>
+    capture: (url) =>
       Promise.resolve({
         ok: true,
-        value: { text: paragraphText(job.change.files[0]?.after ?? '') },
+        value: { text: paragraphText(job.change.files[0]?.after ?? ''), url },
       }),
   });
   const restored = await revertCorrection(
     {
       publishedRevision: published.revision,
       target,
-      change: job.change,
+      occurrence: observedLive.occurrence,
       seam: 'revert-17',
       decidedAt: 1_000,
     },
     {
       now: () => 2_000,
+      raiseTask: () => Promise.resolve(),
       readBack: () => Promise.resolve({ state: 'absent' }),
       revert: () =>
         Promise.resolve({
@@ -155,7 +164,11 @@ it('non-visible script copy cannot hide a completed publish or revert', async ()
         }),
       readDeployment: () =>
         Promise.resolve({ kind: 'ok', value: { revision: 'reverted', served: true } }),
-      capture: () => Promise.resolve({ ok: true, value: { text: paragraphText(source) } }),
+      capture: () =>
+        Promise.resolve({
+          ok: true,
+          value: { text: paragraphText(source), url: published.liveUrl },
+        }),
     },
   );
   expect({ publish: observedLive.state, revert: restored.state }).toEqual({
@@ -172,9 +185,10 @@ it.each(['nbsp', 'copy', 'eacute'])(
     const rendered = paragraphText(job.change.files[0]?.after ?? '');
     expect(rendered).not.toContain(`&${entity};`);
     const result = await observeLanded(await accepted(job), target, {
+      raiseTask: () => Promise.resolve(),
       readDeployment: () =>
         Promise.resolve({ kind: 'ok', value: { revision: published.revision, served: true } }),
-      capture: () => Promise.resolve({ ok: true, value: { text: rendered } }),
+      capture: (url) => Promise.resolve({ ok: true, value: { text: rendered, url } }),
     });
     expect(result.state).toBe('live');
   },

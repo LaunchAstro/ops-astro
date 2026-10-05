@@ -41,7 +41,7 @@ if (serverUrl === undefined) {
 
 /** Every path is a collection and an operation; the collections are named in the case below. */
 const PATH_SHAPE =
-  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|preference|access|operations|privacy|legal|credential|client|inbox|notifications|map)\/[a-z_]+$/u;
+  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|automation|activation)\/[a-z_]+$/u;
 
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
@@ -89,7 +89,7 @@ describe('the surface as a table', () => {
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
     // `tag` is MP-4-11's: the business's tag vocabulary.
-    // `map` is the wayfinder's (WF-1): a map is a task of type `map`.
+    // `map` is the wayfinder's (WF-1); `automation` and `activation` C33's.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
@@ -97,6 +97,7 @@ describe('the surface as a table', () => {
 /** The reads the surface declares, sorted. */
 const DECLARED_READS = [
   'access.read',
+  'automation.registry',
   'client.list',
   'conversation.allowance',
   'conversation.list',
@@ -107,11 +108,14 @@ const DECLARED_READS = [
   'inbox.count',
   'inbox.read',
   'inbox.unattended',
+  'map.frontier',
+  'map.view',
   'operations.read',
   'person.list',
   'preference.read',
   'preset.plan',
   'privacy.draft_breach_notices',
+  'secret.list',
   'session.capabilities',
   'session.person',
   'settings.read',
@@ -129,7 +133,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the thirty reads as reads, and everything else as a write', () => {
+  it('declares the thirty-four reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

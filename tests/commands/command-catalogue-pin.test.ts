@@ -57,6 +57,10 @@
 // The fourteenth is AW-11's hand-over and handback: untargeted writes on
 // `run` an agent reaches under its delegation, and a person is refused both
 // by name.
+// The fifteenth is C33's `activation.change` and `definition.release`:
+// untargeted person writes no agent reaches, one row each in the tables that
+// list every write, every untargeted one or every operation with no expected
+// revision, beside the `automation.registry` read.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -196,6 +200,11 @@ vi.mock('../../packages/core-commands/src/commands/legal-write.ts', async (origi
   approveVersion: recorder('approveVersion'),
   publishVersion: recorder('publishVersion'),
 }));
+vi.mock('../../packages/core-commands/src/commands/custody-secrets.ts', async (original) => ({
+  ...(await original<object>()),
+  setCustodySecret: recorder('setCustodySecret'),
+  clearCustodySecret: recorder('clearCustodySecret'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -212,10 +221,19 @@ vi.mock('../../packages/core-commands/src/commands/tasks-pickup.ts', async (orig
   ...(await original<object>()),
   pickupAsPerson: recorder('pickupAsPerson'),
 }));
+vi.mock('../../packages/core-commands/src/commands/automations.ts', async (original) => ({
+  ...(await original<object>()),
+  changeActivationAsPerson: recorder('changeActivationAsPerson'),
+  releaseDefinitionVersion: recorder('releaseDefinitionVersion'),
+}));
 vi.mock('../../packages/core-commands/src/commands/wayfinder.ts', async (original) => ({
   ...(await original<object>()),
   setTaskType: recorder('setTaskType'),
   scopeMap: recorder('scopeMap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-revision.ts', async (original) => ({
+  ...(await original<object>()),
+  reviseMap: recorder('reviseMap'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-handback.ts', async (original) => ({
   ...(await original<object>()),
@@ -325,6 +343,8 @@ const PINNED_RUNTIME_SHAPED = {
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
+  'activation.change': ['activationId', 'versionId'],
+  'definition.release': ['definitionId'],
   'budget.record_outcome': ['recordId', 'attemptId'],
   'budget.set_planning_cap': [],
   'budget.top_up': ['recordId'],
@@ -342,6 +362,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'credential.issue': [],
   'credential.revoke': ['credentialId'],
   'grant.revoke': [],
+  'secret.clear': ['secretId'],
+  'secret.set': ['clientId'],
   'preference.save': [],
   'preference.dismiss_tip': [],
   'session.end': [],
@@ -395,6 +417,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'access.grant',
   'access.read',
   'access.revoke',
+  'activation.change',
+  'automation.registry',
   'budget.record_outcome',
   'budget.set_planning_cap',
   'budget.top_up',
@@ -412,6 +436,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'credential.issue',
   'credential.revoke',
   'definition.attribution',
+  'definition.release',
   'delegation.revoke',
   'gate.pending',
   'grant.revoke',
@@ -423,6 +448,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'legal.approve_version',
   'legal.draft_version',
   'legal.publish_version',
+  'map.frontier',
+  'map.view',
   'model.call',
   'notifications.set_channel',
   'operations.change_installation_mode',
@@ -442,6 +469,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'run.end_at_budget_stop',
   'run.revise_state',
   'run.top_up',
+  'secret.clear',
+  'secret.list',
+  'secret.set',
   'session.capabilities',
   'session.end',
   'session.person',
@@ -675,6 +705,8 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'access.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'access.end', operationId: 'op', holderId: 'person' },
+  { command: 'secret.set', operationId: 'op', name: 'n', value: 'v' },
+  { command: 'secret.clear', operationId: 'op', secretId: 's' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -705,7 +737,10 @@ const REQUESTS: readonly CommandRequest[] = [
     reason: 'why',
   },
   { command: 'task.set_type', operationId: 'op', recordId: 'r', taskType: 'research' },
+  { command: 'map.revise', operationId: 'op', recordId: 'r', notes: 'n' },
   { command: 'map.scope', operationId: 'op', recordId: 'r', client: 'c' },
+  { command: 'activation.change', operationId: 'op', versionId: 'v', mode: 'manual' },
+  { command: 'definition.release', operationId: 'op', name: 'n', modes: ['manual'] },
   {
     command: 'budget.set_planning_cap',
     operationId: 'op',
@@ -860,6 +895,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'access.grant': ['grantOnAccess', 'request'],
   'access.revoke': ['revokeGrantOnAccess', 'grant'],
   'access.end': ['endAccessOnSettings', 'request'],
+  'secret.set': ['setCustodySecret', 'request'],
+  'secret.clear': ['clearCustodySecret', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -871,7 +908,10 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
   'task.set_type': ['setTaskType', 'request'],
+  'map.revise': ['reviseMap', 'request'],
   'map.scope': ['scopeMap', 'request'],
+  'activation.change': ['changeActivationAsPerson', 'request'],
+  'definition.release': ['releaseDefinitionVersion', 'request'],
   'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
@@ -936,7 +976,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same ninety-three from an expected revision', () => {
+  it('exempts the same one hundred and one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

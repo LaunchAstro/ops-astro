@@ -67,9 +67,14 @@ export function proven(operation: string, answer: ProviderResult<unknown>): answ
 export interface Occurrence {
   readonly left: string;
   readonly right: string;
-  readonly index: number;
-  /** Every equal match's word on the source's page, in order, before the change. */
-  readonly words: readonly string[];
+  readonly index?: number;
+  /**
+   * The word at each equal match on the served page, in order: before the change, or as read live
+   * once seen live. Only a place calibrated on that page has it, and only such a place is observed.
+   */
+  readonly observed?: readonly string[];
+  /** Seen live at this address: the page changed here when the correction landed, so it tracks the target. */
+  readonly liveAt?: string;
 }
 
 // Elements that start a rendered block of their own.
@@ -164,11 +169,11 @@ function replacedAt(line: string, changed: string, target: CorrectionTarget): nu
   );
 }
 
-/** The approved occurrence's place, read from the one line the envelope let change. */
-export function occurrenceOf(
+/** The approved occurrence's place on the source's render, and the word at each equal there. */
+function sourcePlace(
   change: ProposedChange,
   target: CorrectionTarget,
-): Occurrence | undefined {
+): { readonly where: Occurrence; readonly words: string[] } | undefined {
   const [file] = change.files;
   const before = (file?.before ?? '').split('\n');
   const after = (file?.after ?? '').split('\n');
@@ -202,8 +207,10 @@ export function occurrenceOf(
     equals(showing(word), where, words).findIndex((one) => one.at === spot && one.word === word);
   const ranked = rank(target.word);
   if (ranked < 0 || ranked !== rank(target.replacement)) return undefined;
-  const listed = equals(showing(target.word), where, words).map((one) => one.word);
-  return { ...where, index: ranked, words: listed };
+  return {
+    where: { ...where, index: ranked },
+    words: equalsOf(showing(target.word), where, words),
+  };
 }
 
 // How much of its block either side places the word: enough to tell it from its neighbours,
@@ -224,8 +231,16 @@ function nearRight(text: string): string | undefined {
   return space < 0 ? undefined : cut.slice(0, space);
 }
 
+/** Text or a place past these is not searched (the search costs their product): no matches. */
+const MOST_TEXT = 256 * 1024;
+const MOST_PLACE = 4096;
+
 /** Every match of the place holding one of `words`, in page order (ties by word). */
 function equals(text: string, where: Pick<Occurrence, 'left' | 'right'>, words: readonly string[]) {
+  const longest = Math.max(0, ...words.map((word) => word.length));
+  if (text.length > MOST_TEXT || where.left.length + longest + where.right.length > MOST_PLACE) {
+    return [];
+  }
   return words
     .flatMap((word) =>
       wordOffsets(text, where.left + word + where.right).map((at) => ({ at, word })),
@@ -233,16 +248,62 @@ function equals(text: string, where: Pick<Occurrence, 'left' | 'right'>, words: 
     .toSorted((a, b) => a.at - b.at || (a.word < b.word ? -1 : Number(a.word > b.word)));
 }
 
-/** The page's match of the approved occurrence, counted among its equals, holds `shown`. */
-export function showsAt(
+/** The words at the place's equal matches in `text`, among `words`, in page order. */
+function equalsOf(
+  text: string,
+  where: Pick<Occurrence, 'left' | 'right'>,
+  words: readonly string[],
+): string[] {
+  return equals(text, where, words).map((one) => one.word);
+}
+
+/** The approved occurrence's place on the source alone: never observed until it is calibrated. */
+export function occurrenceOf(
+  change: ProposedChange,
+  target: CorrectionTarget,
+): Occurrence | undefined {
+  return sourcePlace(change, target)?.where;
+}
+
+/**
+ * The place, calibrated on the served page captured before the change: kept only when that page
+ * shows exactly the source's equal matches, so text the build drops or a layout adds never lines
+ * the counts up (catalogue #953). Undefined is no place: never read live, so a person checks it.
+ */
+export function calibrated(
+  change: ProposedChange,
+  target: CorrectionTarget,
+  preImage: string | undefined,
+): Occurrence | undefined {
+  const source = sourcePlace(change, target);
+  if (source === undefined || preImage === undefined) return undefined;
+  const observed = equalsOf(preImage, source.where, [target.word, target.replacement]);
+  const same =
+    observed[source.where.index ?? 0] === target.word &&
+    observed.length === source.words.length &&
+    observed.every((word, at) => word === source.words[at]);
+  return same ? { ...source.where, observed } : undefined;
+}
+
+/**
+ * The calibrated place read again. The change: the place holds `to` where it held `from`, every
+ * other equal match as observed (the place as now read). Unchanged: not yet (undefined). Any other
+ * page changed in a way no reading can tie to the target: `'unconfirmable'`, for a person.
+ */
+export function flipped(
   text: string,
   where: Occurrence | undefined,
-  shown: string,
-  gone: string,
-): boolean {
-  if (!Array.isArray(where?.words) || where.words[where.index] === undefined) return false;
-  const found = equals(text, where, [shown, gone]).map((one) => one.word);
-  // The page holds the source's equals, in its order, with only the approved one changed: a match
-  // the source never shows (a layout's title or nav) or one the build drops fails the check.
-  return found.join(' ') === where.words.with(where.index, shown).join(' ');
+  from: string,
+  to: string,
+): Occurrence | 'unconfirmable' | undefined {
+  const observed = where?.observed;
+  if (where === undefined || observed === undefined) return undefined;
+  const index = where.index ?? 0;
+  const found = equalsOf(text, where, [from, to]);
+  const as = (expected: (at: number) => string | undefined) =>
+    found.length === observed.length && found.every((word, at) => word === expected(at));
+  if (observed[index] === from && as((at) => (at === index ? to : observed[at]))) {
+    return { ...where, observed: found };
+  }
+  return as((at) => observed[at]) ? undefined : 'unconfirmable';
 }

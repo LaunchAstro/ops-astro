@@ -70,26 +70,44 @@ export default defineConfig({
     // scan-login and backup revocation proofs), the OW-002 proofs written beside
     // them, Sol's two PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
     // c59-factor-routes-world (byte for byte but for one cookie-jar split CQ-11
-    // asks for), Sol's six F2 lost-answer retry proofs and Sol's two F3
-    // save-order proofs open their worlds with no skip, as do Sol's three
-    // template lock and clone catalogue proofs and the cases written beside
-    // them; without a database they are left out here, and the manifests run
-    // them where there is one.
+    // asks for), Sol's six F2 lost-answer retry proofs, Sol's two F3
+    // save-order proofs and Sol's OW-016 route proof open their worlds with no
+    // skip, as do Sol's three template lock and clone catalogue proofs and the
+    // cases written beside them, and C31's Sol proof files; without a database
+    // they are left out here, and the manifests run them where there is one.
+    // C31's corrupted audit chain fails by design: only the proof that spawns
+    // it from inside a test worker collects it.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
+      ...(process.env['VITEST_WORKER_ID'] === undefined
+        ? ['tests/custody/c31-audit-chain-corrupted.test.ts']
+        : []),
       ...(database
         ? []
         : [
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
+            'tests/api/server-entry-hosted-sign-in-key.test.ts',
+            'tests/review/forwarder-replay-time-order.test.ts',
             'tests/automations/c33-registry-snapshot-and-claim-races.test.ts',
+            'tests/custody/c31-audit-chain-test-catches-corruption.test.ts',
+            'tests/custody/c31-last-used-moves-forward.test.ts',
+            'tests/custody/c31-revoked-list-and-revision-range.test.ts',
+            'tests/custody/c31-secret-set-guards.test.ts',
+            'tests/custody/c31-two-setters-overlap.test.ts',
             'tests/api/end-others-provider-clock-skew.test.ts',
             'tests/api/end-others-delayed-ending.test.ts',
             'tests/api/end-others-ended-session-leaves-live-list.test.ts',
+            'tests/api/end-others-leaves-session-list-in-every-business.test.ts',
+            'tests/identity/session-list-subject-wide-ending.test.ts',
             'tests/api/agent-credential-exports-counted.test.ts',
             'tests/review/role-repair-drops-inherited-access-proof.test.ts',
             'tests/review/staging-logins-*-proof.test.ts',
             'tests/operations/find-copies-values-only.proof.test.ts',
+            'tests/operations/find-copies-output-and-refusals.test.ts',
+            'tests/operations/find-copies-seeds-and-erasure.test.ts',
+            'tests/operations/find-copies-stored-names.test.ts',
+            'tests/operations/find-copies-long-values.test.ts',
             'tests/operations/scan-login-token-and-shared-login.proof.test.ts',
             'tests/operations/scan-login-cleanup-mapping-race.test.ts',
             'tests/review/backup-read-part-appointment-proof.test.ts',
@@ -101,6 +119,10 @@ export default defineConfig({
             'tests/operations/scan-login-cleanup-subject-race.proof.test.ts',
             'tests/api/function-outbox-before-response.test.ts',
             'tests/api/function-outbox-waits-for-own-events.test.ts',
+            'tests/api/conversation-retention-work.test.ts',
+            'tests/db/conversation-run-end-retention.test.ts',
+            'tests/db/run-end-stamped-after-lock-wait.test.ts',
+            'tests/db/run-supersede-stamped-after-lock-wait.test.ts',
             'tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts',
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
@@ -115,10 +137,16 @@ export default defineConfig({
             'tests/broker/model-call-concurrent-sends-dispatch-once.test.ts',
             'tests/broker/model-call-retried-send-sends-once.test.ts',
             'tests/broker/model-call-swept-hold-sends-nothing.test.ts',
+            'tests/broker/counted-call-release-races-top-up-and-end.test.ts',
             'tests/harness/reserved-model-call-retry-sends-once.test.ts',
             'tests/api/receipt-link-held-credentials-crossings.test.ts',
             'tests/api/receipt-link-keeps-no-credential.test.ts',
             'tests/api/receipt-link-literal-percent-and-held-digests.test.ts',
+            'tests/broker/reconcile-keeps-call-when-its-carrier-changes.test.ts',
+            'tests/broker/reconcile-uses-carrying-route.test.ts',
+            'tests/api/held-attempt-calls-provider-once.test.ts',
+            'tests/api/held-answer-sign-off.proof.test.ts',
+            'tests/api/applied-comment-settles-after-sign-off.proof.test.ts',
             'tests/web/authenticator-cancelled-enrol-lands-late.test.tsx',
             'tests/web/sign-in-code-after-enrolment.test.tsx',
             'tests/surfaces/incident-retry-once-and-task-draft-stays-with-business.test.tsx',

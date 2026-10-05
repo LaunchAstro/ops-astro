@@ -12,17 +12,14 @@
 // decision or an incident is never silenced, which the server refuses too
 // (`notifications.set_channel`, inbox-escalation-settings.test.ts).
 
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { NotConnected, Segmented, Switch } from '@launchastro/ui';
 import { dismissedTipCount } from '../../../../../packages/core-wire/src/index.ts';
 import { applyAppearance, isAppearance, type Appearance } from '../../appearance.ts';
-import { savedSince, savePreference, savesSoFar } from '../../data/preference-saves.ts';
-import { isRefusal, type OperationsClient } from '../../operations/client.ts';
-import { describeFailure, describeRefusal } from '../../records/submit.ts';
+import type { OperationsClient } from '../../operations/client.ts';
 import type { StorageLike } from '../../session/token.ts';
 import { OnOff } from './panels.tsx';
-
-type Preferences = Readonly<Record<string, unknown>>;
+import { usePreferences, type Preferences } from './use-preferences.ts';
 
 /** The label, one quiet sentence, and the control on the right (DS-COMP-26 rows). */
 function Row(props: {
@@ -60,82 +57,6 @@ function Group(props: {
       </div>
     </section>
   );
-}
-
-type Held = { readonly of: string; readonly value: Preferences } | null;
-
-/** A read's answer for `of`, but a key saved since the read left keeps its saved value. */
-function answered(before: Held, of: string, read: Preferences, newer: (key: string) => boolean) {
-  const own = before?.of === of ? before.value : {};
-  const kept = Object.entries(own).filter(([key]) => newer(key));
-  return { of, value: { ...read, ...Object.fromEntries(kept) } };
-}
-
-/** A refused save's reread puts the stored value back unless a later save moved that key on. */
-type Restore = (read: Preferences, newer: (key: string) => boolean) => void;
-
-/** The reader now: it ends when the business or person changes, and its reads go unheard. */
-function useReader(client: OperationsClient, grantKey: string) {
-  const reader = useRef({ live: false });
-  useEffect(() => {
-    const now = { live: true };
-    reader.current = now;
-    return () => {
-      now.live = false;
-    };
-  }, [client, grantKey]);
-  return reader;
-}
-
-/** The person's own preferences: read once per reader, changed at once, then saved. */
-function usePreferences(client: OperationsClient, grantKey: string) {
-  const [held, setHeld] = useState<Held>(null);
-  // A refusal is said to one reader, as `held` is held for one.
-  const [said, setSaid] = useState<{ readonly of: string; readonly text: string } | null>(null);
-
-  const reader = useReader(client, grantKey);
-  const reread = (of: { readonly live: boolean }, mark: number, restore?: Restore) => {
-    void client.read<{ readonly preferences?: unknown }>('preference.read', {}).then((answer) => {
-      if (!of.live) return answer;
-      const preferences = 'value' in answer ? answer.value.preferences : undefined;
-      const newer = (key: string): boolean => savedSince(client, key, mark);
-      if (typeof preferences === 'object' && preferences !== null) {
-        setHeld((before) => answered(before, grantKey, preferences as Preferences, newer));
-        restore?.(preferences as Preferences, newer);
-      } else if (isRefusal(answer)) setSaid({ of: grantKey, text: describeRefusal(answer) });
-      else setSaid({ of: grantKey, text: 'Your preferences could not be read.' });
-      return answer;
-    });
-  };
-
-  useEffect(() => reread(reader.current, savesSoFar(client)), [client, grantKey]);
-
-  const save = (preference: string, value: unknown, back?: (stored: unknown) => void): void => {
-    const now = reader.current;
-    // Only this reader's own preferences take the change: another reader's,
-    // still held while this one's read is pending, are not carried over.
-    setHeld((before) => {
-      const own = before?.of === grantKey ? before.value : {};
-      return { of: grantKey, value: { ...own, [preference]: value } };
-    });
-    setSaid(null);
-    // Marked at this save, so a save made after it, queued or landed, outranks the reread.
-    const mark = savesSoFar(client) + 1;
-    void savePreference(client, preference, value).then((result) => {
-      const failed = describeFailure(result);
-      if (failed !== null && now.live) {
-        setSaid({ of: grantKey, text: failed });
-        reread(now, mark, (read, newer) => {
-          if (!newer(preference)) back?.(read[preference]);
-        });
-      }
-      return result;
-    });
-  };
-
-  const preferences = held !== null && held.of === grantKey ? held.value : null;
-  const because = said !== null && said.of === grantKey ? said.text : null;
-  return { preferences, because, save };
 }
 
 function AppearanceRow(props: {

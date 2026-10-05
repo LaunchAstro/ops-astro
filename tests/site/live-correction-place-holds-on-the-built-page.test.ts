@@ -5,23 +5,37 @@
 // another, and finding and counting it stays linear. Each crossing serves the unchanged page.
 import { expect, it } from 'vitest';
 import { readDocument } from '../../packages/core-connectors/src/capture/page.ts';
-import { occurrenceOf, showsAt } from '../../packages/core-connectors/src/site/reconcile.ts';
+import {
+  calibrated,
+  flipped,
+  occurrenceOf,
+} from '../../packages/core-connectors/src/site/reconcile.ts';
 
 const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
 
-/** Whether the check reads `served` as showing `replacement` at the approved place of `word`. */
+/** The page's text as the capture reads it. */
+function read(html: string): string {
+  const reading = readDocument(html);
+  if (typeof reading === 'string') throw new Error(`Capture refused: ${reading}`);
+  return reading.text;
+}
+
+/**
+ * Whether the check reads `served` as showing `replacement` at the approved place of `word`,
+ * calibrated on `preImage`, the page served before the change (by default `served` itself).
+ */
 function readsLive(
   before: string,
   after: string,
   word: string,
   replacement: string,
   served: string,
+  preImage = served,
 ) {
   const correction = { path: target.path, word, replacement };
-  const where = occurrenceOf({ files: [{ path: target.path, before, after }] }, correction);
-  const reading = readDocument(served);
-  if (typeof reading === 'string') throw new Error(`Capture refused: ${reading}`);
-  return showsAt(reading.text, where, replacement, word);
+  const change = { files: [{ path: target.path, before, after }] };
+  const where = calibrated(change, correction, read(preImage));
+  return typeof flipped(read(served), where, word, replacement) === 'object';
 }
 
 it('a word inside a character reference has no place, so a decoy block never reads live', () => {
@@ -45,7 +59,7 @@ it('a match spanning a block boundary is counted as the live page counts it', ()
   const before = '<p>fixed x</p>\n<p>fixed x typo</p>\n';
   const after = '<p>fixed x</p>\n<p>fixed x fixed</p>\n';
   expect(readsLive(before, after, 'typo', 'fixed', before)).toBe(false);
-  expect(readsLive(before, after, 'typo', 'fixed', after)).toBe(true);
+  expect(readsLive(before, after, 'typo', 'fixed', after, before)).toBe(true);
 });
 
 it('a correction in a long paragraph reads live, its place bounded either side', () => {
@@ -59,7 +73,7 @@ it('a correction in a long paragraph reads live, its place bounded either side',
   expect(
     Math.max(where?.left.length ?? Infinity, where?.right.length ?? Infinity),
   ).toBeLessThanOrEqual(128);
-  expect(readsLive(before, after, 'typo', 'fixed', after)).toBe(true);
+  expect(readsLive(before, after, 'typo', 'fixed', after, before)).toBe(true);
   expect(readsLive(before, after, 'typo', 'fixed', before)).toBe(false);
 });
 
@@ -144,7 +158,9 @@ it.each(Object.entries(fenced))(
     expect(
       readsLive(before, after, 'Contcat', 'Contact', '<h1>Contcat</h1><footer>Contact</footer>'),
     ).toBe(false);
-    expect(readsLive(before, after, 'Contcat', 'Contact', '<h1>Contact</h1>')).toBe(true);
+    expect(
+      readsLive(before, after, 'Contcat', 'Contact', '<h1>Contact</h1>', '<h1>Contcat</h1>'),
+    ).toBe(true);
   },
 );
 
@@ -163,11 +179,11 @@ it.each([
 });
 
 it.each([
-  ['past its words', { left: '', right: '', index: 3, words: ['Contcat'] }],
-  ['before them', { left: '', right: '', index: -1, words: ['Contcat'] }],
-  ['with no words', { left: '', right: '', index: 0, words: [] }],
+  ['past its words', { left: '', right: '', index: 3, observed: ['Contcat'] }],
+  ['before them', { left: '', right: '', index: -1, observed: ['Contcat'] }],
+  ['with no words', { left: '', right: '', index: 0, observed: [] }],
 ])('a place whose rank is %s never reads live', (_, where) => {
-  expect(showsAt('Contact', where, 'Contact', 'Contcat')).toBe(false);
+  expect(typeof flipped('Contact', where, 'Contcat', 'Contact')).not.toBe('object');
 });
 
 // A build reads each of these as a fence too (or as frontmatter of another kind), so any line
@@ -216,9 +232,9 @@ it('a long run of spaces in another line is read in linear time', () => {
 
 it('a place read back without its words never reads live', () => {
   const stored: unknown = JSON.parse('{"left":"","right":"","index":0}');
-  expect(showsAt('Home Contact Contcat Call us.', stored as never, 'Contact', 'Contcat')).toBe(
-    false,
-  );
+  expect(
+    typeof flipped('Home Contact Contcat Call us.', stored as never, 'Contcat', 'Contact'),
+  ).not.toBe('object');
 });
 
 it('a marker character after the word in its own block leaves it with no place', () => {

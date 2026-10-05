@@ -149,7 +149,7 @@ export async function dispatch(
     locks.push({ lockClass: 'delegation', id: found.delegation_id });
   await acquire(tx, locks);
 
-  const lockedAt = await lockedInstant(tx);
+  const lockedAt = await lockedInstant(tx, ['client_sign_off_required']);
   const lease = await readLease(tx, request.leaseId, lockedAt);
   const caller =
     request.claimant === 'person'

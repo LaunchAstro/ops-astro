@@ -35,7 +35,6 @@ it('a page the capture reads otherwise than the check has no place for the occur
     left: 'We walk ',
     right: ' you.',
     index: 1,
-    words: ['alongside', 'alongside'],
   });
   drift.on = true;
   try {
