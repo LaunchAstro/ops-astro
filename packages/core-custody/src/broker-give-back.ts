@@ -32,14 +32,29 @@ export const COUNTED_CAUSES: readonly string[] = ['budget_stop_ended'];
  * The hold `r` counted its open calls at their maximum: ended at a budget stop
  * (`causes` names the parameter holding COUNTED_CAUSES, and is only ever a
  * numbered placeholder: it is written into the SQL text), or topped up.
+ * Anything else, including an untyped value the type check cannot see, is
+ * refused before any SQL is built.
  */
-export const countedHold = (causes: `$${number}`): string =>
-  `((r.state = 'abandoned' and r.classified_cause = any(${causes}::text[]))
+export const countedHold = (causes: `$${number}`): string => {
+  if (!isPlaceholder(causes)) throw new TypeError('countedHold takes a numbered placeholder');
+  return `((r.state = 'abandoned' and r.classified_cause = any(${causes}::text[]))
      or (r.state in ('held', 'actual', 'abandoned') and exists (
            select 1 from public.budget_answers ba
              join public.budget_asks k on k.business_id = ba.business_id and k.id = ba.ask_id
             where ba.business_id = r.business_id and k.reservation_id = r.id
               and ba.kind = 'top_up')))`;
+};
+
+/** '$' then a number with no leading zero, read character by character. */
+const isPlaceholder = (text: unknown): boolean =>
+  typeof text === 'string' &&
+  text.length > 1 &&
+  text[0] === '$' &&
+  text[1] !== '0' &&
+  text
+    .slice(1)
+    .split('')
+    .every((c) => c >= '0' && c <= '9');
 
 interface Due {
   readonly reservation_id: string;
