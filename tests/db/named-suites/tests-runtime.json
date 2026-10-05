@@ -136,6 +136,7 @@
     "tests/runtime/review-3b-5-delegate-child-lease-id.test.ts",
     "tests/runtime/seed-revoke-in-flight.test.ts",
     "tests/runtime/seed-revoke-live-lease.test.ts",
+    "tests/runtime/trace-export-gap-cursor.test.ts",
     "tests/runtime/trashed-task-work-and-notes.test.ts",
     "tests/runtime/unstorable-operands.test.ts"
   ]

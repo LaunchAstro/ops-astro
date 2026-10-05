@@ -29,6 +29,7 @@
     "tests/db/mp-6-2-run-states.test.ts",
     "tests/db/storage-triggers.test.ts",
     "tests/db/identity-roles-hold-no-membership.test.ts",
-    "tests/db/migration-retries-shared-role-race.test.ts"
+    "tests/db/migration-retries-shared-role-race.test.ts",
+    "tests/db/forwarder-replay-order-and-scopes.test.ts"
   ]
 }

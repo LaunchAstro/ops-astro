@@ -3,7 +3,8 @@
     "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read).",
     "SOLOW-G G1c names failed-handback-story (Sol OW-108.1: a failed hand-back never reports successful completion, through the real API) and handback-outcome-read (the task read carries the attempt outcome: a completed hand-back reads completed and Done).",
     "CAT-API-1 names unknown-key-credential-door (catalogue #764: a not-live credential at a business key nobody holds answers as at a held one, past the door's count, through the real API and database).",
-    "Not named: secret-log-capture-keeps-credential-in-object.test.ts and secret-log-capture-keeps-credential-in-format-and-buffer.test.ts import api-2-agent-credential-use-world.ts only for its console capture and open no database, and the runner refuses a named suite that leaves the counter alone (catalogue #720)."
+    "Not named: secret-log-capture-keeps-credential-in-object.test.ts and secret-log-capture-keeps-credential-in-format-and-buffer.test.ts import api-2-agent-credential-use-world.ts only for its console capture and open no database, and the runner refuses a named suite that leaves the counter alone (catalogue #720).",
+    "SOLOW-C C1 names hosted-provider-project-key and server-entry-hosted-sign-in-key (the server entry hands the hosted provider's publishable key to the page and to its own factor and sign-out calls), with tests-db forwarder-replay-order-and-scopes, tests-review access-change-alerts, forwarder-replay-time-order and trace-jobs-log-and-retention, and tests-runtime trace-export-gap-cursor (alerts on access changes, the forwarder's replay in time order without the live scope cap, trace retention's re-send and the gap's read cursor)."
   ],
   "invariant": [
     "tests/api/agent-bare-handback-replay.test.ts",
@@ -126,6 +127,7 @@
     "tests/api/fix-2b1-rs2-left-at-door-real-routes.test.ts",
     "tests/api/handback-outcome-read.test.ts",
     "tests/api/hosted-expired-lease-recovery.test.ts",
+    "tests/api/hosted-provider-project-key.test.ts",
     "tests/api/hosted-recovery-waits-for-pass.test.ts",
     "tests/api/mp-6-1-checks.test.ts",
     "tests/api/mp-6-1-controls.test.ts",
@@ -149,6 +151,7 @@
     "tests/api/review-3a-20-check-lease-lock.test.ts",
     "tests/api/review-3a-3-sweep-starvation.test.ts",
     "tests/api/review-main-2b1-5-rollup-race.test.ts",
+    "tests/api/server-entry-hosted-sign-in-key.test.ts",
     "tests/api/settings-revision-type.test.ts",
     "tests/api/settings-unstorable-values.test.ts",
     "tests/api/shared-business-key.test.ts",
