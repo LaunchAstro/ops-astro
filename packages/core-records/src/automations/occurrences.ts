@@ -78,7 +78,7 @@ const occurrenceOf = (row: OccurrenceDbRow): OccurrenceRow => ({
 /**
  * A rate's count: this business's occurrences let through in the last hour,
  * read under its lock. The hour ends at this statement's time, after the lock
- * wait, never the transaction's start.
+ * wait, never the transaction's start; the claim stamps its row the same way.
  */
 function firedLastHour(name: string, limit: number, activationId: string | null): DurableLimit {
   return {
@@ -188,8 +188,9 @@ export async function claimOccurrence(
   const eventId = scheduled ? null : cause.eventId;
   const inserted = await tx.query<OccurrenceDbRow>(
     `insert into public.activation_occurrences
-       (business_id, id, activation_id, version_id, due_at, event_id, outcome, approval_id)
-     values ((select public.app_business_id()), $1, $2, $3, $4, $5, $6, $7)
+       (business_id, id, activation_id, version_id, due_at, event_id, outcome, approval_id,
+        recorded_at)
+     values ((select public.app_business_id()), $1, $2, $3, $4, $5, $6, $7, statement_timestamp())
      on conflict do nothing
      returning ${OCCURRENCE_COLUMNS}`,
     [randomUUID(), activation.id, activation.versionId, dueAt, eventId, outcome, approvalId],
