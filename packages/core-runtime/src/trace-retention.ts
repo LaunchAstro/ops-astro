@@ -20,8 +20,11 @@
 //
 // The store applies a delete whenever it likes: after a timeout, after this
 // pass failed, after a fresh event of the run went out into the trace it
-// takes. So an ask stays owed until a batch confirms its run at its place
-// or later, and every pass reads back the owed asks it did not just make.
+// takes, and a confirmation proves one delete landed, never that another is
+// not queued. So an ask stays owed until a batch confirms its run at its
+// place or later, and while the run has an event after that place inside the
+// window (`trace-owed.ts`); every pass reads back every owed ask it did not
+// just make, page after page.
 // A run found gone has its events after its place sent again (`sendAgain`)
 // in the transaction that confirms it, or, when it has such events, holds
 // it back with its ask still owed. The export sends a run with an owed ask
@@ -43,7 +46,7 @@ import {
   type GapCode,
   type TraceDatabase,
 } from './trace-export.ts';
-import { OWED_ASKS } from './trace-owed.ts';
+import { byPlace, owedAsks } from './trace-owed.ts';
 import { derivedId } from './trace-span.ts';
 
 /** The deletion endpoint's cap on ids per call. */
@@ -89,12 +92,22 @@ export async function expireOnce(
     // A finished batch confirmed every run it asked, so the next page is new runs.
     if (batch.code !== null || ask.runs.length < page) break;
   }
-  const owed = await database.withBusiness(businessId, async (tx) => await owedAsks(tx, page));
-  for (const { runs, place } of owed) {
-    const ask = { runs: runs.filter((runId) => !asked.has(runId)), place };
-    // eslint-disable-next-line no-await-in-loop -- one ask after another; the store is not hurried
-    const batch = await recheck(database, businessId, key, ports, ask, windowDays);
-    if (batch !== null) batches.push(batch);
+  // Every owed run, page after page by run: a page that stays present does not hide the next.
+  let after: string | null = null;
+  for (;;) {
+    const from = after;
+    // eslint-disable-next-line no-await-in-loop -- one page after another
+    const owed = await database.withBusiness(
+      businessId,
+      async (tx) => await owedAsks(tx, windowDays, from, page),
+    );
+    for (const { runs, place } of byPlace(owed.filter((row) => !asked.has(row.runId)))) {
+      // eslint-disable-next-line no-await-in-loop -- one ask after another; the store is not hurried
+      const batch = await recheck(database, businessId, key, ports, { runs, place }, windowDays);
+      if (batch !== null) batches.push(batch);
+    }
+    if (owed.length < page) break;
+    after = owed.at(-1)?.runId ?? null;
   }
   return batches;
 }
@@ -185,23 +198,6 @@ async function recheck(
     null,
     windowDays,
   );
-}
-
-/** The owed asks, one per run at its latest place, grouped by place. */
-async function owedAsks(tx: TenantQuery, page: number): Promise<readonly Ask[]> {
-  const rows = await tx.query<{ readonly run_id: string } & Place>(
-    `select run_id, after_tx::text as tx, after_id as id from (${OWED_ASKS}) owed
-      order by after_tx, after_id limit $3`,
-    [tx.businessId, null, page],
-  );
-  const asks = new Map<string, { runs: string[]; place: Place }>();
-  for (const row of rows) {
-    const at = `${String(row.tx)}/${String(row.id)}`;
-    const ask = asks.get(at) ?? { runs: [], place: { tx: row.tx, id: row.id } };
-    ask.runs.push(row.run_id);
-    asks.set(at, ask);
-  }
-  return [...asks.values()];
 }
 
 /** The runs whose trace a read finds gone. */

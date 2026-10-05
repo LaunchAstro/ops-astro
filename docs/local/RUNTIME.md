@@ -1953,15 +1953,19 @@ and codes, never a sentence, to a trace target an operator reads.
   delivery code, or `expiry_unconfirmed`). A failed delete confirms nothing;
   an unconfirmed run is due again next pass. The store applies a delete
   whenever it likes, even after a timeout or after the pass failed, so an
-  ask is owed until a batch confirms its run at its place or later. Each
-  pass reads back the owed asks it did not just make; a run found gone has
+  ask is owed until a batch confirms its run at its place or later, and
+  while the run has an event after that place inside the window: a
+  confirmation proves one delete landed, never that no other is still
+  queued. Each pass reads back every owed ask it did not just make, page
+  after page by run; a run found gone has
   its events after its place sent again, in the transaction that confirms
   it, and a run that has such events is held back with its ask still owed
   (`expiry_unconfirmed`): the cursor steps back to just before the earliest such event (or
   stays, if already behind it) under its row lock, the lock the export's
   advance takes, and its version changes, so an export that read before
   the step never advances. While a run's ask is owed, an export that sends
-  one of its events sends all of them since the place, so a delete landing
+  one of its events sends all of them since the place inside the window, in
+  one body and with no cap, so a delete landing
   between two exports leaves the trace whole. A confirmation covers only
   the events up to its place: a run with a later event, even one committed
   after the pass, is due again once that event is past the window. Two
