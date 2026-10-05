@@ -161,6 +161,9 @@ export class UstarReader {
       }
       return null;
     }
+    // After one zero block only zeros may follow: judge each as it arrives, so a cap
+    // inside the second end block cannot hide a bad byte before it.
+    if (state.at === 'zero' && bytes.some((byte) => byte !== 0)) return refusal('tar end');
     this.block.set(bytes, this.blockFill);
     this.blockFill += bytes.length;
     if (this.blockFill < BLOCK) return null;
