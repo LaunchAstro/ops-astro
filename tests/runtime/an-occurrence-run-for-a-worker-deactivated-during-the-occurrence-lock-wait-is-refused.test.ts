@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `startOccurrenceRun` asks whether its caller is an active worker, then waits
-// for the occurrence's lock, and asks nothing after. A fixture transaction
+// `startOccurrenceRun` waits for the occurrence's lock, then asks whether its
+// caller is an active worker. A fixture transaction
 // holds the occurrence lock (another start of the same occurrence); the start
 // is admitted on the live worker and parks on the lock; the worker is
 // deactivated and commits; then the fixture lets go. The start must be refused

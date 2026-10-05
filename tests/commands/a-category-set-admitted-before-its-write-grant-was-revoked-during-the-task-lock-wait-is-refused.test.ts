@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `task.set_category` asks the caller's write grant before it locks the task
-// row (`prepareCommand`), and asks nothing after. The writer's only write is a
+// `task.set_category` asks the caller's write grant, waits for the task row
+// (`prepareCommand`), and asks again once it holds it. The writer's only write is a
 // grant on this one task. A fixture transaction holds the task row; the set is
 // admitted on the live grant and parks on the row; the grant is revoked and
 // commits; then the fixture lets go. The set must be refused

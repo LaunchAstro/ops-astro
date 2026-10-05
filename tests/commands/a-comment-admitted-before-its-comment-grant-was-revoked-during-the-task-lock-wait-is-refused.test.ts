@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `task.comment` asks the caller's comment grant before it locks the task row
-// (`prepareCommand`), and asks nothing after. The commenter's only grant is
+// `task.comment` asks the caller's comment grant, waits for the task row
+// (`prepareCommand`), and asks again once it holds it. The commenter's only grant is
 // `comment` on one task of client A. A fixture transaction holds the task row;
 // the comment is admitted on the live grant and parks on the row; the grant is
 // revoked and commits; then the fixture lets go. The comment must be refused

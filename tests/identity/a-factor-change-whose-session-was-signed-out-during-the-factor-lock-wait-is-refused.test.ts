@@ -2,7 +2,8 @@
 //
 // Each second-factor act records its change in a second transaction that
 // resolves the caller's session, then waits for the login's factor lock
-// (`liveFactor` with `lock`), and resolves nothing after. A fixture
+// (`liveFactor` with `lock`) and the audit chain, and asks the session again
+// after its last wait (`judged`). A fixture
 // transaction holds that lock; the act's record step is admitted on the live
 // session and parks on the lock; the session is signed out on another
 // connection and commits; then the fixture lets go. The act must be refused

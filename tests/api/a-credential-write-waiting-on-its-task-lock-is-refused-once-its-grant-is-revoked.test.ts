@@ -68,9 +68,17 @@ const until = async (done: () => Promise<boolean>): Promise<void> => {
   }
 };
 
-/** Whether the revocation waits behind the writer: any second lock waiter. */
+/**
+ * A backend blocked by one that this transaction (the row holder) blocks: the
+ * revocation queued behind the writer itself, not behind any other holder.
+ */
+const BEHIND_WRITER = `select count(*)::int as n from pg_stat_activity r, pg_stat_activity w
+   where r.datname = current_database() and w.pid = any(pg_blocking_pids(r.pid))
+     and pg_backend_pid() = any(pg_blocking_pids(w.pid))`;
+
+/** Whether the revocation waits behind the writer. */
 const revocationWaits = async (execute: AdminConnection['execute']): Promise<boolean> =>
-  (await count(execute, LOCK_WAITERS)) >= 2;
+  (await count(execute, BEHIND_WRITER)) >= 1;
 
 describe.skipIf(serverUrl === undefined)('a credential write and a revocation of its grant', () => {
   let world: World;
@@ -122,6 +130,7 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
     const revoker = rebuildApi(world);
     let updating: Promise<Answer> | undefined;
     let revoked: Answer | undefined;
+    let revoking: Promise<Answer> | undefined;
     let revokeWaited = false;
     try {
       await world.db.admin.transaction(async (execute) => {
@@ -156,7 +165,7 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
         }
 
         let revokeSettled = false;
-        const revoking = call(
+        revoking = call(
           revoker.api,
           personPath('alpha', pathOf('access.revoke')),
           { operationId: randomUUID(), grantId },
@@ -182,11 +191,6 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
       });
       if (updating === undefined) throw new Error('the update was never sent');
       const updated = await updating;
-      if (revokeWaited) {
-        // The other half of Expected: revocation waited for the writer.
-        expect(updated.status, updated.text).toBe(200);
-        return;
-      }
       const [row] = await world.db.admin.execute<{
         readonly title: string;
         readonly revision: number;
@@ -194,6 +198,22 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
         "select data ->> 'title' as title, revision::int as revision from public.records where id = $1",
         [recordId],
       );
+      if (revokeWaited) {
+        // The other half of Expected: the revocation waited for the writer,
+        // which wrote first, and then committed.
+        const late = await revoking;
+        const [grant] = await world.db.admin.execute<{ readonly revoked: boolean }>(
+          'select revoked_at is not null as revoked from public.grants where id = $1',
+          [grantId],
+        );
+        expect({
+          updated: updated.status,
+          revoked: late?.status,
+          grant: grant?.revoked,
+          title: row?.title,
+        }).toEqual({ updated: 200, revoked: 200, grant: true, title: 'after revocation' });
+        return;
+      }
       expect({ code: updated.code, row }, updated.text).toEqual({
         code: 'SCOPE_NOT_GRANTED',
         row: { title: 'before revocation', revision: Number(revision) },

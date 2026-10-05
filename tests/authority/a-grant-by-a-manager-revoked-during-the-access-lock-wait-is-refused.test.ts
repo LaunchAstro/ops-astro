@@ -14,7 +14,6 @@
 // access.end / access.revoke race test.)
 
 import { randomUUID } from 'node:crypto';
-import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it as vitestIt } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
@@ -22,6 +21,7 @@ import type { CommandRequest } from '../../packages/core-commands/src/commands/r
 import { grantAccess } from '../../packages/core-records/src/authority/access.ts';
 import { connect, type TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
+import { hold, waitingOn } from '../support/lock-waits.ts';
 
 const it = serverUrl === undefined ? vitestIt.skip : vitestIt;
 
@@ -65,63 +65,6 @@ const stateOf = async (tx: TenantQuery): Promise<State> => ({
   ),
 });
 
-/**
- * Waits until a backend of this world's own database waits on a lock of this
- * kind (`transactionid`, `advisory`) in a statement containing `statement`:
- * Ada's grant row read, or Noah's access lock.
- */
-async function waitingOn(world: World, event: string, statement: string): Promise<void> {
-  for (let attempt = 0; attempt < 500; attempt += 1) {
-    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
-    const rows = await world.db.admin.execute<{ waiting: boolean }>(
-      `select exists (select 1 from pg_stat_activity
-        where datname = current_database() and pid <> pg_backend_pid()
-          and wait_event_type = 'Lock' and wait_event = $1
-          and strpos(query, $2) > 0) as waiting`,
-      [event, statement],
-    );
-    if (rows[0]?.waiting === true) return;
-    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
-    await delay(10);
-  }
-  throw new Error(`nothing reached a ${event} lock wait`);
-}
-
-const noop = (): void => undefined;
-
-function gate(): { readonly promise: Promise<void>; readonly release: () => void } {
-  let release: () => void = noop;
-  const promise = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  return { promise, release };
-}
-
-/** A fixture transaction on its own connection, holding the grant row until it is let go. */
-async function holdGrant(
-  world: World,
-  grantId: string,
-): Promise<{ readonly letGo: () => Promise<void> }> {
-  const db = connect(world.db.appUrl);
-  const held = gate();
-  const release = gate();
-  const done = db.withBusiness(world.alpha, async (tx) => {
-    await tx.query('select id from public.grants where business_id = $1 and id = $2 for update', [
-      tx.businessId,
-      grantId,
-    ]);
-    held.release();
-    await release.promise;
-  });
-  await Promise.race([held.promise, done]);
-  return {
-    letGo: async () => {
-      release.release();
-      await done.finally(async () => await db.close());
-    },
-  };
-}
-
 /** The state with that one grant revoked: what Ada's revocation alone leaves. */
 const revokedIn = (state: State, grantId: string): State => ({
   ...state,
@@ -147,7 +90,12 @@ async function raceNoah(
   const adaDb = connect(world.db.appUrl);
   const noahDb = connect(world.db.appUrl);
   try {
-    const blocker = await holdGrant(world, noahGrant);
+    const blocker = await hold(world.db.appUrl, world.alpha, async (tx) => {
+      await tx.query('select id from public.grants where business_id = $1 and id = $2 for update', [
+        tx.businessId,
+        noahGrant,
+      ]);
+    });
     let revoking: ReturnType<typeof executeCommand> | undefined;
     let acting: ReturnType<typeof executeCommand> | undefined;
     try {
@@ -156,9 +104,9 @@ async function raceNoah(
         operationId: randomUUID(),
         grantId: noahGrant,
       });
-      await waitingOn(world, 'transactionid', 'from public.grants');
+      await waitingOn(world.db.admin, 'transactionid', 'from public.grants');
       acting = executeCommand(noahDb, world.alpha, world.noah.presented, 'api', act());
-      await waitingOn(world, 'advisory', 'pg_advisory_xact_lock');
+      await waitingOn(world.db.admin, 'advisory', 'pg_advisory_xact_lock');
     } finally {
       await blocker.letGo();
     }

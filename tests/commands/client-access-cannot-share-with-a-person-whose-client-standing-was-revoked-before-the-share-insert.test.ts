@@ -2,13 +2,14 @@
 //
 // Client access reads the client's people (outside the membership, on the
 // client through a live party `task:read`) and then issues each a read share
-// on the task, holding nothing between the two. A former client person and a
+// on the task, holding each standing grant and the parents it is cut from
+// `for share` from that read to the share insert. A former client person and a
 // current one stand on client X; the task is on client X. The share is paused
 // on its own connection just before it inserts the former person's share; the
 // former person's party grant is revoked on another connection; then the share
-// goes on. When the revocation commits first, the former person must get no
-// share and cannot read the task. A fix that holds their standing makes the
-// revocation wait for the share instead, and then the share stands.
+// goes on. The revocation must wait for the share, and then the share stands;
+// on main, which held nothing, it commits first and the former person is
+// shared nothing.
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -95,7 +96,7 @@ async function revokedFirst(revoking: Promise<unknown>): Promise<boolean> {
 }
 
 it.skipIf(serverUrl === undefined)(
-  'client access cannot share a task with a person whose client standing was revoked before the share insert',
+  'a client standing revoked during client access waits for the share it already counted',
   async () => {
     const client = randomUUID();
     await addClient(db.app, alpha, client, admin);
@@ -119,6 +120,7 @@ it.skipIf(serverUrl === undefined)(
         async (tx) => await revokeGrant(tx, former.partyGrantId),
       );
       const first = await revokedFirst(revoking);
+      expect(first, 'the revocation waits on the held standing').toBe(false);
       paused.go();
       const answer = await sharing;
       expect(await revoking).not.toBeNull();
@@ -127,11 +129,7 @@ it.skipIf(serverUrl === undefined)(
         shared: outcomeOf(answer)['code'] ?? 'applied',
         formerHoldsShare: (await liveHolders(task)).includes(former.personId),
         formerReads: outcomeOf(read)['applied'] === true,
-      }).toEqual(
-        first
-          ? { shared: 'applied', formerHoldsShare: false, formerReads: false }
-          : { shared: 'applied', formerHoldsShare: true, formerReads: true },
-      );
+      }).toEqual({ shared: 'applied', formerHoldsShare: true, formerReads: true });
     } finally {
       paused.go();
       await sharing?.catch(ignore);

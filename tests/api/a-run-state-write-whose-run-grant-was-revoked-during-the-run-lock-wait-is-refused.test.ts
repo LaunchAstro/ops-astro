@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `run.revise_state` asks the caller's `run:write` before its handler locks the
-// run (`reviseRunState`), and asks nothing after. A fixture transaction holds
+// `run.revise_state` asks the caller's `run:write`, waits for the run row
+// (`reviseRunState`), and asks it again once it holds it. A fixture transaction holds
 // the run row; the write is admitted through the real API on the live grant
 // and parks on the row; the grant is revoked and commits; then the fixture
 // lets go. The write must be refused `SCOPE_NOT_GRANTED` and append no state
