@@ -46,12 +46,13 @@ by kind. A copy not on the list is a copy the reply missed.
   rejected, holds the text as whole words (`--text Anna` names no Joanna),
   anyone a merge not reversed joined them to, their actors, the logins they
   still hold and the agent of each credential they issued. Each hit names the
-  people whose ids it holds; a hit naming none was found by its text alone, so
-  the owner checks whose it is. The list ends with one line per person of the
-  `--id` flags that find them, saying how the person was found (named by the
-  text, given by `--id`, or merged with a person found), kept for the
-  erasure's re-search. The text is matched with the spaces around it dropped
-  and each run of spaces inside it as one space. An export withholds the
+  people whose ids it holds and whether a value of it holds the text (`text`);
+  a hit naming no one was found by its text alone, so the owner checks whose
+  it is. The list ends with one line per person of the `--id` flags that find
+  them, saying every way the person was found (named by the text, given by
+  `--id`, or merged with a named person), kept for the erasure's re-search.
+  The text is matched with the white space around it dropped and each run of
+  white space inside it, of any kind, as one space. An export withholds the
   credential hashes of agent credentials and delegations, which are the
   business's security material.
 - **Sign-in security rows:** three installation-wide `ops` tables keyed by
@@ -111,10 +112,11 @@ by kind. A copy not on the list is a copy the reply missed.
 3. Search every copy again, and a backup restored from before the erasure, for
    the person: the finder with the same `--text` and the `--id` flags from
    step 1, so a row naming the person by id alone is still found once their
-   own rows are gone. A hit that names only another person the text also
-   names (its people list holds their id, not the erased person's) is that
-   person's row, not a missed copy. Any other hit outside a lawfully kept copy
-   means the erasure is not done.
+   own rows are gone. A hit that does not hold the text (`text` false) and
+   whose people list names only another person is that person's row, not a
+   missed copy. A hit that holds the text is the owner's to judge, and the
+   owner records whose it is. Any other hit outside a lawfully kept copy means
+   the erasure is not done.
 
 ### Export
 

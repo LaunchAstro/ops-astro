@@ -11,11 +11,11 @@
 // an identifier not rejected, holds the text as whole words (Anna names no
 // Joanna), anyone a merge not reversed joined them to, and each --id as given.
 // Their ids follow to their actors, the logins they still hold and the agent
-// of each credential they issued. A row
-// is a copy when one of its values, at any depth, holds the text anywhere or
-// one of those ids in any letter case; a column's or a JSON field's name never
-// counts ("granted_at" names no Grant). Letters are folded by the database,
-// so the text is matched as the database's locale cases it.
+// of each credential they issued. A row is a copy when one of its values, at
+// any depth, holds the text anywhere or one of those ids in any letter case; a
+// column's or a JSON field's name never counts ("granted_at" names no Grant).
+// Letters are folded by the database, and each run of white space is one
+// space, so the text is matched as the database's locale cases it.
 //
 // One read-only snapshot answers every query, with the owner's connection from
 // DATABASE_ADMIN_URL and row security off, so a row committed mid-search is in
@@ -25,19 +25,22 @@
 // are errors.
 //
 // Each hit is one JSON line: the table, the row's id (or its physical address
-// when the table has no id), the columns holding the text or an id, and the
-// people whose ids it holds. The row itself is printed only with --export, a
-// credential's hash withheld. The summary on stderr ends with a line per
-// person of the --id flags that find them after their own rows are erased.
-// The list is printed once the search has finished; the connection string is
-// never printed.
+// when the table has no id), the columns holding the text or an id, the people
+// whose ids it holds, and whether it holds the text. The row itself is printed
+// only with --export, credential hashes withheld. The summary on stderr ends
+// with a line per person, saying every way they were found, of the --id flags
+// that find them after their own rows are erased. The list is printed once
+// the search has finished; the connection string is never printed. The
+// command line is read in find-copies-arguments.mjs.
 
 import process from 'node:process';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
+import { WHITE, parse } from './find-copies-arguments.mjs';
 
 const { argv, env, stderr, stdout } = process;
 const SAFE = /^[a-z_][a-z0-9_]{0,62}$/u;
-const HEX = '0123456789abcdef';
+/** `WHITE` as a Postgres bracket expression, each by its code point. */
+const WHITE_RUN = `[${[...WHITE].map((character) => `\\u${character.codePointAt(0).toString(16).padStart(4, '0')}`).join('')}]+`;
 
 /** Columns an export never carries: the business's security material, not the person's data. */
 const WITHHELD = new Map([
@@ -47,54 +50,6 @@ const WITHHELD = new Map([
 
 /** A failure the operator is told about in words; any other is reported without its detail. */
 class Refusal extends Error {}
-
-/** The id in canonical lower case, or null unless it is 8-4-4-4-12 hex digits. */
-function uuid(text) {
-  const id = text.toLowerCase();
-  if (id.length !== 36) return null;
-  for (let at = 0; at < id.length; at += 1) {
-    const dash = at === 8 || at === 13 || at === 18 || at === 23;
-    if (dash ? id[at] !== '-' : !HEX.includes(id[at])) return null;
-  }
-  return id;
-}
-
-function parse(args) {
-  const options = { business: undefined, text: undefined, ids: [], exportRows: false };
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === '--export') {
-      if (options.exportRows) return { error: '--export is given twice' };
-      options.exportRows = true;
-      continue;
-    }
-    if (arg !== '--business' && arg !== '--text' && arg !== '--id') {
-      return { error: `unknown argument ${JSON.stringify(arg)}` };
-    }
-    index += 1;
-    const value = args[index];
-    if (value === undefined || value.startsWith('--')) return { error: `${arg} needs a value` };
-    if (arg === '--id') {
-      const id = uuid(value);
-      if (id === null) return { error: `--id needs a UUID, not ${JSON.stringify(value)}` };
-      options.ids.push(id);
-    } else {
-      const key = arg === '--text' ? 'text' : 'business';
-      if (options[key] !== undefined) return { error: `${arg} is given twice` };
-      options[key] = key === 'text' ? value.trim() : value;
-    }
-  }
-  if (options.text !== undefined && options.text.length < 4) {
-    return { error: '--text needs at least 4 characters that name the person' };
-  }
-  if (options.text === undefined && options.ids.length === 0) {
-    return { error: '--text or --id needs to name the person' };
-  }
-  if (options.business === undefined || options.business === '') {
-    return { error: '--business needs the key of the business the request is for' };
-  }
-  return options;
-}
 
 /** The text as a LIKE pattern matching itself alone, wherever it appears. */
 function containing(text) {
@@ -131,14 +86,17 @@ const SEEDS = `with recursive named(id, how) as (
     union
     select case when m.surviving_person_id = j.id
                 then m.absorbed_person_id else m.surviving_person_id end,
-           'merged with a person found'
+           'merged with ' || j.id::text
       from joined j
       join public.person_merges m
         on m.business_id = $1 and m.reversed_at is null
        and j.id in (m.surviving_person_id, m.absorbed_person_id)),
   persons as (
-    select distinct on (id) id, how from joined
-     order by id, case how when 'named by the text' then 0 when 'given by --id' then 1 else 2 end)
+    select id, string_agg(how, '; ' order by
+             case how when 'named by the text' then 0 when 'given by --id' then 1 else 2 end, how)
+             as how
+      from (select distinct id, how from joined) found
+     group by id)
   select p.id::text as id, p.id::text as person, p.how from persons p
   union
   select a.id::text, p.id::text, p.how from public.actors a join persons p on p.id = a.person_id
@@ -153,16 +111,19 @@ const SEEDS = `with recursive named(id, how) as (
    where c.business_id = $1
   order by 2, 1`;
 
-/** `text` folded, with each run of white space as one space. */
-const folded = (text) => `regexp_replace(lower(${text}), '[[:space:]]+', ' ', 'g')`;
+/** `text` folded, with each run of white space as one space, as `spaced` does here. */
+const folded = (text) => `regexp_replace(lower(${text}), '${WHITE_RUN}', ' ', 'g')`;
 
 /** Each value held at any depth of `json`, folded, as `held`; never a field's name. */
 const values = (json) => `(select ${folded("v #>> '{}'")} as held
       from jsonb_path_query(${json}, 'strict $.**') v
      where jsonb_typeof(v) not in ('object', 'array', 'null')) s`;
 
+/** Whether `s.held` holds the text ($1, or null). */
+const TEXT = `s.held like lower($1::text)`;
+
 /** Whether `s.held` holds the text ($1, or null) or a seed id ($3). */
-const HOLDS = `(s.held like ${folded('$1::text')} or exists (select from unnest($3::text[]) i where strpos(s.held, i) > 0))`;
+const HOLDS = `(${TEXT} or exists (select from unnest($3::text[]) i where strpos(s.held, i) > 0))`;
 
 /** Rows of business $2 holding the text or a seed ($3, standing for people $4). */
 const copies = (table) => `select t.ctid::text as address, to_jsonb(t) as row,
@@ -171,7 +132,8 @@ const copies = (table) => `select t.ctid::text as address, to_jsonb(t) as row,
              order by c.key) as columns,
       array(select distinct seed.person from unnest($3::text[], $4::text[]) seed(id, person)
              where exists (select from ${values('to_jsonb(t)')} where strpos(s.held, seed.id) > 0)
-             order by 1) as people
+             order by 1) as people,
+      exists (select from ${values('to_jsonb(t)')} where ${TEXT}) as text
     from public."${table}" t
    where t.business_id = $2
      and exists (select from ${values('to_jsonb(t)')} where ${HOLDS})
@@ -220,8 +182,8 @@ async function scan(admin, { business, text, ids, exportRows }) {
         seeds.map((seed) => seed.id),
         seeds.map((seed) => seed.person),
       ]);
-      for (const { address, row, columns, people } of rows) {
-        const found = { table: name, id: row.id ?? address, columns, people };
+      for (const { address, row, columns, people, text: holdsText } of rows) {
+        const found = { table: name, id: row.id ?? address, columns, people, text: holdsText };
         if (exportRows) found.row = exported(name, row);
         lines.push(`${JSON.stringify(found)}\n`);
       }
