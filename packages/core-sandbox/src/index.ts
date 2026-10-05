@@ -20,5 +20,5 @@ export {
   type ProxyGrammar,
   type ProxyOp,
 } from './proxy-request.ts';
-export type { Refused, Result, Why } from './refusal.ts';
+export type { Refused, SandboxResult, Why } from './refusal.ts';
 export { parseStrictJson, type Json } from './strict-json.ts';

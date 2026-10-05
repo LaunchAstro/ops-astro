@@ -34,7 +34,7 @@ export type Refused = {
   readonly why: Why;
 };
 
-export type Result<T> = ({ readonly ok: true } & T) | Refused;
+export type SandboxResult<T> = ({ readonly ok: true } & T) | Refused;
 
 export const refuse = (why: Why): Refused => ({ ok: false, reason: 'proxy refused', why });
 export const fault = (why: Why): Refused => ({ ok: false, reason: 'internal', why });

@@ -12,7 +12,7 @@
 // holds, is the proxy's state, checked after this grammar (P3, P4, P5).
 
 import { type CreateShape, matchCreateBody } from './create-body.ts';
-import { refuse, type Result } from './refusal.ts';
+import { refuse, type SandboxResult } from './refusal.ts';
 import { MAX_JSON_BYTES, parseStrictJson } from './strict-json.ts';
 
 export type ContainerAction = 'attach' | 'start' | 'wait' | 'kill' | 'inspect' | 'delete';
@@ -57,7 +57,7 @@ export type More = { readonly ok: 'more'; readonly need: number | null };
 const MORE: More = { ok: 'more', need: null };
 
 /** A request read whole, refused, or not yet complete. */
-export type ProxyRead = Result<{ op: ProxyOp }> | More;
+export type ProxyRead = SandboxResult<{ op: ProxyOp }> | More;
 
 type Head = {
   readonly method: string;
@@ -99,7 +99,7 @@ function trimSpace(text: string): string {
   return text.slice(start, end);
 }
 
-function readHead(bytes: Uint8Array): Result<{ head: Head }> | More {
+function readHead(bytes: Uint8Array): SandboxResult<{ head: Head }> | More {
   let end = -1;
   for (let i = 0; i + 3 < bytes.length && i < MAX_HEAD; i += 1) {
     if (bytes[i] === 13 && bytes[i + 1] === 10 && bytes[i + 2] === 13 && bytes[i + 3] === 10) {
@@ -139,7 +139,10 @@ function readHead(bytes: Uint8Array): Result<{ head: Head }> | More {
   };
 }
 
-function segmentsOf(path: string, apiVersion: string): Result<{ segments: readonly string[] }> {
+function segmentsOf(
+  path: string,
+  apiVersion: string,
+): SandboxResult<{ segments: readonly string[] }> {
   const prefix = `/v${apiVersion}/`;
   if (!path.startsWith(prefix)) return refuse('version');
   const segments = path.slice(prefix.length).split('/');
@@ -150,7 +153,11 @@ function segmentsOf(path: string, apiVersion: string): Result<{ segments: readon
 /** A route names its operation, or `create`, whose shape comes from the body. */
 type Route = { readonly op: ProxyOp | 'create'; readonly query: string | null };
 
-function routeOf(method: string, segments: readonly string[], query: string | null): Result<Route> {
+function routeOf(
+  method: string,
+  segments: readonly string[],
+  query: string | null,
+): SandboxResult<Route> {
   const [first, second, third, ...more] = segments;
   if (more.length > 0) return refuse('unknown route');
   if (method === 'GET' && third === undefined && second === undefined) {
@@ -163,7 +170,11 @@ function routeOf(method: string, segments: readonly string[], query: string | nu
   return refuse('unknown route');
 }
 
-function containerRoute(method: string, second: string, third: string | undefined): Result<Route> {
+function containerRoute(
+  method: string,
+  second: string,
+  third: string | undefined,
+): SandboxResult<Route> {
   if (third === undefined) {
     if (method === 'POST' && second === 'create') return { ok: true, op: 'create', query: null };
     if (method !== 'DELETE') return refuse('unknown route');
@@ -184,7 +195,7 @@ function imageRoute(
   second: string,
   third: string | undefined,
   query: string | null,
-): Result<Route> {
+): SandboxResult<Route> {
   if (method === 'POST' && second === 'load' && third === undefined) {
     const load = LOAD_QUERY.exec(query ?? '');
     if (load === null) return refuse('query');

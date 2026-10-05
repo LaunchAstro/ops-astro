@@ -21,7 +21,7 @@
 // A syntax error is `internal`: the caller that parses a launcher request
 // turns a refusal into `proxy refused` itself.
 
-import { fault, type Result } from './refusal.ts';
+import { fault, type SandboxResult } from './refusal.ts';
 
 export type Json =
   null | boolean | number | string | readonly Json[] | { readonly [key: string]: Json };
@@ -199,7 +199,7 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 export function parseStrictJson(
   bytes: Uint8Array,
   options: { readonly foldCase?: boolean } = {},
-): Result<{ value: Json }> {
+): SandboxResult<{ value: Json }> {
   if (bytes.length > MAX_JSON_BYTES) return fault('too large');
   let text: string;
   try {

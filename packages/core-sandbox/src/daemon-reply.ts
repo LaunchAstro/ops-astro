@@ -6,7 +6,7 @@
 // `OK` and a 204 has no body. Any reply that breaks these rules is
 // `internal`, which leaves the launcher unavailable until a new probe passes.
 
-import { fault, type Result } from './refusal.ts';
+import { fault, type SandboxResult } from './refusal.ts';
 import { type Json, parseStrictJson } from './strict-json.ts';
 
 type JsonObject = { readonly [key: string]: Json };
@@ -17,37 +17,37 @@ const isObject = (value: Json | undefined): value is JsonObject =>
 const isCount = (value: Json | undefined): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
-function readObject(body: Uint8Array): Result<{ value: JsonObject }> {
+function readObject(body: Uint8Array): SandboxResult<{ value: JsonObject }> {
   const parsed = parseStrictJson(body);
   if (!parsed.ok) return parsed;
   return isObject(parsed.value) ? { ok: true, value: parsed.value } : fault('reply body');
 }
 
-export function readPing(status: number, body: Uint8Array): Result<object> {
+export function readPing(status: number, body: Uint8Array): SandboxResult<object> {
   const ok = status === 200 && body.length === 2 && body[0] === 0x4f && body[1] === 0x4b;
   return ok ? { ok: true } : fault('reply body');
 }
 
-export function readNoContent(status: number, body: Uint8Array): Result<object> {
+export function readNoContent(status: number, body: Uint8Array): SandboxResult<object> {
   if (status !== 204) return fault('reply status');
   return body.length === 0 ? { ok: true } : fault('reply body');
 }
 
-export function readCreatedId(body: Uint8Array): Result<{ id: string }> {
+export function readCreatedId(body: Uint8Array): SandboxResult<{ id: string }> {
   const read = readObject(body);
   if (!read.ok) return read;
   const id = read.value['Id'];
   return typeof id === 'string' && ID.test(id) ? { ok: true, id } : fault('reply body');
 }
 
-export function readWaitStatus(body: Uint8Array): Result<{ statusCode: number }> {
+export function readWaitStatus(body: Uint8Array): SandboxResult<{ statusCode: number }> {
   const read = readObject(body);
   if (!read.ok) return read;
   const code = read.value['StatusCode'];
   return isCount(code) ? { ok: true, statusCode: code } : fault('reply body');
 }
 
-export function readOomKilled(body: Uint8Array): Result<{ oomKilled: boolean }> {
+export function readOomKilled(body: Uint8Array): SandboxResult<{ oomKilled: boolean }> {
   const read = readObject(body);
   if (!read.ok) return read;
   const state = read.value['State'];
@@ -55,7 +55,7 @@ export function readOomKilled(body: Uint8Array): Result<{ oomKilled: boolean }> 
   return typeof killed === 'boolean' ? { ok: true, oomKilled: killed } : fault('reply body');
 }
 
-export function readContainerIds(body: Uint8Array): Result<{ ids: readonly string[] }> {
+export function readContainerIds(body: Uint8Array): SandboxResult<{ ids: readonly string[] }> {
   const parsed = parseStrictJson(body);
   if (!parsed.ok) return parsed;
   if (!Array.isArray(parsed.value)) return fault('reply body');
@@ -68,7 +68,7 @@ export function readContainerIds(body: Uint8Array): Result<{ ids: readonly strin
   return { ok: true, ids };
 }
 
-export function readContainerCount(body: Uint8Array): Result<{ containers: number }> {
+export function readContainerCount(body: Uint8Array): SandboxResult<{ containers: number }> {
   const read = readObject(body);
   if (!read.ok) return read;
   const count = read.value['Containers'];

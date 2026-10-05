@@ -10,7 +10,7 @@
 // The `Env` list is per pin (B3), so the caller passes it in each shape; the
 // pin list that holds it is read elsewhere.
 
-import { refuse, type Result } from './refusal.ts';
+import { refuse, type SandboxResult } from './refusal.ts';
 import type { Json } from './strict-json.ts';
 
 export type Crossing = 'memory' | 'wall' | 'output';
@@ -112,7 +112,7 @@ export function sameJson(a: Json, b: Json): boolean {
 export function matchCreateBody(
   body: Json,
   shapes: readonly CreateShape[],
-): Result<{ shape: CreateShape; image: string }> {
+): SandboxResult<{ shape: CreateShape; image: string }> {
   if (!isObject(body)) return refuse('create body');
   const image = body['Image'];
   if (typeof image !== 'string' || !IMAGE_ID.test(image)) return refuse('image slot');
