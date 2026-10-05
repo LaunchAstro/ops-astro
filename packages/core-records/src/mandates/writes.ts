@@ -56,12 +56,15 @@ export async function clientOfMandate(tx: TenantQuery, mandateId: string): Promi
   return rows[0]?.client_id ?? null;
 }
 
+/** A locked graduation row with its client's name, which a promotion's label carries. */
+export type LockedGraduationClass = GraduationClassRow & { readonly clientLabel: string };
+
 /** One graduation row, locked for the promote or demote that moves it; null when not this business's. */
 export async function lockGraduationClass(
   tx: TenantQuery,
   classId: string,
-): Promise<GraduationClassRow | null> {
-  const rows = await tx.query<ClassDbRow>(
+): Promise<LockedGraduationClass | null> {
+  const rows = await tx.query<ClassDbRow & { readonly client_label: string }>(
     `select g.id, g.client_id, k.name as client_label, g.action_class, g.class_label, g.clearance,
             g.earned, g.never_why, g.approved, g.edited, g.rejected, g.since::text as since, g.note,
             g.revision
@@ -71,7 +74,8 @@ export async function lockGraduationClass(
       for no key update of g`,
     [classId],
   );
-  return rows[0] === undefined ? null : classOf(rows[0]);
+  const row = rows[0];
+  return row === undefined ? null : { ...classOf(row), clientLabel: row.client_label };
 }
 
 export async function bumpGraduationClass(tx: TenantQuery, classId: string): Promise<number> {

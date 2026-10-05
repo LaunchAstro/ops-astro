@@ -49,7 +49,7 @@ export async function columnUpdateFindings(
 
 /**
  * Tables whose BEFORE UPDATE trigger refuses the own business's no-op update,
- * past privilege and tenancy. 20261005190100 (MP-14-10a): a standing mandate is
+ * past privilege and tenancy. 20261005222000 (MP-14-10a): a standing mandate is
  * written once, so an update that does not move its revision by one is refused
  * as a constraint (23001, restrict_violation).
  */

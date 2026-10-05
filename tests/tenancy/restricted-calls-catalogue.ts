@@ -34,10 +34,10 @@ const COLUMN_UPDATES: Readonly<
   },
   'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
   // MP-14-10a: promoting and demoting serialise on a class's revision.
-  'public.graduation_classes': { from: '20261005190100', columns: ['revision'] },
+  'public.graduation_classes': { from: '20261005222000', columns: ['revision'] },
   // MP-14-10a: a mandate is revoked, never edited; its trigger refuses the rest.
   'public.standing_mandates': {
-    from: '20261005190100',
+    from: '20261005222000',
     columns: ['revision', 'revoked_at', 'revoked_by_actor_id'],
   },
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
@@ -183,9 +183,9 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '20261005023013',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
   })),
-  // MP-14-10a (20261005190100): a mandate is filed with its own columns alone.
+  // MP-14-10a (20261005222000): a mandate is filed with its own columns alone.
   ...(INSERT_COLUMNS['public.standing_mandates'] ?? []).map((column) => ({
-    from: '20261005190100',
+    from: '20261005222000',
     line: `ops_astro_app INSERT public.standing_mandates.${column}`,
   })),
 ];

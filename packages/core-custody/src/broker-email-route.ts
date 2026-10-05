@@ -58,7 +58,7 @@ export function senderVerifiedFor(
 /** The catalogued name the send dispatches by. */
 export const EMAIL_OPERATION = 'email.send';
 
-interface Routed {
+export interface Routed {
   readonly operation: ModelOperation;
   readonly route: BrokerRoute;
   readonly adapter: ProviderAdapter;

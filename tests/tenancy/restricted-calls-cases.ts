@@ -60,6 +60,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.subject_resets'],
   // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
   ['si', 'ops.second_factor_codes'],
+  // 20261005190651 (C39-T): a Send Email hook message claimed by its send, by
+  // id digest, for every business; the application inserts and reads it only.
+  ['si', 'ops.auth_hook_messages'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // A map's versions are history; its components are retired by version, never deleted.
@@ -170,7 +173,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // the broker, and a repair is recorded once and never changed.
   ['s', 'connection_clients connections'],
   ['si', 'connection_repairs'],
-  // 20261005190100 (MP-14-10a): a class's record is read and its revision
+  // 20261005222000 (MP-14-10a): a class's record is read and its revision
   // bumped by column grant; a mandate is filed by its own columns and revoked by
   // column grant, never edited (COLUMN_UPDATES, ROLE_COLUMN_GRANTS).
   ['s', 'graduation_classes'],
@@ -230,7 +233,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
-  // 20261005190100 (MP-14-10a): a mandate's word list checked whole, in its check constraint.
+  // 20261005222000 (MP-14-10a): a mandate's word list checked whole, in its check constraint.
   'public.standing_mandate_words_known',
 ];
 

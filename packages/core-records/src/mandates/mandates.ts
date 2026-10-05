@@ -87,7 +87,6 @@ export interface MandateRow {
 export interface GraduationClassRow {
   readonly id: string;
   readonly clientId: string;
-  readonly clientLabel: string;
   readonly actionClass: string;
   readonly classLabel: string;
   readonly clearance: string;
@@ -176,7 +175,6 @@ export const mandateOf = (row: MandateDbRow): MandateRow => ({
 export interface ClassDbRow {
   readonly id: string;
   readonly client_id: string;
-  readonly client_label: string;
   readonly action_class: string;
   readonly class_label: string;
   readonly clearance: string;
@@ -193,7 +191,6 @@ export interface ClassDbRow {
 export const classOf = (row: ClassDbRow): GraduationClassRow => ({
   id: row.id,
   clientId: row.client_id,
-  clientLabel: row.client_label,
   actionClass: row.action_class,
   classLabel: row.class_label,
   clearance: row.clearance,
@@ -213,7 +210,12 @@ const reachOf = (scopes: readonly Scope[]): [boolean, readonly (string | null)[]
   scopes.filter((scope) => scope.kind === 'party').map((scope) => scope.id),
 ];
 
-const CLASSES_SQL = `select g.id, g.client_id, k.name as client_label, g.action_class, g.class_label,
+const CLIENTS_SQL = `select k.id, k.name as label from public.clients k
+  where k.business_id = (select public.app_business_id())
+    and ($1::boolean or k.id = any($2::uuid[]))
+  order by k.name, k.id`;
+
+const CLASSES_SQL = `select g.id, g.client_id, g.action_class, g.class_label,
         g.clearance, g.earned, g.never_why, g.approved, g.edited, g.rejected,
         g.since::text as since, g.note, g.revision
    from public.graduation_classes g
@@ -228,18 +230,27 @@ const MANDATES_SQL = `select ${MANDATE_COLUMNS}
     and ($1::boolean or m.client_id = any($2::uuid[]))
   order by m.created_at, m.id`;
 
-/** The graduation rows and not-revoked mandates of the clients the scopes reach. */
+/**
+ * The clients the scopes reach (each, whether or not it has a graduation
+ * row), and their graduation rows and not-revoked mandates.
+ */
 export async function listGraduation(
   tx: TenantQuery,
   scopes: readonly Scope[],
 ): Promise<{
+  readonly clients: readonly { readonly id: string; readonly label: string }[];
   readonly classes: readonly GraduationClassRow[];
   readonly mandates: readonly MandateRow[];
 }> {
   const reach = reachOf(scopes);
+  const clients = await tx.query<{ readonly id: string; readonly label: string }>(
+    CLIENTS_SQL,
+    reach,
+  );
   const classes = await tx.query<ClassDbRow>(CLASSES_SQL, reach);
   const mandates = await tx.query<MandateDbRow>(MANDATES_SQL, reach);
   return {
+    clients,
     classes: classes.map((row) => classOf(row)),
     mandates: mandates.map((row) => mandateOf(row)),
   };

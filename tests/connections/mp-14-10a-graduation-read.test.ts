@@ -19,8 +19,16 @@ import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { createControls, type Controls } from '../api/controls-fixture.ts';
-import { classMatches, createClient } from '../../packages/core-records/src/index.ts';
-import { connect } from '../../packages/core-records/src/tenancy/database.ts';
+import {
+  classMatches,
+  createClient,
+  type TenantQuery,
+} from '../../packages/core-records/src/index.ts';
+import {
+  connect,
+  connectAsAdmin,
+  type AdminConnection,
+} from '../../packages/core-records/src/tenancy/database.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { standingMandateVerdict } from '../../packages/core-runtime/src/index.ts';
 import type {
@@ -52,9 +60,25 @@ function deferred(): { readonly promise: Promise<void>; readonly resolve: () => 
   return { promise, resolve };
 }
 
+/** The backend a transaction runs on. */
+async function backendOf(tx: Pick<TenantQuery, 'query'>): Promise<number> {
+  const rows = await tx.query<{ readonly pid: number }>('select pg_backend_pid() as pid');
+  return Number(rows[0]?.pid);
+}
+
+/** A transaction that records every statement sent through it, then sends it. */
+const recording = (tx: TenantQuery, sent: string[]): TenantQuery => ({
+  businessId: tx.businessId,
+  query: async <Row>(text: string, parameters?: readonly unknown[]) => {
+    sent.push(text);
+    return await tx.query<Row>(text, parameters);
+  },
+});
+
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandate check', () => {
   let controls: Controls;
+  let probe: AdminConnection;
   let admin: Member;
   let clientReader: Member;
   let plain: Member;
@@ -183,6 +207,32 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     return id;
   }
 
+  /**
+   * Wait, bounded, until a backend is parked on a lock `holder` holds, running
+   * a statement on `table`. Until then nothing shows the competing statement
+   * reached the lock while it was held, and a case proves a sequence, not a
+   * wait. `probe` asks: the fixture's owner connection is one session, which
+   * a case's holder or its competing revoke occupies. Recursion, since the
+   * lint forbids awaiting in a loop.
+   */
+  const blockedBy = async (
+    holder: number,
+    table: string,
+    deadline = Date.now() + 10_000,
+  ): Promise<void> => {
+    const waiting = await probe.execute(
+      `select pid from pg_stat_activity
+        where $1::int = any(pg_blocking_pids(pid)) and query like '%' || $2 || '%'`,
+      [holder, table],
+    );
+    if (waiting.length > 0) return;
+    if (Date.now() > deadline) {
+      throw new Error(`mp-14-10a: no statement on ${table} ever waited on backend ${holder}`);
+    }
+    await pause(25);
+    await blockedBy(holder, table, deadline);
+  };
+
   const madeClient = async (business: string, name: string, by: Member): Promise<string> =>
     await controls.fixture.db.app.withBusiness(business, async (tx) => {
       const made = await createClient(tx, name, by.actorId);
@@ -194,6 +244,9 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
   beforeAll(async () => {
     controls = await createControls('mp1410a');
     const { db, business } = controls.fixture;
+    const owner = new URL(String(serverUrl));
+    owner.pathname = `/${db.name}`;
+    probe = connectAsAdmin(owner.toString());
     alpha = business;
     admin = controls.manager;
     clientReader = await enrol(db.app, business, 'clientreader');
@@ -231,6 +284,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
   }, 120_000);
 
   afterAll(async () => {
+    await probe?.close();
     await controls?.drop();
   });
 
@@ -259,6 +313,34 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     expect(result.rows.filter((one) => one.clientId === clientA)).toHaveLength(7);
     const never = result.rows.find((one) => one.id === cls['aBudget']);
     expect([never?.state, never?.neverWhy]).toStrictEqual(['never', 'ceiling']);
+  });
+
+  it('MP-14-10a every reachable client is in the client list, one with no graduation rows included', async () => {
+    const clientCLabel = 'Client C with no history';
+    const clientC = await madeClient(alpha, clientCLabel, admin);
+    const clientCReader = await enrol(controls.fixture.db.app, alpha, 'clientcreader');
+    await controls.fixture.db.app.withBusiness(alpha, async (tx) => {
+      await grantTo(tx, clientCReader, 'read', { kind: 'party', id: clientC }, false, 'connection');
+    });
+    const refusal = await seedMandate({
+      client: clientC,
+      classes: ['*'],
+      refuses: true,
+      label: 'Nothing runs on its own for C',
+    });
+    const seen = [await region(admin), await region(clientCReader)];
+    for (const result of seen) {
+      expect(result.clients.find((one) => one.id === clientC)).toStrictEqual({
+        id: clientC,
+        label: clientCLabel,
+        scopes: ['*'],
+      });
+      expect(result.rows.filter((one) => one.clientId === clientC)).toStrictEqual([]);
+      expect(result.mandates.map((one) => one.id)).toContain(refusal);
+      const listed = new Set(result.clients.map((one) => one.id));
+      expect(result.mandates.filter((one) => !listed.has(one.clientId))).toStrictEqual([]);
+    }
+    await revoke(refusal);
   });
 
   it('MP-14-10a a class shows promoted only while its promoting mandate is live', async () => {
@@ -392,6 +474,28 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
   });
 
   it('MP-14-10a core: a malformed question is refused before anything is read', async () => {
+    const asked = async (question: Partial<Question>): Promise<readonly string[]> => {
+      const sent: string[] = [];
+      await controls.fixture.db.app
+        .withBusiness(alpha, async (tx) => {
+          await standingMandateVerdict(recording(tx, sent), {
+            clientId: clientA,
+            actionClass: 'report.send',
+            valueMinor: 5000,
+            currency: 'AUD',
+            ...question,
+          });
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof RangeError)) throw error;
+          sent.push('RangeError');
+        });
+      return sent;
+    };
+    // The recorder sees what a well-formed question reads, and it reads.
+    const wellFormed = await asked({});
+    expect(wellFormed).not.toContain('RangeError');
+    expect(wellFormed.some((sql) => sql.includes('public.clients'))).toBe(true);
     for (const question of [
       { actionClass: '' },
       { actionClass: 'report' },
@@ -405,7 +509,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
       { valueMinor: -1 },
     ]) {
       // eslint-disable-next-line no-await-in-loop -- one question at a time
-      await expect(verdict(question), JSON.stringify(question)).rejects.toThrow(RangeError);
+      expect(await asked(question), JSON.stringify(question)).toStrictEqual(['RangeError']);
     }
   });
 
@@ -424,11 +528,13 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
   });
 
   it('MP-14-10a core: expiry is judged on the database clock after the lock wait', async () => {
-    const mandateId = await seedMandate({ classes: ['email.send'], expires: '1500 milliseconds' });
+    const mandateId = await seedMandate({ classes: ['email.send'], expires: '4 seconds' });
     const locked = deferred();
     const release = deferred();
+    let holder = 0;
     // The lock is held on the owner's own connection, not the check's.
     const held = controls.fixture.db.admin.transaction(async (execute) => {
+      holder = await backendOf({ query: execute });
       await execute('select id from public.standing_mandates where id = $1 for update', [
         mandateId,
       ]);
@@ -437,9 +543,26 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     });
     await locked.promise;
     const checking = verdict({ actionClass: 'email.send', valueMinor: 1 });
-    await pause(2500);
-    release.resolve();
-    await held;
+    const liveNow = async (): Promise<number> =>
+      (
+        await probe.execute(
+          `select id from public.standing_mandates
+            where id = $1 and expires_at > clock_timestamp()`,
+          [mandateId],
+        )
+      ).length;
+    try {
+      // The check is parked on the lock while the mandate is still live ...
+      await blockedBy(holder, 'standing_mandates');
+      expect(await liveNow()).toBe(1);
+      // ... and is let go only once it has expired.
+      await pause(4000);
+      expect(await liveNow()).toBe(0);
+    } finally {
+      // A failed step still lets the check go, so the case fails rather than hangs.
+      release.resolve();
+      await held;
+    }
     // The check began while the mandate was live and waited on the lock
     // past its expiry: it is judged expired, not covered.
     expect(await checking).toStrictEqual({ covered: false, reason: 'expired', mandateId });
@@ -462,8 +585,8 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
         await revoke(mandateId);
         revokeDone = true;
       })();
-      await pause(400);
-      // The revoke waits on the share lock this effect holds.
+      // The revoke is parked on the share lock this effect holds.
+      await blockedBy(await backendOf(tx), 'standing_mandates');
       expect(revokeDone).toBe(false);
       return checked;
     });
@@ -506,7 +629,8 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
         filed = true;
         return id;
       })();
-      await pause(400);
+      // The insert is parked on the client's row this check holds.
+      await blockedBy(await backendOf(tx), 'standing_mandates');
       expect(filed).toBe(false);
       return checked;
     });
