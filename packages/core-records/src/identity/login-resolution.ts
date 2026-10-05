@@ -32,7 +32,7 @@ const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
 import { loginHasVerifiedFactor } from './second-factor.ts';
-import { sessionEnded } from './sessions.ts';
+import { sessionEnded, sessionEndedHeld } from './sessions.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
@@ -187,12 +187,13 @@ export async function standingOf(
 
 /**
  * Whether the person's session has ended since it was resolved (C58), asked
- * by a write after its last wait: an ending committed meanwhile is seen here,
- * as the door would see it on the next call. An agent credential's session,
- * which no person's token resolved, has none to end.
+ * by a write after its last wait, the business's audit chain held: an ending
+ * committed meanwhile is seen here, as the door would see it on the next call,
+ * and one not yet committed waits for the write (`sessionEndedHeld`). An agent
+ * credential's session, which no person's token resolved, has none to end.
  */
 export async function sessionEndedSince(tx: TenantQuery, session: Session): Promise<boolean> {
-  return session.presented !== undefined && (await sessionEnded(tx, session.presented));
+  return session.presented !== undefined && (await sessionEndedHeld(tx, session.presented));
 }
 
 /** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */

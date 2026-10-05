@@ -98,7 +98,10 @@ async function lockedAuthority(
  * the chain trigger's, `business_id::text`, lower case). The key is asked at
  * that clock, the grants still held, and the session that sent the change must
  * not have ended meanwhile: a sign-out here writes its own audit event, so it
- * either committed before this lock and refuses the change, or waits for it.
+ * either committed before this lock and refuses the change, or waits for it;
+ * one through another business takes the session's ending keys, which the
+ * read below holds shared until commit, so it either committed before that
+ * read or waits for the change (`sessionEndedHeld`).
  * A refusal rolls the change's rows back with the handler's savepoint. The
  * register keeps it as a scope refusal: the same attempt sent again from a
  * later sign-in is not told that its own session ended.

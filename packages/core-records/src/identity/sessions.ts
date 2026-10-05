@@ -10,8 +10,14 @@
 // ends their own sessions and nobody else's. `sessionEnded`, which login
 // resolution asks, is the one exception: an ending holds in every business,
 // so it names only the token's session and its subject's digest.
+//
+// An ending and a write's last ask after its session (`sessionEndedHeld`)
+// take the same keys in one order: the business's audit chain, the login's
+// subject, then each session, the ending exclusively and the ask shared. An
+// ending through another business so either commits before the ask reads the
+// endings, or waits for the asking write to commit (C52-A, PRV-oa-984-R2.1).
 
-import type { TenantQuery } from '../tenancy/database.ts';
+import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import {
   SESSION_ABSOLUTE_SECONDS,
   SIGN_IN_CLOCK_SKEW_SECONDS,
@@ -35,6 +41,24 @@ export interface SeenSession {
 const END_PROVIDER_SESSIONS = `insert into ops.ended_provider_sessions (session_id)
   select ids.id from unnest($1::uuid[]) as ids (id)
   on conflict (session_id) do nothing`;
+
+const subjectKey = (subject: string): string => `session-ending:subject:${subject}`;
+const sessionKey = (sessionId: string): string =>
+  `session-ending:session:${sessionId.toLowerCase()}`;
+
+/** An ending's keys, exclusively, in the one order: chain, subject, sessions sorted. */
+async function holdEnding(
+  tx: TenantQuery,
+  subject: string | undefined,
+  sessionIds: readonly string[],
+): Promise<void> {
+  await advisoryLock(tx, tx.businessId.toLowerCase());
+  if (subject !== undefined) await advisoryLock(tx, subjectKey(subject));
+  for (const key of [...new Set(sessionIds.map((id) => sessionKey(id)))].toSorted()) {
+    // eslint-disable-next-line no-await-in-loop -- one key after another, in order
+    await advisoryLock(tx, key);
+  }
+}
 
 /** The most sessions one list names; a person has a handful, never hundreds. */
 const LISTED = 50;
@@ -101,6 +125,7 @@ export async function endOtherSeenSessions(
   /** The login's provider subject: the ending holds in every business (0063). */
   subject: string,
 ): Promise<number> {
+  await holdEnding(tx, subject, []);
   await tx.query(
     `insert into ops.ended_subject_sessions (subject_digest, kept_session)
      values (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2::uuid)`,
@@ -123,6 +148,9 @@ export async function endOtherSeenSessions(
  * sign-out the business no longer admits still ends its verified session.
  */
 export async function endProviderSession(tx: TenantQuery, sessionId: string): Promise<void> {
+  // Only the session's key: this ending writes no audit event, and a caller the
+  // business refuses must not hold its audit chain (security re-bind R3 LOW-1).
+  await advisoryLock(tx, sessionKey(sessionId));
   await tx.query(END_PROVIDER_SESSIONS, [[sessionId]]);
 }
 
@@ -142,6 +170,7 @@ async function endSessions(
   reason: SessionEndReason,
 ): Promise<number> {
   if (sessionIds.length === 0) return 0;
+  await holdEnding(tx, undefined, sessionIds);
   const rows = await tx.query(
     `insert into public.ended_sessions (business_id, person_id, session_id, reason)
      select $1, $2, ids.id, $4 from unnest($3::uuid[]) as ids (id)
@@ -152,6 +181,22 @@ async function endSessions(
   // Ended in every business the login reaches, not only this one (0061).
   await tx.query(END_PROVIDER_SESSIONS, [sessionIds]);
   return rows.length;
+}
+
+/**
+ * `sessionEnded`, asked by a write after its last wait, with its business's audit
+ * chain already held: the subject's and the session's ending keys are taken
+ * shared first, so no ending commits between this read and the write's commit.
+ */
+export async function sessionEndedHeld(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+): Promise<boolean> {
+  if (presented.sessionId === undefined) return false;
+  const shared = 'select pg_advisory_xact_lock_shared(hashtextextended($1, 0))';
+  await tx.query(shared, [subjectKey(presented.subject)]);
+  await tx.query(shared, [sessionKey(presented.sessionId)]);
+  return await sessionEnded(tx, presented);
 }
 
 /**
