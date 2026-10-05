@@ -45,10 +45,10 @@ const CONFIG: ReadonlySet<string> = new Set([
 
 const refusal = (why: Why): Refused => ({ ok: false, reason: 'input refused', why });
 
-/** True for `.git` as git's checkout refuses it: any case, trailing dots, or its 8.3 short name. */
+/** True for `.git` as git's checkout refuses it: any case, its 8.3 short name, either with trailing dots. */
 function isGitDirectory(segment: string): boolean {
   const lower = segment.toLowerCase();
-  return lower === 'git~1' || /^\.git\.*$/u.test(lower);
+  return /^(?:\.git|git~1)\.*$/u.test(lower);
 }
 
 /** The clause a name breaks, or null when every segment is plain, allowed and not reserved. */
