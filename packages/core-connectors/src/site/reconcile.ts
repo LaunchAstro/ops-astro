@@ -67,6 +67,8 @@ export interface Occurrence {
   readonly left: string;
   readonly right: string;
   readonly index?: number;
+  /** Every equal match's word on the source's page, in order, before the change. */
+  readonly words?: readonly string[];
 }
 
 // Elements that start a rendered block of their own.
@@ -121,6 +123,33 @@ function rendered(html: string): string[] | undefined {
   return visible(page.join(' ')) === whole.text ? page : undefined;
 }
 
+/**
+ * The source's page as its build serves it: the frontmatter fence (a `---` line opening the file,
+ * closed by the next `---` line) never renders. Unclosed, the file has no page.
+ */
+function served(source: string): string[] | undefined {
+  const lines = source.split('\n');
+  if (lines[0]?.replace(/\r$/u, '') !== '---') return rendered(source);
+  const close = lines.findIndex((line, at) => at > 0 && line.replace(/\r$/u, '') === '---');
+  return close < 0 ? undefined : rendered(lines.slice(close + 1).join('\n'));
+}
+
+/** Where on `line` the word was replaced to give `changed`: only an offset spanning every changed character. */
+function replacedAt(line: string, changed: string, target: CorrectionTarget): number | undefined {
+  let same = 0;
+  while (same < line.length && line[same] === changed[same]) same += 1;
+  let tail = 0;
+  const shorter = Math.min(line.length, changed.length) - same;
+  while (tail < shorter && line.at(-1 - tail) === changed.at(-1 - tail)) tail += 1;
+  const end = (offset: number) => offset + target.word.length;
+  return wordOffsets(line, target.word).find(
+    (offset) =>
+      offset <= same &&
+      end(offset) >= line.length - tail &&
+      line.slice(0, offset) + target.replacement + line.slice(end(offset)) === changed,
+  );
+}
+
 /** The approved occurrence's place, read from the one line the envelope let change. */
 export function occurrenceOf(
   change: ProposedChange,
@@ -131,14 +160,10 @@ export function occurrenceOf(
   const after = (file?.after ?? '').split('\n');
   const index = before.findIndex((line, at) => line !== after[at]);
   const line = before[index] ?? '';
-  const end = (offset: number) => offset + target.word.length;
-  const at = wordOffsets(line, target.word).find(
-    (offset) =>
-      line.slice(0, offset) + target.replacement + line.slice(end(offset)) === after[index],
-  );
+  const at = replacedAt(line, after[index] ?? '', target);
   if (at === undefined || file === undefined) return undefined;
-  before[index] = line.slice(0, at) + MARK + line.slice(end(at));
-  const page = rendered(before.join('\n'));
+  before[index] = line.slice(0, at) + MARK + line.slice(at + target.word.length);
+  const page = served(before.join('\n'));
   const block = page?.findIndex((text) => text.includes(MARK)) ?? -1;
   if (page === undefined || block < 0) return undefined;
   const joined = visible(page.join(' '));
@@ -146,7 +171,7 @@ export function occurrenceOf(
   // The marker stands for the word only where the page shows the word there, and the
   // replacement there once changed: never inside a reference, nor a mark the page shows itself.
   const shows = (html: string, word: string) => {
-    const blocks = rendered(html);
+    const blocks = served(html);
     return blocks !== undefined && visible(blocks.join(' ')) === showing(word);
   };
   if (joined.split(MARK).length !== 2) return undefined;
@@ -162,9 +187,9 @@ export function occurrenceOf(
   const rank = (word: string) =>
     equals(showing(word), where, words).findIndex((one) => one.at === spot && one.word === word);
   const ranked = rank(target.word);
-  return ranked >= 0 && ranked === rank(target.replacement)
-    ? { ...where, index: ranked }
-    : undefined;
+  if (ranked < 0 || ranked !== rank(target.replacement)) return undefined;
+  const listed = equals(showing(target.word), where, words).map((one) => one.word);
+  return { ...where, index: ranked, words: listed };
 }
 
 // How much of its block either side places the word: enough to tell it from its neighbours,
@@ -202,5 +227,11 @@ export function showsAt(
   gone: string,
 ): boolean {
   if (where === undefined) return false;
-  return equals(text, where, [shown, gone])[where.index ?? 0]?.word === shown;
+  const found = equals(text, where, [shown, gone]).map((one) => one.word);
+  const index = where.index ?? 0;
+  // The page holds the source's equals, in its order, with only the approved one changed: a match
+  // the source never shows (a layout's title or nav) or one the build drops fails the check.
+  const expected = where.words?.with(index, shown);
+  if (expected !== undefined && found.join(' ') !== expected.join(' ')) return false;
+  return found[index] === shown;
 }
