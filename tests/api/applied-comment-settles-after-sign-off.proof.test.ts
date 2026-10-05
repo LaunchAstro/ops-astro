@@ -76,7 +76,9 @@ it('an applied comment is still observed and settled after client sign-off turns
   expect(commentStatuses).toEqual([200]);
   expect(await appliedComments(taskId)).toEqual([{ n: '1' }]);
   expect(providerCalls).toBe(1);
-  expect(await attempts(taskId)).toMatchObject([{ state: 'dispatched', observed: false, held: 'held' }]);
+  expect(await attempts(taskId)).toMatchObject([
+    { state: 'dispatched', observed: false, held: 'held' },
+  ]);
 
   await clientSignOff('true');
   try {
@@ -91,4 +93,56 @@ it('an applied comment is still observed and settled after client sign-off turns
   const [attempt] = await attempts(taskId);
   expect(attempt).toMatchObject({ state: 'settled', observed: true, link });
   expect(attempt?.['held']).not.toBe('held');
+});
+
+it('a provider answer whose comment answer was lost is kept through a sign-off refusal and settles once', async () => {
+  const { taskId, credential } = await launched();
+  await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
+    await installBusinessSettings(tx);
+  });
+  await clientSignOff('false');
+  const link = `https://${HOST}/effects/${randomUUID()}`;
+  const linked = linking(link);
+  let providerCalls = 0;
+  let loseComment = true;
+  const transport: Transport = async (path, body, bearer, delegation) => {
+    const answer = await throughApi(path, body, bearer, delegation);
+    // The comment applied; its answer never reaches the worker.
+    if (path.endsWith('/task/comment') && loseComment) {
+      loseComment = false;
+      return new Response('{}', { status: 503 });
+    }
+    return answer;
+  };
+  const worker = createWorker({
+    transport,
+    businessKey: 'alpha',
+    credential: r.agentToken,
+    delegation: credential,
+    reporter: SYNTHETIC_USAGE,
+    provider: {
+      call: async (...args) => {
+        providerCalls += 1;
+        return await linked.call(...args);
+      },
+    },
+  });
+
+  expect(await worker.applyOnce(taskId)).toEqual({ fault: { status: 503 } });
+  expect(await appliedComments(taskId)).toEqual([{ n: '1' }]);
+
+  await clientSignOff('true');
+  try {
+    expect(await worker.applyOnce(taskId)).toMatchObject({
+      refused: { code: 'CLIENT_SIGNOFF_REQUIRED' },
+    });
+  } finally {
+    await clientSignOff('false');
+  }
+  expect(await worker.applyOnce(taskId)).toMatchObject({ applied: { taskId } });
+
+  expect(providerCalls).toBe(1);
+  expect(await appliedComments(taskId)).toEqual([{ n: '1' }]);
+  const [attempt] = await attempts(taskId);
+  expect(attempt).toMatchObject({ state: 'settled', observed: true, link });
 });
