@@ -917,12 +917,12 @@ const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
 const NO_CREDENTIAL = 'no-credential';
 
-/** How many records a read handed out: a task is one, a list (a search's hits too) is its length. */
+/** How many records a read handed out: a task is one, a list (hits, the fleet too) its length. */
 function recordsIn(read: object): number {
-  const lists = ['tasks', 'persons', 'queue', 'hits'].map((key): unknown => Reflect.get(read, key));
-  const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
-  if (listed !== undefined) return listed.length;
-  return 'task' in read || 'sharedTask' in read ? 1 : 0;
+  const listed = ['tasks', 'persons', 'queue', 'hits', 'connections']
+    .map((key): unknown => Reflect.get(read, key))
+    .find((list): list is readonly unknown[] => Array.isArray(list));
+  return listed?.length ?? ('task' in read || 'sharedTask' in read ? 1 : 0);
 }
 /** The answer's outcome, as the detector reads it: no content, only scopes and a code. */
 function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
