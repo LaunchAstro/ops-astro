@@ -58,6 +58,7 @@
     "tests/broker/planfix-3a-settle-sec-b3.test.ts",
     "tests/broker/planfix-3a-settle-sec-m1.test.ts",
     "tests/broker/reconcile-ambiguous-route-proves-nothing.test.ts",
+    "tests/broker/reconcile-keeps-call-when-its-carrier-changes.test.ts",
     "tests/broker/reconcile-uses-carrying-route.test.ts",
     "tests/broker/review-3a-4-model-spend-reservation.test.ts",
     "tests/broker/review-3a-5-stranded-model-calls.test.ts",

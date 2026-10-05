@@ -116,6 +116,7 @@ export default defineConfig({
             'tests/api/receipt-link-held-credentials-crossings.test.ts',
             'tests/api/receipt-link-keeps-no-credential.test.ts',
             'tests/api/receipt-link-literal-percent-and-held-digests.test.ts',
+            'tests/broker/reconcile-keeps-call-when-its-carrier-changes.test.ts',
             'tests/broker/reconcile-uses-carrying-route.test.ts',
             'tests/web/authenticator-cancelled-enrol-lands-late.test.tsx',
             'tests/web/sign-in-code-after-enrolment.test.tsx',
