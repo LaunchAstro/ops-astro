@@ -21,3 +21,8 @@ untrusted package installation, and headless execution remain unavailable
 until the approved sandbox is implemented and verified. A registry entry must
 report that unavailability; there is no unsandboxed fallback. No sandbox
 implementation or final-contract approval exists in this foundation.
+
+**Amended 5 October 2026**: the contract's draft, with the site change
+envelope (issue #972) as its first user, is
+[the sandbox launcher contract](../plan/sandbox-contract.md). It is not
+approved, and nothing in it is built.
