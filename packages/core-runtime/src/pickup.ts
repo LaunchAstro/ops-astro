@@ -487,7 +487,7 @@ async function claimHold(
   const left = BigInt(state.held_minor) - BigInt(old?.spent ?? '0');
   if (left <= 0n) return await stopSpentWhole(tx, reservationId, found);
   const room = await versionRoom(tx, found);
-  if (room <= 0n) return refuse('RESERVATION_NOT_CLAIMABLE', NO_ROOM, NOT_CLAIMABLE_FIX);
+  if (room <= 0n) return await stopSpentWhole(tx, reservationId, found, NO_ROOM);
   return await reserve(tx, {
     envelopeId: found.envelope_id,
     versionId: found.version_id,
@@ -502,7 +502,9 @@ const NO_ROOM = "this run's spend and holds already fill the version's approved 
 /**
  * What the run may still hold under its version: the approved ceiling, raised
  * by the run's applied top-ups, less what its reservations of the version
- * committed (a live hold whole, a closed one at its spend). Read under the run
+ * committed (a live hold whole, a closed one at its spend). A closed hold's
+ * spend is its settled calls when they exceed its actual: a top-up moved the
+ * spend to date off a held hold, which then closes at nothing. Read under the run
  * lock. A replacement is held at most this, whatever the newest-hold order
  * says of rows written before replacements were stamped at insertion.
  */
@@ -513,7 +515,12 @@ async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
                           where a.business_id = ver.business_id and a.run_id = $3
                             and a.kind = 'top_up'), 0)
              - coalesce((select sum(case when r.state in ('held', 'quarantined') then r.held_minor
-                                         else coalesce(r.actual_minor, 0) end)
+                                         else greatest(coalesce(r.actual_minor, 0), (
+                                           select coalesce(sum(c.actual_minor), 0)
+                                             from public.model_calls c
+                                            where c.business_id = ver.business_id
+                                              and c.reservation_id = r.id
+                                              and c.state = 'settled')) end)
                            from public.reservations r
                           where r.business_id = ver.business_id and r.version_id = ver.id
                             and r.run_id = $3), 0))::text as room
@@ -531,12 +538,14 @@ const SPENT_WHOLE_HOLD =
  * AW-05: a step whose calls spent its whole hold has nothing left to hold, so
  * the run stops at its budget and asks a person, a refusal that keeps the ask;
  * after the run's last ask it ends the run and tells a person
- * (`stopAtSpentHold`). Never a refusal nothing answers.
+ * (`stopAtSpentHold`). Never a refusal nothing answers. A replacement the
+ * version has no room for stops the same way, saying `why`.
  */
 async function stopSpentWhole(
   tx: TenantQuery,
   reservationId: string,
   found: Found,
+  why = SPENT_WHOLE_HOLD,
 ): Promise<RuntimeResult<never>> {
   const words = await stopAtSpentHold(tx, {
     runId: found.run_id,
@@ -545,7 +554,7 @@ async function stopSpentWhole(
     delegationId: null,
     remaining: await remainingOf(tx, reservationId),
   });
-  const refusal = refuseCommand('BUDGET_UNAVAILABLE', [], [SPENT_WHOLE_HOLD, words]);
+  const refusal = refuseCommand('BUDGET_UNAVAILABLE', [], [why, words]);
   return { ok: false, refusal, retains: true };
 }
 
