@@ -1,4 +1,7 @@
 {
+  "comment": [
+    "AGENT CLI (PORT-P17, API-3 from b0/SL14) names tests/cli/api-3.test.ts (one case per checklist line through the verb CLI over the composed API), api-3-isolation (the three crossings and the withheld blocker), api-3-budget (the token budgets over a 40-ticket fixture map), api-3-process (the real entry as a process), api-3-quota (requests and calls at once per credential, person and business, the refusal recorded, an outsider charged nothing, the page size from the one table) and api-3-read-audit (each agent CLI read writes exactly one audit event, I13) as invariants. api-3-world.ts is a harness, not a suite."
+  ],
   "invariant": [
     "tests/cli/api-2-credential-cli.test.ts",
     "tests/cli/aw-04-pin-ledger-cli.test.ts",
@@ -12,7 +15,13 @@
     "tests/cli/t2g-decide-parity.test.ts",
     "tests/cli/t2g-journey.test.ts",
     "tests/cli/u14-access-cli.test.ts",
-    "tests/cli/u14-access-end-cli.test.ts"
+    "tests/cli/u14-access-end-cli.test.ts",
+    "tests/cli/api-3.test.ts",
+    "tests/cli/api-3-isolation.test.ts",
+    "tests/cli/api-3-budget.test.ts",
+    "tests/cli/api-3-process.test.ts",
+    "tests/cli/api-3-quota.test.ts",
+    "tests/cli/api-3-read-audit.test.ts"
   ],
   "conformance": [
     "tests/cli/c23-session-surfaces.test.ts",

@@ -49,7 +49,11 @@ import {
   KEY_FILE_VARIABLE,
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
-import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
+import type {
+  AdminConnection,
+  Database,
+  QuotaOptions,
+} from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
@@ -219,6 +223,8 @@ export interface ApiConfig {
   readonly alerts?: Alerts;
   /** The agent credential's limits in this process (API-2); absent, the defaults. */
   readonly agentLimits?: AgentLimits;
+  /** The quota table and clock; absent means `QUOTAS` and the wall clock. */
+  readonly quota?: QuotaOptions;
 }
 
 export interface ComposedApi {
