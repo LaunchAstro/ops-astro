@@ -631,3 +631,115 @@ test("a login moved from another agent to the person's own one stays theirs when
   expect(hit?.shared, 'the login is held by the agent standing for the person').toEqual([]);
   expect(hit?.given).toBe(true);
 });
+
+/** An agent of a credential `issuer` issued; answers the agent. */
+async function plantIssuedAgent(tx: Query, issuer: { person: string; actor: string }) {
+  const agent = await plantAgent(tx);
+  await tx.query(
+    `insert into public.agent_credentials
+       (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
+        credential_hash, credential_scheme, credential_key_id, expires_at)
+     values ($1, $2, $3, $4, $5, 'triage', array['tasks:read'], $6, 'hmac-sha256-v1', 'k1',
+             now() + interval '1 day')`,
+    [harness.world.alpha, randomUUID(), agent, issuer.person, issuer.actor, '9'.repeat(64)],
+  );
+  return agent;
+}
+
+/** The --id flags the finder printed for `person`. */
+function flagsFor(stderr: string, person: string): string[] {
+  const line = stderr.split('\n').find((text) => text.includes(`search again for ${person} `));
+  return (line?.split('add: ')[1] ?? '').split(' ').filter((part) => part !== '');
+}
+
+test("a login given back, now held by the agent of a namesake, is shared, not the person's", async () => {
+  const { world } = harness;
+  const { a, login, link } = await world.db.app.withBusiness(world.alpha, async (tx) => {
+    const person = await plantActingPerson(tx, 'Zed Namesake');
+    const own = await plantIssuedAgent(tx, person);
+    const planted = { a: person, login: randomUUID(), link: randomUUID() };
+    await tx.query(
+      `insert into public.logins (business_id, id, provider, subject) values ($1, $2, 'dry-run', $3)`,
+      [world.alpha, planted.login, `opaque-${randomUUID()}`],
+    );
+    await tx.query(
+      `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
+       values ($1, $2, $3, $4, $5)`,
+      [world.alpha, planted.link, planted.login, own, person.actor],
+    );
+    return planted;
+  });
+  const flags = flagsFor(
+    (await findCopies(adminUrl, ['--text', 'Zed Namesake'], 'alpha')).stderr,
+    a.person,
+  );
+  expect(flags).toContain(login);
+
+  // Another person of the same name, whose agent now holds the login.
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    const namesake = await plantActingPerson(tx, 'Zed Namesake');
+    const theirs = await plantIssuedAgent(tx, namesake);
+    await tx.query(
+      'update public.actor_logins set active = false, deactivated_at = now() where id = $1',
+      [link],
+    );
+    await tx.query(
+      `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
+       values ($1, $2, $3, $4, $5)`,
+      [world.alpha, randomUUID(), login, theirs, namesake.actor],
+    );
+  });
+  const again = await findCopies(adminUrl, ['--text', 'Zed Namesake', ...flags], 'alpha');
+  const hit = again.hits.find((each) => each.table === 'logins' && each.id === login);
+  expect(hit?.shared, "the namesake's agent holds it now").toEqual([login]);
+  expect(hit?.given).toBe(false);
+});
+
+test('a login given back that the person now holds themselves stays theirs', async () => {
+  const { world } = harness;
+  const { a, login, link } = await world.db.app.withBusiness(world.alpha, async (tx) => {
+    const person = await plantActingPerson(tx, 'Ada Selfheld');
+    const own = await plantIssuedAgent(tx, person);
+    const planted = { a: person, login: randomUUID(), link: randomUUID() };
+    await tx.query(
+      `insert into public.logins (business_id, id, provider, subject) values ($1, $2, 'dry-run', $3)`,
+      [world.alpha, planted.login, `opaque-${randomUUID()}`],
+    );
+    await tx.query(
+      `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
+       values ($1, $2, $3, $4, $5)`,
+      [world.alpha, planted.link, planted.login, own, person.actor],
+    );
+    return planted;
+  });
+  const flags = flagsFor(
+    (await findCopies(adminUrl, ['--text', 'Ada Selfheld'], 'alpha')).stderr,
+    a.person,
+  );
+  expect(flags).toContain(login);
+
+  // The login moves from an agent the person no longer uses to the person.
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    const stranger = await plantActingPerson(tx, 'Bo Stranger');
+    const theirs = await plantIssuedAgent(tx, stranger);
+    await tx.query(
+      'update public.actor_logins set active = false, deactivated_at = now() where id = $1',
+      [link],
+    );
+    await tx.query(
+      `insert into public.actor_logins
+         (business_id, id, login_id, actor_id, linked_by_actor_id, active, deactivated_at)
+       values ($1, $2, $3, $4, $5, false, now())`,
+      [world.alpha, randomUUID(), login, theirs, stranger.actor],
+    );
+    await tx.query(
+      `insert into public.person_logins (business_id, id, login_id, person_id, linked_by_actor_id)
+       values ($1, $2, $3, $4, $5)`,
+      [world.alpha, randomUUID(), login, a.person, a.actor],
+    );
+  });
+  const again = await findCopies(adminUrl, ['--text', 'Ada Selfheld', ...flags], 'alpha');
+  const hit = again.hits.find((each) => each.table === 'logins' && each.id === login);
+  expect(hit?.shared, 'the person holds it now').toEqual([]);
+  expect(hit?.given).toBe(true);
+});
