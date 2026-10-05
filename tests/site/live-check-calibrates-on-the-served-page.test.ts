@@ -250,3 +250,13 @@ it('an unrendered duplicate and a layout nav never make the unchanged heading re
   });
   expect(observed.state).toBe('accepted');
 });
+
+it('an unchanged sentence never reads live when an equal match straddles the line before it', async () => {
+  // The line before the break ends where the place's text begins, so the page's first equal
+  // match spans the break and holds the replacement: the place must show the approved word.
+  const line = '<p>Thank you. We walk beside<br>you. We walk alongside you.</p>';
+  const source = `${LAYOUT}<Layout>\n${line}\n</Layout>\n`;
+  const unchanged = `<main>${line}</main>`;
+  const { accepted } = await accept(about, source, unchanged);
+  expect((await observe(accepted, about, unchanged)).state).toBe('accepted');
+});
