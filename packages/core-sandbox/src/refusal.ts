@@ -3,9 +3,12 @@
 // A refusal from the sandbox's grammars. `reason` is one of the contract's
 // R1 reasons (docs/plan/sandbox-contract.md, section 9): a launcher request
 // the proxy will not forward is `proxy refused`, a run's output its grammar
-// refuses is `output refused`, an input tree I3 refuses is `input refused`,
-// a lockfile I5 refuses is `lockfile refused`, and a daemon reply that breaks the
-// preamble's rules is `internal`. `why` names the clause that
+// refuses is `output refused`, a request I1 or an input tree I2 and I3
+// refuse is `input refused`, a lockfile I5 refuses is `lockfile refused`, a
+// site with no record is `unknown site`, a pin being made is `no pin`, a
+// tree whose manifests miss the pin's digest is `pin mismatch` (I4), and a
+// daemon reply that breaks the preamble's rules, or a site record or pin
+// list that breaks its own, is `internal`. `why` names the clause that
 // refused, for the person reading the refusal and for the corpus tests.
 
 export type Why =
@@ -55,7 +58,19 @@ export type Why =
   | 'lockfile resolved'
   | 'lockfile alias'
   | 'lockfile link'
-  | 'lockfile name';
+  | 'lockfile name'
+  | 'request key'
+  | 'request value'
+  | 'request path'
+  | 'request content'
+  | 'site id'
+  | 'tree object'
+  | 'tree listing'
+  | 'pin image'
+  | 'pin digest'
+  | 'pin list'
+  | 'site record'
+  | 'record env';
 
 /** R1's reasons (section 9), in the contract's order, `internal` last. */
 export const REASONS = [
@@ -89,7 +104,14 @@ export const readReason = (value: unknown): Reason =>
 export type Refused = {
   readonly ok: false;
   readonly reason:
-    'input refused' | 'lockfile refused' | 'proxy refused' | 'output refused' | 'internal';
+    | 'unknown site'
+    | 'no pin'
+    | 'pin mismatch'
+    | 'input refused'
+    | 'lockfile refused'
+    | 'proxy refused'
+    | 'output refused'
+    | 'internal';
   readonly why: Why;
 };
 

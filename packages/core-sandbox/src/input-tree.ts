@@ -17,11 +17,12 @@ export type TreeEntry = {
   readonly size: number;
 };
 
-const MAX_ENTRIES = 20_000;
-const MAX_BYTES = 50_000_000;
+export const MAX_ENTRIES = 20_000;
+export const MAX_BYTES = 50_000_000;
 /** Git's modes for a regular file (plain or executable) and a directory. */
 const MODES: ReadonlySet<string> = new Set(['100644', '100755', '040000']);
-const SEGMENT = /^[A-Za-z0-9._~@+\-[\]]+$/u;
+/** One path segment in O1's character set plus `[` and `]` (I1, I3). */
+export const SEGMENT: RegExp = /^[A-Za-z0-9._~@+\-[\]]+$/u;
 const RESERVED: ReadonlySet<string> = new Set([
   'node_modules',
   'dist',

@@ -27,6 +27,17 @@ import { fault, type SandboxResult } from './refusal.ts';
 export type Json =
   null | boolean | number | string | readonly Json[] | { readonly [key: string]: Json };
 
+export type JsonObject = { readonly [key: string]: Json };
+
+export const isJsonObject = (value: Json | undefined): value is JsonObject =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** True when `value` is an object holding exactly `keys`, no more and no fewer. */
+export const hasExactKeys = (value: Json | undefined, keys: readonly string[]): boolean =>
+  isJsonObject(value) &&
+  Object.keys(value).length === keys.length &&
+  keys.every((key) => Object.hasOwn(value, key));
+
 export const MAX_JSON_BYTES: number = 1024 * 1024;
 export const MAX_JSON_DEPTH: number = 32;
 
