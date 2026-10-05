@@ -765,6 +765,14 @@ describe('MP-14-7a Connections & signal fleet', () => {
       await pass(FLOOR_MS * 3);
       expect(reads()).toBe(2);
       expect(page.find('[data-outcome="loading"]')).not.toBeNull();
+      // Showing the tab again while it waits is not time waited: it asks nothing new.
+      for (let shown = 0; shown < 4; shown += 1) {
+        act(() => {
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+      }
+      await pass(1);
+      expect(reads()).toBe(2);
       // The fourth tick in its wait asks again, and the refusal draws.
       await pass(FLOOR_MS);
       expect(reads()).toBe(3);
