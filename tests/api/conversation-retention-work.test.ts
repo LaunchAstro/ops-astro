@@ -61,6 +61,16 @@ const messages = async (conversationId: string) =>
     [conversationId],
   );
 
+/** Names the conversation as the origin of the run planned with the proposal. */
+const linkRun = async (proposal: Record<string, unknown>, conversationId: string) => {
+  const linked = await w.fixture.db.admin.execute<{ state: string }>(
+    `update public.planned_runs set origin_conversation_id = $2
+      where version_id = $1 returning state`,
+    [proposal['versionId'], conversationId],
+  );
+  expect(linked).toEqual([{ state: 'planned' }]);
+};
+
 it('an open task created by a conversation holds its body and is left open in the wrap-up', async () => {
   const conversationId = await started(w, w.owner, { body: 'Create the follow-up work' });
   const taskId = await task('still open created work', conversationId);
@@ -135,7 +145,7 @@ it('a gate decided today restarts the conversation retention window', async () =
   });
 });
 
-it('a gate left pending past its expiry has ended at its expiry and no longer holds the body', async () => {
+it('a gate left pending past its expiry, and the run behind it, have ended at its expiry and no longer hold the body', async () => {
   const created = await c.createTask('gate past expiry');
   const proposal = await c.propose(created.id, created.revision, 'gate_past_expiry');
   const conversationId = await started(w, w.owner, {
@@ -145,6 +155,7 @@ it('a gate left pending past its expiry has ended at its expiry and no longer ho
     "update public.gates set origin_conversation_id = $2, expires_at = now() - interval '8 days' where id = $1",
     [proposal['gateId'], conversationId],
   );
+  await linkRun(proposal, conversationId);
   const [gate] = await w.fixture.db.admin.execute<{ state: string }>(
     'select state from public.gates where id = $1',
     [proposal['gateId']],
@@ -159,4 +170,27 @@ it('a gate left pending past its expiry has ended at its expiry and no longer ho
     outcome: { ok: true },
     messages: 0,
   });
+});
+
+it('a run whose plan is rejected before it starts has ended at the rejection', async () => {
+  const created = await c.createTask('run behind a rejected plan');
+  const proposal = await c.propose(created.id, created.revision, 'run_plan_rejected');
+  const conversationId = await started(w, w.owner, {
+    body: 'The planned run is conversation work',
+  });
+  await linkRun(proposal, conversationId);
+  await w.age(conversationId, 8);
+  expect(await wrap(conversationId)).toMatchObject({ ok: true, written: true });
+  expect(await purge(conversationId)).toEqual({ ok: false, code: 'WORK_OPEN' });
+  const rejected = await c.asPerson('task.decide', {
+    gateId: proposal['gateId'],
+    versionId: proposal['versionId'],
+    decision: 'reject',
+    note: 'not this plan',
+  });
+  expect(rejected.status).toBe(200);
+  expect({
+    outcome: await purge(conversationId),
+    messages: await messages(conversationId),
+  }).toMatchObject({ outcome: { ok: false, code: 'NOT_DUE' }, messages: 1 });
 });

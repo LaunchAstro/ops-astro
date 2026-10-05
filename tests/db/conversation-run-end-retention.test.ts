@@ -115,4 +115,10 @@ it('a run cancelled while its plan stays live has ended, so the body is held onl
   );
   expect(lineage).toEqual({ terminal_at: null });
   expect(await purge(conversationId)).toEqual({ ok: false, code: 'NOT_DUE' });
+  // The end is the server's: a write that leaves the state alone keeps it.
+  await w.db.admin.execute(
+    `update public.planned_runs set ended_at = now() - interval '30 days' where id = $1`,
+    [run.id],
+  );
+  expect(await purge(conversationId)).toEqual({ ok: false, code: 'NOT_DUE' });
 });
