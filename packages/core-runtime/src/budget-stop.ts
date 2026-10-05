@@ -100,18 +100,20 @@ export async function observedRefusal(
  * reopens the step, resume holds its replacement (`recovery/reconcile.ts`), and a cancelled
  * run never picks it up. Each one held on the stopped hold's envelope with no lease, no call
  * and every attempt still `reserved` is abandoned under the end's cause and given back whole;
- * a hold leased or dispatched is left as it is. Locked after the run and the stopped hold,
- * which every writer of the run's holds takes first. Returns the amount released.
+ * a hold leased or dispatched is left as it is. Locked after the run and the stopped hold;
+ * whatever starts or closes an unstarted hold (pickup, reconcile, the classifier, a recorded
+ * outcome) takes the run or the envelope first. Returns the amount released.
  */
 export async function releaseUnstarted(
   tx: TenantQuery,
-  stopped: { readonly runId: string; readonly envelopeId: string; readonly reservationId: string },
-  cause: { readonly cause: string; readonly causeId: string },
+  runId: string,
+  stopped: { readonly envelope_id: string; readonly reservation_id: string },
+  answerId: string,
 ): Promise<number> {
   const others = await tx.query<{ readonly id: string }>(
     `select id from public.reservations
       where business_id = $1 and run_id = $2 and envelope_id = $3 and id <> $4 and state = 'held'`,
-    [tx.businessId, stopped.runId, stopped.envelopeId, stopped.reservationId],
+    [tx.businessId, runId, stopped.envelope_id, stopped.reservation_id],
   );
   if (others.length === 0) return 0;
   await acquire(
@@ -121,7 +123,7 @@ export async function releaseUnstarted(
   const ids = others.map(({ id }) => id);
   const released = await tx.query<{ readonly id: string; readonly held_minor: string }>(
     `update public.reservations r
-        set state = 'abandoned', classified_cause = $3, classified_cause_id = $4,
+        set state = 'abandoned', classified_cause = 'budget_stop_ended', classified_cause_id = $3,
             terminal_at = now()
       where r.business_id = $1 and r.id = any($2::uuid[]) and r.state = 'held'
         and r.lease_id is null
@@ -131,14 +133,14 @@ export async function releaseUnstarted(
         and not exists (select 1 from public.model_calls c
                          where c.business_id = r.business_id and c.reservation_id = r.id)
       returning r.id::text as id, r.held_minor::text as held_minor`,
-    [tx.businessId, ids, cause.cause, cause.causeId],
+    [tx.businessId, ids, answerId],
   );
   if (released.length === 0) return 0;
   const total = released.reduce((sum, row) => sum + Number(row.held_minor), 0);
   await tx.query(
     `update public.task_envelopes set held_minor = held_minor - $3
       where business_id = $1 and id = $2`,
-    [tx.businessId, stopped.envelopeId, total],
+    [tx.businessId, stopped.envelope_id, total],
   );
   await tx.query(
     `update public.attempts set state = 'abandoned', outcome = 'abandoned'

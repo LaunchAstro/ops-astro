@@ -291,11 +291,7 @@ export async function endAtBudgetStop(
     spentMinor -= back;
     releasedMinor += back;
   }
-  releasedMinor += await releaseUnstarted(
-    tx,
-    { runId: request.runId, envelopeId: locked.envelope_id, reservationId: locked.reservation_id },
-    { cause: 'budget_stop_ended', causeId: answerId },
-  );
+  releasedMinor += await releaseUnstarted(tx, request.runId, locked, answerId);
   await tx.query(
     `update public.planned_runs set state = 'cancelled' where business_id = $1 and id = $2`,
     [tx.businessId, request.runId],
