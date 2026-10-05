@@ -74,6 +74,30 @@ const pair = (
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
 
+/** MP-14-10a's four: bravo's mandate, class and client named in an alpha change. */
+function mandateCells(f: IdentWorld['foreign']): [CommandName, ReturnType<typeof pair>][] {
+  const ceiling = { amountMinor: 100, currency: 'AUD' };
+  const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+  return [
+    ['mandate.revoke', pair('mandateId', f.mandateId, (mandateId) => ({ mandateId }))],
+    [
+      'graduation.promote',
+      pair('classId', f.classId, (classId) => ({ classId, ceiling, expiresAt })),
+    ],
+    ['graduation.demote', pair('classId', f.classId, (classId) => ({ classId }))],
+    [
+      'mandate.file',
+      pair('clientId', f.clientId, (clientId) => ({
+        clientId,
+        classes: ['social.post'],
+        ceiling,
+        expiresAt,
+        label: 'identifier negatives',
+      })),
+    ],
+  ];
+}
+
 /** C33's three identifier cells: a foreign version, activation and definition. */
 function automationCells(f: IdentWorld['foreign']): [CommandName, ReturnType<typeof pair>][] {
   const manual = { mode: 'manual', enabled: false } as const;
@@ -388,6 +412,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           'connector.repair',
           pair('connectionId', f.connectionId, (connectionId) => ({ connectionId })),
         ],
+        ...mandateCells(f),
         [
           'delegation.revoke',
           pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),

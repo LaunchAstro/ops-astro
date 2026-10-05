@@ -90,6 +90,9 @@ export interface IdentWorld {
     secretId: string;
     /** A broken connection of bravo's, owner-written (MP-14-7a). */
     connectionId: string;
+    /** A live standing mandate and a graduation row of bravo's client (MP-14-10a). */
+    mandateId: string;
+    classId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;

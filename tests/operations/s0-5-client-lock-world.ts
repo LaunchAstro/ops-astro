@@ -32,6 +32,11 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'client.create': 'writes a client, not a task',
   'client.set_privacy': "a client's privacy settings, not a task",
   'secret.set': 'a key held for a client or the business, not a task (C31)',
+  // MP-14-10a: a client's standing mandates and graduation rows, not a task.
+  'mandate.file': "a client's standing mandate, not a task",
+  'mandate.revoke': "a client's standing mandate, not a task",
+  'graduation.promote': "a client's graduation row and mandate, not a task",
+  'graduation.demote': "a client's graduation row and mandate, not a task",
   'task.share_with_client': 'a share grant: who sees the task, not what it holds',
   'task.purge': 'removes the task; nothing is left to change the client of',
   'inbox.seen': "the caller's own seen stamp on an item, not the task's content",

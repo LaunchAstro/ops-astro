@@ -1669,6 +1669,10 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connection.graduation`                    | `readConnectionGraduation` (`reads/graduation.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `mandate.file`                             | `fileMandate` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `mandate.revoke`                           | `revokeStandingMandate` (`commands/mandates.ts`)                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `graduation.promote`                       | `promoteClass` (`commands/mandates.ts`)                                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `graduation.demote`                        | `demoteClass` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.log`                                 | `logTimeEntry` (`commands/tasks-time.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -3478,8 +3482,7 @@ a live mandate filed by promoting that class shows `promoted`, and a live
 refusal whose words cover the class holds a `ready` or `promoted` class as
 `held`, naming the refusal in `heldBy`. Live is not revoked and not past
 `expiresAt` on the database's clock. Graduation rows are written by the agent
-loops (AW-01) and mandates by the mandate commands (next piece); this build only
-reads them.
+loops (AW-01); mandates are filed and revoked by the four commands below.
 
 | Operation               | Route                    | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                       |
 | ----------------------- | ------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -3506,3 +3509,25 @@ time (`standing_mandates_written_once`). A graduation row's revision moves by on
 or not at all. A class whose record is `never` shows
 `never` in the region whatever is filed, as core treats it. No effect names an action class yet
 (AW-01/AW-02), so today no mandate pre-approves anything.
+
+Filing, revoking, promoting and demoting are `mandate:manage` business-wide, a
+person's act and never an agent's, and in C59's money set, so a sign-in without
+a second factor inside sixty minutes is refused `STEP_UP_REQUIRED`. Each command
+locks the client's row, then the class's graduation row, then the mandate (core's
+order), then asks `mandate:manage` again with the caller's grants held, so a
+grant revoked before it refuses it. A mandate is never edited: filed at revision
+1, revoked once at revision 2. Promoting files a one-class mandate for a class
+that shows `ready`; demoting revokes the mandate that promoted it; each steps the
+graduation row's revision by one, as does revoking a promoting mandate. Another
+business's client, class or mandate answers exactly as a made-up or malformed
+identifier does. Classes are picked from the client's own scope list, the
+ceiling is whole minor units of a three-letter currency, `expiresAt` is
+`toISOString()`'s form and must be at least a minute past the database's clock,
+and the label is 1 to 500 characters; each refusal names its field.
+
+| Operation            | Route                 | Body                                                                                                  | Answer or refusals                                                                                                                                                                                                  |
+| -------------------- | --------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mandate.file`       | `/mandate/file`       | `operationId`, `clientId`, `classes`, `refuses?`, `ceiling` (none on a refusal), `expiresAt`, `label` | `detail: { mandateId, refuses }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                                                       |
+| `mandate.revoke`     | `/mandate/revoke`     | `operationId`, `mandateId`, `expectedRevision?`                                                       | `detail: { mandateId, state: 'revoked' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422       |
+| `graduation.promote` | `/graduation/promote` | `operationId`, `classId`, `ceiling`, `expiresAt`, `expectedRevision?`                                 | `detail: { classId, mandateId, state: 'promoted' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not `ready`), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 |
+| `graduation.demote`  | `/graduation/demote`  | `operationId`, `classId`, `expectedRevision?`                                                         | `detail: { classId, mandateId, state: 'ready' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not `promoted`), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 |

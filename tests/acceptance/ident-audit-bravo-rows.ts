@@ -27,6 +27,8 @@ interface BravoRows {
   readonly clientId: string;
   readonly secretId: string;
   readonly connectionId: string;
+  readonly mandateId: string;
+  readonly classId: string;
 }
 
 export async function bravoRecords(world: World): Promise<BravoRows> {
@@ -66,6 +68,23 @@ export async function bravoRecords(world: World): Promise<BravoRows> {
     [world.bravo],
   );
 
+  // MP-14-10a: a graduation row and a live standing mandate of bravo's client,
+  // the ones a promote, demote or revoke could name.
+  const bravoClass = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.graduation_classes
+       (business_id, id, client_id, action_class, class_label, earned)
+     values ($1, gen_random_uuid(), $2, 'social.post', 'Bravo posts', 'ready') returning id`,
+    [world.bravo, bravoClient[0]?.id],
+  );
+  const bravoMandate = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.standing_mandates
+       (business_id, id, client_id, classes, refuses, ceiling_minor, currency, expires_at, label,
+        authored_by_actor_id)
+     values ($1, gen_random_uuid(), $2, array['social.post'], false, 100, 'AUD',
+             now() + interval '1 day', 'A bravo mandate', $3) returning id`,
+    [world.bravo, bravoClient[0]?.id, world.bea.actorId],
+  );
+
   return {
     legalVersionId: String(bravoLegal[0]?.id),
     credentialId: String(bravoCredential[0]?.id),
@@ -73,5 +92,7 @@ export async function bravoRecords(world: World): Promise<BravoRows> {
     secretId: String(bravoSecret[0]?.id),
     // MP-14-7a: a broken connection of bravo's, the one a repair could name.
     connectionId: await seedBrokenConnection(world.db.admin, world.bravo, 'a bravo source'),
+    mandateId: String(bravoMandate[0]?.id),
+    classId: String(bravoClass[0]?.id),
   };
 }

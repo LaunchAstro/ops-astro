@@ -114,6 +114,8 @@ export interface BodyContext {
   legalEvidence?(): Promise<Readonly<Record<string, string>>>;
   /** MP-14-7a: a broken connection to repair, owner-written. */
   brokenConnection?(): Promise<string>;
+  /** MP-14-10a: a new client with one `ready` graduation row, owner-written. */
+  readyClass?(): Promise<{ readonly clientId: string; readonly classId: string }>;
 }
 
 export const batchOf = (answer: Answer): string =>

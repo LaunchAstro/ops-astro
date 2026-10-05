@@ -207,6 +207,11 @@ export const DECLARED: Readonly<
   'secret.clear': { carry: 'not carried', plant: 'a business key, not task content' },
   // MP-14-7a: a repair names a connection, never task content.
   'connector.repair': { carry: 'not carried', plant: 'a connection, not task content' },
+  // MP-14-10a: a standing mandate or a graduation row of a client, never task content.
+  'mandate.file': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  'mandate.revoke': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  'graduation.promote': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  'graduation.demote': { carry: 'not carried', plant: 'a client mandate, not task content' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

@@ -61,3 +61,29 @@ export function pausingAfter(
       await database.withBusiness(businessId, async (tx) => await run(pausing(tx, { met: false }))),
   };
 }
+
+/**
+ * A new client of `business` with one `ready` graduation row (MP-14-10a),
+ * both written as the owner: graduation rows are the agent loops' (AW-01).
+ */
+export async function seedReadyClass(
+  admin: OwnerConnection,
+  business: string,
+  actorId: string,
+  actionClass = 'social.post',
+): Promise<{ readonly clientId: string; readonly classId: string }> {
+  const clientId = randomUUID();
+  const classId = randomUUID();
+  await admin.execute(
+    `insert into public.clients (business_id, id, name, created_by_actor_id)
+     values ($1, $2, $3, $4)`,
+    [business, clientId, `A graduating client ${clientId.slice(0, 8)}`, actorId],
+  );
+  await admin.execute(
+    `insert into public.graduation_classes
+       (business_id, id, client_id, action_class, class_label, earned)
+     values ($1, $2, $3, $4, $5, 'ready')`,
+    [business, classId, clientId, actionClass, `Class ${actionClass}`],
+  );
+  return { clientId, classId };
+}
