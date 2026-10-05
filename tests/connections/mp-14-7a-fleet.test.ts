@@ -177,6 +177,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     ['scope', ''],
     ['read_components', ['campaigns', 'spend_daily']],
     ['label', 'Café Ads (AU)'],
+    ['label', 'Ads 👩\u200D💻'],
   ];
   const GRAMMAR_REFUSED: readonly (readonly [Parameters<typeof writeConnection>[0], unknown])[] = [
     ['auth_method', '<img src=x onerror=alert(1)>'],
@@ -190,6 +191,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     ['execute_components', ['drop table']],
     ['label', 'LinkedIn\u001B[31m'],
     ['label', ' padded'],
+    ['label', '\u202Eevil'],
+    ['label', 'Linked\u2028In'],
+    ['label', '\uFEFFLinkedIn'],
+    ['label', 'LinkedIn\u00A0'],
   ];
   const repairRows = async (): Promise<number> =>
     await controls.count('select count(*) as n from public.connection_repairs', []);
