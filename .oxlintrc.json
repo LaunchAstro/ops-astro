@@ -14,6 +14,12 @@
   "ignorePatterns": ["node_modules", "dist", "tests/gate/canary.txt", ".claude/skills", ".codex"],
   "overrides": [
     {
+      "files": [
+        "tests/api/an-ending-admitted-before-its-manager-grant-was-revoked-is-refused.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
+    },
+    {
       "files": ["tests/surfaces/receipt-read-refusal-does-not-claim-no-effect.test.tsx"],
       "rules": { "require-await": "off", "no-promise-executor-return": "off" }
     },
