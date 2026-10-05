@@ -44,8 +44,8 @@ import { TRACE_WINDOW_DAYS, type Cursor, type TraceDatabase } from './trace-expo
 import { byPlace, owedAsks, type Owed, type OwedFrom } from './trace-owed.ts';
 import {
   readBack,
+  recordReading,
   traceOf,
-  unanswered,
   UNANSWERED,
   type ExpiryPorts,
   type Reading,
@@ -107,7 +107,14 @@ async function readOwed(
   page: number,
 ): Promise<readonly RetentionBatch[]> {
   const batches: RetentionBatch[] = [];
-  const reading: Reading = { sent: new Map(), unanswered: [], quiet: 0 };
+  const reading: Reading = {
+    sent: new Map(),
+    resume: new Map(),
+    answered: [],
+    unanswered: [],
+    resumes: [],
+    quiet: 0,
+  };
   let after: OwedFrom | null = null;
   while (reading.quiet < UNANSWERED) {
     const from: OwedFrom | null = after;
@@ -116,7 +123,10 @@ async function readOwed(
       businessId,
       async (tx) => await owedAsks(tx, windowDays, from, page),
     );
-    for (const row of owed) if (row.sent !== null) reading.sent.set(row.runId, row.sent);
+    for (const row of owed) {
+      if (row.sent !== null) reading.sent.set(row.runId, row.sent);
+      if (row.resume !== null) reading.resume.set(row.runId, row.resume);
+    }
     const due = owed.filter((row) => !asked.has(row.runId));
     const runs = due.map((row) => row.runId);
     // eslint-disable-next-line no-await-in-loop -- one page after another; the store is not hurried
@@ -127,12 +137,12 @@ async function readOwed(
     }
     const end = owed.at(-1);
     if (owed.length < page || end === undefined) break;
-    after = { turn: end.turn, runId: end.runId };
+    after = { turn: end.turn, answered: end.answered, runId: end.runId };
   }
-  if (reading.unanswered.length > 0) {
+  if (reading.unanswered.length > 0 || reading.answered.length > 0) {
     await database.withBusiness(
       businessId,
-      async (tx) => await unanswered(tx, reading, windowDays),
+      async (tx) => await recordReading(tx, reading, windowDays),
     );
   }
   return batches;

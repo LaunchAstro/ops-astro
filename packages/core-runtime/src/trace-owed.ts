@@ -37,23 +37,27 @@ interface Place {
 /**
  * One owed ask: its run, its place, the run's events after the place that the
  * export has sent and the window still holds, newest first (null for none),
- * and its turn: when a read of it last went unanswered, as ISO 8601 text in
- * UTC to the microsecond whatever the session's settings, or `-infinity` when
- * none did.
+ * and its turn: when a pass last read it, as ISO 8601 text in UTC to the
+ * microsecond whatever the session's settings, or `-infinity` when none did;
+ * whether that pass had its answer, and if not, the span its read stopped at.
  */
 export type Owed = {
   readonly runId: string;
   readonly sent: readonly string[] | null;
   readonly turn: string;
+  readonly answered: boolean;
+  readonly resume: string | null;
 } & Place;
 
 /** Where a page of the owed asks starts: after this turn and run. */
-export type OwedFrom = Pick<Owed, 'turn' | 'runId'>;
+export type OwedFrom = Pick<Owed, 'turn' | 'answered' | 'runId'>;
 
 /**
  * One page of the owed asks, one per run at its latest place, after `after`
- * in turn order: a run whose read went unanswered waits behind every run
- * read since, so a few traces that never answer hide no other.
+ * in turn order: the runs read longest ago first, and of one pass's, those it
+ * left unanswered first. A few traces that never answer wait behind every run
+ * read since, and runs that always answer wait behind the ones a pass did not
+ * reach, so no run's reads hide another's.
  */
 export async function owedAsks(
   tx: TenantQuery,
@@ -62,7 +66,7 @@ export async function owedAsks(
   page: number,
 ): Promise<readonly Owed[]> {
   return await tx.query<Owed>(
-    `select run_id as "runId", after_tx::text as tx, after_id as id, sent,
+    `select run_id as "runId", after_tx::text as tx, after_id as id, sent, answered, resume,
             case when isfinite(turn)
                  then to_char(turn at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
                  else turn::text end as turn
@@ -75,13 +79,28 @@ export async function owedAsks(
                   and (ev.tx, ev.id) > (o.after_tx, o.after_id)
                   and (ev.tx, ev.id) <= (cur.after_tx, cur.after_id)
                   and ev.created_at >= now() - make_interval(days => $3)) as sent,
-              coalesce((select max(b.recorded_at) from public.trace_expiry_batches b
-                         where b.business_id = $1 and b.unanswered_run_ids @> array[o.run_id]),
-                       '-infinity') as turn
-         from (${OWED_ASKS}) o) owed
-      where $4::text is null or (turn, run_id) > ($4::text::timestamptz, $5::uuid)
-      order by owed.turn, owed.run_id limit $6`,
-    [tx.businessId, null, windowDays, after?.turn ?? null, after?.runId ?? null, page],
+              coalesce(r.recorded_at, '-infinity') as turn,
+              coalesce(r.answered, false) as answered, r.resume
+         from (${OWED_ASKS}) o
+         left join lateral (
+           select b.recorded_at, b.read_run_ids @> array[o.run_id] as answered,
+                  b.resume_ids[array_position(b.unanswered_run_ids, o.run_id)]::text as resume
+             from public.trace_expiry_batches b
+            where b.business_id = $1
+              and (b.unanswered_run_ids @> array[o.run_id] or b.read_run_ids @> array[o.run_id])
+            order by b.recorded_at desc limit 1) r on true) owed
+      where $4::text is null
+         or (turn, answered, run_id) > ($4::text::timestamptz, $5::boolean, $6::uuid)
+      order by owed.turn, owed.answered, owed.run_id limit $7`,
+    [
+      tx.businessId,
+      null,
+      windowDays,
+      after?.turn ?? null,
+      after?.answered ?? null,
+      after?.runId ?? null,
+      page,
+    ],
   );
 }
 

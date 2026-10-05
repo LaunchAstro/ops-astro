@@ -1995,11 +1995,17 @@ and codes, never a sentence, to a trace target an operator reads.
   takeover, or one the target stored after a timeout and the hold), leaves
   some span missing, and the trace only grows until the run is sent again,
   so the run counts as gone. Each owed run costs one read per such event
-  each pass. Three
-  reads in a row the store does not answer end the pass, and the runs it
-  did not answer go on a batch row (`unanswered_run_ids`, code
-  `expiry_unconfirmed`, nothing confirmed): the next pass reads every other
-  owed run before them. A run found gone has
+  each pass. A span the store does not answer does not end the run's read:
+  an older one may answer absent. Three reads in a row the store does not
+  answer end the pass. The pass records the runs it read on a batch row
+  (code `expiry_unconfirmed`, nothing confirmed): those answered
+  (`read_run_ids`), and those not (`unanswered_run_ids`), each with the span
+  its read stopped at (`resume_ids`). The next pass reads the runs it read
+  longest ago first, never-read ones before all, and of one pass's, those it
+  left unanswered first, each from where its read stopped and round to it. So
+  neither a few traces that never answer nor runs that always answer can
+  spend every read a pass has before another run, and a run with more spans
+  than the store answers in a pass is read through across passes. A run found gone has
   its events after its place sent again, in the transaction that confirms
   it, and a run that has such events is held back with its ask still owed
   (`expiry_unconfirmed`): the cursor steps back to just before the earliest such event (or

@@ -64,21 +64,30 @@ grant select, insert on public.trace_expiry_asks to ops_astro_app;
 -- run up to it is gone from the store. A batch from before this migration
 -- has no place and confirms nothing: its runs are asked once more, a delete
 -- of what is already gone, and confirmed at a place. The owed check looks a
--- run up in the batches' runs, so they get an index. A pass whose owed reads
--- the store did not answer records those runs, and the next pass reads them
--- after the rest.
+-- run up in the batches' runs, so they get an index. A pass's owed reads
+-- record the runs the store answered and the runs it did not, each of those
+-- with the span its read stopped at (aligned), and the next pass reads the
+-- runs it read longest ago first, a run left unanswered before one answered
+-- in the same pass, and an unanswered run from where its read stopped.
 alter table public.trace_expiry_batches
   add column after_tx xid8,
   add column after_id uuid,
   add column unanswered_run_ids uuid[] not null default '{}',
+  add column read_run_ids uuid[] not null default '{}',
+  add column resume_ids uuid[] not null default '{}',
   add constraint trace_expiry_batches_place_whole
-    check ((after_tx is null) = (after_id is null));
+    check ((after_tx is null) = (after_id is null)),
+  add constraint trace_expiry_batches_resume_aligned
+    check (cardinality(resume_ids) in (0, cardinality(unanswered_run_ids)));
 
 create index trace_expiry_batches_runs_idx
   on public.trace_expiry_batches using gin (expired_run_ids);
 
 create index trace_expiry_batches_unanswered_idx
   on public.trace_expiry_batches using gin (unanswered_run_ids);
+
+create index trace_expiry_batches_read_idx
+  on public.trace_expiry_batches using gin (read_run_ids);
 
 -- A body the target refuses as too large (413) is a gap of its own.
 alter table public.trace_export_gaps
