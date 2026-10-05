@@ -237,3 +237,38 @@ it.skipIf(noDatabase)(
     ).toEqual([]);
   },
 );
+
+it.skipIf(noDatabase)(
+  'Trace export: a refused body is halved once, never down to single spans',
+  async () => {
+    const s = t.alpha;
+    const work = await liveWork(s, 'trace export halved once', 1_000);
+    const runId = String(work.picked['runId']);
+    await drain(s);
+    await age(runId, TRACE_WINDOW_DAYS + 1);
+    const timeout: ExpiryPorts = {
+      expire: () => Promise.resolve({ ok: false, fault: 'timeout', status: null }),
+      present: t.target.expiry.present,
+    };
+    await expireOnce(s.db.app, s.business, TRACE_KEY, timeout);
+    await append(runId, 151);
+    await awaitDue(s);
+
+    // The target takes the plain 100-span body and refuses every other as too large.
+    const bodies: number[] = [];
+    const refusing: Deliver = async (body) => {
+      const count = spanIds([body]).length;
+      bodies.push(count);
+      return count === 100 ? await t.target.deliver(body) : { ok: true, status: 413, body: '{}' };
+    };
+    expect(await exportOnce(s.db.app, s.business, TRACE_KEY, refusing)).toMatchObject({
+      kind: 'delivered',
+    });
+    expect(await exportOnce(s.db.app, s.business, TRACE_KEY, refusing)).toMatchObject({
+      kind: 'gap',
+      code: 'target_oversized_body',
+    });
+    expect(bodies, 'the 151-span body, then its first half, and no more').toEqual([100, 151, 76]);
+    await drain(s);
+  },
+);

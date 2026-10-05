@@ -1887,7 +1887,8 @@ and codes, never a sentence, to a trace target an operator reads.
   the advance are separate transactions and no transaction is open while the
   target is asked. Anything short of a 2xx JSON reply is a gap with a fixed
   code (`target_unreachable`, `target_redirect`, `target_timeout`,
-  `target_oversized_reply`, `target_oversized_body` for a 413,
+  `target_oversized_reply`, `target_oversized_body` for a 413 (the target
+  must take a body of 100 spans; below that, it holds the cursor),
   `target_malformed_reply`, `target_refused`, `target_forbidden`) and the
   cursor stays. The gap names the cursor the
   batch was read after, read once in the read's transaction, never the row as
