@@ -9,7 +9,7 @@
 // call, so the view-state cases can prove they send nothing.
 
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionsScreen } from '../../apps/web/src/screens/Connections.tsx';
 import {
   freshnessOf,
@@ -17,6 +17,7 @@ import {
   isStuck,
   FIRST_DIRECTION,
 } from '../../apps/web/src/screens/connections/fleet-view.ts';
+import { FLOOR_MS } from '../../apps/web/src/data/live.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { SCREENS, type ScreenContext } from '../../apps/web/src/screen-registry.tsx';
 import type { ConnectionView } from '../../packages/core-wire/src/index.ts';
@@ -86,9 +87,29 @@ const BRAVO_ROWS: readonly ConnectionView[] = [
   connection(2, 'broken', 1, 200, 'b'),
 ];
 
-const FLEETS: Readonly<Record<string, readonly ConnectionView[]>> = {
+// Twenty-five sources, so Show more can add a full 10 and then the last 5.
+const WIDE_ROWS: readonly ConnectionView[] = Array.from({ length: 25 }, (_, n) =>
+  connection(n, 'active', 1, 2, 'w'),
+);
+
+type Fleets = Readonly<Record<string, readonly ConnectionView[]>>;
+
+const FLEETS: Fleets = {
   alpha: ROWS,
   bravo: BRAVO_ROWS,
+  charlie: WIDE_ROWS,
+};
+
+// Two people in business alpha, each reading connections at their own client.
+const labelled = (row: ConnectionView, client: string): ConnectionView => ({
+  ...row,
+  clients: [{ id: `k-${client}`, label: client }],
+});
+const ADA_FLEET: Fleets = {
+  alpha: [labelled(connection(1, 'broken', 1, 200), 'Ada canary client')],
+};
+const BEA_FLEET: Fleets = {
+  alpha: [labelled(connection(2, 'broken', 1, 200), 'Bea canary client')],
 };
 
 /** A promise held open until its `release` is called. */
@@ -137,7 +158,7 @@ function fleetOf(rows: readonly ConnectionView[], repaired: ReadonlySet<string>)
 }
 
 // eslint-disable-next-line max-lines-per-function -- one stub server, the routes it answers
-function server(): Stub {
+function server(fleets: Fleets = FLEETS): Stub {
   const sent: string[] = [];
   const repairIds: string[] = [];
   const repaired = new Set<string>();
@@ -147,12 +168,12 @@ function server(): Stub {
   const answer = async (url: string | URL, init?: RequestInit): Promise<Response> => {
     const at = String(url);
     sent.push(`${at} ${String(init?.body ?? '')}`);
-    const business = /\/(alpha|bravo)\//u.exec(at)?.[1] ?? '';
+    const business = /\/(alpha|bravo|charlie)\//u.exec(at)?.[1] ?? '';
     if (at.endsWith('/connection/fleet')) {
       const wait = held.get(business);
       held.delete(business);
       await wait;
-      return json(fleetOf(FLEETS[business] ?? [], repaired));
+      return json(fleetOf(fleets[business] ?? [], repaired));
     }
     if (at.endsWith('/connector/repair')) {
       const body = JSON.parse(String(init?.body)) as { connectionId: string; operationId: string };
@@ -214,6 +235,37 @@ async function open(): Promise<{ readonly page: Mounted; readonly stub: Stub }> 
   );
   await tick();
   return { page, stub };
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+/** Advance fake time by `ms`, letting the reads it starts land. */
+async function pass(ms: number): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
+
+/** Another person starts a repair through the same stub server. */
+async function someoneElseRepairs(stub: Stub, id: string): Promise<void> {
+  await stub.fetch('/api/b/alpha/connector/repair', {
+    method: 'POST',
+    body: JSON.stringify({ connectionId: id, operationId: `other-${id}` }),
+  });
+}
+
+function alphaContext(stub: Stub): ScreenContext<'agency:connections'> {
+  return {
+    client: clientFor(stub, 'alpha'),
+    grantKey: 'alpha:a@x:0',
+    params: {},
+    notice: null,
+    storage: null,
+    navigate: () => {},
+  };
 }
 
 const shownIds = (page: Mounted): readonly string[] =>
@@ -401,6 +453,25 @@ describe('MP-14-7a Connections & signal fleet', () => {
     await page.click('[data-fleet-more]');
     expect(page.find('[data-fleet-more]')).toBeNull();
     await page.unmount();
+    // With more than 10 still hidden, one press adds a full 10.
+    const wide = await mount(
+      <ConnectionsScreen
+        client={clientFor(server(), 'charlie')}
+        grantKey="charlie:a@x:0"
+        now={() => NOW}
+      />,
+    );
+    await tick();
+    expect(shownIds(wide)).toHaveLength(10);
+    expect(wide.find('[data-fleet-more]')?.textContent).toContain('Show 10 more');
+    await wide.click('[data-fleet-more]');
+    expect(shownIds(wide)).toHaveLength(20);
+    expect(wide.find('[data-fleet-showing]')?.textContent).toContain('Showing 20 of 25');
+    expect(wide.find('[data-fleet-more]')?.textContent).toContain('Show 5 more');
+    await wide.click('[data-fleet-more]');
+    expect(shownIds(wide)).toHaveLength(25);
+    expect(wide.find('[data-fleet-more]')).toBeNull();
+    await wide.unmount();
   });
 
   it('MP-14-7a there is no Run all syncs now', async () => {
@@ -534,6 +605,86 @@ describe('MP-14-7a Connections & signal fleet', () => {
     expect(page.find('[data-connection-detail="c-11"]')).toBeNull();
     expect(page.find('[data-fleet-banner]')?.textContent).toContain('Bravo source 02');
     expect(page.find('[data-fleet-banner]')?.textContent).not.toContain('Source 11');
+    await page.unmount();
+  });
+
+  it('MP-14-7a a change of person in one business draws only the new person fleet and repair state', async () => {
+    const ada = server(ADA_FLEET);
+    const bea = server(BEA_FLEET);
+    const context = (stub: Stub, person: string): ScreenContext<'agency:connections'> => ({
+      client: clientFor(stub, 'alpha'),
+      grantKey: `alpha:${person}:0`,
+      params: {},
+      notice: null,
+      storage: null,
+      navigate: () => {},
+    });
+    const page = await mount(SCREENS['agency:connections'](context(ada, 'ada@example.test')));
+    await tick();
+    await page.click('[data-fleet-facet="broken"]');
+    await page.click('[data-connection="c-01"]');
+    expect(page.text()).toContain('Ada canary client');
+    // Ada's repair is still in flight when Bea takes the tab.
+    const release = ada.holdRepair();
+    await page.click('[data-connection-repair="c-01"]');
+    await page.render(SCREENS['agency:connections'](context(bea, 'bea@example.test')));
+    await tick();
+    expect(page.find('[data-fleet-facet="all"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(page.find('[data-connection-detail="c-01"]')).toBeNull();
+    await page.click('[data-connection="c-02"]');
+    const beaRepair = page.find('[data-connection-repair="c-02"]') as HTMLButtonElement | null;
+    expect(beaRepair?.disabled).toBe(false);
+    release();
+    await tick();
+    expect(shownIds(page)).toStrictEqual(['c-02']);
+    expect(page.text()).toContain('Bea canary client');
+    expect(page.text()).not.toContain('Ada canary client');
+    expect(page.find('[data-connection-detail="c-02"] [role="alert"]')).toBeNull();
+    expect(bea.sent.some((call) => call.includes('connector/repair'))).toBe(false);
+    await page.unmount();
+  });
+
+  it('MP-14-7a the open page re-reads the fleet on the 30-second floor, when shown again and when back online', async () => {
+    vi.useFakeTimers({ now: NOW });
+    let shown: DocumentVisibilityState = 'visible';
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => shown);
+    const stub = server();
+    const reads = (): number =>
+      stub.sent.filter((call) => call.includes('/connection/fleet')).length;
+    const page = await mount(SCREENS['agency:connections'](alphaContext(stub)));
+    await pass(1);
+    expect(reads()).toBe(1);
+    await page.click('[data-fleet-facet="broken"]');
+    await page.click('[data-connection="c-11"]');
+    expect(page.find('[data-connection-repair="c-11"]')).not.toBeNull();
+    // Another person starts c-11's repair; the open page shows it within 30 s.
+    await someoneElseRepairs(stub, 'c-11');
+    await pass(FLOOR_MS);
+    expect(reads()).toBe(2);
+    expect(page.find('[data-connection-detail="c-11"]')?.textContent).toContain('Repair started');
+    expect(page.find('[data-fleet-facet="broken"]')?.getAttribute('aria-pressed')).toBe('true');
+    // Hidden, the page reads nothing; shown again, it reads at once.
+    shown = 'hidden';
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await someoneElseRepairs(stub, 'c-12');
+    await pass(FLOOR_MS * 3);
+    expect(reads()).toBe(2);
+    shown = 'visible';
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await pass(1);
+    expect(reads()).toBe(3);
+    await page.click('[data-connection="c-12"]');
+    expect(page.find('[data-connection-detail="c-12"]')?.textContent).toContain('Repair started');
+    // Back online, it reads at once.
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await pass(1);
+    expect(reads()).toBe(4);
     await page.unmount();
   });
 
