@@ -93,14 +93,12 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
 5. Anything else reaches the executor, and login resolution runs there,
    inside the serving transaction.
 6. Once login resolution admits the caller, the call is charged to its quotas
-   (API-3, `identity/quota.ts`, the one table `QUOTAS` or `composeApi`'s
-   `quota`): requests in a window and calls at once, per credential, person
-   and business, after the door so an unadmitted caller spends nothing. One
-   over is `QUOTA_EXCEEDED` 429, recorded in `authentication_attempts`; a
-   refused call is not charged, a request is charged once (`withQuotaScope`),
-   a live stream holds its slot until it ends (`liveStream`), and the presence
-   routes are charged through `withStanding`. Agent credentials have their own
-   (`agent-quota.ts`, `AGENT_QUOTA_EXCEEDED`).
+   (API-3, `identity/quota.ts`, `QUOTAS` or `composeApi`'s `quota`): requests
+   in a window and calls at once, per credential, person and business. One over
+   is `QUOTA_EXCEEDED` 429, recorded in `authentication_attempts`; a refused
+   call is not charged, a request once (`withQuotaScope`), a live stream holds
+   its slot until it ends (`liveStream`), presence routes via `withStanding`.
+   Agent credentials have their own (`agent-quota.ts`, `AGENT_QUOTA_EXCEEDED`).
 
 `tests/api/boundary-body-admission.test.ts` holds the body refusal and what it
 writes. `tests/api/admission-enumeration.test.ts` compares the raw bytes for a

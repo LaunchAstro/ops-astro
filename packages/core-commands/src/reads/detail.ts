@@ -124,7 +124,6 @@ export function briefOf(task: TaskSummary): View {
   return { id: task.id, title: task.title, state: task.state?.label ?? null };
 }
 
-/** The whole summary: all a full list read carries. */
 const fullOf = (task: TaskSummary): View => ({ ...task });
 
 /** The summary with its state and assignee as the words a reader uses. */

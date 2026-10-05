@@ -13,7 +13,6 @@ export function select(value: Json, fields: readonly string[] | undefined): Json
   return Object.fromEntries(fields.filter((key) => key in value).map((key) => [key, value[key]]));
 }
 
-/** A scalar, or a nested value on one line. */
 function inline(value: unknown): string {
   if (value === null || value === undefined) return '-';
   if (typeof value === 'string') return value.replaceAll(/\s+/gu, ' ');

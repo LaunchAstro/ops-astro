@@ -46,6 +46,7 @@ import {
   isUuid,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-records/src/index.ts';
+import { AffectedSetChanged, holdCoveringGrants } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
@@ -554,6 +555,16 @@ async function coveringMap(
   return facts.mapId === id ? undefined : facts.mapId;
 }
 
+/** The grants a write may rest on, `for share` to its commit; one changing now goes to the retry. */
+async function holdGrants(tx: TenantQuery, session: Session, collection: string): Promise<void> {
+  await holdCoveringGrants(tx, subjectsOf(session), collection, 'nowait').catch(
+    (cause: unknown) => {
+      if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
+      throw new AffectedSetChanged(`${collection}: a grant it rests on is changing; retry`);
+    },
+  );
+}
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -591,6 +602,8 @@ export async function prepareCommand(
   let viaMap: { readonly id: string; readonly refusal: Refused } | undefined;
   // A `self` row asks no grant: its handler reaches the caller's own rows only.
   if (declaration.authorisedOn !== 'self') {
+    // OWNER-3 A: judged on grants held to commit; a later revocation waits for this write.
+    if (!declaration.targetsExistingRecord) await holdGrants(tx, session, declaration.collection);
     const asked = {
       // From the declaration, never written in here: see `CommandDeclaration`.
       collection: declaration.collection,
@@ -662,13 +675,11 @@ export async function prepareCommand(
       return viaMap.refusal;
     }
     // OWNER-3 A: authority read before the lock wait is judged again after it, as a replay is.
-    if (declaration.targetLock === 'command') {
-      const again = await prepareCommand(tx, session, entryPoint, request, {
-        ...declaration,
-        targetsExistingRecord: false,
-      });
-      if ('refusal' in again) return again;
-    }
+    const again = await prepareCommand(tx, session, entryPoint, request, {
+      ...declaration,
+      targetsExistingRecord: false,
+    });
+    if ('refusal' in again) return again;
     // A comment on a trashed task is answered as one on a missing task, before
     // the revision: the trash bumped it, and naming the current revision would
     // tell the caller the task is there (OWNER-CARD section 6). The handler
