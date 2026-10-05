@@ -222,8 +222,8 @@ export async function sendReservedCall(
 /**
  * The lease-expiry sweep's half: a started call with no answer is held, never
  * released; one never started is released, and gives back what a top-up or a
- * stop counted of it (`giveBack`, catalogue #756). A conversation call's lease
- * is its age.
+ * stop counted of it under its hold's lock (`giveBack`, catalogue #756). A
+ * conversation call's lease is its age.
  */
 export async function sweepModelCalls(
   tx: TenantQuery,
@@ -277,6 +277,9 @@ async function releaseUnsent(tx: TenantQuery): Promise<readonly { readonly id: s
   // A call its hold never counted has nothing to give back and is released
   // without the hold's lock, so a start that holds it, its lease run out since
   // its checks, finds the call released and sends nothing (catalogue #421).
+  // "Never counted" is read from this statement's snapshot: a top-up or end
+  // committing as the sweep runs can count a call released here, and nothing
+  // gives it back (catalogue #939).
   const released = await tx.query<{ readonly id: string; readonly counted: boolean }>(
     `update public.model_calls c
         set state = 'released', ended_at = clock_timestamp()
