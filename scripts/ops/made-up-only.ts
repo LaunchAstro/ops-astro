@@ -20,7 +20,7 @@
 //   Guards and watch fire in every replication mode, save one at origin (STANDS).
 //
 // A marked database is refused if its ledger names anything, or any tenant
-// table lacks an enabled guard. An unmarked one is refused unless a person
+// table lacks a standing guard. An unmarked one is refused unless a person
 // confirms it (LOCAL_SEED_MADE_UP=confirm) and every tenant table has never
 // held a row, judged by its storage size. The guard stops a mistake; the owner
 // can remove it on purpose, as the owner can write the mark by hand.
@@ -35,10 +35,10 @@ const MARK = 'ops-astro made-up data; businesses: ';
 const PEOPLE = '; people: ';
 const GUARD = 'ops_astro_made_up_guard';
 const LEDGER = 'ops_astro_made_up.untrusted';
-/** Guard `t` stands: protect()'s trigger (after insert or update, each row), as protect() left it. */
+/** Guard `t` stands: protect()'s immediate row trigger, as protect() left it (hex: 'origin', NUL). */
 const STANDS = `(t.tgfoid = to_regprocedure('ops_astro_made_up.guard()') and t.tgtype = 21
-    and t.tgqual is null and t.tgattr = '' and (t.tgenabled = 'A' and t.tgnargs = 0
-    or t.tgenabled = 'O' and t.tgargs = 'origin\\000'::bytea and t.tgrelid = to_regclass('auth.users')
+    and t.tgqual is null and t.tgattr = '' and t.tgconstraint = 0 and (t.tgenabled = 'A' and t.tgnargs = 0
+    or t.tgenabled = 'O' and t.tgargs = decode('6f726967696e00', 'hex') and t.tgrelid = to_regclass('auth.users')
     and not pg_has_role(current_user, (select relowner from pg_class where oid = t.tgrelid), 'USAGE')))`;
 const digest = (id: string): string => createHash('sha256').update(id).digest('hex');
 /** This process's seed tag; the guard knows its digest and nothing else. */
