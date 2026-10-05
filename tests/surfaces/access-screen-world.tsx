@@ -88,20 +88,26 @@ export const MANAGE_AND_SHARE = [...MANAGE_ONLY, { collection: 'access', action:
 /** `access:share` without `access:manage`: no administrator's invitation (SEC27). */
 export const SHARE_ONLY = [{ collection: 'access', action: 'share' }];
 
+/** The key `access.read` asks on the server. */
+const manages = (grants: readonly { readonly collection: string; readonly action: string }[]) =>
+  grants.some((each) => each.collection === 'access' && each.action === 'manage');
+
 /**
- * A stand-in API: `reads` answers `access.read` in turn (the last one repeats),
- * `write` every command, and `session.capabilities` answers `grants`.
+ * A stand-in API: `reads` answers `access.read` in turn (the last one repeats)
+ * and, as the server does, refuses it to grants without `access:manage`;
+ * `write` answers every command, and `session.capabilities` answers `grants`.
  */
 export function server(
   reads: readonly Response[],
-  write: () => Response = () => json({ recordId: 'r', revision: 1 }),
-  grants: readonly unknown[] = MANAGE_ONLY,
+  write: () => Response | Promise<Response> = () => json({ recordId: 'r', revision: 1 }),
+  grants: readonly { readonly collection: string; readonly action: string }[] = MANAGE_ONLY,
   invitations: readonly unknown[] = [],
 ) {
   const calls: Call[] = [];
   /** Each `invitation.list` asked (C39-T), kept apart from the commands. */
   const lists: string[] = [];
   let read = 0;
+  const answers = manages(grants) ? reads : [refusal('SCOPE_NOT_GRANTED', 403)];
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     // The frame's person menu (C23) asks who is signed in, and the frame reads
@@ -112,7 +118,6 @@ export function server(
     // The dock bell's owed count (MP-7-3) and its board topic are the frame's too.
     if (at.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: 0 }));
     if (at.includes('/live?')) return Promise.resolve(new Response(null, { status: 503 }));
-    // What the signed-in person holds, which opens or hides the invitation form (C39-T).
     if (at.endsWith('/invitation/list')) {
       lists.push(at);
       return Promise.resolve(json({ ok: true, invitations }));
@@ -127,7 +132,7 @@ export function server(
       body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
     });
     if (at.endsWith('/access/read')) {
-      const answer = reads[Math.min(read, reads.length - 1)];
+      const answer = answers[Math.min(read, answers.length - 1)];
       read += 1;
       return Promise.resolve(answer?.clone() ?? refusal('NOT_FOUND', 404));
     }

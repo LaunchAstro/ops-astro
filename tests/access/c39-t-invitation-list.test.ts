@@ -57,12 +57,17 @@ const tokenTo = (address: string): string =>
       .findLast((body) => body.includes(JSON.stringify(address))),
   ).token;
 
-/** One of each state in alpha, and one pending in bravo. */
+/** One of each state in alpha, one whose send failed, and one pending in bravo. */
 async function eachState() {
   w.provider.mode('accept');
   const address = addressFor('listed');
   const pending = await invite(c.admin, address);
   expect(await send(pending)).toMatchObject({ ok: true });
+  // A send the provider answered badly is a failed attempt, not a sent one.
+  w.provider.mode('malformed');
+  const failed = await invite(c.admin, addressFor('failed'));
+  expect(await send(failed)).toMatchObject({ ok: false });
+  w.provider.mode('accept');
   const revoked = await invite(c.admin);
   expect(isCommandRefusal(await as(c.admin, 'invitation.revoke', { invitationId: revoked }))).toBe(
     false,
@@ -73,7 +78,7 @@ async function eachState() {
     [lapsed],
   );
   const bravos = await invite(c.bravoAdmin);
-  return { address, pending, revoked, lapsed, bravos, token: tokenTo(address) };
+  return { address, pending, failed, revoked, lapsed, bravos, token: tokenTo(address) };
 }
 
 // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
@@ -90,6 +95,7 @@ describe.skipIf(noDatabase)('C39-T invitation list', () => {
     });
     expect(typeof byId.get(made.pending)?.sentAt).toBe('string');
     expect(Date.parse(byId.get(made.pending)?.expiresAt ?? '')).toBeGreaterThan(Date.now());
+    expect(byId.get(made.failed)).toMatchObject({ state: 'pending', sentAt: null });
     expect(byId.get(made.revoked)).toMatchObject({ state: 'revoked', sentAt: null });
     expect(byId.get(made.lapsed)).toMatchObject({ state: 'expired', role: 'admin' });
 

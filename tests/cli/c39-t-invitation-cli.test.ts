@@ -93,7 +93,7 @@ async function refusedOnAgentPrefix(alphaId: string): Promise<void> {
   }
 }
 
-/** Bravo's invitation by id through alpha, alpha's through bravo, and Ada on bravo's prefix. */
+/** Bravo's invitation by id through alpha, alpha's through bravo, and Ada (acts and list) on bravo's prefix. */
 async function refusedAcrossBusinesses(alphaId: string, bravoId: string): Promise<void> {
   const { world } = harness;
   const bravo = { businessKey: 'bravo' };
@@ -105,6 +105,7 @@ async function refusedAcrossBusinesses(alphaId: string, bravoId: string): Promis
     /* eslint-enable no-await-in-loop */
   }
   refusedSame(await both(world.api, 'invitation.create', CREATE, world.ada.token, bravo));
+  refusedSame(await both(world.api, 'invitation.list', {}, world.ada.token, bravo));
 }
 
 /** One pending invitation in each business, made by its own administrator. */

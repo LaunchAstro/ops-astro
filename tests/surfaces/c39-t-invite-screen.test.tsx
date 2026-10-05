@@ -95,6 +95,8 @@ describe('C39-T invite a team member on Settings ▸ Access', () => {
     expect(outcome?.getAttribute('role')).toBe('status');
     expect(outcome?.textContent).toContain('Ivy Invitee');
     expect(outcome?.textContent).toContain('pending');
+    const name = view.find(`${FORM} [data-field="name"] input`) as HTMLInputElement | null;
+    expect(name?.value, 'the form is cleared once the invitation is made').toBe('');
   });
 
   it('C39-T refusal access:share on the screen: without the key the form is not drawn and nothing is sent', async () => {
@@ -136,6 +138,7 @@ describe('C39-T invite a team member on Settings ▸ Access', () => {
   it('C39-T admin invitation asks access:manage on the screen: without it Administrator is not offered', async () => {
     const api = server([json(access([ADA, MIA]))], undefined, SHARE_ONLY);
     const view = await open(api.fetch);
+    expect(view.find('[data-access="team"]'), 'the access list asks access:manage').toBeNull();
     expect(view.find(`${FORM}`), 'the form, for a holder of access:share').not.toBeNull();
     expect(await roles(view)).toEqual(['Team member']);
     expect(api.commands()).toEqual([]);
