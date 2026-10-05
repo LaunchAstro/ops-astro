@@ -36,7 +36,7 @@ import type { BusinessId, Database, TenantQuery } from '../../core-records/src/i
 import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
 import { giveBack, lockEnvelope } from './broker-give-back.ts';
 import { atCeiling } from './broker-reserve.ts';
-import type { Broker } from './broker-types.ts';
+import type { Broker, BrokerRoute } from './broker-types.ts';
 
 /** The most a lookup answer is read: one short code. */
 const LOOKUP_BYTES = 4 * 1024;
@@ -83,6 +83,27 @@ function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
 }
 
 /**
+ * The route that carried the call, as its row records it: key, reach,
+ * credential kind and provider, never another that shares only its key
+ * (catalogue #439). The row records no credential, so when two configured
+ * routes match, either account could have carried it and an absence on one
+ * proves nothing: the reason a person records the outcome instead.
+ */
+function carryingRoute(broker: Broker, call: Asked, provider: string): BrokerRoute | string {
+  const matching = broker.routes.filter(
+    (one) =>
+      one.key === call.route_key &&
+      one.reach === call.route_reach &&
+      one.credentialKind === call.credential_kind &&
+      one.provider === provider,
+  );
+  if (matching.length > 1) {
+    return 'more than one configured route matches its route; a person records the outcome';
+  }
+  return matching[0] ?? 'no configured route reaches its provider';
+}
+
+/**
  * Ask the call's provider whether it began the call, or `waits` when the
  * route has no room for it. A failed lookup is no proof, never a throw.
  */
@@ -97,16 +118,8 @@ async function ask(
   if (operation === undefined || adapter?.lookup === undefined || !adapter.readLookup) {
     return nothing('no lookup is declared for this operation; a person records the outcome');
   }
-  // The route that carried the call, as its row records it: never another
-  // that shares its key (catalogue #439).
-  const route = broker.routes.find(
-    (one) =>
-      one.key === call.route_key &&
-      one.reach === call.route_reach &&
-      one.credentialKind === call.credential_kind &&
-      one.provider === operation.provider,
-  );
-  if (route === undefined) return nothing('no configured route reaches its provider');
+  const route = carryingRoute(broker, call, operation.provider);
+  if (typeof route === 'string') return nothing(route);
   // A person's own subscription is never carried by unattended work (AW-01's credential rule).
   if (route.credentialKind === 'subscription') {
     return nothing("the route's credential is a person's own; a person records the outcome");
