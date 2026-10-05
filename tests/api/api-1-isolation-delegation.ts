@@ -123,6 +123,7 @@ const bodies = (
   'run.child_handback': () => ({ outcome: 'completed' }),
   // A credential's create (API-2): a pickup's one-task delegation never reaches it.
   'task.create': () => ({ fields: { title: 'made-up' } }),
+  'onboarding.step_result': (record) => ({ recordId: record, outcome: 'done', result: 'made-up' }),
 });
 
 /** The lease and run operations the delegation reaches only on its own task. */
