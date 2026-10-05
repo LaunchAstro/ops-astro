@@ -80,7 +80,7 @@ export interface PublishPorts {
     input: Seamed & { versionDigest: string },
   ) => Promise<ProviderResult<Published>>;
   readonly cancellation: () => Promise<'none' | 'requested'>;
-  /** At most one task per reason and key (one effect's token): one per stage it reaches, never per retry. */
+  /** At most one task per reason and key (one effect's token); the reasons are a closed set. */
   readonly raiseTask: (reason: string, key: string) => Promise<void>;
   /** `site.capture` of the catalogued page before the send: the occurrence is calibrated on it. */
   readonly capture: ObservePorts['capture'];
