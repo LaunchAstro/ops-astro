@@ -12,6 +12,7 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -178,6 +179,12 @@ it('an artefact swapped for a link after selection is refused as changed, not bl
   expect(calls).toEqual([]);
 });
 
+/** Whether `SERVED` meets `served/` under `root/prod`: only on a disk that folds case (APFS does, ext4 does not). */
+function folds(root: string): boolean {
+  mkdirSync(join(root, 'prod', 'served'));
+  return existsSync(join(root, 'prod', 'SERVED'));
+}
+
 it('a link path already holding a folder, or served in another case, is refused before the migration', () => {
   for (const [name, make] of [
     ['current', (at: string) => mkdirSync(at)],
@@ -185,6 +192,7 @@ it('a link path already holding a folder, or served in another case, is refused 
   ] as const) {
     const { root, store } = fixture();
     mkdirSync(join(root, 'prod'));
+    if (name === 'SERVED' && !folds(root)) continue;
     make(join(root, 'prod', name));
     const { outcome, calls } = promoted(store, join(root, 'prod', name));
     expect(outcome, name).toMatchObject({ kind: 'refused' });
@@ -205,4 +213,39 @@ it('an artefact swapped for a plain file after selection is refused as changed',
     reason: expect.stringContaining(`${artefactName(VERSION)} changed while it was copied`),
   });
   expect(calls).toEqual([]);
+});
+
+it('an artefact swapped for a folder without owner write is refused as changed, nothing left in served/', () => {
+  const { root, store } = fixture();
+  const artefact = join(store, artefactName(VERSION));
+  mkdirSync(join(root, 'prod'));
+  const { outcome, calls } = promotedAfter(store, join(root, 'prod', 'current'), () => {
+    rmSync(artefact, { recursive: true });
+    mkdirSync(artefact);
+    writeFileSync(join(artefact, 'index.html'), 'not the staged bytes');
+    chmodSync(artefact, 0o555);
+  });
+  chmodSync(artefact, 0o755);
+  expect(outcome).toMatchObject({
+    kind: 'refused',
+    reason: expect.stringContaining(`${artefactName(VERSION)} changed while it was copied`),
+  });
+  expect(calls).toEqual([]);
+  expect(readdirSync(join(root, 'prod', 'served'))).toEqual([]);
+});
+
+it('a folder at the link swap name, or a link folder the promoter cannot write, is refused first', () => {
+  for (const [name, make] of [
+    ['a folder at current.promoting', (prod: string) => mkdirSync(join(prod, 'current.promoting'))],
+    ['a link folder without owner write', (prod: string) => chmodSync(prod, 0o555)],
+  ] as const) {
+    const { root, store } = fixture();
+    const prod = join(root, 'prod');
+    mkdirSync(prod);
+    make(prod);
+    const { outcome, calls } = promoted(store, join(prod, 'current'));
+    chmodSync(prod, 0o755);
+    expect(outcome, name).toMatchObject({ kind: 'refused' });
+    expect(calls, name).toEqual([]);
+  }
 });
