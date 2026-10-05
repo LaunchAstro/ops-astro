@@ -31,7 +31,12 @@ const change = {
 };
 
 it('a page the capture reads otherwise than the check has no place for the occurrence', () => {
-  expect(occurrenceOf(change, target)).toEqual({ left: 'We walk ', right: ' you.', index: 1 });
+  expect(occurrenceOf(change, target)).toEqual({
+    left: 'We walk ',
+    right: ' you.',
+    index: 1,
+    words: ['alongside', 'alongside'],
+  });
   drift.on = true;
   try {
     expect(occurrenceOf(change, target)).toBeUndefined();

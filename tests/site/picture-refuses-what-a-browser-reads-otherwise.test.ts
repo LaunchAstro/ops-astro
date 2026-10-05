@@ -120,6 +120,30 @@ it.each([
   });
 });
 
+// A refresh navigates away from the page pictured; a browser honours no other http-equiv that
+// changes what it shows, and an unknown one is refused rather than guessed at.
+it.each([
+  ['a refresh', '<meta http-equiv=refresh content="0"><style>p{color:red}</style><p>Hi</p>'],
+  ['a refresh to another page', '<p>Hi</p><meta http-equiv="Refresh" content="0; url=/other">'],
+  ['an unknown header', '<meta http-equiv="x-something-new" content="1"><p>Hi</p>'],
+])('a page whose markup carries %s is refused before the browser starts', async (_, page) => {
+  const browser = standIn([], []);
+  const picture = await capturePicture(PAGE, world(page), browser);
+  expect({ picture, started: browser.started }).toEqual({
+    picture: { ok: false, code: 'CAPTURE_BODY_MALFORMED' },
+    started: 0,
+  });
+});
+
+it.each([
+  ['a content type', '<meta http-equiv="Content-Type" content="text/html; charset=utf-8">'],
+  ['a content language', '<meta http-equiv="content-language" content="en-AU">'],
+  ['an IE compatibility mode', '<meta http-equiv="X-UA-Compatible" content="IE=edge">'],
+])('a page whose markup carries %s still gets its picture', async (_, meta) => {
+  const picture = await capturePicture(PAGE, world(`${meta}<p>Hi</p>`), standIn([], []));
+  expect(picture.ok).toBe(true);
+});
+
 it.each([
   ['no type', '<style>p{color:red}</style>'],
   ['an empty type', '<style type="">p{color:red}</style>'],
