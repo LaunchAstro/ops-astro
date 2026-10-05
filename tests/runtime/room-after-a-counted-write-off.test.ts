@@ -7,13 +7,16 @@
 // hold at every call the top-up counted, the written-off one too, so a
 // replacement holds no more than the envelope has left.
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { grantTo } from '../commands/fixture.ts';
 import {
   appliedDetail,
+  asAgent,
   asPerson,
+  codeOf,
   openSchedules,
   pickup,
   type Schedules,
@@ -62,11 +65,11 @@ afterAll(async () => {
  * unknown, the step marked. The worker's authority goes, and the fence keeps
  * the marked step's hold whole. A stop on the held R1 and a top-up of 100 then
  * move c1 and c2's 200 to the envelope's actual, R1 held 100, and a person
- * writes R1 off at 0. The fence comes before the stop: a stop releases the
+ * writes R1 off at `charge` (0 unless given). The fence comes before the stop: a stop releases the
  * hold's lease, after which only a pickup could fence it, and a pickup refuses
  * a marked step before it fences.
  */
-async function countedWriteOff() {
+async function countedWriteOff(charge = 0) {
   const { work, versionId, first } = await roomyWork(s);
   await stopWorker(s, work.picked);
   const second = await pickup(s, first);
@@ -82,7 +85,10 @@ async function countedWriteOff() {
   );
   await stopAndTopUp(s, { ...work, picked: second }, r1, 100);
   appliedDetail(
-    await asPerson(s, writeOffBody({ taskId: work.taskId, attemptId: await attemptOf(s, r1) }, 0)),
+    await asPerson(
+      s,
+      writeOffBody({ taskId: work.taskId, attemptId: await attemptOf(s, r1) }, charge),
+    ),
     'budget.write_off',
   );
   const closed = { call: await callState(s, c2), counted: await counted(s, r1) };
@@ -109,6 +115,26 @@ describe.skipIf(serverUrl === undefined)(
         actual: '500',
         live: ['100'],
       });
+    });
+
+    it('counts a hold topped up and then written off above zero at the moved calls and the charge, so no hold passes the raised ceiling', async () => {
+      // The ceiling is 500 raised by 100: 600. The top-up moved R1's 500 to the
+      // envelope's actual and the write-off charges 100 more, so R1 alone fills it.
+      const { work, versionId, first, r1 } = await countedWriteOff(100);
+      await stampBefore(s, first, r1);
+      const again = await asAgent(s, {
+        command: 'task.pickup',
+        operationId: randomUUID(),
+        reservationId: first,
+        leaseSeconds: 600,
+      });
+      const holds = await holdsOf(s, versionId);
+      const [envelope] = (await envelopeOf(s, work)) as readonly { actual: string }[];
+      expect({
+        code: codeOf(again),
+        actual: envelope?.actual,
+        live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
+      }).toEqual({ code: 'BUDGET_UNAVAILABLE', actual: '600', live: [] });
     });
   },
 );
