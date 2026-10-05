@@ -14,30 +14,52 @@ import { useSavedFlag } from '../../apps/web/src/screens/task/saved-flag.ts';
 import { useLayoutStore } from '../../apps/web/src/shell/layout-store.ts';
 import { mount, settle } from '../surfaces/mount.tsx';
 
+interface Saves {
+  readonly saved: Record<string, unknown>[];
+  readonly refuse: Set<string>;
+  readonly hold: Set<string>;
+  readonly held: (() => void)[];
+}
+
+/** A save: held, refused or stored, as the store was told for its key. */
+function answerSave({ saved, refuse, hold, held }: Saves, init?: RequestInit): Promise<Response> {
+  const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+  saved.push(body);
+  const key = String(body['preference']);
+  if (hold.has(key)) {
+    return new Promise<Response>((resolve) => {
+      held.push(() => {
+        resolve(Response.json({ recordId: 'pref', revision: 1, detail: {} }));
+      });
+    });
+  }
+  if (refuse.has(key)) {
+    return Promise.resolve(
+      Response.json(
+        { refused: true, code: 'FIELD_VALUE_INVALID', names: [key], fixes: [] },
+        { status: 422 },
+      ),
+    );
+  }
+  return Promise.resolve(Response.json({ recordId: 'pref', revision: 1, detail: {} }));
+}
+
 /** A preference store whose reads wait to be released, oldest first, and whose saves answer at once. */
 function store(stored: Record<string, unknown>) {
   const reads: (() => void)[] = [];
   const saved: Record<string, unknown>[] = [];
   const refuse = new Set<string>();
+  // Keys whose saves wait to be answered until `answerHeld`.
+  const hold = new Set<string>();
+  const held: (() => void)[] = [];
+
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
     signedIn: true,
     fetch: ((url: string | URL, init?: RequestInit) => {
-      if (String(url).endsWith('/preference/save')) {
-        const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-        saved.push(body);
-        const key = String(body['preference']);
-        if (refuse.has(key)) {
-          return Promise.resolve(
-            Response.json(
-              { refused: true, code: 'FIELD_VALUE_INVALID', names: [key], fixes: [] },
-              { status: 422 },
-            ),
-          );
-        }
-        return Promise.resolve(Response.json({ recordId: 'pref', revision: 1, detail: {} }));
-      }
+      if (String(url).endsWith('/preference/save'))
+        return answerSave({ saved, refuse, hold, held }, init);
       // The answer is what the store held when the read left.
       const answer = { preferences: { ...stored } };
       return new Promise<Response>((resolve) => {
@@ -54,7 +76,14 @@ function store(stored: Record<string, unknown>) {
     });
     await settle();
   };
-  return { client, saved, refuse, release, pending: () => reads.length };
+  const answerHeld = async (): Promise<void> => {
+    await act(async () => {
+      for (const answer of held.splice(0)) answer();
+      await Promise.resolve();
+    });
+    await settle();
+  };
+  return { client, saved, refuse, hold, release, answerHeld, pending: () => reads.length };
 }
 
 it('the layout keeps a released rail width over a read that left before it', async () => {
@@ -105,6 +134,8 @@ it('a saved flag keeps the choice made before its read answered, and saves it', 
 it('a refusal’s reread does not undo a choice still unanswered when the reread left', async () => {
   const at = store({ appearance: 'light', 'tips.enabled': true });
   at.refuse.add('tips.enabled');
+  // Dark's save is still unanswered when the reread lands.
+  at.hold.add('appearance');
   const view = await mount(<YouGroups client={at.client} grantKey="alpha:ada:0" storage={null} />);
   const selected = () =>
     view.find('[data-pref="appearance"] button[aria-pressed="true"]')?.textContent;
@@ -120,6 +151,8 @@ it('a refusal’s reread does not undo a choice still unanswered when the reread
     await at.release();
     expect(at.saved.map((body) => body['preference'])).toEqual(['tips.enabled', 'appearance']);
     expect(selected(), 'the reread put the older appearance back').toBe('Dark');
+    await at.answerHeld();
+    expect(selected()).toBe('Dark');
   } finally {
     await view.unmount();
     delete document.documentElement.dataset['themePreference'];

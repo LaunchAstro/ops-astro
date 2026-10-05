@@ -92,6 +92,20 @@ describe('a move to another owner drops the previous owner’s answers', () => {
     store.set({ ...ADA_ALPHA, sessionId: 's-ada-stepped-up' });
     expect(desk.owns(save)).toBe(true);
   });
+});
+
+describe('a screen-only move and a dropped desk', () => {
+  it.each([
+    ['business to business', ADA_BRAVO],
+    ['person to person', BEN_ALPHA],
+  ])('a screen moved %s drops its old answers while the tab stays put', (_boundary, next) => {
+    // A screen held for one owner while the tab already holds another moves without a tab change.
+    const desk = new Desk(ownerOfSession(ADA_ALPHA));
+    const read = desk.read();
+    const save = desk.save();
+    desk.moveTo(ownerOfSession(next));
+    expect({ read: desk.draws(read), save: desk.owns(save) }).toEqual({ read: false, save: false });
+  });
 
   it('a dropped desk draws none of the reads in flight', () => {
     const desk = new Desk(ownerOfSession(ADA_ALPHA));
