@@ -51,8 +51,9 @@
 // A planning reply (AW-04, U10; `core-custody/src/broker-planning.ts`)
 // takes its business's planning cap `for update` (the `cap` class, first),
 // then the same ceiling and route keys, last.
-// The pinned read (AW-02, `definitions-read.ts`) takes one lock, its lease,
-// through `acquire`, before it writes its ledger row.
+// The pinned read (AW-02, `definitions-read.ts`) takes its lease through
+// `acquire`, then holds an agent lease's delegation row `for share` (lease
+// before delegation, as here), before it writes its ledger row.
 // The audit chain's key (the business id, `audit_events_chain`) is taken by
 // each audit write, for most commands their last lock; an agent `task.assign`
 // takes it just after its write, before its operation record (`tasks-agent.ts`).

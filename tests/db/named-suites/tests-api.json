@@ -2,6 +2,7 @@
   "comment": [
     "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read).",
     "SOLOW-G G1c names failed-handback-story (Sol OW-108.1: a failed hand-back never reports successful completion, through the real API) and handback-outcome-read (the task read carries the attempt outcome: a completed hand-back reads completed and Done).",
+    "CAT-API-1 names unknown-key-credential-door (catalogue #764: a not-live credential at a business key nobody holds answers as at a held one, past the door's count, through the real API and database).",
     "Not named: secret-log-capture-keeps-credential-in-object.test.ts and secret-log-capture-keeps-credential-in-format-and-buffer.test.ts import api-2-agent-credential-use-world.ts only for its console capture and open no database, and the runner refuses a named suite that leaves the counter alone (catalogue #720)."
   ],
   "invariant": [
@@ -154,6 +155,7 @@
     "tests/api/surface-operations.test.ts",
     "tests/api/t2c1-rejected-decision-crash-seam.test.ts",
     "tests/api/t2c2-worker.test.ts",
+    "tests/api/unknown-key-credential-door.test.ts",
     "tests/api/unstorable-command-bodies.test.ts",
     "tests/api/wrap-up-pointers-follow-reader-reach.test.ts"
   ]

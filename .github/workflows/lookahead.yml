@@ -1,0 +1,99 @@
+name: look-ahead
+
+# S0-7: the database conformance run on Postgres 18, the next major, so a
+# change that breaks on it shows before the provider moves. Nightly since
+# CI-SPEED (the owner, 4 October 2026, NATHAN-CF-RECORD item 1): never on a
+# pull request, a push or the merge queue. On pull requests it never passed in
+# 776 runs and used a quarter of CI's minutes (CI-AUDIT, 1 to 4 October). No
+# required check names it, and nothing waits on it. A failure is reported on
+# one standing issue. When the provider offers 18, one ticket moves
+# production, staging, CI and the restore drill to it together
+# (docs/supply-chain-pins.md). Actions are pinned by commit and the image by
+# digest, as in ci.yml.
+
+on:
+  # 03:00 in Sydney under daylight saving. Schedules run from main only.
+  schedule:
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: look-ahead
+  cancel-in-progress: false
+
+jobs:
+  lookahead:
+    # Split 4 ways like the required run, each against its own Postgres, so
+    # every part finishes inside the 90 minutes one unsplit run never did.
+    name: database look-ahead, Postgres 18 (not required) ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    # ORCH57PG18: a hung run gives its runner back after 90 minutes, not GitHub's 360.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: conformance-throwaway
+          POSTGRES_DB: conformance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      # The upgrade drill seeds through an older commit's checkout: full history.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run db:conformance --shard "$SHARD"
+        env:
+          SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          OPS_ASTRO_DB_LOOKAHEAD_MAJOR: '18'
+          FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+
+  report:
+    # One standing issue holds every failed night: opened on the first, added
+    # to after, and only one this workflow opened. The only job here that may
+    # write anything, and only issues.
+    name: look-ahead failure reported
+    needs: [lookahead]
+    # Any outcome but success: a run that hits its timeout is cancelled, not failed.
+    if: always() && needs.lookahead.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    steps:
+      - name: Open the standing issue, or add this night to it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: Postgres 18 look-ahead failing
+        run: |
+          set -euo pipefail
+          body="The nightly Postgres 18 look-ahead failed: $RUN_URL"
+          number="$(gh issue list --state open --author app/github-actions --search "in:title $TITLE" --json number,title \
+            --jq '[.[] | select(.title == env.TITLE)][0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi

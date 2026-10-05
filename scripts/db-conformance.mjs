@@ -60,6 +60,7 @@ import { join, relative, resolve } from 'node:path';
 import pg from 'pg';
 import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
 import { manifestPathIn, readNamedSuites } from './named-suites.ts';
+import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 
@@ -170,6 +171,16 @@ const client = new pg.Client({ connectionString: url });
 let selfCost = 0;
 
 try {
+  // The migrated template is no suite's work, and building it takes a lock in
+  // `postgres`, which may be the database measured here. So it is built now,
+  // before the first read, and each suite's global setup only finds it
+  // finished, beside the measured database (scripts/migrated-template.ts). A run
+  // that has already failed builds nothing. It comes before the connection: a
+  // session flushes its counts at most once a second, so one left idle through
+  // the build makes the first read flush and the measured read cost twice that.
+  if (failures.length === 0 && templateEnabled()) {
+    await ensureMigratedTemplate(process.env['DATABASE_ADMIN_URL'] ?? url);
+  }
   await client.connect();
   // Two consecutive reads measure what a read of the counter costs, so the
   // threshold below is calibrated on this database rather than assumed. The
@@ -178,7 +189,9 @@ try {
   const second = await readCounter(client);
   selfCost = Math.max(1, second - first);
 } catch (error) {
-  console.error(`db-conformance: the database named by DATABASE_URL did not answer.`);
+  console.error(
+    'db-conformance: the database named by DATABASE_URL did not answer, or its migrated template was not built.',
+  );
   console.error(`db-conformance: ${String(error)}`);
   await client.end().catch(() => {});
   process.exit(1);
