@@ -56,6 +56,13 @@ function sourcesUnder(root: string): string[] {
   });
 }
 
+/** Source text without comments, string literals, imports and re-exports. */
+const codeOf = (text: string): string =>
+  text
+    .replaceAll(/\/\*[\s\S]*?\*\/|\/\/.*$/gmu, '')
+    .replaceAll(/'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/gu, "''")
+    .replaceAll(/^(?:import|export)\b[^;]*?\bfrom\s+'';/gmsu, '');
+
 const RUN_START = /\b(occurrenceRunStarter|dispatchOccurrence|startOccurrenceRun)\b/u;
 // The two defining files, the third's own module, and the barrels that
 // re-export each by its own name; the worker is the one caller allowed.
@@ -81,6 +88,15 @@ describe('C52-A run start has no route', () => {
       ),
     );
     expect(renamed).toEqual([]);
+    // Inside those files, outside comments, strings, import and re-export
+    // blocks, a name is only defined or called: an assignment, field or
+    // return would bind it to another name.
+    const bound = [...DEFINING].filter((path) =>
+      /(?<!function\s{1,9})\b(?:occurrenceRunStarter|dispatchOccurrence|startOccurrenceRun)\b(?!\s*[(<])/u.test(
+        codeOf(readFileSync(path, 'utf8')),
+      ),
+    );
+    expect(bound).toEqual([]);
   });
 });
 
