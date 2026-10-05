@@ -241,9 +241,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       [grants.ticketA, grants.mapA],
     );
     await owner(
-      `update public.records set deleted_at = now()
+      `update public.records
+          set deleted_at = now(), deleted_by_actor_id = $2, trash_batch_id = $3
         where id = (select purpose_scope_id from public.delegations where id = $1)`,
-      [grants.trashedA],
+      [grants.trashedA, admin.actorId, randomUUID()],
     );
 
     await tripwire(alpha, { what: 'Lease died waiting', fired: 2, filed: 'AT-10' });
