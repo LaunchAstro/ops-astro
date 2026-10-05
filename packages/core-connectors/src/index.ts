@@ -52,6 +52,24 @@ export {
   type OutboxMessage,
 } from './email-fake.ts';
 export {
+  EMAIL_HOOK_MAX_BYTES,
+  EMAIL_HOOK_TOLERANCE_S,
+  isEmailHookSecret,
+  verifyEmailHook,
+  type EmailHookEvent,
+  type EmailHookRefusal,
+  type EmailHookVerdict,
+} from './email-hook.ts';
+export {
+  checkSender,
+  dmarcPolicy,
+  type DmarcPolicy,
+  type RecordStatus,
+  type SenderReport,
+  type SenderSource,
+} from './email-sender.ts';
+export { fakeSenderSource, type FakeSenderState } from './email-sender-fake.ts';
+export {
   CONVERSATION_ANSWER,
   readReplayAnswer,
   replayAdapter,
@@ -123,13 +141,12 @@ export {
   siteCatalogue,
   siteOperation,
 } from './site/operations.ts';
+export { compareCaptures, type PageObservation } from './site/captures.ts';
 export {
   checkEnvelope,
-  compareCaptures,
   wordOffsets,
   type CorrectionTarget,
   type EnvelopeResult,
-  type PageObservation,
   type ProposedChange,
 } from './site/envelope.ts';
 export { approvedChange, contentDigest, versionDigestOf, type VersionPin } from './site/version.ts';

@@ -183,6 +183,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'operations.change_installation_mode': writing(business('ops.installation')),
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
+  // Custody (C31): a set may store a client's credential (a clientId), so it
+  // is client data and waits on the first-client gate, as a task that may
+  // name no client does. A clear gives no one anything, as a share revoked.
+  'secret.list': READ,
+  'secret.set': writing(client('custody_secrets')),
+  'secret.clear': writing(business('custody_secrets')),
   'client.create': writing(client('clients')),
   'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
@@ -284,4 +290,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_type': writing(MAP_TASK.writes.concat(client('inbox_items'))),
   // The map and every ticket under it carry the client.
   'map.scope': MAP_TASK,
+  // One numbered version: its components and the map's own version number,
+  // which refresh the map's summary and frontier as any write to the map does.
+  'map.revise': writing(MAP_TASK.writes.concat(client('map_components', 'map_versions'))),
+  'map.view': READ,
+  'map.frontier': READ,
 };

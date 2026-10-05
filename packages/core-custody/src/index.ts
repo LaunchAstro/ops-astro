@@ -25,7 +25,7 @@ export {
 } from './egress.ts';
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
 export { raiseBudgetWait, stopWords } from './broker-wait.ts';
-export { giveBack } from './broker-give-back.ts';
+export { giveBack, giveBackReleased } from './broker-give-back.ts';
 export {
   callModelInConversation,
   type ConversationCallRequest,
@@ -46,6 +46,8 @@ export {
   type EmailResult,
   type MailSettings,
 } from './broker-email.ts';
+export { landEmailEvent, type EmailHookOutcome } from './broker-email-hook.ts';
+export { tellCommentClients } from './broker-email-mention.ts';
 export {
   callModel,
   promptCopyRegistered,

@@ -145,6 +145,10 @@ export async function createTask(
   const taskType = taskTypeOperand(request.taskType);
   if (typeof taskType !== 'string') return refused(taskType);
 
+  // The origin conversation is locked before any task row, the purge's order.
+  const origin = await originOf(tx, context, request.conversationId);
+  if (origin !== undefined && typeof origin !== 'string') return origin;
+
   const parentId =
     typeof request.parentId === 'string'
       ? request.parentId.toLowerCase()
@@ -186,8 +190,6 @@ export async function createTask(
     );
   }
   const stateId = named?.id ?? initialStateId(context.spine.states);
-  const origin = await originOf(tx, context, request.conversationId);
-  if (origin !== undefined && typeof origin !== 'string') return origin;
 
   // A subtask carries its parent's client (MP-4-4): the placement above has
   // already found the parent live in this business.
@@ -231,6 +233,10 @@ export async function createTask(
  * business, its body kept, or one NOT_FOUND for any other, another person's
  * and a made-up id alike. Absent or null is a task created from no
  * conversation.
+ *
+ * Read locked (`for key share`): a purge in flight commits first and the
+ * create sees the body gone, so no task names a purged conversation as its
+ * origin.
  */
 export async function originOf(
   tx: TenantQuery,
@@ -240,7 +246,8 @@ export async function originOf(
   if (conversationId === undefined || conversationId === null) return undefined;
   const rows = await tx.query<{ readonly id: string }>(
     `select id from public.conversations
-      where business_id = $1 and id = $2 and owner_person_id = $3 and body_purged_at is null`,
+      where business_id = $1 and id = $2 and owner_person_id = $3 and body_purged_at is null
+        for key share`,
     [tx.businessId, conversationId, context.session.personId],
   );
   return rows[0]?.id ?? refused(refuseNotFound(['conversationId']));
