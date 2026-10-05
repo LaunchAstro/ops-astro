@@ -68,6 +68,16 @@
       }
     },
     {
+      "files": [
+        "tests/runtime/trace-export-resends-a-run-whole-while-its-delete-is-owed.test.ts",
+        "tests/runtime/trace-retention-expires-a-late-committed-event-once-past-the-window.test.ts",
+        "tests/runtime/trace-retention-recovers-a-delete-after-a-database-fault.test.ts",
+        "tests/runtime/trace-retention-recovers-a-delete-that-lands-after-a-timeout.test.ts",
+        "tests/runtime/trace-retention-recovery-for-one-run-keeps-another-confirmed-run-gone.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off", "unicorn/consistent-function-scoping": "off" }
+    },
+    {
       "files": ["tests/api/live-board-lost-access.test.ts"],
       "rules": {
         "no-await-in-loop": "off",
