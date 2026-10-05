@@ -29,6 +29,7 @@ import {
   type Call,
   type Route,
 } from './sign-in-again-support.tsx';
+import { consoleLine } from '../support/console-text.ts';
 
 const WRITE = '/budget/set_planning_cap';
 const PROMPT = '[data-step-up="prompt"]';
@@ -92,7 +93,7 @@ afterEach(async () => {
 type Spy = { readonly mock: { readonly calls: readonly (readonly unknown[])[] } };
 const spies: Spy[] = [];
 const written = (): string[] =>
-  spies.flatMap((spy) => spy.mock.calls.map((args) => args.map(String).join(' ')));
+  spies.flatMap((spy) => spy.mock.calls.map((args) => consoleLine(...args)));
 beforeEach(() => {
   spies.length = 0;
   spies.push(vi.spyOn(Storage.prototype, 'setItem'));

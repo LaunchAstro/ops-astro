@@ -34,6 +34,7 @@ import {
   race,
   serverUrl,
 } from './c59-factor-orphan-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 openWorld();
 
@@ -101,7 +102,7 @@ async function logged(act: () => Promise<unknown>): Promise<string[]> {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
   try {
     await act();
-    return warn.mock.calls.map((call) => call.map(String).join(' '));
+    return warn.mock.calls.map((call) => consoleLine(...call));
   } finally {
     warn.mockRestore();
   }

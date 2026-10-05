@@ -166,7 +166,7 @@ function LogBox(props: {
     const operationId = (held.current[duration] ??= props.mint());
     props.log(duration, operationId, (kind) => {
       if (kind !== 'unknown') held.current[duration] = undefined;
-      if (kind === 'ok') setTyped('');
+      if (kind === 'ok') setTyped((now) => (now === typed ? '' : now));
     });
   };
   return (
@@ -256,21 +256,21 @@ export function TimeLog(props: {
   readonly showAll: boolean;
   readonly onShowAll: (value: boolean) => void;
   readonly onChanged: () => void;
+  readonly onTimer?: ((running: string | null) => void) | undefined;
 }): ReactElement {
   const { client, taskId, time } = props;
   const { busy, because, run } = useCommand();
   const after = (done?: (kind: string) => void) => (settlement: { readonly kind: string }) => {
     done?.(settlement.kind);
-    if (settlement.kind !== 'ok') return;
-    props.onChanged();
+    if (settlement.kind === 'ok') props.onChanged();
   };
   const timer = (): void => {
-    const name = time.running === null ? 'time.start' : 'time.stop';
-    run(() => client.mutate(name, { taskId }), after());
+    const start = time.running === null;
+    const said = (kind: string) => kind === 'ok' && props.onTimer?.(start ? taskId : null);
+    run(() => client.mutate(start ? 'time.start' : 'time.stop', { taskId }), after(said));
   };
-  const log = (duration: string, operationId: string, done: (kind: string) => void): void => {
+  const log = (duration: string, operationId: string, done: (kind: string) => void): void =>
     run(() => client.mutate('time.log', { taskId, duration }, { operationId }), after(done));
-  };
   const shown = props.showAll ? time.entries : time.entries.slice(0, LATEST);
   return (
     <div className="sb__steplist" data-time-log-section>

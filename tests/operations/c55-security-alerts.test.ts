@@ -37,6 +37,7 @@ import {
   type AlertView,
   type TestSink,
 } from './c55-security-alerts-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const CANARY = `CANARY-c55-alert-${randomBytes(6).toString('hex')}`;
 const UNKNOWN = 'An alert of an unknown kind';
@@ -210,7 +211,7 @@ describe.skipIf(serverUrl === undefined)('C55 security alerts', () => {
 describe.skipIf(serverUrl === undefined)('C55 security alerts', () => {
   it("C55 canary: a planted secret in an alert's surroundings never reaches the view, the log table, logs or refusals", async () => {
     const logged: string[] = [];
-    const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+    const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(capture),
     );
