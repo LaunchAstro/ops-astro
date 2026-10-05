@@ -103,3 +103,8 @@ function lexists(path: string): boolean {
     return false;
   }
 }
+
+/** Why the folders from `home` up to `/` are not trusted (OPS497TRUST); the walk comes next. */
+export function untrustedChain(_home: string, _uid: number | undefined): string | undefined {
+  return undefined;
+}

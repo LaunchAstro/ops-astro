@@ -11,14 +11,12 @@
 import {
   chmodSync,
   mkdirSync,
-  mkdtempSync,
   renameSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { stampOutput } from '../../scripts/ops/build-output.ts';
@@ -28,6 +26,7 @@ import {
   storedArtefact,
   type PromotionEffects,
 } from '../../scripts/ops/promotion.ts';
+import { trustedTemp } from './promotion.fixture.ts';
 
 const VERSION = '0123456789ab';
 const stores: string[] = [];
@@ -37,7 +36,7 @@ afterEach(() => {
 
 /** A store holding one stamped artefact; `extra` adds to it before the stamp. */
 function storeWith(extra: (artefact: string) => void = () => {}): string {
-  const store = mkdtempSync(join(tmpdir(), 'ops-astro-frozen-'));
+  const store = trustedTemp('ops-astro-frozen-');
   stores.push(store);
   const artefact = join(store, artefactName(VERSION));
   mkdirSync(join(artefact, 'static'), { recursive: true });
@@ -113,7 +112,7 @@ it('the served copy is readable by a service running as another user', () => {
 
 it('a production folder others can write is refused, and nothing is promoted', () => {
   const store = storeWith();
-  const home = mkdtempSync(join(tmpdir(), 'ops-astro-frozen-home-'));
+  const home = trustedTemp('ops-astro-frozen-home-');
   stores.push(home);
   chmodSync(home, 0o777);
   const { outcome, pointed } = promoted(store, join(home, 'current'));

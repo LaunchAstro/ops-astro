@@ -12,7 +12,7 @@
 // `vercel` is the fixture's fake (web-deploy.fixture.ts). The operator gate in
 // front of the command is proved in operator-only.test.ts.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { artefactName } from '../../scripts/ops/promotion.ts';
@@ -95,6 +95,30 @@ function cleanUpCase() {
     expect(cwd).toBeDefined();
     expect(existsSync(cwd!)).toBe(false);
     expect(existsSync(join(process.cwd(), '.vercel'))).toBe(false);
+  });
+
+  // Security read SEC-OPS-REBUILD-3c finding 2: the copy of a link is a link,
+  // and its digest read through it would match while the store's bytes change.
+  it('refuses a stored output swapped for a link after it was selected, before Vercel deploys', async () => {
+    const at = store();
+    const artefact = join(at, artefactName(STAGED));
+    const vercel = fakeVercel();
+    const outcome = await deployWeb(
+      { version: STAGED, store: at },
+      {
+        env: settings(vercel.path),
+        preflight: () => {
+          renameSync(artefact, `${artefact}-moved`);
+          symlinkSync(`${artefact}-moved`, artefact);
+          return clean();
+        },
+      },
+    );
+    expect(outcome).toMatchObject({
+      kind: 'refused',
+      reason: expect.stringContaining('the copy does not hold the digested bytes'),
+    });
+    expect(existsSync(vercel.log)).toBe(false);
   });
 }
 
