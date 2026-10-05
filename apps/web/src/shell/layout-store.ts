@@ -83,7 +83,7 @@ export function useLayoutStore(
     const tag = desk.read();
     void client.read<{ readonly preferences?: unknown }>('preference.read', {}).then((answer) => {
       if (!desk.draws(tag) || !('value' in answer)) return answer;
-      const kept = Object.entries(latest.current).filter(([key]) => savedSince(client, key, tag));
+      const kept = Object.entries(latest.current).filter(([key]) => savedSince(key, tag));
       const layout = { ...layoutIn(answer.value.preferences), ...Object.fromEntries(kept) };
       tabCopy(storage, session).write(layout);
       setHeld({ owner: grantKeyOf(session), layout });

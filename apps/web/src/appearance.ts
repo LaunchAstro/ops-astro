@@ -83,7 +83,7 @@ export function useStoredAppearance(
     const tag = desk.read();
     void client.read<unknown>('preference.read', {}).then((answer) => {
       const value = 'value' in answer ? appearanceIn(answer.value) : null;
-      const drawn = desk.draws(tag) && !savedSince(client, 'appearance', tag);
+      const drawn = desk.draws(tag) && !savedSince('appearance', tag);
       if (drawn && value !== null) applyAppearance(value, storage);
       return answer;
     });

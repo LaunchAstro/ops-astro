@@ -12,18 +12,14 @@
 // decision or an incident is never silenced, which the server refuses too
 // (`notifications.set_channel`, inbox-escalation-settings.test.ts).
 
-import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { NotConnected, Segmented, Switch } from '@launchastro/ui';
 import { dismissedTipCount } from '../../../../../packages/core-wire/src/index.ts';
 import { applyAppearance, isAppearance, type Appearance } from '../../appearance.ts';
-import { ownerOf, useDesk } from '../../data/owned.ts';
-import { savedSince, savePreference } from '../../data/preference-saves.ts';
-import { isRefusal, type OperationsClient } from '../../operations/client.ts';
-import { describeFailure, describeRefusal } from '../../records/submit.ts';
+import type { OperationsClient } from '../../operations/client.ts';
 import type { StorageLike } from '../../session/token.ts';
 import { OnOff } from './panels.tsx';
-
-type Preferences = Readonly<Record<string, unknown>>;
+import { usePreferences, type Preferences } from './use-preferences.ts';
 
 /** The label, one quiet sentence, and the control on the right (DS-COMP-26 rows). */
 function Row(props: {
@@ -61,81 +57,6 @@ function Group(props: {
       </div>
     </section>
   );
-}
-
-type Held = { readonly of: string; readonly value: Preferences } | null;
-
-/** A read's answer for `of`, but a key saved since the read left keeps its saved value. */
-function answered(before: Held, of: string, read: Preferences, newer: (key: string) => boolean) {
-  const own = before?.of === of ? before.value : {};
-  const kept = Object.entries(own).filter(([key]) => newer(key));
-  return { of, value: { ...read, ...Object.fromEntries(kept) } };
-}
-
-/** A refused save's reread puts the stored value back unless a later save moved that key on. */
-type Restore = (read: Preferences, newer: (key: string) => boolean) => void;
-
-/**
- * A change drawn at once, onto `of`'s own preferences only: another owner's,
- * still held while this one's read is pending, are not carried over.
- */
-function changed(before: Held, of: string, key: string, value: unknown): Held {
-  const own = before?.of === of ? before.value : {};
-  return { of, value: { ...own, [key]: value } };
-}
-
-/**
- * The person's own preferences: read once per owner, changed at once, then
- * saved. Every read and save is tagged (`data/owned.ts`): a read draws only
- * while it is the newest for this business and person, and a save's refusal
- * is told, and reread, only for the owner who made it (#464).
- */
-function usePreferences(client: OperationsClient, grantKey: string) {
-  const [held, setHeld] = useState<Held>(null);
-  // A refusal is said to one owner, as `held` is held for one.
-  const [said, setSaid] = useState<{ readonly of: string; readonly text: string } | null>(null);
-  const desk = useDesk(ownerOf(client, grantKey));
-  const reread = (restore?: Restore) => {
-    const tag = desk.read();
-    void client.read<{ readonly preferences?: unknown }>('preference.read', {}).then((answer) => {
-      if (!desk.draws(tag)) return answer;
-      const preferences = 'value' in answer ? answer.value.preferences : undefined;
-      // A key a save touched while this read could not see it keeps the saved value (#540, #541).
-      const newer = (key: string): boolean => savedSince(client, key, tag);
-      if (typeof preferences === 'object' && preferences !== null) {
-        setHeld((before) => answered(before, grantKey, preferences as Preferences, newer));
-        restore?.(preferences as Preferences, newer);
-      } else if (isRefusal(answer)) setSaid({ of: grantKey, text: describeRefusal(answer) });
-      else setSaid({ of: grantKey, text: 'Your preferences could not be read.' });
-      return answer;
-    });
-  };
-
-  useEffect(() => {
-    reread();
-    return () => {
-      desk.drop();
-    };
-  }, [client, grantKey]);
-  const save = (preference: string, value: unknown, back?: (stored: unknown) => void): void => {
-    const tag = desk.save();
-    setHeld((before) => changed(before, grantKey, preference, value));
-    setSaid(null);
-    void savePreference(client, preference, value, tag).then((result) => {
-      const failed = describeFailure(result);
-      if (failed !== null && desk.owns(tag)) {
-        setSaid({ of: grantKey, text: failed });
-        reread((read, newer) => {
-          if (!newer(preference)) back?.(read[preference]);
-        });
-      }
-      return result;
-    });
-  };
-
-  const preferences = held !== null && held.of === grantKey ? held.value : null;
-  const because = said !== null && said.of === grantKey ? said.text : null;
-  return { preferences, because, save };
 }
 
 function AppearanceRow(props: {

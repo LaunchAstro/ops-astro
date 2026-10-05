@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The order of one person's preference saves (MP-2-11's one store). Each save
-// leaves only once the client's last one has answered, so the server stores
-// them in the order the person made them and the last choice is the one kept.
-// A save is tagged (`data/owned.ts`), and a read's answer asks `savedSince`
-// which keys a save touched while the read could not see it (sent after the
-// read left, or still unanswered when it left), so its older answer does not
-// undo them. The same value saved again after an answer that
-// never arrived carries the same operation id (`Intents`).
+// leaves only once that person's last one in this business has answered, so
+// the server stores them in the order the person made them and the last
+// choice is the one kept. A save is tagged (`data/owned.ts`), and a read's
+// answer asks `savedSince` which keys a save touched while the read could not
+// see it (sent after the read left, or still unanswered when it left), so its
+// older answer does not undo them. The same value saved again after an answer
+// that never arrived carries the same operation id (`Intents`).
+//
+// The ledger is the owner's, not the client's: a step-up gives the same person
+// a new client, and a save still unanswered through the old one is still theirs.
+// A sign-out or a switch of the tab's owner drops every ledger.
 
 import {
   isUnavailable,
@@ -15,8 +19,9 @@ import {
   type CommandOutcome,
   type OperationsClient,
 } from '../operations/client.ts';
+import { tabOwnerGeneration } from '../session/token.ts';
 import { Intents } from './intents.ts';
-import { nextRequest, type Tag } from './owned.ts';
+import { nextRequest, type Owner, type Tag } from './owned.ts';
 
 interface Ledger {
   tail: Promise<unknown>;
@@ -30,10 +35,13 @@ interface Ledger {
   readonly intents: Intents;
 }
 
-const ledgers = new WeakMap<OperationsClient, Ledger>();
+let ledgers = { tab: tabOwnerGeneration(), byOwner: new Map<string, Ledger>() };
 
-function ledgerOf(client: OperationsClient): Ledger {
-  let ledger = ledgers.get(client);
+function ledgerOf(owner: Owner): Ledger {
+  const tab = tabOwnerGeneration();
+  if (ledgers.tab !== tab) ledgers = { tab, byOwner: new Map() };
+  const key = JSON.stringify([owner.business, owner.person]);
+  let ledger = ledgers.byOwner.get(key);
   if (ledger === undefined) {
     ledger = {
       tail: Promise.resolve(),
@@ -41,24 +49,24 @@ function ledgerOf(client: OperationsClient): Ledger {
       unsettledUntil: new Map(),
       intents: new Intents(),
     };
-    ledgers.set(client, ledger);
+    ledgers.byOwner.set(key, ledger);
   }
   return ledger;
 }
 
 /** Whether a save of `preference` may be missing from a read tagged `since`: its answer is older. */
-export function savedSince(client: OperationsClient, preference: string, since: Tag): boolean {
-  return (ledgerOf(client).unsettledUntil.get(preference) ?? 0) > since.request;
+export function savedSince(preference: string, since: Tag): boolean {
+  return (ledgerOf(since).unsettledUntil.get(preference) ?? 0) > since.request;
 }
 
-/** Save one preference, tagged `tag`, once every earlier save through this client has answered. */
+/** Save one preference through `client`, tagged `tag`, once its owner's earlier saves have answered. */
 export function savePreference(
   client: OperationsClient,
   preference: string,
   value: unknown,
   tag: Tag,
 ): Promise<CallResult<CommandOutcome>> {
-  const ledger = ledgerOf(client);
+  const ledger = ledgerOf(tag);
   ledger.last.set(preference, tag.request);
   ledger.unsettledUntil.set(preference, Number.POSITIVE_INFINITY);
   const sent = ledger.tail.then(async () => {
