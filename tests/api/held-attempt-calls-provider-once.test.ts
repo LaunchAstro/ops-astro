@@ -1,26 +1,42 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { expect, it } from 'vitest';
 import { createWorker } from '../../apps/worker/worker.ts';
-import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { SYNTHETIC_USAGE, type Provider } from '../../apps/worker/usage.ts';
 import type { Transport } from '../../apps/cli/client.ts';
 import { attempts, HOST, launched, r, useReceiptWorld } from './aw-08-receipt-world.ts';
 
 useReceiptWorld('solow074retry');
+
+/** The agent call as the API answers it, before a test loses or keeps that answer. */
+const throughApi: Transport = async (path, body, bearer, delegation) =>
+  await r.api.request(path, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${bearer}`,
+      ...(delegation === undefined ? {} : { 'x-agent-delegation': delegation }),
+    },
+    body,
+  });
+
+/** The worker under the launched delegation, with `call` as its provider. */
+function workerWith(transport: Transport, delegation: string, call: Provider['call']) {
+  return createWorker({
+    transport,
+    businessKey: 'alpha',
+    credential: r.agentToken,
+    delegation,
+    reporter: SYNTHETIC_USAGE,
+    provider: { call },
+  });
+}
 
 it('losing both comment answers does not repeat a successful provider effect', async () => {
   const { taskId, credential } = await launched();
   let lost = 0;
   let providerEffects = 0;
   const transport: Transport = async (path, body, bearer, delegation) => {
-    const answer = await r.api.request(path, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${bearer}`,
-        ...(delegation === undefined ? {} : { 'x-agent-delegation': delegation }),
-      },
-      body,
-    });
+    const answer = await throughApi(path, body, bearer, delegation);
     if (path.endsWith('/task/comment') && lost < 2) {
       expect(answer.status).toBe(200);
       lost += 1;
@@ -28,21 +44,12 @@ it('losing both comment answers does not repeat a successful provider effect', a
     }
     return answer;
   };
-  const worker = createWorker({
-    transport,
-    businessKey: 'alpha',
-    credential: r.agentToken,
-    delegation: credential,
-    reporter: SYNTHETIC_USAGE,
-    provider: {
-      call: async () => {
-        providerEffects += 1;
-        return {
-          status: 200,
-          body: JSON.stringify({ link: `https://${HOST}/effect-${providerEffects}` }),
-        };
-      },
-    },
+  const worker = workerWith(transport, credential, () => {
+    providerEffects += 1;
+    return Promise.resolve({
+      status: 200,
+      body: JSON.stringify({ link: `https://${HOST}/effect-${providerEffects}` }),
+    });
   });
   await expect(worker.applyOnce(taskId)).rejects.toThrow('Sol injected lost comment answer');
   expect(lost).toBe(2);
@@ -73,15 +80,7 @@ it('concurrent resumptions of a held attempt do not duplicate its provider effec
   let loseDispatch = true;
   let providerEffects = 0;
   const transport: Transport = async (path, body, bearer, delegation) => {
-    const answer = await r.api.request(path, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${bearer}`,
-        ...(delegation === undefined ? {} : { 'x-agent-delegation': delegation }),
-      },
-      body,
-    });
+    const answer = await throughApi(path, body, bearer, delegation);
     if (path.endsWith('/task/dispatch') && loseDispatch) {
       expect(answer.status).toBe(200);
       loseDispatch = false;
@@ -89,18 +88,9 @@ it('concurrent resumptions of a held attempt do not duplicate its provider effec
     }
     return answer;
   };
-  const worker = createWorker({
-    transport,
-    businessKey: 'alpha',
-    credential: r.agentToken,
-    delegation: credential,
-    reporter: SYNTHETIC_USAGE,
-    provider: {
-      call: async () => {
-        providerEffects += 1;
-        return { status: 200, body: '{}' };
-      },
-    },
+  const worker = workerWith(transport, credential, () => {
+    providerEffects += 1;
+    return Promise.resolve({ status: 200, body: '{}' });
   });
   expect(await worker.applyOnce(taskId)).toEqual({ fault: { status: 503 } });
   expect(providerEffects).toBe(0);
