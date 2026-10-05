@@ -14,7 +14,10 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pathOf } from '../../packages/core-wire/src/index.ts';
-import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
+import {
+  advisoryLock,
+  type AdminConnection,
+} from '../../packages/core-records/src/tenancy/database.ts';
 import {
   agentPath,
   bearer,
@@ -27,6 +30,7 @@ import {
   type World,
 } from '../acceptance/world.ts';
 import { grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
+import { hold } from '../support/lock-waits.ts';
 
 if (serverUrl === undefined) {
   console.warn(
@@ -64,6 +68,10 @@ const until = async (done: () => Promise<boolean>): Promise<void> => {
   }
 };
 
+/** Whether the revocation waits behind the writer: any second lock waiter. */
+const revocationWaits = async (execute: AdminConnection['execute']): Promise<boolean> =>
+  (await count(execute, LOCK_WAITERS)) >= 2;
+
 describe.skipIf(serverUrl === undefined)('a credential write and a revocation of its grant', () => {
   let world: World;
 
@@ -74,7 +82,8 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
     await world?.close();
   });
 
-  it("a credential write waiting on the task lock is refused once its issuer's grant is revoked", async () => {
+  /** A task, the issuer's only task:write grant, and a credential issued on it. */
+  const credentialWrite = async () => {
     const noah = world.noah as unknown as Member;
     const grantId = await world.db.app.withBusiness(world.alpha, async (tx) => {
       const g = await grantTo(tx, noah, 'write', WHOLE_BUSINESS, false, 'task');
@@ -105,7 +114,11 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
     const credential = (issued.body['detail'] as { readonly credential?: unknown } | undefined)
       ?.credential;
     if (typeof credential !== 'string') throw new Error(`credential missing: ${issued.text}`);
+    return { grantId, recordId, revision, credential };
+  };
 
+  it("a credential write waiting on the task lock is refused once its issuer's grant is revoked", async () => {
+    const { grantId, recordId, revision, credential } = await credentialWrite();
     const revoker = rebuildApi(world);
     let updating: Promise<Answer> | undefined;
     let revoked: Answer | undefined;
@@ -154,7 +167,7 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
         };
         void revoking.then(settle, settle);
         // Either the revocation commits, or it waits behind the writer.
-        await until(async () => revokeSettled || (await count(execute, LOCK_WAITERS)) >= 2);
+        await until(async () => revokeSettled || (await revocationWaits(execute)));
         if (!revokeSettled) {
           revokeWaited = true;
           return;
@@ -186,6 +199,55 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
         row: { title: 'before revocation', revision: Number(revision) },
       });
     } finally {
+      await revoker.close();
+    }
+  }, 240_000);
+
+  // Sol round 1 on #1010, F5: a revocation queued behind an unrelated holder
+  // of the access lock is not one waiting behind the writer, and must not be
+  // taken for the writer-first alternative.
+  it('a revocation waiting on another lock is not taken for one waiting behind the writer', async () => {
+    const { grantId, recordId, revision, credential } = await credentialWrite();
+    const revoker = rebuildApi(world);
+    const access = await hold(world.db.appUrl, world.alpha, async (tx) => {
+      await advisoryLock(tx, `access:${tx.businessId}`);
+    });
+    let updating: Promise<Answer> | undefined;
+    let revoking: Promise<Answer> | undefined;
+    try {
+      await world.db.admin.transaction(async (execute) => {
+        await execute(
+          'select id from public.records where business_id = $1 and id = $2 for update',
+          [world.alpha, recordId],
+        );
+        updating = call(
+          world.api,
+          agentPath('alpha', pathOf('task.update')),
+          {
+            operationId: randomUUID(),
+            recordId,
+            expectedRevision: revision,
+            fields: { title: 'after revocation' },
+          },
+          bearer(credential),
+        );
+        await until(async () => (await count(execute, UPDATE_WAITING)) >= 1);
+        revoking = call(
+          revoker.api,
+          personPath('alpha', pathOf('access.revoke')),
+          { operationId: randomUUID(), grantId },
+          bearer(world.ada.token),
+        );
+        await until(async () => (await count(execute, LOCK_WAITERS)) >= 2);
+        expect(await count(execute, LOCK_WAITERS), 'the writer and the revocation wait').toBe(2);
+        expect(await revocationWaits(execute), 'the revocation waits on the access lock').toBe(
+          false,
+        );
+      });
+      expect((await updating)?.status).toBe(200);
+    } finally {
+      await access.letGo();
+      await revoking;
       await revoker.close();
     }
   }, 240_000);

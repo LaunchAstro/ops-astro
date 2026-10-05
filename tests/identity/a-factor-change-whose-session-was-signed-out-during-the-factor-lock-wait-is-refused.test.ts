@@ -35,7 +35,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
-import { hold, waitingOn } from '../support/lock-waits.ts';
+import { gate, hold, waitingOn } from '../support/lock-waits.ts';
 import {
   insertActor,
   insertBusiness,
@@ -165,3 +165,63 @@ it.each(['enrol', 'verify', 'remove'] as const)(
     }
   },
 );
+
+// Sol round 1 on #1010, F2: the removal's last wait is its audit insert, on
+// the business's audit chain lock. The same login and session also stand in a
+// second business, where the sign-out runs, so the sign-out's own audit event
+// does not queue behind the held chain.
+it('a factor removal whose session was signed out during the audit wait is refused, and removes nothing', async () => {
+  const { caller: asked, person } = await caller(true);
+  const elsewhere = (await insertBusiness(
+    db.app,
+    `factor-elsewhere-${randomUUID()}`,
+  )) as BusinessId;
+  await db.app.withBusiness(elsewhere, async (tx) => {
+    const personId = await insertPerson(tx, 'Factor holder elsewhere');
+    const actorId = await insertActor(tx, personId);
+    await insertMembership(tx, personId);
+    await insertMapping(tx, await insertLogin(tx, asked.presented.subject), personId, actorId);
+  });
+  const removed: string[] = [];
+  const verifying = gate();
+  const verified = gate();
+  const to: FactorProvider = {
+    ...provider(removed),
+    verify: async () => {
+      verifying.release();
+      await verified.promise;
+      return {
+        ok: true,
+        value: { accessToken: 'local-elevated', refreshToken: 'local', expiresIn: 3600 },
+      };
+    },
+  };
+  const actor = connect(db.appUrl);
+  const other = connect(db.appUrl);
+  try {
+    const removing = ACTS.remove({ ...asked, database: actor }, to);
+    await verifying.promise;
+    const chain = await hold(db.appUrl, business, async (tx) => {
+      await tx.query('select pg_advisory_xact_lock(hashtextextended($1::text, 0))', [business]);
+    });
+    try {
+      verified.release();
+      await waitingOn(db.admin, 'advisory', 'insert into audit_events');
+      expect(
+        await signOutSession({ ...asked, businessId: elsewhere, database: other }, {}, to),
+      ).not.toMatchObject({ refused: true });
+    } finally {
+      await chain.letGo();
+    }
+    const result = await removing;
+    const live = await db.app.withBusiness(business, (tx) => liveFactor(tx, person));
+    expect({ result, status: live?.status ?? 'none', removed }).toMatchObject({
+      result: { refused: true, code: 'AUTH_SESSION_EXPIRED' },
+      status: 'verified',
+      removed: [],
+    });
+  } finally {
+    verified.release();
+    await Promise.all([actor.close(), other.close()]);
+  }
+});
