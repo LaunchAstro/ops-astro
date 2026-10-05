@@ -3478,8 +3478,9 @@ the rows beside it, and every row handed out counts toward the export-volume
 signal.
 
 A grant is a delegation, live while it stands as a call through it would: a
-child whose parent ended first is taken back or ran out with it, at the
-parent's end and for its cause, and counts calls only until then. Its client is its
+child whose parent ended first is taken back or ran out by what ended the
+parent first, at that time and for that cause, and counts calls only until
+then. Its client is its
 purpose task's client, shown by its name (`label` null when no client row
 answers the id); its `redemptions` are the applied calls its agent made on that task while
 it held it, less the pickup that minted it. Nothing records what each call

@@ -14,9 +14,9 @@
 //
 // A grant is a delegation (0008). It is live while it stands as the
 // authority asks it to (`DELEGATION_STANDS`). A child whose parent ended
-// first is taken back or ran out with its parent, at the parent's end and for
-// its cause, whatever its own row did later (AW-11); its calls count only
-// until the earlier of the two ends.
+// first is taken back or ran out by what ended the parent first, at that
+// time and for that cause, whatever its own row did later (AW-11); its calls
+// count only until the earlier of the two ends.
 // Its client is its purpose task's client
 // (`uuid_7`, the slot a party-scoped grant resolves against), named from
 // `clients`. Its redemptions are the applied calls its agent made on that
@@ -120,10 +120,11 @@ const GRANTS_SQL = `with visible as (
                  when o.by_parent then e.parent_end
                  else coalesce(d.revoked_at, d.settled_at) end as ended_at,
             case when o.stands then null
-                 when o.by_parent then p.revocation_cause
+                 when o.by_parent and p.revoked_at = e.parent_end then p.revocation_cause
+                 when o.by_parent then null
                  else d.revocation_cause end as revocation_cause,
             case when o.stands then 'live'
-                 when o.by_parent and p.revoked_at is not null then 'taken_back'
+                 when o.by_parent and p.revoked_at = e.parent_end then 'taken_back'
                  when o.by_parent then 'ran_out'
                  when d.revoked_at is not null then 'taken_back'
                  else 'ran_out' end as state
