@@ -35,6 +35,7 @@ import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
 import type { PrivacyRequest } from './requests-privacy.ts';
 import type { SelfRequest } from './requests-self.ts';
+import type { AutomationRequest } from './automation-requests.ts';
 import type { ConnectionsRequest } from './requests-connections.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
@@ -294,4 +295,5 @@ export type CommandRequest =
   | ConnectionsRequest<Envelope>
   // Time tracking (MP-4-6) and tags (MP-4-11), in `requests-time.ts` and `requests-tags.ts`.
   | TimeRequest<Envelope>
-  | TagRequest<Envelope>;
+  | TagRequest<Envelope>
+  | AutomationRequest<Envelope>;

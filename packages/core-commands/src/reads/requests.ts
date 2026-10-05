@@ -54,6 +54,7 @@ import type {
   UnattendedView,
   TaskSearchResult,
   TaskLedgerResult,
+  AutomationRegistryResult,
   MapViewResult,
   MapFrontierResult,
 } from '../../../core-wire/src/index.ts';
@@ -190,6 +191,8 @@ export interface ReadOperands {
   readonly 'trace.read': { readonly recordId: string };
   /** The run whose harness test result is read (AW-12). */
   readonly 'harness.read': { readonly runId: string };
+  /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
+  readonly 'automation.registry': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -246,4 +249,5 @@ export type ReadResult =
         readonly complete: boolean;
       };
     }
-  | { readonly ok: true; readonly harness: TriggerReading };
+  | { readonly ok: true; readonly harness: TriggerReading }
+  | AutomationRegistryResult;

@@ -5,7 +5,8 @@
 // hand, are in `data-effects-types.ts`, re-exported here.
 
 import type { CommandName } from './surface.ts';
-import type { DataEffects, OutsideEffect, RecordWrite } from './data-effects-types.ts';
+import type { DataEffects } from './data-effects-types.ts';
+import { business, client, writing } from './data-effects-types.ts';
 
 export type {
   ClassedEffects,
@@ -17,15 +18,6 @@ export type {
   RecordWrite,
 } from './data-effects-types.ts';
 export { classOf } from './data-effects-types.ts';
-
-const business = (...kinds: string[]): RecordWrite[] =>
-  kinds.map((kind) => ({ kind, scope: 'business' }));
-const client = (...kinds: string[]): RecordWrite[] =>
-  kinds.map((kind) => ({ kind, scope: 'client' }));
-const writing = (
-  writes: readonly RecordWrite[],
-  outside: readonly OutsideEffect[] = [],
-): DataEffects => ({ writes, intake: [], outside, access: false });
 
 const READ = writing([]);
 // A task is a row of `records`, with its unique values beside it.
@@ -290,6 +282,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_type': writing(MAP_TASK.writes.concat(client('inbox_items'))),
   // The map and every ticket under it carry the client.
   'map.scope': MAP_TASK,
+  // Settings ▸ Workflow triggers (C33): a definition carries no client, so its
+  // versions and activations are the business's own rows.
+  'automation.registry': READ,
+  'activation.change': writing(business('activations')),
+  'definition.release': writing(business('automation_definitions', 'definition_versions')),
   // One numbered version: its components and the map's own version number,
   // which refresh the map's summary and frontier as any write to the map does.
   'map.revise': writing(MAP_TASK.writes.concat(client('map_components', 'map_versions'))),

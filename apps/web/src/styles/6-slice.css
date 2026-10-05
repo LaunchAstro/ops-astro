@@ -639,3 +639,14 @@
   outline: none;
   border-bottom-color: var(--accent);
 }
+
+/* Settings ▸ Workflow triggers (C33): the list card's rows run to its edges. */
+.triggers__list {
+  margin: 0;
+  padding: 0;
+}
+
+.triggers__note {
+  margin: 0;
+  padding: var(--s-4) var(--s-5);
+}

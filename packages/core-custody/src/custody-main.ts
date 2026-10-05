@@ -14,7 +14,7 @@
 // Every refusal and fault it writes names a kind, never a value.
 
 import { readFileSync } from 'node:fs';
-import { parseCredentials, type StoredCredential } from './credentials.ts';
+import { described, parseCredentials, type StoredCredential } from './credentials.ts';
 import { parseDestinations, send, type Destination, type OutboundRequest } from './egress.ts';
 import { METHODS } from './egress-routes.ts';
 
@@ -255,30 +255,31 @@ function isRequest(value: unknown): value is OutboundRequest {
   );
 }
 
+type Message = Record<string, unknown>;
+
 const loaded = load();
 
 process.on('uncaughtException', () => fail('internal fault'));
 
 process.on('message', (message: unknown) => {
-  const shape = (typeof message === 'object' && message !== null ? message : {}) as Record<
-    string,
-    unknown
-  >;
+  const shape = (typeof message === 'object' && message !== null ? message : {}) as Message;
   const id = typeof shape['id'] === 'string' ? shape['id'] : '';
-  const reply = (body: Record<string, unknown>): void => {
-    process.send?.({ id, ...body });
-  };
+  const reply = (body: Message): void => void process.send?.({ id, ...body });
+  const ref = shape['credentialRef'];
+  const credential = typeof ref === 'string' ? loaded.credentials.get(ref) : undefined;
+  if (shape['type'] === 'describe' && id !== '') {
+    reply(described(credential, shape['destination']));
+    return;
+  }
   if (shape['type'] !== 'dispatch' || id === '') {
     reply({ type: 'refused', code: 'CUSTODY_UNKNOWN_REQUEST' });
     return;
   }
   const request = shape['request'];
-  const ref = shape['credentialRef'];
   if (!isRequest(request)) {
     reply({ type: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' });
     return;
   }
-  const credential = typeof ref === 'string' ? loaded.credentials.get(ref) : undefined;
   if (credential === undefined || credential.destination !== request.destination) {
     reply({ type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' });
     return;
