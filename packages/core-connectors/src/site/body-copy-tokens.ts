@@ -18,14 +18,19 @@
 // - Every `$$render` template in the module, the ones its fragments,
 //   component children and expressions nest included, meets its own
 //   expressions the same way and ends in data state with every tag it
-//   opened closed, and opens no select.
+//   opened closed, and opens no select, svg or math: a browser reads their
+//   contents by rules this grammar does not model.
 //
-// What another file prints is taken as whole markup. A page that prints
-// raw HTML itself (set:html) is refused.
+// What another file prints is taken as whole markup. An expression counts
+// as text only when it is a literal string or number: the runtime prints
+// any other value that is not a string as raw markup, so it is refused,
+// and so is a page that prints raw HTML itself (set:html).
 
-import type { TemplateLiteral } from 'acorn';
 import { Token, Tokenizer, TokenizerMode, type TokenHandler } from 'parse5';
-import { interpolation, wordInTemplate, type WordSwap } from './compiled-module.ts';
+import type { Node, TemplateLiteral } from 'acorn';
+import { wordInTemplate, type Interpolation, type WordSwap } from './compiled-module.ts';
+
+type KindOf = (expression: Node) => Interpolation;
 
 /** Tags a browser opens and closes where the compiler prints them, around body copy. */
 const PRINTED_IN_PLACE: ReadonlySet<string> = new Set(
@@ -53,6 +58,8 @@ const TEXT_MODES: ReadonlyMap<string, Mode> = new Map([
   ['script', TokenizerMode.SCRIPT_DATA],
   ['plaintext', TokenizerMode.PLAINTEXT],
 ]);
+/** A select's text, and svg's and math's foreign content, follow tree-builder rules not modelled here. */
+const UNMODELLED: ReadonlySet<string> = new Set(['select', 'svg', 'math']);
 const WORD_CHARACTER = /[\p{L}\p{M}\p{N}_]/u;
 const STAND_IN = 'data-envelope-stand-in-';
 
@@ -90,7 +97,7 @@ function tokenizerFor(keep: (token: Kept) => void, onTag: (token: Token.TagToken
  * tokenised, and where the last expression before it ended; `undefined`
  * when an expression meets a state the grammar does not know.
  */
-function tokensUpTo(template: TemplateLiteral, last: number) {
+function tokensUpTo(template: TemplateLiteral, last: number, kindOf: KindOf) {
   const seen: Seen[] = [];
   const attributes = new Set<string>();
   const tokenizer = tokenizerFor(
@@ -110,7 +117,7 @@ function tokensUpTo(template: TemplateLiteral, last: number) {
     tokenizer.write(quasi.value.cooked, false);
     const expression = index < last ? template.expressions[index] : undefined;
     if (expression === undefined) continue;
-    const kind = interpolation(expression);
+    const kind = kindOf(expression);
     const { state } = tokenizer;
     if (kind === 'attributes') {
       // Stands in for ` name="value"`; it must come out as an attribute of a tag.
@@ -131,7 +138,7 @@ function tokensUpTo(template: TemplateLiteral, last: number) {
   const placed = template.expressions
     .slice(0, last)
     .every((expression, index) =>
-      interpolation(expression) === 'attributes' ? attributes.has(`${STAND_IN}${index}`) : true,
+      kindOf(expression) === 'attributes' ? attributes.has(`${STAND_IN}${index}`) : true,
     );
   return placed ? { seen, stream, resumes, ending } : undefined;
 }
@@ -164,15 +171,16 @@ function openAroundCopy(seen: readonly Seen[], before: number): boolean {
 
 /**
  * Whether the whole template meets its expressions in known states and
- * ends as it began: in data state, every tag it opened closed, no select.
+ * ends as it began: in data state, every tag it opened closed, no select,
+ * svg or math.
  */
-function closes(template: TemplateLiteral): boolean {
-  const read = tokensUpTo(template, template.quasis.length - 1);
+function closes(template: TemplateLiteral, kindOf: KindOf): boolean {
+  const read = tokensUpTo(template, template.quasis.length - 1, kindOf);
   if (read?.ending !== TokenizerMode.DATA) return false;
-  const select = read.seen.some(
-    ({ token }) => token.type === Token.TokenType.START_TAG && token.tagName === 'select',
+  const unmodelled = read.seen.some(
+    ({ token }) => token.type === Token.TokenType.START_TAG && UNMODELLED.has(token.tagName),
   );
-  return !select && openAt(read.seen, Number.POSITIVE_INFINITY)?.length === 0;
+  return !unmodelled && openAt(read.seen, Number.POSITIVE_INFINITY)?.length === 0;
 }
 
 /** Whether the word from `from` to `to` is a whole word, alone in a reference-free character token. */
@@ -214,11 +222,11 @@ function resyncedBefore(seen: readonly Seen[], resumes: number, from: number): b
  */
 export function swapsOnlyBodyCopy(before: string, after: string, swap: WordSwap): boolean {
   const found = wordInTemplate(before, after, swap);
-  if (found === undefined || !found.templates.every((template) => closes(template))) {
+  if (found === undefined || !found.templates.every((template) => closes(template, found.kindOf))) {
     return false;
   }
   const { template, quasi, offset } = found.word;
-  const read = tokensUpTo(template, quasi);
+  const read = tokensUpTo(template, quasi, found.kindOf);
   if (read === undefined) return false;
   const { seen, stream, resumes } = read;
   const from = stream.length - (template.quasis[quasi]?.value.cooked?.length ?? 0) + offset;

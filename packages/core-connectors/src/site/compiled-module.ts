@@ -23,9 +23,8 @@ export interface WordInTemplate {
   readonly offset: number;
 }
 
-/** Runtime calls that print whole markup in data state. */
+/** Runtime calls that print whole markup in data state; a component's is checked apart. */
 const PRINTS_MARKUP: ReadonlySet<string> = new Set([
-  '$$renderComponent',
   '$$renderSlot',
   '$$renderHead',
   '$$maybeRenderHead',
@@ -61,17 +60,72 @@ function isRenderTemplate(node: Node): node is Node & { quasi: TemplateLiteral }
   return node.tag.type === 'Identifier' && 'name' in node.tag && node.tag.name === '$$render';
 }
 
-/** Every `$$render` template in the module, and whether the module prints raw markup (set:html). */
-function templatesOf(program: Node): { templates: TemplateLiteral[]; raw: boolean } {
+/** Names a binding gives: declarations, parameters and catch clauses, patterns whole. */
+function bindings(node: Node): Node[] {
+  const take = (key: string) =>
+    key in node ? [(node as unknown as Record<string, unknown>)[key]] : [];
+  const held = [
+    ...(node.type === 'VariableDeclarator' ? take('id') : []),
+    ...(node.type.includes('Function') ? [...take('id'), ...take('params')] : []),
+    ...(node.type === 'CatchClause' || node.type === 'ClassDeclaration'
+      ? [...take('param'), ...take('id')]
+      : []),
+  ];
+  return held.flat().filter((value) => isNode(value));
+}
+
+function names(node: Node): string[] {
+  const own = node.type === 'Identifier' && 'name' in node ? [String(node.name)] : [];
+  return [...own, ...children(node).flatMap((child) => names(child))];
+}
+
+interface ModuleReading {
+  readonly templates: TemplateLiteral[];
+  /** Names the module imports, which nothing in it rebinds. */
+  readonly imported: ReadonlySet<string>;
+  /** Whether it can print raw markup of its own: any other use of `$$unescapeHTML` or `$$render`. */
+  readonly raw: boolean;
+}
+
+/** Every `$$render` template in the module, what it imports, and whether it prints raw markup. */
+function readModule(program: Node): ModuleReading {
   const templates: TemplateLiteral[] = [];
+  const imported = new Set<string>();
+  const bound = new Set<string>();
   let raw = false;
   const visit = (node: Node) => {
-    if (calls(node) === '$$unescapeHTML') raw = true;
-    if (isRenderTemplate(node)) templates.push(node.quasi);
+    if (node.type === 'ImportDeclaration') {
+      for (const specifier of 'specifiers' in node ? (node.specifiers as Node[]) : []) {
+        if ('local' in specifier && isNode(specifier.local)) {
+          for (const name of names(specifier.local)) imported.add(name);
+        }
+      }
+      return;
+    }
+    const named = node.type === 'Identifier' && 'name' in node ? node.name : undefined;
+    if (named === '$$unescapeHTML' || named === '$$render') raw = true;
+    for (const binding of bindings(node)) for (const name of names(binding)) bound.add(name);
+    if (isRenderTemplate(node)) {
+      templates.push(node.quasi);
+      visit(node.quasi);
+      return;
+    }
     for (const child of children(node)) visit(child);
   };
   visit(program);
-  return { templates, raw };
+  for (const name of bound) imported.delete(name);
+  return { templates, imported, raw };
+}
+
+/** A string or number written in the page, or an untagged template of them: escaped as text. */
+function isLiteralText(node: Node): boolean {
+  if (node.type === 'Literal' && 'value' in node) {
+    return typeof node.value === 'string' || typeof node.value === 'number';
+  }
+  if (node.type === 'TemplateLiteral' && 'expressions' in node) {
+    return (node.expressions as Node[]).every((expression) => isLiteralText(expression));
+  }
+  return false;
 }
 
 /** The one offset at which swapping the word in `before` gives `after`. */
@@ -106,12 +160,25 @@ function cook(raw: string): string | undefined {
   return literal.quasis[0]?.value.cooked ?? undefined;
 }
 
-export function interpolation(expression: Node): Interpolation {
+/**
+ * What an expression prints: a literal is text, a component is markup only
+ * when it is imported and never rebound, attribute calls print attributes.
+ * Anything else, a value the page computes included, is unknown: the
+ * runtime prints a value that is not a string as raw markup.
+ */
+function interpolation(expression: Node, imported: ReadonlySet<string>): Interpolation {
+  if (isLiteralText(expression)) return 'text';
   const name = calls(expression);
-  // Any other expression's value goes through the runtime's escaping as text.
-  if (name === undefined || !name.startsWith('$$')) return 'text';
-  if (PRINTS_MARKUP.has(name)) return 'markup';
-  return PRINTS_ATTRIBUTES.has(name) ? 'attributes' : 'unknown';
+  if (name === '$$renderComponent') {
+    const component = 'arguments' in expression ? (expression.arguments as Node[])[2] : undefined;
+    const known =
+      component?.type === 'Identifier' &&
+      'name' in component &&
+      imported.has(String(component.name));
+    return known ? 'markup' : 'unknown';
+  }
+  if (name !== undefined && PRINTS_MARKUP.has(name)) return 'markup';
+  return name !== undefined && PRINTS_ATTRIBUTES.has(name) ? 'attributes' : 'unknown';
 }
 
 /**
@@ -123,7 +190,13 @@ export function wordInTemplate(
   before: string,
   after: string,
   swap: WordSwap,
-): { templates: readonly TemplateLiteral[]; word: WordInTemplate } | undefined {
+):
+  | {
+      templates: readonly TemplateLiteral[];
+      word: WordInTemplate;
+      kindOf: (expression: Node) => Interpolation;
+    }
+  | undefined {
   const at = swappedAt(before, after, swap);
   if (at === undefined) return;
   let program: Node;
@@ -132,7 +205,7 @@ export function wordInTemplate(
   } catch {
     return;
   }
-  const { templates, raw } = templatesOf(program);
+  const { templates, imported, raw } = readModule(program);
   if (raw) return;
   const end = at + swap.word.length;
   const holds = ({ start, end: stop }: { start: number; end: number }) =>
@@ -143,5 +216,6 @@ export function wordInTemplate(
   if (template === undefined || quasi === undefined) return;
   const lead = cook(before.slice(quasi.start, at));
   if (lead === undefined || !(quasi.value.cooked ?? '').startsWith(swap.word, lead.length)) return;
-  return { templates, word: { template, quasi: index, offset: lead.length } };
+  const kindOf = (expression: Node) => interpolation(expression, imported);
+  return { templates, word: { template, quasi: index, offset: lead.length }, kindOf };
 }
