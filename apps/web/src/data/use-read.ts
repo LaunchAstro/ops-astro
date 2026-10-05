@@ -161,13 +161,32 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   // hold back from recovery (#397).
   useFollow(options.live, state, reread, [grantKey, ...options.deps]);
 
-  const { rollup } = options;
-  useEffect(() => rollup?.follow(reload), [rollup, reload]);
+  useRollup(options.rollup, readRef, reload);
 
   // A changed grant or dependency renders once before the effect above resets
   // the read, still holding the old read's state: that read is not live here.
   const own = same(built.current, [grantKey, ...options.deps]);
   return { state, reload, live: own && liveRef.current && state.outcome === 'loading' };
+}
+
+/**
+ * Re-read on the rollup floor (C4 CS-1.2). A tick waits for the read in flight
+ * rather than superseding it: a newer read would retire its answer, so reads
+ * slower than the floor would never land (PRV-oa-980-R2.1). The next tick
+ * after it answers reads again.
+ */
+function useRollup<T>(
+  rollup: RollupFloor | undefined,
+  readRef: { readonly current: AuthorisedRead<T> | null },
+  reload: () => void,
+): void {
+  useEffect(
+    () =>
+      rollup?.follow(() => {
+        if (readRef.current?.state.outcome !== 'loading') reload();
+      }),
+    [rollup, readRef, reload],
+  );
 }
 
 /** Whether two dependency lists match, compared the way React compares them. */
