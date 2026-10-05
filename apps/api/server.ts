@@ -140,6 +140,9 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
   };
 }
 
+/** The business lookup identity (0046) the resolver takes by name. */
+export const LOOKUP_ROLE = 'ops_astro_lookup';
+
 /**
  * The business key to its identifier, cached after the first answer.
  *
@@ -167,7 +170,7 @@ export function createBusinessResolver(
 
     // As the lookup identity (0046), which reads id and key and nothing else.
     const rows = await admin.transaction(async (execute) => {
-      await execute('set local role ops_astro_lookup');
+      await execute(`set local role ${LOOKUP_ROLE}`);
       return await execute<{ id: string }>(
         'select id from public.businesses where key = $1 limit 2',
         [businessKey],
