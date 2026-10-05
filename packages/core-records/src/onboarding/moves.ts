@@ -28,8 +28,18 @@ async function park(
   steps: string,
   values: readonly unknown[],
 ): Promise<readonly { readonly task_id: string; readonly owner: string | null }[]> {
+  // Lock first, read after. Each named step's task row is locked whatever this
+  // statement's snapshot says of its trash and client, so a restore or a
+  // client move in flight on it is waited on; the moves are then read in a
+  // statement of their own, which sees what that committed.
+  await tx.query(
+    `select r.id from public.onboarding_steps s
+       join public.records r on r.business_id = s.business_id and r.id = s.task_id
+      where s.business_id = $1 and ${steps} order by s.position for update of r`,
+    [tx.businessId, ...values],
+  );
   const moves = await tx.query<{ readonly task_id: string; readonly owner: string | null }>(
-    `${MOVES} ${steps} order by s.position for update of r`,
+    `${MOVES} ${steps} order by s.position`,
     [tx.businessId, ...values],
   );
   for (const move of moves) {
@@ -62,8 +72,9 @@ export async function raiseStepMoves(
 /**
  * Tasks back from the trash: a step among them that opened while its task was
  * in the trash was parked with nobody (`MOVES` reads live tasks only), so each
- * ready one is parked now. The restore holds each task's row, which `park`
- * reads again; a result opening one of these steps waits on it there.
+ * ready one is parked now. The restore holds each task's row; a result opening
+ * one of these steps meanwhile waits on it in `park` and parks it once the
+ * restore commits, and one that committed first is read as ready here.
  */
 export async function parkRestoredSteps(
   tx: TenantQuery,
@@ -75,8 +86,10 @@ export async function parkRestoredSteps(
 
 /**
  * The onboarding stopped (its second failure): no step of it takes a result
- * until a person restarts it, so every open move on its steps' tasks is
- * withdrawn (withdrawn names nobody). The caller holds the onboarding's lock.
+ * until a person restarts it, so the open move on each step that was owed one
+ * (ready, or the one that stopped) is withdrawn (withdrawn names nobody). An
+ * ordinary assignment on a blocked or closed step's task is no step's move and
+ * stays. The caller holds the onboarding's lock.
  */
 export async function withdrawStepMoves(tx: TenantQuery, onboardingId: string): Promise<void> {
   await tx.query(
@@ -84,7 +97,8 @@ export async function withdrawStepMoves(tx: TenantQuery, onboardingId: string): 
        from public.onboarding_steps s
       where i.business_id = $1 and s.business_id = $1 and s.onboarding_id = $2
         and i.subject_record_id = s.task_id and i.reason = 'assignment'
-        and i.fact_kind = 'record' and i.fact_id = s.task_id and i.work_state = 'open'`,
+        and i.fact_kind = 'record' and i.fact_id = s.task_id and i.work_state = 'open'
+        and s.state in ('ready', 'stopped')`,
     [tx.businessId, onboardingId],
   );
 }

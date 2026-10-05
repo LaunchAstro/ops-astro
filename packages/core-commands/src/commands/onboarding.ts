@@ -212,7 +212,7 @@ export async function writeStepResult(
   const { outcome, text, commentTypeId } = parsed;
   const found = await lockStepOfTask(tx, request.recordId.toLowerCase());
   if (found === undefined) return refused(refuseNotFound());
-  const lost = await author.stillHolds(found.clientId);
+  const lost = await author.stillHolds({ clientId: found.clientId, taskId: found.step.taskId });
   if (lost !== undefined) return refused(lost);
   if (author.actorKind === 'agent' && found.step.kind !== 'agent') return refused(AGENT_ONLY);
   if (found.onboardingState !== 'running') return notPermitted(found.onboardingState, NOT_RUNNING);
