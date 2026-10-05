@@ -2001,12 +2001,19 @@ and codes, never a sentence, to a trace target an operator reads.
   it read on a batch row (code `expiry_unconfirmed`, nothing confirmed;
   rows older than the window are not read again): those answered
   (`read_run_ids`), and those not (`unanswered_run_ids`), each with the span
-  where its read stopped (`resume_ids`: the first unanswered span after the last one the store answered, or, when it answered none, the span after the one the read began at, so each read moves on and passes no span the store would have answered). The next pass reads the runs it read
-  longest ago first, never-read ones before all, and of one pass's, those it
-  left unanswered first, each from where its read stopped and round to it. So
-  neither a few traces that never answer nor runs that always answer can
-  spend every read a pass has before another run, and a run with more spans
-  than the store answers in a pass is read through across passes. A run found gone has
+  where its read stopped (`resume_ids`: the first unanswered span after the
+  last one the store answered, or, when it answered none, the span after the
+  one the read began at). A run read after the pass's other reads with
+  nothing answered (the store's allowance may be spent) is left off the row:
+  it keeps its turn and where it stopped. The next pass reads the runs it
+  read longest ago first, never-read ones before all, and of one pass's,
+  those it left unanswered first, each from where its read stopped and round
+  to it. So each read moves on and passes no span the store would have
+  answered; neither a few traces that never answer nor runs that always
+  answer can spend every read a pass has before another run; and a run with
+  more spans than the store answers in a pass is read through across
+  passes. A block of L spans the store never answers, where a read resumes,
+  takes about L - 2 passes to cross, one span a pass. A run found gone has
   its events after its place sent again, in the transaction that confirms
   it, and a run that has such events is held back with its ask still owed
   (`expiry_unconfirmed`): the cursor steps back to just before the earliest such event (or

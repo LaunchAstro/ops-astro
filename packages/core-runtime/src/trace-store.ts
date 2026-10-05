@@ -13,8 +13,10 @@
 // read-back. A pass that leaves a run unanswered records the runs it read,
 // those it had no answer for with where their read stopped (the first
 // unanswered span after the last answered one, or, when none answered, the
-// span after the one the read began at). The next pass reads the runs it
-// reached least lately first, an unanswered run from where it stopped
+// span after the one the read began at); a run read after the pass's other
+// reads with nothing answered is not recorded and keeps its turn. The next
+// pass reads the runs it reached least lately first, an unanswered run from
+// where it stopped
 // (`owedAsks` in `trace-owed.ts`).
 
 import { randomUUID } from 'node:crypto';
@@ -60,8 +62,9 @@ export const freshReading = (): Reading => ({
   quiet: 0,
 });
 
-/** Whether a pass's reading has a run to record: one unanswered. */
-export const unsettled = (reading: Reading): boolean => reading.unanswered.length > 0;
+/** Whether a pass's reading has a run to record: one unanswered, or one it left. */
+export const unsettled = (reading: Reading): boolean =>
+  reading.unanswered.length > 0 || reading.left.length > 0;
 
 /** One run's read: how it ended, whether any span answered, its first unanswered span and the one after its last answer. */
 interface Seen {
@@ -92,6 +95,7 @@ export async function readBack(
   const gone: string[] = [];
   for (const runId of runs) {
     if (reading !== undefined && reading.quiet >= UNANSWERED) break;
+    const late = (reading?.reads ?? 0) > 0;
     const order = from(reading, runId);
     const seen: Seen = { read: 'present', heard: false, first: undefined, streak: undefined };
     for (const eventId of order) {
@@ -119,28 +123,33 @@ export async function readBack(
       }
     }
     if (seen.read === 'absent') gone.push(runId);
-    if (reading !== undefined) settle(reading, runId, seen, order);
+    if (reading !== undefined) settle(reading, runId, seen, late, order);
   }
   return gone;
 }
 
 /**
  * Records one run's read. A run with an unanswered span and none absent is
- * unanswered, and stops at the first unanswered span after the last one the
- * store answered; when it answered none, at the span after the one its read
- * began at. Each read moves on, and past no span the store would have
- * answered.
+ * left when nothing of it answered after the pass's other reads (the
+ * allowance may be spent): it keeps its turn and where it stopped, so it goes
+ * first next pass. Otherwise it is unanswered, and stops at the first
+ * unanswered span after the last one the store answered; when it answered
+ * none, at the span after the one its read began at. Each read moves on, and
+ * past no span the store would have answered.
  */
 function settle(
   reading: Reading,
   runId: string,
   seen: Seen,
+  late: boolean,
   order: readonly (string | undefined)[],
 ): void {
-  if (seen.read === 'unknown') {
+  if (seen.read !== 'unknown') reading.answered.push(runId);
+  else if (!seen.heard && late) reading.left.push(runId);
+  else {
     reading.unanswered.push(runId);
     reading.resumes.push((seen.heard ? (seen.streak ?? seen.first) : order[1]) ?? order[0] ?? null);
-  } else reading.answered.push(runId);
+  }
 }
 
 /** The run's sent owed events from where its last read stopped, round to it; the trace alone when none. */
