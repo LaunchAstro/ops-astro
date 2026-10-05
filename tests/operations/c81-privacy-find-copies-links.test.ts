@@ -581,3 +581,53 @@ test('an agent acting only for a person and someone merged with them stands for 
   expect(line).toContain(`--id ${agent}`);
   expect(found.stderr).not.toContain('and for others');
 });
+
+test("a login moved from another agent to the person's own one stays theirs when given back", async () => {
+  const { world } = harness;
+  const { a, login } = await world.db.app.withBusiness(world.alpha, async (tx) => {
+    const planted = {
+      a: await plantActingPerson(tx, 'Yara Keeper'),
+      own: await plantAgent(tx),
+      before: await plantAgent(tx),
+      login: randomUUID(),
+    };
+    await tx.query(
+      `insert into public.agent_credentials
+         (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
+          credential_hash, credential_scheme, credential_key_id, expires_at)
+       values ($1, $2, $3, $4, $5, 'triage', array['tasks:read'], $6, 'hmac-sha256-v1', 'k1',
+               now() + interval '1 day')`,
+      [world.alpha, randomUUID(), planted.own, planted.a.person, planted.a.actor, 'f'.repeat(64)],
+    );
+    await tx.query(
+      `insert into public.logins (business_id, id, provider, subject) values ($1, $2, 'dry-run', $3)`,
+      [world.alpha, planted.login, `opaque-${randomUUID()}`],
+    );
+    for (const [agent, active] of [
+      [planted.before, false],
+      [planted.own, true],
+    ] as const) {
+      // oxlint-disable-next-line no-await-in-loop
+      await tx.query(
+        `insert into public.actor_logins
+           (business_id, id, login_id, actor_id, linked_by_actor_id, active, deactivated_at)
+         values ($1, $2, $3, $4, $5, $6, case when $6 then null else now() end)`,
+        [world.alpha, randomUUID(), planted.login, agent, planted.a.actor, active],
+      );
+    }
+    return planted;
+  });
+  const first = await findCopies(adminUrl, ['--text', 'Yara Keeper'], 'alpha');
+  const line = first.stderr
+    .split('\n')
+    .find((text) => text.includes(`search again for ${a.person} `));
+  expect(line).toContain(`--id ${login}`);
+  const again = await findCopies(
+    adminUrl,
+    ['--text', 'Yara Keeper', ...(line?.split('add: ')[1] ?? '').split(' ')],
+    'alpha',
+  );
+  const hit = again.hits.find((each) => each.table === 'logins' && each.id === login);
+  expect(hit?.shared, 'the login is held by the agent standing for the person').toEqual([]);
+  expect(hit?.given).toBe(true);
+});
