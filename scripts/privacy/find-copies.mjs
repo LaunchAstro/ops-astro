@@ -40,7 +40,10 @@ const SAFE = /^[a-z_][a-z0-9_]{0,62}$/u;
 const HEX = '0123456789abcdef';
 
 /** Columns an export never carries: the business's security material, not the person's data. */
-const WITHHELD = new Map([['agent_credentials', ['credential_hash']]]);
+const WITHHELD = new Map([
+  ['agent_credentials', ['credential_hash']],
+  ['delegations', ['credential_hash']],
+]);
 
 /** A failure the operator is told about in words; any other is reported without its detail. */
 class Refusal extends Error {}
@@ -111,46 +114,55 @@ const NAMES = (value) => `to_tsvector('simple', ${value}) @@ phraseto_tsquery('s
  * named by their name or an identifier not rejected, and is one person with
  * anyone a merge not reversed joined them to; their actors, the logins they
  * still hold and the agent actor of each credential they issued stand for
- * them. None of these leads to another person, so the set is closed.
+ * them. None of these leads to another person, so the set is closed. Each
+ * seed says how its person was found.
  */
-const SEEDS = `with recursive named as (
-    select p.id from public.people p
+const SEEDS = `with recursive named(id, how) as (
+    select p.id, 'named by the text' from public.people p
      where p.business_id = $1 and $2::text is not null and ${NAMES('p.display_name')}
     union
-    select i.person_id from public.person_identifiers i
+    select i.person_id, 'named by the text' from public.person_identifiers i
      where i.business_id = $1 and $2::text is not null and i.review_state <> 'rejected'
        and (${NAMES('i.value')} or ${NAMES('i.observed_value')})
     union
-    select unnest($3::uuid[])),
-  persons(id) as (
-    select id from named
+    select unnest($3::uuid[]), 'given by --id'),
+  joined(id, how) as (
+    select id, how from named
     union
-    select case when m.surviving_person_id = p.id
-                then m.absorbed_person_id else m.surviving_person_id end
-      from persons p
+    select case when m.surviving_person_id = j.id
+                then m.absorbed_person_id else m.surviving_person_id end,
+           'merged with a person found'
+      from joined j
       join public.person_merges m
         on m.business_id = $1 and m.reversed_at is null
-       and p.id in (m.surviving_person_id, m.absorbed_person_id))
-  select id::text as id, id::text as person from persons
+       and j.id in (m.surviving_person_id, m.absorbed_person_id)),
+  persons as (
+    select distinct on (id) id, how from joined
+     order by id, case how when 'named by the text' then 0 when 'given by --id' then 1 else 2 end)
+  select p.id::text as id, p.id::text as person, p.how from persons p
   union
-  select a.id::text, a.person_id::text from public.actors a
-   where a.business_id = $1 and a.person_id in (select id from persons)
+  select a.id::text, p.id::text, p.how from public.actors a join persons p on p.id = a.person_id
+   where a.business_id = $1
   union
-  select l.login_id::text, l.person_id::text from public.person_logins l
-   where l.business_id = $1 and l.active and l.person_id in (select id from persons)
+  select l.login_id::text, p.id::text, p.how from public.person_logins l
+    join persons p on p.id = l.person_id
+   where l.business_id = $1 and l.active
   union
-  select c.agent_actor_id::text, c.issued_by_person_id::text from public.agent_credentials c
-   where c.business_id = $1 and c.issued_by_person_id in (select id from persons)
-  order by 1, 2`;
+  select c.agent_actor_id::text, p.id::text, p.how from public.agent_credentials c
+    join persons p on p.id = c.issued_by_person_id
+   where c.business_id = $1
+  order by 2, 1`;
+
+/** `text` folded, with each run of white space as one space. */
+const folded = (text) => `regexp_replace(lower(${text}), '[[:space:]]+', ' ', 'g')`;
 
 /** Each value held at any depth of `json`, folded, as `held`; never a field's name. */
-const values = (
-  json,
-) => `(select lower(v #>> '{}') as held from jsonb_path_query(${json}, 'strict $.**') v
-    where jsonb_typeof(v) not in ('object', 'array', 'null')) s`;
+const values = (json) => `(select ${folded("v #>> '{}'")} as held
+      from jsonb_path_query(${json}, 'strict $.**') v
+     where jsonb_typeof(v) not in ('object', 'array', 'null')) s`;
 
 /** Whether `s.held` holds the text ($1, or null) or a seed id ($3). */
-const HOLDS = `(s.held like lower($1::text) or exists (select from unnest($3::text[]) i where strpos(s.held, i) > 0))`;
+const HOLDS = `(s.held like ${folded('$1::text')} or exists (select from unnest($3::text[]) i where strpos(s.held, i) > 0))`;
 
 /** Rows of business $2 holding the text or a seed ($3, standing for people $4). */
 const copies = (table) => `select t.ctid::text as address, to_jsonb(t) as row,
@@ -243,7 +255,10 @@ async function main() {
     // One line per person, so an erasure carries its own person's ids only.
     for (const [person, seeds] of found.byPerson) {
       const flags = seeds.map((seed) => `--id ${seed.id}`).join(' ');
-      stderr.write(`find-copies: to search again for ${person} after an erasure, add: ${flags}\n`);
+      const how = seeds[0].how;
+      stderr.write(
+        `find-copies: to search again for ${person} (${how}) after an erasure, add: ${flags}\n`,
+      );
     }
     return 0;
   } catch (error) {
