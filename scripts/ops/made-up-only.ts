@@ -17,14 +17,17 @@
 //   replay a tag that passes, and the next seed run replaces it.
 // - The watch: an event trigger that guards a table from its creation and
 //   notes a guard switched off (`pg_restore --disable-triggers` does that).
-//   Guards and watch fire in every replication mode.
+//   Guards and watch fire in every replication mode, but one: on hosted
+//   Supabase only auth.users's owner may enable a trigger always, so its guard
+//   stands at origin and a session in replica mode skips it (made-up-install.ts).
 //
 // A marked database is refused if its ledger names anything, or any tenant
-// table lacks an enabled guard. An unmarked one is refused unless a person
+// table lacks a standing guard. An unmarked one is refused unless a person
 // confirms it (LOCAL_SEED_MADE_UP=confirm) and every tenant table has never
 // held a row, judged by its storage size. The guard stops a mistake; the owner
 // can remove it on purpose, as the owner can write the mark by hand.
 import { createHash, randomBytes } from 'node:crypto';
+import { GUARD, GUARDED, installStatements, LEDGER, STANDS } from './made-up-install.ts';
 
 /** The one call this needs from the owner connection. */
 export interface OwnerQuery {
@@ -33,8 +36,6 @@ export interface OwnerQuery {
 
 const MARK = 'ops-astro made-up data; businesses: ';
 const PEOPLE = '; people: ';
-const GUARD = 'ops_astro_made_up_guard';
-const LEDGER = 'ops_astro_made_up.untrusted';
 const digest = (id: string): string => createHash('sha256').update(id).digest('hex');
 /** This process's seed tag; the guard knows its digest and nothing else. */
 const SEED_SECRET = randomBytes(32).toString('hex');
@@ -43,12 +44,6 @@ const joined = (list: readonly string[]): string =>
     .map((id) => digest(id))
     .toSorted()
     .join(',');
-
-/** Tenant tables and the sign-in table, from the catalogue: names, never rows. */
-const GUARDED = `select c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
-   where c.relkind = 'r' and ((n.nspname = 'auth' and c.relname = 'users')
-      or (n.nspname = 'public' and exists (select from pg_attribute a
-            where a.attrelid = c.oid and a.attname = 'business_id' and not a.attisdropped)))`;
 
 /** No tenant or sign-in table has ever held a row, judged by its storage size. */
 const NEVER_HELD_A_ROW = `coalesce((select bool_and(pg_relation_size(g.oid) = 0) from (${GUARDED}) g), true)`;
@@ -154,80 +149,14 @@ async function guardSigns(admin: OwnerQuery): Promise<string[]> {
       signs.add(SIGNS[relation ?? ''] ?? RECORD);
   else signs.add(UNGUARDED);
   const covered = `not exists (select from (${GUARDED}) g where not exists (select from pg_trigger t
-      where t.tgrelid = g.oid and t.tgname = '${GUARD}' and t.tgenabled = 'A'))
+      where t.tgrelid = g.oid and t.tgname = '${GUARD}' and ${STANDS}))
     and exists (select from pg_event_trigger where evtname = '${GUARD}' and evtenabled = 'A')`;
   if (!(await yes(admin, covered))) signs.add(UNGUARDED);
   return [...signs];
 }
 
-/** The guard and the watch, in order; each statement is safe to run again. */
-const INSTALL = [
-  `create schema if not exists ops_astro_made_up`,
-  `revoke all on schema ops_astro_made_up from public`,
-  `create table if not exists ${LEDGER} (relation text primary key)`,
-  `
-    create or replace function ops_astro_made_up.note(relation text) returns void
-      language sql security definer set search_path = pg_catalog, pg_temp
-      as $$ insert into ${LEDGER} values (relation) on conflict do nothing $$`,
-  // A write is the seed's when it tags its transaction on the session the seed
-  // bound (`bindSeed`); it is a person's on staging when the role it runs as,
-  // an owner's definer function included, is neither owner nor superuser. The
-  // guard runs as the writer, so current_user is that role.
-  `
-    create or replace function ops_astro_made_up.guard() returns trigger
-      language plpgsql security invoker set search_path = pg_catalog, pg_temp as $$
-    begin
-      if tg_table_schema = 'auth' then
-        if new.email is null or lower(new.email) not like '%.local' then
-          perform ops_astro_made_up.note('auth.users');
-        end if;
-      elsif encode(sha256(convert_to(coalesce(current_setting('ops_astro.writer', true), ''),
-          'UTF8')), 'hex') || encode(sha256(convert_to(coalesce(
-          current_setting('ops_astro.seeder', true), ''), 'UTF8')), 'hex')
-          is distinct from '${digest(SEED_SECRET)}${digest(SEED_SECRET)}'
-        and ((select rolsuper from pg_roles where rolname = current_user)
-          or pg_has_role(current_user,
-               (select datdba from pg_database where datname = current_database()), 'member'))
-      then
-        perform ops_astro_made_up.note(tg_table_schema || '.' || tg_table_name);
-      end if;
-      return null;
-    end $$`,
-  `
-    create or replace function ops_astro_made_up.watch() returns event_trigger
-      language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
-    declare
-      command record;
-    begin
-      for command in select * from pg_event_trigger_ddl_commands() loop
-        if command.command_tag = 'CREATE TABLE' then
-          perform ops_astro_made_up.protect(command.objid);
-        elsif command.command_tag = 'ALTER TABLE' and exists (select from pg_trigger
-            where tgrelid = command.objid and tgname = '${GUARD}' and tgenabled <> 'A') then
-          perform ops_astro_made_up.note('guard');
-        end if;
-      end loop;
-    end $$`,
-  // Guards one table if it is a tenant or sign-in table without one. A table
-  // is empty when CREATE TABLE ends; CREATE TABLE AS is another tag, never
-  // guarded here, so its rows are never vouched for.
-  `
-    create or replace function ops_astro_made_up.protect(target oid) returns void
-      language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
-    begin
-      if target in (${GUARDED}) and not exists (select from pg_trigger
-          where tgrelid = target and tgname = '${GUARD}') then
-        execute format('create trigger ${GUARD} after insert or update on %s
-          for each row execute function ops_astro_made_up.guard()', target::regclass);
-        execute format('alter table %s enable always trigger ${GUARD}', target::regclass);
-      end if;
-    end $$`,
-  `revoke all on all functions in schema ops_astro_made_up from public`,
-  `drop event trigger if exists ${GUARD}`,
-  `create event trigger ${GUARD} on ddl_command_end
-    when tag in ('CREATE TABLE', 'ALTER TABLE') execute function ops_astro_made_up.watch()`,
-  `alter event trigger ${GUARD} enable always`,
-];
+/** The guard and the watch, in order, for this process's seed tag. */
+const INSTALL = installStatements(digest(SEED_SECRET));
 
 /** Install, or refresh, the guard and the watch. It never clears the ledger. */
 export async function guardMadeUp(admin: OwnerQuery): Promise<void> {

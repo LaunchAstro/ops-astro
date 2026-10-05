@@ -32,6 +32,7 @@
 
 import type { Action } from '../../core-records/src/index.ts';
 import type { CommandName } from './command-names.ts';
+import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { WRITE_OPERANDS, type OperandSpec } from './write-operands.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -209,6 +210,7 @@ const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const CUSTODY_COLLECTION = 'custody';
 const CONVERSATION_COLLECTION = 'conversation';
 const TIME_COLLECTION = 'time';
 const TAG_COLLECTION = 'tag';
@@ -250,12 +252,6 @@ function read(
     audited: options.audited ?? true,
   };
 }
-
-/**
- * The key every write to a map's structure serialises on, taken before any
- * task row: no two writes hold a map and a ticket in opposite orders.
- */
-const WAYFINDER_MAP_LOCK = 'wayfinder.map';
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent credential's under its person's business-wide `task:write`
@@ -615,6 +611,22 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'target',
     untargetedIdentifiers: ['clientId'],
+  }),
+
+  // Custody (C31). `custody:manage` for all three, never an agent (the key
+  // catalogue: owner and administrators). The list is asked per row by the
+  // scopes the caller holds the key at, so a client-scoped holder sees that
+  // client's secrets only; setting and clearing are business-wide.
+  read('secret.list', CUSTODY_COLLECTION, { action: 'manage' }),
+  declare('secret.set', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['clientId'],
+  }),
+  declare('secret.clear', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['secretId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this

@@ -10,13 +10,7 @@
     "runs in full on a pull request (tests/ci/light-pull-requests-workflow.test.ts)."
   ],
   "scopable": ["tests/", "apps/web/", "packages/ui/", "docs/"],
-  "runsEverything": [
-    "tests/support/",
-    "tests/ci/",
-    "tests/db/named-suites",
-    "tests/db/shard-plan.json",
-    "tests/db/isolation-suites.json"
-  ],
+  "runsEverything": ["tests/support/", "tests/ci/", "tests/db/suites", "tests/db/shard-plan.json"],
   "visualDrift": ["apps/web/", "packages/ui/", "tests/visual/"],
   "queueOnly": ["local checks", "isolation tests"]
 }
