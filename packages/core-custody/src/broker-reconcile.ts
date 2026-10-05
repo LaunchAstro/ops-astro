@@ -83,11 +83,12 @@ function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
 }
 
 /**
- * The route that carried the call, as its row records it: key, reach,
+ * The configured route matching what the call's row records: key, reach,
  * credential kind and provider, never another that shares only its key
  * (catalogue #439). The row records no credential, so when two configured
  * routes match, either account could have carried it and an absence on one
- * proves nothing: the reason a person records the outcome instead.
+ * proves nothing: the reason a person records the outcome instead. One match
+ * may still be a route re-pointed to another credential since (catalogue #943).
  */
 function carryingRoute(broker: Broker, call: Asked, provider: string): BrokerRoute | string {
   const matching = broker.routes.filter(
