@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { authorised, ISSUER, post, tokenFor, type Answer } from '../api/fixture.ts';
-import { agentPath } from '../api/controls-fixture.ts';
+import { agentPath, PROPOSAL } from '../api/controls-fixture.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { insertLogin } from '../identity/fixture.ts';
 import { seedLaunchOn } from '../runtime/launch-seed.ts';
@@ -106,7 +106,17 @@ describe.skipIf(serverUrl === undefined)('C41-A step result under a child delega
     await db.app.withBusiness(business, async (tx) => {
       await grantTo(tx, admin, 'write', undefined, true, 'run');
     });
-    const proposal = await controls.propose(welcome, await revisionOf(welcome), 'step_welcome');
+    const proposal = applied(
+      await controls.asPerson('task.propose', {
+        ...PROPOSAL,
+        recordId: welcome,
+        expectedRevision: await revisionOf(welcome),
+        purpose: 'step_welcome',
+        // A step whose effect replays, so the attempt can be dispatched.
+        step: { kind: 'synthetic_comment', payload: {} },
+      }),
+      'task.propose',
+    );
     const picked = await controls.pickup(await controls.approve(proposal));
     const parentCredential = String(picked['credential']);
     const lease = { leaseId: picked['leaseId'], fence: picked['fence'] };
