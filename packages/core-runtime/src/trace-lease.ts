@@ -13,6 +13,8 @@
 // custody's send could still send after a takeover. Either late body, stored
 // after a delete, restores only its own spans; retention reads back every
 // span sent since the run's place (`trace-store.ts`) and finds the rest gone.
+// Those spans may already be past the window: they go at the run's next due
+// delete.
 //
 // Every statement takes the row lock and reads the time after the lock wait
 // (`clock_timestamp()`, never the transaction's start). A renewal holds only

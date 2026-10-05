@@ -1928,7 +1928,9 @@ and codes, never a sentence, to a trace target an operator reads.
   token the target checks: a holder stalled for most of a minute between its
   renewal and custody's send could still send after a takeover. Such a body,
   stored after a delete, restores only its own spans, and retention's
-  read-back of every sent span (below) finds the rest gone. A cursor row
+  read-back of every sent span (below) finds the rest gone. Its own spans
+  may already be past the window; they go at the run's next due delete. A
+  cursor row
   with no place yet (the lease creates it) owes no expiry ask.
   `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and
