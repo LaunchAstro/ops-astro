@@ -16,8 +16,10 @@
 // hash two businesses hold accepts in neither.
 
 import { createHash } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it as vitestIt } from 'vitest';
 import { acceptInvitation } from '../../packages/core-commands/src/index.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   e,
   enrolVia,
@@ -107,6 +109,71 @@ it('SEC27 F5: the bind holds the address the login was made for: an invitation w
   expect(await enrolVia(first.token)).toStrictEqual(REFUSED);
   expect(await identityRows(w.alpha)).toStrictEqual(rows);
   expect(await spentOf(first.id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 1 });
+});
+
+const releaseNothing = (): void => {};
+
+/** Wait until the invitation has lapsed and another session waits on the holder `pid`. */
+async function lapsedWhileWaiting(id: string, pid: number): Promise<void> {
+  const until = Date.now() + 10_000;
+  for (;;) {
+    // oxlint-disable-next-line no-await-in-loop
+    const [row] = await w.db.admin.execute<{ ready: boolean }>(
+      `select clock_timestamp() > expires_at and exists (
+         select 1 from pg_stat_activity where $2 = any(pg_blocking_pids(pid))) as ready
+         from public.invitations where id = $1`,
+      [id, pid],
+    );
+    if (row?.ready === true) return;
+    if (Date.now() > until) throw new Error('the bind never waited past the expiry');
+    // oxlint-disable-next-line no-await-in-loop
+    await delay(20);
+  }
+}
+
+it('C39-T enrolment: the bind judges the link once it holds the invitation, so one that lapsed while it waited seats no one', async () => {
+  e.users.mode('accept');
+  const first = await invited(c.admin, addressFor('lapsed-mid-bind'));
+  const rows = await identityRows(w.alpha);
+  const blocker = connect(w.db.appUrl);
+  let pid = 0;
+  let release = releaseNothing;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let holding: Promise<void> | undefined;
+  e.users.beforeNext(async () => {
+    // Past the find, while the login is made: the invitation lapses in 1.5 s, under a held lock.
+    await w.db.admin.execute(
+      "update public.invitations set expires_at = clock_timestamp() + interval '1500 milliseconds' where id = $1",
+      [first.id],
+    );
+    await new Promise<void>((held) => {
+      holding = blocker.withBusiness(w.alpha, async (tx) => {
+        const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
+        pid = row?.pid ?? 0;
+        await tx.query('select 1 from invitations where business_id = $1 and id = $2 for update', [
+          tx.businessId,
+          first.id,
+        ]);
+        held();
+        await released;
+      });
+    });
+  });
+  try {
+    const accepting = enrolVia(first.token);
+    await delay(50);
+    await lapsedWhileWaiting(first.id, pid);
+    release();
+    expect(await accepting).toStrictEqual(REFUSED);
+  } finally {
+    release();
+    await holding;
+    await blocker.close();
+  }
+  expect(await identityRows(w.alpha)).toStrictEqual(rows);
+  expect((await spentOf(first.id)).spent).toBe(0);
 });
 
 it('SEC27 F6: one narrow security definer function looks a token up by its hash, answering three ids; PUBLIC may not run it, the application group alone may', async () => {

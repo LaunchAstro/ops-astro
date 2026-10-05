@@ -193,6 +193,24 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
     expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 1 });
   });
 
+  it('C39-T enrolment: a password the provider refuses is PASSWORD_INVALID, never sign_in, and nothing is made, set or spent', async () => {
+    e.users.mode('weak_password');
+    const address = addressFor('weak-password');
+    const { id, token } = await invited(c.admin, address);
+    const asked = e.users.received.length;
+    expect(await enrolVia(token)).toStrictEqual({
+      status: 400,
+      body: { code: 'PASSWORD_INVALID' },
+      cookie: null,
+    });
+    // The create alone was asked: a refused password is no reason to adopt a login.
+    expect(e.users.received.slice(asked).map((one) => one.method)).toStrictEqual(['POST']);
+    expect(e.users.users.has(address)).toBe(false);
+    expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 1 });
+    e.users.mode('accept');
+    expect((await enrolVia(token)).body).toStrictEqual({ state: 'enrolled' });
+  });
+
   // eslint-disable-next-line max-lines-per-function -- the login elsewhere, and the control beside it
   it('C39-T no account oracle: accepting for an address that holds a login elsewhere makes none, spends nothing and answers in the one shape, naming no business', async () => {
     e.users.mode('accept');

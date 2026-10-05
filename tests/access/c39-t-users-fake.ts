@@ -11,7 +11,9 @@
 // modes are the answers a real provider can give: an answer echoing the
 // password, oversized, redirected, malformed, a wrong id, another user's
 // id, a fault and slow. As a real provider does, every mode but `fault`
-// makes or sets the user before it answers; `fault` changes nothing.
+// makes or sets the user before it answers; `fault` changes nothing, and
+// neither does `weak_password`, the provider's 422 for a password its rules
+// refuse (leaked, or short of a required character class).
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -26,6 +28,7 @@ export type FakeUsersMode =
   | 'bad_id'
   | 'other_id'
   | 'fault'
+  | 'weak_password'
   | 'slow'
   | 'made_late';
 
@@ -116,6 +119,13 @@ function respond(mode: FakeUsersMode, asked: Asked, response: ServerResponse, ke
     response.end(JSON.stringify(answer));
   };
   if (mode === 'fault') return json(500, { code: 500, msg: 'unexpected failure' });
+  if (mode === 'weak_password') {
+    return json(422, {
+      code: 422,
+      error_code: 'weak_password',
+      msg: 'Password is known to be weak',
+    });
+  }
   const made = honest(asked, kept);
   if (mode === 'accept' || made.status !== 200) return json(made.status, made.answer);
   const { id, email } = made.answer as { id: string; email: string };
