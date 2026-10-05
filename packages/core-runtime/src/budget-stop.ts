@@ -32,13 +32,16 @@ import { raiseAlert } from './alerts.ts';
  * (settled at their actual, still open or unknown at their maximum). `r` is a
  * query's own alias.
  */
-export const callsSpentOf = (r: string): string =>
+const callsOn = (r: string, and: string): string =>
   `(select coalesce(sum(case when c.state = 'settled' then c.actual_minor
                              when c.state in ('reserved', 'dispatched', 'liability_unknown')
                                then c.reserved_minor
                              else 0 end), 0)
       from public.model_calls c
-     where c.business_id = ${r}.business_id and c.reservation_id = ${r}.id)`;
+     where c.business_id = ${r}.business_id and c.reservation_id = ${r}.id${and})`;
+const callsSpentOf = (r: string): string => callsOn(r, '');
+/** SQL: `callsSpentOf` less the calls a person closed: their charge is in `r`'s actual. */
+export const callsUnclosedSpentOf = (r: string): string => callsOn(r, ' and c.outcome is null');
 
 /** SQL: what the classifier's settle of `r` counts now, never above the figure it settled at. */
 export const spentNowOf = (r: string): string => `least(${r}.actual_minor, ${callsSpentOf(r)})`;
