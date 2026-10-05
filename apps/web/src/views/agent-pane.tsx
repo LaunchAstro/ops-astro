@@ -40,6 +40,7 @@ import { useRead } from '../data/use-read.ts';
 import type { Settlement } from '../records/use-command.ts';
 import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
+import { closedNote, type DecisionNote } from './gate-controls.tsx';
 import { StepUpPrompt } from './step-up-prompt.tsx';
 import { wholeExecution } from './run-progress.tsx';
 
@@ -71,6 +72,9 @@ export interface AgentSectionProps {
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
   readonly ledger: TaskLedgerView | null | undefined;
   readonly onChanged: () => void;
+  /** The task page's held decision refusal: closed in either view, closed in both. */
+  readonly note: DecisionNote | null;
+  readonly onDecided: (note: DecisionNote | null) => void;
   readonly onStepUp?: (open: true | null) => void;
 }
 
@@ -115,13 +119,14 @@ const STOP_AWAITING =
 
 /** The pane's controls on the real commands, each ending in a reread. */
 function useAgentControls(props: AgentSectionProps): AgentControls {
-  const { busy, run, stepUp } = useMoneyCommand(props.client);
+  const money = useMoneyCommand(props.client);
+  const { busy, run, stepUp } = money;
   const [refusal, setRefusal] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState<string | null>(null);
   const [stopAwaiting, setStopAwaiting] = useState<string | null>(null);
-  const hold = useStepUpHold(props, stepUp !== null);
-  const settle = (settlement: Settlement): void => {
-    hold(settlement);
+  const hold = useStepUpHold(props, money);
+  const settle = (settlement: Settlement, decision = false): void => {
+    hold(settlement, decision);
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);
     const state = settlement.kind === 'ok' ? stateOf(settlement.value) : undefined;
     setAwaiting(state === 'awaiting_second_approver' ? AWAITING : null);
@@ -129,7 +134,8 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
     props.onChanged();
   };
   const decide: AgentControls['decide'] = (gate, decision) => {
-    if (busy) return;
+    if (busy || props.note?.closed === true) return;
+    props.onDecided(null);
     run(
       (client) =>
         client.mutate('task.decide', {
@@ -138,7 +144,12 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
           decision,
           note: `Decided from the Agent pane (${decision}).`,
         }),
-      settle,
+      (settlement) => {
+        if (settlement.kind === 'closed') {
+          props.onDecided(closedNote(props.proposals, gate.gateId, settlement.because));
+        }
+        settle(settlement, true);
+      },
     );
   };
   const cancel = (lineageId: string): void => {
@@ -153,9 +164,7 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
       settle,
     );
   };
-  const send = (call: Call): void => {
-    run(call, settle);
-  };
+  const send = (call: Call): void => run(call, settle);
   const acts = { ...unknownControls(props, busy, send), ...stopControls(props, busy, send) };
   return { busy, refusal, decide, cancel, awaiting, stopAwaiting, stepUp, ...acts };
 }
@@ -240,6 +249,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onJobList={setJobListOpen}
         busy={busy}
         refusal={refusal}
+        decideClosed={props.note?.closed === true}
         onDecide={decide}
         onReject={(gate) => {
           decide(gate, 'reject');

@@ -32,6 +32,8 @@ export function Gate(props: {
   readonly story: RunStory;
   readonly effect: string | null;
   readonly busy: boolean;
+  /** A refused decision closed the controls; the box says so in their place. */
+  readonly closed: boolean;
   readonly nameOf: (personId: string) => string;
   readonly decisions: RunLineage['decisions'];
   readonly onDecide: (gate: GateRef, decision: GateDecision) => void;
@@ -39,7 +41,6 @@ export function Gate(props: {
   const box: GateBox = props.story.gate;
   if (box.kind === 'none') return null;
   const stale = box.kind === 'stale';
-  const last = props.decisions.at(-1);
   return (
     <div
       className={stale ? 'gatebox gatebox--stale' : 'gatebox'}
@@ -57,20 +58,34 @@ export function Gate(props: {
         </div>
       </div>
       <GateFacts box={box} story={props.story} effect={props.effect} />
-      <div className="gatebox__acts" data-agent="gate-actions">
-        {box.kind === 'armed' ? (
-          <GateControls box={box} busy={props.busy} onDecide={props.onDecide} />
-        ) : stale ? (
-          <span className="sbact__meta" data-gate="stale">
-            A stale gate cannot be approved. The run has to raise it again against the current
-            version.
-          </span>
-        ) : last === undefined ? null : (
-          <span className="sbact__meta" data-gate="decided">
-            {words(last.decision)} by {props.nameOf(last.decidedByPersonId)} at {last.decidedAt}
-          </span>
-        )}
-      </div>
+      <GateActs {...props} box={box} />
+    </div>
+  );
+}
+
+/** What the gate offers now: its two controls, or why there are none. */
+function GateActs(props: Parameters<typeof Gate>[0] & { readonly box: Shown }): ReactElement {
+  const { box } = props;
+  const last = props.decisions.at(-1);
+  return (
+    <div className="gatebox__acts" data-agent="gate-actions">
+      {box.kind === 'armed' && props.closed ? (
+        <span className="sbact__meta" data-gate="closed">
+          The server refused a decision of yours on this task, so these controls are closed rather
+          than asking again on your behalf.
+        </span>
+      ) : box.kind === 'armed' ? (
+        <GateControls box={box} busy={props.busy} onDecide={props.onDecide} />
+      ) : box.kind === 'stale' ? (
+        <span className="sbact__meta" data-gate="stale">
+          A stale gate cannot be approved. The run has to raise it again against the current
+          version.
+        </span>
+      ) : last === undefined ? null : (
+        <span className="sbact__meta" data-gate="decided">
+          {words(last.decision)} by {props.nameOf(last.decidedByPersonId)} at {last.decidedAt}
+        </span>
+      )}
     </div>
   );
 }
