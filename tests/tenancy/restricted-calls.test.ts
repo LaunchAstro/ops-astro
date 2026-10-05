@@ -239,6 +239,27 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.custody_secrets': `insert into public.custody_secrets
        (business_id, id, name, scope_kind, scope_id)
      values ($1, gen_random_uuid(), 'restricted-calls.seed', 'business', null) returning 1`,
+  // The connector fleet (MP-14-7a): nothing the journey does writes a
+  // connection, so each of the three is written here, foreign keys off. The
+  // repair names the business's own connection, at its revision, and its
+  // first actor, so a copy of the row meets its keys in the own insert.
+  'public.connections': `insert into public.connections
+       (business_id, id, connector_key, label, status)
+     values ($1, gen_random_uuid(), 'restricted-calls', 'restricted calls', 'active') returning 1`,
+  'public.connection_clients': `insert into public.connection_clients
+       (business_id, connection_id, client_id)
+     values ($1, gen_random_uuid(), gen_random_uuid()) returning 1`,
+  'public.connection_repairs': `insert into public.connection_repairs
+       (business_id, id, connection_id, connection_revision, started_by_actor_id)
+     select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), coalesce(c.revision, 1),
+            coalesce(a.id, gen_random_uuid())
+       from (select 1) one
+       left join lateral (
+         select id, revision from public.connections
+          where business_id = $1 order by id limit 1) c on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
   // C80's two tables: the journey requests no live correction. The receipt

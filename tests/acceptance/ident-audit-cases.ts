@@ -20,8 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { grantTo } from '../commands/fixture.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
-import { pathOf } from '../../packages/core-wire/src/surface.ts';
-import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
+import { DELEGATION_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
 import { bravoAutomation, bravoRecords } from './ident-audit-bravo-rows.ts';
 import type { SeededAutomation } from '../automations/seed.ts';
@@ -89,6 +88,8 @@ export interface IdentWorld {
     alphaVersionId: string;
     /** A custody key of bravo's (C31). */
     secretId: string;
+    /** A broken connection of bravo's, owner-written (MP-14-7a). */
+    connectionId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -142,7 +143,6 @@ async function callRaw(
 export async function createIdentWorld(part: string): Promise<IdentWorld> {
   const h = await createHarness(part);
   const { world } = h;
-
   const person: PersonCall = async (caller, name, body, businessKey = 'alpha') =>
     await callRaw(world.api, personPath(businessKey, pathOf(name)), body, bearer(caller.token));
 
