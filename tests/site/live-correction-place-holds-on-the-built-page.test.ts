@@ -157,7 +157,7 @@ it('a source the reading admits in moments is placed in moments', () => {
   );
   // Placed in the reading's own time: 2-6 s, by runner. parse5's default adapter takes 64 s.
   expect(performance.now() - started).toBeLessThan(15_000);
-});
+}, 30_000);
 
 // Astro reads each of these as frontmatter, so none of its text is on the built page.
 const fenced = {
