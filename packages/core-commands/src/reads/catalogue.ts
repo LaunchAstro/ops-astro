@@ -158,6 +158,18 @@ export interface SpineRow<K extends ReadName> extends RowBase<K> {
    * nothing can ask it without serving (`admitRead`).
    */
   readonly admits?: (tx: TenantQuery, session: Session, found: Found) => Promise<boolean>;
+  /**
+   * A list read's admission (`declared-within`), which its `serve` decides
+   * from the read of the caller's grants: the refusal `serve` would answer,
+   * or none. Apart from `serve` so `admitRead` refuses what the read refuses
+   * without serving it.
+   */
+  readonly listRefusal?: (
+    tx: TenantQuery,
+    session: Session,
+    operands: ReadOperands[K],
+    found: Found,
+  ) => Promise<CommandRefusal | undefined>;
   readonly serve: (
     tx: TenantQuery,
     session: Session,
@@ -384,32 +396,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     // carries time, rank and comment counts, and anyone else reads a task's
     // shared view through `task.read`. Asked here, so `admitRead` refuses too.
     admits: async (_tx, session) => await Promise.resolve(isInternalReader(session.roleKey)),
+    listRefusal: async (tx, session, operands, { spine }) => {
+      const admitted = await boardAdmission(tx, session, operands.board, spine);
+      return 'refusal' in admitted ? admitted.refusal : undefined;
+    },
     async serve(tx, session, operands, { spine }) {
-      // The one read of the caller's grants: it admits, and it filters, so no
-      // grant changes between the decision and the answer. It comes before
-      // any lookup, so a member holding nothing learns nothing about which
-      // boards exist, and it is refused as the grant check refuses, never
-      // answered with an empty list (`declared-within`).
-      const scope = await readableScope(tx, subjectsOf(session), 'task', 'read');
-      const unreadable = (board: string | null): boolean =>
-        !scope.business &&
-        (board === null ? scope.records.length === 0 : !scope.records.includes(board));
-      if (unreadable(null)) return refuseScope();
-      // A board is a task record, so one that is not alpha's is refused the
-      // way `task.move` refuses it, and never listed as a board with nothing
-      // on it: minimum contract 8.2 case 1 asks `NOT_FOUND` for another
-      // business's identifier and case 3 says a denied list is never an empty
-      // success. Foreign, fabricated, malformed and trashed all get the one
-      // answer. `null` is the list of tasks on no board and is not a lookup.
-      if (
-        typeof operands.board === 'string' &&
-        !(await liveTask(tx, spine.taskTypeId, operands.board))
-      ) {
-        return refuseNotFound();
-      }
-      // A named board is itself a task: one the caller cannot read is refused
-      // as `task.read` refuses it, in-tenant (I05).
-      if (unreadable(operands.board)) return refuseScope();
+      const admitted = await boardAdmission(tx, session, operands.board, spine);
+      if ('refusal' in admitted) return admitted.refusal;
+      const { scope } = admitted;
       const { tasks, changedAt } = await boardOf(
         tx,
         session,
@@ -922,6 +916,41 @@ async function holdsAnyGrant(tx: TenantQuery, session: Session): Promise<boolean
   return (await readCapabilities(tx, session)).grants.length > 0;
 }
 
+/**
+ * Whether `task.board` admits the caller, from the one read of their grants:
+ * it admits, and `serve` filters with the same scope, so no grant changes
+ * between the decision and the answer. It comes before any lookup, so a
+ * member holding nothing learns nothing about which boards exist, and it is
+ * refused as the grant check refuses, never answered with an empty list
+ * (`declared-within`). `admitRead` asks it too (catalogue #415).
+ */
+async function boardAdmission(
+  tx: TenantQuery,
+  session: Session,
+  board: string | null,
+  spine: TaskSpine,
+): Promise<
+  | { readonly refusal: CommandRefusal }
+  | { readonly scope: Awaited<ReturnType<typeof readableScope>> }
+> {
+  const scope = await readableScope(tx, subjectsOf(session), 'task', 'read');
+  const unreadable = (one: string | null): boolean =>
+    !scope.business && (one === null ? scope.records.length === 0 : !scope.records.includes(one));
+  if (unreadable(null)) return { refusal: refuseScope() };
+  // A board is a task record, so one that is not alpha's is refused the
+  // way `task.move` refuses it, and never listed as a board with nothing
+  // on it: minimum contract 8.2 case 1 asks `NOT_FOUND` for another
+  // business's identifier and case 3 says a denied list is never an empty
+  // success. Foreign, fabricated, malformed and trashed all get the one
+  // answer. `null` is the list of tasks on no board and is not a lookup.
+  if (typeof board === 'string' && !(await liveTask(tx, spine.taskTypeId, board))) {
+    return { refusal: refuseNotFound() };
+  }
+  // A named board is itself a task: one the caller cannot read is refused
+  // as `task.read` refuses it, in-tenant (I05).
+  if (unreadable(board)) return { refusal: refuseScope() };
+  return { scope };
+}
 /**
  * The board's rows in the caller's read scope and the newest change among them
  * (MP-5-7), each row with its client where the caller reaches it, as `task.read`

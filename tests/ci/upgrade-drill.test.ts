@@ -237,7 +237,7 @@ describe('S0-3 upgrade drill in CI', () => {
     // Each conformance shard (#252) drills, against its own Postgres.
     const job = workflow.slice(
       workflow.indexOf('name: database conformance shard ${{ matrix.shard }}\n'),
-      workflow.indexOf('\n  database-lookahead:'),
+      workflow.indexOf('\n  database:\n'),
     );
     const step = job.slice(job.indexOf('- name: The upgrade drill'));
     // CI-QUEUE: on a pull request and on a merge group, from main as it stands.
