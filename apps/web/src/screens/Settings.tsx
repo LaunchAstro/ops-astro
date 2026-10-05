@@ -271,6 +271,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
 
       <PlanningCapSection
         client={props.client}
+        grantKey={props.grantKey}
         read={model.read}
         capabilities={model.capabilities}
         reload={model.reload}

@@ -45,7 +45,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { CommandOutcome, MutationOptions, OperationsClient } from '../../operations/client.ts';
-import { ownerOf, useDesk, type Tag } from '../../data/owned.ts';
+import { LEFT_BEHIND, ownerOf, useDesk, type Tag } from '../../data/owned.ts';
 import type { StorageLike } from '../../session/token.ts';
 import { useRead } from '../../data/use-read.ts';
 import type { Settlement } from '../../records/use-command.ts';
@@ -77,9 +77,6 @@ const COMMAND = {
   conversation: 'settings.set_conversation_window',
   retention: 'settings.set_retention_window',
 } as const;
-
-/** Why a write held for an owner the screen has left went nowhere. */
-const LEFT = 'This change was made for a business or person this tab has left, so it was not sent.';
 
 /** The session's memory as this screen holds it, and which session it is. */
 interface Held {
@@ -140,7 +137,8 @@ export function useSettings(
   const [closedBy, setClosedBy] = useState<Tag | null>(null);
   const ours = ran === null || desk.owns(ran);
   const closed = closedBy !== null && desk.owns(closedBy);
-  const busy = command.busy ? pressed : null;
+  // One write at a time, whoever it is for; "Saving" only for its own owner.
+  const busy = command.busy && ours ? pressed : null;
   // A stale write is the conflict, drawn with its draft, not a reason line.
   const failure = !ours || command.failure?.kind === 'stale' ? null : command.failure;
   const prompt = ours ? command.stepUp : null;
@@ -250,7 +248,7 @@ export function useSettings(
     command.run(
       (to) => {
         // A resend after the screen moved to another owner is not theirs to send.
-        if (!desk.owns(tag)) return Promise.resolve({ unavailable: true as const, because: LEFT });
+        if (!desk.owns(tag)) return Promise.resolve(LEFT_BEHIND);
         const { id, sentWith: revision } = intents.attempt(which, value, seen);
         sent = id;
         const options: MutationOptions =
@@ -266,7 +264,7 @@ export function useSettings(
     );
   };
 
-  const everyRow = busy !== null || closed || rereading;
+  const everyRow = command.busy || closed || rereading;
   return {
     read,
     capabilities: caps,

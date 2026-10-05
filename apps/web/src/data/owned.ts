@@ -32,8 +32,17 @@
 
 import { useRef } from 'react';
 import { tabOwnerGeneration } from '../session/token.ts';
-import type { OperationsClient } from '../operations/client.ts';
+import type { OperationsClient, Unavailable } from '../operations/client.ts';
 import { Intents } from './intents.ts';
+
+/**
+ * What a write held for an owner the screen has left comes to, such as a money
+ * step-up's resend after a switch: nothing is sent.
+ */
+export const LEFT_BEHIND: Unavailable = {
+  unavailable: true,
+  because: 'This change was made for a business or person this tab has left, so it was not sent.',
+};
 
 /** Who a screen answers to now. */
 export interface Owner {
