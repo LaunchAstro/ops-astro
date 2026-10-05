@@ -217,7 +217,6 @@ export async function messageConversation(
   if (conversation.body_purged_at !== null) return refused(PURGED);
   const messageId = randomUUID();
   // Stamped after the row lock, so messages list in the order kept (#444).
-  // The instant goes in as text: a timestamptz parameter keeps milliseconds only.
   const at = await lockedInstant(tx);
   await tx.query(
     `insert into conversation_messages
