@@ -76,7 +76,11 @@ interface Held {
   /** Set once the plan's lease went back for review: the hand-back is asked again under it. */
   readonly review?: { readonly operationId: string };
   /** Set once the provider answered: only the comment and observe are sent again, and replay. */
-  readonly effected?: { readonly link: { readonly receiptLink?: string } };
+  readonly effected?: {
+    readonly link: { readonly receiptLink?: string };
+    /** Set once the comment answered: only observe is sent again. */
+    readonly commentId?: string;
+  };
 }
 
 /** A pickup asked for and not yet answered: asked again under its identity, it replays. */
@@ -116,11 +120,15 @@ async function applyOnce(
     work = picked.held;
     kept.set(taskId, work);
   }
-  const outcome = await effectOnce(options, taskId, work, (dropped) => {
-    kept.set(taskId, dropped);
+  const outcome = await effectOnce(options, taskId, work, (next) => {
+    kept.set(taskId, next);
   });
-  // A fault may be a lost answer, so the work is kept; anything else ends it here.
-  if (!('fault' in outcome)) kept.delete(taskId);
+  // A fault may be a lost answer, so the work is kept, and so is a provider
+  // answer whose comment or observe was refused: the provider may have acted,
+  // and a later pass finishes it. Anything else ends it here.
+  const now = kept.get(taskId);
+  const answered = now !== undefined && 'effected' in now && now.effected !== undefined;
+  if (!('fault' in outcome) && !('refused' in outcome && answered)) kept.delete(taskId);
   return outcome;
 }
 
@@ -180,28 +188,37 @@ async function effectOnce(
     return 'body' in back ? handedBackFrom(taskId, back.detail) : back;
   };
   if (held.review !== undefined) return await handBackForReview(held.review.operationId);
-  const commentAndObserve = async (link: { readonly receiptLink?: string }) => {
-    const effect = await call('task.comment', {
-      operationId: effectOperationId(attemptId),
-      recordId: taskId,
-      body: EFFECT_BODY,
-      audience: 'internal',
-    });
-    if (!('body' in effect)) return effect;
+  const commentAndObserve = async (effected: NonNullable<Held['effected']>) => {
+    let commentId = effected.commentId;
+    if (commentId === undefined) {
+      const effect = await call('task.comment', {
+        operationId: effectOperationId(attemptId),
+        recordId: taskId,
+        body: EFFECT_BODY,
+        audience: 'internal',
+      });
+      if (!('body' in effect)) return effect;
+      commentId = String(effect.detail['commentId']);
+      keep({ ...held, effected: { ...effected, commentId } });
+    }
     const usage = options.reporter.observe(SYNTHETIC_STEP);
     // The link rides as the provider gave it; observe keeps it only on the declared host.
-    const observed = await call('task.observe', { ...lease, attemptId, usage, ...link });
+    const observed = await call('task.observe', { ...lease, attemptId, usage, ...effected.link });
     if (!('body' in observed)) return observed;
-    return { applied: { taskId, attemptId, commentId: String(effect.detail['commentId']) } };
+    return { applied: { taskId, attemptId, commentId } };
   };
   // The provider answered and the comment's or observe's answer was lost: send
   // those again with its answer, and never call the provider a second time.
-  // Dispatch first, as every pass does: it replays the mark and answers its
-  // checks again, so a client sign-off required since refuses the comment.
+  // Before the comment, dispatch first, as every pass does: it replays the mark
+  // and answers its checks again, so a client sign-off required since refuses
+  // the comment. Once the comment applied, only observe is left: it accounts for
+  // an effect already made, so no check made since stops it.
   if (held.effected !== undefined) {
-    const again = await call('task.dispatch', lease);
-    if (!('body' in again)) return again;
-    return await commentAndObserve(held.effected.link);
+    if (held.effected.commentId === undefined) {
+      const again = await call('task.dispatch', lease);
+      if (!('body' in again)) return again;
+    }
+    return await commentAndObserve(held.effected);
   }
   // The mark first: a provider call may act and then
   // lose its answer, so it is made only once the step is marked. A fault is
@@ -236,7 +253,7 @@ async function effectOnce(
     return await handBackDrop(drop);
   }
   keep({ ...held, effected: { link } });
-  return await commentAndObserve(link);
+  return await commentAndObserve({ link });
 }
 
 export function createWorker(options: WorkerOptions): {
