@@ -51,6 +51,7 @@ import { readTaskExecution } from './execution.ts';
 import { readAwaitingReview } from './awaiting-review.ts';
 import { readPlanningCap } from '../../../core-custody/src/index.ts';
 import { readSettings } from './settings.ts';
+import { listCustodySecrets } from './custody.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
@@ -351,27 +352,32 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         );
         return sharedTask === undefined ? refuseNotFound() : { ok: true, sharedTask };
       }
+      // An agent credential's call stands as its person but is an agent's
+      // (API-2, I09): it reads what the agent prefix reads, never as an
+      // internal reader, its rank pool the one task, no one's time and no
+      // Client field facts (catalogue #418).
+      const agent = session.credentialScope !== undefined;
       const task = await readTaskDetail(
         tx,
         spine.taskTypeId,
         recordId,
-        {
-          commentTypeId: spine.taskCommentTypeId,
-          internal: true,
-          actorId: session.actorId,
-        },
-        // The rank's pool is every open task this reader's grants reach.
-        { kind: 'grants', subjects: subjectsOf(session) },
+        agent
+          ? { commentTypeId: spine.taskCommentTypeId, internal: false }
+          : { commentTypeId: spine.taskCommentTypeId, internal: true, actorId: session.actorId },
+        // A member's rank pool is every open task their grants reach.
+        agent ? { kind: 'task' } : { kind: 'grants', subjects: subjectsOf(session) },
         // A member reads their own time on the task (RS-VAULT-9).
-        session.personId,
+        agent ? null : session.personId,
       );
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
       // The Client field's facts (MP-4-8) go to a member alone: an agent's
-      // detail and the shared view are built apart and carry neither.
+      // detail and the shared view carry neither.
       return {
         ok: true,
-        task: { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) },
+        task: agent
+          ? task
+          : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) },
         states: await readStateChoices(tx, spine.taskStateTypeId),
       };
     },
@@ -674,6 +680,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (!planned.ok) return planned.refusal;
       return { ok: true, plan: planned.value };
     },
+  },
+  // Asked per row by the scopes the caller holds `custody:manage` at (C31): a
+  // caller holding it nowhere is refused inside the read, never shown an
+  // empty list.
+  'secret.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await listCustodySecrets(tx, session),
   },
   // No subject record, for the reason `task.queue` gives: the settings are
   // the business's own configuration rather than one record, and there is no

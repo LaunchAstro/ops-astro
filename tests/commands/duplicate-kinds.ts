@@ -197,6 +197,9 @@ export const DECLARED: Readonly<
   'run.child_handback': { carry: 'not carried', plant: 'needs a child run' },
   'chat.send_direct': { carry: 'not carried', plant: 'a team conversation’s, never on a task' },
   'chat.mark_read': { carry: 'not carried', plant: 'the reader’s own marker, not the task' },
+  // C31: a business's custody key, never task content.
+  'secret.set': { carry: 'not carried', plant: 'a business key, not task content' },
+  'secret.clear': { carry: 'not carried', plant: 'a business key, not task content' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

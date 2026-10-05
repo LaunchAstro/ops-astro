@@ -5,6 +5,7 @@
 // `surface.ts` reads it into each declaration and re-exports the operand types.
 
 import type { CommandName } from './command-names.ts';
+import { SETUP_OPERANDS } from './surface-setup.ts';
 import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
 
 /**
@@ -261,4 +262,5 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
   'chat.send_direct': { teammateId: 'id', body: 'any' },
   'chat.mark_read': { conversationId: 'id', upTo: 'any' },
+  ...SETUP_OPERANDS,
 };

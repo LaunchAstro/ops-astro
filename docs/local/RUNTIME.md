@@ -1460,7 +1460,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:861-872`). With neither setting present, the
+  rewrites it (`local-seed.mjs:865-876`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1966,6 +1966,40 @@ and codes, never a sentence, to a trace target an operator reads.
   ([AUTHORITY.md](AUTHORITY.md#trace-readers-aw-13)). The trace target's own
   logins (the owner, and the second operator after the timed restore
   rehearsal) are the installation's, not the product's.
+
+## The email hook
+
+The provider's delivery and bounce events reach `POST /api/hooks/email`
+(AW-07b, `apps/api/mail-hook.ts`). `main` mounts the route only when
+`EMAIL_HOOK_SECRET` holds a secret in the provider's form (`whsec_` and its
+base64 key); a malformed one stops the server, naming the setting and never
+the value. There is no sign-in on the route: the signature is the authority,
+checked over the raw bytes before the body is parsed
+(`packages/core-connectors/src/email-hook.ts`), within five minutes either side
+of now. A verified event moves only the attempt of the business that sent the
+message (`landEmailEvent`, `core-custody/src/broker-email-hook.ts`):
+`email.delivered` moves an accepted attempt to delivered, and `email.bounced`
+moves an accepted or delivered one to failed, which is final in either arrival
+order (a delivery is the receiving server's acceptance, and a bounce can follow
+it); `sent`, `opened` and `clicked` move
+nothing, and no hook path writes a decision. The hosted function
+(`apps/api/function.ts`) does not mount the hook yet, as it does not wire the
+model broker.
+
+Two parts are Stage 1 only, held for Sol in `stage1/SOL-OWED.md`:
+
+- **The sender check is a mock.** The sending subdomain's setup check (DKIM,
+  SPF, the return-path MX) and the root's DMARC policy are read from the fake
+  source (`email-sender-fake.ts`), and every report from it says `mock: true`.
+  The send refuses `SENDER_NOT_VERIFIED` until the report verified. The real
+  read needs a GET through custody, which is POST-only today; it is its own
+  sensitive piece.
+- **A replay of an event that moved nothing is refused from memory.** A
+  replayed event id that moved an attempt is refused by the database, across
+  processes. One that moved nothing (a `sent`, an `opened`, an event for an
+  attempt already settled) is held only in the process that took it, for
+  twice the timestamp window, so a second process could take it once more.
+  It moves nothing either time, so local and staging accept it.
 
 ## An automation occurrence's run
 

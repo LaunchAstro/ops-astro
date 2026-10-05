@@ -23,6 +23,8 @@ const NOT_DRAWN = new Set([
   // them yet; the Team panel arrives in a later piece.
   'chat.conversations',
   'chat.messages',
+  // C31: the Keys panel that draws custody's list is P01b's.
+  'secret.list',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {

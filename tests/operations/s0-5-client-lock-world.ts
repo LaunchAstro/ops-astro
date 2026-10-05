@@ -30,6 +30,7 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'map.scope': "a map's client change, which the lock allows while the map is empty",
   'client.create': 'writes a client, not a task',
   'client.set_privacy': "a client's privacy settings, not a task",
+  'secret.set': 'a key held for a client or the business, not a task (C31)',
   'task.share_with_client': 'a share grant: who sees the task, not what it holds',
   'task.purge': 'removes the task; nothing is left to change the client of',
   'inbox.seen': "the caller's own seen stamp on an item, not the task's content",
