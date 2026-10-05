@@ -46,6 +46,7 @@
     "tests/broker/c60-egress-before-route.test.ts",
     "tests/broker/c60-route-and-carry.test.ts",
     "tests/broker/counted-call-closes-give-back-once.test.ts",
+    "tests/broker/counted-call-release-races-top-up-and-end.test.ts",
     "tests/broker/late-answer-after-sweep-gives-back-once.test.ts",
     "tests/broker/late-planning-settlement-keeps-owner-release.test.ts",
     "tests/broker/model-call-concurrent-sends-dispatch-once.test.ts",

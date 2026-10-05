@@ -110,6 +110,7 @@ export default defineConfig({
             'tests/broker/model-call-concurrent-sends-dispatch-once.test.ts',
             'tests/broker/model-call-retried-send-sends-once.test.ts',
             'tests/broker/model-call-swept-hold-sends-nothing.test.ts',
+            'tests/broker/counted-call-release-races-top-up-and-end.test.ts',
             'tests/harness/reserved-model-call-retry-sends-once.test.ts',
             'tests/api/receipt-link-held-credentials-crossings.test.ts',
             'tests/api/receipt-link-keeps-no-credential.test.ts',
