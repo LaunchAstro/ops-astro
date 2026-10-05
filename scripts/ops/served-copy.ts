@@ -25,7 +25,7 @@ import {
   renameSync,
   rmSync,
 } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { outputDigest } from './build-output.ts';
 
 // Where production's copies live, beside its link, each named by its digest.
@@ -44,10 +44,6 @@ export function frozenCopy(
   selected: { readonly path: string; readonly name: string; readonly digest: string },
   link: string,
 ): { path: string } | { why: string } {
-  // Any case: a case-blind disk reads `SERVED` as `served/`.
-  if (basename(link).toLowerCase() === SERVED) {
-    return { why: `${link} is where production's copies live` };
-  }
   const uid = process.getuid?.();
   const home = dirname(link);
   const untrusted = untrustedChain(home, uid);
@@ -56,7 +52,8 @@ export function frozenCopy(
   if (!lexists(folder)) mkdirSync(folder, { mode: 0o755 });
   const why = untrustedFolder(folder, uid);
   if (why !== undefined) return { why: `${folder} ${why}` };
-  // Only a link is swapped for the new one; anything else there would stop the swap after the migration.
+  // Only a link is swapped for the new one; anything else there, `served/`
+  // itself in any letter case included, would stop the swap after the migration.
   if (lexists(link) && !lstatSync(link).isSymbolicLink()) {
     return { why: `${link} is there and is not a link` };
   }
