@@ -45,7 +45,7 @@ export function caseAdmin(): EmptyDatabase['admin'] {
 }
 
 /** Run statements as `role` in one transaction on the superuser connection. */
-export async function as(role: string, statement: string): Promise<void> {
+export async function asRole(role: string, statement: string): Promise<void> {
   await caseAdmin().execute(`do $do$ begin set local role ${role}; ${statement}; end $do$`);
 }
 
@@ -94,8 +94,8 @@ export async function hostedLike(): Promise<EmptyDatabase> {
   for (const fn of ['note(text)', 'guard()', 'watch()', 'protect(oid)'])
     // oxlint-disable-next-line no-await-in-loop
     await admin.execute(`alter function ops_astro_made_up.${fn} owner to ${LOGIN}`);
-  await as(PROVIDER, 'create table auth.users (id uuid, email text)');
-  await as(LOGIN, 'create table public.owned_by_login (business_id uuid, id uuid)');
+  await asRole(PROVIDER, 'create table auth.users (id uuid, email text)');
+  await asRole(LOGIN, 'create table public.owned_by_login (business_id uuid, id uuid)');
   return db;
 }
 

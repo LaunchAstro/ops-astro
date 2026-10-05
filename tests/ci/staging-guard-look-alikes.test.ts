@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { markMadeUp, productionSigns } from '../../scripts/ops/made-up-only.ts';
 import {
   caseAdmin,
-  as,
+  asRole,
   asLogin,
   forget,
   GUARD,
@@ -43,7 +43,7 @@ function lookAlikeCases(): void {
     await hostedLike();
     await markMadeUp(caseAdmin(), []);
     await caseAdmin().execute(`alter event trigger ${GUARD} disable`);
-    await as(PROVIDER, 'create table public.provider_tenant (business_id uuid)');
+    await asRole(PROVIDER, 'create table public.provider_tenant (business_id uuid)');
     await caseAdmin()
       .execute(`create trigger ${GUARD} after insert or update on public.provider_tenant
       for each row execute function ops_astro_made_up.guard('origin')`);

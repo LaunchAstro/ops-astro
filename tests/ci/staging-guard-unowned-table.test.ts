@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { markMadeUp, productionSigns, resettable } from '../../scripts/ops/made-up-only.ts';
 import {
   caseAdmin,
-  as,
+  asRole,
   asLogin,
   enabling,
   forget,
@@ -50,10 +50,10 @@ function protectCases(): void {
   // own real address fails at the note and never lands; a superuser's is noted.
   it('fires at origin in an ordinary session: a real address is refused or noted, a made-up one passes', async () => {
     await hostedLike();
-    await as(PROVIDER, `insert into auth.users values (gen_random_uuid(), 'ada@alpha.local')`);
+    await asRole(PROVIDER, `insert into auth.users values (gen_random_uuid(), 'ada@alpha.local')`);
     expect(await ledger()).toEqual([]);
     await expect(
-      as(PROVIDER, `insert into auth.users values (gen_random_uuid(), 'kim@example.com')`),
+      asRole(PROVIDER, `insert into auth.users values (gen_random_uuid(), 'kim@example.com')`),
     ).rejects.toThrow(/permission denied for schema ops_astro_made_up/u);
     await caseAdmin().execute(
       `insert into auth.users values (gen_random_uuid(), 'lee@example.com')`,
@@ -73,7 +73,7 @@ function protectCases(): void {
   it('refuses, as before, a tenant table another role owns', async () => {
     await hostedLike();
     await expect(
-      as(PROVIDER, 'create table public.provider_tenant (business_id uuid)'),
+      asRole(PROVIDER, 'create table public.provider_tenant (business_id uuid)'),
     ).rejects.toThrow(/must be owner/u);
   }, 60_000);
 }
@@ -81,16 +81,16 @@ function protectCases(): void {
 function watchCases(): void {
   it('lets the provider alter its table at origin, and notes a guard turned down anywhere else', async () => {
     await hostedLike();
-    await as(PROVIDER, 'alter table auth.users add column phone text');
+    await asRole(PROVIDER, 'alter table auth.users add column phone text');
     expect(await ledger()).toEqual([]);
-    await as(PROVIDER, `alter table auth.users disable trigger ${GUARD}`);
+    await asRole(PROVIDER, `alter table auth.users disable trigger ${GUARD}`);
     expect(await ledger()).toEqual(['guard']);
     await forget();
-    await as(LOGIN, `alter table public.owned_by_login enable trigger ${GUARD}`);
+    await asRole(LOGIN, `alter table public.owned_by_login enable trigger ${GUARD}`);
     expect(await enabling('public.owned_by_login')).toBe('O');
     expect(await ledger()).toEqual(['guard']);
     await forget();
-    await as(LOGIN, `alter table public.owned_by_login disable trigger ${GUARD}`);
+    await asRole(LOGIN, `alter table public.owned_by_login disable trigger ${GUARD}`);
     expect(await ledger()).toEqual(['guard']);
   }, 60_000);
 
@@ -98,7 +98,7 @@ function watchCases(): void {
     await hostedLike();
     await caseAdmin().execute(`alter table public.owned_by_login owner to ${PROVIDER}`);
     expect(await ledger()).toEqual([]);
-    await as(PROVIDER, `alter table public.owned_by_login enable trigger ${GUARD}`);
+    await asRole(PROVIDER, `alter table public.owned_by_login enable trigger ${GUARD}`);
     expect(await ledger()).toEqual(['guard']);
     await forget();
     // The other way: an origin guard whose table the login comes to own.
@@ -116,7 +116,7 @@ function handedCases(): void {
     expect(await enabling('auth.users')).toBe('A');
     await caseAdmin().execute(`alter table auth.users owner to ${PROVIDER}`);
     await forget();
-    await as(PROVIDER, `alter table auth.users enable trigger ${GUARD}`);
+    await asRole(PROVIDER, `alter table auth.users enable trigger ${GUARD}`);
     expect(await ledger()).toEqual(['guard']);
   }, 60_000);
 }
@@ -129,7 +129,7 @@ function markCases(): void {
       expect(await productionSigns(login)).toEqual([]);
       expect(await resettable(login)).toBe(true);
     });
-    await as(LOGIN, `alter table public.owned_by_login enable trigger ${GUARD}`);
+    await asRole(LOGIN, `alter table public.owned_by_login enable trigger ${GUARD}`);
     await forget();
     await asLogin(async (login) => {
       expect(await productionSigns(login)).toEqual(['a table has no made-up guard']);
