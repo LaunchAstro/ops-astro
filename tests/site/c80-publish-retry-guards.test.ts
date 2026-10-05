@@ -236,6 +236,7 @@ it('a replacement decoy does not establish that the target word landed', async (
   if (accepted.state !== 'accepted') throw new Error(`not accepted: ${accepted.state}`);
   const observe = (text: string) =>
     observeLanded(accepted, TARGET, {
+      raiseTask: async () => {},
       readDeployment: () =>
         Promise.resolve({ kind: 'ok', value: { revision: PUBLISHED.revision, served: true } }),
       capture: page(text),

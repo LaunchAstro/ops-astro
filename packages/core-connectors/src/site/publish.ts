@@ -80,7 +80,7 @@ export interface PublishPorts {
     input: Seamed & { versionDigest: string },
   ) => Promise<ProviderResult<Published>>;
   readonly cancellation: () => Promise<'none' | 'requested'>;
-  /** At most one task per reason and key: every retry or concurrent caller of one effect passes its token. */
+  /** At most one task per reason and key (one effect's token): one per stage it reaches, never per retry. */
   readonly raiseTask: (reason: string, key: string) => Promise<void>;
   /** `site.capture` of the catalogued page before the send: the occurrence is calibrated on it. */
   readonly capture: ObservePorts['capture'];
@@ -196,6 +196,7 @@ export interface ObservePorts {
   readonly readDeployment: (deploymentId: string) => Promise<ProviderResult<Served>>;
   /** `site.capture` of the public address, through the fence. */
   readonly capture: (url: string) => Promise<Captured>;
+  readonly raiseTask: PublishPorts['raiseTask'];
 }
 
 /** The deployment answers served, at this revision. */
@@ -215,11 +216,11 @@ export async function observeLanded(
   if (!(await servedAt(ports, accepted.deploymentId, accepted.revision))) return accepted;
   const captured = await ports.capture(accepted.liveUrl);
   if (!captured.ok || captured.value.url !== accepted.liveUrl) return accepted;
-  const { text, url } = captured.value;
-  const live = flipped(text, accepted.occurrence, target.word, target.replacement);
-  return live === undefined
-    ? accepted
-    : { ...accepted, state: 'live', occurrence: { ...live, liveAt: url } };
+  const live = flipped(captured.value.text, accepted.occurrence, target.word, target.replacement);
+  if (live === 'unconfirmable')
+    await ports.raiseTask('LIVE_CHECK_UNCONFIRMED', accepted.dispatchToken);
+  if (typeof live !== 'object') return accepted;
+  return { ...accepted, state: 'live', occurrence: { ...live, liveAt: captured.value.url } };
 }
 
 type Deployed = { readonly revision: string; readonly deploymentId: string };
@@ -231,7 +232,6 @@ export interface RevertPorts extends Omit<ObservePorts, 'capture'> {
   /** `site.source.revert`: the forward change back to the pinned pre-image. */
   readonly revert: (input: Seamed) => Promise<ProviderResult<Deployed>>;
   readonly capture: () => Promise<Captured>;
-  readonly raiseTask: PublishPorts['raiseTask'];
 }
 
 type RevertAccepted = Deployed & { readonly state: 'revert_accepted'; readonly decidedAt: string };
@@ -286,7 +286,8 @@ export async function revertCorrection(
   const captured = await ports.capture();
   if (!captured.ok || captured.value.url !== where.liveAt) return pending;
   const back = flipped(captured.value.text, where, input.target.replacement, input.target.word);
-  if (back === undefined || back.index !== where.index) return pending;
+  if (back === 'unconfirmable') await ports.raiseTask('REVERT_CHECK_UNCONFIRMED', token);
+  if (typeof back !== 'object') return pending;
   const observed = ports.now();
   return {
     state: 'reverted',

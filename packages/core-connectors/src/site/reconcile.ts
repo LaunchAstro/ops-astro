@@ -166,23 +166,24 @@ export function calibrated(
 }
 
 /**
- * The place where the page changed from `from` to `to`: exactly one calibrated equal match did,
- * at any index (the source edit changes one), and every other is as observed. An uncalibrated
- * place never changes; the result is observed as the page now stands.
+ * The calibrated place read again. The change: the place holds `to` where it held `from`, every
+ * other equal match as observed (the place as now read). Unchanged: not yet (undefined). Any other
+ * page changed in a way no reading can tie to the target: `'unconfirmable'`, for a person.
  */
 export function flipped(
   text: string,
   where: Occurrence | undefined,
   from: string,
   to: string,
-): Occurrence | undefined {
+): Occurrence | 'unconfirmable' | undefined {
   const observed = where?.observed;
   if (where === undefined || observed === undefined) return undefined;
+  const index = where.index ?? 0;
   const found = equalsOf(text, where, [from, to]);
-  const changed = found.flatMap((word, at) => (word === observed[at] ? [] : [at]));
-  const [index = -1] = changed;
-  const one = found.length === observed.length && changed.length === 1;
-  return one && observed[index] === from && found[index] === to
-    ? { ...where, index, observed: found }
-    : undefined;
+  const as = (expected: (at: number) => string | undefined) =>
+    found.length === observed.length && found.every((word, at) => word === expected(at));
+  if (observed[index] === from && as((at) => (at === index ? to : observed[at]))) {
+    return { ...where, observed: found };
+  }
+  return as((at) => observed[at]) ? undefined : 'unconfirmable';
 }

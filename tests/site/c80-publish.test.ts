@@ -245,6 +245,7 @@ describe('C80 late cancellation', () => {
 const served = () =>
   Promise.resolve({ kind: 'ok' as const, value: { revision: 'def456', served: true } });
 const LIVE = 'https://www.example.com/throwaway';
+const noTask = { raiseTask: () => Promise.resolve() };
 const shows = () =>
   Promise.resolve({ ok: true as const, value: { text: 'We walk beside you.', url: LIVE } });
 const notServed = () =>
@@ -276,23 +277,19 @@ describe('C80 accepted not landed', () => {
     occurrence: { left: 'We walk ', right: ' you.', index: 0, observed: ['alongside'] },
   };
 
+  type Ports = Parameters<typeof observeLanded>[2];
+  const observe = (readDeployment: Ports['readDeployment'], capture: Ports['capture']) =>
+    observeLanded(accepted, TARGET, { ...noTask, readDeployment, capture });
+
   it('is live only when the deployment is served for that revision and the fenced capture shows the new word', async () => {
-    expect(
-      await observeLanded(accepted, TARGET, { readDeployment: served, capture: shows }),
-    ).toMatchObject({
+    expect(await observe(served, shows)).toMatchObject({
       state: 'live',
     });
-    expect(
-      await observeLanded(accepted, TARGET, { readDeployment: notServed, capture: shows }),
-    ).toMatchObject({
+    expect(await observe(notServed, shows)).toMatchObject({
       state: 'accepted',
     });
-    expect(
-      await observeLanded(accepted, TARGET, { readDeployment: otherRevision, capture: shows }),
-    ).toMatchObject({ state: 'accepted' });
-    expect(
-      await observeLanded(accepted, TARGET, { readDeployment: served, capture: oldWord }),
-    ).toMatchObject({
+    expect(await observe(otherRevision, shows)).toMatchObject({ state: 'accepted' });
+    expect(await observe(served, oldWord)).toMatchObject({
       state: 'accepted',
     });
   });

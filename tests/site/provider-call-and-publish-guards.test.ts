@@ -312,6 +312,7 @@ it('a replacement decoy does not establish that the target word landed', async (
     occurrence: { left: 'We are a ', right: ' studio.', index: 0, observed: ['friendly'] },
   };
   const result = await observeLanded(accepted, target, {
+    raiseTask: async () => {},
     readDeployment: async () => ({
       kind: 'ok',
       value: { revision: published.revision, served: true },

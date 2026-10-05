@@ -158,6 +158,7 @@ it('an isolated text node does not make unrelated words block publish or revert 
   const accepted = await publishCorrection(approved, ports({}, isolated));
   if (accepted.state !== 'accepted') throw new Error('fixture was not accepted');
   const live = await observeLanded(accepted, target, {
+    raiseTask: async () => {},
     readDeployment: async () => ({
       kind: 'ok',
       value: { revision: published.revision, served: true },
@@ -207,6 +208,7 @@ it('observation compares rendered entity text rather than source spellings', asy
   const accepted = await publishCorrection(job(source), ports({}, source));
   if (accepted.state !== 'accepted') throw new Error('fixture was not accepted');
   const observed = await observeLanded(accepted, target, {
+    raiseTask: async () => {},
     readDeployment: async () => ({
       kind: 'ok',
       value: { revision: published.revision, served: true },
@@ -224,6 +226,7 @@ it('an unchanged duplicate sentence does not block the approved occurrence becom
   const accepted = await publishCorrection(job(source), ports({}, source));
   if (accepted.state !== 'accepted') throw new Error('fixture was not accepted');
   const observed = await observeLanded(accepted, target, {
+    raiseTask: async () => {},
     readDeployment: async () => ({
       kind: 'ok',
       value: { revision: published.revision, served: true },

@@ -115,6 +115,7 @@ async function accept(target: CorrectionTarget, source: string, preImage: string
 
 function observe(accepted: Accepted, target: CorrectionTarget, servedHtml: string) {
   return observeLanded(accepted, target, {
+    raiseTask: async () => {},
     readDeployment: async () => ({
       kind: 'ok',
       value: { revision: published.revision, served: true },
@@ -248,6 +249,7 @@ it('an unrendered duplicate and a layout nav never make the unchanged heading re
     occurrence: where,
   };
   const observed = await observeLanded(accepted, target, {
+    raiseTask: async () => {},
     readDeployment: async () => ({ kind: 'ok', value: { revision: 'rev-1', served: true } }),
     capture: async () => ({ ok: true, value: { text: reading.text, url: accepted.liveUrl } }),
   });

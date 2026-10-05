@@ -60,6 +60,7 @@ function approvedJob(target: CorrectionTarget, before: string): PublishJob {
 
 function observe(accepted: Accepted, target: CorrectionTarget, html: string) {
   return observeLanded(accepted, target, {
+    raiseTask: async () => {},
     readDeployment: async () => ({
       kind: 'ok',
       value: { revision: published.revision, served: true },
