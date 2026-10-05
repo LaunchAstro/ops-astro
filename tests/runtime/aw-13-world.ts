@@ -39,6 +39,8 @@ export interface TraceTarget {
   /** Trace ids the target holds, and their span ids: an export adds, a delete not skipped drops. */
   readonly stored: Set<string>;
   readonly spans: Map<string, Set<string>>;
+  /** A case's stand-in for what the target receives: the body it stores and records instead. */
+  tamper?: ((method: string, body: string) => Promise<string>) | undefined;
   readonly origin: string;
   readonly custody: Custody;
   readonly canary: string;
@@ -112,25 +114,30 @@ async function listen(
     const parts: Buffer[] = [];
     request.on('data', (chunk: Buffer) => parts.push(chunk));
     request.on('end', () => {
-      const body = Buffer.concat(parts).toString('utf8');
-      received.push(body);
-      target.paths.push(request.url ?? '');
-      target.authorizations.push(request.headers.authorization);
-      target.methods.push(request.method ?? '');
-      target.ingestion.push(request.headers['x-langfuse-ingestion-version'] as string | undefined);
-      const status =
-        target.mode === 'ok' || target.mode === 'skipping'
-          ? store(target, request.method ?? '', request.url ?? '', body)
-          : 200;
-      if (target.mode === 'slow') {
-        void sleep(2_000).then(() => answer(target, response, status));
-        return;
-      }
-      if (target.mode === 'down') {
-        request.socket.destroy();
-        return;
-      }
-      answer(target, response, status);
+      const sent = Buffer.concat(parts).toString('utf8');
+      void (async () => {
+        const body = (await target.tamper?.(request.method ?? '', sent)) ?? sent;
+        received.push(body);
+        target.paths.push(request.url ?? '');
+        target.authorizations.push(request.headers.authorization);
+        target.methods.push(request.method ?? '');
+        target.ingestion.push(
+          request.headers['x-langfuse-ingestion-version'] as string | undefined,
+        );
+        const status =
+          target.mode === 'ok' || target.mode === 'skipping'
+            ? store(target, request.method ?? '', request.url ?? '', body)
+            : 200;
+        if (target.mode === 'slow') {
+          void sleep(2_000).then(() => answer(target, response, status));
+          return;
+        }
+        if (target.mode === 'down') {
+          request.socket.destroy();
+          return;
+        }
+        answer(target, response, status);
+      })();
     });
   });
   await new Promise<void>((resolve) => {

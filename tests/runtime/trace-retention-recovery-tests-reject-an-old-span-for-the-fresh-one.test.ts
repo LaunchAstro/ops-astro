@@ -4,7 +4,6 @@
 // late-delete retention tests run unchanged, except that every export after
 // the destructive delete sends the old span under R's trace id instead of the
 // fresh handback. Each committed test must then fail.
-import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import { expect, it as vitestIt } from 'vitest';
 import {
@@ -14,7 +13,7 @@ import {
   TRACE_WINDOW_DAYS,
 } from '../../packages/core-runtime/src/index.ts';
 import { asAgent, codeOf, handbackBody, liveWork, type Schedules } from './schedules-harness.ts';
-import { age } from './aw-13-retention-world.ts';
+import { age, committedBody } from './aw-13-retention-world.ts';
 import {
   cursorOf,
   drain,
@@ -43,15 +42,6 @@ const CASES = [
     final: 'the fresh event must remain retrievable or be exported again after the accepted delete',
   },
 ] as const;
-
-function committedBody(file: string, title: string): string {
-  const source = readFileSync(new URL(file, import.meta.url), 'utf8');
-  const at = source.indexOf(title);
-  const start = source.indexOf('async () => {', at);
-  const end = source.indexOf('\n  },\n);', start);
-  if (at < 0 || start < 0 || end < 0) throw new Error(`the committed test was not found: ${file}`);
-  return source.slice(start, end) + '\n}';
-}
 
 async function handedBack(): Promise<readonly string[]> {
   const found = await t.alpha.db.app.withBusiness(

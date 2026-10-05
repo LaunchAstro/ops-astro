@@ -7,8 +7,10 @@
 // run's events.
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { derivedId } from '../../packages/core-runtime/src/index.ts';
 import { rows, type Schedules } from './schedules-harness.ts';
-import { t } from './aw-13-world.ts';
+import { t, TRACE_KEY } from './aw-13-world.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
@@ -110,4 +112,27 @@ export async function append(runId: string, count: number): Promise<void> {
       );
     }
   });
+}
+
+/** The span of the run's latest handback, as the export derives it. */
+export async function handbackSpan(runId: string): Promise<string> {
+  const [row] = await rows<{ id: string }>(
+    t.alpha,
+    `select id from public.run_events
+      where business_id = $1 and run_id = $2 and kind = 'handed_back'
+      order by tx desc, id desc limit 1`,
+    [t.alpha.business, runId],
+  );
+  if (row === undefined) throw new Error('the run has no handback');
+  return derivedId(TRACE_KEY, ['span', t.alpha.business, row.id], 16);
+}
+
+/** A committed test's body, by its quoted title, for a meta test to run as it stands. */
+export function committedBody(file: string, title: string): string {
+  const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+  const at = source.indexOf(title);
+  const start = source.indexOf('async () => {', at);
+  const end = source.indexOf('\n  },\n);', start);
+  if (at < 0 || start < 0 || end < 0) throw new Error(`the committed test was not found: ${file}`);
+  return source.slice(start, end) + '\n}';
 }

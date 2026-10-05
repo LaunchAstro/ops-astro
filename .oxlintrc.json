@@ -121,7 +121,11 @@
         "tests/runtime/trace-export-a-slower-export-landing-after-a-delete-hides-no-later-span.test.ts",
         "tests/runtime/trace-export-a-stalled-exporter-is-taken-over-only-after-its-lease-expires.test.ts",
         "tests/runtime/trace-export-a-body-that-may-have-landed-keeps-the-business-for-its-lease.test.ts",
-        "tests/runtime/trace-retention-a-business-whose-export-never-advanced-is-asked-nothing.test.ts"
+        "tests/runtime/trace-retention-a-business-whose-export-never-advanced-is-asked-nothing.test.ts",
+        "tests/runtime/trace-export-a-stale-body-sent-after-a-takeover-hides-no-later-span.test.ts",
+        "tests/runtime/trace-export-a-timed-out-body-stored-after-its-hold-hides-no-later-span.test.ts",
+        "tests/runtime/trace-retention-two-stale-bodies-cannot-hide-a-missing-middle.test.ts",
+        "tests/runtime/trace-retention-later-recovery-tests-reject-an-old-span-for-the-fresh-one.test.ts"
       ],
       "rules": {
         "max-lines-per-function": "off",
