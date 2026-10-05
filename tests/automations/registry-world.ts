@@ -68,8 +68,8 @@ export interface RegistryWorld {
   /** Bravo's own automation, released and switched on through the routes. */
   readonly bravoRows: Automation;
   as(who: Member, name: string, body: Body, business?: string): Promise<Answer>;
-  /** The same call through the wide boundary, which holds its own connections. */
-  asWide(who: Member, name: string, body: Body): Promise<Answer>;
+  /** The same call through the wide boundary, which holds its own connections; `bearer` signs in as one session. */
+  asWide(who: Member, name: string, body: Body, bearer?: string): Promise<Answer>;
   registry(who: Member, business?: string): Promise<AutomationRegistryResult>;
   release(body: Body, who?: Member, business?: string): Promise<Answer>;
   /** A new definition with one version in `modes`; answers its ids. */
@@ -169,12 +169,19 @@ export async function createRegistryWorld(part: string): Promise<RegistryWorld> 
   });
 
   let wide: { readonly pool: Database; readonly api: Hono } | undefined;
-  const send = async (api: Hono, who: Member, at: string, name: string, body: Body) => {
+  const send = async (
+    api: Hono,
+    who: Member,
+    at: string,
+    name: string,
+    body: Body,
+    bearer?: string,
+  ) => {
     const answer = await post(
       api,
       path(at, name),
       { operationId: randomUUID(), ...body },
-      authorised(await tokenFor(who.presented.subject)),
+      authorised(bearer ?? (await tokenFor(who.presented.subject))),
     );
     answers.push(answer);
     return answer;
@@ -206,12 +213,12 @@ export async function createRegistryWorld(part: string): Promise<RegistryWorld> 
     bravoAdmin,
     bravoRows,
     as,
-    async asWide(who, name, body) {
+    async asWide(who, name, body, bearer) {
       wide ??= (() => {
         const pool = connect(db.appUrl, { source: 'runtime', max: 4 });
         return { pool, api: controls.fixture.compose(undefined, undefined, pool) };
       })();
-      return await send(wide.api, who, 'alpha', name, body);
+      return await send(wide.api, who, 'alpha', name, body, bearer);
     },
     release,
     rows,

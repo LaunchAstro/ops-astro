@@ -11,7 +11,7 @@
 import { expect } from 'vitest';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import type { Answer } from '../api/fixture.ts';
-import type { Member } from '../commands/fixture.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
 import { detail, type RegistryWorld } from './registry-world.ts';
 
 export const WAITING = `select count(*)::text as n from pg_stat_activity
@@ -138,12 +138,12 @@ export async function pinnedFirstOf(w: RegistryWorld): Promise<{
 }
 
 /**
- * `send` while the owner holds the activation's row, and `during` run in the
- * owner's transaction once `send` waits on it; the answer once the owner commits.
+ * `send` while the owner holds `hold`, and `during` run in the owner's
+ * transaction once `send` waits on it; the answer once the owner commits.
  */
-export async function heldWhile(
+export async function sentWhileHeld(
   w: RegistryWorld,
-  activationId: string,
+  hold: (execute: Execute) => Promise<unknown>,
   send: () => Promise<Answer>,
   during: (execute: Execute) => Promise<unknown>,
 ): Promise<Answer> {
@@ -151,7 +151,7 @@ export async function heldWhile(
   const sent: Promise<Answer>[] = [];
   try {
     await holder.transaction(async (execute) => {
-      await execute('select 1 from public.activations where id = $1 for update', [activationId]);
+      await hold(execute);
       sent.push(send());
       await waitingOn(execute, 1);
       await during(execute);
@@ -162,3 +162,52 @@ export async function heldWhile(
     await holder.close();
   }
 }
+
+/** `sentWhileHeld` with the owner holding the activation's row. */
+export async function heldWhile(
+  w: RegistryWorld,
+  activationId: string,
+  send: () => Promise<Answer>,
+  during: (execute: Execute) => Promise<unknown>,
+): Promise<Answer> {
+  return await sentWhileHeld(
+    w,
+    async (execute) =>
+      await execute('select 1 from public.activations where id = $1 for update', [activationId]),
+    send,
+    during,
+  );
+}
+
+/** A business-wide `automation:manage` grant to the plain member that runs out in three seconds. */
+export async function expiringGrant(w: RegistryWorld): Promise<string> {
+  const grantId = await w.controls.fixture.db.app.withBusiness(
+    w.alpha,
+    async (tx) => await grantTo(tx, w.plain, 'manage', undefined, false, 'automation'),
+  );
+  await w.controls.fixture.db.admin.execute(
+    `update public.grants set expires_at = clock_timestamp() + interval '3 seconds' where id = $1`,
+    [grantId],
+  );
+  return grantId;
+}
+
+/** A `during` that returns once the database clock is past the grant's expiry. */
+export const untilExpired =
+  (grantId: string) =>
+  async (execute: Execute): Promise<void> => {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      // eslint-disable-next-line no-await-in-loop -- until the grant has run out
+      const [row] = (await execute(
+        'select clock_timestamp() > expires_at as past from public.grants where id = $1',
+        [grantId],
+      )) as readonly { readonly past: boolean }[];
+      if (row?.past === true) return;
+      if (Date.now() > deadline) throw new Error('the grant never ran out');
+      // eslint-disable-next-line no-await-in-loop -- as above
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
+    }
+  };

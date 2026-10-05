@@ -18,11 +18,13 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { grantTo } from '../commands/fixture.ts';
 import type { Answer } from '../api/fixture.ts';
 import {
+  expiringGrant,
   grantOf,
   pinnedFirstOf,
   revokedMeanwhile,
   serialised,
   heldWhile,
+  untilExpired,
   type Execute,
 } from './race-hold.ts';
 import { createRegistryWorld, detail, type RegistryWorld } from './registry-world.ts';
@@ -162,34 +164,12 @@ describe.skipIf(serverUrl === undefined)('C52-A approval authority', () => {
     name: string,
     body: Record<string, unknown>,
   ): Promise<Answer> => {
-    const grantId = await w.controls.fixture.db.app.withBusiness(
-      w.alpha,
-      async (tx) => await grantTo(tx, w.plain, 'manage', undefined, false, 'automation'),
-    );
-    await w.controls.fixture.db.admin.execute(
-      `update public.grants set expires_at = clock_timestamp() + interval '3 seconds' where id = $1`,
-      [grantId],
-    );
+    const grantId = await expiringGrant(w);
     return await heldWhile(
       w,
       activationId,
       async () => await w.asWide(w.plain, name, body),
-      async (execute) => {
-        const deadline = Date.now() + 10_000;
-        for (;;) {
-          // eslint-disable-next-line no-await-in-loop -- until the grant has run out
-          const [row] = (await execute(
-            'select clock_timestamp() > expires_at as past from public.grants where id = $1',
-            [grantId],
-          )) as readonly { readonly past: boolean }[];
-          if (row?.past === true) return;
-          if (Date.now() > deadline) throw new Error('the grant never ran out');
-          // eslint-disable-next-line no-await-in-loop -- as above
-          await new Promise((resolve) => {
-            setTimeout(resolve, 100);
-          });
-        }
-      },
+      untilExpired(grantId),
     );
   };
 

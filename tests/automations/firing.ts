@@ -4,15 +4,19 @@
 // dispatch, revoke and turn off, each in the first business's own
 // transaction. Starting the run is the agent engine's (AW-01 J), which C52-A
 // does not wire, so dispatch is handed a starter that lists what it was asked
-// to start and answers a run id of its own.
+// to start and answers a run id of its own. Each dispatch runs on a connection
+// of its own, as each worker will, so dispatches sent at once overlap (the app
+// pool holds one).
 
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
 import {
   adoptVersion,
+  connect,
   dispatchOccurrence,
   insertActivation,
   insertDefinition,
+  lockActivation,
   readActivation,
   releaseVersion,
   revokeApproval,
@@ -124,6 +128,12 @@ export interface Firing {
   approved(mode?: 'scheduled' | 'event'): Promise<Approved>;
   fire(activationId: string, start: RunStarter): Promise<Dispatch>;
   dispatch(occurrenceId: string, start: RunStarter): Promise<Dispatch>;
+  /** Each dispatch sent while the owner holds the activation's row, let go once all wait on it. */
+  dispatchedTogether(
+    activationId: string,
+    occurrenceIds: readonly string[],
+    start: RunStarter,
+  ): Promise<Dispatch[]>;
   revoke(approvalId: string): Promise<RevokeResult>;
   turnOff(activationId: string): Promise<void>;
   started(activationId: string): Promise<number>;
@@ -133,8 +143,14 @@ export interface Firing {
 export function firingOf(w: AutomationWorld): Firing {
   let hour = 0;
   const nextDue = (): Date => new Date(Date.UTC(2026, 10, 1, (hour += 1)));
-  const dispatch = async (occurrenceId: string, start: RunStarter): Promise<Dispatch> =>
-    await w.inAlpha((tx) => dispatchOccurrence(tx, occurrenceId, start));
+  const dispatch = async (occurrenceId: string, start: RunStarter): Promise<Dispatch> => {
+    const own = connect(w.db.appUrl);
+    try {
+      return await own.withBusiness(w.alpha, (tx) => dispatchOccurrence(tx, occurrenceId, start));
+    } finally {
+      await own.close();
+    }
+  };
   const adopt = async (
     activation: ActivationRow,
     version: DefinitionVersionRow,
@@ -163,6 +179,20 @@ export function firingOf(w: AutomationWorld): Firing {
       return await dispatch(occurrence.id, start);
     },
     dispatch,
+    async dispatchedTogether(activationId, occurrenceIds, start) {
+      const holder = connect(w.db.appUrl);
+      const sent: Promise<Dispatch>[] = [];
+      try {
+        await holder.withBusiness(w.alpha, async (tx) => {
+          await lockActivation(tx, activationId);
+          sent.push(...occurrenceIds.map(async (id) => await dispatch(id, start)));
+          await waitingOn(w, occurrenceIds.length);
+        });
+        return await Promise.all(sent);
+      } finally {
+        await holder.close();
+      }
+    },
     async revoke(approvalId) {
       return await w.inAlpha((tx) => revokeApproval(tx, { approvalId, actorId: w.admin.actorId }));
     },

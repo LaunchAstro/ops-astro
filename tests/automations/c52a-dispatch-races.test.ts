@@ -6,16 +6,20 @@
 // dispatch waits on that lock, then commits; the dispatch, which rechecks the
 // approval only once it holds the lock, must start nothing. The other order,
 // a dispatch holding the lock while the revoke waits, starts its one run and
-// the revoke stops every occurrence after it.
+// the revoke stops every occurrence after it. A claim waiting on an adoption
+// records the new pin under the approval that adoption wrote.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  adoptVersion,
+  claimOccurrence,
   connect,
   dispatchOccurrence,
   revokeApproval,
   turnOffActivation,
   type Database,
   type Dispatch,
+  type OccurrenceClaim,
   type RunStarter,
   type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
@@ -129,5 +133,38 @@ describe.skipIf(serverUrl === undefined)('C52-A dispatch races', () => {
     expect(next.outcome).toBe('no_standing_approval');
     expect(s.runs).toHaveLength(1);
     expect(await f.started(activation.id)).toBe(1);
+  }, 60_000);
+
+  it('C52-A claim waiting on an adoption: the claim records the new pin under its live approval, and dispatch starts its one run', async () => {
+    const first = await w.release(['scheduled']);
+    const activation = await w.activate(first, 'scheduled');
+    const next = await w.release(['scheduled']);
+    const dueAt = f.nextDue();
+    let claimed: Promise<OccurrenceClaim> | undefined;
+    await inOwn(changer, async (tx) => {
+      const adopted = await adoptVersion(tx, {
+        activationId: activation.id,
+        versionId: next.id,
+        expectedRevision: activation.revision,
+        act: 'adopted',
+        actorId: w.admin.actorId,
+      });
+      expect(adopted.kind).toBe('adopted');
+      claimed = inOwn(dispatcher, (other) => claimOccurrence(other, activation.id, { dueAt }));
+      await waitingOn(w, 1);
+    });
+    if (claimed === undefined) throw new Error('the claim was never sent');
+    const held = occurrenceOf(await claimed);
+    expect([held.versionId, held.outcome]).toEqual([next.id, 'approved']);
+    const s = starter();
+    const answer = await f.dispatch(held.id, s.start);
+    expect(answer.kind === 'dispatched' && answer.dispatch.outcome).toBe('started');
+    const again = await w.claim(activation.id, { dueAt });
+    expect([again.kind, occurrenceOf(again).id, occurrenceOf(again).outcome]).toEqual([
+      'replayed',
+      held.id,
+      'approved',
+    ]);
+    expect(s.runs).toHaveLength(1);
   }, 60_000);
 });

@@ -4,7 +4,9 @@
 // adoption is a person pinning an exact released version and approving it for
 // every later occurrence; the claim records the approval it saw, and dispatch
 // rechecks it under the activation's lock, so a revoke, a turn-off or a newer
-// adoption between the two starts nothing. A revoke racing a dispatch on its
+// adoption between the two starts nothing. The exactly-once cases send their
+// dispatches on connections of their own while the owner holds the activation,
+// so both wait on its lock before either reads a replay. A revoke racing a dispatch on its
 // own connection is `c52a-dispatch-races.test.ts`; the pins and the records'
 // isolation are `c52a-pins.test.ts`.
 
@@ -154,7 +156,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     expect(await w.occurrences(activation.id)).toBe(1);
     const [id] = [...ids] as [string];
     const s = starter();
-    const sent = await Promise.all([f.dispatch(id, s.start), f.dispatch(id, s.start)]);
+    const sent = await f.dispatchedTogether(activation.id, [id, id], s.start);
     sent.push(await f.dispatch(id, s.start));
     expect(sent.map((one) => one.kind).toSorted()).toEqual(['dispatched', 'replayed', 'replayed']);
     expect(s.runs).toHaveLength(1);
@@ -170,10 +172,11 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     ]);
     expect(occurrenceOf(a).id).toBe(occurrenceOf(b).id);
     const s = starter();
-    const sent = await Promise.all([
-      f.dispatch(occurrenceOf(a).id, s.start),
-      f.dispatch(occurrenceOf(b).id, s.start),
-    ]);
+    const sent = await f.dispatchedTogether(
+      activation.id,
+      [occurrenceOf(a).id, occurrenceOf(b).id],
+      s.start,
+    );
     expect(sent.map((one) => one.kind).toSorted()).toEqual(['dispatched', 'replayed']);
     expect(s.runs).toHaveLength(1);
     expect(await w.occurrences(activation.id)).toBe(1);
