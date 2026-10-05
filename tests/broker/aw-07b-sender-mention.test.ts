@@ -17,7 +17,11 @@ import {
   fakeSenderSource,
   type FakeSenderState,
 } from '../../packages/core-connectors/src/index.ts';
-import { sendInboxEmail, tellCommentClients } from '../../packages/core-custody/src/index.ts';
+import {
+  sendInboxEmail,
+  tellCommentClients,
+  type EmailTiming,
+} from '../../packages/core-custody/src/index.ts';
 import { writeTaskComment } from '../../packages/core-commands/src/commands/tasks-comment.ts';
 import type { TaskRow } from '../../packages/core-commands/src/commands/context.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
@@ -35,6 +39,13 @@ import { attemptsOf, itemFor, MAIL, noDatabase, useEmailWorld, w } from './email
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useEmailWorld();
+
+/** The client chose instant for client comments, so the mention mails now. */
+const instant = (): EmailTiming => ({
+  broker: w.broker,
+  mail: MAIL,
+  preferences: { mock: true, choice: async () => await Promise.resolve('instant') },
+});
 
 const SUBDOMAIN = 'send.example.test';
 const ROOT = 'example.test';
@@ -233,11 +244,11 @@ it('AW-07b mention: a client named in a client-visible comment is told by email,
     );
     return { commentId: id, client: named };
   });
-  const results = await tellCommentClients(w.db.app, w.alpha, commentId, w.broker, MAIL);
+  const results = await tellCommentClients(w.db.app, w.alpha, commentId, instant());
   expect(results).toEqual([expect.objectContaining({ ok: true, state: 'accepted' })]);
   const message = JSON.parse(w.provider.outbox.at(-1)?.body ?? '{}') as { to: string[] };
   expect(message.to).toEqual(['cleo@example.test']);
   // The comment's id names no other business's items: from there, nothing is sent.
-  expect(await tellCommentClients(w.db.app, w.bravo, commentId, w.broker, MAIL)).toEqual([]);
+  expect(await tellCommentClients(w.db.app, w.bravo, commentId, instant())).toEqual([]);
   expect(client).not.toBe(w.person);
 });

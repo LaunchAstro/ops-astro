@@ -29,7 +29,15 @@
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { holdsAcrossBusiness, holdsOnTask, REACH } from './access.ts';
+import {
+  holdsAcrossBusiness,
+  holdsOnTask,
+  INTERNAL_ROLE_KEYS,
+  REACH,
+  readsThroughMap,
+} from './access.ts';
+import { HELD } from './read.ts';
+import { mapTicketCondition, wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { InboxFactKind, InboxReason } from './items.ts';
 
 export interface UnattendedItem {
@@ -47,7 +55,12 @@ const SHARED: ReadonlySet<InboxReason> = new Set(['decision', 'incident']);
 
 type OpenRow = UnattendedItem & {
   readonly clientId: string | null;
-  readonly member: boolean;
+  /** The task's map when it was a map's ticket at the list's read (W12), else null. */
+  readonly mapId: string | null;
+  /** A map or map ticket, which the client view never reaches (WF-1). */
+  readonly wayfinder: boolean;
+  /** Null without an active membership, else whether its role reads as staff. */
+  readonly internal: boolean | null;
   readonly loginAndActor: boolean;
   readonly escalated: boolean;
 };
@@ -57,6 +70,8 @@ type OpenRow = UnattendedItem & {
  * The viewer's read scopes, walked in the same statement (`REACH`), filter it,
  * so no row of a task they cannot read (another client's) is ever returned to
  * this read: that is the client separation, and the business's is the tenancy every query runs under.
+ * The inbox's own rule (`HELD`) decides it: a map grant covers its tickets, and a viewer shown
+ * the client view is returned no map or map ticket (WF-1), as their `task.read`.
  */
 export async function readUnattended(
   tx: TenantQuery,
@@ -67,9 +82,11 @@ export async function readUnattended(
      select i.id, i.recipient_person_id as "recipientPersonId",
             i.subject_record_id as "subjectRecordId", i.reason, i.fact_kind as "factKind",
             i.fact_id as "factId", i.raised_at as "raisedAt", r.uuid_7 as "clientId",
-            exists (select 1 from public.memberships m
-                     where m.business_id = i.business_id and m.person_id = i.recipient_person_id
-                       and m.active) as member,
+            case when ${mapTicketCondition('r')} then r.uuid_4 end as "mapId",
+            ${wayfinderCondition('r')} as wayfinder,
+            (select bool_or(m.role_key = any($3::text[])) from public.memberships m
+              where m.business_id = i.business_id and m.person_id = i.recipient_person_id
+                and m.active) as internal,
             exists (select 1 from public.person_logins pl
                      where pl.business_id = i.business_id and pl.person_id = i.recipient_person_id
                        and pl.active)
@@ -85,11 +102,9 @@ export async function readUnattended(
        from public.inbox_items i
        join public.records r
          on r.business_id = i.business_id and r.id = i.subject_record_id and r.deleted_at is null
-      where i.business_id = $1 and i.work_state = 'open'
-        and ((select business from reach) or r.id = any((select records from reach)::uuid[])
-             or r.uuid_7 = any((select parties from reach)::uuid[]))
+      where i.business_id = $1 and i.work_state = 'open' and ${HELD}
       order by i.raised_at, i.id`,
-    [tx.businessId, viewerPersonId],
+    [tx.businessId, viewerPersonId, INTERNAL_ROLE_KEYS],
   );
   const attended = new Set<string>();
   for (const row of rows) {
@@ -115,14 +130,22 @@ function obligationOf(item: UnattendedItem): string {
 
 /**
  * One recipient's path: they sign in, read the task, and decide a decision,
- * an escalated gate's across the business.
+ * an escalated gate's across the business. A recipient shown the client view
+ * reads no map or map ticket (WF-1), so their inbox withholds it, as `taskAccess`.
  */
 async function reaches(tx: TenantQuery, row: OpenRow): Promise<boolean> {
   if (!row.loginAndActor) return false;
-  if (!row.member && !(await standsOnShares(tx, row.recipientPersonId))) return false;
+  if (row.internal === null && !(await standsOnShares(tx, row.recipientPersonId))) return false;
+  if (row.wayfinder && row.internal !== true) return false;
   const task = { id: row.subjectRecordId, clientId: row.clientId };
-  if (!(await holdsOnTask(tx, row.recipientPersonId, task, 'read'))) return false;
+  if (
+    !(await holdsOnTask(tx, row.recipientPersonId, task, 'read')) &&
+    !(row.mapId !== null && (await readsThroughMap(tx, row.recipientPersonId, task.id)))
+  ) {
+    return false;
+  }
   if (row.reason !== 'decision') return true;
+  // task.decide is authorised on the task itself (GATE_TASK), so its map's decide grant is no path.
   return row.escalated
     ? await holdsAcrossBusiness(tx, row.recipientPersonId, 'decide')
     : await holdsOnTask(tx, row.recipientPersonId, task, 'decide');

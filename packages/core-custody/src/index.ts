@@ -49,6 +49,22 @@ export {
 export { landEmailEvent, type EmailHookOutcome } from './broker-email-hook.ts';
 export { tellCommentClients } from './broker-email-mention.ts';
 export {
+  emailAtOnce,
+  emailDailyBatch,
+  type BatchResult,
+  type EmailChoice,
+  type EmailPreferences,
+  type EmailTiming,
+} from './email-timing.ts';
+export {
+  AT_ONCE_EVERY_MS,
+  deliverDue,
+  startMailWorker,
+  type DeliveryPass,
+  type MailCadence,
+  type MailTarget,
+} from './email-worker.ts';
+export {
   callModel,
   promptCopyRegistered,
   registerPromptCopy,

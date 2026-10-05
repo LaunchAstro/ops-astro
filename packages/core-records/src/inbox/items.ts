@@ -91,6 +91,15 @@ export function owes(reason: InboxReason): boolean {
 }
 
 /**
+ * Told at once on every channel it reaches, never batched or switched off:
+ * a decision or an incident (owner answer 10, CS-16.9). The channel setting
+ * refuses to quiet one and the email send never batches one.
+ */
+export function toldAtOnce(reason: InboxReason): boolean {
+  return reason === 'decision' || reason === 'incident';
+}
+
+/**
  * Raise one item, or find the open one already raised for the same recipient,
  * subject, reason and fact, so a replayed transition raises nothing twice.
  */
@@ -134,13 +143,23 @@ export async function recordDeliveryAttempt(
     readonly channel: DeliveryChannel;
     readonly state: DeliveryState;
     readonly evidence?: string;
+    /** When it was observed, if not the transaction's start (`now()`). */
+    readonly observedAt?: string;
   },
 ): Promise<string> {
   const rows = await tx.query<{ readonly id: string }>(
-    `insert into public.inbox_delivery_attempts (business_id, id, item_id, channel, state, evidence)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5)
+    `insert into public.inbox_delivery_attempts
+       (business_id, id, item_id, channel, state, evidence, observed_at)
+     values ($1, gen_random_uuid(), $2, $3, $4, $5, coalesce($6::timestamptz, now()))
      returning id`,
-    [tx.businessId, attempt.itemId, attempt.channel, attempt.state, attempt.evidence ?? null],
+    [
+      tx.businessId,
+      attempt.itemId,
+      attempt.channel,
+      attempt.state,
+      attempt.evidence ?? null,
+      attempt.observedAt ?? null,
+    ],
   );
   const id = rows[0]?.id;
   if (id === undefined) throw new Error('recordDeliveryAttempt: the insert returned no row');
