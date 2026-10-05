@@ -22,9 +22,7 @@
 // Every address the working slice serves is registered here, a conversation's
 // `/agent/:conversation` (C36) included.
 
-import type { ParamsOf, RouteMatch } from './route-params.ts';
-
-export type { ParamsOf, RouteMatch, StaticRouteId } from './route-params.ts';
+import type { MatchIn, ParamsIn, StaticIn } from './route-params.ts';
 
 /** `agency` is the Hub; `clients` and `portal` are one client's two faces. */
 export type Namespace = 'agency' | 'clients' | 'portal';
@@ -212,6 +210,11 @@ export const ROUTES = {
 } as const satisfies Readonly<Record<`${Namespace}:${string}`, RouteDescriptor>>;
 
 export type RouteId = keyof typeof ROUTES;
+
+/** A route's parameters, its bare-linkable ids, and a resolved address, over this registry. */
+export type ParamsOf<Id extends RouteId> = ParamsIn<typeof ROUTES, Id>;
+export type StaticRouteId = StaticIn<typeof ROUTES>;
+export type RouteMatch<Id extends RouteId = RouteId> = MatchIn<typeof ROUTES, Id>;
 
 type Route<Id extends RouteId> = (typeof ROUTES)[Id];
 
