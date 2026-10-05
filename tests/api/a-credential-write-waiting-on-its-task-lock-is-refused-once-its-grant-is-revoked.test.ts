@@ -185,6 +185,10 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
         // Either the revocation commits, or it waits behind the writer.
         await until(async () => revokeSettled || (await revocationWaits(execute)));
         if (!revokeSettled) {
+          // Taken on what the database shows, never on the poll running out.
+          if (!(await revocationWaits(execute))) {
+            throw new Error('setup: the revocation neither committed nor waited behind the writer');
+          }
           revokeWaited = true;
           return;
         }
