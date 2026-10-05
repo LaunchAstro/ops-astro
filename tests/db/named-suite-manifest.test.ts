@@ -55,6 +55,10 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
     'pure: a stubbed fetch and a typed stand-in world, counter 0',
   'tests/api/function-agent-quota.test.ts':
     'pure: the function handler with no database, counter 0',
+  'tests/custody/c31-secret-set-not-task-content.test.ts':
+    "pure: the S0-5 world's content list only, counter 0",
+  'tests/custody/c31-audit-chain-corrupted.test.ts':
+    'red by design: run only as the child of c31-audit-chain-test-catches-corruption',
   'tests/api/secret-log-capture-keeps-credential-in-object.test.ts':
     'pure: the console capture only, counter 0',
   'tests/api/secret-log-capture-keeps-credential-in-format-and-buffer.test.ts':
