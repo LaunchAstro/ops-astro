@@ -42,8 +42,14 @@ export function isBusinessId(value: string): value is BusinessId {
  * before anything `acquire` takes. Nothing
  * else in `packages/` or `apps/` spells the SQL (`tests/runtime/cq-8.test.ts`).
  */
-export async function advisoryLock(tx: Pick<TenantQuery, 'query'>, key: string): Promise<void> {
-  await tx.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [key]);
+export async function advisoryLock(
+  tx: Pick<TenantQuery, 'query'>,
+  key: string,
+  mode: 'exclusive' | 'shared' = 'exclusive',
+): Promise<void> {
+  // Shared holders wait only for an exclusive holder, which waits for them all.
+  const shared = mode === 'shared' ? '_shared' : '';
+  await tx.query(`select pg_advisory_xact_lock${shared}(hashtextextended($1, 0))`, [key]);
 }
 
 export interface Connection {

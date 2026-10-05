@@ -39,9 +39,7 @@ export async function lockAccess(tx: TenantQuery): Promise<void> {
  * each other, and every holder of `lockAccess` waits for them, and they for it.
  */
 export async function shareAccessLock(tx: TenantQuery): Promise<void> {
-  await tx.query('select pg_advisory_xact_lock_shared(hashtextextended($1, 0))', [
-    `access:${tx.businessId}`,
-  ]);
+  await advisoryLock(tx, `access:${tx.businessId}`, 'shared');
 }
 
 /**
