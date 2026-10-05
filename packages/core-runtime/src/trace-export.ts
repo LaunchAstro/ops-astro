@@ -107,7 +107,7 @@ export async function exportOnce(
   return code === null ? { kind: 'delivered', spans } : { kind: 'gap', code, spans };
 }
 
-/** The owed events in bodies of `TRACE_BATCH`, the batch's own with the last; none when both are empty. */
+/** The owed events in bodies of `TRACE_BATCH`, the batch's own (up to `TRACE_BATCH` more) with the last; none when both are empty. */
 function bodiesOf(owed: readonly Row[], fresh: readonly Row[]): readonly (readonly Row[])[] {
   const bodies: (readonly Row[])[] = [];
   for (let at = 0; at < owed.length; at += TRACE_BATCH) {

@@ -88,7 +88,25 @@ export async function expireOnce(
     // A finished batch confirmed every run it asked, so the next page is new runs.
     if (batch.code !== null || ask.runs.length < page) break;
   }
-  // Every owed run, page after page in turn order: a page that stays present does not hide the next.
+  batches.push(...(await readOwed(database, businessId, key, ports, asked, windowDays, page)));
+  return batches;
+}
+
+/**
+ * Every owed run not just asked, page after page in turn order, whatever its
+ * place: a page that stays present does not hide the next. The runs found
+ * gone are confirmed by place; the runs the store did not answer are recorded.
+ */
+async function readOwed(
+  database: TraceDatabase,
+  businessId: string,
+  key: Buffer,
+  ports: ExpiryPorts,
+  asked: ReadonlySet<string>,
+  windowDays: number,
+  page: number,
+): Promise<readonly RetentionBatch[]> {
+  const batches: RetentionBatch[] = [];
   const reading: Reading = { firsts: new Map(), unanswered: [], quiet: 0 };
   let after: OwedFrom | null = null;
   while (reading.quiet < UNANSWERED) {
@@ -99,10 +117,13 @@ export async function expireOnce(
       async (tx) => await owedAsks(tx, windowDays, from, page),
     );
     for (const row of owed) if (row.first !== null) reading.firsts.set(row.runId, row.first);
-    for (const ask of byPlace(owed.filter((row) => !asked.has(row.runId)))) {
-      // eslint-disable-next-line no-await-in-loop -- one ask after another; the store is not hurried
-      const batch = await recheck(database, businessId, key, ports, ask, windowDays, reading);
-      if (batch !== null) batches.push(batch);
+    const due = owed.filter((row) => !asked.has(row.runId));
+    const runs = due.map((row) => row.runId);
+    // eslint-disable-next-line no-await-in-loop -- one page after another; the store is not hurried
+    const gone = new Set(await readBack(key, businessId, ports, runs, reading));
+    for (const ask of byPlace(due.filter((row) => gone.has(row.runId)))) {
+      // eslint-disable-next-line no-await-in-loop -- one place after another
+      batches.push(await confirm(database, businessId, ask, ask.runs, null, windowDays));
     }
     const end = owed.at(-1);
     if (owed.length < page || end === undefined) break;
@@ -179,28 +200,6 @@ async function expirePage(
   const code = gapOf(await ports.expire(ask.runs.map((runId) => traceOf(key, businessId, runId))));
   const gone = code === null ? await readBack(key, businessId, ports, ask.runs) : [];
   return await confirm(database, businessId, ask, gone, code, windowDays);
-}
-
-/** An owed ask read back: the runs found gone confirmed, or null when none is. */
-async function recheck(
-  database: TraceDatabase,
-  businessId: string,
-  key: Buffer,
-  ports: ExpiryPorts,
-  ask: Ask,
-  windowDays: number,
-  reading: Reading,
-): Promise<RetentionBatch | null> {
-  const gone = await readBack(key, businessId, ports, ask.runs, reading);
-  if (gone.length === 0) return null;
-  return await confirm(
-    database,
-    businessId,
-    { runs: gone, place: ask.place },
-    gone,
-    null,
-    windowDays,
-  );
 }
 
 /** One transaction: the gone runs' later events sent again, and the batch confirming them at the ask's place. */
