@@ -84,7 +84,14 @@ function dockerServices() {
 }
 
 function fromDocker(raw) {
-  return JSON.parse(raw).map((container) => {
+  let containers;
+  try {
+    containers = JSON.parse(raw);
+  } catch {
+    // Never the parser's message: it quotes the output, which can hold an environment.
+    throw new Error('docker inspect printed something other than JSON');
+  }
+  return containers.map((container) => {
     const networks = Object.entries(container.NetworkSettings?.Networks ?? {}).toSorted();
     const bindings = container.HostConfig?.PortBindings ?? {};
     const ports = Object.entries(bindings).flatMap(([inside, hosts]) =>

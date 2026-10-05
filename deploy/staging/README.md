@@ -175,6 +175,7 @@ Before staging is prepared, and again after, the owner runs
 
 ```sh
 node scripts/ops/service-report.mjs snapshot > before.json
+# exit 2 here: stop, prepare nothing, and read the error it printed
 # prepare staging, as the runbook says
 node scripts/ops/service-report.mjs snapshot > after.json
 node scripts/ops/service-report.mjs compare before.json after.json
@@ -183,7 +184,8 @@ node scripts/ops/service-report.mjs compare before.json after.json
 It exits 1 when a live service stopped, restarted, vanished, moved port or
 was reconfigured, and 0 when all are unchanged (`S0-1 services unchanged`).
 A snapshot that cannot be taken exits 2 with Docker's or launchd's own error
-and prints nothing; compare refuses the empty file the redirect leaves.
+and prints nothing. Stop there: compare refuses the empty file the redirect
+leaves, but only after staging was prepared without a before.
 
 ## The deploy
 

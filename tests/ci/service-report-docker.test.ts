@@ -44,7 +44,7 @@ const id = (n: number): string => n.toString(16).padStart(64, '0');
 // It is a script on PATH, so the report runs it exactly as it runs Docker.
 function fakeTools(
   containers: Container[],
-  { fail, listed = '' }: { fail?: string; listed?: string } = {},
+  { fail, listed = '', trailing = '' }: { fail?: string; listed?: string; trailing?: string } = {},
 ): string {
   const dir = mkdtempSync(join(scratch, 'bin-'));
   writeFileSync(join(dir, 'containers.json'), JSON.stringify(containers));
@@ -54,7 +54,7 @@ const [command, ...rest] = process.argv.slice(2);
 ${fail ? `if (command === ${JSON.stringify(fail)}) { process.stderr.write('Error response from daemon: the fake is down\\n'); process.exit(1); }` : ''}
 const all = JSON.parse(readFileSync(${JSON.stringify(join(dir, 'containers.json'))}, 'utf8'));
 if (command === 'ps') process.stdout.write(${JSON.stringify(listed)} + all.map((c) => c.Id + '\\n').join(''));
-else if (command === 'inspect') process.stdout.write(JSON.stringify(rest.map((i) => all.find((c) => c.Id === i))));
+else if (command === 'inspect') process.stdout.write(JSON.stringify(rest.map((i) => all.find((c) => c.Id === i))) + ${JSON.stringify(trailing)});
 else process.exit(64);
 `;
   const launchctl = `#!/bin/sh\nprintf 'PID\\tStatus\\tLabel\\n411\\t0\\torg.example.live-connector\\n'\n`;
@@ -137,6 +137,7 @@ it('S0-1 a docker call that fails stops the snapshot with its error and prints n
   expect(compared.status).toBe(2);
   expect(compared.stdout).not.toMatch(/GREEN/u);
 });
+
 it('S0-1 a container id that is not 64 hex digits is never passed to docker inspect', () => {
   for (const listed of ['--format={{json .}}\n', 'live-runner\n', `${id(0xab).toUpperCase()}\n`]) {
     const taken = run(fakeTools(MANY.slice(0, 3), { listed }), ['snapshot']);
@@ -146,6 +147,16 @@ it('S0-1 a container id that is not 64 hex digits is never passed to docker insp
       'service-report: no snapshot: docker ps printed something other than container ids\n',
     );
   }
+});
+
+it('S0-1 inspect output that is not JSON stops the snapshot without quoting it', () => {
+  const trailing = '\n{"Env":["SERVICE_PASSWORD=canary-snapbuf"]} garbage';
+  const taken = run(fakeTools(MANY.slice(0, 3), { trailing }), ['snapshot']);
+  expect(taken.status).toBe(2);
+  expect(taken.stdout).toBe('');
+  expect(taken.stderr).toBe(
+    'service-report: no snapshot: docker inspect printed something other than JSON\n',
+  );
 });
 
 describe('S0-6 services unchanged over a busy Docker', () => {
