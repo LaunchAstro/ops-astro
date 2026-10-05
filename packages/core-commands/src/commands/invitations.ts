@@ -161,6 +161,12 @@ async function create(
   if (unmanaged !== undefined) return unmanaged;
   const limit = await overLimit(tx, address, context.session.actorId);
   if (limit !== undefined) return limit;
+  // The address's pending rows before the access lock, the order a revoke or
+  // resend takes them in (row, then access), so the two never deadlock.
+  await tx.query(
+    `select id from invitations where business_id = $1 and address = $2 and state = 'pending' for update`,
+    [tx.businessId, address],
+  );
   const gone = await noLongerHeld(tx, context, request.role);
   if (gone !== undefined) return gone;
   // A pending invitation whose lifetime has passed is expired first, by the worker.
