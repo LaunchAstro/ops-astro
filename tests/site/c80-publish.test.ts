@@ -274,7 +274,7 @@ describe('C80 accepted not landed', () => {
     deploymentId: 'dpl_1',
     liveUrl: 'https://www.example.com/throwaway',
     dispatchToken: 'x',
-    occurrence: { left: 'We walk ', right: ' you.', index: 0, observed: ['alongside'] },
+    occurrence: { left: 'We walk ', right: ' you.', observed: ['alongside'], offsets: [0] },
   };
 
   type Ports = Parameters<typeof observeLanded>[2];
