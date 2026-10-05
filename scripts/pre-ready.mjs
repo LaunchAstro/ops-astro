@@ -201,7 +201,11 @@ function inSnapshot(cwd, head, use) {
   mkdirSync(parent, { recursive: true });
   for (const name of readdirSync(parent)) {
     const owner = /^head-([1-9][0-9]*)-/u.exec(name);
-    if (owner !== null && !running(Number(owner[1]))) removeSnapshot(cwd, join(parent, name));
+    const entry = join(parent, name);
+    // A real directory only: removing through a link would remove its target.
+    if (owner !== null && lstatSync(entry).isDirectory() && !running(Number(owner[1]))) {
+      removeSnapshot(cwd, entry);
+    }
   }
   const dir = mkdtempSync(join(parent, `head-${process.pid}-`));
   try {
