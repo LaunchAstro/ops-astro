@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pathOf } from '../../packages/core-wire/src/index.ts';
 import {
   advisoryLock,
+  connect,
   type AdminConnection,
 } from '../../packages/core-records/src/tenancy/database.ts';
 import {
@@ -223,17 +224,18 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
     }
   }, 240_000);
 
-  // Sol round 1 on #1010, F5: a revocation queued behind an unrelated holder
-  // of the access lock is not one waiting behind the writer, and must not be
-  // taken for the writer-first alternative.
-  it('a revocation waiting on another lock is not taken for one waiting behind the writer', async () => {
-    const { grantId, recordId, revision, credential } = await credentialWrite();
-    const revoker = rebuildApi(world);
+  // Sol round 1 on #1010, F5: a second lock waiter that waits on something
+  // other than the writer (here a transaction queued, as a revocation's
+  // `lockAccess` would be, behind an unrelated holder of the business's
+  // access lock) must not be taken for a revocation waiting behind the writer.
+  it('a lock waiter queued behind another holder is not taken for one waiting behind the writer', async () => {
+    const { recordId, revision, credential } = await credentialWrite();
     const access = await hold(world.db.appUrl, world.alpha, async (tx) => {
       await advisoryLock(tx, `access:${tx.businessId}`);
     });
+    const other = connect(world.db.appUrl);
     let updating: Promise<Answer> | undefined;
-    let revoking: Promise<Answer> | undefined;
+    let queued: Promise<void> | undefined;
     try {
       await world.db.admin.transaction(async (execute) => {
         await execute(
@@ -252,23 +254,20 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
           bearer(credential),
         );
         await until(async () => (await count(execute, UPDATE_WAITING)) >= 1);
-        revoking = call(
-          revoker.api,
-          personPath('alpha', pathOf('access.revoke')),
-          { operationId: randomUUID(), grantId },
-          bearer(world.ada.token),
-        );
+        queued = other.withBusiness(world.alpha, async (tx) => {
+          await advisoryLock(tx, `access:${tx.businessId}`);
+        });
         await until(async () => (await count(execute, LOCK_WAITERS)) >= 2);
-        expect(await count(execute, LOCK_WAITERS), 'the writer and the revocation wait').toBe(2);
-        expect(await revocationWaits(execute), 'the revocation waits on the access lock').toBe(
+        expect(await count(execute, LOCK_WAITERS), 'the writer and the other waiter').toBe(2);
+        expect(await revocationWaits(execute), 'the other waiter is not behind the writer').toBe(
           false,
         );
       });
       expect((await updating)?.status).toBe(200);
     } finally {
       await access.letGo();
-      await revoking;
-      await revoker.close();
+      await queued;
+      await other.close();
     }
   }, 240_000);
 });
