@@ -18,7 +18,8 @@
         "tests/web/settings-late-step-up-refusal-stays-with-its-business.test.tsx",
         "tests/web/settings-lost-save-intent-stays-with-its-business.test.tsx",
         "tests/web/preference-recovery-read-keeps-earlier-restore.test.tsx",
-        "tests/web/settings-late-scope-refusal-stays-with-its-business.test.tsx"
+        "tests/web/settings-late-scope-refusal-stays-with-its-business.test.tsx",
+        "tests/web/layout-save-survives-same-person-client-refresh.test.tsx"
       ],
       "rules": {
         "max-lines-per-function": "off",
