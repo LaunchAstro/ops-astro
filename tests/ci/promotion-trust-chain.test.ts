@@ -238,6 +238,10 @@ it('a folder at the link swap name, or a link folder the promoter cannot write, 
   for (const [name, make] of [
     ['a folder at current.promoting', (prod: string) => mkdirSync(join(prod, 'current.promoting'))],
     ['a link folder without owner write', (prod: string) => chmodSync(prod, 0o555)],
+    [
+      'a served/ without owner write',
+      (prod: string) => mkdirSync(join(prod, 'served'), { mode: 0o555 }),
+    ],
   ] as const) {
     const { root, store } = fixture();
     const prod = join(root, 'prod');
@@ -245,6 +249,7 @@ it('a folder at the link swap name, or a link folder the promoter cannot write, 
     make(prod);
     const { outcome, calls } = promoted(store, join(prod, 'current'));
     chmodSync(prod, 0o755);
+    if (existsSync(join(prod, 'served'))) chmodSync(join(prod, 'served'), 0o755);
     expect(outcome, name).toMatchObject({ kind: 'refused' });
     expect(calls, name).toEqual([]);
   }
