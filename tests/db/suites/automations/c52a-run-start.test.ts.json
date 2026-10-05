@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "PORT-P11 (P11b, U36 through AW-01 J): an approved occurrence starts one run through the worker, refused once its approval was revoked, ended or superseded; another business neither starts nor sees it."
+}
