@@ -83,9 +83,12 @@ const values = (json) => `(select ${folded("v #>> '{}'")} as held
       from jsonb_path_query(${json}, 'strict $.**') v
      where jsonb_typeof(v) not in ('object', 'array', 'null')) s`;
 
-/** Whether `s.held` holds the text ($1, or null) or a stored name's words ($6) in order. */
+/**
+ * Whether `s.held` holds the text ($1, or null) or a stored name's words ($6,
+ * JSON bound as text, so the driver passes it as written) in order.
+ */
 const TEXT = `(s.held like lower($1::text)
-      or exists (select from jsonb_to_recordset($6::jsonb) n(words tsquery, lexemes text[])
+      or exists (select from jsonb_to_recordset($6::text::jsonb) n(words tsquery, lexemes text[])
                   where ${wholeWords('s.held', 'n.words', 'n.lexemes')}))`;
 
 /** Whether `s.held` holds the text ($1, or null), a stored name ($6), a seed id ($3) or a shared id ($7). */
