@@ -23,8 +23,17 @@
 // Every act on the machine goes through `PromotionEffects`, so the decisions
 // here are tested with the effects watched and the command stays thin.
 
-import { readFileSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
+import { join, resolve } from 'node:path';
 import { outputDigest, recordedStamp } from './build-output.ts';
 
 /** A service as the service manager names it. */
@@ -77,6 +86,9 @@ export type PromotionOutcome =
 /** A promotable build identifier: S0-1c's stamp, without `-dirty`. */
 const CLEAN_BUILD = /^[0-9a-f]{12}$/u;
 const LONGEST_LINE = 200;
+// Where production's copies live in the store, each named by its digest.
+const SERVED = 'served';
+
 const SERVICE = /^(?<manager>docker|launchd):(?<name>[A-Za-z0-9][A-Za-z0-9_.-]*)$/u;
 
 const definition = JSON.parse(
@@ -165,28 +177,71 @@ export function promote(request: PromotionRequest, effects: PromotionEffects): P
       reason: 'a promotion needs the API, the auth server and the production link named',
     };
   }
-  const states = effects.services();
-  const problems = [api, auth].flatMap((wanted) => {
-    const found = states.find((s) => s.manager === wanted.manager && s.name === wanted.name);
-    if (!found)
-      return [`the service manager cannot find ${label(wanted)}, so it cannot say it is stopped`];
-    return found.running ? [`${label(wanted)} is running`] : [];
-  });
+  const problems = notStopped(effects.services(), [api, auth]);
   if (problems.length > 0) {
     return {
       kind: 'refused',
       reason: `${problems.join('; ')}. Stop the API and the auth server with the service manager, then run the promotion again. Nothing was migrated or promoted.`,
     };
   }
-
+  const served = frozenCopy(selected, request.store);
+  if (served === undefined) {
+    return {
+      kind: 'refused',
+      reason: `${selected.name} changed while it was copied for production; nothing was migrated or promoted`,
+    };
+  }
   if (!effects.migrate()) {
     return {
       kind: 'failed',
       reason: `the migration did not complete; nothing was promoted and the API and the auth server are left stopped`,
     };
   }
-  effects.point(current, selected.path);
+  if (outputDigest(served) !== selected.digest) {
+    return {
+      kind: 'failed',
+      reason: `the copy of ${selected.name} for production changed during the migration; nothing was promoted and the API and the auth server are left stopped`,
+    };
+  }
+  effects.point(current, served);
   effects.start(auth);
   effects.start(api);
-  return { kind: 'promoted', record, artefactPath: selected.path };
+  return { kind: 'promoted', record, artefactPath: served };
+}
+
+/** Why each wanted service is not known to be stopped; empty when all are. */
+function notStopped(states: readonly ServiceState[], wanted: readonly ServiceRef[]): string[] {
+  return wanted.flatMap((service) => {
+    const found = states.find((s) => s.manager === service.manager && s.name === service.name);
+    if (!found)
+      return [`the service manager cannot find ${label(service)}, so it cannot say it is stopped`];
+    return found.running ? [`${label(service)} is running`] : [];
+  });
+}
+
+/**
+ * The validated bytes, copied where production reads them: a folder of the
+ * store's `served/` named by their digest, copied whole under a temporary name,
+ * hashed, and renamed into place only if it holds that digest. Production points here, so a
+ * later write to the store's artefact never changes what is served (#497). A
+ * folder already there by that name is used only while it holds that digest.
+ * Undefined when the copy does not hold the digest the check passed.
+ */
+function frozenCopy(selected: StoredArtefact, store: string): string | undefined {
+  const folder = resolve(store, SERVED);
+  const path = join(folder, selected.digest.slice('sha256:'.length));
+  if (!existsSync(path)) {
+    mkdirSync(folder, { recursive: true });
+    const copy = mkdtempSync(join(folder, '.copy-'));
+    try {
+      cpSync(selected.path, copy, { recursive: true, errorOnExist: true, force: false });
+      // Only a copy that holds the digest ever takes the digest's name.
+      if (outputDigest(copy) === selected.digest) renameSync(copy, path);
+    } catch {
+      // Another promotion of the same digest renamed its copy first; it is checked below.
+    } finally {
+      rmSync(copy, { recursive: true, force: true });
+    }
+  }
+  return existsSync(path) && outputDigest(path) === selected.digest ? path : undefined;
 }

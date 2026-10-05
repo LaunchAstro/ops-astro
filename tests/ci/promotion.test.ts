@@ -19,6 +19,7 @@ import {
   type ServiceRef,
   type ServiceState,
 } from '../../scripts/ops/promotion.ts';
+import { outputDigest, recordedStamp } from '../../scripts/ops/build-output.ts';
 import { LINE, named, NEWER, scratch, STAGED, store, STORE } from './promotion.fixture.ts';
 
 const COMMAND = new URL('../../scripts/ops/promote.mjs', import.meta.url).pathname;
@@ -224,7 +225,10 @@ describe('S0-1 promotion migrates stopped app', () => {
       'start launchd:org.example.prod-auth',
       'start docker:prod-api',
     ]);
-    expect(outcome.artefactPath.endsWith(`/${named(STAGED)}`)).toBe(true);
+    // Production points at the store's copy named by the digest staging ran (#497).
+    const digest = recordedStamp(join(req.store, named(STAGED))).digest;
+    expect(outcome.artefactPath).toBe(join(req.store, 'served', String(digest).slice(7)));
+    expect(outputDigest(outcome.artefactPath)).toBe(digest);
     expect(outcome.record).toMatchObject({ version: STAGED, line: LINE, dryRun: false });
   });
 
