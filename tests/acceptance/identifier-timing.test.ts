@@ -335,6 +335,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       stepNames: [],
     }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('secret.clear', 'secretId', f.secretId, (secretId) => ({ secretId }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
       holderId,
@@ -475,11 +476,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 74 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 75 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(74);
-    expect(names).toHaveLength(74);
+    expect(new Set(names).size, 'distinct operations').toBe(75);
+    expect(names).toHaveLength(75);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

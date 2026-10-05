@@ -41,6 +41,7 @@ const PINNED_SHAPE = {
   'preference.read': { spine: false, subject: false, authority: 'self' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
   'privacy.draft_breach_notices': { spine: false, subject: false, authority: 'declared' },
+  'secret.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'session.person': { spine: false, subject: false, authority: 'self' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
@@ -74,6 +75,7 @@ const PINNED_IDENTIFIERS = {
   'preference.read': [],
   'preset.plan': [],
   'privacy.draft_breach_notices': [],
+  'secret.list': [],
   'session.capabilities': [],
   'session.person': [],
   'settings.read': [],
@@ -201,6 +203,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'tag.list': BODIES.map(() => null),
   'task.todos': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
+  'secret.list': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
@@ -239,7 +242,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twenty-eight reads', () => {
+  it('names the same twenty-nine reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
