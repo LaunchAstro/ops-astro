@@ -228,7 +228,7 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
       <p className="card__sub" data-page-lead>
         Who may do what in {client.businessKey}, as the server grants it now.
       </p>
-      <RecordState state={state} subject="access list" onRetry={reload}>
+      <RecordState state={state} subject="access list" onRetry={reload} keep>
         {(result) => (
           <div className="secs">
             <AccessLists
