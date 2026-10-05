@@ -2,7 +2,9 @@
 
 Status: **draft for approval**. Drafted 5 October 2026 under
 [ADR 0048](../adr/0048-sandbox-launcher-contract-drafted-reviewed-not-built.md),
-revised the same day after four adversarial reviews. Nothing here is built.
+revised the same day after four adversarial reviews and Sol's first round.
+In round 2 the envelope's comparison, publish and host fidelity were split
+into their own design piece (O4, section 12). Nothing here is built.
 Nathan approves the final version after the adversarial findings are
 resolved, and only then may implementation start. Until then untrusted
 package installation and headless execution stay unavailable, with no
@@ -10,15 +12,28 @@ unsandboxed fallback.
 
 Each numbered line is a rule the implementation must keep and a test must
 prove (section 13). A line that cannot be proven is a refusal, not a warning.
-Every grammar here is closed: what it does not name is refused.
+Every grammar here is closed: what it does not name is refused. A JSON
+reply from our own pinned daemon is parsed with P1's parser (duplicate keys
+refused, at most 1 MiB, depth at most 32) and read for the keys a line
+names, each checked as stated; its other keys are ignored. `_ping`'s body
+is exactly `OK`, a 204 has no body, and the attach stream is read only as
+Docker's multiplexed frames of stream 1 or 2, its stdout under O1, O2 or
+F1's probe result, and within B6's caps. A reply that breaks these rules is `internal`
+and leaves the launcher `unavailable` until a new probe passes (F3).
 
 Terms, each used in one sense only:
 
 - **site record**: Ops Astro's record of one client site (section 3, I6);
 - **pin**: the site record's toolchain entry in `docs/supply-chain-pins.md`
-  (lockfile digest, base and entrypoint digests per platform, image id);
-- **pin list**: the file the socket proxy reads the pinned image ids from,
-  written only by the deploy of a reviewed change;
+  (lockfile digest, base and entrypoint digests per platform, image id,
+  and, while one is being made, the site commit F2 builds);
+- **pin list**: the file the socket proxy reads the pins from, one entry per
+  site with its lockfile digest, its image id for S1 only (empty while a
+  pin is being made, B8), its pin-making attempt number, the site commit F2
+  builds and its S1 `Env` list (B3), plus one entry for the probe image (S0
+  only) and one per platform for the base-plus-entrypoint image (S2 only,
+  with the one S2 `Env` list); written only by the deploy of a reviewed
+  change;
 - **image store**: the Docker daemon's images;
 - **package registry**: an npm registry;
 - **tool registry**: Ops Astro's list of tools and their availability.
@@ -28,8 +43,10 @@ Terms, each used in one sense only:
 The launcher runs code we do not trust in a container and hands back only
 bytes. Its first user is the site change envelope (issue #972): to decide
 whether an automated edit to a client's live Astro site is one word of body
-copy, the envelope builds the site before and after the edit with the site's
-pinned toolchain and compares the two outputs.
+copy, the envelope needs the site built with its pinned toolchain. This
+contract covers running that build and handing back its bytes. How the
+envelope compares outputs, binds a verdict to what ships and publishes is a
+separate design piece (O4).
 
 Building a site runs the site's code: its `astro.config.mjs`, integrations
 (for the template site `@astrojs/sitemap`, `@astrojs/mdx`,
@@ -37,13 +54,12 @@ Building a site runs the site's code: its `astro.config.mjs`, integrations
 `@tailwindcss/vite`, and native modules such as `sharp`.
 
 - **T1. Containment** treats all of that code as hostile.
-- **T2. The verdict** trusts the pinned toolchain's output as a model of the
-  host's build, and nothing more. Hostile code inside a run can always write
-  any output it likes, so the toolchain must be one a person approved: a pin
-  changes only through a reviewed change, and the launcher never writes one.
-  The verdict also trusts the site's own code at `baseRevision` (its config,
-  integrations and components), which no pin covers, only as much as it is
-  already trusted by being live.
+- **T2. The pins.** Hostile code inside a run can always write any output
+  it likes, so an output is only as trustworthy as the toolchain that built
+  it: the toolchain must be one a person approved, a pin changes only
+  through a reviewed change, and the launcher never writes one. What a
+  caller may conclude from an output, and how far it trusts the site's own
+  code, is that caller's design (O4).
 - **T3.** Agent tools that run arbitrary code, headless browsers and any other
   user are out of scope. Each needs its own amendment and its own approval.
 
@@ -59,10 +75,11 @@ The launcher knows exactly three run classes. Any other request is refused.
   refused if not, then reads the input tar from stdin into `/work`, runs the
   site record's build command with its stdout sent to stderr, and writes a
   tar of `dist/` to the original stdout. No site code runs before that
-  check. Used twice per envelope check.
+  check. Used by F2 and by the launcher's caller (O4).
 - **S2. `site.prepare`**: install one site's dependencies, offline, into the
   layer its image is assembled from (B8). Runs only on the request of a
-  reviewed pin change (T2), never during a check. It receives only
+  reviewed pin change (T2), never on a `site.build` request. It receives
+  only
   `package.json`, `package-lock.json`, the package tarballs (E2) and an npm
   configuration the launcher writes; never the site tree or any
   configuration file from it. Anything given to it is treated as public. It
@@ -103,8 +120,9 @@ allow-list. Unknown keys, unknown values and extra fields are refused.
     `pnpm-workspace.yaml` or `.pnpmfile.cjs` anywhere.
 - **I4. The pin is refused** unless the digest of `package.json` and
   `package-lock.json` together, in the tree as built, equals the pin's. Since
-  I1 never accepts either file as the changed path, the before and after trees
-  carry the same pair.
+  I1 never accepts either file as the changed path, an edited tree carries
+  the same pair as `baseRevision`. A `site.build` request for a site whose
+  pin has no image id yet (a pin being made, B8) is refused with `no pin`.
 - **I5. The lockfile grammar.** `site.prepare` accepts only
   `package-lock.json` with `lockfileVersion` 3 and a `package.json` with no
   `packageManager` field. Every non-root package entry has a `sha512`
@@ -119,13 +137,13 @@ allow-list. Unknown keys, unknown values and extra fields are refused.
   Any other form, a `link` entry, a missing or weaker integrity, or any other
   host is a refusal.
 
-- **I6. The site record** holds the build command, the host's install
-  command, the output directory (`dist`), the Node version, the build
-  environment variables and their values, `build.format`, `trailingSlash`,
-  `output`, the private package scopes and the content allow-list. It equals
-  the host's production build (H1) and changes only through a reviewed
-  change. No build variable whose value is a secret is ever recorded; a site
-  whose host build needs one is refused.
+- **I6. The site record** holds the build command, the output directory
+  (`dist`), the Node version, the build environment variables and their
+  values, the private package scopes and the content allow-list, and,
+  held for the caller (O4), `build.format`, `trailingSlash` and `output`.
+  It changes only
+  through a reviewed change. No build variable whose value is a secret is
+  ever recorded; a site whose build needs one is refused.
 
 ## 4. Isolation
 
@@ -136,9 +154,9 @@ ends, whatever the outcome.
   `docs/supply-chain-pins.md`, installed at a path that contains its sha256
   (`/opt/runsc/<sha256>/runsc`) on a read-only filesystem, which a VM boot
   check hashes before the daemon starts. It is registered with the daemon by
-  that path and a pinned argument list: `--network=sandbox`, no host Unix socket or
-  FIFO access, no flag override, no host-backed overlay, no debug log, and a
-  named platform. Before every run the launcher reads the runtime entry
+  that path and a pinned argument list: `--network=sandbox`, no host Unix
+  socket or FIFO access, no flag override, no host-backed overlay, no debug
+  log, and a named platform. Before every run the launcher reads the runtime entry
   through `GET /info` and refuses when the path or arguments differ from the
   pin.
 - **B2. Network.** Network mode `none` for every run class: loopback only.
@@ -148,8 +166,13 @@ ends, whatever the outcome.
     `ASTRO_TELEMETRY_DISABLED=1`, the base image's own variables with the
     values its pinned config gives (written out in the pin), and the site
     record's build environment variables with the values the record gives;
-  - S2: the same without `NODE_ENV`, and with a npm user configuration the
-    launcher writes (offline, `ignore-scripts`, cache path);
+    where the record names a variable listed before it, the value here
+    wins;
+  - S2: `PATH`, `HOME=/tmp/home`, `HOSTNAME=sandbox`,
+    `ASTRO_TELEMETRY_DISABLED=1`, the base image's own variables and the
+    npm user configuration the launcher writes (offline, `ignore-scripts`,
+    cache path); no site variables, which S2's install command (E2) does
+    not read;
   - S0: as the class it probes.
   - No env file, no mounted credential, no Docker socket.
 - **B4. Host writes.** A read-only root filesystem; no bind mount, `Mounts`
@@ -192,12 +215,28 @@ ends, whatever the outcome.
   the classic overlay2 image store, and the image id is the sha256 of the
   image config, which the launcher computes. Making a pin: for a site whose
   lockfile digest is pinned, S2, the assembly and F2 run on the production
-  sandbox VM through the proxy; the proxy loads that not-yet-pinned image
-  for F2 runs only, records the id it computed itself, and refuses that id
-  to every check. The reviewed second commit copies the proxy's recorded id
-  into the pin; the launcher never writes it. The load (P5) must report the
-  same id. Site images are removed when their pin is replaced, and at most
-  50 are kept.
+  sandbox VM through the proxy. The first commit of a pin change sets the
+  lockfile digest, empties the entry's image id, raises its attempt
+  number and names the site commit (40 hex) F2 builds. The proxy records the
+  id it computed itself for that not-yet-pinned image and admits it for
+  F2's three S1 creates only (P3). No `site.build` request can use it,
+  because one needs the pin's image id (I4). The launcher writes a
+  pin-making report (the candidate id and F2's three output digests) for
+  the reviewer, and the reviewed second commit copies the id into the pin;
+  the launcher never writes the pin. The proxy keeps, durably beside the
+  candidate record, the id it accepted for each site entry, with that
+  entry's lockfile digest and attempt number. On every read of the pin
+  list, at start included, a site entry's id that differs from its accepted
+  id is accepted only when it equals the proxy's candidate for that entry
+  and attempt, and that candidate recorded all three of F2's creates, each
+  of whose waits returned exit code 0 before its deadline; otherwise the
+  entry has no image id. A deploy that changes the entry's id, lockfile
+  digest or attempt number clears the accepted id, an emptied id included.
+  The probe and base-plus-entrypoint entries are not made by F2: their ids
+  are taken as deployed, and P5 checks their loads against their own layer
+  lists. The load (P5) must
+  report the same id. Site images are removed when their pin is replaced,
+  and at most 50 are kept.
 
 - **B9. Placement.** Sandboxes run in a dedicated Linux VM on the production
   machine that runs no live service, shares no host folder, holds no
@@ -255,11 +294,35 @@ checked values, never the bytes it received.
 - **P3. Create.** `POST /containers/create` with no query, and a body
   structurally equal to its class's fixed body in the appendix, with exactly
   one slot filled: `Image`, which must be `sha256:` plus 64 hex characters
-  and name an image the pin list holds for that class. Before each create,
-  `GET /info` must report a container count equal to the proxy's record, or
-  the launcher is unavailable. Any other difference,
-  a missing key, or a key added with the daemon's default value, is a
-  refusal.
+  and name one of exactly two things:
+  - an image the pin list holds for that class;
+  - for the S1 body only, the candidate: the id the proxy computed at a P5
+    candidate load for a pin-list entry that has a lockfile digest and no
+    image id yet (B8). Its create is compared with that entry's S1 body.
+
+  The candidate record (entry, attempt number, id, creates left) is
+  durable, separate from the container record, and never cleared by a
+  sweep. An entry has at most one open candidate, bound to its attempt
+  number. The record also counts the creates recorded for each candidate;
+  ending an admission sets creates left to 0 and leaves that count alone.
+  A load admits it for exactly three S1 creates, F2's, each counted in the
+  same durable write that records the container's id, so a create the
+  daemon made but the proxy never recorded does not count. A second load
+  for that entry and attempt is refused. A deploy that changes the entry
+  ends the admission, so a failed F2 needs a new first commit, which
+  raises the attempt number. An ended or superseded candidate stays in the
+  record with no creates left until its image is deleted. A fourth create, a create of the candidate with any
+  other class's body, and a create of a candidate whose entry a deploy has
+  changed are refused.
+
+  The proxy takes one create at a time, from its count check until the
+  returned id is durable in its record. Before each create its record must
+  be empty and `GET /info` must report zero containers. A record that is
+  not empty refuses the create (B7: one sandbox at a time); a count that
+  differs from the record refuses it and starts a sweep (P6). Any other
+  difference from the fixed body, a missing key, or a key added with the
+  daemon's default value, is a refusal.
+
 - **P4. Run.** For a container whose full 64-hex id the proxy recorded
   durably from its own create, and nothing else (names and prefixes are
   refused):
@@ -271,7 +334,21 @@ checked values, never the bytes it received.
   - `GET /containers/{id}/json`, no query, of which only `State.OOMKilled`
     is read;
   - `DELETE /containers/{id}?force=1`.
-- **P5. Images.** `POST /images/load?quiet=1` only after the proxy has parsed
+
+  The proxy deletes a recorded container itself, whatever its state, when
+  the launcher has not deleted it within 30 s of the later of its wait
+  returning and its attach stream ending, within 30 s of the launcher
+  closing that container's attach connection in both directions before its
+  wait has returned (the half-close that ends stdin under `StdinOnce` is not
+  a close), or
+  at the latest 30 s after its deadline (P6). A launcher crash at any point leaves nothing behind.
+
+- **P5. Images.** `POST /images/load?quiet=1` only for an image in the pin
+  list, and `POST /images/load?quiet=1&site=<site id>` only for the
+  candidate of the pin-list entry it names, one with a lockfile digest and
+  no image id. `<site id>` is from `[a-z0-9-]{1,64}`, equals a pin-list key
+  byte for byte, and is never percent-encoded; the proxy strips `site`
+  before it forwards. Either load only after the proxy has parsed
   the archive itself and rebuilt it with exactly `manifest.json`, the config
   blob and the layer files (a `repositories`, `index.json`, `oci-layout` or
   any other member is refused): its manifest names exactly B8's layers in
@@ -279,18 +356,46 @@ checked values, never the bytes it received.
   byte; the `node_modules` layer passes O2's grammar, re-checked by the
   proxy; there are no `RepoTags`; and the image id the proxy computes is in
   the pin list, or is a pin being made (B8). `GET /images/{id}/json` and
-  `DELETE /images/{id}` (no query) for site images in the pin list or
-  removed from it by the last deploy, never the base image.
-- **P6. Deadline and sweep.** The proxy kills any recorded container past its
-  class's wall clock, measured in wall-clock time from the recorded start,
-  whatever the launcher does. On start, before it takes a
-  request, it kills and removes every container in its record, and it refuses
-  a create while any recorded container still exists.
+  `DELETE /images/{id}` (no query) for site images in the pin list, removed
+  from it by the last deploy, or held in the candidate record (P3), never
+  the base image. The probe image and the base-plus-entrypoint image load
+  only in the plain form, with their own pinned layer lists in place of
+  B8's.
+- **P6. Deadline and sweep.** The proxy measures every recorded container's
+  wall clock from its durable create record, so a container never started
+  has a deadline too. At that deadline it kills the container, whatever the
+  launcher does; a kill refused because the container is not running counts
+  as landed. It force-deletes every recorded container, whatever its state,
+  at the latest 30 s after that deadline. An id leaves the record only when
+  its delete returns success or "no such container"; a delete of a
+  recorded container that fails otherwise starts a sweep. The sweep does
+  not depend on the record, since
+  the daemon can hold a container the proxy never recorded (a crash between
+  the daemon's create and the durable record). On start, before it takes a
+  request, and whenever P3's count check fails, the proxy sweeps:
+  - `GET /containers/json?all=1`, read with a real JSON parser as an array of
+    objects of which only `Id` is read, each exactly 64 lowercase hex
+    characters;
+  - `DELETE /containers/{id}?force=1` for every listed id, recorded or not,
+    because nothing else creates containers on this daemon (B9);
+  - the same list again, which must be empty, and `GET /info` must report
+    zero containers.
+
+  Only then is the record cleared and a request taken. In a sweep, a delete
+  answered "no such container" counts as removed. A malformed list, any
+  other refused delete or a second list that is not empty leaves the
+  launcher `unavailable`, and the proxy repeats the sweep every 30 s until
+  one passes. A run whose container a sweep
+  removes is refused `unavailable`. A sweep clears the container record
+  only; the candidate record stays (P3). The list, and a delete of an id the
+  record does not hold, are allowed in the sweep only; P4 still refuses
+  both on any launcher request.
+
 - **P7.** Everything else is refused: `/build`, `/session`, exec, commit,
   archive copy in or out, image pull, push or export, plugins, networks,
   volumes, swarm, events, system prune.
 
-## 7. Output and host fidelity
+## 7. Output
 
 Output is untrusted bytes, read as a closed grammar in memory and never
 extracted to disk.
@@ -320,52 +425,22 @@ extracted to disk.
   `State.OOMKilled` false. R1 reports `memory` only when `OOMKilled` is true;
   any other failure to finish is `non-zero exit` or `deadline`. stderr is kept for a person and never read into a
   decision.
-- **O4. Comparison**, for the envelope:
-  - the two outputs carry exactly the same set of names;
-  - the target file is `dist/` plus the catalogued page address mapped by the
-    site record's `build.format` and `trailingSlash` (a site whose
-    `build.format` is `preserve` is refused); it exists in both and differs;
-  - every other name's content bytes are equal;
-  - the target's two versions then go to the envelope's token grammar.
-
-  O4 passing is necessary, not sufficient: the envelope's static layers must
-  pass too (D2).
-
-- **O5. Binding.** A verdict covers exactly (site, the site record's digest,
-  `baseRevision`, path, sha256 of the new content, image id). The publish
-  lands only as a fast-forward-only update of the branch, from exactly
-  `baseRevision`, to a commit whose only parent is `baseRevision` and whose
-  tree differs from it only at the path, whose blob is the new content. The
-  publish flow and the client branch protection change to allow this
-  (section 12, question 6). A
-  merge, a squash or an update from any other head is refused, and the
-  verdict lapses. Anything else is a new check, never a reuse.
-- **H1. Host fidelity.** "Served" in O4 means built by the pinned toolchain
-  under B3. The verdict carries over to the host only where the two match, so
-  a site is refused when:
-  - its record's build command, install command, Node version or build
-    variables differ from the host's configured production build, or the
-    host's install is not `npm ci --ignore-scripts` with the base image's
-    npm. The sandbox-only variables and layout in B3 and B8 are accepted
-    differences, and host-injected variables are listed per host under
-    question 4;
-  - its `output` is not `static`, it uses an adapter, or any page uses
-    `server:defer`;
-  - the host rewrites HTML after the build (section 12, question 4);
-  - its build tried to reach the network when the pin was made: F2's builds
-    run on the production sandbox VM through the proxy as S1 runs, with
-    runsc's trace points in B1's pinned argument list recording every
-    non-loopback connect or send and every name lookup to a sink on the VM,
-    and any record refuses the pin. No client site is built in CI, which
-    runs only our fixtures. Template dependencies that fetch at build time, such as
-    the astro-embed components, make a site refused, never a reason to give
-    `site.build` network.
-
-  At check time a build has no network, so a fetch fails or falls back. The
-  residual, a fetch path that only the edited word reaches, is accepted only
-  because the word is letters only and sits in a text node, as the
-  envelope's static layer checks (D2); the launcher's verdict is never used
-  without it.
+- **O4. Use of the output.** The launcher hands its caller the checked O1
+  stream and its digest, and nothing else. It has no operation that
+  commits, deploys or publishes, and holds no credential that could. How
+  the envelope compares two outputs, binds a verdict to what ships, and
+  what the host may do after that, is the envelope publish design: a
+  separate piece, split from this contract in round 2, that Nathan approves
+  on its own (section 12, question 5). Until it is approved, no launcher
+  output feeds any publish: the publish flow takes no launcher output as
+  an input, and every publish needs a person's approving decision
+  (`APPROVAL_MISSING` otherwise), as it does today (D1, D2). The digest,
+  which the launcher computes, is the sha256 of every entry in byte order
+  of name, each written as its type byte as in the ustar header (ASCII `0`
+  or `5`), the name's length (8
+  bytes, big-endian), the name, and for a file its size (8 bytes,
+  big-endian) and its bytes, so O1's ignored mode, owner and time fields do
+  not change it.
 
 ## 8. Preflight
 
@@ -383,15 +458,23 @@ extracted to disk.
   - the environment is exactly B3, and effective capabilities are zero;
   - allocating past the memory limit ends the run for memory, a fork past
     256 is refused, and outliving the wall clock ends in the kill;
-  - writing past the output cap gives the refusal;
-  - and, run by the VM's boot check and by a machine-side check at deploy and
-    after any F3 difference (never by the launcher, and F3 reads their last
-    result): from the VM, the machine, the LAN and a public address do not
-    answer; on the machine, neither the launcher's uid nor the machine's main
-    user can open the daemon socket.
+  - writing past the output cap gives the refusal.
+
+  The probe writes one JSON object to stdout, parsed with P1's parser, with
+  exactly one boolean key per limit above, every one true for a pass.
+
+  Outside the probe, the VM's boot check and a machine-side check at deploy
+  and after any F3 difference (never the launcher; F3 reads their last
+  result) prove that from the VM, the machine, the LAN and a public address
+  do not answer, and that on the machine neither the launcher's uid nor the
+  machine's main user can open the daemon socket.
+
 - **F2. Reproducibility**, a precondition for recording a pin, not a safety
-  control (every check re-proves equality under O4): three builds of the
-  unchanged tree, compared as O4 compares, must be identical. It is repeated
+  control: three S1 runs the launcher makes itself, with no changed file,
+  on the tree at the commit the pin change's first commit names, assembled
+  by I2 and refused under I3, and refused unless its `package.json` and
+  `package-lock.json` digest equals the entry's (I4). It passes only when
+  the three output digests (O4) are equal. It is repeated
   whenever the base, the entrypoint layer or the lockfile changes.
 - **F3. Drift.** Before every run, `GET /version` and `GET /info` (engine,
   kernel, runtimes with their hash-bearing paths and arguments, image store)
@@ -404,22 +487,27 @@ extracted to disk.
   preflight failed, drift, unknown site, no pin, pin mismatch, input refused,
   lockfile refused, fetch failed, integrity mismatch, image load failed,
   proxy refused, queue full, deadline, memory, process limit, output refused,
-  non-zero exit, network attempted, host fidelity. Any other failure is the
+  non-zero exit. Any other failure is the
   refusal `internal`, and a caller that gets no well-formed answer treats it
   as `unavailable`.
-- **R2.** No retry inside a check. Every container is removed in every case,
+- **R2.** The launcher never retries a run. Every container is removed in every case,
   including after a launcher, proxy or daemon restart (P6).
-- **R3.** For the envelope, a refusal is `CHANGE_ENVELOPE_EXCEEDED` with that
-  reason, so the edit goes to a person.
+- **R3.** A caller maps a refusal to its own outcome; for the envelope that
+  is `CHANGE_ENVELOPE_EXCEEDED` with the reason, so the edit goes to a
+  person (O4).
 
 ## 10. Degraded behaviour
 
 - **D1.** The tool registry reports availability per run class with the
   reason. Agent tools that run arbitrary code and headless execution stay
-  `unavailable` whatever the launcher's state (T3).
+  `unavailable` whatever the launcher's state (T3). The registry also
+  holds the envelope's automatic publish, reported `unavailable` with the
+  reason `publish design not approved`; nothing in this contract makes it
+  available (O4).
 - **D2.** There is no fallback: no build outside gVisor, no output built
-  anywhere else (CI artefacts, host previews) standing in, and the envelope's
-  static checks alone never approve an automatic publish.
+  anywhere else (CI artefacts, host previews) standing in for the
+  launcher's, and the envelope's static checks alone never approve an
+  automatic publish.
 
 ## 11. Where it runs
 
@@ -430,13 +518,19 @@ extracted to disk.
 | CI (existing GitHub-hosted runs) | `runsc` installed in the job; the section 13 suite on our fixtures; never a client site |
 | A developer's macOS laptop       | Nothing sandboxed; the grammar corpus only; sandbox tests report absent                 |
 
-The launcher reports a run class available only after the full section 13
-suite has passed on the production sandbox VM, and again after any F3
-difference. No paid service and no new hosted runner.
+The launcher reports a run class available only after the section 13 suite
+has passed on the production sandbox VM, and again after any F3 difference.
+On the production VM the suite runs the crossings reachable through the
+proxy. The harness-only crossings (a create straight on the daemon) run in
+CI and at VM build, before production use, against the same pinned runsc
+and `daemon.json`. An
+F3 difference in engine, runtime or kernel needs a VM rebuild, with the
+harness-only crossings run again before production use. No paid service
+and no new hosted runner.
 
-Expected refusals, safe but frequent: sites over the size caps, sites with
-build-time fetches, and every site whose lockfile changed until its new pin
-is reviewed.
+Expected refusals, safe but frequent: sites over the size caps, sites
+whose build is not reproducible (F2), and every site whose lockfile changed
+until its new pin is reviewed.
 
 ## 12. Open questions for approval
 
@@ -454,34 +548,124 @@ is reviewed.
    for that exception by name.
 3. **The site engine's settled rules.** The site-engine specification says
    Ops Astro never calls a site-side command and never builds a site, so it
-   needs no package token (SPEC 5.7 and section 10, item 6). This contract's
-   first user builds the site, and `site.prepare` fetches private packages
-   with that token through the credential broker. Approving this contract
-   amends those two rules; refusing it keeps them and leaves #972 without a
-   build.
-4. **The host.** Which host serves client sites and whether it rewrites HTML
-   after the build (H1) is not recorded. Until it is, every site fails H1 and
-   is refused.
-5. **Unverified mechanisms.** Whether runsc's trace points can feed a sink on
-   the sandbox VM (H1), whether GitHub Packages downloads redirect and to which hosts
-   (E2), and how runsc backs `/dev/shm`. Each is settled by a crossing test
-   before the line that needs it may pass; until then that line refuses.
-6. **The publish flow.** O5 lands an approved edit as a fast-forward of the
-   client's branch, not through a merged request. That changes
-   `publish.ts`'s flow and each client repository's branch protection, and
-   is part of what this approval amends.
+   needs no package token (SPEC 5.7 and section 10, item 6). This contract
+   builds the site, and `site.prepare` fetches private packages with that
+   token through the credential broker. Approving this contract amends
+   those two rules; refusing it keeps them and leaves #972 without a build.
+4. **Unverified mechanisms.** Whether GitHub Packages downloads redirect and
+   to which hosts (E2), and how runsc backs `/dev/shm`. Each is settled by a
+   crossing test before the line that needs it may pass; until then that
+   line refuses.
+5. **The split (new in round 2).** The envelope's comparison, publish
+   binding and host fidelity are a separate design piece, and #972 waits on
+   it. Approving this contract approves running site builds in the sandbox,
+   and nothing that publishes. The host and its settings, the publish flow
+   and the client branch protection, and a deploy credential as a custody
+   item are that piece's questions, asked when it is drafted. Its direction
+   is set: for an automatic publish the host never builds the site, and
+   what ships is exactly the output that was compared.
 
 ## 13. Proof before merge of the implementation
 
-Every numbered line is in exactly one of these two lists:
+Every numbered line is in at least one of these two lists:
 
-- Crossings, in a real `runsc` container or VM: T1, B1-B9, E1-E3, P6, F1,
-  F2, H1. A real network attempt, a real write, a real secret
-  probe, a real cap, a real load.
+- Crossings, in a real `runsc` container or VM: T1, B1-B9, E1-E3, P3's
+  container record, P4's proxy delete, P6, F1, F2. A real network attempt, a
+  real write, a real secret probe, a real cap, a real load.
 - Corpus fixtures, one per refusal clause: T2's pin rule, T3, S0-S2, I1-I6,
-  P1-P5, P7, O1-O5, F3, R1-R3, D1-D2.
+  P1-P5, P7, O1-O4, F3, R1-R3, D1-D2.
 - Each test fails with its guarding clause removed, and the pull request
   lists that red under "Undo-red".
+- Named proofs for the round-2 clauses, each with its Undo-red:
+  - O4 and D1 (corpus): the launcher's interface offers no commit, deploy
+    or publish operation and its replies carry no credential or host field;
+    the publish job takes no launcher output and refuses without a
+    person's approving decision; the tool registry reports the envelope's
+    automatic publish `unavailable`. Two outputs that differ only in tar
+    mode, owner or time have the same digest. Undo-red: add a publish
+    operation or a credential field and the interface test fails; add a
+    launcher-output input to the publish job and the publish test fails;
+    report the registry entry available and the registry test fails; hash
+    the stream instead and the digest test fails.
+  - P6's sweep (crossing, real daemon): the CI harness creates a container
+    straight on the daemon with the fixed S1 body and never starts it (the
+    container a crash between create and record leaves), once before the
+    proxy starts with an empty record and once while it runs. Each is
+    swept (the second at the next create, for the count) and the next valid
+    create passes. A list reply with a malformed `Id`, a second list that is
+    not empty, or `/info` above zero leaves the launcher `unavailable`.
+    Undo-red: sweep the record only and the next create is refused for the
+    count. A delete answered "no such container", in a sweep and for a
+    recorded id, counts as removed; any other answer keeps the id in the
+    record. A failed sweep repeats every 30 s until one passes. Undo-red:
+    drop the record rule and an id leaves the record on a failed delete;
+    drop the repeat and the launcher stays `unavailable` after the daemon
+    recovers; treat "no such container" as a failure and the id stays in
+    the record and every later create is refused.
+  - P3 and P4's recorded container (crossing): the launcher is killed
+    between create and start, again after start while the build exits by
+    itself, and again mid-run. Each time a new create is refused while the
+    record holds the container, the proxy deletes it (by 30 s after the
+    launcher closes its attach connection in both directions, at the
+    latest 30 s after its
+    deadline),
+    and the next create then passes. A sweep whose delete is answered with
+    a conflict repeats until it passes. Undo-red: allow a non-empty record
+    and the second create runs beside the first; key the delete on wait or
+    a successful kill and the next create is refused for ever. A deadline
+    delete answered 500 starts a sweep and the next create passes;
+    Undo-red: no sweep, and every later create is refused.
+  - P3's candidate (corpus): a pin-list entry with a lockfile digest and no
+    image id, and its candidate C loaded. Three S1 creates of C pass; the
+    fourth is refused, and so are a second load of C, a create of C with
+    the S2 body, a create of C after a deploy changes that entry, and a
+    create of an unpinned image that is not the candidate. The candidate
+    record survives a proxy restart. A `site.build` request for that site
+    is refused `no pin`, and a create of C with another site's S1 body is refused. A candidate load whose `site` names an entry with an image
+    id, or another entry's open candidate, is refused, and a second
+    candidate's create is compared with its own entry's body. After a
+    failed F2, a commit that raises the attempt number lets a new load
+    pass. Undo-red: remove the candidate clause and F2's first create is
+    refused; remove the count or the reload rule and a fourth create
+    passes; remove the attempt number and the reload after a failed F2 is
+    refused. A create the daemon made but the proxy never recorded leaves
+    the creates-left count unchanged; a superseded candidate's image can be
+    deleted. A deployed pin-list id that is not the proxy's candidate for
+    that entry and attempt, or one with creates left, is treated as no
+    image id, and so is a deployed C with fewer than three recorded
+    creates, after a proxy restart too. Undo-red: count at the create
+    request, refuse the superseded delete, take the deployed id as is,
+    accept on creates left 0, or forget the accepted id on restart, and its
+    case fails. After a commit that raises the attempt number, a deploy of
+    the old accepted id is treated as no image id; a C whose third run was
+    killed is not accepted; C accepted, its image deleted, the proxy
+    restarted and C reloaded in the plain form gives an S1 create of C that
+    passes. Undo-red: key the accepted id on the entry only, or count a
+    killed run, and its case fails.
+  - O4's credential (corpus): the launcher unit's environment and mounts
+    hold no secret. Undo-red: give it one and the case fails.
+  - P1's daemon replies, P4's half-close and the pin list's probe and S2
+    entries (corpus and crossing): a daemon reply with a duplicate key, over
+    1 MiB or deeper than 32 leaves the launcher `unavailable`; a 90 s build
+    whose launcher half-closes stdin at once completes; an S0 create with
+    the probe image passes and an S1 create with it is refused; an S2
+    create with the base-plus-entrypoint image and B3's S2 `Env` passes,
+    and one carrying a site variable is refused; an S2 or S0 create with a
+    pinned site image, and an S1 create with the base-plus-entrypoint
+    image, are refused. After a proxy restart the probe and S2 creates still
+    pass. A `_ping` body other than `OK`, a 204 with a body, a frame of
+    stream 0, or a probe result with an extra or missing key leaves the
+    launcher `unavailable`, and the next passing probe makes it available.
+    Two outputs whose names and bytes would collide without the length
+    fields have different digests. Undo-red: drop each rule, or read the
+    probe's stdout as free text, and its case fails.
+  - F2 (crossing): three builds of a tree whose lockfile digest is not the
+    entry's are refused; three equal builds pass. Undo-red: skip the
+    lockfile check and the wrong tree passes.
+  - I4, B3 and B8 (corpus): a `site.build` request for a site whose pin has
+    no image id is refused `no pin`; a site record naming `HOME` gets B3's
+    value. A run whose container a sweep removes is refused `unavailable`.
+    Undo-red: remove each clause and its case passes.
 - The suite runs in CI against our fixtures and on the production sandbox VM
   (section 11).
 
