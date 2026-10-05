@@ -472,7 +472,9 @@ export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
 
 /**
  * A child's parent as it stands in this transaction (the U6 fallback: the row,
- * never a token's claims). Precedence as `resolveDelegation`'s: settled, then
+ * never a token's claims), its expiry judged on the statement's clock, as
+ * `resolveDelegation` judges the child's: a call that waited on a lock sees a
+ * parent that expired during the wait as expired. Precedence as `resolveDelegation`'s: settled, then
  * expired, then the recorded revocation cause. The holder presented a live
  * child credential, so the parent's state is named, not folded into
  * `DELEGATION_NOT_LIVE`; a parent this business cannot see is that.
@@ -491,7 +493,7 @@ async function parentStanding(
     }
   >(
     `select ${delegationColumns()}, settled_at is not null as settled,
-            expires_at <= now() as expired, revoked_at is not null as revoked,
+            expires_at <= clock_timestamp() as expired, revoked_at is not null as revoked,
             revocation_cause as cause
        from public.delegations where business_id = $1 and id = $2 ${lock}`,
     [tx.businessId, parentId],
@@ -602,7 +604,8 @@ export async function resolveDelegation(
  * `refusal` is the code `resolveDelegation` answered, and the row has to be
  * the one that answer came from. `DELEGATION_NARROWED` here is only R-B's
  * durable cause: revoked for `authority_lost`, unsettled and unexpired,
- * exactly the `narrowed` predicate above. A live delegation whose person has
+ * exactly the `narrowed` predicate above, on the same statement clock, so the
+ * two answer alike for an expiry a caller waited across. A live delegation whose person has
  * since lost a grant, by expiry as much as by revocation, answers the same
  * code from `checkDelegatedAuthority`; it is still live, so it is not
  * historical, nothing is returned for it here, and `resolveNarrowedDelegation`
@@ -616,9 +619,9 @@ export async function resolveHistoricalDelegation(
 ): Promise<{ readonly id: string } | undefined> {
   const ended =
     refusal === 'DELEGATION_NARROWED'
-      ? `revoked_at is not null and settled_at is null and expires_at > now()
+      ? `revoked_at is not null and settled_at is null and expires_at > clock_timestamp()
          and revocation_cause = 'authority_lost'`
-      : `(revoked_at is not null or settled_at is not null or expires_at <= now())`;
+      : `(revoked_at is not null or settled_at is not null or expires_at <= clock_timestamp())`;
   const rows = await tx.query<{ readonly id: string }>(
     `select id from public.delegations
       where business_id = $1 and agent_actor_id = $2 and credential_hash = $3 and ${ended}`,
