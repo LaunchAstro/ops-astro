@@ -13,13 +13,13 @@ export const PHRASED = 1_000;
 /**
  * Whether the parser reads `value` whole against `query`: the query is a
  * phrase, the value at most PARSED bytes, and none of the query's `lexemes`
- * past the 256 positions the parser keeps of a word in it, where a phrase
- * after a word's 256th use would be lost.
+ * at the 255 positions the parser keeps of a word in it, where a phrase
+ * after a word's 255th use would be lost.
  */
 const readable = (value, query, lexemes) => `case
       when ${query} is not null and octet_length(${value}) <= ${PARSED}
       then not exists (select from unnest(to_tsvector('simple', ${value})) u
-                        where u.lexeme = any(${lexemes}) and cardinality(u.positions) >= 256)
+                        where u.lexeme = any(${lexemes}) and cardinality(u.positions) >= 255)
       else false end`;
 
 /**

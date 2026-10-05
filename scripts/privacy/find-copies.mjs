@@ -24,7 +24,7 @@
 // or digits, as the text needs), or one of those ids in any letter case; a
 // column's or a JSON field's name never counts ("granted_at" names no Grant).
 // A value over 16,000 bytes, too long for the parser, one using a word of the
-// name 256 times or more (the parser keeps 256 places of a word), or any
+// name 255 times or more (the parser keeps 255 places of a word), or any
 // value against a name or text over 1,000 bytes, too long to be a phrase,
 // holds it loosely: when it holds each of its words anywhere, even inside
 // other words (more listed, never less; a person found so is 'named loosely

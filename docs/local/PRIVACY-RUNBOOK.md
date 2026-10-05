@@ -81,7 +81,7 @@ by kind. A copy not on the list is a copy the reply missed.
   every row holding the stored name of one of those people as whole words,
   when that name has four letters or digits. A value over 16,000 bytes is too
   long for the database to read as words, as is one using a word of the name
-  256 times or more, and a text or name over 1,000 bytes too long to read as
+  255 times or more, and a text or name over 1,000 bytes too long to read as
   a phrase: then a value holds it loosely, when it holds
   each of its words anywhere, even inside other words, so more is listed,
   never less. A person found so is "named loosely by the text": check that
