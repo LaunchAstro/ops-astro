@@ -41,6 +41,7 @@ Lane GRILL-FOLD, 27 September 2026, on the scoping decision "one key catalogue b
 | `chat:comment` | agency members; within a conversation, its members only | no | C71-D, C71-G | |
 | `chat:manage` | a team conversation's creator; owner and administrators | no | C71-G | |
 | `connection:write` | agency members where granted; owner and administrators | yes, inside its delegation | MP-13-5 |  |
+| `connection:read` | agency members where granted, business-wide or at one client; owner and administrators | no | MP-14-7a | the connector fleet: status, clients, custody references |
 | `conversation:write` | agency members where granted; owner and administrators | yes, inside its delegation | MP-10-4, MP-14-5, MP-4-8, MP-7-11, MP-9-2, AW-03 |  |
 | `conversation:read` | nobody on install: the read-any grant, given to a named person on purpose and shown as held | no | AW-03 | read another person's conversation or wrap-up (lane PI-FOLD-1) |
 | `credential:write` | every signed-in person, for agent credentials they issue, never wider than their own grants (self-scoped) | no | API-2 |  |

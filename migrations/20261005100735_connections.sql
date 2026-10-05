@@ -7,7 +7,7 @@
 -- One `connections` row per connector the business runs: which source, its
 -- status and the class of its last failure, how often it should sync and
 -- when it last did, the scope it was authorised with, and a reference to the
--- credential it uses in custody (20261003001523). A reference only: the row
+-- credential it uses in custody (20261005023013). A reference only: the row
 -- holds the secret's id, never any part of a value, and the fleet read shows
 -- whether that secret is set and nothing more.
 --
