@@ -278,7 +278,7 @@ it('a text naming two people prints the ids of each on a line of its own', async
   }
 });
 
-it('a row naming only the stored name of a person merged with the one named is found, by the name and by the printed ids', async () => {
+it('a row naming only the stored name of a person merged with the one named is found, and found again with the printed ids added', async () => {
   const a = randomUUID();
   const b = randomUUID();
   await world.db.admin.execute(
