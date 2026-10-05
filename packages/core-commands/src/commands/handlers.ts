@@ -70,6 +70,7 @@ import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 import { invitationAct } from './invitations.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
+import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
 import { reviseMap } from './wayfinder-revision.ts';
 
 /**
@@ -242,6 +243,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'invitation.create': invitationAct,
   'invitation.resend': invitationAct,
   'invitation.revoke': invitationAct,
+  // Settings ▸ Workflow triggers (C33), in `automations.ts`.
+  'activation.change': changeActivationAsPerson,
+  'definition.release': releaseDefinitionVersion,
 };
 
 function writeOwned(

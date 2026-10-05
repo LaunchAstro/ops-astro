@@ -315,7 +315,10 @@ is the one exception to "no credential, no call"
 `AGENT_OPERATIONS`), and the matrix's case (i) asserts the saved comment
 identity. The agent may write in the `internal` audience only
 (`AGENT_AUDIENCES`). A `client` comment is `AUDIENCE_NOT_PERMITTED` 422, which
-the same case asserts. Internal-only is Nathan's ruling (OWNER-CARD section 6),
+the same case asserts. An agent credential (API-2) runs the person handlers as
+its agent and is held the same way: internal comments, the agent's update
+fields and the assignee only (`updateTask`, `assignTask` and `commentOnTask`,
+#420). Internal-only is Nathan's ruling (OWNER-CARD section 6),
 and `tests/acceptance/comment-rulings.test.ts` holds it over HTTP.
 
 **`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
@@ -483,11 +486,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:744-770`, run at `:903-911`). It gets a login and an acting identity,
-  and no membership and no business grant (`:162-165`, `:315-317`). The seed
+  user (`:747-773`, run at `:906-914`). It gets a login and an acting identity,
+  and no membership and no business grant (`:165-168`, `:318-320`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:764-793`, `:932-942`).
+  (`:767-796`, `:935-945`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -775,8 +778,12 @@ names the person it acts for. Every grant check asks the key within the ticked
 ones and the person's grants as they are now (`subjectsOf`, `askedFor`); the
 credential has no sign-in assurance, so a money step-up is never met. It
 reaches the rows an agent may reach under a delegation that need no lease
-(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.comment`, `task.propose`
-and `session.capabilities`); anything else is `DELEGATION_EXCLUDES_OPERATION`,
+(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.update`, `task.assign`,
+`task.set_scores`, `task.set_adhoc`, `task.set_category`, `task.comment`,
+`task.edit_comment`, `task.delete_comment`, `task.propose`,
+`run.child_handback` and `session.capabilities`), held to a delegated agent's
+limits where the handler has them (`updateTask`, `assignTask`, `commentOnTask`);
+anything else is `DELEGATION_EXCLUDES_OPERATION`,
 `run.revise_state` included by name (`OUTSIDE_REACH`), though a run's delegation
 reaches it.
 A create asks the person's business-wide `task:write` within the ticked keys; it
@@ -805,6 +812,14 @@ active membership, over the whole business or over one client of it
 (`client.create`) is `record:write`, never an agent's. Changing a client's
 privacy settings (`client.set_privacy`, C60) is `privacy:manage`, asked at that
 client's party scope, never an agent's.
+
+Settings ▸ Workflow triggers (C33) reads the business's automations under
+`settings:read` (`automation.registry`), changes an activation under
+`settings:manage` (`activation.change`) and releases a definition version under
+`automation:manage` (`definition.release`), each asked of the whole business
+and none ever an agent's. A definition carries no client, so a grant at one
+client's scope reaches none of the three. Switching an activation to a
+schedule or an event starts nothing; a run waits on C52-A's standing approval.
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a

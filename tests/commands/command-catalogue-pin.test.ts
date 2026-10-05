@@ -57,6 +57,10 @@
 // The fourteenth is AW-11's hand-over and handback: untargeted writes on
 // `run` an agent reaches under its delegation, and a person is refused both
 // by name.
+// The fifteenth is C33's `activation.change` and `definition.release`:
+// untargeted person writes no agent reaches, one row each in the tables that
+// list every write, every untargeted one or every operation with no expected
+// revision, beside the `automation.registry` read.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -217,6 +221,11 @@ vi.mock('../../packages/core-commands/src/commands/tasks-pickup.ts', async (orig
   ...(await original<object>()),
   pickupAsPerson: recorder('pickupAsPerson'),
 }));
+vi.mock('../../packages/core-commands/src/commands/automations.ts', async (original) => ({
+  ...(await original<object>()),
+  changeActivationAsPerson: recorder('changeActivationAsPerson'),
+  releaseDefinitionVersion: recorder('releaseDefinitionVersion'),
+}));
 vi.mock('../../packages/core-commands/src/commands/wayfinder.ts', async (original) => ({
   ...(await original<object>()),
   setTaskType: recorder('setTaskType'),
@@ -338,6 +347,8 @@ const PINNED_RUNTIME_SHAPED = {
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
+  'activation.change': ['activationId', 'versionId'],
+  'definition.release': ['definitionId'],
   'budget.record_outcome': ['recordId', 'attemptId'],
   'budget.set_planning_cap': [],
   'budget.top_up': ['recordId'],
@@ -413,6 +424,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'access.grant',
   'access.read',
   'access.revoke',
+  'activation.change',
+  'automation.registry',
   'budget.record_outcome',
   'budget.set_planning_cap',
   'budget.top_up',
@@ -430,6 +443,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'credential.issue',
   'credential.revoke',
   'definition.attribution',
+  'definition.release',
   'delegation.revoke',
   'gate.pending',
   'grant.revoke',
@@ -735,6 +749,8 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.set_type', operationId: 'op', recordId: 'r', taskType: 'research' },
   { command: 'map.revise', operationId: 'op', recordId: 'r', notes: 'n' },
   { command: 'map.scope', operationId: 'op', recordId: 'r', client: 'c' },
+  { command: 'activation.change', operationId: 'op', versionId: 'v', mode: 'manual' },
+  { command: 'definition.release', operationId: 'op', name: 'n', modes: ['manual'] },
   {
     command: 'budget.set_planning_cap',
     operationId: 'op',
@@ -907,6 +923,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.set_type': ['setTaskType', 'request'],
   'map.revise': ['reviseMap', 'request'],
   'map.scope': ['scopeMap', 'request'],
+  'activation.change': ['changeActivationAsPerson', 'request'],
+  'definition.release': ['releaseDefinitionVersion', 'request'],
   'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
@@ -974,7 +992,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same ninety-nine from an expected revision', () => {
+  it('exempts the same one hundred and four from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

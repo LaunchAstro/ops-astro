@@ -49,6 +49,7 @@ import {
   Written,
 } from './settings/panels.tsx';
 import { PlanningCapSection } from './settings/planning-cap.tsx';
+import { seesTriggers, TriggersPanel } from './settings/triggers.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
 import { StepUpPrompt } from '../views/step-up-prompt.tsx';
 import { WindowRow } from './settings/windows.tsx';
@@ -276,6 +277,9 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
         capabilities={model.capabilities}
         reload={model.reload}
       />
+
+      {/* Workflow triggers (C33), for a caller the server says holds settings:read. */}
+      {seesTriggers(model.capabilities) ? <TriggersPanel client={props.client} /> : null}
     </div>
   );
 }

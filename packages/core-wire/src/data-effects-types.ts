@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // S0-5: the shape of a command's data effects and the class the gate reads,
-// derived from them and never set by hand, and the constructors its table is
-// written with. Moved whole from `data-effects.ts`, which re-exports every type
-// and `classOf` here, to keep that file under the line limit.
+// derived from them and never set by hand. Moved whole from `data-effects.ts`,
+// which re-exports every type here, to keep that file under the line limit;
+// the three builders its declarations use (`business`, `client`, `writing`)
+// moved with them.
 
 /** `client`: a row that holds a task's id or a client's (ADR 0014); `business`: the agency's own. */
 export type EffectScope = 'business' | 'client';
@@ -61,13 +62,11 @@ export function classOf(effects: DataEffects): DataClass {
   return 'made-up-safe';
 }
 
-/** Rows of the agency's own, of these kinds. */
+/** A command's writes to rows of these kinds, at business or client scope. */
 export const business = (...kinds: string[]): RecordWrite[] =>
   kinds.map((kind) => ({ kind, scope: 'business' }));
-/** Rows that hold a task's or a client's id, of these kinds. */
 export const client = (...kinds: string[]): RecordWrite[] =>
   kinds.map((kind) => ({ kind, scope: 'client' }));
-/** A command's effects: these writes and outside effects, no intake, no access change. */
 export const writing = (
   writes: readonly RecordWrite[],
   outside: readonly OutsideEffect[] = [],

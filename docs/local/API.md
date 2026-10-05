@@ -1684,6 +1684,9 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `settings.set_conversation_window`         | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `settings.set_retention_window`            | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 
+| `automation.registry` | `readAutomationRegistry` (`reads/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.change` | `changeActivationAsPerson` (`commands/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `definition.release` | `releaseDefinitionVersion` (`commands/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
 
@@ -2777,10 +2780,10 @@ Named so they are not read as settled:
   verifies; only the gate and lineage checks stand against it. The key
   resolver holds one key: rows under an earlier key id fail the read.
 - **An agent comments in the `internal` audience only.** The `task.comment` row
-  passes `AGENT_AUDIENCES` (`commands/agent-operations.ts`) to
-  `writeTaskComment` (`commands/tasks-comment.ts`), which refuses `client` as
-  `AUDIENCE_NOT_PERMITTED`. This is Nathan's ruling (OWNER-CARD section 6), not
-  an open item.
+  passes `AGENT_AUDIENCES` (`commands/tasks-comment.ts`) to `writeTaskComment`,
+  which refuses `client` as `AUDIENCE_NOT_PERMITTED`. An agent credential
+  (API-2) reaches `commentOnTask` as its agent and gets the same set. This is
+  Nathan's ruling (OWNER-CARD section 6), not an open item.
 - **One lane choice awaits root or owner confirmation.** The heartbeat bounds are 1 hour a beat and 8 hours in total
   (`MAXIMUM_RENEWAL_SECONDS` and `MAXIMUM_LEASE_LIFETIME_SECONDS`,
   `core-runtime/src/heartbeat.ts`). Root ruling 6 at dd30aa8 covers bare agent
@@ -3317,6 +3320,47 @@ line alike. The check runs under the task's row lock, so a content write
 holding that lock lands wholly before it (the change is refused) or wholly
 after it (the write is stale against the change's revision and retried). A
 trashed task still answers `NOT_FOUND`.
+
+## Workflow triggers (C33)
+
+Settings ▸ Workflow triggers: one read on `settings:read`, and two changes,
+each held business-wide and never an agent's. `activation.change` is
+`settings:manage`; `definition.release` is `automation:manage` (the key
+catalogue: owner and administrators). Definitions carry no client, so the
+registry is the business's; a holder at one client's scope is refused all
+three (`tests/automations/c33-authority.test.ts`).
+
+A person releases a definition version: the first release names a new
+definition by `name` and `kind`, a later one names it by `definitionId`. The
+version takes the next number, pins its bytes by digest and size, and lists
+its inputs, its operations and the activation modes it permits. It never
+changes after release (`definition_versions`, migration 20261005003850). Two
+releases at once on one definition both land, on distinct numbers: the one
+that finds its number taken asks again in its own transaction. The digest and
+size are the caller's until AW-02's pinned read computes them from the bytes.
+
+An activation is pinned to one version of its own definition, in a mode that
+version permits (checked by the command and again by the database). Without an
+`activationId` the change writes a new activation; with one it changes that
+activation at the revision the caller read, compared in the update itself, so
+two changes sent at one revision apply once. Changing a mode starts nothing:
+no occurrence and no planned run, since a run needs an occurrence and C52-A's
+standing approval.
+
+Every value is checked against a closed grammar before anything is written,
+and refused `FIELD_VALUE_INVALID` naming its field: a digest is 64 lower-case
+hex digits, a mode, kind or mode list comes from its fixed set, an operation
+or event kind is a dotted lower-case name, and a name or an input's key or
+value is at most 200 characters of storable text (an allow-list of code points:
+no control character, line break, bidi mark or override, or lone surrogate).
+Another business's definition, version or activation answers exactly as a
+fabricated identifier does.
+
+| Operation             | Route                  | Body                                                                                        | Answer or refusals                                                                                                                                                                                                                                                                         |
+| --------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `automation.registry` | `/automation/registry` | `{}`                                                                                        | `{ ok: true, definitions: [{ id, kind, name, versions: [{ id, number, contentDigest, contentSize, modes, releasedBy, releasedAt }], activations: [{ id, versionId, versionNumber, mode, everyMinutes, eventKind, enabled, changedBy, changedAt, revision }] }] }`; `SCOPE_NOT_GRANTED` 403 |
+| `activation.change`   | `/activation/change`   | `{ activationId?, versionId, mode, everyMinutes?, eventKind?, enabled, expectedRevision? }` | `{ activationId, versionId, mode, enabled }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for a mode the version does not permit or another definition's version; `VERSION_STALE` 409                                                      |
+| `definition.release`  | `/definition/release`  | `{ definitionId? \| name, kind, contentDigest, contentSize, inputs, operations, modes }`    | `{ definitionId, versionId, number }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404 for a definition not in the business; `VERSION_STALE` 409 when three releases in a row find their number taken                                                                          |
 
 ## Custody (C31)
 

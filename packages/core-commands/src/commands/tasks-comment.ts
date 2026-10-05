@@ -67,6 +67,8 @@ import { effectRefusal } from './tasks-comment-effect.ts';
 
 const AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal', 'client']);
 const EXTERNAL_AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['client']);
+/** What an agent writes a comment in, delegated or by credential: its team's notes, not the client's thread. */
+export const AGENT_AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal']);
 const TYPES: ReadonlySet<string> = new Set<CommentType>(['note', 'client', 'system']);
 
 /** What a person writing on a task writes, when they say nothing else. */
@@ -92,6 +94,18 @@ const MENTIONS_FIXES: readonly string[] = [
   'Send mentions as a list of person ids, or leave it out.',
 ];
 
+/**
+ * Who a person-entry caller writes for: an agent credential (API-2) is its
+ * agent and writes team notes only, as the agent row does (#420); an external
+ * party writes to the client; a member writes either.
+ */
+function audiencesOf(session: CommandContext['session']): ReadonlySet<string> {
+  if (session.credentialScope === undefined) {
+    return session.roleKey === null ? EXTERNAL_AUDIENCES : AUDIENCES;
+  }
+  return AGENT_AUDIENCES;
+}
+
 export async function commentOnTask(
   tx: TenantQuery,
   context: CommandContext,
@@ -114,7 +128,7 @@ export async function commentOnTask(
       target,
       authorActorId: context.session.actorId,
       entryPoint: context.entryPoint,
-      audiences: context.session.roleKey === null ? EXTERNAL_AUDIENCES : AUDIENCES,
+      audiences: audiencesOf(context.session),
       operationId,
       delegationId: null,
     },
@@ -136,8 +150,8 @@ export interface CommentTarget {
   readonly entryPoint: EntryPoint;
   /**
    * The audiences this caller may write in. A member holding `comment` writes
-   * in either; an external party (`EXTERNAL_AUDIENCES`) and a delegated agent
-   * (`AGENT_AUDIENCES`, `agent-operations.ts`) are narrower, and an audience
+   * in either; an external party (`EXTERNAL_AUDIENCES`) and an agent, delegated
+   * or by credential (`AGENT_AUDIENCES`), are narrower, and an audience
    * outside this set is `AUDIENCE_NOT_PERMITTED` rather than the shape
    * refusal an unknown audience gets.
    */
