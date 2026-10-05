@@ -73,10 +73,10 @@ export default defineConfig({
     // asks for), Sol's six F2 lost-answer retry proofs, Sol's two F3
     // save-order proofs and Sol's OW-016 route proof open their worlds with no
     // skip, as do Sol's three template lock and clone catalogue proofs and the
-    // cases written beside them, and C31's Sol proof files; without a database
-    // they are left out here, and the manifests run them where there is one.
-    // C31's corrupted audit chain fails by design: only the proof that spawns
-    // it from inside a test worker collects it.
+    // cases written beside them, C31's Sol proof files and the Keys panel's DB
+    // proofs; without a database they are left out here, and the manifests run
+    // them where there is one. C31's corrupted audit chain fails by design: only
+    // the proof that spawns it from inside a test worker collects it.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
@@ -95,6 +95,9 @@ export default defineConfig({
             'tests/custody/c31-revoked-list-and-revision-range.test.ts',
             'tests/custody/c31-secret-set-guards.test.ts',
             'tests/custody/c31-two-setters-overlap.test.ts',
+            'tests/surfaces/c31-keys-panel-first-set-refused.test.tsx',
+            'tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx',
+            'tests/surfaces/c31-keys-panel-stale-set-refused.test.tsx',
             'tests/api/end-others-provider-clock-skew.test.ts',
             'tests/api/end-others-delayed-ending.test.ts',
             'tests/api/end-others-ended-session-leaves-live-list.test.ts',

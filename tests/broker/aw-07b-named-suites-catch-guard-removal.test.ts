@@ -97,9 +97,9 @@ mutationIt(
   async () => {
     await namedTestsCatch(
       {
-        file: 'packages/core-custody/src/broker-email.ts',
-        from: '!mail.sender.verified || mail.sender.mock !== false || !onSubdomain',
-        to: 'mail.sender.mock !== false || !onSubdomain',
+        file: 'packages/core-custody/src/email-class.ts',
+        from: '    sender.verified &&\n',
+        to: '',
       },
       [
         'tests/broker/aw-07b-sender-mention.test.ts',

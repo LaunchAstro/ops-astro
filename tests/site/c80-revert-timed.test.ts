@@ -16,21 +16,18 @@ const TARGET: CorrectionTarget = {
   replacement: 'beside',
 };
 
+const LIVE = 'https://agency.example/about/';
 const DECIDED = Date.parse('2026-09-29T10:00:00Z');
-const CHANGE = {
-  files: [
-    {
-      path: TARGET.path,
-      before: '<p>We walk alongside you.</p>\n',
-      after: '<p>We walk beside you.</p>\n',
-    },
-  ],
-};
-
 const INPUT = {
   publishedRevision: 'def456',
   target: TARGET,
-  change: CHANGE,
+  occurrence: {
+    left: 'We walk ',
+    right: ' you.',
+    index: 0,
+    observed: ['beside'],
+    liveAt: LIVE,
+  },
   seam: 'revert-of-def456',
   decidedAt: DECIDED,
 };
@@ -44,7 +41,9 @@ describe('C80 revert timed', () => {
         Promise.resolve({ kind: 'ok', value: { revision: 'rev789', deploymentId: 'dpl_2' } }),
       readDeployment: () =>
         Promise.resolve({ kind: 'ok', value: { revision: 'rev789', served: true } }),
-      capture: () => Promise.resolve({ ok: true, value: { text: 'We walk alongside you.' } }),
+      capture: () =>
+        Promise.resolve({ ok: true, value: { text: 'We walk alongside you.', url: LIVE } }),
+      raiseTask: () => Promise.resolve(),
     });
     expect(outcome).toEqual({
       state: 'reverted',
@@ -64,7 +63,9 @@ describe('C80 revert timed', () => {
         Promise.resolve({ kind: 'ok', value: { revision: 'rev789', deploymentId: 'dpl_2' } }),
       readDeployment: () =>
         Promise.resolve({ kind: 'ok', value: { revision: 'rev789', served: true } }),
-      capture: () => Promise.resolve({ ok: true, value: { text: 'We walk beside you.' } }),
+      capture: () =>
+        Promise.resolve({ ok: true, value: { text: 'We walk beside you.', url: LIVE } }),
+      raiseTask: () => Promise.resolve(),
     });
     expect(outcome).toMatchObject({ state: 'revert_accepted' });
     expect(outcome).not.toHaveProperty('intervalMs');
@@ -84,6 +85,7 @@ describe('C80 revert dispatch', () => {
         },
         readDeployment: () => Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' }),
         capture: () => Promise.resolve({ ok: false }),
+        raiseTask: () => Promise.resolve(),
       });
     await attempt();
     await attempt();
@@ -109,6 +111,7 @@ describe('C80 revert dispatch', () => {
           }),
         readDeployment: () => Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' }),
         capture: () => Promise.resolve({ ok: false }),
+        raiseTask: () => Promise.resolve(),
       });
     expect(await refusedWith('sha_mismatch')).toMatchObject({ state: 'failed' });
     expect(await refusedWith()).toMatchObject({ state: 'unknown', code: 'PROVIDER_REFUSED' });

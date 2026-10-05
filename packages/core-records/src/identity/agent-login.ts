@@ -22,6 +22,7 @@ import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { AgentIdentityRefusalCode } from './refusals.ts';
 import type { VerifiedSubject } from './verified-subject.ts';
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
+import { sessionEnded } from './sessions.ts';
 
 /** What an authenticated agent call runs as. There is no person here. */
 export interface AgentSession {
@@ -75,14 +76,16 @@ export async function resolveAgentLogin(
   const found = rows[0];
 
   if (found === undefined || found.actor_id === null) {
-    const refusal = refuseCommand('AUTH_NO_AGENT_IDENTITY', [], NO_AGENT_FIXES);
-    await recordAuthenticationAttempt(tx, {
-      owner: 'agent_login',
+    return await refused(
+      tx,
       presented,
-      outcome: 'refused',
-      refusalCode: refusal.code,
-    });
-    return refusal;
+      refuseCommand('AUTH_NO_AGENT_IDENTITY', [], NO_AGENT_FIXES),
+    );
+  }
+  // A session ended anywhere the login reaches, as a person's is: signed out,
+  // its other sessions ended, or a reset of the login (C58, C40).
+  if (await sessionEnded(tx, presented)) {
+    return await refused(tx, presented, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
   }
 
   const session: AgentSession = {
@@ -99,6 +102,21 @@ export async function resolveAgentLogin(
     actorId: session.actorId,
   });
   return session;
+}
+
+/** A refusal and its record commit together. */
+async function refused(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+  refusal: CommandRefusal<AgentIdentityRefusalCode>,
+): Promise<CommandRefusal<AgentIdentityRefusalCode>> {
+  await recordAuthenticationAttempt(tx, {
+    owner: 'agent_login',
+    presented,
+    outcome: 'refused',
+    refusalCode: refusal.code,
+  });
+  return refusal;
 }
 
 /**

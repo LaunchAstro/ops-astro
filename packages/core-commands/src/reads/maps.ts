@@ -162,6 +162,14 @@ export async function readMapView(
   );
   const map = maps[0];
   if (map === undefined) return undefined;
+  // Read again, held `for share` before any child is read, as `dispatch.ts`
+  // holds a ticket's map: a retype committed since is seen, none until served.
+  const held = await tx.query(
+    `select 1 from public.records where business_id = $1 and id = $2
+        and deleted_at is null and data ->> 'type' = 'map' for share`,
+    [tx.businessId, mapId],
+  );
+  if (held.length === 0) return undefined;
   // The components and versions as of the version read with the map, so a
   // revision committed since is not mixed into this one. A linked ticket's id
   // shows only while it is still a live non-map ticket of this map.

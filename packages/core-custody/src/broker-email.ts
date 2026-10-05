@@ -1,36 +1,60 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The broker's email send (AW-07b): the only way a person is told by email
-// that an inbox item waits. The delivery worker names an item and nothing
-// else; the recipient, their address and the link are read here, and the
-// message leaves through custody under the catalogued `email.send`.
+// that an inbox item waits. The delivery worker names an item, or a person
+// for the daily batch (`email-timing.ts`), and nothing else; the recipient,
+// their address and the link are read here, and the message leaves through
+// custody under the catalogued `email.send`.
 //
 // 1. Check, in the item's business: the operation is catalogued and routed,
 //    the item is open, its recipient can read its task now (so another
-//    client's task is never mailed about), they have a confirmed address, and
-//    no earlier email attempt on the item might have gone out. A refusal
-//    writes nothing and sends nothing. Then the attempt is recorded `asked`.
+//    client's task is never mailed about), has not seen it in the app, has a
+//    confirmed address, and no earlier email attempt on the item might have
+//    gone out; relationship mail to a client also needs the client's week
+//    unspent (`email-class.ts`). A refusal writes nothing and sends nothing.
+//    Then each item the email covers is recorded `asked`, with its class.
 // 2. Send, through custody, a request the adapter built from the declared
-//    fields. The body carries the item's address and never a decision.
-// 3. Record what came back as the attempt's next observation: `accepted`
-//    with the provider's message id, or `failed` with the fault's kind. No
-//    answer body, address or link is kept, returned or written anywhere.
+//    fields. The body carries one address, the item's or the inbox's, and
+//    never a decision. A send that paused past the fence since its ask was
+//    reserved sends nothing and records `failed`, `expired` (`lapsed`).
+// 3. Record what came back as each item's next observation: `accepted`
+//    with the provider's message id (`mock:` before it over the loopback
+//    mock, never `provider:`), or `failed` with the fault's kind. No answer
+//    body, address or link is kept, returned or written anywhere.
 //
 // Nothing here reads a provider answer as an instruction, and no path from
 // an answer reaches the item's work state or any gate: an attempt never
 // moves the item (`recordDeliveryAttempt`).
 
 import {
-  hasRoom,
   recordDeliveryAttempt,
   taskAccess,
   type BusinessId,
   type Database,
+  type InboxReason,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { Broker, BrokerRoute, ProviderAdapter } from './broker-types.ts';
 import type { CustodyOutcome } from './custody.ts';
+import { holdItem } from './email-item-lock.ts';
+import {
+  classOf,
+  type CheckedItem,
+  type DeliverRefusal,
+  lapsed,
+  mayStillSend,
+  type Reading,
+  recordAsked,
+  roomFor,
+  stillReadable,
+  WEEK_MS,
+  windowSpent,
+  type Room,
+} from './email-class.ts';
+import { isLoopbackMock, senderVerifiedFor } from './email-mock-custody.ts';
+
+export { recordAsked, stillReadable, type CheckedItem, type Room } from './email-class.ts';
 
 /** The catalogued name the send dispatches by. */
 export const EMAIL_OPERATION = 'email.send';
@@ -48,8 +72,10 @@ export type EmailRefusal =
   | 'OPERATION_NOT_CATALOGUED'
   | 'ITEM_NOT_OPEN'
   | 'ITEM_WITHHELD'
+  | 'ITEM_SEEN'
   | 'NO_ADDRESS'
   | 'EMAIL_MAY_HAVE_GONE'
+  | 'CLIENT_CAP_SPENT'
   | 'EMAIL_AT_CEILING';
 
 export type EmailResult =
@@ -61,31 +87,6 @@ export type EmailResult =
       readonly attemptId: string;
       readonly fault: string;
     };
-
-/**
- * Failures that prove the provider took nothing: custody never reached it.
- * Any answer from the provider, a redirect or an error status included, may
- * have sent, so it is never followed by a second send (the broker's rule).
- */
-const NOTHING_SENT: ReadonlySet<string> = new Set(['refused', 'unlisted', 'bad_path', 'forbidden']);
-
-/** RFC 5322's dot-atom in ASCII: a from's local part, never a display name, space or line break. */
-const DOT_ATOM = /^[\w!#$%&'*+/=?^`{|}~-]+(?:\.[\w!#$%&'*+/=?^`{|}~-]+)*$/u;
-/** Printable ASCII: a domain that lower-cases to the verified subdomain only if it already is one. */
-const ASCII = /^[!-~]+$/u;
-
-/** Emails in flight for this business: items whose last email observation is still `asked`. */
-async function emailsInFlight(tx: TenantQuery): Promise<number> {
-  const [flight] = await tx.query<{ readonly n: number }>(
-    `select count(*)::int as n from (
-       select distinct on (item_id) state from public.inbox_delivery_attempts
-        where business_id = $1 and channel = 'email'
-        order by item_id, observed_seq desc) last
-      where state = 'asked'`,
-    [tx.businessId],
-  );
-  return flight?.n ?? 0;
-}
 
 interface Routed {
   readonly operation: ModelOperation;
@@ -101,75 +102,39 @@ function routed(broker: Broker): Routed | undefined {
   return route === undefined || adapter === undefined ? undefined : { operation, route, adapter };
 }
 
-/** The item's last email observation allows a send: none yet, or a failure that proves nothing went. */
-async function mayStillSend(tx: TenantQuery, itemId: string): Promise<boolean> {
-  const [last] = await tx.query<{ readonly state: string; readonly evidence: string | null }>(
-    `select state, evidence from public.inbox_delivery_attempts
-      where business_id = $1 and item_id = $2 and channel = 'email'
-      order by observed_seq desc limit 1`,
-    [tx.businessId, itemId],
-  );
-  return last === undefined || (last.state === 'failed' && NOTHING_SENT.has(last.evidence ?? ''));
-}
-
-interface HeldItem {
-  readonly recipient: string;
-  readonly subject: string;
-}
-
-async function lockOpenItem(tx: TenantQuery, itemId: string): Promise<HeldItem | undefined> {
-  const [item] = await tx.query<HeldItem>(
-    `select recipient_person_id as recipient, subject_record_id as subject
-       from public.inbox_items
-      where business_id = $1 and id = $2 and work_state = 'open'
-      for update`,
-    [tx.businessId, itemId],
-  );
-  return item;
-}
-
-async function holdTask(tx: TenantQuery, taskId: string, wait: boolean): Promise<boolean> {
-  const rows = await tx.query(
-    `select 1 from public.records where business_id = $1 and id = $2
-        for share${wait ? '' : ' skip locked'}`,
-    [tx.businessId, taskId],
-  );
-  return rows.length > 0;
-}
-
 /**
- * Lock the open item and hold its task `for share`, never waiting on the task
- * while holding the item: `task.assign` locks a task, then its items, so every
- * wait here goes task then item. The item is kept only when its task can be
- * held at once. Otherwise the item is released, the task is waited for, and
- * the item is locked again and must still be the open item first read.
+ * Every check on one item, in its business, locking it (`holdItem`: its task, then the item): open,
+ * its recipient can read its task now (so another client's task is never mailed about), they have
+ * not seen it in the app, they have a confirmed address, and no earlier email attempt on it might
+ * have gone out. Writes nothing.
  */
-async function holdItem(
+export async function checkItem(
   tx: TenantQuery,
   itemId: string,
-): Promise<HeldItem | 'ITEM_NOT_OPEN' | 'ITEM_WITHHELD'> {
-  await tx.query('savepoint email_item');
-  const item = await lockOpenItem(tx, itemId);
+): Promise<CheckedItem | EmailRefusal> {
+  const held = await holdItem(tx, itemId);
+  if (typeof held === 'string') return held;
+  const [item] = await tx.query<{
+    readonly recipient: string;
+    readonly subject: string;
+    readonly reason: InboxReason;
+    readonly factKind: string;
+    readonly factId: string;
+    readonly client: string | null;
+    readonly seen: boolean;
+  }>(
+    `select i.recipient_person_id as recipient, i.subject_record_id as subject, i.reason,
+            i.fact_kind as "factKind", i.fact_id as "factId", r.uuid_7 as client,
+            exists (select 1 from public.inbox_attention a
+                     where a.business_id = i.business_id and a.item_id = i.id) as seen
+       from public.inbox_items i
+       join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
+      where i.business_id = $1 and i.id = $2 and i.work_state = 'open'`,
+    [tx.businessId, itemId],
+  );
   if (item === undefined) return 'ITEM_NOT_OPEN';
-  if (await holdTask(tx, item.subject, false)) return item;
-  await tx.query('rollback to savepoint email_item');
-  await holdTask(tx, item.subject, true);
-  const again = await lockOpenItem(tx, itemId);
-  if (again === undefined) return 'ITEM_NOT_OPEN';
-  return again.recipient === item.recipient && again.subject === item.subject
-    ? again
-    : 'ITEM_WITHHELD';
-}
-
-/** Step 1: every check, then the `asked` observation. The address stays in this process. */
-async function ask(
-  tx: TenantQuery,
-  itemId: string,
-  operation: ModelOperation,
-): Promise<{ readonly attemptId: string; readonly to: string } | EmailRefusal> {
-  const item = await holdItem(tx, itemId);
-  if (typeof item === 'string') return item;
   if ((await taskAccess(tx, item.recipient, item.subject)) !== 'readable') return 'ITEM_WITHHELD';
+  if (item.seen) return 'ITEM_SEEN';
   const [address] = await tx.query<{ readonly value: string }>(
     `select value from public.person_identifiers
       where business_id = $1 and person_id = $2 and kind = 'email' and review_state = 'confirmed'
@@ -178,21 +143,54 @@ async function ask(
   );
   if (address === undefined) return 'NO_ADDRESS';
   if (!(await mayStillSend(tx, itemId))) return 'EMAIL_MAY_HAVE_GONE';
-  // The catalogued concurrency, as a durable limit: an ask counts until its outcome is kept.
-  const limit = {
-    name: `email:${operation.key}`,
-    limit: operation.concurrency,
-    count: emailsInFlight,
+  return {
+    itemId,
+    reason: item.reason,
+    recipient: item.recipient,
+    subject: item.subject,
+    to: address.value,
+    client: item.client,
+    mailClass: await classOf(tx, item),
   };
-  if (!(await hasRoom(tx, [limit]))) return 'EMAIL_AT_CEILING';
-  const attemptId = await recordDeliveryAttempt(tx, { itemId, channel: 'email', state: 'asked' });
-  return { attemptId, to: address.value };
 }
 
-/** Step 3's reading: the provider's message id, or the fault's kind. Never the answer's body. */
+/** One item, sent on its own: every check, the client's weekly cap, the ceiling, then `asked`. */
+export async function askOne(
+  tx: TenantQuery,
+  itemId: string,
+  room: Room,
+): Promise<Asked | EmailRefusal> {
+  const item = await checkItem(tx, itemId);
+  if (typeof item === 'string') return item;
+  if (
+    item.mailClass === 'relationship' &&
+    item.client !== null &&
+    (await windowSpent(tx, { client: item.client }, WEEK_MS))
+  ) {
+    return 'CLIENT_CAP_SPENT';
+  }
+  if (!(await room())) return 'EMAIL_AT_CEILING';
+  if ((await stillReadable(tx, [item])).length === 0) return 'ITEM_WITHHELD';
+  const reserved = await recordAsked(tx, [item], false);
+  return { itemIds: [itemId], to: item.to, link: itemId, reserved };
+}
+
+/**
+ * What one email covers: its items, its recipient's address, the item it links or the inbox, and
+ * the host's clocks when its asks were reserved.
+ */
+export interface Asked {
+  readonly itemIds: readonly string[];
+  readonly to: string;
+  readonly link: string | null;
+  readonly reserved: Reading;
+}
+
+/** Step 3's reading: the message id (whose: `source`), or the fault's kind. Never the body. */
 function observed(
   outcome: CustodyOutcome,
   operation: ModelOperation,
+  source: 'provider' | 'mock',
 ): { readonly state: 'accepted' | 'failed'; readonly evidence: string } {
   if (outcome.kind === 'refused') return { state: 'failed', evidence: 'refused' };
   if (outcome.kind === 'worker_lost') return { state: 'failed', evidence: 'worker_lost' };
@@ -205,7 +203,65 @@ function observed(
   }
   const answer = operation.answer(body);
   if (answer === undefined) return { state: 'failed', evidence: 'malformed' };
-  return { state: 'accepted', evidence: `provider:${answer.text}` };
+  return { state: 'accepted', evidence: `${source}:${answer.text}` };
+}
+
+export type Delivered<R extends string> =
+  | { readonly ok: false; readonly code: R | DeliverRefusal }
+  | {
+      readonly ok: true;
+      readonly state: 'accepted' | 'failed';
+      readonly evidence: string;
+      readonly attemptIds: readonly string[];
+    };
+
+/**
+ * Steps 1 to 3 for one email from the verified sender only: `ask` checks and records `asked` in
+ * one transaction (or refuses, writing nothing), custody sends, and what came back is recorded.
+ */
+export async function deliver<R extends string>(
+  database: Database,
+  businessId: BusinessId,
+  broker: Broker,
+  mail: MailSettings,
+  ask: (tx: TenantQuery, room: Room) => Promise<Asked | R>,
+): Promise<Delivered<R>> {
+  if (!senderVerifiedFor(mail.from, mail.sender, broker.custody))
+    return { ok: false, code: 'SENDER_NOT_VERIFIED' };
+  const found = routed(broker);
+  if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
+  const { operation, route, adapter } = found;
+  const asked = await database.withBusiness(
+    businessId,
+    async (tx) => await ask(tx, roomFor(tx, operation)),
+  );
+  if (typeof asked === 'string') return { ok: false, code: asked };
+  const path = asked.link === null ? '/inbox' : `/inbox/${encodeURIComponent(asked.link)}`;
+  const address = new URL(path, mail.appOrigin).href;
+  const built = adapter.build({ to: asked.to, from: mail.from, address });
+  const seen = lapsed(asked.reserved)
+    ? ({ state: 'failed', evidence: 'expired' } as const)
+    : observed(
+        await broker.custody.dispatch(route.credentialRef, {
+          destination: operation.destination,
+          path: built.path,
+          method: built.method,
+          body: built.body,
+          timeoutMs: operation.timeoutMs,
+          maxResponseBytes: operation.maxResponseBytes,
+        }),
+        operation,
+        isLoopbackMock(broker.custody) ? 'mock' : 'provider',
+      );
+  const attemptIds = await database.withBusiness(businessId, async (tx) => {
+    const ids: string[] = [];
+    for (const itemId of asked.itemIds) {
+      // oxlint-disable-next-line no-await-in-loop
+      ids.push(await recordDeliveryAttempt(tx, { itemId, channel: 'email', ...seen }));
+    }
+    return ids;
+  });
+  return { ok: true, ...seen, attemptIds };
 }
 
 /** Tell an inbox item's recipient by email where to go, through the broker only. */
@@ -216,40 +272,18 @@ export async function sendInboxEmail(
   broker: Broker,
   mail: MailSettings,
 ): Promise<EmailResult> {
-  // The report vouches for one subdomain: mail from anything but one bare address on it is
-  // not verified, and only a report that says it is not from the fake source (`mock`) counts.
-  const [local = '', domain = '', ...rest] = mail.from.split('@');
-  const onSubdomain =
-    DOT_ATOM.test(local) &&
-    rest.length === 0 &&
-    ASCII.test(domain) &&
-    domain.toLowerCase() === mail.sender.subdomain.toLowerCase();
-  if (!mail.sender.verified || mail.sender.mock !== false || !onSubdomain) {
-    return { ok: false, code: 'SENDER_NOT_VERIFIED' };
-  }
-  const found = routed(broker);
-  if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
-  const { operation, route, adapter } = found;
-  const asked = await database.withBusiness(
-    businessId,
-    async (tx) => await ask(tx, itemId, operation),
-  );
-  if (typeof asked === 'string') return { ok: false, code: asked };
-  const address = new URL(`/inbox/${encodeURIComponent(itemId)}`, mail.appOrigin).href;
-  const built = adapter.build({ to: asked.to, from: mail.from, address });
-  const outcome = await broker.custody.dispatch(route.credentialRef, {
-    destination: operation.destination,
-    path: built.path,
-    method: built.method,
-    body: built.body,
-    timeoutMs: operation.timeoutMs,
-    maxResponseBytes: operation.maxResponseBytes,
-  });
-  const seen = observed(outcome, operation);
-  const attemptId = await database.withBusiness(
-    businessId,
-    async (tx) => await recordDeliveryAttempt(tx, { itemId, channel: 'email', ...seen }),
-  );
-  if (seen.state === 'accepted') return { ok: true, attemptId, state: 'accepted' };
-  return { ok: false, code: 'EMAIL_FAILED', attemptId, fault: seen.evidence };
+  const ask = async (tx: TenantQuery, room: Room): Promise<Asked | EmailRefusal> =>
+    await askOne(tx, itemId, room);
+  const sent = await deliver(database, businessId, broker, mail, ask);
+  return emailResult(sent);
+}
+
+/** The one-item answer from a delivery. */
+export function emailResult<R extends string>(
+  sent: Delivered<R>,
+): EmailResult | { readonly ok: false; readonly code: R | DeliverRefusal } {
+  if (!sent.ok) return sent;
+  const attemptId = sent.attemptIds[0] ?? '';
+  if (sent.state === 'accepted') return { ok: true, attemptId, state: 'accepted' };
+  return { ok: false, code: 'EMAIL_FAILED', attemptId, fault: sent.evidence };
 }

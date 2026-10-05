@@ -85,51 +85,7 @@ export {
   type ReadableScope,
 } from './authority/readable-scope.ts';
 export { issueShare, withdrawShares } from './authority/shares.ts';
-export {
-  EXPIRED_FIXES,
-  NO_AGENT_FIXES,
-  resolveAgentLogin,
-  type AgentSession,
-} from './identity/agent-login.ts';
-export {
-  recordAuthenticationAttempt,
-  recordBodyRefusal,
-} from './identity/authentication-attempts.ts';
-export {
-  NO_MEMBERSHIP_FIXES,
-  standsOnShares,
-  resolveLogin,
-  standingOf,
-  withSession,
-  type SecondFactorRule,
-  type Session,
-  type VerifiedSubject,
-} from './identity/login-resolution.ts';
-export { withStanding } from './identity/standing.ts';
-export {
-  NO_ASSURANCE,
-  SESSION_ABSOLUTE_SECONDS,
-  SIGN_IN_CLOCK_SKEW_SECONDS,
-  type Assurance,
-  type AssuranceLevel,
-} from './identity/verified-subject.ts';
-export {
-  liveFactor,
-  loginHasVerifiedFactor,
-  recordFactorEnrolled,
-  recordFactorRemoved,
-  recordFactorVerified,
-  type FactorStatus,
-  type SecondFactor,
-} from './identity/second-factor.ts';
-export {
-  endOtherSeenSessions,
-  endProviderSession,
-  endOwnSession,
-  listSeenSessions,
-  type SeenSession,
-  type SessionEndReason,
-} from './identity/sessions.ts';
+export * from './identity/index.ts';
 export {
   asksMoneyStepUp,
   isMoneyKey,
@@ -247,6 +203,7 @@ export { purgeTrashedRecords, restoreBatch, trashSubtree } from './tasks/trash.t
 export {
   isTaskType,
   isWayfinderRecord,
+  mapTicketCondition,
   OWNER_TYPES,
   TASK_TYPES,
   wayfinderFacts,
