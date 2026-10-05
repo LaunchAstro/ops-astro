@@ -40,7 +40,7 @@
 // route could refuse, so the port starts it with PICTURE_BROWSER_ARGS.
 
 import { createHash, randomUUID } from 'node:crypto';
-import { parse, type DefaultTreeAdapterTypes as Tree } from 'parse5';
+import type { DefaultTreeAdapterTypes as Tree } from 'parse5';
 import {
   MAX_STYLESHEETS,
   SHEETS_AT_ONCE,
@@ -53,6 +53,7 @@ import {
   type Fetched,
 } from './fence.ts';
 import { importsOf, named, readDocument, resolved, type CaptureOptions } from './page.ts';
+import { admittedTree } from './tree.ts';
 
 /** One request the browser made, as the port describes it. */
 export interface PictureRequest {
@@ -276,8 +277,9 @@ export async function capturePicture(
   if (!page.ok) return page;
   const reading = readDocument(page.value.body);
   if (typeof reading === 'string') return { ok: false, code: reading };
-  // The reading held the markup within the capture's bounds, so parse5 may read it once more.
-  if (mayDropSheet(parse(page.value.body))) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
+  // The reading held the markup within the capture's bounds, so its tree is built once more in them.
+  if (mayDropSheet(admittedTree(page.value.body)))
+    return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
   for (const href of named(reading, page.value.url)) state.read.push(href);
   let png: Uint8Array;
   try {

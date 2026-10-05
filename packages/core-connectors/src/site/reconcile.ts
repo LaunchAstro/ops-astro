@@ -6,8 +6,9 @@
 // the word, never by the word anywhere on it.
 
 import type { ProviderResult } from '../call.ts';
-import { html as markup, parse, type DefaultTreeAdapterTypes as Tree } from 'parse5';
+import { html as markup, type DefaultTreeAdapterTypes as Tree } from 'parse5';
 import { readDocument } from '../capture/page.ts';
+import { admittedTree } from '../capture/tree.ts';
 import { wordOffsets, type CorrectionTarget, type ProposedChange } from './envelope.ts';
 import { siteOperation } from './operations.ts';
 
@@ -95,7 +96,7 @@ function rendered(html: string): string[] | undefined {
   const whole = readDocument(html);
   if (typeof whole === 'string') return undefined;
   const blocks = [''];
-  const stack: Step[] = [{ node: parse(html), hidden: false }];
+  const stack: Step[] = [{ node: admittedTree(html), hidden: false }];
   for (let step = stack.pop(); step !== undefined; step = stack.pop()) {
     if ('block' in step) {
       if (step.block) blocks.push('');
