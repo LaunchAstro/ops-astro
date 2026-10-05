@@ -194,6 +194,8 @@ export type Settlement =
       readonly state: 'liability_unknown';
       readonly heldMinor: number;
       readonly observedMinor: number;
+      /** Why the hold stays whole: spend above it, or a model call on it still open. */
+      readonly cause: 'over_hold' | 'call_open';
     };
 
 export function settledAt(heldMinor: bigint, spentMinor: bigint): Settlement {
@@ -246,19 +248,12 @@ export async function settleAtObserved(
   const calls = of.calls ?? NO_CALLS;
   const spentMinor = of.costMinor + calls.spentMinor;
   if (calls.open || spentMinor > of.heldMinor) {
-    await tx.query(
-      `update public.attempts set state = 'liability_unknown' where business_id = $1 and id = $2`,
-      [tx.businessId, of.attemptId],
-    );
-    await raiseAlert(tx, {
-      taskId: of.taskId,
-      causeId: of.attemptId,
-      raised: { kind: 'awaiting_person', waitingReason: 'liability_unknown' },
-    });
+    await keepWhole(tx, of);
     return {
       state: 'liability_unknown',
       heldMinor: Number(of.heldMinor),
       observedMinor: Number(spentMinor),
+      cause: calls.open ? 'call_open' : 'over_hold',
     };
   }
   await tx.query(
@@ -284,6 +279,22 @@ export async function settleAtObserved(
     raised: { kind: of.outcome === 'failed' ? 'failed' : 'settled' },
   });
   return settledAt(of.heldMinor, spentMinor);
+}
+
+/** The hold stays whole for a person: the attempt is held as an unknown liability, alerted once. */
+async function keepWhole(
+  tx: TenantQuery,
+  of: { readonly taskId: string; readonly attemptId: string },
+): Promise<void> {
+  await tx.query(
+    `update public.attempts set state = 'liability_unknown' where business_id = $1 and id = $2`,
+    [tx.businessId, of.attemptId],
+  );
+  await raiseAlert(tx, {
+    taskId: of.taskId,
+    causeId: of.attemptId,
+    raised: { kind: 'awaiting_person', waitingReason: 'liability_unknown' },
+  });
 }
 
 /** What a top-up did (T2e): raised the envelope, or recorded a first approval. */

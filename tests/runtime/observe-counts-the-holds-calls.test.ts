@@ -17,6 +17,7 @@ import { expect, it as vitestIt } from 'vitest';
 import {
   appliedDetail,
   asAgent,
+  codeOf,
   handbackBody,
   holdRows,
   racer,
@@ -95,6 +96,15 @@ it("an observation's settlement counts the hold's settled model calls", async ()
   });
 });
 
+/**
+ * The observation kept the hold whole for a person: refused BUDGET_UNAVAILABLE with the retained
+ * liability (T2d's over-the-hold answer), in words that name the open call as the reason.
+ */
+const keptWhole = (observed: Awaited<ReturnType<typeof observeOf>>): void => {
+  expect(codeOf(observed)).toBe('BUDGET_UNAVAILABLE');
+  expect(JSON.stringify(observed)).toContain('sent and never settled');
+};
+
 it('a model call lost mid-flight keeps the whole hold at observation', async () => {
   const w = await work();
   world.provider.mode('cut');
@@ -104,9 +114,9 @@ it('a model call lost mid-flight keeps the whole hold at observation', async () 
   await applied(w);
   const before = await money(w);
 
-  const observed = appliedDetail(await observeOf(w, { usage: PRICED }), 'task.observe');
+  const observed = await observeOf(w, { usage: PRICED });
 
-  expect(observed['settlement']).toMatchObject({ state: 'liability_unknown' });
+  keptWhole(observed);
   expect(await money(w)).toMatchObject({
     state: 'held',
     actual: null,
@@ -127,9 +137,9 @@ it('a model call still with the provider keeps the whole hold at observation', a
     await applied(w);
     const before = await money(w);
 
-    const observed = appliedDetail(await observeOf(w, { usage: PRICED }), 'task.observe');
+    const observed = await observeOf(w, { usage: PRICED });
 
-    expect(observed['settlement']).toMatchObject({ state: 'liability_unknown' });
+    keptWhole(observed);
     expect(await money(w)).toMatchObject({
       state: 'held',
       attempt_state: 'liability_unknown',

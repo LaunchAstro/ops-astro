@@ -111,7 +111,9 @@ async function observeAs(
         'BUDGET_UNAVAILABLE',
         [],
         [
-          `the reported cost ${settlement.observedMinor} is more than the ${settlement.heldMinor} held`,
+          settlement.cause === 'call_open'
+            ? 'a model call on this hold was sent and never settled, so what it cost is not known'
+            : `the reported cost ${settlement.observedMinor} is more than the ${settlement.heldMinor} held`,
           'Nothing was settled. The attempt is held at its maximum as an unknown liability until a person records its outcome.',
         ],
       ),

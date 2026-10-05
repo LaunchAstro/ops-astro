@@ -8,19 +8,15 @@
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { releasedOnClosing } from '../../packages/core-runtime/src/budget-ledger.ts';
-import {
-  appliedDetail,
-  asAgent,
-  asPerson,
-  liveWork,
-  rows,
-  type Work,
-} from './schedules-harness.ts';
+import { appliedDetail, asPerson, liveWork, rows, type Work } from './schedules-harness.ts';
+import { t2dHarness } from './t2d-harness.ts';
 import { call, noDatabase, s, useBrokerWorld, world } from '../broker/broker-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('supersedepin');
+
+const synthetic = t2dHarness(() => s);
 
 const withCall = async (mode: 'answer' | 'cut' | 'none'): Promise<Work> => {
   const work = await liveWork(s, `supersede pin ${mode} ${randomUUID()}`, 500);
@@ -28,6 +24,13 @@ const withCall = async (mode: 'answer' | 'cut' | 'none'): Promise<Work> => {
   world.provider.mode(mode);
   await call(work);
   world.provider.mode('answer');
+  return work;
+};
+
+/** Synthetic work the agent has dispatched: its attempt carries the dispatch marker. */
+const dispatchedWork = async (): Promise<Work> => {
+  const work = await synthetic.work();
+  await synthetic.dispatched(work);
   return work;
 };
 
@@ -65,18 +68,7 @@ const committedOf = async (work: Work): Promise<bigint> => {
 
 for (const mode of ['answer', 'cut', 'none', 'marked'] as const) {
   it(`preflight predicts what the classifier gives back (${mode})`, async () => {
-    const work = await withCall(mode === 'marked' ? 'none' : mode);
-    if (mode === 'marked') {
-      appliedDetail(
-        await asAgent(s, {
-          command: 'task.dispatch',
-          operationId: randomUUID(),
-          leaseId: work.picked['leaseId'],
-          fence: work.picked['fence'],
-        }),
-        'task.dispatch',
-      );
-    }
+    const work = mode === 'marked' ? await dispatchedWork() : await withCall(mode);
     const prediction = await predicted(work);
     const before = await committedOf(work);
 
