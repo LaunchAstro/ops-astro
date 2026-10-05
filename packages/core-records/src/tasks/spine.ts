@@ -414,6 +414,15 @@ export const TASK_SPINE: readonly SpineField[] = [
     escalatingOperation: null,
   },
   {
+    key: 'map_version',
+    label: 'Map version',
+    valueType: 'numeric',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
     // Every retype, appended by `task.set_type`: from, to, actor and time.
     key: 'type_history',
     label: 'Type history',
@@ -451,6 +460,7 @@ export const PROTECTED_TASK_FIELDS: readonly string[] = [
   'state',
   'type',
   'map_owner',
+  'map_version',
   'type_history',
 ];
 

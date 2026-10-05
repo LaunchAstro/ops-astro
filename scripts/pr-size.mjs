@@ -15,8 +15,7 @@
 // Test files are listed but never counted, in the total or per file (CQ-16,
 // the owner's process fix of 29 September 2026). A test file is a path under
 // `tests/` or a file named `*.test.*` or `*.spec.*`; that takes in the
-// manifest the suites read, `tests/db/named-suites.json` or, once split, every
-// file in `tests/db/named-suites/`. Anything else
+// files that name the database suites, under `tests/db/suites/`. Anything else
 // counts, fixtures and scripts outside `tests/` included, and a file moved
 // between code and tests counts unless both of its paths are tests.
 //

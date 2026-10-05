@@ -294,4 +294,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_type': writing(MAP_TASK.writes.concat(client('inbox_items'))),
   // The map and every ticket under it carry the client.
   'map.scope': MAP_TASK,
+  // One numbered version: its components and the map's own version number,
+  // which refresh the map's summary and frontier as any write to the map does.
+  'map.revise': writing(MAP_TASK.writes.concat(client('map_components', 'map_versions'))),
+  'map.view': READ,
+  'map.frontier': READ,
 };
