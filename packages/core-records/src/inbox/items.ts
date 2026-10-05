@@ -200,6 +200,7 @@ export async function stampSeen(
   );
   if ((await taskAccess(tx, personId, subject)) !== 'readable') {
     await tx.query('rollback to savepoint inbox_seen');
+    await tx.query('release savepoint inbox_seen');
     return false;
   }
   await tx.query('release savepoint inbox_seen');

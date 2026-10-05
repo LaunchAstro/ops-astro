@@ -6,7 +6,7 @@
 // (`agent-envelope.ts`) runs every row through the same pipeline, so adding an
 // operation is adding a row here rather than a branch in each step of it.
 
-import { checkDelegatedAuthority } from '../../../core-records/src/index.ts';
+import { checkDelegatedAuthority, resolveDelegation } from '../../../core-records/src/index.ts';
 import type { TenantQuery, AgentSession, Delegation } from '../../../core-records/src/index.ts';
 import { readQueue } from '../reads/queue.ts';
 import { READ_CATALOGUE } from '../reads/catalogue.ts';
@@ -882,7 +882,13 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       operands: recordIdOperand(() => refuseNotFound()),
       // The task checked under the delegation (`run:write`, which the mint
       // grants only where the person holds it); the agent is the recorded actor.
-      serve: async (tx, { session, request, declaration }, _operands, delegation, taskId) => {
+      serve: async (
+        tx,
+        { session, request, declaration, credential },
+        _operands,
+        _held,
+        taskId,
+      ) => {
         const spine = await readTaskSpine(tx);
         return await reviseRunState(
           tx,
@@ -895,8 +901,12 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
           },
           {
             id: session.actorId,
+            // The delegation resolved again, not the one read before the wait:
+            // a revocation (which locks this run) commits first or not at all.
             askAgain: async (task) => {
-              const still = await checkDelegatedAuthority(tx, delegation, {
+              const now = await resolveDelegation(tx, session.actorId, credential ?? '');
+              if (!now.ok) return refused(now.refusal);
+              const still = await checkDelegatedAuthority(tx, now.value, {
                 collection: declaration.collection,
                 action: declaration.action,
                 scope: { kind: 'record', id: task },

@@ -140,7 +140,7 @@ async function clientPeople(tx: TenantQuery, client: string): Promise<readonly s
        from public.grants g
        join standing s on s.id = g.id
       where g.business_id = $1
-      order by s.subject_id, g.id
+      order by g.id
         for share of g`,
     [tx.businessId, client],
   );
