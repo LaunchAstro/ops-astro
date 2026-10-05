@@ -132,10 +132,11 @@ export async function readBack(
  * Records one run's read. A run with an unanswered span and none absent is
  * left when nothing of it answered after the pass's other reads (the
  * allowance may be spent): it keeps its turn and where it stopped, so it goes
- * first next pass. Otherwise it is unanswered, and stops at the first
- * unanswered span after the last one the store answered; when it answered
- * none, at the span after the one its read began at. Each read moves on, and
- * past no span the store would have answered.
+ * ahead of the runs the pass read. Otherwise it is unanswered, and stops at
+ * the first unanswered span after the last one the store answered; when it
+ * answered none, at the span after the one its read began at. Each read
+ * moves on and, while these are the pass's only reads, past no span the
+ * store would have answered.
  */
 function settle(
   reading: Reading,

@@ -2008,12 +2008,15 @@ and codes, never a sentence, to a trace target an operator reads.
   it keeps its turn and where it stopped. The next pass reads the runs it
   read longest ago first, never-read ones before all, and of one pass's,
   those it left unanswered first, each from where its read stopped and round
-  to it. So each read moves on and passes no span the store would have
-  answered; neither a few traces that never answer nor runs that always
+  to it. So each read moves on and, while the owed reads are the pass's
+  only reads, passes no span the store would have answered; neither a few traces that never answer nor runs that always
   answer can spend every read a pass has before another run; and a run with
   more spans than the store answers in a pass is read through across
   passes. A block of L spans the store never answers, where a read resumes,
-  takes about L - 2 passes to cross, one span a pass. A run found gone has
+  takes about L - 2 passes as head to cross, one span each, up to about
+  twice that when other owed runs are read. Reads the pass made before its
+  owed read-back (its own asks') can still spend the allowance unseen
+  (#994). A run found gone has
   its events after its place sent again, in the transaction that confirms
   it, and a run that has such events is held back with its ask still owed
   (`expiry_unconfirmed`): the cursor steps back to just before the earliest such event (or
