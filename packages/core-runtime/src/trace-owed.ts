@@ -8,6 +8,9 @@
 // when it lands. Retention reads the owed asks back each pass; the export
 // sends a run with one whole, its earliest event first, so retention reads
 // that event's span: a delete that lands partway through the sending takes it.
+// Both sides step the export's cursor back (`stepBack`): retention for a run
+// it found gone, the export to its batch's place for an owed resend it did
+// not finish.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 
@@ -127,4 +130,38 @@ export async function owedSince<T>(
       order by ev.tx, ev.id`,
     [tx.businessId, runs, windowDays, from.tx, from.id],
   );
+}
+
+/**
+ * A statement's head that steps the export's cursor back to just before the
+ * earliest event `fresh` selects (`tx, id`; `$1` the business), or leaves it
+ * if it is already behind that. The update gives the row a new version even
+ * when the place is the same, under the row lock the export's `advance`
+ * takes: an export that read before it never advances past those events. An
+ * event that commits after the statement's snapshot is read after it too.
+ */
+export const stepBack = (fresh: string): string => `with fresh as (${fresh}), back as (
+       select p.tx, p.id from public.run_events p
+        where p.business_id = $1
+          and (p.tx, p.id) < (select f.tx, f.id from fresh f order by f.tx, f.id limit 1)
+        order by p.tx desc, p.id desc limit 1
+     ), stepped as (
+       update public.trace_export_cursors c
+          set (after_tx, after_id) = (
+                select b.tx, b.id
+                  from (values (c.after_tx, c.after_id),
+                               ((select tx from back), (select id from back))) b(tx, id)
+                 order by b.tx nulls first, b.id nulls first limit 1),
+              updated_at = now()
+        where c.business_id = $1 and exists (select 1 from fresh)
+     )`;
+
+const EVENT_BY_ID = 'select tx, id from public.run_events where business_id = $1 and id = $2';
+
+/**
+ * The cursor back before one event, by its id: an export's first, so an owed
+ * resend it did not finish is read again from its batch's place.
+ */
+export async function stepBackBefore(tx: TenantQuery, eventId: string): Promise<void> {
+  await tx.query(`${stepBack(EVENT_BY_ID)} select 1`, [tx.businessId, eventId]);
 }
