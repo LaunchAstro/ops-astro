@@ -110,13 +110,26 @@ const ELEMENTS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Whether `node` prints a tag of its own. A fragment, a component or a slot
- * may print nothing, and a script or style may be hoisted out of the page.
+ * Elements whose tags the built page prints where the source has them,
+ * wherever body copy sits. Anything else may print nothing there or be
+ * moved: a fragment, a component, a slot, a custom element, html, head or
+ * body, a table part, a hoisted script or style, or any element with a
+ * `slot` attribute (moved to its named slot).
  */
+const PRINTED_IN_PLACE: ReadonlySet<string> = new Set(
+  (
+    'a abbr address article aside b bdi bdo blockquote br cite code data dd del dfn div ' +
+    'dl dt em figcaption figure footer h1 h2 h3 h4 h5 h6 header hr i ins kbd label li ' +
+    'main mark nav ol p pre q s samp section small span strong sub sup time u ul var wbr'
+  ).split(' '),
+);
+
 function printsTag(node: Node): boolean {
-  if (node.type !== 'element' && node.type !== 'custom-element') return false;
-  const name = node.name.toLowerCase();
-  return name !== 'slot' && !CODE_ELEMENTS.has(name);
+  return (
+    node.type === 'element' &&
+    PRINTED_IN_PLACE.has(node.name.toLowerCase()) &&
+    !node.attributes.some(({ name }) => name === 'slot')
+  );
 }
 
 function tooLarge(source: string): boolean {
@@ -132,7 +145,7 @@ function tooLarge(source: string): boolean {
  * never the frontmatter, an expression, a comment, a script or style, or an
  * element whose children are raw or replaced. A text node holding '<', or
  * whose recorded position does not hold its own text, is not trusted; nor is
- * a word opening its node (or behind only a '#') where no printed tag comes
+ * a word with no space before it in its node where no printed tag comes
  * before it, which can close a tag opener or a character reference left
  * before it.
  */
@@ -146,7 +159,9 @@ function textAt(node: Node, bytes: Uint8Array, start: number, end: number): Text
   }
   const tag = ELEMENTS.has(node.type);
   if (!('children' in node) || (!tag && node.type !== 'root')) return undefined;
-  if ('name' in node && CODE_ELEMENTS.has(node.name.toLowerCase())) return undefined;
+  // A browser drops the tags inside a select, so none is a boundary there.
+  const element = 'name' in node ? node.name.toLowerCase() : '';
+  if (CODE_ELEMENTS.has(element) || element === 'select') return undefined;
   if ('attributes' in node && node.attributes.some(({ name }) => UNRENDERED.has(name))) {
     return undefined;
   }
@@ -154,7 +169,7 @@ function textAt(node: Node, bytes: Uint8Array, start: number, end: number): Text
     const found = textAt(child, bytes, start, end);
     if (found === undefined) continue;
     const lead = bytes.subarray(child.position?.start.offset ?? start, start);
-    const opens = found === child && /^#?$/u.test(new TextDecoder().decode(lead));
+    const opens = found === child && /^\S*$/u.test(new TextDecoder().decode(lead));
     return opens && !printsTag(node.children[index - 1] ?? node) ? undefined : found;
   }
   return undefined;

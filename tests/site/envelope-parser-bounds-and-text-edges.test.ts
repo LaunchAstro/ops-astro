@@ -112,6 +112,27 @@ describe('a word at the edge of its text node', () => {
     ['after a slot', 'amp', 'lt', '<p>Fish &<slot />amp; chips</p>\n'],
     ['after a hoisted script', 'amp', 'lt', '<p>Fish &<script>0</script>amp; chips</p>\n'],
     ['behind a hash after a fragment', 'xABC', 'xABD', '<p>Code &<></>#xABC; here</p>\n'],
+    ['after a body element', 'amp', 'lt', '<div>Fish &<body></body>amp; chips</div>\n'],
+    [
+      'after an element moved to a named slot',
+      'amp',
+      'lt',
+      '<Card>Fish &<span slot="x"></span>amp; chips</Card>\n',
+    ],
+    ['opening a table row', 'amp', 'lt', '<div>Fish &<table><tr>amp; chips</tr></table></div>\n'],
+    ['after a custom element', 'amp', 'lt', '<p>Fish &<my-el></my-el>amp; chips</p>\n'],
+    [
+      'in a select, whose tags a browser drops',
+      'amp',
+      'lt',
+      '<select>Fish &<b></b>amp; chips</select>\n',
+    ],
+    [
+      'behind a slash after an expression',
+      'Hello',
+      'div',
+      '<div><p>a <{""}/Hello there</p></div>\n',
+    ],
   ])('refuses a word %s', async (_name, word, replacement, before) => {
     expect(await edit(word, replacement, before)).toMatchObject({ ok: false });
   });
