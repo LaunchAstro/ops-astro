@@ -142,6 +142,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     readRef.current = projection;
     built.current = [grantKey, ...options.deps];
     liveRef.current = false;
+    waitedFrom.current = null;
     opening.add(projection.state);
     setState(projection.state);
     const generation = projection.begin();
