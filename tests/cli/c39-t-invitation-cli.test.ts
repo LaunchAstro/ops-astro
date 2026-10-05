@@ -146,12 +146,16 @@ describe.skipIf(serverUrl === undefined)('C39-T invitations on the command line'
     expect((revoked.cli.body as { detail: { state: string } }).detail.state).toBe('revoked');
     expect(await stateOf(ids.cli)).toBe('revoked');
     expect(await stateOf(ids.api)).toBe('revoked');
-    // The list reads the same on both, each revoked invitation in it.
+    // The list reads the same on both, each revoked invitation in it. A read
+    // mints nothing, so the stored invitation ids are compared as they are.
     const listed = await both(world.api, 'invitation.list', {}, world.ada.token);
-    sameRecord(listed, MINTED);
-    const states = (listed.cli.body as { invitations: { invitationId: string; state: string }[] })
-      .invitations;
-    expect(states.find((row) => row.invitationId === ids.cli)?.state).toBe('revoked');
+    sameRecord(listed, new Set<string>());
+    for (const answer of [listed.cli, listed.api]) {
+      const rows = (answer.body as { invitations: { invitationId: string; state: string }[] })
+        .invitations;
+      expect(rows.find((row) => row.invitationId === ids.cli)?.state).toBe('revoked');
+      expect(rows.find((row) => row.invitationId === ids.api)?.state).toBe('revoked');
+    }
   });
 
   it('C39-T parity refusals: no access:share, the agent prefix and another business, alike on both', async () => {
