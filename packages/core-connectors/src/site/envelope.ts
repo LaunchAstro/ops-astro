@@ -42,13 +42,13 @@ const exceeded = (reason: string): EnvelopeResult => ({
 });
 
 const ONE_WORD = /^\p{L}+$/u;
-/** One path segment, by an explicit allow-list of characters. */
-const SEGMENT = /^[\p{L}\p{N}_\-.[\]]+$/u;
+/** One path segment, by an explicit allow-list of characters: no route parameter, no escape. */
+const SEGMENT = /^[\p{L}\p{N}_.-]+$/u;
 const PAGE_FILE = /^[^.].*\.(?:astro|md)$/u;
 
 /**
  * A page source (D21-15): a path of plain segments under `src/pages/`, an Astro or Markdown page.
- * A layout or component renders on every page that uses it, so it is no one page's copy (#686).
+ * A layout, a component or a dynamic route renders on many pages, so it is no one page's copy (#686).
  */
 function pageSource(path: string): boolean {
   const [top, pages, ...rest] = path.split('/');

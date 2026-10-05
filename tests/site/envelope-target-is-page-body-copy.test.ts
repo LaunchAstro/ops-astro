@@ -34,3 +34,41 @@ it('a one-word change outside the site pages is refused, and a page source is he
     'src/pages/../layouts/Layout.astro': false,
   });
 });
+
+it('a target path is read as plain segments, and anything else is refused', async () => {
+  const copy = '<p>We walk alongside you.</p>\n';
+  const paths = {
+    'src/pages/blog/launch.astro': true,
+    'src/pages/about.md': true,
+    'src/pages/blog/[slug].astro': false,
+    'src/pages/[...path].astro': false,
+    'src/pages/api/contact.ts': false,
+    'src/pages/rss.xml.js': false,
+    'src/pages/about.mdx': false,
+    'src/pages/about.ASTRO': false,
+    'src/pages/.about.astro': false,
+    'src/pages/./about.astro': false,
+    'src/pages//about.astro': false,
+    'src/pages/about.astro/': false,
+    'src/pages/%2e%2e/layouts/Layout.astro': false,
+    'src/pages\\..\\layouts\\Layout.astro': false,
+    'src/pages/about\t.astro': false,
+    'src/pages/about us.astro': false,
+    '/src/pages/about.astro': false,
+    './src/pages/about.astro': false,
+    'SRC/pages/about.astro': false,
+    'src/Pages/about.astro': false,
+    'src/pages': false,
+    'src/pages/': false,
+    'src/pages/‮about.astro': false,
+  };
+  const held = Object.fromEntries(
+    await Promise.all(
+      Object.keys(paths).map(async (path) => [
+        path,
+        await verdict(path, copy, 'alongside', 'beside'),
+      ]),
+    ),
+  );
+  expect(held).toEqual(paths);
+});
