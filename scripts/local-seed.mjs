@@ -148,6 +148,9 @@ const GRANTS_BY_ROLE = {
     // `spend:decide`, so C59's step-up judges it. Client sign-off and the
     // step-up switch stay `settings:manage` above.
     ['spend', 'decide'],
+    // Settings ▸ Workflow triggers (C33): releasing a definition version is
+    // `automation:manage`, the owner's and administrators' and never an agent's.
+    ['automation', 'manage'],
   ],
   member: [
     ['task', 'read'],

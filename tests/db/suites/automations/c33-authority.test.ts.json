@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "PORT-P10 (C33 commands): refusal per key, agent refused, audit readback, isolation over bravo's own rows and a real client grant."
+}

@@ -166,6 +166,13 @@ export type {
   PreReviewAttribution,
   PreReviewRun,
 } from './views-agent.ts';
+// Settings ▸ Workflow triggers' registry (C33).
+export type {
+  ActivationView,
+  AutomationDefinitionView,
+  AutomationRegistryResult,
+  DefinitionVersionView,
+} from './views-automations.ts';
 // Custody's secrets as Settings ▸ Keys reads them (C31), and the connector
 // fleet as Connections & signal reads it (MP-14-7a).
 export type {

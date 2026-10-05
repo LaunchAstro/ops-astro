@@ -196,6 +196,9 @@ export const DECLARED: Readonly<
   'budget.set_planning_cap': { carry: 'not carried', plant: 'a business setting' },
   'run.delegate_child': { carry: 'not carried', plant: 'needs a lease' },
   'run.child_handback': { carry: 'not carried', plant: 'needs a child run' },
+  // C33: an automation of the business, carrying no task.
+  'activation.change': { carry: 'not carried', plant: 'an automation, not task content' },
+  'definition.release': { carry: 'not carried', plant: 'an automation, not task content' },
   // C31: a business's custody key, never task content.
   'secret.set': { carry: 'not carried', plant: 'a business key, not task content' },
   'secret.clear': { carry: 'not carried', plant: 'a business key, not task content' },

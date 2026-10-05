@@ -7,6 +7,19 @@
 
 import { seedBrokenConnection } from '../connections/fixture.ts';
 import type { World } from './world.ts';
+import { seedAutomation, type SeededAutomation } from '../automations/seed.ts';
+
+/** An automation of bravo's (C33), and an alpha version a foreign activation is aimed past. */
+export interface BravoAutomation {
+  readonly automation: SeededAutomation;
+  readonly alphaVersionId: string;
+}
+
+export async function bravoAutomation(world: World): Promise<BravoAutomation> {
+  const automation = await seedAutomation(world.db.admin, world.bravo, world.bea.actorId as string);
+  const alpha = await seedAutomation(world.db.admin, world.alpha, world.ada.actorId as string);
+  return { automation, alphaVersionId: alpha.versionId };
+}
 
 interface BravoRows {
   readonly legalVersionId: string;

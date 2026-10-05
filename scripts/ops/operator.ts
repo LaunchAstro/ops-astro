@@ -38,9 +38,8 @@ import {
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
 import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
-import { createBusinessResolver } from '../../apps/api/server.ts';
 import { oneHost } from './one-host.ts';
-import { holdingGrant, recordSignIn } from './operator-runtime.ts';
+import { businessOf, holdingGrant, recordSignIn } from './operator-runtime.ts';
 import { recordTestedRestore } from './tested-restore.ts';
 
 /** The person an operator act runs as, and the business it was checked in. */
@@ -139,13 +138,8 @@ async function personHolding(
     return { why: 'DATABASE_URL or DATABASE_ADMIN_URL not set or unreadable' };
   }
   try {
-    // A database the lookup identity (0046) may not read holds no business.
-    const businessId = await createBusinessResolver(admin)(business).catch(
-      (error: unknown): undefined => {
-        if ((error as { code?: unknown }).code === '42501') return;
-        throw error;
-      },
-    );
+    const businessId = await businessOf(admin, business);
+    if (typeof businessId === 'object') return businessId;
     if (businessId === undefined) return undefined;
     try {
       await database.withBusiness(businessId, async (tx) => {

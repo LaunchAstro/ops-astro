@@ -88,6 +88,8 @@ export const READ_NAMES = [
   'trace.read',
   // The harness test's result on one run (AW-12); no screen draws it yet.
   'harness.read',
+  // The Workflow triggers registry (C33), under `settings:read` on the server.
+  'automation.registry',
 ] as const;
 
 /**
