@@ -17,7 +17,7 @@
 //   replay a tag that passes, and the next seed run replaces it.
 // - The watch: an event trigger that guards a table from its creation and
 //   notes a guard switched off (`pg_restore --disable-triggers` does that).
-//   Guards and watch fire in every replication mode.
+//   Guards and watch fire in every replication mode, save one at origin (STANDS).
 //
 // A marked database is refused if its ledger names anything, or any tenant
 // table lacks an enabled guard. An unmarked one is refused unless a person
@@ -35,6 +35,10 @@ const MARK = 'ops-astro made-up data; businesses: ';
 const PEOPLE = '; people: ';
 const GUARD = 'ops_astro_made_up_guard';
 const LEDGER = 'ops_astro_made_up.untrusted';
+/** Guard `t` stands: enabled always, or exactly as protect() leaves it on a table the login does not own. */
+const STANDS = `(t.tgenabled = 'A' or (t.tgenabled = 'O' and not pg_has_role(current_user,
+    (select relowner from pg_class where oid = t.tgrelid), 'USAGE') and pg_get_triggerdef(t.oid) = format(
+    'CREATE TRIGGER ${GUARD} AFTER INSERT OR UPDATE ON %s FOR EACH ROW EXECUTE FUNCTION ops_astro_made_up.guard(%L)', t.tgrelid::regclass, 'origin')))`;
 const digest = (id: string): string => createHash('sha256').update(id).digest('hex');
 /** This process's seed tag; the guard knows its digest and nothing else. */
 const SEED_SECRET = randomBytes(32).toString('hex');
@@ -109,10 +113,8 @@ async function marked(admin: OwnerQuery): Promise<boolean> {
 }
 
 /**
- * Why this database may not be seeded, or none. `confirmed` is a person's
- * LOCAL_SEED_MADE_UP=confirm; it opens only an unmarked database that has never
- * held a tenant row. The seed's keys and names are no longer matched against
- * rows, so the second and fourth arguments are accepted and not read.
+ * Why this database may not be seeded, or none. `confirmed` (LOCAL_SEED_MADE_UP=confirm)
+ * opens only an unmarked database that never held a tenant row; arguments 2 and 4 go unread.
  */
 export async function productionSigns(
   admin: OwnerQuery,
@@ -132,11 +134,9 @@ export async function productionSigns(
 const SIGN_IN_SIGNS = new Set([SIGNS['auth.users'], SIGNS['guard'], UNGUARDED]);
 
 /**
- * Whether the staging reset may empty this database: no tenant or sign-in
- * table has ever held a row, or it is marked and its guard vouches for every
- * sign-in. The reset keeps the provider's sign-ins, their guard and the ledger's
- * notes on them (`markEmptied`), so the guard judges every sign-in it carries
- * over or makes. Judged from the mark, the guard and storage sizes alone.
+ * Whether the staging reset may empty this database, from the mark, guard and storage sizes
+ * alone: no tenant or sign-in table ever held a row, or it is marked and its guard vouches for
+ * every sign-in. The reset keeps the provider's sign-ins, their guard and the ledger's notes.
  */
 export async function resettable(admin: OwnerQuery): Promise<boolean> {
   if (await marked(admin))
@@ -154,7 +154,7 @@ async function guardSigns(admin: OwnerQuery): Promise<string[]> {
       signs.add(SIGNS[relation ?? ''] ?? RECORD);
   else signs.add(UNGUARDED);
   const covered = `not exists (select from (${GUARDED}) g where not exists (select from pg_trigger t
-      where t.tgrelid = g.oid and t.tgname = '${GUARD}' and t.tgenabled = 'A'))
+      where t.tgrelid = g.oid and t.tgname = '${GUARD}' and ${STANDS}))
     and exists (select from pg_event_trigger where evtname = '${GUARD}' and evtenabled = 'A')`;
   if (!(await yes(admin, covered))) signs.add(UNGUARDED);
   return [...signs];
@@ -196,30 +196,31 @@ const INSTALL = [
   `
     create or replace function ops_astro_made_up.watch() returns event_trigger
       language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
-    declare
-      command record;
+    declare command record;
     begin
       for command in select * from pg_event_trigger_ddl_commands() loop
         if command.command_tag = 'CREATE TABLE' then
           perform ops_astro_made_up.protect(command.objid);
-        elsif command.command_tag = 'ALTER TABLE' and exists (select from pg_trigger
-            where tgrelid = command.objid and tgname = '${GUARD}' and tgenabled <> 'A') then
+        elsif command.command_tag = 'ALTER TABLE' and exists (select from pg_trigger t
+            where t.tgrelid = command.objid and t.tgname = '${GUARD}' and not ${STANDS}) then
           perform ops_astro_made_up.note('guard');
         end if;
       end loop;
     end $$`,
   // Guards one table if it is a tenant or sign-in table without one. A table
   // is empty when CREATE TABLE ends; CREATE TABLE AS is another tag, never
-  // guarded here, so its rows are never vouched for.
+  // guarded here, so its rows are never vouched for. Only an owner enables a
+  // trigger always: elsewhere (hosted auth.users) it stays at origin, by argument.
   `
     create or replace function ops_astro_made_up.protect(target oid) returns void
       language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+    declare owned boolean := pg_has_role((select relowner from pg_class where oid = target), 'USAGE');
     begin
       if target in (${GUARDED}) and not exists (select from pg_trigger
           where tgrelid = target and tgname = '${GUARD}') then
-        execute format('create trigger ${GUARD} after insert or update on %s
-          for each row execute function ops_astro_made_up.guard()', target::regclass);
-        execute format('alter table %s enable always trigger ${GUARD}', target::regclass);
+        execute format('create trigger ${GUARD} after insert or update on %s for each row execute
+          function ops_astro_made_up.guard(%s)', target::regclass, case when owned then '' else '''origin''' end);
+        if owned then execute format('alter table %s enable always trigger ${GUARD}', target::regclass); end if;
       end if;
     end $$`,
   `revoke all on all functions in schema ops_astro_made_up from public`,
@@ -242,10 +243,9 @@ export async function guardMadeUp(admin: OwnerQuery): Promise<void> {
 
 /**
  * After the staging reset empties the product's schemas: the ledger forgets the
- * emptied tables, keeps its notes on sign-ins and guards (no reset empties
- * those), then guard and mark. A new database had no guard on `auth.users`, so
- * it is judged again under the guard, as the seed's admission is: a sign-in
- * made since the reset's check stops the reset, and the next run refuses it.
+ * emptied tables, keeps its notes on sign-ins and guards, then guard and mark. A
+ * new database had no guard on `auth.users`, so it is judged again under it: a
+ * sign-in made since the reset's check stops the reset, and the next run refuses it.
  */
 export async function markEmptied(admin: OwnerQuery): Promise<void> {
   if (await yes(admin, `to_regclass('${LEDGER}') is not null`))
