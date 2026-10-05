@@ -116,6 +116,16 @@ describe('C80 envelope refusal', () => {
     }
   });
 
+  it('refuses a target that is not a single word, whatever the caller supplies', () => {
+    const bad = { ...TARGET, replacement: 'right beside' };
+    expect(checkEnvelope(change(AGREED), bad)).toMatchObject({
+      ok: false,
+      code: 'CHANGE_ENVELOPE_EXCEEDED',
+    });
+  });
+});
+
+describe('C80 envelope refusal, the frontmatter fence', () => {
   // Sol R2.2 (F11): the scan starts after the frontmatter's closing fence, so
   // a quoted brace in unchanged frontmatter leaves the paragraph body copy.
   // The fence is a line of its own: one that never closes refuses everything.
@@ -139,14 +149,6 @@ describe('C80 envelope refusal', () => {
       const after = before.replace('alongside', 'beside');
       expect(checkEnvelope(change(after, before), TARGET).ok, before).toBe(false);
     }
-  });
-
-  it('refuses a target that is not a single word, whatever the caller supplies', () => {
-    const bad = { ...TARGET, replacement: 'right beside' };
-    expect(checkEnvelope(change(AGREED), bad)).toMatchObject({
-      ok: false,
-      code: 'CHANGE_ENVELOPE_EXCEEDED',
-    });
   });
 });
 
