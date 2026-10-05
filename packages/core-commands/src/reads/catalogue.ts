@@ -692,9 +692,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session) => await listCustodySecrets(tx, session),
   },
-  // Asked per row by the scopes the caller holds `connection:read` at, as
-  // `secret.list` is by `custody:manage`: a caller holding it nowhere is
-  // refused inside the read, never shown an empty fleet.
+  // By the scopes `connection:read` is held at; held nowhere is refused, not empty.
   'connection.fleet': {
     identifiers: [],
     parse: NONE,
