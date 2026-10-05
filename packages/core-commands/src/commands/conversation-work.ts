@@ -71,16 +71,8 @@ async function taskWork(
   });
 }
 
-/**
- * The runs and gates the conversation started, each pointing at its task. A
- * run ends when it is handed back or cancelled, at the instant the server
- * stamped (`ended_at`); a claim after a hand-back opens it again. A run
- * never started has ended when its plan died first: the lineage ended, the
- * version superseded, or its gate expired. A run waiting at a budget stop for
- * a person's answer is still open. A gate
- * ends at its decision, or at its expiry when it is left pending past it.
- */
-async function startedWork(tx: TenantQuery, conversationId: string): Promise<readonly Work[]> {
+/** The runs the conversation started; see `startedWork` for when one ends. */
+async function runWork(tx: TenantQuery, conversationId: string): Promise<readonly Work[]> {
   const runs = await tx.query<{
     id: string;
     task_id: string;
@@ -103,6 +95,15 @@ async function startedWork(tx: TenantQuery, conversationId: string): Promise<rea
       where run.business_id = $1 and run.origin_conversation_id = $2 order by run.id`,
     [tx.businessId, conversationId],
   );
+  return runs.map((run): Work => ({
+    pointer: { kind: 'run', id: run.id, address: `/task/${run.task_id}`, state: run.state },
+    terminal: run.ended_at !== null,
+    endedAt: run.ended_at,
+  }));
+}
+
+/** The gates the conversation started; see `startedWork` for when one ends. */
+async function gateWork(tx: TenantQuery, conversationId: string): Promise<readonly Work[]> {
   const gates = await tx.query<{
     id: string;
     task_id: string;
@@ -118,18 +119,24 @@ async function startedWork(tx: TenantQuery, conversationId: string): Promise<rea
       where g.business_id = $1 and g.origin_conversation_id = $2 order by g.id`,
     [tx.businessId, conversationId],
   );
-  return [
-    ...runs.map((run): Work => ({
-      pointer: { kind: 'run', id: run.id, address: `/task/${run.task_id}`, state: run.state },
-      terminal: run.ended_at !== null,
-      endedAt: run.ended_at,
-    })),
-    ...gates.map((gate): Work => ({
-      pointer: { kind: 'gate', id: gate.id, address: `/task/${gate.task_id}`, state: gate.state },
-      terminal: gate.ended_at !== null,
-      endedAt: gate.ended_at,
-    })),
-  ];
+  return gates.map((gate): Work => ({
+    pointer: { kind: 'gate', id: gate.id, address: `/task/${gate.task_id}`, state: gate.state },
+    terminal: gate.ended_at !== null,
+    endedAt: gate.ended_at,
+  }));
+}
+
+/**
+ * The runs and gates the conversation started, each pointing at its task. A
+ * run ends when it is handed back or cancelled, at the instant the server
+ * stamped (`ended_at`); a claim after a hand-back opens it again. A run
+ * never started has ended when its plan died first: the lineage ended, the
+ * version superseded, or its gate expired. A run waiting at a budget stop for
+ * a person's answer is still open. A gate ends at its decision, or at its
+ * expiry when it is left pending past it.
+ */
+async function startedWork(tx: TenantQuery, conversationId: string): Promise<readonly Work[]> {
+  return [...(await runWork(tx, conversationId)), ...(await gateWork(tx, conversationId))];
 }
 
 /** The tasks whose creation audit event names the conversation as its origin. */
