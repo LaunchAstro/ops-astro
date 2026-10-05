@@ -13,9 +13,7 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
-import { isActiveMember, isUuid } from '../../../core-records/src/index.ts';
-import { refused, type HandlerOutcome } from './outcome.ts';
-import { refuseCommand } from './refusal.ts';
+import type { HandlerOutcome } from './outcome.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
@@ -70,6 +68,7 @@ import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { decideLiveCorrection, requestLiveCorrection } from './live-corrections.ts';
+import { setApprover } from './live-correction-approver.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
 import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
@@ -267,31 +266,9 @@ function setting(
     | 'settings.set_money_step_up'
     | 'settings.set_conversation_window'
     | 'settings.set_retention_window'
-    | 'settings.set_live_correction_approver'
   >,
 ): Promise<HandlerOutcome> {
   return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);
-}
-
-const APPROVER_FIXES: readonly string[] = [
-  'Send value as the person id of an active member of this business, or null.',
-];
-
-/**
- * C80: a named member or nobody. Checked here, in the writing transaction, so
- * a person id from another business or a departed member is refused rather
- * than stored as an approver no approval could ever match.
- */
-async function setApprover(
-  tx: TenantQuery,
-  context: CommandContext,
-  request: RequestOf<'settings.set_live_correction_approver'>,
-): Promise<HandlerOutcome> {
-  const { value } = request;
-  if (value !== null && !(isUuid(value) && (await isActiveMember(tx, value)))) {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], APPROVER_FIXES));
-  }
-  return await setting(tx, context, request);
 }
 
 export async function handleCommand<K extends WriteName>(

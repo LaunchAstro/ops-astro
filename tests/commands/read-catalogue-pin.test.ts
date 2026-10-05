@@ -244,13 +244,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
-  // C80: the correction, which none of these bodies carries.
+  // C80's correction and AW-12's run, which none of these bodies carries.
   'live_correction.read': BODIES.map(() => ({
     code: 'FIELD_VALUE_INVALID',
     names: ['correctionId'],
     fixes: ['Send correctionId as the correction.'],
   })),
-  // AW-12: the run, which none of these bodies carries.
   'harness.read': BODIES.map(() => ({
     code: 'FIELD_VALUE_INVALID',
     names: ['runId'],
