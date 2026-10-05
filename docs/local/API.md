@@ -3313,7 +3313,8 @@ Every value is checked against a closed grammar before anything is written,
 and refused `FIELD_VALUE_INVALID` naming its field: a digest is 64 lower-case
 hex digits, a mode, kind or mode list comes from its fixed set, an operation
 or event kind is a dotted lower-case name, and a name or an input's key or
-value is at most 200 characters of storable text (no NUL, no lone surrogate).
+value is at most 200 characters of storable text (an allow-list of code points:
+no control character, line break, bidi mark or override, or lone surrogate).
 Another business's definition, version or activation answers exactly as a
 fabricated identifier does.
 
