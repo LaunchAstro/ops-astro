@@ -39,7 +39,7 @@ const SHA = /^[0-9a-f]{40}$/u;
 const BRANCH = /^\w[\w./-]*$/u;
 
 const fail = (message: string): never => {
-  console.error(`::error::structural: ${message}`);
+  console.error(`::error::structural: ${message.replaceAll(/\s+/gu, ' ')}`);
   process.exit(1);
 };
 
@@ -54,6 +54,7 @@ function merge(head: string, branch: string): void {
   const fetched = git('fetch', '--quiet', '--no-tags', 'origin', `refs/heads/${branch}`);
   if (!fetched.ok) fail(`cannot fetch ${branch}: ${fetched.out}`);
   const tip = git('rev-parse', 'FETCH_HEAD').out;
+  if (!SHA.test(tip)) fail(`cannot read the tip of ${branch}.`);
   if (!git('checkout', '--quiet', '--detach', tip).ok) fail(`cannot check out ${tip}.`);
   const merged = git('merge', '--quiet', '--no-commit', '--no-ff', head);
   if (!merged.ok) {

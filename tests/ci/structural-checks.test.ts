@@ -176,6 +176,13 @@ describe('CI-STRUCT the workflow', () => {
     expect(WORKFLOW).not.toMatch(/secrets\./u);
   });
 
+  it('a fork branch named like one of ours never shares a run group, so cancels no other run', () => {
+    // Security read of 5409be7: a fork's `main` landed in the push's group and cancelled the re-check.
+    expect(block(WORKFLOW, 'concurrency')).toContain(
+      'group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}\n',
+    );
+  });
+
   it('the token reads contents only, and only the re-check, which runs no repository code, may dispatch', () => {
     expect(block(WORKFLOW, 'permissions')).toBe('permissions:\n  contents: read\n');
     expect(check).not.toContain('permissions:');
@@ -184,6 +191,7 @@ describe('CI-STRUCT the workflow', () => {
       '    permissions:\n      actions: write\n      pull-requests: read\n',
     );
     expect(recheck).toContain("if: github.event_name == 'push'");
+    expect(recheck).toContain('select(all(.labels[]; .name != "sent-back"))');
     expect(recheck).not.toMatch(/uses:|node |pnpm /u);
     expect(WORKFLOW.match(/: write$/gmu)).toHaveLength(1);
   });
