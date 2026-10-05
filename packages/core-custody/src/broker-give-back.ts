@@ -30,9 +30,10 @@ export const COUNTED_CAUSES: readonly string[] = ['budget_stop_ended'];
 
 /**
  * The hold `r` counted its open calls at their maximum: ended at a budget stop
- * (`causes` names the parameter holding COUNTED_CAUSES), or topped up.
+ * (`causes` names the parameter holding COUNTED_CAUSES, and is only ever a
+ * numbered placeholder: it is written into the SQL text), or topped up.
  */
-export const countedHold = (causes: string): string =>
+export const countedHold = (causes: `$${number}`): string =>
   `((r.state = 'abandoned' and r.classified_cause = any(${causes}::text[]))
      or (r.state in ('held', 'actual', 'abandoned') and exists (
            select 1 from public.budget_answers ba
