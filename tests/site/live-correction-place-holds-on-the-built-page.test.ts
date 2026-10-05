@@ -117,6 +117,16 @@ it('finding the changed word in one long line is linear in its length', () => {
   expect(run(400_000)).toBeLessThan(5_000);
 });
 
+it('a source the reading admits in moments is placed in moments', () => {
+  const before = `<p>We walk alongside you.</p>\n<table>${'<br>'.repeat(500_000)}\n`;
+  const started = performance.now();
+  occurrenceOf(
+    { files: [{ path: target.path, before, after: before.replace('alongside', 'beside') }] },
+    target,
+  );
+  expect(performance.now() - started).toBeLessThan(5_000);
+});
+
 // Astro reads each of these as frontmatter, so none of its text is on the built page.
 const fenced = {
   'a byte-order mark': "\uFEFF---\nconst old = 'Contcat';\n---\n",

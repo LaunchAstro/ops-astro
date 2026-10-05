@@ -234,3 +234,14 @@ it('a page naming 150,000 sheet imports is refused by name, not thrown', async (
   const picture = await capturePicture(PAGE, world(html), standIn([], []));
   expect(picture.ok ? 'pictured' : picture.code).toMatch(/^CAPTURE_[A-Z_]+$/u);
 });
+
+// The picture's own look at the markup costs no more than the reading's bounded one: 2 MiB of
+// line breaks moved out of a table is linear for the reading, so it is linear here too.
+it('a page the reading admits in moments is pictured in moments', async () => {
+  const html = `<table>${'<br>'.repeat(524_286)}`;
+  const started = performance.now();
+  const picture = await capturePicture(PAGE, world(html), standIn([], []));
+  const ms = performance.now() - started;
+  expect(picture.ok).toBe(true);
+  expect(ms).toBeLessThan(5_000);
+});
