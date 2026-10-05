@@ -35,11 +35,12 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands', () => {
         readonly ceiling_minor: string | null;
         readonly currency: string | null;
         readonly graduation_class: string | null;
+        readonly label: string;
         readonly authored_by_actor_id: string;
         readonly revoked_by_actor_id: string | null;
         readonly revision: string;
       }>(
-        `select client_id, classes, ceiling_minor::text, currency, graduation_class,
+        `select client_id, classes, ceiling_minor::text, currency, graduation_class, label,
                 authored_by_actor_id, revoked_by_actor_id, revision::text
            from public.standing_mandates where id = $1`,
         [id],
@@ -112,6 +113,8 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands', () => {
       classes: ['social.reply'],
       graduation_class: 'social.reply',
       ceiling_minor: '2000',
+      // The client's own name, read from `clients` under the class's lock.
+      label: 'Run Class social.reply unattended for Client A',
     });
     expect(await audited(w.admin.actorId, 'graduation.promote', String(w.cls['aReply']))).toBe(1);
 
