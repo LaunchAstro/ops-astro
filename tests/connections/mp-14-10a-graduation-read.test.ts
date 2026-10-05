@@ -22,6 +22,7 @@ import { createControls, type Controls } from '../api/controls-fixture.ts';
 import {
   classMatches,
   createClient,
+  listGraduation,
   type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
 import {
@@ -74,6 +75,21 @@ const recording = (tx: TenantQuery, sent: string[]): TenantQuery => ({
     return await tx.query<Row>(text, parameters);
   },
 });
+
+/** Runs `before` once, just ahead of the first statement whose text holds `needle`. */
+const pausing = (tx: TenantQuery, needle: string, before: () => Promise<void>): TenantQuery => {
+  let paused = false;
+  return {
+    businessId: tx.businessId,
+    query: async <Row>(text: string, parameters?: readonly unknown[]) => {
+      if (!paused && text.includes(needle)) {
+        paused = true;
+        await before();
+      }
+      return await tx.query<Row>(text, parameters);
+    },
+  };
+};
 
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandate check', () => {
@@ -341,6 +357,50 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
       expect(result.mandates.filter((one) => !listed.has(one.clientId))).toStrictEqual([]);
     }
     await revoke(refusal);
+  });
+
+  it('MP-14-10a the client list, graduation rows and mandates are one snapshot: a client made mid-read is wholly in or wholly out', async () => {
+    const makingPool = connect(controls.fixture.db.appUrl, { source: 'runtime', max: 1 });
+    let clientD: string | undefined;
+    let refusal: string | undefined;
+    try {
+      const answer = await controls.fixture.db.app.withBusiness(
+        alpha,
+        async (tx) =>
+          await listGraduation(
+            // Sol's Scenario (1017 R2): the read pauses just before the statement
+            // that reads graduation rows, while client D is made, given a ready
+            // class and a live refusal, and committed on connections of its own.
+            pausing(tx, 'from public.graduation_classes g', async () => {
+              clientD = await makingPool.withBusiness(alpha, async (other) => {
+                const made = await createClient(other, 'Client D made mid-read', admin.actorId);
+                if (!made.ok) throw new Error('mp-14-10a: client D was not made');
+                return made.value;
+              });
+              await seedClass(alpha, clientD, 'social.post', 'ready');
+              refusal = await seedMandate({
+                client: clientD,
+                classes: ['*'],
+                refuses: true,
+                label: 'Nothing runs on its own for D',
+              });
+            }),
+            [{ kind: 'business', id: null }],
+          ),
+      );
+      expect(clientD).toBeDefined();
+      const listed = new Set(answer.clients.map((one) => one.id));
+      expect(answer.classes.filter((one) => !listed.has(one.clientId))).toStrictEqual([]);
+      expect(answer.mandates.filter((one) => !listed.has(one.clientId))).toStrictEqual([]);
+      const seen = listed.has(String(clientD));
+      expect([
+        answer.classes.some((one) => one.clientId === clientD),
+        answer.mandates.some((one) => one.clientId === clientD),
+      ]).toStrictEqual([seen, seen]);
+    } finally {
+      if (refusal !== undefined) await revoke(refusal);
+      await makingPool.close();
+    }
   });
 
   it('MP-14-10a a class shows promoted only while its promoting mandate is live', async () => {
