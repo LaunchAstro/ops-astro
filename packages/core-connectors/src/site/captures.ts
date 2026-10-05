@@ -9,7 +9,7 @@ import { wordOffsets, type CorrectionTarget } from './envelope.ts';
 
 /**
  * Capture text past this, or a word longer than this, is not compared: the
- * comparison is quadratic in the text and grows with the word.
+ * word search costs the text's length times the word's.
  */
 const MOST_TEXT = 256 * 1024;
 const MOST_WORD = 64;
