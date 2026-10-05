@@ -2,7 +2,8 @@
 //
 // The role-case matrix's positive bodies for setup's commands: custody (C31)
 // and the connector fleet (MP-14-7a).
-// `tableBody` answers these and the fixed literals (`role-case-fixed-bodies.ts`)
+// `tableBody` answers these, the fixed literals (`role-case-fixed-bodies.ts`)
+// and team invitations (C39-T, `role-case-invitation-bodies.ts`)
 // in one call from `role-case-positive-body.ts`, so that file stays under the
 // per-file cap.
 
@@ -10,12 +11,14 @@ import { randomUUID } from 'node:crypto';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
+import { invitationBody, isInvitation } from './role-case-invitation-bodies.ts';
 
 type Body = { readonly body: Readonly<Record<string, unknown>> } | undefined;
 
-/** What these recipes need from the world: `BodyContext`'s person. */
-interface SetupContext {
+/** What these recipes need from the world: `BodyContext`'s person and inviter. */
+export interface SetupContext {
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
+  freshInviter?(): Promise<void>;
   /** A broken connection to repair, owner-written; absent, a made-up id is named. */
   brokenConnection?(): Promise<string>;
 }
@@ -41,10 +44,11 @@ async function custodyBody(name: CommandName, context: SetupContext): Promise<Bo
   }
 }
 
-/** A fixed literal's or a setup command's positive body; undefined for every other command. */
+/** A fixed literal's, a setup command's or an invitation's positive body; undefined otherwise. */
 export async function tableBody(name: CommandName, context: SetupContext): Promise<Body> {
   const fixed = FIXED_BODIES[name];
   if (fixed !== undefined) return { body: { ...fixed } };
+  if (isInvitation(name)) return await invitationBody(name, context);
   // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
   if (name === 'connection.fleet') return { body: {} };
   if (name === 'connector.repair') {

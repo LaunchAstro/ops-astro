@@ -17,7 +17,6 @@
 // (`isLoopbackMock`), so a mock acceptance never reads as a provider's.
 
 import { startCustody, type Custody } from './custody.ts';
-import { fromVerifiedSender } from './email-class.ts';
 import type { Destination } from './egress.ts';
 
 const LOOPBACK_HOST = /^(?:127(?:\.\d{1,3}){3}|\[::1\])$/u;
@@ -51,18 +50,4 @@ export async function startLoopbackMockCustody(
 /** True only for a custody `startLoopbackMockCustody` started: its sends reach the mock provider. */
 export function isLoopbackMock(custody: Custody): boolean {
   return loopbackMock.has(custody);
-}
-
-/**
- * The sender gate as one send sees it: a mock report counts as unmocked only
- * when the send's custody is the loopback mock this module started; over any
- * other custody it is refused, as `fromVerifiedSender` refuses every mock report.
- */
-export function senderVerifiedFor(
-  from: string,
-  sender: Parameters<typeof fromVerifiedSender>[1],
-  custody: Custody,
-): boolean {
-  const mockHere = sender.mock && isLoopbackMock(custody);
-  return fromVerifiedSender(from, mockHere ? { ...sender, mock: false } : sender);
 }
