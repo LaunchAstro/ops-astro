@@ -75,16 +75,11 @@ interface Held {
   };
   /** Set once the plan's lease went back for review: the hand-back is asked again under it. */
   readonly review?: { readonly operationId: string };
-  /** Set once the provider answered: only the comment and observe are sent again, and replay. */
-  readonly effected?: {
-    readonly link: { readonly receiptLink?: string };
-    /** Set once the comment answered: only observe is sent again. */
-    readonly commentId?: string;
-  };
+  /** Set once the provider answered (`commentId`, the comment): only what is left is sent again. */
+  readonly effected?: { readonly link: Link; readonly commentId?: string };
 }
 
-/** Refusals that can clear while a provider answer waits: the client signs off, or no longer must. */
-const CLEARS: ReadonlySet<string> = new Set(['CLIENT_SIGNOFF_REQUIRED']);
+type Link = { readonly receiptLink?: string };
 
 /** A pickup asked for and not yet answered: asked again under its identity, it replays. */
 interface Asked {
@@ -123,16 +118,13 @@ async function applyOnce(
     work = picked.held;
     kept.set(taskId, work);
   }
-  const outcome = await effectOnce(options, taskId, work, (next) => {
-    kept.set(taskId, next);
+  const outcome = await effectOnce(options, taskId, work, (dropped) => {
+    kept.set(taskId, dropped);
   });
-  // A fault may be a lost answer, so the work is kept, and so is a provider
-  // answer refused for a reason that can clear: the provider may have acted,
-  // and a later pass finishes it. Anything else ends it here.
-  const now = kept.get(taskId);
-  const answered = now !== undefined && 'effected' in now && now.effected !== undefined;
-  const waits = answered && 'refused' in outcome && CLEARS.has(outcome.refused.code);
-  if (!('fault' in outcome) && !waits) kept.delete(taskId);
+  // A fault may be a lost answer, and a resume refused until sign-off clears
+  // keeps its provider answer for a later pass: anything else ends it here.
+  const signOff = 'refused' in outcome && outcome.refused.code === 'CLIENT_SIGNOFF_REQUIRED';
+  if (!('fault' in outcome) && !(signOff && work.effected !== undefined)) kept.delete(taskId);
   return outcome;
 }
 
@@ -211,12 +203,10 @@ async function effectOnce(
     if (!('body' in observed)) return observed;
     return { applied: { taskId, attemptId, commentId } };
   };
-  // The provider answered and the comment's or observe's answer was lost: send
-  // those again with its answer, and never call the provider a second time.
-  // Before the comment, dispatch first, as every pass does: it replays the mark
-  // and answers its checks again, so a client sign-off required since refuses
-  // the comment. Once the comment applied, only observe is left: it accounts for
-  // an effect already made, so no check made since stops it.
+  // The provider answered and a later answer was lost: send only what is left,
+  // never the provider again. Before the comment, dispatch answers its checks
+  // again (a sign-off required since refuses it); once the comment applied,
+  // observe alone accounts for the effect already made.
   if (held.effected !== undefined) {
     if (held.effected.commentId === undefined) {
       const again = await call('task.dispatch', lease);
@@ -244,7 +234,7 @@ async function effectOnce(
   // fault, and the provider is not called until the start is recorded.
   const starting = await call('task.heartbeat', { ...lease, providerStarting: true });
   if (!('body' in starting)) return starting;
-  let link: { readonly receiptLink?: string };
+  let link: Link;
   try {
     link = await callProvider(SYNTHETIC_STEP, options.provider);
   } catch (fault) {
