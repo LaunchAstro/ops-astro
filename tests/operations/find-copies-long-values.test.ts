@@ -178,3 +178,45 @@ it('a stored name holding no word the parser keeps is reported, not searched for
   expect(pairs(found.hits)).toContainEqual(['people', id]);
   expect(found.stderr).toContain(`${id}'s stored name`);
 }, 180_000);
+
+/** Over 1,000 bytes of words, too many to read as a phrase; answers them and their reverse. */
+function longWords(): { text: string; reversed: string } {
+  const words = Array.from({ length: 120 }, () => word('w'));
+  return { text: words.join(' '), reversed: words.toReversed().join(' ') };
+}
+
+it('a text over 1,000 bytes is matched by its words in any order, and the person found so is marked loosely', async () => {
+  const { text, reversed } = longWords();
+  const named = await person(world.alpha, reversed);
+  const found = await findCopies(world.adminUrl, ['--text', text], 'alpha');
+  expect(found.code).toBe(0);
+  expect(pairs(found.hits), 'the person whose name holds its words').toContainEqual([
+    'people',
+    named.id,
+  ]);
+  expect(found.stderr).toContain(`search again for ${named.id} (named loosely by the text`);
+}, 180_000);
+
+it('a stored name over 1,000 bytes is matched by its words in any order', async () => {
+  const { text, reversed } = longWords();
+  const id = randomUUID();
+  const type = randomUUID();
+  const record = randomUUID();
+  await world.db.admin.execute(
+    `insert into public.people (business_id, id, display_name) values ($1, $2, $3)`,
+    [world.alpha, id, text],
+  );
+  await world.db.admin.execute(
+    `insert into public.record_types (business_id, id, key, name, origin, retention_class)
+     values ($1, $2, $3, 'Long name', 'preset', 'work')`,
+    [world.alpha, type, `name_${type.replaceAll('-', '').slice(0, 12)}`],
+  );
+  await world.db.admin.execute(
+    `insert into public.records (business_id, id, record_type_id, data)
+     values ($1, $2, $3, jsonb_build_object('note', $4::text))`,
+    [world.alpha, record, type, reversed],
+  );
+  const found = await findCopies(world.adminUrl, ['--id', id], 'alpha');
+  expect(found.code).toBe(0);
+  expect(hitOn(found.hits, 'records', record)?.text, 'its words, reversed').toBe(true);
+}, 180_000);
