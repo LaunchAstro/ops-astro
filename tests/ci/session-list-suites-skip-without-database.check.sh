@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
 # Audit proof, correctness: the database-free local checks skip or exclude the
 # two new session-list ending suites and exit successfully.
 # Sol finding B2-FIX1.1 on PR #938. With DATABASE_URL and DATABASE_ADMIN_URL
