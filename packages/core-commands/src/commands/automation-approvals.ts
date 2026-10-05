@@ -12,7 +12,10 @@
 // approval is its own act and leaves the pin; turning an automation off ends
 // its approval with it. Each change is compared with the revision the caller
 // read, first here and again under the activation's lock (`approvals.ts`), so
-// a claim, a dispatch and these changes take turns.
+// a claim, a dispatch and these changes take turns. Before any automation row,
+// each holds the caller's automation grants for share and asks the key again
+// (`automation-authority.ts`), so a revocation of the grant that admitted it
+// either refuses it or waits for it.
 //
 // A repeat is refused, not answered as done: revoking a revoked approval and
 // turning off an automation that is off are each TRANSITION_NOT_PERMITTED.
@@ -37,6 +40,7 @@ import type {
   ActivationTurnOffRequest,
   ApprovalRevokeRequest,
 } from './automation-requests.ts';
+import { holdAutomationAuthority } from './automation-authority.ts';
 import { invalid, isRevision, notPermitted, staleAt } from './automations.ts';
 import type { CommandContext } from './context.ts';
 import { refuseNotFound } from './refusal.ts';
@@ -95,6 +99,8 @@ export async function adoptActivationVersion(
   request: ActivationAdoptRequest,
 ): Promise<HandlerOutcome> {
   if (!isRevision(request.expectedRevision)) return invalid('expectedRevision');
+  const lost = await holdAutomationAuthority(tx, context);
+  if (lost !== null) return lost;
   const current = await activationAt(tx, request.activationId, request.expectedRevision);
   if (isOutcome(current)) return current;
   const version = isUuid(request.versionId) ? await readVersion(tx, request.versionId) : null;
@@ -108,6 +114,8 @@ export async function rollBackActivation(
   request: ActivationRollBackRequest,
 ): Promise<HandlerOutcome> {
   if (!isRevision(request.expectedRevision)) return invalid('expectedRevision');
+  const lost = await holdAutomationAuthority(tx, context);
+  if (lost !== null) return lost;
   const current = await activationAt(tx, request.activationId, request.expectedRevision);
   if (isOutcome(current)) return current;
   const version = await rollbackTarget(tx, current.id);
@@ -127,6 +135,8 @@ export async function turnOffActivationAsPerson(
 ): Promise<HandlerOutcome> {
   if (!isRevision(request.expectedRevision)) return invalid('expectedRevision');
   if (!isUuid(request.activationId)) return unknownActivation();
+  const lost = await holdAutomationAuthority(tx, context);
+  if (lost !== null) return lost;
   const result = await turnOffActivation(tx, {
     activationId: request.activationId,
     expectedRevision: request.expectedRevision,
@@ -150,6 +160,8 @@ export async function revokeStandingApproval(
   request: ApprovalRevokeRequest,
 ): Promise<HandlerOutcome> {
   if (!isUuid(request.approvalId)) return refused(refuseNotFound(['approvalId']));
+  const lost = await holdAutomationAuthority(tx, context);
+  if (lost !== null) return lost;
   const result = await revokeApproval(tx, {
     approvalId: request.approvalId,
     actorId: context.session.actorId,
