@@ -39,7 +39,7 @@ import {
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
-import { observedRefusal, recordedRefusal, spentOn } from './budget-stop.ts';
+import { observedRefusal, recordedRefusal, releaseUnstarted, spentOn } from './budget-stop.ts';
 import { giveBackReleased } from '../../core-custody/src/index.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
@@ -291,6 +291,11 @@ export async function endAtBudgetStop(
     spentMinor -= back;
     releasedMinor += back;
   }
+  releasedMinor += await releaseUnstarted(
+    tx,
+    { runId: request.runId, envelopeId: locked.envelope_id, reservationId: locked.reservation_id },
+    { cause: 'budget_stop_ended', causeId: answerId },
+  );
   await tx.query(
     `update public.planned_runs set state = 'cancelled' where business_id = $1 and id = $2`,
     [tx.businessId, request.runId],

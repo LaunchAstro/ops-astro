@@ -25,6 +25,7 @@
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { raiseBudgetWait, stopWords } from '../../core-custody/src/index.ts';
 import { raiseAlert } from './alerts.ts';
+import { acquire } from './locks.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /**
@@ -92,6 +93,59 @@ export async function observedRefusal(
       'or a call on it is still open or was lost',
     'Record the step’s outcome first, then end the work.',
   );
+}
+
+/**
+ * The run's other holds that never started, ended with it: after `happened_differently`
+ * reopens the step, resume holds its replacement (`recovery/reconcile.ts`), and a cancelled
+ * run never picks it up. Each one held on the stopped hold's envelope with no lease, no call
+ * and every attempt still `reserved` is abandoned under the end's cause and given back whole;
+ * a hold leased or dispatched is left as it is. Locked after the run and the stopped hold,
+ * which every writer of the run's holds takes first. Returns the amount released.
+ */
+export async function releaseUnstarted(
+  tx: TenantQuery,
+  stopped: { readonly runId: string; readonly envelopeId: string; readonly reservationId: string },
+  cause: { readonly cause: string; readonly causeId: string },
+): Promise<number> {
+  const others = await tx.query<{ readonly id: string }>(
+    `select id from public.reservations
+      where business_id = $1 and run_id = $2 and envelope_id = $3 and id <> $4 and state = 'held'`,
+    [tx.businessId, stopped.runId, stopped.envelopeId, stopped.reservationId],
+  );
+  if (others.length === 0) return 0;
+  await acquire(
+    tx,
+    others.map(({ id }) => ({ lockClass: 'reservation' as const, id })),
+  );
+  const ids = others.map(({ id }) => id);
+  const released = await tx.query<{ readonly id: string; readonly held_minor: string }>(
+    `update public.reservations r
+        set state = 'abandoned', classified_cause = $3, classified_cause_id = $4,
+            terminal_at = now()
+      where r.business_id = $1 and r.id = any($2::uuid[]) and r.state = 'held'
+        and r.lease_id is null
+        and not exists (select 1 from public.attempts a
+                         where a.business_id = r.business_id and a.reservation_id = r.id
+                           and a.state <> 'reserved')
+        and not exists (select 1 from public.model_calls c
+                         where c.business_id = r.business_id and c.reservation_id = r.id)
+      returning r.id::text as id, r.held_minor::text as held_minor`,
+    [tx.businessId, ids, cause.cause, cause.causeId],
+  );
+  if (released.length === 0) return 0;
+  const total = released.reduce((sum, row) => sum + Number(row.held_minor), 0);
+  await tx.query(
+    `update public.task_envelopes set held_minor = held_minor - $3
+      where business_id = $1 and id = $2`,
+    [tx.businessId, stopped.envelopeId, total],
+  );
+  await tx.query(
+    `update public.attempts set state = 'abandoned', outcome = 'abandoned'
+      where business_id = $1 and reservation_id = any($2::uuid[]) and state = 'reserved'`,
+    [tx.businessId, released.map(({ id }) => id)],
+  );
+  return total;
 }
 
 /**
