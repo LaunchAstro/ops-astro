@@ -66,9 +66,9 @@ export function proven(operation: string, answer: ProviderResult<unknown>): answ
 export interface Occurrence {
   readonly left: string;
   readonly right: string;
-  readonly index?: number;
+  readonly index: number;
   /** Every equal match's word on the source's page, in order, before the change. */
-  readonly words?: readonly string[];
+  readonly words: readonly string[];
 }
 
 // Elements that start a rendered block of their own.
@@ -123,15 +123,21 @@ function rendered(html: string): string[] | undefined {
   return visible(page.join(' ')) === whole.text ? page : undefined;
 }
 
+/** A line without the spaces, tabs and carriage return around it. */
+const bare = (line: string): string => line.replaceAll(/^[\t\r ]+|[\t\r ]+$/gu, '');
+
 /**
- * The source's page as its build serves it: the frontmatter fence (a `---` line opening the file,
- * closed by the next `---` line) never renders. Unclosed, the file has no page.
+ * The source's page as its build serves it: the frontmatter fence (`---` lines opening the file,
+ * after any byte-order mark, blank lines or spaces) never renders. Where a fence line could be
+ * read otherwise (one inside the frontmatter's code, or after other text), there is no page.
  */
 function served(source: string): string[] | undefined {
-  const lines = source.split('\n');
-  if (lines[0]?.replace(/\r$/u, '') !== '---') return rendered(source);
-  const close = lines.findIndex((line, at) => at > 0 && line.replace(/\r$/u, '') === '---');
-  return close < 0 ? undefined : rendered(lines.slice(close + 1).join('\n'));
+  const lines = source.replace(/^\uFEFF/u, '').split('\n');
+  const fences = lines.flatMap((line, at) => (bare(line) === '---' ? [at] : []));
+  if (fences.length === 0) return rendered(source);
+  const opens = lines.findIndex((line) => bare(line) !== '');
+  if (fences.length !== 2 || fences[0] !== opens) return undefined;
+  return rendered(lines.slice((fences[1] ?? 0) + 1).join('\n'));
 }
 
 /** Where on `line` the word was replaced to give `changed`: only an offset spanning every changed character. */
@@ -211,7 +217,7 @@ function nearRight(text: string): string | undefined {
 }
 
 /** Every match of the place holding one of `words`, in page order (ties by word). */
-function equals(text: string, where: Occurrence, words: readonly string[]) {
+function equals(text: string, where: Pick<Occurrence, 'left' | 'right'>, words: readonly string[]) {
   return words
     .flatMap((word) =>
       wordOffsets(text, where.left + word + where.right).map((at) => ({ at, word })),
@@ -226,12 +232,9 @@ export function showsAt(
   shown: string,
   gone: string,
 ): boolean {
-  if (where === undefined) return false;
+  if (where?.words[where.index] === undefined) return false;
   const found = equals(text, where, [shown, gone]).map((one) => one.word);
-  const index = where.index ?? 0;
   // The page holds the source's equals, in its order, with only the approved one changed: a match
   // the source never shows (a layout's title or nav) or one the build drops fails the check.
-  const expected = where.words?.with(index, shown);
-  if (expected !== undefined && found.join(' ') !== expected.join(' ')) return false;
-  return found[index] === shown;
+  return found.join(' ') === where.words.with(where.index, shown).join(' ');
 }
