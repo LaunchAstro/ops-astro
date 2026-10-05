@@ -147,10 +147,8 @@ describe('CQ-8 runtime structure', () => {
       // before reading the register, inside the handler's transaction.
       'packages/core-records/src/operations/overseas-services.ts',
       'packages/core-records/src/tasks/placement.ts',
-      // C71-D: a direct pair's one lock (`chat.direct:<business>:<pair>`), so two
-      // first messages start one conversation, and a conversation's one lock
-      // (`chat.conversation:<business>:<id>`), so a message and a read marker are
-      // stamped in commit order; both inside the handler's transaction.
+      // C71-D: a direct pair's one lock, so two first messages start one conversation, and a
+      // conversation's one lock, so a message and a read marker are stamped in commit order.
       'packages/core-records/src/team/conversations.ts',
       'packages/core-records/src/tenancy/database.ts',
       'packages/core-records/src/tenancy/limit.ts',

@@ -32,6 +32,7 @@
 
 import type { Action } from '../../core-records/src/index.ts';
 import type { CommandName } from './command-names.ts';
+import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { WRITE_OPERANDS, type OperandSpec } from './write-operands.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -216,7 +217,6 @@ const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
-const CHAT_COLLECTION = 'chat';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -251,12 +251,6 @@ function read(
     audited: options.audited ?? true,
   };
 }
-
-/**
- * The key every write to a map's structure serialises on, taken before any
- * task row: no two writes hold a map and a ticket in opposite orders.
- */
-const WAYFINDER_MAP_LOCK = 'wayfinder.map';
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent credential's under its person's business-wide `task:write`
@@ -891,19 +885,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: [],
   }),
 
-  // Team conversations (C71-D): `chat:comment`, agency members, and within a
-  // conversation its members only (the queries' own filter). Never an
-  // agent's; a client is never a member. A direct message names the
-  // teammate, never the conversation: the pair has one.
+  // Team conversations (C71-D): `chat:comment`, agency members only, never an agent or a client.
   declare('chat.send_direct', 'comment', {
-    collection: CHAT_COLLECTION,
+    collection: 'chat',
     targetsExistingRecord: false,
     untargetedIdentifiers: ['teammateId'],
   }),
-  read('chat.conversations', CHAT_COLLECTION, { action: 'comment' }),
-  read('chat.messages', CHAT_COLLECTION, { action: 'comment' }),
-  // The reader's own read marker (CS-7.25): their own member row, no grant
-  // asked, and not audited.
+  read('chat.conversations', 'chat', { action: 'comment' }),
+  read('chat.messages', 'chat', { action: 'comment' }),
+  // The reader's own read marker (CS-7.25): their member row, no grant asked, not audited.
   declare('chat.mark_read', 'write', {
     collection: ACCOUNT_COLLECTION,
     targetsExistingRecord: false,

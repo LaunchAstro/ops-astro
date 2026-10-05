@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What `s0-5-client-lock.test.ts` runs: the task-content commands read from
-// the catalogue, each fixture's marker or the rows that name its task, the
-// client change through the CLI and the API, and the interleaving of a
-// content write with a client change under the task's row lock.
+// What `s0-5-client-lock.test.ts` runs: the task-content commands read from the catalogue,
+// each fixture's marker or the rows that name its task, the client change through the CLI and
+// the API, and the interleaving of a content write with a client change under the task's row lock.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -39,9 +38,8 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'conversation.message': "a message in the caller's own conversation",
   'conversation.rename': "the caller's own conversation's title",
   'conversation.set_scope': "the page the caller's own conversation is about",
-  // C71-D: a team conversation is a record beside tasks; its message names no task.
-  'chat.send_direct': 'a message in a team conversation, written with no task',
-  'chat.mark_read': "the reader's own member row in a team conversation",
+  'chat.send_direct': 'a team conversation message (C71-D), a record beside tasks naming none',
+  'chat.mark_read': "the reader's own member row in a team conversation (C71-D)",
   'model.call':
     'the agent prefix only (the person path refuses it), under a lease: the task already has content',
   // SL11 (batch 3b): AW-11's two, agent-only like `model.call`.

@@ -88,8 +88,7 @@ describe('the surface as a table', () => {
     // and `privacy` are C55's view and its incident record, and `legal` is C81's
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
-    // `tag` is MP-4-11's: the business's tag vocabulary. `chat` is C71-D's
-    // team conversations.
+    // `tag` is MP-4-11's: the business's tag vocabulary. `chat` is C71-D's team conversations.
     // `map` is the wayfinder's (WF-1): a map is a task of type `map`.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
