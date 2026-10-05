@@ -5,7 +5,7 @@
 // top-up, and the money a pickup must leave adding up.
 
 import { randomUUID } from 'node:crypto';
-import { raiseBudgetWait } from '../../packages/core-custody/src/index.ts';
+import { raiseBudgetWait, sweepModelCalls } from '../../packages/core-custody/src/index.ts';
 import {
   appliedDetail,
   asPerson,
@@ -52,6 +52,42 @@ export async function unknownCall(
       where r.id = $1`,
     [reservationId, randomUUID(), reserved],
   );
+}
+
+/** A model call the broker reserved on the hold under its lease and never sent; its id. */
+export async function unsentCall(
+  s: Schedules,
+  reservationId: unknown,
+  reserved: number,
+): Promise<string> {
+  const id = randomUUID();
+  await s.db.admin.execute(
+    `insert into public.model_calls
+       (business_id, id, run_id, step_id, lease_id, version_id, reservation_id, operation_key,
+        route_key, route_reach, credential_kind, state, reserved_minor)
+     select r.business_id, $2, r.run_id, a.step_id, r.lease_id, r.version_id, r.id,
+            'replacement_room_unsent', 'replay', 'local', 'replay', 'reserved', $3
+       from public.reservations r
+       join public.attempts a on a.business_id = r.business_id and a.reservation_id = r.id
+      where r.id = $1`,
+    [reservationId, id, reserved],
+  );
+  return id;
+}
+
+/** The lease-expiry sweep's pass over the business's model calls. */
+export async function sweep(s: Schedules): Promise<void> {
+  await s.db.app.withBusiness(s.business, async (tx) => await sweepModelCalls(tx));
+}
+
+/** The model call's state. */
+export async function callState(s: Schedules, callId: string): Promise<string | undefined> {
+  const [call] = await rows<{ state: string }>(
+    s,
+    'select state from public.model_calls where business_id = $1 and id = $2',
+    [s.business, callId],
+  );
+  return call?.state;
 }
 
 /** A manager revokes the worker's delegation: the hold is classified at its calls' spend. */
