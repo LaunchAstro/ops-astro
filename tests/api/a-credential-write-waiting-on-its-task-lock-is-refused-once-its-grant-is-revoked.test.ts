@@ -51,8 +51,14 @@ const UPDATE_WAITING = `select count(*)::int as n from pg_stat_activity
 const LOCK_WAITERS = `select count(*)::int as n from pg_stat_activity
    where datname = current_database() and wait_event_type = 'Lock'`;
 
-const count = async (execute: AdminConnection['execute'], text: string): Promise<number> =>
-  Number((await execute<{ readonly n: number }>(text, []))[0]?.n ?? 0);
+/**
+ * One fresh look. Inside the row holder's transaction `pg_stat_activity` is a
+ * snapshot taken at its first read and kept to the end, so it is cleared first.
+ */
+const count = async (execute: AdminConnection['execute'], text: string): Promise<number> => {
+  await execute('select pg_stat_clear_snapshot()', []);
+  return Number((await execute<{ readonly n: number }>(text, []))[0]?.n ?? 0);
+};
 
 const ACTIVITY = `select state, wait_event_type, wait_event, left(regexp_replace(query, '\\s+', ' ', 'g'), 120) as query
    from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid()`;
