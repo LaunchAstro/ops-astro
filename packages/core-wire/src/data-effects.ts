@@ -219,15 +219,13 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'run.revise_state': writing(client('run_states')),
   // MP-6-1's check on a task's run.
   'task.check': writing(client('run_checks')),
-  // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap,
-  // AW-13's trace read, AW-12's harness result, AW-11's child work, and the
-  // accepted plan.
+  // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap, AW-13's trace read,
+  // AW-12's harness result, AW-11's child work, and the accepted plan.
   'conversation.allowance': READ,
   'definition.attribution': READ,
   'trace.read': READ,
   'harness.read': READ,
-  // C39-T: the business's own; admits no outside person, sends nothing itself. A create writes
-  // the person it names, first expiring a lapsed invitation to the same address as the worker.
+  // C39-T: sends nothing itself; a create writes its person, expiring a lapsed same-address one.
   'invitation.create': writing(business('people', 'invitations', 'actors')),
   'invitation.resend': writing(business('invitations')),
   'invitation.revoke': writing(business('invitations')),
