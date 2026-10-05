@@ -31,7 +31,7 @@
 // the agent's.
 
 import { randomUUID } from 'node:crypto';
-import { mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
+import { DELEGATION_STANDS, mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { leaseReason, personWriteLive } from './lease-ownership.ts';
@@ -59,8 +59,18 @@ export interface QueueEntry {
  * lineage is out, and an attempt carrying a dispatch marker or an observation
  * is out — the last because T5 quarantines it with its hold retained, and a
  * quarantined attempt must not be handed to a worker as ordinary work.
+ *
+ * `agentActorId` is an agent's own read. While it holds a live delegation it
+ * is working for that task's client, so its queue is that client's work only
+ * (#169): another client's task, purpose slug and held amount never reach it.
+ * The narrowing keys on the delegations the agent holds, not on the credential
+ * it presents, so leaving the credential off does not widen it. With no live
+ * delegation the agent reads the whole queue, as a person does.
  */
-export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
+export async function queue(
+  tx: TenantQuery,
+  agentActorId?: string,
+): Promise<readonly QueueEntry[]> {
   const rows = await tx.query<{
     readonly reservation_id: string;
     readonly task_id: string;
@@ -90,8 +100,18 @@ export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
         and att.state = 'reserved'
         and not att.dispatch_marker
         and not att.observed
+        and ($2::uuid is null
+             or not exists (select 1 from public.delegations d
+                             where d.business_id = res.business_id and d.agent_actor_id = $2
+                               and ${DELEGATION_STANDS})
+             or exists (select 1 from public.delegations d
+                          join public.records purpose on purpose.business_id = d.business_id
+                                                     and purpose.id = d.purpose_scope_id
+                         where d.business_id = res.business_id and d.agent_actor_id = $2
+                           and ${DELEGATION_STANDS}
+                           and purpose.uuid_7 is not distinct from task.uuid_7))
       order by res.created_at`,
-    [tx.businessId],
+    [tx.businessId, agentActorId ?? null],
   );
   return rows.map((row) => ({
     reservationId: row.reservation_id,

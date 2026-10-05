@@ -579,10 +579,10 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       replay: 'reauthorise',
       identifiers: READ_CATALOGUE['task.queue'].identifiers,
       operands: NONE,
-      serve: async (tx) => ({
+      serve: async (tx, { session }) => ({
         recordId: null,
         revision: null,
-        detail: { queue: await readQueue(tx) },
+        detail: { queue: await readQueue(tx, session.actorId) },
       }),
     }),
   ],

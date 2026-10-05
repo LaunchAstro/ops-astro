@@ -237,4 +237,12 @@ describe.skipIf(serverUrl === undefined)('the agent work queue under a delegatio
       );
     });
   });
+
+  it('shows an agent delegated a task with no client no client’s queued work', async () => {
+    // Runs after the handback above, so this is the agent's one live delegation.
+    const picked = await world.pickUp(person, 'internal work on no client');
+    const queue = await agentQueue(picked.credential);
+    showsNothingOfClientB(queue);
+    expect(reservations(queue)).not.toContain(sameClient.reservationId);
+  });
 });
