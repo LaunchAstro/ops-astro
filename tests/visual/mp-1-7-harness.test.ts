@@ -180,6 +180,7 @@ const BUILT_PAGES = [
   'agency:projects-board',
   'agency:task-detail',
   'agency:task-unnamed',
+  'agency:connections',
   'agency:settings',
   'agency:access',
   'agency:telemetry',
