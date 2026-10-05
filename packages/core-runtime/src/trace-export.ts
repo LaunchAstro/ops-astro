@@ -17,11 +17,12 @@
 //
 // One export per business at a time, by a lease on its cursor row
 // (`trace-lease.ts`): another export meanwhile is `held` and sends nothing.
+// A gap whose body may still be stored keeps the lease to its end.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { gapOf, type Deliver, type GapCode } from './trace-delivery.ts';
-import { release, renew, take, type Cursor } from './trace-lease.ts';
+import { letGo, release, renew, take, type Cursor } from './trace-lease.ts';
 import { owedSince } from './trace-owed.ts';
 import {
   TRACE_ERRORS,
@@ -126,7 +127,7 @@ export async function exportOnce(
   await database.withBusiness(businessId, async (tx) => {
     if (code === null) await advance(tx, last, holder, version);
     else await recordGap(tx, code, from, batch.length);
-    await release(tx, holder);
+    await letGo(tx, holder, version, code);
   });
   return code === null ? { kind: 'delivered', spans } : { kind: 'gap', code, spans };
 }

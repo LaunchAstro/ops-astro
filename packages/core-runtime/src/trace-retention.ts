@@ -162,7 +162,7 @@ async function askDue(tx: TenantQuery, windowDays: number, page: number): Promis
        join public.copy_registrations c
          on c.business_id = $1 and c.copy_class = 'diagnostic_trace'
         and c.copy_key = 'run:' || l.run_id::text
-       join public.trace_export_cursors cur on cur.business_id = $1
+       join public.trace_export_cursors cur on cur.business_id = $1 and cur.after_tx is not null
        left join confirmed e on e.run_id = l.run_id
       where l.last_at < now() - make_interval(days => $2)
         and (e.run_id is null

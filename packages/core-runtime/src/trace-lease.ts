@@ -4,9 +4,13 @@
 // cursor row. An export takes it in the transaction that reads its batch,
 // renews it before each body, and gives it up in the transaction that
 // advances the cursor or records the gap. Another export takes it only once
-// it has expired. So two exports never deliver at once: a failing one can
-// delay a healthy one's tick, never undo it, and a slower one never stores a
-// body after a faster one has moved on.
+// it has expired. So two exports never send at once: a failing one can delay
+// a healthy one's tick, never undo it. A gap whose body the target may still
+// store (`MAYBE_STORED`) keeps the lease to its end rather than giving it up,
+// so a late store lands before the next export sends; one later than the
+// lease is not held off. The lease is time only, with no token the target
+// checks: a holder stalled for most of the lease between its renewal and
+// custody's send could still send after a takeover.
 //
 // Every statement takes the row lock and reads the time after the lock wait
 // (`clock_timestamp()`, never the transaction's start). A renewal holds only
@@ -15,6 +19,7 @@
 // and the holder sends nothing more.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
+import type { GapCode } from './trace-delivery.ts';
 
 /**
  * The cursor as one read saw it: its place `(tx, id)`, both null before the
@@ -28,9 +33,8 @@ export interface Cursor {
 }
 
 /**
- * How long a lease runs past its last renewal, in seconds. A body's delivery
- * is bounded by custody's deadline (5 s), so a body in flight never outlives
- * the lease it was sent under.
+ * How long a lease runs past its last renewal, in seconds. Custody bounds a
+ * body's delivery from its own start (5 s), well inside the lease.
  */
 const TRACE_LEASE_SECONDS = 60;
 
@@ -72,6 +76,28 @@ export async function renew(
   );
   if (row === undefined) await release(tx, holder);
   return row?.version ?? null;
+}
+
+/** The gaps whose body the target may have stored all the same. */
+const MAYBE_STORED: ReadonlySet<GapCode> = new Set<GapCode>([
+  'target_timeout',
+  'target_unreachable',
+  'target_malformed_reply',
+  'target_oversized_reply',
+]);
+
+/**
+ * Ends `holder`'s export: gives the lease up, or after a gap whose body may
+ * have been stored, keeps it to its end (`renew`).
+ */
+export async function letGo(
+  tx: TenantQuery,
+  holder: string,
+  version: string | null,
+  code: GapCode | null,
+): Promise<void> {
+  if (code !== null && MAYBE_STORED.has(code)) await renew(tx, holder, version);
+  else await release(tx, holder);
 }
 
 /** Gives up `holder`'s lease, if it still holds it. */

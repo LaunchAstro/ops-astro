@@ -1917,7 +1917,15 @@ and codes, never a sentence, to a trace target an operator reads.
   gives it up when it advances or records its gap; the advance lands only on
   that version. A takeover or a retention step back gives the row a new
   version, so the old holder sends nothing more and its advance changes
-  nothing. A failing export can delay a healthy one's tick, never undo it.
+  nothing. A failing export can delay a healthy one's tick, never undo it. A
+  gap whose body the target may still store (`target_timeout`,
+  `target_unreachable`, `target_malformed_reply`, `target_oversized_reply`)
+  keeps the lease to its end, so a late store lands before the next export
+  sends; while the target times out, a business exports at most once a
+  lease. A store later than the lease is not held off, and the lease has no
+  token the target checks: a holder stalled for most of a minute between its
+  renewal and custody's send could still send after a takeover. A cursor row
+  with no place yet (the lease creates it) owes no expiry ask.
   `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and
   insert, and update the cursor.
