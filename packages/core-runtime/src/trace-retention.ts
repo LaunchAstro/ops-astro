@@ -52,6 +52,9 @@ import { derivedId } from './trace-span.ts';
 /** The deletion endpoint's cap on ids per call. */
 export const EXPIRY_PAGE = 1_000;
 
+/** Unanswered reads in a row that end a pass's owed read-back: the store is not answering. */
+const UNANSWERED = 3;
+
 /** The trace store as retention asks it: delete ids, then read one back. */
 export interface ExpiryPorts {
   expire(traceIds: readonly string[]): Promise<Delivered>;
@@ -75,7 +78,7 @@ export async function expireOnce(
   options: { readonly windowDays?: number; readonly page?: number } = {},
 ): Promise<readonly RetentionBatch[]> {
   const windowDays = options.windowDays ?? TRACE_WINDOW_DAYS;
-  const page = options.page ?? EXPIRY_PAGE;
+  const page = Math.max(1, options.page ?? EXPIRY_PAGE);
   const batches: RetentionBatch[] = [];
   const asked = new Set<string>();
   for (;;) {
@@ -93,17 +96,19 @@ export async function expireOnce(
     if (batch.code !== null || ask.runs.length < page) break;
   }
   // Every owed run, page after page by run: a page that stays present does not hide the next.
+  // Reads the store does not answer, one after another, end it for the pass.
+  const silence = { reads: 0 };
   let after: string | null = null;
-  for (;;) {
+  while (silence.reads < UNANSWERED) {
     const from = after;
     // eslint-disable-next-line no-await-in-loop -- one page after another
     const owed = await database.withBusiness(
       businessId,
       async (tx) => await owedAsks(tx, windowDays, from, page),
     );
-    for (const { runs, place } of byPlace(owed.filter((row) => !asked.has(row.runId)))) {
+    for (const ask of byPlace(owed.filter((row) => !asked.has(row.runId)))) {
       // eslint-disable-next-line no-await-in-loop -- one ask after another; the store is not hurried
-      const batch = await recheck(database, businessId, key, ports, { runs, place }, windowDays);
+      const batch = await recheck(database, businessId, key, ports, ask, windowDays, silence);
       if (batch !== null) batches.push(batch);
     }
     if (owed.length < page) break;
@@ -187,8 +192,9 @@ async function recheck(
   ports: ExpiryPorts,
   ask: Ask,
   windowDays: number,
+  silence: { reads: number },
 ): Promise<RetentionBatch | null> {
-  const gone = await readBack(key, businessId, ports, ask.runs);
+  const gone = await readBack(key, businessId, ports, ask.runs, silence);
   if (gone.length === 0) return null;
   return await confirm(
     database,
@@ -200,17 +206,21 @@ async function recheck(
   );
 }
 
-/** The runs whose trace a read finds gone. */
+/** The runs a read finds gone; with `silence`, until `UNANSWERED` unanswered reads in a row. */
 async function readBack(
   key: Buffer,
   businessId: string,
   ports: ExpiryPorts,
   runs: readonly string[],
+  silence?: { reads: number },
 ): Promise<readonly string[]> {
   const gone: string[] = [];
   for (const runId of runs) {
+    if (silence !== undefined && silence.reads >= UNANSWERED) break;
     // eslint-disable-next-line no-await-in-loop -- one read at a time; the store is not hurried
-    if ((await ports.present(traceOf(key, businessId, runId))) === 'absent') gone.push(runId);
+    const read = await ports.present(traceOf(key, businessId, runId));
+    if (silence !== undefined) silence.reads = read === 'unknown' ? silence.reads + 1 : 0;
+    if (read === 'absent') gone.push(runId);
   }
   return gone;
 }
