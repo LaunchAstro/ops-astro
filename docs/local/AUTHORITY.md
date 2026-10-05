@@ -274,7 +274,16 @@ over every declaration. It is off `UNPRODUCED_CODES` (`core-records/src/register
 
 It is also the answer to an agent call that presents no delegation credential,
 which is an agent before any pickup (`authorise`). Such a call reaches
-`task.queue` and `task.pickup` (`BEFORE_PICKUP`) and nothing else. `task.decide`
+`task.queue` and `task.pickup` (`BEFORE_PICKUP`) and nothing else. While the
+agent holds a live delegation, credential presented or not, its `task.queue`
+shows only the work of that task's client (#169, `queue` in
+`core-runtime/src/pickup.ts`): the queue never shows it another client's
+reservation, purpose slug or held amount, and a repeated read is served again
+rather than replayed. The narrowing is the queue's alone: `task.pickup` of a
+reservation the agent already knows is not narrowed. A helper delegation
+(AW-11) narrows its helper's queue to the parent's client while it stands, so
+a parent that names another agent as its helper narrows that agent's queue
+while the child stands (at most until the child's expiry). `task.decide`
 without a credential is `DELEGATION_EXCLUDES_DECISION`, so a decision is still
 named as one. `session.capabilities` is in `AGENT_SURFACE` but not in
 `BEFORE_PICKUP`, so before a pickup it is refused the same way. After a pickup
@@ -296,7 +305,7 @@ answers `DELEGATION_EXCLUDES_OPERATION` without receipt content, and a presented
 credential that is not live stays `DELEGATION_NOT_LIVE` (`replaySettledHandback`,
 reached through `releaseReplay` in `commands/agent-replay.ts`). A capabilities
 replay is authorised as a fresh call and projected again for the credential
-presented now (`replayCapabilities`, same file), so a replay under another
+presented now (`serveAgain`, same file), so a replay under another
 delegation never releases the first delegation's `purposeScope`. A pickup replay
 is the one exception to "no credential, no call"
 ([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).
@@ -477,11 +486,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:690-731`, run at `:865-873`). It gets a login and an acting identity,
-  and no membership and no business grant (`:158-161`, `:311-313`). The seed
+  user (`:744-770`, run at `:903-911`). It gets a login and an acting identity,
+  and no membership and no business grant (`:162-165`, `:315-317`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:733-762`, `:902-912`).
+  (`:764-793`, `:932-942`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -788,6 +797,9 @@ its one-task delegation never does: `DELEGATION_OUT_OF_PURPOSE`, nothing written
 person and per business on calls a minute, calls at once and records handed out
 a minute (`apps/api/auth/agent-quota.ts`), answered `AGENT_QUOTA_EXCEEDED` 429.
 A call counts once, retried or not, and a call outside the reach counts too.
+Its records count when its answer is decided, inside its transaction: an
+answer that would pass a records limit is refused and rolls back, so calls
+let in together cannot hand out more between them than the limit.
 The quota is held in each API process, so it multiplies across instances.
 
 ## Settings ▸ Access (C32)

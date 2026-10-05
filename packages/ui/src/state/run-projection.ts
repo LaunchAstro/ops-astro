@@ -73,7 +73,12 @@ export interface RunReservation {
    * The step's attempt. Its id names it to `budget.record_outcome` and
    * `budget.write_off` (C54); absent on a read that does not carry it.
    */
-  readonly attempt: { readonly id?: string; readonly state: string } | null;
+  readonly attempt: {
+    readonly id?: string;
+    readonly state: string;
+    /** What the attempt recorded, or null before it records (OW-108.1). */
+    readonly outcome: string | null;
+  } | null;
 }
 
 /** What a run was allowed to touch: its lease's delegation, set by the broker (MP-6-4). */

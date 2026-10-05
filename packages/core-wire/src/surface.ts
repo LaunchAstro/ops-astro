@@ -32,6 +32,7 @@
 
 import type { Action } from '../../core-records/src/index.ts';
 import type { CommandName } from './command-names.ts';
+import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { WRITE_OPERANDS, type OperandSpec } from './write-operands.ts';
 
 export type { CommandName } from './command-names.ts';
@@ -209,6 +210,7 @@ const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const CUSTODY_COLLECTION = 'custody';
 const CONVERSATION_COLLECTION = 'conversation';
 const TIME_COLLECTION = 'time';
 const TAG_COLLECTION = 'tag';
@@ -611,6 +613,22 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['clientId'],
   }),
 
+  // Custody (C31). `custody:manage` for all three, never an agent (the key
+  // catalogue: owner and administrators). The list is asked per row by the
+  // scopes the caller holds the key at, so a client-scoped holder sees that
+  // client's secrets only; setting and clearing are business-wide.
+  read('secret.list', CUSTODY_COLLECTION, { action: 'manage' }),
+  declare('secret.set', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['clientId'],
+  }),
+  declare('secret.clear', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['secretId'],
+  }),
+
   // The grant manager's authority, which is `manage` on the task family this
   // head's grants are about, asked of the revoked row's own scope. The
   // envelope asks nothing business-wide here; `authority-controls.ts` asks the
@@ -704,6 +722,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+  // Wayfinder (WF-1). No agent reaches these until API-2's narrowed credential
+  // lands: the retype rule's floor.
+  declare('task.set_type', 'write'),
+  // A client change, as `task.set_party`: `share`, and locked once the map has content.
+  declare('map.scope', 'share', {
+    serialise: WAYFINDER_MAP_LOCK,
+    rule: 'once the map has content: refused CLIENT_LOCKED (409), writes nothing, as task.set_party (S0-5)',
   }),
   // `billing:decide` on the whole business (AW-04, U10): owners and
   // administrators set the planning cap; no agent route serves it.

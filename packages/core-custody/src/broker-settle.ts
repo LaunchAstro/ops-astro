@@ -5,7 +5,8 @@
 // once: settled or released, by a provider's proof, a person or its own
 // answer, it ignores a later answer and gives nothing back again. A hold moves
 // it only out of an open state (`reserved`, `dispatched`); an answer may also
-// settle or release one the sweep held, since the answer is what happened.
+// settle or release one the sweep held, since the answer is what happened, and
+// gives back what a top-up or a stop counted of it, as an open call's does.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import {
@@ -109,7 +110,7 @@ export async function markStepActed(tx: TenantQuery, callId: string): Promise<vo
 /** The states an answer may close: open, or held by the sweep before the answer came. */
 const ANSWERABLE = `('reserved', 'dispatched', 'liability_unknown')`;
 
-/** Open: not yet answered, so a give-back is still due on its close. */
+/** Open: not yet answered or held. */
 const open = (state: string | undefined): boolean => state === 'reserved' || state === 'dispatched';
 
 /** The answer to a close that found its call already closed: it moved nothing. */
@@ -256,7 +257,7 @@ export async function settle(
     if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
     if (settlement.kind === 'nothing') {
       const released = await release(tx, reserved, settlement.reason, broker);
-      if (open(state)) await giveBack(tx, callId);
+      await giveBack(tx, callId);
       return released;
     }
     const { costMinor } = settlement;
@@ -265,7 +266,7 @@ export async function settle(
       return await hold(tx, reserved, observed, null, broker);
     }
     await settlePriced(tx, reserved, settlement, broker);
-    if (open(state)) await giveBack(tx, callId);
+    await giveBack(tx, callId);
     if (work !== 'stands') return { ok: false, code: work, callId };
     return {
       ok: true,

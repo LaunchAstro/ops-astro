@@ -740,9 +740,10 @@ claim (`record_unique_values_claim_idx`), a deadlock victim (`40P01`) and
 it is retried once, like a lost unique race, and a second one faults
 (`tests/commands/unstorable-values-direct-callers.test.ts` holds the retry). The
 identity case is the one an agent reaches. A same-operationId retry in flight
-behind its original loses `operations_identity_key` to the original's commit, and its whole
-transaction rolls back. The second attempt reads the committed register row and
-replays it (DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
+behind its original waits at the envelope's door (`enter`, #932), then reads
+the committed register row and replays it; `operations_identity_key` is the
+backstop, and its loser's whole transaction rolls back and the retry replays
+(DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
 
 **A trash can deadlock, and the retry answers from the winner's commit.**
 `trashSubtree` (`tasks/trash.ts`) locks the rows it walks in id order, but that
@@ -994,7 +995,8 @@ provider's proof released or its own answer settled ignores a later answer or
 release, and gives nothing back again (`broker-settle.ts`). A hold moves a call
 only out of `reserved` or `dispatched`; an answer that comes after the sweep
 held it still settles or releases it, since the answer is what happened, and
-gives nothing back. A call released
+gives back what its hold counted, as an open call's answer does
+(`tests/broker/unknown-call-settled-lower-gives-back.test.ts`). A call released
 unsent (a start refused, a sweep) gives nothing back
 (`tests/broker/spend-closes-once.test.ts`).
 The sweep, a cancel, a lost
@@ -1458,7 +1460,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:821-832`). With neither setting present, the
+  rewrites it (`local-seed.mjs:859-870`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1876,22 +1878,31 @@ and codes, never a sentence, to a trace target an operator reads.
 - `core-runtime/src/trace-export.ts`: `exportOnce` reads up to 100 events after
   the business's cursor, registers each run's copy (`diagnostic_trace`,
   `run:<id>`, retained as `trace`) before it is materialised, delivers through
-  the `Deliver` port, then advances the cursor or records a gap. The read and
+  the `Deliver` port, then advances the cursor or records a gap. An event
+  already older than the trace window (30 days, `TRACE_WINDOW_DAYS`) when it
+  is read is passed by the cursor and never sent, and registers no copy:
+  retention would owe it a delete at once, and a run retention confirmed has
+  only such events, so a retention step back that re-reads them brings no
+  trace back. The read and
   the advance are separate transactions and no transaction is open while the
   target is asked. Anything short of a 2xx JSON reply is a gap with a fixed
   code (`target_unreachable`, `target_redirect`, `target_timeout`,
   `target_oversized_reply`, `target_malformed_reply`, `target_refused`,
-  `target_forbidden`) and the cursor stays. No run reads either table and no
-  run waits on the exporter.
+  `target_forbidden`) and the cursor stays. The gap names the cursor the
+  batch was read after, read once in the read's transaction, never the row as
+  it is when the gap is written: another export may have moved it while this
+  one waited on the target. No run reads either table and no run waits on the
+  exporter.
 - `trace_export_cursors`: one row per business, the last delivered event by
   its writing transaction's id and its own, `(tx, id)` (`run_events.tx`,
   `xid8`, 0090). The read takes only events below its snapshot's horizon
   (`pg_snapshot_xmin`): every transaction below it has finished and any later
   write has a higher id, so an event that commits late never lands behind
   the cursor. A long transaction anywhere on the cluster holds the export
-  back until it ends; it never loses an event. The cursor moves forward only: two exports at once may read the
-  same batch, and the slower one never moves it back (the upsert's row lock
-  orders them, the comparison under it keeps the later). `trace_export_gaps`: append only (a trigger refuses
+  back until it ends; it never loses an event. The read also takes the cursor
+  row's version (`xmin`), and the advance lands only on that version, so two
+  exports at once that read the same batch never move it back (the upsert's
+  row lock orders them, the version under it decides). `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and
   insert, and update the cursor.
 - The port is custody's egress (`apps/api/trace-exporter.ts`): a custody
@@ -1937,14 +1948,58 @@ and codes, never a sentence, to a trace target an operator reads.
   group may select and insert): the window, the runs asked, the runs
   confirmed, and the gap code when it did not finish (a delivery code, or
   `expiry_unconfirmed`). A failed delete confirms nothing; an unconfirmed run
-  is due again next pass. Two passes at once are harmless: deletion by
-  derived id is idempotent. The server runs it hourly beside the export.
+  is due again next pass. A run can take a new event after the due check and
+  an export can send it before the delete, so the batch row's transaction
+  rechecks first: when a run asked has an event after the cursor the check
+  read, the cursor steps back to just before the earliest such event (or
+  stays, if already behind it) under its row lock, the lock the export's
+  advance takes, and its version changes. Those events are sent again after
+  the delete, an export that read before the step never advances, and the
+  batch does not confirm those runs (`expiry_unconfirmed`): each is due again
+  once its fresh event is past the window. Two passes at once are harmless: deletion by derived id
+  is idempotent, and a step back re-sends only fresh events onward, never a
+  run the other pass just confirmed (its events sort earlier unless a
+  transaction stayed open longer than the window). The server runs it hourly beside the export.
 - Readers: `trace.read` serves a task's runs' spans from `run_events`
   (`readTaskTrace`), held to the same allowlist without the ids
   (`traceCells`), behind `operations:read` and the task's own read
   ([AUTHORITY.md](AUTHORITY.md#trace-readers-aw-13)). The trace target's own
   logins (the owner, and the second operator after the timed restore
   rehearsal) are the installation's, not the product's.
+
+## The email hook
+
+The provider's delivery and bounce events reach `POST /api/hooks/email`
+(AW-07b, `apps/api/mail-hook.ts`). `main` mounts the route only when
+`EMAIL_HOOK_SECRET` holds a secret in the provider's form (`whsec_` and its
+base64 key); a malformed one stops the server, naming the setting and never
+the value. There is no sign-in on the route: the signature is the authority,
+checked over the raw bytes before the body is parsed
+(`packages/core-connectors/src/email-hook.ts`), within five minutes either side
+of now. A verified event moves only the attempt of the business that sent the
+message (`landEmailEvent`, `core-custody/src/broker-email-hook.ts`):
+`email.delivered` moves an accepted attempt to delivered, and `email.bounced`
+moves an accepted or delivered one to failed, which is final in either arrival
+order (a delivery is the receiving server's acceptance, and a bounce can follow
+it); `sent`, `opened` and `clicked` move
+nothing, and no hook path writes a decision. The hosted function
+(`apps/api/function.ts`) does not mount the hook yet, as it does not wire the
+model broker.
+
+Two parts are Stage 1 only, held for Sol in `stage1/SOL-OWED.md`:
+
+- **The sender check is a mock.** The sending subdomain's setup check (DKIM,
+  SPF, the return-path MX) and the root's DMARC policy are read from the fake
+  source (`email-sender-fake.ts`), and every report from it says `mock: true`.
+  The send refuses `SENDER_NOT_VERIFIED` until the report verified. The real
+  read needs a GET through custody, which is POST-only today; it is its own
+  sensitive piece.
+- **A replay of an event that moved nothing is refused from memory.** A
+  replayed event id that moved an attempt is refused by the database, across
+  processes. One that moved nothing (a `sent`, an `opened`, an event for an
+  attempt already settled) is held only in the process that took it, for
+  twice the timestamp window, so a second process could take it once more.
+  It moves nothing either time, so local and staging accept it.
 
 ## An automation occurrence's run
 
@@ -2138,8 +2193,16 @@ launch of the reviewed output is the only decision an effect waits on.
   it on the attempt (`attempts.receipt_link`, 0109) only when `receiptLinkOf`
   does: `https:`, exactly the step kind's declared host
   (`EFFECT_RECEIPT_HOSTS`), no user, password, port, query or fragment, at most
-  512 characters, and the parsed form byte for byte the text sent. Anything
-  else is stored as null, which a reader shows as "no link", never as a link.
+  512 characters, the parsed form byte for byte the text sent, and no run of
+  43 base64url characters, a delegation credential's length, as sent or once
+  its percent escapes decode (`CREDENTIAL_RUN`), and, for an agent's
+  observation, not the letters and digits of any live credential the agent
+  holds in order: its delegations, the child delegations they minted, and its
+  logins, unexpired (each derived again from its row, `agentCredentials`; one
+  that cannot be derived keeps no link), nor those letters reversed or the
+  credential's bytes in hex. The check is best effort against re-spellings: an
+  agent set on leaking a credential has other ways out, and its short-lived
+  sign-in token is not among them. Anything else is stored as null, which a reader shows as "no link", never as a link.
   0109's check repeats the shape and allows a link only on an observed
   attempt; its trigger fixes the link once the attempt is observed, so a link
   resolved later is not a receipt. `task.receipt` names it as `link` beside
@@ -2147,7 +2210,8 @@ launch of the reviewed output is the only decision an effect waits on.
 
 Tests: `aw-08-approval-gate`, `aw-08-client-sign-off`, `aw-08-isolation` and
 `aw-08-receipt-provider` (`AW-08 receipt link`, `AW-08 hostile provider`,
-`AW-08 canary`).
+`AW-08 canary`), `receipt-link-keeps-no-credential`,
+`receipt-link-keeps-no-respelled-credential` and `receipt-link-credential-run`.
 
 ## What is not here
 

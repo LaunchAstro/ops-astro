@@ -245,6 +245,8 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.reparent': { parentId: null },
       'task.move': { board: null, boardSection: null },
       'task.rank': { afterId: w.h.alphaTask.id },
+      'task.set_type': { taskType: 'build' },
+      'map.scope': { client: randomUUID() },
     };
     // Named by `recordId` (`targetKeyOf`): task.receipt names its task by
     // `attemptId` and has its own cell below.
@@ -333,6 +335,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       stepNames: [],
     }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('secret.clear', 'secretId', f.secretId, (secretId) => ({ secretId }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
       holderId,
@@ -473,11 +476,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 72 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 75 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(72);
-    expect(names).toHaveLength(72);
+    expect(new Set(names).size, 'distinct operations').toBe(75);
+    expect(names).toHaveLength(75);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

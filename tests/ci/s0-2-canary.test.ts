@@ -15,6 +15,7 @@ import postgres from 'postgres';
 import { faultCode } from '../../apps/api/alerts/sink.ts';
 import { PREFIX } from '../../packages/core-wire/src/index.ts';
 import { bearer, READ_PATH, served } from './s0-2-canary.fixture.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -50,7 +51,7 @@ function canaryCasesSolNarrow() {
     );
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
-      logged.push(parts.join(' '));
+      logged.push(consoleLine(...parts));
     });
     const { app, alerts, events } = served(() => Promise.reject(hostile));
     const response = await app.fetch(
@@ -75,7 +76,7 @@ function canaryCases1() {
   it('a manufactured database error cannot log a planted code', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
-      (...parts: unknown[]) => void logged.push(parts.join(' ')),
+      (...parts: unknown[]) => void logged.push(consoleLine(...parts)),
     );
     // No database ran: the caller manufactured an instance of the driver's public class.
     const planted = new postgres.PostgresError({ code: 'K7QXZ', message: 'a fault' } as never);
@@ -119,7 +120,7 @@ function canaryCases1() {
 async function check(fault: Error, logs: string): Promise<void> {
   const logged: string[] = [];
   vi.spyOn(console, 'error').mockImplementation(
-    (...parts: unknown[]) => void logged.push(parts.join(' ')),
+    (...parts: unknown[]) => void logged.push(consoleLine(...parts)),
   );
   const { app, events, alerts } = served(() => Promise.reject(fault));
   const response = await app.fetch(
@@ -170,7 +171,7 @@ function canaryCases3() {
   it('a five-character planted fault code never reaches the API log', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
-      (...parts: unknown[]) => void logged.push(parts.join(' ')),
+      (...parts: unknown[]) => void logged.push(consoleLine(...parts)),
     );
     const planted = Object.assign(new Error('a fault'), { code: 'K7QXZ' });
     const { app, events, alerts } = served(() => Promise.reject(planted));
@@ -195,7 +196,7 @@ function canaryCases4() {
   it('a fault whose code and constraint carry planted words logs as unknown, never the plant', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
-      (...parts: unknown[]) => void logged.push(parts.join(' ')),
+      (...parts: unknown[]) => void logged.push(consoleLine(...parts)),
     );
     const planted = Object.assign(new Error('x'), {
       code: 'PLANTEDCANARYCODE',

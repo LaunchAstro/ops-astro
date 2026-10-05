@@ -39,6 +39,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // `select 1` needs one column, and c55-security-alerts proves which.
   ['s', 'ops.security_alert_log'],
   ['s', 'ops.slots'],
+  // The wayfinder's map read models (WF-1): their triggers write them; the app reads.
+  ['s', 'map_frontier map_summaries'],
   // 0058 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().
   // 0059 (S0-5, ORCH38): the gate's own commands write through the app, so it
@@ -58,6 +60,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
+  // A map's versions are history; its components are retired by version, never deleted.
+  ['si', 'map_versions'],
+  ['siu', 'map_components'],
   // A run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
   // 0095 (MP-6-2): a run's state, each revision a version, never rewritten.
@@ -137,11 +142,22 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
   ['si', 'tags'],
   ['sid', 'task_tags'],
+  // C80: a live correction takes updates (a decision is one); its receipts
+  // are append only.
+  ['siu', 'live_corrections'],
+  ['si', 'live_correction_receipts'],
+  // 20261005003850 (C33): a definition, a released version and an occurrence
+  // are written once and never changed; an activation's setting moves by the
+  // column grant in COLUMN_UPDATES.
+  ['si', 'activation_occurrences activations automation_definitions definition_versions'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
   ['siud', 'record_links record_types record_unique_values'],
   ['siud', 'records'],
+  // 20261005023013 (C31): custody's select is a column grant without the sealed
+  // columns, proved by name in `tests/custody/c31-credentials.test.ts`.
+  ['siu', 'custody_secrets'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

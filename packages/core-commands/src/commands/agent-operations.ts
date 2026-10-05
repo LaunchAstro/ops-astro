@@ -81,7 +81,7 @@ interface AgentOperationRow<O extends object> {
   readonly operands: (request: AgentRequest) => O | Refused;
   /** How a stored success is released on replay (`agent-replay.ts`). */
   readonly replay:
-    'reauthorise' | 'pickup' | 'capabilities' | 'settledHandback' | 'childPickup' | 'childHandback';
+    'reauthorise' | 'pickup' | 'serveAgain' | 'settledHandback' | 'childPickup' | 'childHandback';
   /** What an authority refusal keeps, when the operation keeps anything. */
   readonly onRefused?: (
     tx: TenantQuery,
@@ -573,13 +573,15 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     'task.queue',
     row({
       authority: 'beforePickup',
-      replay: 'reauthorise',
+      // Served again on replay: the stored queue may predate a delegation that
+      // now narrows it (#169).
+      replay: 'serveAgain',
       identifiers: READ_CATALOGUE['task.queue'].identifiers,
       operands: NONE,
-      serve: async (tx) => ({
+      serve: async (tx, { session }) => ({
         recordId: null,
         revision: null,
-        detail: { queue: await readQueue(tx) },
+        detail: { queue: await readQueue(tx, session.actorId) },
       }),
     }),
   ],
@@ -921,7 +923,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     'session.capabilities',
     row({
       authority: 'purpose',
-      replay: 'capabilities',
+      replay: 'serveAgain',
       identifiers: READ_CATALOGUE['session.capabilities'].identifiers,
       operands: NONE,
       // An agent holds no grants of its own -- `identity/agent-login.ts`

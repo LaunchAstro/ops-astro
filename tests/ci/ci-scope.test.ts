@@ -23,7 +23,7 @@ import {
   suitesInScope,
   type ScopeMap,
 } from '../../scripts/ci-scope.ts';
-import { readNamedSuites } from '../../scripts/named-suites.ts';
+import { readIsolationSuites, readNamedSuites } from '../../scripts/named-suites.ts';
 import { dependenciesOf } from '../../scripts/import-closure.ts';
 
 const root = new URL('../..', import.meta.url).pathname;
@@ -38,6 +38,7 @@ const fixtureMap: ScopeMap = {
   scopable: ['tests/', 'apps/web/'],
   runsEverything: ['tests/support/'],
   visualDrift: ['apps/web/', 'tests/visual/'],
+  queueOnly: [],
 };
 const fixtureDependents = (path: string): string[] =>
   path.startsWith('apps/web/')
@@ -111,7 +112,7 @@ describe('a pull request outside the scopable paths', () => {
       ['README.md'],
       ['apps/api/server.ts'],
       ['migrations/0001_x.sql'],
-      ['tests/db/named-suites.json'],
+      ['tests/db/suites/api/new.test.ts.json'],
       ['a-new-top-level/thing.ts'],
       ['tests/support/fresh-database.ts'],
       ['pnpm-lock.yaml'],
@@ -234,13 +235,10 @@ describe('the wrapper as a process', () => {
   }, 60_000);
 
   it('every isolation suite is a named suite, so its area is read like theirs', () => {
-    const isolation = JSON.parse(read('tests/db/isolation-suites.json')) as Record<string, unknown>;
-    const lists = Object.entries(isolation).filter(([key]) => key !== 'comment');
-    expect(lists.map(([key]) => key)).toEqual(['invariant']);
+    const { invariant } = readIsolationSuites(root);
+    expect(invariant.length).toBeGreaterThan(0);
     const all = new Set(named);
-    for (const [, list] of lists) {
-      expect((list as string[]).filter((s) => !all.has(s))).toEqual([]);
-    }
+    expect(invariant.filter((s) => !all.has(s))).toEqual([]);
   });
 });
 
@@ -262,6 +260,7 @@ describe('the kept map against the code', () => {
 });
 
 describe('the workflow', () => {
+  const SKIPS_PULL_REQUESTS = "github.event_name != 'pull_request'";
   const ci = read('.github/workflows/ci.yml');
   const job = (key: string): string => {
     const start = ci.indexOf(`\n  ${key}:\n`);
@@ -282,16 +281,17 @@ describe('the workflow', () => {
     for (const { context } of required) expect(reported, context).toContain(context);
   });
 
-  it('scopes only the three heavy checks, each deciding in its own step with no job-level skip', () => {
-    for (const key of ['database-shard', 'isolation', 'visual-drift']) {
+  it('scopes only the heavy checks (CI-SPEED: local checks too), each in its own step, the shards alone skipping pull requests', () => {
+    for (const key of ['check', 'database-shard', 'isolation', 'visual-drift']) {
       const block = job(key);
+      const conds = [...block.matchAll(/^ {4}if: (.+)$/gmu)].map((m) => m[1]);
       expect(block, key).toMatch(/node scripts\/ci-scope\.ts/u);
-      expect(block, key).not.toMatch(/^ {4}if:/mu);
+      expect(conds, key).toStrictEqual(key === 'database-shard' ? [SKIPS_PULL_REQUESTS] : []);
       expect(block, key).not.toMatch(/needs: \[[^\]]*scope/u);
     }
     const others = ci
       .split(/\n(?= {2}[\w-]+:\n)/u)
-      .filter((b) => !/^ {2}(database-shard|isolation|visual-drift):/u.test(b));
+      .filter((b) => !/^ {2}(check|database-shard|isolation|visual-drift):/u.test(b));
     for (const block of others) expect(block).not.toMatch(/ci-scope/u);
   });
 });

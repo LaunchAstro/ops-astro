@@ -59,6 +59,8 @@ interface Row {
   readonly weight: number;
   readonly event: unknown;
   readonly at: Date;
+  /** `at` to the microsecond, the replay's place: a Date keeps milliseconds only. */
+  readonly at_key: string;
 }
 
 /** A row as the detector's signal: the keyed digest stands where the scope's parts stood. */
@@ -107,18 +109,16 @@ async function replay(execute: Execute, options: ForwarderOptions, now: number, 
       spent.push(...(held.get(key) ?? []).map((row) => row.id));
       held.delete(key);
     },
-    { now: () => clock },
+    // Every row is held already (`held`): the live detector's scope cap would
+    // only drop counts the table still has.
+    { now: () => clock, scopes: Number.POSITIVE_INFINITY },
   );
   let handled = 0;
-  for (let after = '0'; ;) {
+  for (let after = { at: '-infinity', id: '0' }; ;) {
     // oxlint-disable-next-line no-await-in-loop -- one batch after another
-    const rows = await execute<Row>(
-      `select id, kind, scope, weight, event, at from ops.api_events
-         where id > $1 order by id limit $2`,
-      [after, BATCH],
-    );
+    const rows = await batchAfter(execute, after);
     handled += rows.length;
-    for (const row of rows.toSorted((a, b) => a.at.getTime() - b.at.getTime())) {
+    for (const row of rows) {
       if (row.kind === 'error') {
         // oxlint-disable-next-line no-await-in-loop -- one error at a time, inside the pass
         await options.send(rebuiltError(row.event, options, rowId(row)));
@@ -138,10 +138,24 @@ async function replay(execute: Execute, options: ForwarderOptions, now: number, 
       current = row;
       detector.observe(signal);
     }
-    if (rows.length < BATCH) break;
-    after = rows.at(-1)?.id ?? after;
+    const last = rows.at(-1);
+    if (last === undefined || rows.length < BATCH) break;
+    after = { at: last.at_key, id: last.id };
   }
   return { handled, spent };
+}
+
+/**
+ * One page of the replay: the rows after `$1, $2`, in time order across every
+ * page, so the replay's clock never runs backwards. The index on `(at, id)`
+ * is this order, so a page reads on from the last one, never sorting the table.
+ */
+export const REPLAY_PAGE = `select id, kind, scope, weight, event, at, at::text as at_key
+    from ops.api_events
+   where (at, id) > ($1::text::timestamptz, $2::bigint) order by at, id limit $3`;
+
+async function batchAfter(execute: Execute, after: { readonly at: string; readonly id: string }) {
+  return await execute<Row>(REPLAY_PAGE, [after.at, after.id, BATCH]);
 }
 
 /** Every alert kept, in the order raised; each leaves only once the sink took it. */
