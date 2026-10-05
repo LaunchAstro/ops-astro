@@ -25,8 +25,11 @@ it.skipIf(noDatabase)(
     const work = await liveWork(s, 'trace retention never advanced', 1_000);
     await awaitDue(s);
     expect(
-      await exportOnce(s.db.app, s.business, TRACE_KEY, async () =>
-        Promise.resolve({ ok: false, fault: 'status', status: 503 }),
+      await exportOnce(
+        s.db.app,
+        s.business,
+        TRACE_KEY,
+        async () => await Promise.resolve({ ok: false, fault: 'status', status: 503 }),
       ),
     ).toMatchObject({ kind: 'gap', code: 'target_refused' });
     await age(String(work.picked['runId']), TRACE_WINDOW_DAYS + 1);
