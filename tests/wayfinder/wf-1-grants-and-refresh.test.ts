@@ -54,6 +54,7 @@ const broker: Broker = {
     stop: () => Promise.resolve(),
     raw: unreached,
     dispatch: unreached,
+    describe: unreached,
   },
   operations: catalogue([EMAIL_SEND]),
   providers: new Map([['resend', { build: emailAdapter, price: () => 0 }]]),
