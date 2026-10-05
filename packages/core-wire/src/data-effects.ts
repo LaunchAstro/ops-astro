@@ -182,6 +182,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.set': writing(client('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
   'connection.fleet': READ,
+  'connection.graduation': READ,
   'connector.repair': writing(business('connection_repairs')),
   'client.create': writing(client('clients')),
   'client.set_privacy': writing(client('clients')),

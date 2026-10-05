@@ -276,3 +276,5 @@ export * from './automations/index.ts';
 export * from './custody/surface.ts';
 // The connector fleet and a repair's start (MP-14-7a): no value is read.
 export * from './connections/fleet.ts';
+// Graduation and standing mandates (MP-14-10a): the region's rows and core's check.
+export * from './mandates/mandates.ts';

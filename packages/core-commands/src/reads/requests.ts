@@ -49,6 +49,7 @@ import type {
   SettingsReadResult,
   SecretListResult,
   ConnectionFleetResult,
+  ConnectionGraduationResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
@@ -147,6 +148,8 @@ export interface ReadOperands {
   readonly 'secret.list': NoOperands;
   /** The connections at the scopes the caller holds `connection:read` (MP-14-7a). */
   readonly 'connection.fleet': NoOperands;
+  /** The graduation region of the clients `connection:read` reaches (MP-14-10a). */
+  readonly 'connection.graduation': NoOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -227,6 +230,7 @@ export type ReadResult =
   | SettingsReadResult
   | SecretListResult
   | ConnectionFleetResult
+  | ConnectionGraduationResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult

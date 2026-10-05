@@ -24,4 +24,7 @@ export type SetupCommandName =
   // The connector fleet (MP-14-7a): read by `connection:read`, and a repair
   // started by `custody:manage`, which records it and sends nothing.
   | 'connection.fleet'
-  | 'connector.repair';
+  | 'connector.repair'
+  // Graduation and standing mandates (MP-14-10a): the per-client region is one
+  // read by `connection:read`, the same page's key.
+  | 'connection.graduation';
