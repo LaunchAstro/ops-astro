@@ -70,6 +70,14 @@ export interface RegistryWorld {
   as(who: Member, name: string, body: Body, business?: string): Promise<Answer>;
   /** The same call through the wide boundary, which holds its own connections; `bearer` signs in as one session. */
   asWide(who: Member, name: string, body: Body, bearer?: string): Promise<Answer>;
+  /** As `asWide`, through an API over `wrap` of a pool of its own (a case's stop between statements). */
+  asThrough(
+    wrap: (inner: Database) => Database,
+    who: Member,
+    name: string,
+    body: Body,
+    bearer?: string,
+  ): Promise<Answer>;
   registry(who: Member, business?: string): Promise<AutomationRegistryResult>;
   release(body: Body, who?: Member, business?: string): Promise<Answer>;
   /** A new definition with one version in `modes`; answers its ids. */
@@ -219,6 +227,15 @@ export async function createRegistryWorld(part: string): Promise<RegistryWorld> 
         return { pool, api: controls.fixture.compose(undefined, undefined, pool) };
       })();
       return await send(wide.api, who, 'alpha', name, body, bearer);
+    },
+    async asThrough(wrap, who, name, body, bearer) {
+      const pool = wrap(connect(db.appUrl, { source: 'runtime', max: 2 }));
+      try {
+        const api = controls.fixture.compose(undefined, undefined, pool);
+        return await send(api, who, 'alpha', name, body, bearer);
+      } finally {
+        await pool.close();
+      }
     },
     release,
     rows,

@@ -10,12 +10,18 @@
 // reaches while the change waits on the audit chain (0061); the same attempt
 // sent again from a new sign-in is kept as a scope refusal, not a sign-out. A
 // grant that runs out while the change waits on the audit chain refuses it
-// too. Each of the four writes, nothing applied.
+// too. Each of the four writes, nothing applied. A sign-out through bravo
+// sent once the change has read its session live under alpha's chain waits
+// for the change to commit (PRV-oa-984-R2.1).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { signOutSession, type FactorProvider } from '../../packages/core-commands/src/index.ts';
-import { ISSUER, type Answer } from '../api/fixture.ts';
+import { signOutSession } from '../../packages/core-commands/src/index.ts';
+import {
+  endOtherSeenSessions,
+  type VerifiedSubject,
+} from '../../packages/core-records/src/index.ts';
+import type { Answer } from '../api/fixture.ts';
 import {
   insertActor,
   insertLogin,
@@ -23,27 +29,13 @@ import {
   insertMembership,
   insertPerson,
 } from '../identity/fixture.ts';
-import { signBearer } from '../support/sign-in.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import {
-  expiringGrant,
-  pinnedFirstOf,
-  sentWhileHeld,
-  untilExpired,
-  type Execute,
-} from './race-hold.ts';
-import { createRegistryWorld, detail, type RegistryWorld } from './registry-world.ts';
+import { expiringGrant, sentWhileHeld, untilExpired, type Execute } from './race-hold.ts';
+import { fourCasesOf, stateIn, untouched, type Send } from './approval-cases.ts';
+import { createRegistryWorld, type RegistryWorld } from './registry-world.ts';
+import { provider, signedInOf, signOutWaits, stopAfterLastSessionRead } from './session-stop.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
-/** A provider that confirms every sign-out and is asked for nothing else. */
-const done = Promise.resolve({ ok: true, value: undefined } as const);
-const provider: FactorProvider = {
-  enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
-  verify: () => Promise.resolve({ ok: false, fault: 'refused' }),
-  remove: () => done,
-  signOut: () => done,
-};
 
 /** The owner's hold on one activation's row. */
 const holdingActivation =
@@ -54,12 +46,14 @@ const holdingActivation =
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
   let w: RegistryWorld;
+  let bravoPersonId = '';
 
   beforeAll(async () => {
     w = await createRegistryWorld('c52m');
     // automationOnly's login reaches bravo too, so a sign-out there ends its session here (0061).
     await w.controls.fixture.db.app.withBusiness(w.bravo, async (tx) => {
       const personId = await insertPerson(tx, 'automationonly-bravo');
+      bravoPersonId = personId;
       const actorId = await insertActor(tx, personId);
       await insertMembership(tx, personId);
       const loginId = await insertLogin(tx, w.automationOnly.presented.subject);
@@ -75,86 +69,10 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
     await w?.drop();
   });
 
-  /** The activation as the owner's registry shows it. */
-  const shownOf = async (activationId: string) =>
-    (await w.registry(w.admin)).definitions
-      .flatMap((one) => one.activations)
-      .find((one) => one.id === activationId);
+  const fourCases = async () => await fourCasesOf(w);
+  const stateOf = async (sends: readonly Send[]) => await stateIn(w, sends);
 
-  /** Four activations: one to adopt on, one adopted twice to roll back, one to turn off, one approval to revoke. */
-  const fourCases = async () => {
-    const adoptCase = await pinnedFirstOf(w);
-    const backCase = await pinnedFirstOf(w);
-    const firstOfBack = (await shownOf(backCase.activationId))?.versionId;
-    for (const [versionId, expectedRevision] of [
-      [firstOfBack, 1],
-      [backCase.second, 2],
-    ] as const) {
-      // eslint-disable-next-line no-await-in-loop -- one adoption after another
-      const one = await w.as(w.admin, 'activation.adopt', {
-        activationId: backCase.activationId,
-        versionId,
-        expectedRevision,
-      });
-      expect(one.status).toBe(200);
-    }
-    const offCase = await pinnedFirstOf(w);
-    const revokeCase = await pinnedFirstOf(w);
-    const adopted = await w.as(w.admin, 'activation.adopt', {
-      activationId: revokeCase.activationId,
-      versionId: (await shownOf(revokeCase.activationId))?.versionId,
-      expectedRevision: 1,
-    });
-    const approvalId = String(detail(adopted)['approvalId']);
-    const sends: readonly (readonly [string, string, Record<string, unknown>])[] = [
-      [
-        adoptCase.activationId,
-        'activation.adopt',
-        { activationId: adoptCase.activationId, versionId: adoptCase.second, expectedRevision: 1 },
-      ],
-      [
-        backCase.activationId,
-        'activation.roll_back',
-        { activationId: backCase.activationId, expectedRevision: 3 },
-      ],
-      [
-        offCase.activationId,
-        'activation.turn_off',
-        { activationId: offCase.activationId, expectedRevision: 1 },
-      ],
-      [revokeCase.activationId, 'approval.revoke', { approvalId }],
-    ];
-    return sends;
-  };
-
-  /** Each of the four cases as the owner shows it: revision, switch, and whether its approval is revoked. */
-  const untouched = [
-    [1, true, null],
-    [3, true, false],
-    [1, true, null],
-    [2, true, false],
-  ];
-  const stateOf = async (sends: Awaited<ReturnType<typeof fourCases>>) => {
-    const shown = await Promise.all(sends.map(async ([id]) => await shownOf(id)));
-    return shown.map((one) => [one?.revision, one?.enabled, one?.approval?.revoked ?? null]);
-  };
-
-  type Send = Awaited<ReturnType<typeof fourCases>>[number];
-
-  /** A new sign-in of automationOnly's: its own provider session, and the token it verifies to. */
-  const signedIn = async () => {
-    const sessionId = randomUUID();
-    const presented = { ...w.automationOnly.presented, sessionId };
-    const bearer = await signBearer({
-      sub: presented.subject,
-      aud: 'authenticated',
-      iss: ISSUER,
-      role: 'authenticated',
-      exp: Math.floor(Date.now() / 1000) + 600,
-      session_id: sessionId,
-    });
-    return { presented, bearer };
-  };
+  const signedIn = async () => await signedInOf(w);
 
   /** The owner's hold on alpha's audit chain: the key `audit_events_chain` takes. */
   const holdingChain = async (execute: Execute): Promise<unknown> =>
@@ -222,6 +140,93 @@ describe.skipIf(serverUrl === undefined)('C52-A approval up to commit', () => {
     expect(raced).toStrictEqual(SIGNED_OUT);
     expect(await stateOf(sends)).toStrictEqual(untouched);
   }, 120_000);
+
+  /**
+   * Two endings through bravo, each with how many of the four writes it races:
+   * the session's own sign-out (its key) races all four; an end of the login's
+   * other sessions (its subject's: bravo has seen none of them, so it ends
+   * none by key) races the first alone, since it ends every later sign-in of
+   * that login inside the clock-skew minute too.
+   */
+  const ENDINGS = [
+    [
+      'its sign-out',
+      4,
+      async (presented: VerifiedSubject, accessToken: string) => {
+        const caller = {
+          database: w.controls.fixture.db.app,
+          businessId: w.bravo,
+          presented,
+          accessToken,
+        };
+        const ended = await signOutSession(caller, {}, provider);
+        return 'ended' in ended && ended.ended === 1;
+      },
+    ],
+    [
+      'an end of its other sessions',
+      1,
+      async (presented: VerifiedSubject) =>
+        await w.controls.fixture.db.app.withBusiness(w.bravo, async (tx) => {
+          const keep = randomUUID();
+          return (
+            (await endOtherSeenSessions(
+              tx,
+              bravoPersonId,
+              keep,
+              'end_others',
+              presented.subject,
+            )) === 0
+          );
+        }),
+    ],
+  ] as const;
+
+  /**
+   * One case stopped straight after its last session read (alive, alpha's
+   * chain held), its session ended through bravo meanwhile. Whether the ending
+   * waited for the change and ended, the change's answer, and the next call.
+   */
+  const endedAfterLastRead = async ([, name, body]: Send, end: (typeof ENDINGS)[number][2]) => {
+    const { presented, bearer } = await signedIn();
+    const { wrap, arm } = stopAfterLastSessionRead(w.alpha);
+    const { stopped, release } = arm();
+    const answer = w.asThrough(
+      wrap,
+      w.automationOnly,
+      name,
+      { ...body, operationId: randomUUID() },
+      bearer,
+    );
+    await stopped;
+    let finished = false;
+    const ending = end(presented, bearer).finally(() => {
+      finished = true;
+    });
+    const waited = await signOutWaits(w.holderUrl(), () => finished);
+    release();
+    const [reply, ended] = await Promise.all([answer, ending]);
+    const later = await w.asWide(w.automationOnly, 'automation.registry', {}, bearer);
+    return [waited, ended, reply.status, [later.status, later.body['code']]];
+  };
+
+  it.each(ENDINGS)(
+    'C52-A signed out elsewhere after the last session read (%s): the ending waits for the change it admitted',
+    async (_kind, count, end) => {
+      const sends = (await fourCases()).slice(0, count);
+      const raced: unknown[] = [];
+      for (const one of sends) {
+        // eslint-disable-next-line no-await-in-loop -- one race at a time
+        raced.push(await endedAfterLastRead(one, end));
+      }
+      expect(raced).toStrictEqual(
+        Array.from({ length: count }, () => [true, true, 200, [401, 'AUTH_SESSION_EXPIRED']]),
+      );
+      const applied = await stateOf(sends);
+      expect(applied.every((one, at) => one[0] !== untouched[at]?.[0])).toBe(true);
+    },
+    120_000,
+  );
 
   /** One case sent while the owner holds the audit chain, let go once its grant has run out. */
   const expiredWhile = async ([, name, body]: Send): Promise<Answer> => {
