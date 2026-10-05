@@ -56,7 +56,8 @@ it.skipIf(noDatabase)(
       present: t.target.expiry.present,
     };
     const batches = await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, ports);
-    expect(batches.at(-1)).toMatchObject({ code: 'target_timeout' });
+    // The pass's first batch is its ask's page; an owed read-back may follow it.
+    expect(batches[0]).toMatchObject({ code: 'target_timeout' });
 
     // Both rewinds done: export drains back to C1, re-sending the fresh trace.
     await drain(t.alpha);
