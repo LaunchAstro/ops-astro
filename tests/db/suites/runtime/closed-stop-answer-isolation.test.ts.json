@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a stop raised on a closed hold with a call still reserved is answered only by a person holding the grant on its own task in its own business, and every crossing of business, client, person, agent or ask leaves the other side's calls, holds, asks, answers and envelope as they were"
+}
