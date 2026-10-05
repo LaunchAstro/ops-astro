@@ -19,6 +19,9 @@ const NOT_DRAWN = new Set([
   // AW-12: no screen draws the harness result in this piece.
   'harness.read',
   'privacy.draft_breach_notices',
+  // WF-1: no screen draws a map until the WF-3/4 map views (P20).
+  'map.view',
+  'map.frontier',
   // C31: the Keys panel that draws custody's list is P01b's.
   'secret.list',
 ]);

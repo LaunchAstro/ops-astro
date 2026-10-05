@@ -548,6 +548,7 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
       'completed_at',
       'key',
       'map_owner',
+      'map_version',
       'source',
       'type_history',
     ]);
