@@ -103,3 +103,62 @@ it('ending the person whose grant is the parent of the only other manager is ref
     await world.close();
   }
 });
+
+/** The person's business-wide access grant, made able to delegate and to let its children delegate. */
+const delegatingRoot = async (tx: TenantQuery, personId: unknown): Promise<{ id: string }> => {
+  const [root] = await tx.query<{ id: string }>(
+    `select id from public.grants where subject_kind = 'person' and subject_id = $1
+       and collection = 'access' and action = 'manage' and scope_kind = 'business'
+       and revoked_at is null`,
+    [personId],
+  );
+  if (root === undefined) throw new Error('missing control grant');
+  await tx.query(
+    'update public.grants set can_delegate = true, may_permit_delegation = true where id = $1',
+    [root.id],
+  );
+  return root;
+};
+
+it('revoking a root access grant is refused when every other manager sits two grants below it', async () => {
+  const world = await createWorld('lastmanagerchain');
+  try {
+    const rootId = await world.db.app.withBusiness(world.alpha, async (tx) => {
+      const root = await delegatingRoot(tx, world.ada.personId);
+      const access = { scope: { kind: 'business', id: null }, collection: 'access' } as const;
+      const child = await issueGrant(tx, [{ kind: 'person', id: String(world.ada.personId) }], {
+        ...access,
+        subject: { kind: 'person', id: String(world.noah.personId) },
+        action: 'manage',
+        canDelegate: true,
+        parentGrantId: root.id,
+        grantedByActorId: String(world.ada.actorId),
+      });
+      if (!child.ok) throw new Error(`child grant refused: ${JSON.stringify(child)}`);
+      const grandchild = await issueGrant(
+        tx,
+        [{ kind: 'person', id: String(world.noah.personId) }],
+        {
+          ...access,
+          subject: { kind: 'person', id: String(world.mia.personId) },
+          action: 'manage',
+          parentGrantId: child.value,
+          grantedByActorId: String(world.noah.actorId),
+        },
+      );
+      expect(grandchild.ok).toBe(true);
+      expect(await otherManagers(tx, [])).toBe(3);
+      return root.id;
+    });
+    const answer = await call(
+      world.api,
+      personPath('alpha', '/access/revoke'),
+      { operationId: randomUUID(), grantId: rootId },
+      bearer(world.ada.token),
+    );
+    const remaining = await world.db.app.withBusiness(world.alpha, (tx) => otherManagers(tx, []));
+    expect({ code: answer.code, remaining }).toEqual({ code: 'ACCESS_LAST_MANAGER', remaining: 3 });
+  } finally {
+    await world.close();
+  }
+});
