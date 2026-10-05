@@ -41,7 +41,7 @@ if (serverUrl === undefined) {
 
 /** Every path is a collection and an operation; the collections are named in the case below. */
 const PATH_SHAPE =
-  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation|invitation)\/[a-z_]+$/u;
+  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation|invitation|mandate|graduation)\/[a-z_]+$/u;
 
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
@@ -90,6 +90,7 @@ describe('the surface as a table', () => {
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
     // `tag` is MP-4-11's: the business's tag vocabulary. `invitation` is C39-T's.
     // `map` is the wayfinder's (WF-1); `automation` and `activation` C33's.
+    // `mandate` and `graduation` are MP-14-10a's standing mandates.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
