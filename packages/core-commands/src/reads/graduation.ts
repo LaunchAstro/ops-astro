@@ -6,7 +6,7 @@
 // list a new mandate picks from, so the scope bar is view state and asks the
 // server nothing.
 //
-// Both lists are filtered by those scopes inside their statements
+// All three lists are filtered by those scopes inside their statements
 // (`listGraduation`); a caller holding the key nowhere is refused rather than
 // shown an empty region. The scopes are `heldScopes`', the grant check's own
 // walk, as the fleet read takes them. Each row's state is derived by
@@ -69,18 +69,21 @@ const mandateView = (one: MandateRow): MandateView => ({
   revision: one.revision,
 });
 
-/** The clients the rows name, in row order, each with its scope list. */
-function clientsOf(classes: readonly GraduationClassRow[]): ConnectionGraduationResult['clients'] {
-  const clients = new Map<string, { readonly label: string; readonly own: string[] }>();
-  for (const row of classes) {
-    const client = clients.get(row.clientId) ?? { label: row.clientLabel, own: [] };
-    client.own.push(row.actionClass);
-    clients.set(row.clientId, client);
-  }
-  return [...clients].map(([id, client]) => ({
-    id,
+/**
+ * Every client the scopes reach, in name order, each with the scope list its
+ * own classes give: a client with no graduation row still offers the
+ * whole-account word, so a mandate filed for it has a client to show.
+ */
+function clientsOf(
+  reached: readonly { readonly id: string; readonly label: string }[],
+  classes: readonly GraduationClassRow[],
+): ConnectionGraduationResult['clients'] {
+  return reached.map((client) => ({
+    id: client.id,
     label: client.label,
-    scopes: scopeChoices(client.own),
+    scopes: scopeChoices(
+      classes.filter((row) => row.clientId === client.id).map((row) => row.actionClass),
+    ),
   }));
 }
 
@@ -99,10 +102,10 @@ export async function readConnectionGraduation(
       ['no live grant covers it', 'ask a holder who may delegate'],
     );
   }
-  const { classes, mandates } = await listGraduation(tx, scopes);
+  const { clients, classes, mandates } = await listGraduation(tx, scopes);
   return {
     ok: true,
-    clients: clientsOf(classes),
+    clients: clientsOf(clients, classes),
     rows: classes.map((row) => rowView(row, deriveGraduation(row, mandates))),
     mandates: mandates.map((one) => mandateView(one)),
   };

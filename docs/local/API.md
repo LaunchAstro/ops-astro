@@ -3467,9 +3467,10 @@ connection serves shows as `{ secretId: null, state: 'not set' }`.
 ### Graduation and standing mandates (MP-14-10a)
 
 The per-client region of the same page. `connection.graduation` is
-`connection:read`, filtered in both its statements by the scopes the caller
-holds it at, and answers every client those scopes reach at once, so choosing a
-client on the scope bar asks the server nothing. Each client is a client of this
+`connection:read`, filtered in each of its statements by the scopes the caller
+holds it at, and answers every client those scopes reach at once, one with no
+graduation row included, so choosing a client on the scope bar asks the server
+nothing. Each client is a client of this
 business by foreign key, shown by its name, with the scope list a mandate picks
 from: the whole-account word `*`, one family word per class family
 (`social.*`), then each class. A row's `state` is what its class earned
