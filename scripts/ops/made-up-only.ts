@@ -35,10 +35,11 @@ const MARK = 'ops-astro made-up data; businesses: ';
 const PEOPLE = '; people: ';
 const GUARD = 'ops_astro_made_up_guard';
 const LEDGER = 'ops_astro_made_up.untrusted';
-/** Guard `t` stands: enabled always, or exactly as protect() leaves it on a table the login does not own. */
-const STANDS = `(t.tgenabled = 'A' or (t.tgenabled = 'O' and not pg_has_role(current_user,
-    (select relowner from pg_class where oid = t.tgrelid), 'USAGE') and pg_get_triggerdef(t.oid) = format(
-    'CREATE TRIGGER ${GUARD} AFTER INSERT OR UPDATE ON %s FOR EACH ROW EXECUTE FUNCTION ops_astro_made_up.guard(%L)', t.tgrelid::regclass, 'origin')))`;
+/** Guard `t` stands: protect()'s trigger (after insert or update, each row), as protect() left it. */
+const STANDS = `(t.tgfoid = to_regprocedure('ops_astro_made_up.guard()') and t.tgtype = 21
+    and t.tgqual is null and t.tgattr = '' and (t.tgenabled = 'A' and t.tgnargs = 0
+    or t.tgenabled = 'O' and t.tgargs = 'origin\\000'::bytea and t.tgrelid = to_regclass('auth.users')
+    and not pg_has_role(current_user, (select relowner from pg_class where oid = t.tgrelid), 'USAGE')))`;
 const digest = (id: string): string => createHash('sha256').update(id).digest('hex');
 /** This process's seed tag; the guard knows its digest and nothing else. */
 const SEED_SECRET = randomBytes(32).toString('hex');
@@ -207,20 +208,21 @@ const INSTALL = [
         end if;
       end loop;
     end $$`,
-  // Guards one table if it is a tenant or sign-in table without one. A table
-  // is empty when CREATE TABLE ends; CREATE TABLE AS is another tag, never
-  // guarded here, so its rows are never vouched for. Only an owner enables a
-  // trigger always: elsewhere (hosted auth.users) it stays at origin, by argument.
+  // Guards one table if it is a tenant or sign-in table without one. A table is empty
+  // when CREATE TABLE ends; CREATE TABLE AS is another tag, never guarded, so never vouched
+  // for. Only an owner enables a trigger always, so on hosted auth.users, owned by another
+  // role, the guard stays at origin with an argument; any other such table fails.
   `
     create or replace function ops_astro_made_up.protect(target oid) returns void
       language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
-    declare owned boolean := pg_has_role((select relowner from pg_class where oid = target), 'USAGE');
+    declare always boolean := target is distinct from to_regclass('auth.users')
+      or pg_has_role((select relowner from pg_class where oid = target), 'USAGE');
     begin
       if target in (${GUARDED}) and not exists (select from pg_trigger
           where tgrelid = target and tgname = '${GUARD}') then
         execute format('create trigger ${GUARD} after insert or update on %s for each row execute
-          function ops_astro_made_up.guard(%s)', target::regclass, case when owned then '' else '''origin''' end);
-        if owned then execute format('alter table %s enable always trigger ${GUARD}', target::regclass); end if;
+          function ops_astro_made_up.guard(%s)', target::regclass, case when always then '' else '''origin''' end);
+        if always then execute format('alter table %s enable always trigger ${GUARD}', target::regclass); end if;
       end if;
     end $$`,
   `revoke all on all functions in schema ops_astro_made_up from public`,
@@ -273,9 +275,8 @@ export async function markMadeUp(
 }
 
 /**
- * The seed's admission: judge, guard, then judge again before the first write.
- * A row that lands between the first judgement and the guard is seen by the
- * second, since the seed has written nothing yet; one after it is noted.
+ * The seed's admission: judge, guard, then judge again before the first write. A row landing
+ * between the first judgement and the guard is seen by the second (nothing is written yet).
  */
 export async function admitMadeUp(admin: OwnerQuery, confirmed: boolean): Promise<string[]> {
   const signs = await productionSigns(admin, [], confirmed);
@@ -291,9 +292,8 @@ export async function admitMadeUp(admin: OwnerQuery, confirmed: boolean): Promis
 export const SEED_TAG: string = `(select set_config('ops_astro.writer', '${SEED_SECRET}', true)) as seed`;
 
 /**
- * Bind the seed's own session (one backend, `max: 1`): the tag passes only
- * there. The secret goes as a parameter, which no other session can read in
- * pg_stat_activity, so a tag read from a statement's text replays nowhere.
+ * Bind the seed's own session (one backend, `max: 1`): the tag passes only there. The secret
+ * goes as a parameter, unreadable in pg_stat_activity, so a tag read from text replays nowhere.
  */
 export async function bindSeed(admin: OwnerQuery): Promise<void> {
   await admin.execute(`select set_config('ops_astro.seeder', $1, false)`, [SEED_SECRET]);
