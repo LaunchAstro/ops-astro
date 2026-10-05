@@ -169,12 +169,13 @@ async function keep(
   if (!(await holdsOwnConversations(tx, session, { at, held }))) return undefined;
   const id = randomUUID();
   // The reply and the activity are stamped at that same instant, so a reply
-  // that waited behind a message is listed and dated after it (#444).
+  // that waited behind a message is listed and dated after it (#444). The
+  // instant goes in as text: a timestamptz parameter keeps milliseconds only.
   const inserted = await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body, answers_message_id,
         created_at)
-     values ($1, $2, $3, 'agent', $4, $5, $6, $7::timestamptz)
+     values ($1, $2, $3, 'agent', $4, $5, $6, $7::text::timestamptz)
      on conflict (business_id, conversation_id, answers_message_id)
        where answers_message_id is not null
      do nothing
@@ -183,7 +184,7 @@ async function keep(
   );
   if (inserted.length === 0) return await replyTo(tx, asked);
   await tx.query(
-    `update conversations set last_activity_at = greatest($3::timestamptz, last_activity_at)
+    `update conversations set last_activity_at = greatest($3::text::timestamptz, last_activity_at)
       where business_id = $1 and id = $2`,
     [tx.businessId, asked.conversationId, at],
   );

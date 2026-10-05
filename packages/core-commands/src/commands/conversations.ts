@@ -217,15 +217,16 @@ export async function messageConversation(
   if (conversation.body_purged_at !== null) return refused(PURGED);
   const messageId = randomUUID();
   // Stamped after the row lock, so messages list in the order kept (#444).
+  // The instant goes in as text: a timestamptz parameter keeps milliseconds only.
   const at = await lockedInstant(tx);
   await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body, created_at)
-     values ($1, $2, $3, 'person', $4, $5, $6::timestamptz)`,
+     values ($1, $2, $3, 'person', $4, $5, $6::text::timestamptz)`,
     [tx.businessId, messageId, fields.conversationId, context.session.actorId, fields.body, at],
   );
   await tx.query(
-    `update conversations set last_activity_at = greatest($3::timestamptz, last_activity_at)
+    `update conversations set last_activity_at = greatest($3::text::timestamptz, last_activity_at)
       where business_id = $1 and id = $2`,
     [tx.businessId, fields.conversationId, at],
   );
