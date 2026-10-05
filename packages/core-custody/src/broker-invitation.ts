@@ -148,7 +148,7 @@ async function pendingAct(
 }
 
 /**
- * The hook message's one claim, installation-wide (20261004103712), taken last, after every other
+ * The hook message's one claim, installation-wide (20261005140704), taken last, after every other
  * check. A claim another transaction has not committed yet is waited on: refused if that one
  * commits, `REPLAYED`. If it rolls back, this send holds the claim, but the wait may have outlived
  * the invitation, so its lifetime is judged again once the claim is held. A lapsed invitation

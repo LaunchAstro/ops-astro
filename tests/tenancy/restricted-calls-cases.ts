@@ -58,7 +58,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.second_factor_subjects'],
   // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
   ['si', 'ops.second_factor_codes'],
-  // 20261004103712 (C39-T): a Send Email hook message claimed by its send, by
+  // 20261005140704 (C39-T): a Send Email hook message claimed by its send, by
   // id digest, for every business; the application inserts and reads it only.
   ['si', 'ops.auth_hook_messages'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
