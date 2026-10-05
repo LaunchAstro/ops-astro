@@ -12,6 +12,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { main } from '../../apps/worker/main.ts';
+import { streamText } from '../support/console-text.ts';
 
 const HEARTBEAT = 'https://heartbeat.example.test/api/push/made-up-worker-token';
 
@@ -63,7 +64,7 @@ const settings = (url: string, heartbeat = HEARTBEAT) => ({
 const quiet = (): string[] => {
   const written: string[] = [];
   const keep = (text: string | Uint8Array): boolean => {
-    written.push(String(text));
+    written.push(streamText(text));
     return true;
   };
   vi.spyOn(process.stdout, 'write').mockImplementation(keep);

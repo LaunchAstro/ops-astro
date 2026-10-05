@@ -353,7 +353,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
   },
-  // 20261004201458 (C59): no journey resets a factor.
+  // 20261005023105 (C59): no journey resets a factor.
   'public.factor_resets': {
     person_id: randomUUID(),
     login_id: randomUUID(),
@@ -373,6 +373,34 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // 0067: nothing in the journey saves a preference yet.
   'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
+  // Automations (C33, 20261005003850): the journey releases and fires none.
+  'public.automation_definitions': {
+    kind: 'automation',
+    name: 'restricted calls',
+    created_by_actor_id: randomUUID(),
+  },
+  'public.definition_versions': {
+    definition_id: randomUUID(),
+    number: 1,
+    content_digest: 'a'.repeat(64),
+    content_size: 0,
+    inputs: [],
+    operations: [],
+    modes: ['manual'],
+    released_by_actor_id: randomUUID(),
+  },
+  'public.activations': {
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    mode: 'manual',
+    changed_by_actor_id: randomUUID(),
+  },
+  'public.activation_occurrences': {
+    activation_id: randomUUID(),
+    version_id: randomUUID(),
+    due_at: '2026-09-29T00:00:00Z',
+    outcome: 'activation_off',
+  },
   // WF-1: the journey charts no map.
   'public.map_components': {
     map_id: randomUUID(),

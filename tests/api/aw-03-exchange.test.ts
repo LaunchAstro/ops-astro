@@ -33,6 +33,7 @@ import { composedWith, localModel, type LocalModel } from './aw-03-exchange-fixt
 import { agentPath, personPath, type Controls } from './controls-fixture.ts';
 import { authorised, post, tokenFor, type Answer } from './fixture.ts';
 import { checksWorld, pickedUpOn, type PickedUp } from './mp-6-1-checks-fixture.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -240,7 +241,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 the exchange', () => {
   it('AW-03 canary: planted message content and a planted provider answer never reach a log, an error, the audit payload, the register or the model call record', async () => {
     const said: string[] = [];
     const heard = (...parts: unknown[]): void => {
-      said.push(parts.map(String).join(' '));
+      said.push(consoleLine(...parts));
     };
     const spies = [
       vi.spyOn(console, 'log').mockImplementation(heard),

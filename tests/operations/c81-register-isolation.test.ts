@@ -31,6 +31,7 @@ import {
   set,
   setOk,
 } from './c81-register-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/c81-register-isolation: DATABASE_URL is unset, so nothing below ran.');
@@ -156,7 +157,7 @@ describe.skipIf(serverUrl === undefined)('C81 the overseas-services register', (
 describe.skipIf(serverUrl === undefined)('C81 the overseas-services register', () => {
   it('C81 isolation: a row still to confirm reaches no log, audit row, operation register row, refusal or public read', async () => {
     const logged: string[] = [];
-    const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+    const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(capture),
     );
