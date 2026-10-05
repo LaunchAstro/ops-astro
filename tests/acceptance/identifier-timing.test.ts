@@ -27,6 +27,7 @@ import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
+import { foreignInvitation } from './foreign-invitation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 
@@ -318,6 +319,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       conversationId,
       page: null,
     }));
+    // C39-T: bravo's pending invitation, resent or revoked from alpha.
+    const invitation = await foreignInvitation(w.h.world.db.admin, w.h.world.bravo);
+    for (const op of ['invitation.resend', 'invitation.revoke'] as const) {
+      byAda(op, 'invitationId', invitation, (invitationId) => ({ invitationId }));
+    }
     byAda('task.restore', 'batchId', f.batchId, (batchId) => ({ batchId }));
     // MP-4-6: a task names what is timed, an entry what is noted or deleted.
     byAda('time.start', 'taskId', f.task.id, (taskId) => ({ taskId }));
@@ -503,11 +509,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 83 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 85 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(83);
-    expect(names).toHaveLength(83);
+    expect(new Set(names).size, 'distinct operations').toBe(85);
+    expect(names).toHaveLength(85);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

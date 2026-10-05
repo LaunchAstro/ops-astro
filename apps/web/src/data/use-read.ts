@@ -114,6 +114,8 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   const state = held.grantKey === grantKey ? held : first;
 
   const liveRef = useRef(false);
+  /** When the rollup floor first found the read in flight waiting; cleared by every re-read. */
+  const waitedFrom = useRef<number | null>(null);
   /** The grant and dependencies the projection in `readRef` was built for. */
   const built = useRef<readonly unknown[]>([]);
   const reread = useCallback(
@@ -121,6 +123,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
       const projection = readRef.current;
       if (projection === null) return;
       liveRef.current = live;
+      waitedFrom.current = null;
       const generation = projection.begin();
       void offer(projection, generation, runRef.current, grantKey);
     },
@@ -139,6 +142,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     readRef.current = projection;
     built.current = [grantKey, ...options.deps];
     liveRef.current = false;
+    waitedFrom.current = null;
     opening.add(projection.state);
     setState(projection.state);
     const generation = projection.begin();
@@ -161,13 +165,48 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   // hold back from recovery (#397).
   useFollow(options.live, state, reread, [grantKey, ...options.deps]);
 
-  const { rollup } = options;
-  useEffect(() => rollup?.follow(reload), [rollup, reload]);
+  useRollup(options.rollup, readRef, waitedFrom, reload);
 
   // A changed grant or dependency renders once before the effect above resets
   // the read, still holding the old read's state: that read is not live here.
   const own = same(built.current, [grantKey, ...options.deps]);
   return { state, reload, live: own && liveRef.current && state.outcome === 'loading' };
+}
+
+/**
+ * How long a read in flight is waited for before a floor tick asks again:
+ * three floors, less half of one, so a tick that runs a little early still
+ * counts as the fourth.
+ */
+const ROLLUP_PATIENCE_MS = 3 * FLOOR_MS - FLOOR_MS / 2;
+
+/**
+ * Re-read on the rollup floor (C4 CS-1.2). A tick waits for the read in flight
+ * rather than superseding it: a newer read would retire its answer, so reads
+ * slower than the floor would never land. Reads have no transport timeout, so
+ * a read still in flight `ROLLUP_PATIENCE_MS` after a tick first found it is
+ * superseded, and a revoke still draws. The wait is time on the monotonic
+ * clock, so tab-shows do not shorten it, and every re-read (`waitedFrom` is
+ * cleared by `reread`) starts it again.
+ */
+function useRollup<T>(
+  rollup: RollupFloor | undefined,
+  readRef: { readonly current: AuthorisedRead<T> | null },
+  waitedFrom: { current: number | null },
+  reload: () => void,
+): void {
+  useEffect(
+    () =>
+      rollup?.follow(() => {
+        if (readRef.current?.state.outcome === 'loading') {
+          const now = performance.now();
+          waitedFrom.current ??= now;
+          if (now - waitedFrom.current < ROLLUP_PATIENCE_MS) return;
+        }
+        reload();
+      }),
+    [rollup, readRef, waitedFrom, reload],
+  );
 }
 
 /** Whether two dependency lists match, compared the way React compares them. */
