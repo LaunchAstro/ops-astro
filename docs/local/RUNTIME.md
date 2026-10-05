@@ -1852,11 +1852,14 @@ or delete.
   is read `for share` under those locks, so a change in flight is waited on.
   Two answers at once meet on the run lock and the second is refused
   `TRANSITION_NOT_PERMITTED`. If the run stopped again between the find and
-  the locks, the open ask's hold is no longer the one found: the answer rolls
-  back with `AffectedSetChanged` and the command entry retries it once, so it
-  answers the new ask against that ask's own hold. An answer naming the
-  earlier ask is refused `TRANSITION_NOT_PERMITTED` instead. Every write is in
-  one transaction: a failure at any step applies nothing.
+  the locks, the open ask's hold is no longer the one found. An answer naming
+  the earlier ask is refused `TRANSITION_NOT_PERMITTED` with nothing written,
+  and the commands always name the ask (`run-answers.ts`), so that is what a
+  person meets. Only a runtime caller naming no ask follows the new one: its
+  answer rolls back with `AffectedSetChanged`, which the command entry would
+  retry once against the new ask's own hold, and a direct caller sees the
+  throw. Every write is in one transaction: a failure at any step applies
+  nothing.
 - **The top-up** (`topUpAtBudgetStop`, `billing:decide` on the task, a
   person). An agent is refused `DELEGATION_EXCLUDES_DECISION`. The plan's
   lineage must be live (`LINEAGE_TERMINAL`), the currency the envelope's
