@@ -11,9 +11,8 @@
 //        --skip-check here, and the gate says it did not run it.
 //   (b)  changed-file lint: oxlint and prettier on the changed files, then
 //        scripts/lint-ratchet.mjs.
-//   (c)  named-suite registration of every new test file: main's own
-//        tests/db/named-suite-manifest.test.ts, whatever layout the
-//        manifest has at the time.
+//   (c)  named-suite registration: tests/db/named-suite-manifest.test.ts,
+//        whatever layout the manifest has at the time.
 //   (d)  commit trailers on every commit in the range, merge commits
 //        included: scripts/commit-range-check.mjs.
 //   (e)  review evidence on the pull request body: scripts/review-evidence-
@@ -26,6 +25,10 @@
 // script parses none of them: the body goes to the evidence checker as it is,
 // the messages to git's own trailer parser, and GitHub's answer through
 // JSON.parse. File names and merge-tree output are read NUL-separated.
+//
+// Only (e) takes its checker from origin/main. The others run as the branch
+// has them; when the branch is behind main the gate says so, because CI's
+// queue runs main's newer rules on the merged head.
 //
 // Usage:
 //   node scripts/pre-ready.mjs --pr <number> [--skip-check]
@@ -106,6 +109,23 @@ function readBody(args, head) {
   return { body: typeof pull.body === 'string' ? pull.body : '', labels: labels.join('\n') };
 }
 
+/** Open issue numbers, one per line, read as review-evidence.yml reads them. */
+function readOpenIssues() {
+  const answer = run(
+    'gh',
+    [
+      'api',
+      '--paginate',
+      'repos/{owner}/{repo}/issues?state=open&per_page=100',
+      '--jq',
+      '.[] | select(.pull_request == null) | .number',
+    ],
+    { cwd: repoRoot },
+  );
+  if (answer.status !== 0) throw new Error('gh api could not list the open issues');
+  return answer.stdout;
+}
+
 /** The gate's steps over one range, in the order they run. */
 function gateSteps(range, skip, pr) {
   const { cwd, base } = range;
@@ -155,10 +175,16 @@ function main() {
   const head = git(cwd, 'rev-parse', 'HEAD').trim();
   let pr;
   try {
-    pr = readBody(args, head);
+    pr = { ...readBody(args, head), openIssues: readOpenIssues() };
   } catch (error) {
     console.error(`pre-ready: ${error.message}; nothing checked.`);
     process.exit(1);
+  }
+  const behind = git(cwd, 'rev-list', '--count', `${head}..${base}`).trim();
+  if (behind !== '0') {
+    console.log(
+      `pre-ready: this branch is ${behind} commit(s) behind origin/main. Steps (b) to (d) and (f) run the branch's own checkers; CI's queue runs main's.`,
+    );
   }
   const steps = gateSteps({ cwd, tools: cwd, base, head }, args.skip, pr);
   const result = runGate(steps, (line) => console.log(line));

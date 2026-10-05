@@ -154,34 +154,35 @@ describe('(d) commit trailers', () => {
   );
 });
 
-describe('(e) review evidence on the pull request body', () => {
-  const HEAD = '1111111111111111111111111111111111111111';
-  const block = [
-    'Reviewer: Codex',
-    'Model: gpt-6-sol',
-    `Head SHA: ${HEAD}`,
-    'Verdict: approve',
-    '',
-    'Review checkpoint',
-    '  branch:      work',
-    '  base:        main',
-    `  head:        ${HEAD}`,
-    '  commits:     1',
-    '',
-    'Code review: no findings',
-    '',
-    'Security review: not required: no sensitive paths changed',
-  ].join('\n');
-  const common = {
-    cwd: root,
-    tools: root,
-    freshRef: 'HEAD',
-    head: HEAD,
-    labels: '',
-    changedFiles: 'README.md',
-    agentModels: 'claude-opus-5-5',
-  };
+const HEAD = '1111111111111111111111111111111111111111';
+const block = [
+  'Reviewer: Codex',
+  'Model: gpt-6-sol',
+  `Head SHA: ${HEAD}`,
+  'Verdict: approve',
+  '',
+  'Review checkpoint',
+  '  branch:      work',
+  '  base:        main',
+  `  head:        ${HEAD}`,
+  '  commits:     1',
+  '',
+  'Code review: no findings',
+  '',
+  'Security review: not required: no sensitive paths changed',
+].join('\n');
+const common = {
+  cwd: root,
+  tools: root,
+  freshRef: 'HEAD',
+  head: HEAD,
+  labels: '',
+  changedFiles: 'README.md',
+  agentModels: 'claude-opus-5-5',
+  openIssues: '',
+};
 
+describe('(e) review evidence on the pull request body', () => {
   it('is red for a body without review evidence', () => {
     const result = reviewEvidence({ ...common, body: 'Built and tested. Ready.' });
     expect(result.ok).toBe(false);
@@ -193,6 +194,19 @@ describe('(e) review evidence on the pull request body', () => {
     expect(result.ok, result.message).toBe(true);
   });
 
+  it('ignores the caller’s own checker variables', () => {
+    const before = process.env['CHANGED_FILES'];
+    process.env['CHANGED_FILES'] = 'packages/core-custody/broker.ts';
+    try {
+      const { changedFiles: _unused, ...rest } = common;
+      const result = reviewEvidence({ ...rest, body: block });
+      expect(result.ok, result.message).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env['CHANGED_FILES'];
+      else process.env['CHANGED_FILES'] = before;
+    }
+  });
+
   it('is red, naming the ref, when the checker cannot be read from it', () => {
     const result = reviewEvidence({ ...common, freshRef: 'refs/heads/no-such-ref', body: block });
     expect(result.ok).toBe(false);
@@ -200,20 +214,25 @@ describe('(e) review evidence on the pull request body', () => {
   });
 });
 
+/** A `work` branch changing `file`, and `main` changing a.txt after it. */
+function diverge(repo: ReturnType<typeof smallRepo>, file: string): { head: string; main: string } {
+  const { git } = repo;
+  git('checkout', '-q', '-b', 'work');
+  writeFileSync(join(repo.dir, file), 'three\n');
+  git('add', '-A');
+  git('commit', '-q', '--no-verify', '-m', `test: change ${file}\n\n${TRAILERS}`);
+  const head = git('rev-parse', 'HEAD');
+  git('checkout', '-q', 'main');
+  writeFileSync(join(repo.dir, 'a.txt'), 'two\n');
+  git('commit', '-q', '--no-verify', '-am', `test: change a on main\n\n${TRAILERS}`);
+  return { head, main: git('rev-parse', 'HEAD') };
+}
+
 describe('(g) merge-tree against main', () => {
   it('is red and names the file when the branch conflicts with main', () => {
     const repo = smallRepo();
     try {
-      const { git } = repo;
-      git('checkout', '-q', '-b', 'work');
-      writeFileSync(join(repo.dir, 'a.txt'), 'three\n');
-      git('commit', '-q', '--no-verify', '-am', `test: change a\n\n${TRAILERS}`);
-      const head = git('rev-parse', 'HEAD');
-      git('checkout', '-q', 'main');
-      writeFileSync(join(repo.dir, 'a.txt'), 'two\n');
-      git('commit', '-q', '--no-verify', '-am', `test: change a on main\n\n${TRAILERS}`);
-      const main = git('rev-parse', 'HEAD');
-
+      const { head, main } = diverge(repo, 'a.txt');
       const result = mergeTree({ cwd: repo.dir, base: main, head });
       expect(result.ok).toBe(false);
       expect(result.message).toContain('a.txt');
@@ -222,20 +241,22 @@ describe('(g) merge-tree against main', () => {
     }
   });
 
+  it('is red, saying it could not run, when main does not resolve', () => {
+    const repo = smallRepo();
+    try {
+      const head = repo.git('rev-parse', 'HEAD');
+      const result = mergeTree({ cwd: repo.dir, base: 'refs/heads/no-such-ref', head });
+      expect(result.ok).toBe(false);
+      expect(result.message).toContain('could not run');
+    } finally {
+      repo.done();
+    }
+  });
+
   it('is green when the branch and main change different files', () => {
     const repo = smallRepo();
     try {
-      const { git } = repo;
-      git('checkout', '-q', '-b', 'work');
-      writeFileSync(join(repo.dir, 'b.txt'), 'work\n');
-      git('add', '-A');
-      git('commit', '-q', '--no-verify', '-m', `test: add b\n\n${TRAILERS}`);
-      const head = git('rev-parse', 'HEAD');
-      git('checkout', '-q', 'main');
-      writeFileSync(join(repo.dir, 'a.txt'), 'two\n');
-      git('commit', '-q', '--no-verify', '-am', `test: change a on main\n\n${TRAILERS}`);
-      const main = git('rev-parse', 'HEAD');
-
+      const { head, main } = diverge(repo, 'b.txt');
       const result = mergeTree({ cwd: repo.dir, base: main, head });
       expect(result.ok, result.message).toBe(true);
     } finally {

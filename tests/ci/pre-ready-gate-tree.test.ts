@@ -5,7 +5,7 @@
 // case; the git-only steps are in pre-ready-gate.test.ts.
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -70,6 +70,8 @@ beforeAll(() => {
     'tests/reads/planted-database.test.ts':
       "import { expect, it } from 'vitest';\nimport '../support/fresh-database.ts';\n\nit('adds up', () => {\n  expect(1 + 1).toBe(2);\n});\n",
   });
+  // A changed file whose name starts with a dash, at the root, where git names it bare.
+  commits['dashNamed'] = plant({ '-dash-named.mjs': 'export const sum = 1 + 1;\n' });
   const title = ['So', 'l proof: a planted title'].join('');
   commits['reviewTitle'] = plant({
     'tests/ci/planted-title.test.ts': `import { expect, it } from 'vitest';\n\nit('${title}', () => {\n  expect(1 + 1).toBe(2);\n});\n`,
@@ -78,8 +80,10 @@ beforeAll(() => {
 
 afterAll(() => {
   if (tree === '') return;
-  unlinkSync(join(tree, 'node_modules'));
+  // Removes the link only (never what it points at), and nothing if it was never made.
+  rmSync(join(tree, 'node_modules'), { force: true });
   execFileSync('git', ['-C', root, 'worktree', 'remove', '--force', tree]);
+  execFileSync('git', ['-C', root, 'worktree', 'prune']);
 });
 
 it(
@@ -90,6 +94,8 @@ it(
     expect(red.message).toContain('planted-unformatted.test.ts');
     const green = changedLint(at('clean'));
     expect(green.ok, green.message).toBe(true);
+    const dashed = changedLint(at('dashNamed'));
+    expect(dashed.ok, dashed.message).toBe(true);
   },
   SLOW,
 );

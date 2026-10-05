@@ -10,12 +10,14 @@ import { extname, join } from 'node:path';
 
 /** Extensions oxlint reads; prettier reads what it knows and ignores the rest. */
 const LINTED = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.tsx', '.jsx']);
-const TEST_SUFFIXES = ['.test.ts', '.test.tsx', '.test.mjs'];
 const REGISTRATION = 'tests/db/named-suite-manifest.test.ts';
 const NAMES = 'tests/docs/test-files-by-behaviour.test.ts';
 /** The evidence checker and the one module it imports from this repository. */
 const FRESH = ['review-evidence-check.mjs', 'review-evidence-read.mjs'];
-/** Variables the composed checkers read; the gate sets each one or none. */
+/**
+ * Variables the composed checkers read, cleared so the caller's shell cannot
+ * change a verdict or hand a checker a token; the gate sets the ones it means.
+ */
 const CHECKER_ENV = [
   'PR_BODY',
   'PR_LABELS',
@@ -23,6 +25,13 @@ const CHECKER_ENV = [
   'BASE_SHA',
   'CHANGED_FILES',
   'AGENT_MODELS',
+  'OPEN_ISSUES',
+  'GH_TOKEN',
+  'GITHUB_TOKEN',
+  'GITHUB_REPOSITORY',
+  'GITHUB_API_URL',
+  'HUB_RANGE_INCLUDE_ROOT',
+  'CI',
 ];
 
 export const git = (cwd, ...args) =>
@@ -103,7 +112,9 @@ export function changedLint({ cwd, tools, base, head }) {
   const bin = (name) => join(tools, 'node_modules', '.bin', name);
   const linted = files.filter((file) => LINTED.has(extname(file)));
   if (linted.length > 0) {
-    const lint = run(bin('oxlint'), ['--', ...linted], { cwd });
+    const lint = run(bin('oxlint'), ['--no-error-on-unmatched-pattern', '--', ...linted], {
+      cwd,
+    });
     if (lint.status !== 0) return red(`oxlint failed on the changed files:`, lint);
   }
   if (files.length > 0) {
@@ -120,22 +131,22 @@ export function changedLint({ cwd, tools, base, head }) {
   return green(`${files.length} changed file(s) lint and format clean; the ratchet holds.`);
 }
 
-/** (c) Every new test file registered as main's manifest check requires. */
-export function suiteRegistration({ cwd, tools, base, head }) {
-  const added = changedPaths(cwd, base, head, 'A').filter((file) =>
-    TEST_SUFFIXES.some((suffix) => file.endsWith(suffix)),
-  );
-  if (added.length === 0) return green('no new test file.');
+/**
+ * (c) Every database-bound suite registered. The manifest check reads the
+ * whole tree, so it also catches a moved suite or one that newly reaches the
+ * database, not only a new file.
+ */
+export function suiteRegistration({ cwd, tools }) {
   if (!existsSync(join(cwd, REGISTRATION))) {
     return red(
-      `${REGISTRATION}, main's registration check, is not in this tree. Read main's suite layout and update this gate.`,
+      `${REGISTRATION}, the registration check, is not in this tree. Read main's suite layout and update this gate.`,
     );
   }
   const result = vitestFile(cwd, tools, REGISTRATION);
   return result.status === 0
-    ? green(`${added.length} new test file(s); ${REGISTRATION} passes.`)
+    ? green(`${REGISTRATION} passes.`)
     : red(
-        `${REGISTRATION} fails. New test files in this range: ${added.join(', ')}. A database suite is named in the manifest or listed as deliberately unnamed.`,
+        `${REGISTRATION} fails: a database suite is neither named in the manifest nor listed as deliberately unnamed.`,
         result,
       );
 }
@@ -144,7 +155,8 @@ export function suiteRegistration({ cwd, tools, base, head }) {
 export function commitTrailers({ cwd, tools, base, head }) {
   const result = run(process.execPath, [join(tools, 'scripts', 'commit-range-check.mjs')], {
     cwd,
-    env: checkerEnv({ BASE_SHA: base, HEAD_SHA: head }),
+    // CI=1: the checker refuses to fall back to its basic rule without commitlint.
+    env: checkerEnv({ BASE_SHA: base, HEAD_SHA: head, CI: '1' }),
   });
   return result.status === 0
     ? green('every commit in the range carries its subject and trailers.')
@@ -154,6 +166,7 @@ export function commitTrailers({ cwd, tools, base, head }) {
 /**
  * (e) Review evidence on the body, with the checker as `freshRef` has it. The
  * copy sits under node_modules so its own imports resolve, and is removed.
+ * `openIssues` is the open issue numbers, as CI hands them to the checker.
  */
 export function reviewEvidence({
   cwd,
@@ -165,7 +178,12 @@ export function reviewEvidence({
   labels,
   changedFiles,
   agentModels,
+  openIssues,
 }) {
+  if (body.includes('\0')) return red('the pull request body holds a NUL character; remove it.');
+  if (!existsSync(join(tools, 'node_modules'))) {
+    return red('node_modules is missing; run pnpm install first.');
+  }
   const cache = join(tools, 'node_modules', '.cache');
   mkdirSync(cache, { recursive: true });
   const dir = mkdtempSync(join(cache, 'pre-ready-evidence-'));
@@ -181,7 +199,7 @@ export function reviewEvidence({
       }
       writeFileSync(join(dir, file), text);
     }
-    const set = { PR_BODY: body, PR_LABELS: labels, HEAD_SHA: head };
+    const set = { PR_BODY: body, PR_LABELS: labels, HEAD_SHA: head, OPEN_ISSUES: openIssues };
     if (base !== undefined) set.BASE_SHA = base;
     if (changedFiles !== undefined) set.CHANGED_FILES = changedFiles;
     if (agentModels !== undefined) set.AGENT_MODELS = agentModels;
@@ -210,6 +228,10 @@ export function behaviourNames({ cwd, tools }) {
 
 /** (g) A trial merge with main, written to no ref and no worktree. */
 export function mergeTree({ cwd, base, head }) {
+  for (const ref of [base, head]) {
+    const known = run('git', ['-C', cwd, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+    if (known.status !== 0) return red(`git merge-tree could not run: ${ref} does not resolve.`);
+  }
   const result = run('git', [
     '-C',
     cwd,
@@ -221,12 +243,13 @@ export function mergeTree({ cwd, base, head }) {
     head,
   ]);
   if (result.status === 0) return green(`merges cleanly with ${short(base)}.`);
-  if (result.status !== 1)
-    return red(`git merge-tree could not run (exit ${result.status}):`, result);
   // -z: the tree, each conflicted path, then an empty field before the messages.
-  const fields = result.stdout.split('\0');
+  const fields = (result.stdout ?? '').split('\0');
   const end = fields.indexOf('', 1);
   const paths = [...new Set(fields.slice(1, end === -1 ? fields.length : end))];
+  if (result.status !== 1 || paths.length === 0) {
+    return red(`git merge-tree could not run (exit ${result.status}):`, result);
+  }
   return red(
     `conflicts with ${short(base)} in: ${paths.join(', ')}. GitHub will report this conflict, so merging main in now is allowed.`,
   );
