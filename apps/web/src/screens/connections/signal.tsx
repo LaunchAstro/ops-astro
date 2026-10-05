@@ -65,7 +65,7 @@ function TripwireRow(props: { readonly row: TripwireView }): ReactElement {
     >
       <p>
         <strong>{row.what}</strong>{' '}
-        <span className={armed ? 'chip chip--ok' : 'chip chip--warn'}>
+        <span className={armed ? 'chip chip--outline is-ok' : 'chip chip--outline is-warn'}>
           {armed ? 'Armed' : 'Cannot be armed'}
         </span>
       </p>
@@ -91,7 +91,7 @@ function TripwiresSection(props: { readonly signal: ConnectionSignalResult }): R
         needs a person is filed in the one attention feed.
       </p>
       {tripwires.length === 0 ? (
-        <p>No checks are watching yet.</p>
+        <p>No checks you can see are watching.</p>
       ) : (
         <ul className="card card--flush">
           {tripwires.map((row) => (
@@ -170,7 +170,7 @@ function NightSection(props: { readonly signal: ConnectionSignalResult }): React
     <section id="night-round" data-section="008">
       <SectionHead index="008" title="The night round" right="23:00 to 08:10" />
       {round === null ? (
-        <p data-night-lede>No night round has run yet.</p>
+        <p data-night-lede>No night round you can see has run.</p>
       ) : (
         <>
           <p className="nr__lede" data-night-lede>
@@ -219,7 +219,7 @@ export function SignalSections(props: {
         keep
         empty={
           <Empty
-            title="No grants, tripwires or night round yet."
+            title="No grants, tripwires or night round you can see yet."
             description="Grants join the ledger as agents are given work; the night round runs overnight."
           />
         }

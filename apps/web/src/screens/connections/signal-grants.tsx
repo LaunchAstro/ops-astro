@@ -55,7 +55,7 @@ function GrantRow(props: { readonly grant: GrantView; readonly now: number }): R
       <p>
         {/* A client's name is free text: isolated, so it cannot reorder the line. */}
         {grant.client === null ? (
-          <span className="t-warn" data-grant-fleet>
+          <span className="chip chip--outline is-warn" data-grant-fleet>
             Fleet · every client
           </span>
         ) : (
@@ -89,7 +89,7 @@ export function GrantsSection(props: {
     <section id="grants" data-section="006">
       <SectionHead index="006" title="Grants" right="What is live right now" />
       <p className="grl__lede">{grantsLede(grantCounts.live, grantCounts.liveExec)}</p>
-      {grants.length === 0 ? <p>No grants on the ledger.</p> : null}
+      {grants.length === 0 ? <p>No grants you can see.</p> : null}
       {GROUPS.map((group) => {
         const rows = grants.filter((one) => one.state === group.state);
         if (rows.length === 0) return null;
@@ -100,7 +100,7 @@ export function GrantsSection(props: {
             data-grant-group={group.state}
           >
             <p className="grl__banner">
-              <span className={`chip chip--outline chip--${group.tone}`}>{group.title}</span>{' '}
+              <span className={`chip chip--outline is-${group.tone}`}>{group.title}</span>{' '}
               {rows.length} {group.say}
             </p>
             <ul>
