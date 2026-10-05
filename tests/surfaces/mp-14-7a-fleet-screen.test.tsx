@@ -14,6 +14,7 @@ import { ConnectionsScreen } from '../../apps/web/src/screens/Connections.tsx';
 import {
   freshnessOf,
   initialFleetView,
+  isStuck,
   FIRST_DIRECTION,
 } from '../../apps/web/src/screens/connections/fleet-view.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -267,11 +268,19 @@ describe('MP-14-7a Connections & signal fleet', () => {
     expect(page.find('[data-fleet-facet="active"]')?.textContent).toContain('9');
     expect(page.find('[data-fleet-facet="degraded"]')?.textContent).toContain('2');
     expect(page.find('[data-fleet-facet="broken"]')?.textContent).toContain('3');
+    const tiles = page.all('[data-fleet-tiles] .stat').map((tile) => tile.textContent);
+    expect(tiles).toStrictEqual(['Sources clean9 of 14', 'Degraded2 of 14', 'Broken3 of 14']);
+    expect(page.find('[data-section="001"]')?.textContent).toContain(
+      '14 sources · 63 client connections',
+    );
     await page.unmount();
   });
 
   it('MP-14-7a Fix now opens the broken facet with each broken source open at its Repair button', async () => {
     const { page } = await open();
+    // A broken source already open stays open.
+    await page.click('[data-fleet-more]');
+    await page.click('[data-connection="c-11"]');
     await page.click('[data-fleet-fix]');
     expect(shownIds(page).toSorted()).toStrictEqual(['c-11', 'c-12', 'c-13']);
     for (const id of ['c-11', 'c-12', 'c-13']) {
@@ -333,6 +342,14 @@ describe('MP-14-7a Connections & signal fleet', () => {
     expect(detail).toContain('set');
     await page.click('[data-connection="c-11"]');
     expect(page.all('[data-connection-detail]')).toHaveLength(1);
+    // The row's disclosure is a button a keyboard can reach, and it opens the row once.
+    const toggle = page.find('[data-connection-toggle="c-07"]') as HTMLButtonElement | null;
+    expect(toggle?.tagName).toBe('BUTTON');
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    await page.click('[data-connection-toggle="c-07"]');
+    expect(page.find('[data-connection-detail="c-07"]')).not.toBeNull();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+    expect(page.all('[data-connection-detail]')).toHaveLength(2);
     await page.unmount();
   });
 
@@ -340,14 +357,35 @@ describe('MP-14-7a Connections & signal fleet', () => {
     const at = (hours: number | null, cadenceMinutes = 1440): ReturnType<typeof freshnessOf> =>
       freshnessOf({ lastSyncedAt: hours === null ? null : hoursAgo(hours), cadenceMinutes }, NOW);
     expect(at(null)).toStrictEqual({ daysBehind: null, tone: 'bad' });
+    // AG-C15: ok up to T-1, warn up to T-4, bad beyond, counted in whole cadences behind.
     expect(at(20).tone).toBe('ok');
-    expect(at(60).tone).toBe('warn');
-    expect(at(96).tone).toBe('warn');
-    expect(at(120).tone).toBe('bad');
+    expect(at(30)).toStrictEqual({ daysBehind: 1, tone: 'ok' });
+    expect(at(47).tone).toBe('ok');
+    expect(at(48)).toStrictEqual({ daysBehind: 2, tone: 'warn' });
+    expect(at(100)).toStrictEqual({ daysBehind: 4, tone: 'warn' });
+    expect(at(119).tone).toBe('warn');
+    expect(at(120)).toStrictEqual({ daysBehind: 5, tone: 'bad' });
     // A weekly source five days after its last pass is on its cadence, not behind.
     expect(at(120, 7 * 1440)).toStrictEqual({ daysBehind: 5, tone: 'idle' });
-    expect(at(10 * 24, 7 * 1440).tone).toBe('warn');
-    expect(at(30 * 24, 7 * 1440).tone).toBe('bad');
+    expect(at(10 * 24, 7 * 1440).tone).toBe('idle');
+    expect(at(14 * 24, 7 * 1440).tone).toBe('warn');
+    expect(at(34 * 24, 7 * 1440).tone).toBe('warn');
+    expect(at(35 * 24, 7 * 1440).tone).toBe('bad');
+  });
+
+  it('MP-14-7a a source is stuck when it is behind its cadence, failed or never synced', () => {
+    const row = (status: ConnectionView['status'], hours: number | null): ConnectionView => ({
+      ...connection(1, status, 1, hours),
+      failureClass: null,
+    });
+    expect(isStuck(row('active', 20), NOW)).toBe(false);
+    expect(isStuck(row('active', 47), NOW)).toBe(false);
+    expect(isStuck(row('active', 48), NOW)).toBe(true);
+    expect(isStuck(row('active', null), NOW)).toBe(true);
+    expect(isStuck(row('degraded', 2), NOW)).toBe(true);
+    expect(isStuck(row('broken', 2), NOW)).toBe(true);
+    // A weekly source inside its cadence is not behind.
+    expect(isStuck({ ...row('active', 5 * 24), cadenceMinutes: 7 * 1440 }, NOW)).toBe(false);
   });
 
   it('MP-14-7a show more adds 10 and is absent when nothing is hidden', async () => {
@@ -371,6 +409,9 @@ describe('MP-14-7a Connections & signal fleet', () => {
     await page.click('[data-connection="c-00"]');
     await page.click('[data-connection="c-11"]');
     expect(page.find('[data-connection-detail="c-00"] [data-action="sync"]')).toBeNull();
+    // A degraded source has failed, so its Sync now shows too.
+    await page.click('[data-connection="c-10"]');
+    expect(page.find('[data-connection-detail="c-10"] [data-action="sync"]')).not.toBeNull();
     for (const action of ['sync', 'reauthorise', 'test']) {
       const control = page.find(
         `[data-connection-detail="c-11"] [data-action="${action}"]`,
@@ -505,6 +546,70 @@ describe('MP-14-7a Connections & signal fleet', () => {
     await tick();
     expect(page.find('[data-outcome="denied"]')?.textContent).toContain('SCOPE_NOT_GRANTED');
     expect(page.all('[data-connection]')).toHaveLength(0);
+    expect(page.find('[data-fleet-marker]')).toBeNull();
+    await page.unmount();
+  });
+
+  it('MP-14-7a an authorised empty fleet draws the empty state, not an empty table', async () => {
+    const empty = ((): Promise<Response> =>
+      Promise.resolve(json(fleetOf([], new Set())))) as typeof fetch;
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch: empty,
+    });
+    const page = await mount(
+      <ConnectionsScreen client={client} grantKey="alpha:a@x:0" now={() => NOW} />,
+    );
+    await tick();
+    expect(page.find('[data-outcome="empty"]')?.textContent).toContain('No connectors yet');
+    expect(page.find('[data-fleet-tiles]')).toBeNull();
+    expect(page.find('[data-fleet-showing]')).toBeNull();
+    expect(page.find('[data-not-connected="band-health"]')).not.toBeNull();
+    await page.unmount();
+  });
+
+  it('MP-14-7a an unavailable read, or a refused re-read after a fleet, draws no marker', async () => {
+    const fleetAnswers = [
+      () => json({ error: 'down' }, 503),
+      () => json(fleetOf(ROWS, new Set())),
+      () => json({ refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] }, 403),
+    ];
+    const scripted = ((url: string | URL): Promise<Response> => {
+      const at = String(url);
+      if (at.endsWith('/connection/fleet'))
+        return Promise.resolve((fleetAnswers.shift() as () => Response)());
+      return Promise.resolve(
+        json({
+          ok: true,
+          recordId: 'r-1',
+          revision: 1,
+          detail: { repairId: 'r-1', connectionId: 'c-11', state: 'awaiting approval' },
+        }),
+      );
+    }) as typeof fetch;
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch: scripted,
+    });
+    const page = await mount(
+      <ConnectionsScreen client={client} grantKey="alpha:a@x:0" now={() => NOW} />,
+    );
+    await tick();
+    expect(page.find('[data-outcome="unavailable"]')).not.toBeNull();
+    expect(page.find('[data-fleet-marker]')).toBeNull();
+    await page.click('[data-outcome="unavailable"] button');
+    await tick();
+    expect(page.find('[data-fleet-marker]')).not.toBeNull();
+    // The repair's answer re-reads the fleet, and that re-read is refused.
+    await page.click('[data-fleet-facet="broken"]');
+    await page.click('[data-connection="c-11"]');
+    await page.click('[data-connection-repair="c-11"]');
+    await tick();
+    expect(page.find('[data-outcome="denied"]')).not.toBeNull();
     expect(page.find('[data-fleet-marker]')).toBeNull();
     await page.unmount();
   });
