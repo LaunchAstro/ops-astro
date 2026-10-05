@@ -10,6 +10,10 @@
 // up to `/` must be a real folder, owned by root or the promoter, with no group
 // or other write and no sticky bit. A path that fails is refused, never
 // repaired: the operator names a link under folders only they and root write.
+// The check reads owners and mode bits, so it cannot see a write granted any
+// other way: the path must carry no ACL that grants write, and must not be on
+// a network share or a volume that ignores ownership. That is the boundary's
+// stated limit (OPS497ACL), not something the walk proves.
 
 import {
   chmodSync,
@@ -40,7 +44,10 @@ export function frozenCopy(
   selected: { readonly path: string; readonly name: string; readonly digest: string },
   link: string,
 ): { path: string } | { why: string } {
-  if (basename(link) === SERVED) return { why: `${link} is where production's copies live` };
+  // Any case: a case-blind disk reads `SERVED` as `served/`.
+  if (basename(link).toLowerCase() === SERVED) {
+    return { why: `${link} is where production's copies live` };
+  }
   const uid = process.getuid?.();
   const home = dirname(link);
   const untrusted = untrustedChain(home, uid);
@@ -49,6 +56,10 @@ export function frozenCopy(
   if (!lexists(folder)) mkdirSync(folder, { mode: 0o755 });
   const why = untrustedFolder(folder, uid);
   if (why !== undefined) return { why: `${folder} ${why}` };
+  // Only a link is swapped for the new one; anything else there would stop the swap after the migration.
+  if (lexists(link) && !lstatSync(link).isSymbolicLink()) {
+    return { why: `${link} is there and is not a link` };
+  }
   const path = join(folder, selected.digest.slice('sha256:'.length));
   if (!lexists(path)) {
     const copy = mkdtempSync(join(folder, '.copy-'));
@@ -58,10 +69,11 @@ export function frozenCopy(
       chmodSync(copy, lstatSync(selected.path).mode & 0o755);
       if (holds(copy, selected.digest)) renameSync(copy, path);
     } catch (error) {
-      // Another promotion of the same digest renaming its copy first, or the
-      // artefact swapped for a link (its copy collides with the folder).
+      // Another promotion of the same digest renaming its copy first is no
+      // failure; with nothing there, the artefact changed under the copy
+      // (answered below).
       const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'ENOTEMPTY' && code !== 'EEXIST') throw error;
+      if (lexists(path) && code !== 'ENOTEMPTY' && code !== 'EEXIST') throw error;
     } finally {
       rmSync(copy, { recursive: true, force: true });
     }

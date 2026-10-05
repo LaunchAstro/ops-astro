@@ -272,7 +272,9 @@ checks every folder from the link's up to `/` and refuses unless each is a real
 folder (not a link), owned by root or the promoting user, with no group or
 other write and no sticky bit. Name the link by its real path, under folders
 only you and root can write: never under `/tmp`, a shared store or a folder
-reached through a link.
+reached through a link. The check reads owners and mode bits only, so it
+cannot see write granted another way: keep the path free of any ACL that
+grants write, and off network shares and volumes that ignore ownership.
 
 ## Alerts
 
