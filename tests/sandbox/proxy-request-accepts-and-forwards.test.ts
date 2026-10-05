@@ -8,9 +8,8 @@
 
 import { expect, it } from 'vitest';
 import { type CreateShape, fixedCreateBody } from '../../packages/core-sandbox/src/create-body.ts';
+import { forwardBytes, forwardLoadHead } from '../../packages/core-sandbox/src/proxy-forward.ts';
 import {
-  forwardBytes,
-  forwardLoadHead,
   type ProxyGrammar,
   readProxyRequest,
 } from '../../packages/core-sandbox/src/proxy-request.ts';
@@ -64,7 +63,10 @@ it('reads attach with exactly the four stream parameters and the upgrade headers
     'Host: docker',
     ...UPGRADE,
   ]);
-  expect(read(bytes)).toEqual({ ok: true, op: { kind: 'attach', id: ID } });
+  expect(read(bytes)).toEqual({
+    ok: true,
+    op: { kind: 'attach', id: ID, bodyStart: bytes.length },
+  });
 });
 
 it.each([
@@ -145,8 +147,28 @@ it('forwards a create rebuilt from the checked shape, never the bytes it receive
   );
 });
 
+it('takes stdin bytes that arrive with the attach head as the start of its stream', () => {
+  const head = request(`POST ${V}/containers/${ID}/attach?${ATTACH_QUERY} HTTP/1.1`, [
+    'Host: docker',
+    ...UPGRADE,
+  ]);
+  expect(read(new Uint8Array([...head, 0x75, 0x73, 0x74]))).toEqual({
+    ok: true,
+    op: { kind: 'attach', id: ID, bodyStart: head.length },
+  });
+});
+
+it('refuses to forward an id or image that is not in full form, whoever built the operation', () => {
+  expect(() => forwardBytes({ kind: 'delete', id: 'sandbox' }, '1.47')).toThrow(RangeError);
+  expect(() => forwardBytes({ kind: 'image-delete', image: 'node:22' }, '1.47')).toThrow(
+    RangeError,
+  );
+});
+
 it('forwards attach with its fixed query and upgrade headers only', () => {
-  expect(new TextDecoder().decode(forwardBytes({ kind: 'attach', id: ID }, '1.47'))).toBe(
+  expect(
+    new TextDecoder().decode(forwardBytes({ kind: 'attach', id: ID, bodyStart: 0 }, '1.47')),
+  ).toBe(
     `POST /v1.47/containers/${ID}/attach?${ATTACH_QUERY} HTTP/1.1\r\nHost: docker\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\n`,
   );
 });

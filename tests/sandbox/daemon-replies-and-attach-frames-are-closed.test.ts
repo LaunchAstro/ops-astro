@@ -142,9 +142,11 @@ it.each([3, 255])('treats a frame of stream %i as a daemon fault', (stream) => {
   expect(frames.end()).toMatchObject({ ok: false, reason: 'internal' });
 });
 
-it('treats a non-zero reserved header byte as a daemon fault', () => {
+it.each([1, 2, 3])('treats a non-zero reserved header byte %i as a daemon fault', (at) => {
   const frames = new AttachFrames(1024);
-  frames.push(frame(1, bytes('x'), 1));
+  const bad = frame(1, bytes('x'));
+  bad[at] = 1;
+  frames.push(bad);
   expect(frames.end()).toMatchObject({ ok: false, reason: 'internal' });
 });
 

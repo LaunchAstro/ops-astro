@@ -62,6 +62,7 @@ it.each([
   ['a single-quoted string', "{'a':1}"],
   ['a bare control character in a string', '"a\u0001b"'],
   ['a lone surrogate escape', '"\\ud800"'],
+  ['a high surrogate followed by an escape outside the low range', '"\\ud800\\u0041"'],
   ['a leading zero', '[01]'],
   ['a plus sign', '[+1]'],
   ['NaN', '[NaN]'],

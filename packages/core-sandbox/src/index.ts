@@ -11,9 +11,8 @@ export {
   type Crossing,
 } from './create-body.ts';
 export * from './daemon-reply.ts';
+export { forwardBytes, forwardLoadHead } from './proxy-forward.ts';
 export {
-  forwardBytes,
-  forwardLoadHead,
   type More,
   type ProxyRead,
   readProxyRequest,

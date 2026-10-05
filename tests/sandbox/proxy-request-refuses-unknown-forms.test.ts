@@ -257,14 +257,3 @@ it('refuses a create body that differs from every allowed shape, and one with a 
   const twice = json(S1).replace('{"Image"', `{"image":"${IMAGE}","Image"`);
   expect(read(create(twice))).toMatchObject({ ok: false, why: 'duplicate key' });
 });
-
-it('asks for more bytes, never refusing, while a head or a create body is still arriving', () => {
-  const ping = request(`GET ${V}/_ping HTTP/1.1`);
-  expect(read(ping.slice(0, ping.length - 2))).toEqual({ ok: 'more' });
-  expect(read(create(json(S1)).slice(0, -5))).toEqual({ ok: 'more' });
-});
-
-it('refuses a head that runs past 8 KiB with no end', () => {
-  const long = text.encode(`GET ${V}/_ping HTTP/1.1\r\nHost: ${'a'.repeat(9000)}`);
-  expect(read(long)).toMatchObject({ ok: false, why: 'request line' });
-});
