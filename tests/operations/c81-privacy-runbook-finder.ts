@@ -14,6 +14,14 @@ export interface Hit {
   readonly table: string;
   readonly id: string;
   readonly columns: readonly string[];
+  /** The people whose ids the row holds; empty for a row found by its text alone. */
+  readonly people: readonly string[];
+  /** Whether a value of the row holds the text. */
+  readonly text: boolean;
+  /** Whether the row holds an id given with --id. */
+  readonly given: boolean;
+  /** The shared ids the row holds: agents acting for others too, and logins given back that an agent not standing for the given ids holds or held. */
+  readonly shared: readonly string[];
   readonly row?: Record<string, unknown>;
 }
 
@@ -34,6 +42,8 @@ export async function findCopies(
   const scope = business === null ? [] : ['--business', business];
   const done = await run('node', [FINDER, ...scope, ...args], {
     env: { ...process.env, DATABASE_ADMIN_URL: adminUrl },
+    // An export can pass the default 1 MiB; a cut-short read would fail as a lost line.
+    maxBuffer: 64 * 1024 * 1024,
   }).then(
     (out) => ({ code: 0, ...out }),
     (error: { readonly code?: number; readonly stdout?: string; readonly stderr?: string }) => ({
