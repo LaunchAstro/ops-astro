@@ -44,3 +44,10 @@ it('refuses a byte other than zero in the padding after a file', () => {
   padded[512 + 512 + 1] = 0x20;
   expect(build(padded, END)).toEqual(refused('tar block'));
 });
+
+it('refuses a non-zero byte in the second end block as it arrives, before the cap can', () => {
+  const stream = tar(dir('dist'), file('dist/a', new Uint8Array(998_400)));
+  stream[999_936] = 1;
+  expect(readOutput('build', OUTPUT_CAP.S0, stream)).toEqual(refused('tar end'));
+  expect(readOutput('build', stream.length, stream)).toEqual(refused('tar end'));
+});
