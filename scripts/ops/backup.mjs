@@ -54,7 +54,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { sealer } from './archive-seal.mjs';
 import { pgDump } from './backup-dump.mjs';
-import { bound, stagingReach, stagingReachWithin, value } from './backup-store-reach.mjs';
+import { bound, param, stagingReach, stagingReachWithin, value } from './backup-store-reach.mjs';
 import { offEgress, ping } from './heartbeat.mjs';
 
 export { pgDump } from './backup-dump.mjs';
@@ -121,7 +121,7 @@ async function* upload(source, seal, failure) {
   size += held.at(-1).length;
   failure.stage = null;
   yield* flush(true);
-  yield bound('select backups.complete_archive($1::bigint, $2::text)', [
+  yield bound(`select backups.complete_archive(${param(1, 'bigint')}, ${param(2, 'text')})`, [
     bytes,
     whole.digest('hex'),
   ]);

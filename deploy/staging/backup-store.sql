@@ -403,8 +403,11 @@ create table backups.drills (
   check (ran_on = 'staging machine' or archive_id is not null),
   check (outcome = 'failed' or (archive_id is not null and business is not null)),
   check ((outcome = 'passed') = (stage is null)),
-  check (outcome = 'failed' or (archive_taken_at is not null and source_major is not null
-    and target_major = production_major and tables > 0)),
+  -- Each field by name: a comparison that meets a null is unknown, and CHECK
+  -- passes unknown (OW-059.2). backup-store-upgrade-1.sql brings an older store here.
+  constraint drills_pass_names_its_restore check (outcome = 'failed' or (
+    archive_taken_at is not null and source_major is not null and target_major is not null
+    and tables is not null and target_major = production_major and tables > 0)),
   -- Stage timings in milliseconds, keyed by the drill's timed stages, and nothing else.
   check (jsonb_typeof(timings) = 'object' and not jsonb_path_exists(timings,
     '$.keyvalue() ? (!(@.key like_regex "^(fetch|open|start|restore|check)$") || @.value.type() != "number")'))

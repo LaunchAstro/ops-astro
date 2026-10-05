@@ -46,8 +46,8 @@ const PURGE =
   "set lock_timeout = '30s';\nset statement_timeout = '2min';\n" +
   'set role ops_astro_upkeep;\nselect ops.expire_second_factor_codes();\n';
 
-const STORE = 'postgres://backups:5432/backups';
-const UPKEEP = 'postgres://pooler.example.test:5432/postgres';
+const STORE = 'postgres://retention@backups:5432/backups';
+const UPKEEP = 'postgres://upkeep@example.test:5432/postgres';
 const send = () => Promise.resolve('sent');
 
 /** A purge that answers only when the reach's deadline stops its psql, as psqlOn does. */
@@ -194,12 +194,12 @@ it('a psql that never answers is stopped at the reach deadline; only a bounded r
   expect(reachEnv(UPKEEP, 15)['PGCONNECT_TIMEOUT']).toBe('15');
   expect(reachEnv(STORE)).not.toHaveProperty('PGCONNECT_TIMEOUT');
   expect(reachArgs('none', Object.keys(reachEnv(UPKEEP, 15)))).toContain('--env=PGCONNECT_TIMEOUT');
-  expect(reachArgs('none', ['PGHOST'], { init: true })).toContain('--init');
-  // The store's reach is as before: the same login names, no bound, no init.
+  // The store's reach is as before: the same login names, no bound. Every reach runs an init
+  // (container-run.mjs), so a stop reaches psql however it is bounded.
   expect(fixed(reachArgs('none'))).toStrictEqual(
     fixed(reachArgs('none', Object.keys(reachEnv(STORE)))),
   );
-  expect(reachArgs('none')).not.toContain('--init');
+  expect(reachArgs('none')).toContain('--init');
 });
 
 it('the job reaches the store unbounded as before, then the purge with its connect bound', () => {

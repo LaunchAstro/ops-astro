@@ -5,9 +5,9 @@
 // pinned Postgres image, handed on as it prints, so the job never holds a dump
 // whole (REV158S criterion 5).
 
-import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { reachEnv } from './backup-store-reach.mjs';
+import { runContainer } from './container-run.mjs';
 
 const BACKUP_ROLE = 'ops_astro_backup';
 // The product's schemas, the auth server's sign-in data in the same database,
@@ -21,81 +21,44 @@ const staging = JSON.parse(
 
 /**
  * pg_dump in a throwaway container on staging's network, as the backup
- * identity. The password reaches the container through the environment, never
- * the command line, and pg_dump's own messages are discarded. It answers once
- * pg_dump has printed its first bytes: the pieces it prints, which throw after
- * the last if pg_dump failed, with a `stop()` for a reader that gives up. A
- * pg_dump that prints nothing fails.
+ * identity. The login reaches it as psql's does (`reachEnv`, the database
+ * name decoded, TLS required), through the environment, never the command
+ * line, and pg_dump's own messages are discarded. It answers once pg_dump has
+ * printed its first bytes: the pieces it prints, which throw after the last if
+ * pg_dump failed, with a `stop()` for a reader that gives up. A pg_dump that
+ * prints nothing fails.
  */
 export function pgDump(sourceUrl) {
-  const url = new URL(sourceUrl);
-  const args = [
-    'run',
-    '--rm',
-    // Attached output still streams; none of the dump goes to a log on the host's disk.
-    '--log-driver=none',
-    `--name=${staging['x-ops-astro'].ownPrefix}-backup-${randomBytes(4).toString('hex')}`,
-    `--network=${staging.networks.staging.name}`,
-    '--env=PGPASSWORD',
-    '--env=PGSSLMODE',
-    staging.services.backups.image,
+  const run = runContainer('backup', staging.networks.staging.name, reachEnv(sourceUrl), [
     'pg_dump',
     '--format=custom',
     `--role=${BACKUP_ROLE}`,
     ...SCHEMAS.map((schema) => `--schema=${schema}`),
-    `--host=${url.hostname}`,
-    `--port=${url.port || '5432'}`,
-    `--username=${decodeURIComponent(url.username)}`,
-    `--dbname=${url.pathname.slice(1)}`,
-  ];
-  const child = spawn('docker', args, {
-    // TLS or no dump: the source's bytes are plaintext until the job seals them.
-    env: { ...process.env, PGPASSWORD: decodeURIComponent(url.password), PGSSLMODE: 'require' },
-    stdio: ['ignore', 'pipe', 'ignore'],
-  });
-  return printed(child);
+  ]);
+  return printed(run);
 }
 
 /**
- * Settles once `child` has exited and its pipes have closed, or after `ms`, when
- * it is killed outright and left, so a stopped dump never holds the job open.
+ * A run's printed pieces, read as they come and paused while a few wait, once
+ * it has printed something. Their `stop()` stops the run and waits for it,
+ * whether or not the pieces were ever read.
  */
-function closed(child, ms = 5000) {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      child.kill?.('SIGKILL');
-      resolve();
-    }, ms);
-    child.once('close', () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
-}
-
-/**
- * A child's printed pieces, read as they come and paused while a few wait,
- * once it has printed something. Their `stop()` stops the child, drops what it
- * still prints so its pipe can close, and waits for it to exit, whether or not
- * the pieces were ever read.
- */
-function printed(child) {
+function printed(run) {
+  const { child } = run;
   const waiting = [];
-  let [exit, wake] = [null, () => {}];
+  let [ended, succeeded, wake] = [false, false, () => {}];
   const started = new Promise((resolve, reject) => {
     child.stdout.on('data', (piece) => {
       waiting.push(piece);
-      if (waiting.length > 4) child.stdout.pause?.();
+      if (waiting.length > 4) child.stdout.pause();
       resolve();
       wake();
     });
-    const end = (code) => {
-      exit ??= code;
+    void run.exited.then((ok) => {
+      [ended, succeeded] = [true, ok];
       if (waiting.length === 0) reject(new Error('pg_dump failed'));
-      wake();
-    };
-    child.on('error', () => end(-1));
-    child.on('close', (code) => end(code));
+      return wake();
+    });
   });
   const more = () =>
     new Promise((resolve) => {
@@ -104,19 +67,17 @@ function printed(child) {
   async function* pieces() {
     for (;;) {
       if (waiting.length > 0) {
-        child.stdout.resume?.();
+        child.stdout.resume();
         yield waiting.shift();
-      } else if (exit === null) {
-        // oxlint-disable-next-line no-await-in-loop -- one piece at a time is the point
-        await more();
-      } else break;
+      } else if (ended) break;
+      // oxlint-disable-next-line no-await-in-loop -- one piece at a time is the point
+      else await more();
     }
-    if (exit !== 0) throw new Error('pg_dump failed');
+    if (!succeeded) throw new Error('pg_dump failed');
   }
   async function stop() {
-    child.kill?.();
-    child.stdout.removeAllListeners?.('data').resume?.();
-    if (exit === null) await closed(child);
+    child.stdout.removeAllListeners('data').resume();
+    await run.stop();
   }
   return started.then(() => Object.assign(pieces(), { stop }));
 }
