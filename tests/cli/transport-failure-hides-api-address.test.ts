@@ -59,6 +59,39 @@ describe('a failed request never prints a secret from the API address', () => {
     expectHidden([...out, ...err], address);
   });
 
+  it.each(ADDRESSES)('the agent verb line exits 3 and hides %s', async (address) => {
+    const printed: string[] = [];
+    const io = {
+      out: (line: string) => printed.push(line),
+      err: (line: string) => printed.push(line),
+      stdin: () => Promise.resolve(''),
+    };
+    const code = await cli(
+      ['task', 'get', 'some-task'],
+      { ...SETTINGS, OPS_ASTRO_API_URL: address },
+      io,
+    );
+    expect(code).toBe(3);
+    expectHidden(printed, address);
+  });
+
+  it('the agent verb line hides a bearer the request could not carry', async () => {
+    const printed: string[] = [];
+    const io = {
+      out: (line: string) => printed.push(line),
+      err: (line: string) => printed.push(line),
+      stdin: () => Promise.resolve(''),
+    };
+    const settings = { ...SETTINGS, OPS_ASTRO_TOKEN: `made-up\n${CANARY}` };
+    const code = await cli(
+      ['task', 'get', 'some-task'],
+      { ...settings, OPS_ASTRO_API_URL: 'http://127.0.0.1:9' },
+      io,
+    );
+    expect(code).toBe(3);
+    expectHidden(printed, 'http://127.0.0.1:9/');
+  });
+
   it.each(ADDRESSES)('the worker exits 4 and hides %s', async (address) => {
     const printed: string[] = [];
     const capture = (chunk: string | Uint8Array): boolean => {
