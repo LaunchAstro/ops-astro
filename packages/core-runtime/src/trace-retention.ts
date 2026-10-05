@@ -82,6 +82,12 @@ export async function expireOnce(
       { runs, ids, answer },
       windowDays,
     );
+    // The store may finish a delete after answering: once the read-back
+    // has found the runs gone, anything sent meanwhile is sent again.
+    if (batch.confirmed > 0) {
+      // eslint-disable-next-line no-await-in-loop -- one page after another
+      await database.withBusiness(businessId, async (tx) => await resend(tx, selected));
+    }
     batches.push(batch);
     // A finished batch confirmed every run it asked, so the next page is new runs.
     if (batch.code !== null || runs.length < page) break;
