@@ -87,7 +87,8 @@ describe('isolation tests', () => {
           env: { ...process.env, DATABASE_URL: 'postgres://unused@127.0.0.1:1/x' },
         },
       );
-      expect(run.status, run.stderr).toBe(0);
+      // --list runs nothing, so it never exits 0: a stray --list in CI fails its shard.
+      expect(run.status, run.stderr).toBe(3);
       return run.stdout.split('\n').filter(Boolean);
     });
     const split = isolationShards(items, plan, ISOLATION_COUNT).map((shard) =>
@@ -113,6 +114,24 @@ function sequenced(files: readonly string[]): Promise<string[][]> {
     }),
   );
 }
+
+/** Each file's shard in the local checks split of `list`. */
+const owners = (list: readonly string[]) =>
+  new Map(localFileShards(list, plan, LOCAL_COUNT).flatMap((s, i) => s.map((f) => [f, i])));
+
+it('a test file’s shard depends on its path and the plan alone, never on the other files', () => {
+  const files = [
+    ...Object.keys(plan.files),
+    ...Array.from({ length: 200 }, (_, i) => `tests/web/untimed-${String(i)}.test.ts`),
+  ];
+  const whole = owners(files);
+  // A file one shard sees and another does not (a fixture a step writes, a pull
+  // request's changed set) moves no other file, so none falls between shards.
+  for (const view of [files.slice(1), files.slice(0, -1), [...files, 'tests/web/new.test.ts']]) {
+    for (const [file, shard] of owners(view))
+      if (whole.has(file)) expect(shard, file).toBe(whole.get(file));
+  }
+});
 
 /** A test file's weight in the split: its wall share of the run, as scripts/ci-shards.ts weighs it. */
 const fileWeight = (file: string): number =>

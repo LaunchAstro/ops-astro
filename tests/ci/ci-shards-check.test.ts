@@ -33,16 +33,26 @@ const scripts = STEPS.map(([script]) => script);
 /** scripts/check.mjs over a pnpm that records each call, in `shard` or unsharded, on a group or a pull request. */
 function pnpmCheck(shard?: string, pullRequest = false) {
   const dir = temp();
-  const [log, pnpm, payload] = ['pnpm.log', 'pnpm.mjs', 'event.json'].map((f) => join(dir, f));
-  writeFileSync(log ?? '', '');
+  const files = ['pnpm.log', 'shard.log', 'pnpm.mjs', 'event.json'].map((f) => join(dir, f));
+  const [log = '', shardLog = '', pnpm = '', payload = ''] = files;
+  writeFileSync(log, '');
+  writeFileSync(shardLog, '');
   writeFileSync(
-    pnpm ?? '',
+    pnpm,
     "import { appendFileSync } from 'node:fs';\n" +
-      "appendFileSync(process.env.FAKE_PNPM_LOG, process.argv.slice(2).join(' ') + '\\n');\n",
+      "const call = process.argv.slice(2).join(' ');\n" +
+      "appendFileSync(process.env.FAKE_PNPM_LOG, call + '\\n');\n" +
+      'if (process.env.CHECK_SHARD !== undefined)\n' +
+      "  appendFileSync(process.env.FAKE_SHARD_LOG, call + ' sees ' + process.env.CHECK_SHARD + '\\n');\n",
   );
   const pull = { number: 7, head: { sha: 'a'.repeat(40) }, base: { sha: BASE, ref: 'main' } };
-  writeFileSync(payload ?? '', JSON.stringify({ pull_request: pull }));
-  const env: NodeJS.ProcessEnv = { ...process.env, npm_execpath: pnpm, FAKE_PNPM_LOG: log };
+  writeFileSync(payload, JSON.stringify({ pull_request: pull }));
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    npm_execpath: pnpm,
+    FAKE_PNPM_LOG: log,
+    FAKE_SHARD_LOG: shardLog,
+  };
   for (const name of ['CHECK_SHARD', 'CHECK_SCOPE', 'CHECK_WEB_BUILD']) delete env[name];
   if (shard !== undefined) env['CHECK_SHARD'] = shard;
   if (pullRequest) Object.assign(env, { CHECK_SCOPE: 'local checks', GITHUB_EVENT_PATH: payload });
@@ -55,9 +65,9 @@ function pnpmCheck(shard?: string, pullRequest = false) {
   });
   return {
     ...out,
-    ran: readFileSync(log ?? '', 'utf8')
-      .split('\n')
-      .filter(Boolean),
+    ran: readFileSync(log, 'utf8').split('\n').filter(Boolean),
+    /** The steps that saw CHECK_SHARD, which only pnpm check itself may read. */
+    leaked: readFileSync(shardLog, 'utf8').split('\n').filter(Boolean),
   };
 }
 
@@ -123,6 +133,17 @@ describe('pnpm check in a local checks shard', () => {
     }
   }, 120_000);
 });
+
+// Only pnpm check reads CHECK_SHARD: a test that runs it again inside a shard
+// (light-pull-requests.test.ts) must see every step.
+it('pnpm check hands no step the shard, so a test that runs it again runs it whole', () => {
+  for (const pullRequest of [false, true]) {
+    const out = pnpmCheck(`1/${String(LOCAL_COUNT)}`, pullRequest);
+    expect(out.status, out.stderr).toBe(0);
+    expect(out.ran.length).toBeGreaterThan(1);
+    expect(out.leaked).toStrictEqual([]);
+  }
+}, 120_000);
 
 /** scripts/ci-shards.ts for one step, wrapping a command that says it ran, or with `tail` as given. */
 function wrapped(check: string, shard: string, step: string, ...tail: string[]) {
