@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The onboarding and its steps (C41-A, migration 20261005094805). Every statement runs
+// The onboarding and its steps (C41-A, migration 20261005114041). Every statement runs
 // in the caller's tenant transaction, so row-level security keeps another
 // business's rows out of every one of them. A step's state moves only here:
 // ready when every step it depends on is done, stopped with the rest when one
