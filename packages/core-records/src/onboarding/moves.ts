@@ -88,16 +88,26 @@ export async function parkRestoredSteps(
  * until a person restarts it, so the open move on each step that was owed one
  * (ready, or the one that stopped) is withdrawn (withdrawn names nobody). An
  * ordinary assignment on a blocked or closed step's task is no step's move and
- * stays. The caller holds the onboarding's lock.
+ * stays, as does one on a step task since moved to another client. The caller
+ * holds the onboarding's lock; those steps' task rows are locked next
+ * (onboarding, steps, then tasks), whatever this snapshot says of their trash
+ * and client, so a restore parking one of them, or a client move, is waited on
+ * and what it committed is read.
  */
 export async function withdrawStepMoves(tx: TenantQuery, onboardingId: string): Promise<void> {
+  const owed = `from public.onboarding_steps s
+       join public.onboardings o on o.business_id = s.business_id and o.id = s.onboarding_id
+       join public.records r on r.business_id = s.business_id and r.id = s.task_id
+      where s.business_id = $1 and s.onboarding_id = $2 and s.state in ('ready', 'stopped')`;
+  await tx.query(`select r.id ${owed} order by s.position for update of r`, [
+    tx.businessId,
+    onboardingId,
+  ]);
   await tx.query(
     `update public.inbox_items i set work_state = 'withdrawn', closed_at = now()
-       from public.onboarding_steps s
-      where i.business_id = $1 and s.business_id = $1 and s.onboarding_id = $2
-        and i.subject_record_id = s.task_id and i.reason = 'assignment'
-        and i.fact_kind = 'record' and i.fact_id = s.task_id and i.work_state = 'open'
-        and s.state in ('ready', 'stopped')`,
+      where i.business_id = $1 and i.reason = 'assignment' and i.fact_kind = 'record'
+        and i.work_state = 'open' and i.fact_id = i.subject_record_id
+        and i.subject_record_id in (select s.task_id ${owed} and r.uuid_7 = o.client_id)`,
     [tx.businessId, onboardingId],
   );
 }
