@@ -37,7 +37,7 @@ const COLUMN_UPDATES: readonly {
     ],
   },
   // C52-A: the standing approval an activation names, set by an adoption.
-  { table: 'public.activations', from: '20261005144723', columns: ['approval_id'] },
+  { table: 'public.activations', from: '20261005184526', columns: ['approval_id'] },
   {
     table: 'public.leases',
     from: '20261004040200',
