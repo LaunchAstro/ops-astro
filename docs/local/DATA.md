@@ -685,8 +685,8 @@ connection (`scripts/ops/tested-restore.ts`), as the business lookup takes
 0046's. Where the owner's login is not a superuser (hosted Supabase holds
 both with ADMIN OPTION alone), 20261005063514 grants it each of the two with
 SET and without INHERIT: it may take them by name and holds nothing of
-theirs otherwise. The application may select the row and nothing more; PUBLIC holds
-nothing on the table or the function. `operations.read` serves it as
+theirs otherwise. The application may select the row and nothing more;
+PUBLIC holds nothing on the table or the function. `operations.read` serves it as
 `lastTestedRestore` ([API.md](API.md)).
 
 ## Legal documents (0051, C81)

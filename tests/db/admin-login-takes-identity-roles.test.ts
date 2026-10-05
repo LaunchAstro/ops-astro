@@ -26,10 +26,16 @@ import {
 
 const serverUrl = databaseUrlFromEnvironment();
 const IDENTITIES = ['ops_astro_lookup', 'ops_astro_restore_drill'] as const;
-const GRANT =
-  readMigrations('migrations').find(
-    (m) => m.version === '20261005063514_admin_login_takes_identity_roles',
-  )?.statements ?? [];
+const VERSION = '20261005063514_admin_login_takes_identity_roles';
+const GRANT = (() => {
+  const found = readMigrations('migrations').find((m) => m.version === VERSION);
+  if (found === undefined) throw new Error(`no migration ${VERSION}`);
+  return found.statements;
+})();
+/** Each identity held as hosted's admin login holds it: ADMIN OPTION alone. */
+const HOSTED_SHAPED = Object.fromEntries(
+  IDENTITIES.map((role) => [role, 'admin true, inherit false, set false']),
+);
 
 /** A login of its own, as the test made it, with the notices its session raised. */
 interface Login {
@@ -120,10 +126,7 @@ async function memberships(member: string): Promise<string[]> {
 describe.skipIf(serverUrl === undefined)('the admin login takes the identities it acts as', () => {
   beforeAll(async () => {
     db = await createFreshDatabase({ part: 'adml' });
-    const shaped = Object.fromEntries(
-      IDENTITIES.map((role) => [role, 'admin true, inherit false, set false']),
-    );
-    admin = await login('ad', 'nosuperuser createrole', shaped);
+    admin = await login('ad', 'nosuperuser createrole', HOSTED_SHAPED);
   }, 120_000);
 
   afterAll(async () => {
@@ -206,10 +209,7 @@ function rerunCases() {
   });
 
   it('a superuser login is unchanged, even one holding the identities with ADMIN OPTION alone', async () => {
-    const shaped = Object.fromEntries(
-      IDENTITIES.map((role) => [role, 'admin true, inherit false, set false']),
-    );
-    const owner = await login('su', 'superuser', shaped);
+    const owner = await login('su', 'superuser', HOSTED_SHAPED);
     const [local] = await db.admin.execute<{ name: string }>('select current_user as name');
     const before = [await memberships(owner.name), await memberships(local?.name ?? '')];
     await migrateAs(owner);

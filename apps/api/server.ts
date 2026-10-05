@@ -154,6 +154,9 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
  * came back first, as the backstop for a database below 0027. That refusal is
  * not cached, so the key resolves again once only one business holds it.
  */
+/** The business lookup identity (0046) the resolver takes by name. */
+export const LOOKUP_ROLE = 'ops_astro_lookup';
+
 export function createBusinessResolver(
   admin: AdminConnection,
 ): (businessKey: string) => Promise<string | undefined> {
@@ -166,7 +169,7 @@ export function createBusinessResolver(
 
     // As the lookup identity (0046), which reads id and key and nothing else.
     const rows = await admin.transaction(async (execute) => {
-      await execute('set local role ops_astro_lookup');
+      await execute(`set local role ${LOOKUP_ROLE}`);
       return await execute<{ id: string }>(
         'select id from public.businesses where key = $1 limit 2',
         [businessKey],

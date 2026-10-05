@@ -7,7 +7,7 @@
 // under (restore-drill.mjs). Each act opens a connection of its own and
 // closes it.
 
-import { createBusinessResolver } from '../../apps/api/server.ts';
+import { createBusinessResolver, LOOKUP_ROLE } from '../../apps/api/server.ts';
 import {
   connect,
   OPERATIONS_MANAGE,
@@ -18,7 +18,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 
 const CANNOT_TAKE_LOOKUP =
-  "DATABASE_ADMIN_URL's login may not take the business lookup identity (ops_astro_lookup), " +
+  `DATABASE_ADMIN_URL's login may not take the business lookup identity (${LOOKUP_ROLE}), ` +
   'so the sign-in cannot be checked: migration 20261005063514 grants it, with set true and inherit false';
 
 /**
@@ -35,9 +35,9 @@ export async function businessOf(
     return await createBusinessResolver(admin)(key);
   } catch (error) {
     if ((error as { code?: unknown }).code !== '42501') throw error;
-    const [may] = await admin.execute<{ set: boolean }>(
-      "select pg_has_role('ops_astro_lookup', 'SET') as set",
-    );
+    const [may] = await admin.execute<{ set: boolean }>("select pg_has_role($1, 'SET') as set", [
+      LOOKUP_ROLE,
+    ]);
     return may?.set === true ? undefined : { why: CANNOT_TAKE_LOOKUP };
   }
 }
