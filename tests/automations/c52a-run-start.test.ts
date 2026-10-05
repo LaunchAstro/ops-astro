@@ -55,7 +55,13 @@ function sourcesUnder(root: string): string[] {
 
 describe('C52-A run start has no route', () => {
   it('an approved occurrence run start is reached by no API route, command-line verb, agent operation or wire command', () => {
-    const callers = ['apps', 'packages/core-wire/src', 'packages/core-commands/src/commands']
+    const callers = [
+      'apps/api',
+      'apps/cli',
+      'apps/web',
+      'packages/core-wire/src',
+      'packages/core-commands/src/commands',
+    ]
       .flatMap((root) => sourcesUnder(root))
       .filter((path) => !path.endsWith('automation-run.ts') && !path.endsWith('occurrence-run.ts'))
       .filter((path) =>

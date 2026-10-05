@@ -2074,9 +2074,14 @@ route, command-line verb or agent operation reaches it.
   an occurrence's run. AW-04 builds its claim.
 
 The approval and version facts come through `ReadOccurrenceAuthority`, which
-C52-A fills from its own rows under the activation lock; its foreign keys and
-that read join at the batch 3 join. Tests: `aw-01-occurrence-run` and
-`aw-01-occurrence-run-isolation`.
+C52-A fills from its own rows under the activation lock (`readOccurrenceFacts`
+in core-records `automations/dispatch.ts`); the worker hands dispatch
+`occurrenceRunStarter(workerActorId)` (core-commands
+`commands/automation-run.ts`). Before the start, dispatch takes C33's run
+ceiling on the durable limit: at five runs in flight it answers `waiting` and
+writes nothing. A start J refuses records no dispatch. Tests:
+`aw-01-occurrence-run`, `aw-01-occurrence-run-isolation`, `c52a-run-start`
+and `c33-intake`.
 
 ## The harness adoption test's trigger
 
