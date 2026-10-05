@@ -4,8 +4,8 @@
 // a detached worktree of this repository's HEAD, with one planted commit per
 // case; the git-only steps are in pre-ready-gate.test.ts.
 
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -192,6 +192,30 @@ it(
     expect(result.ok).toBe(false);
     expect(result.failed, lines.join('\n')).toBe('unchanged');
     expect(lines.join('\n')).toContain('(g) merge-tree against origin/main: green');
+  },
+  SLOW,
+);
+
+it(
+  'removes a snapshot left behind by a gate that was killed',
+  () => {
+    const { head } = at('clean');
+    const common = git('rev-parse', '--path-format=absolute', '--git-common-dir');
+    // A process that has exited, so its pid names no running gate.
+    const gone = spawnSync(process.execPath, ['-e', '']).pid;
+    const stale = join(common, 'pre-ready', `head-${gone}-killed`);
+    mkdirSync(join(common, 'pre-ready'), { recursive: true });
+    git('worktree', 'add', '-q', '--detach', stale, head);
+    try {
+      wholeGate(
+        { cwd: tree, base, head, skip: true, pr: { body: '', labels: '', openIssues: '' } },
+        () => {},
+      );
+      expect(existsSync(stale)).toBe(false);
+      expect(git('worktree', 'list', '--porcelain')).not.toContain(stale);
+    } finally {
+      if (existsSync(stale)) git('worktree', 'remove', '--force', stale);
+    }
   },
   SLOW,
 );
