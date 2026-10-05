@@ -80,12 +80,12 @@ const values = (json) => `(select ${folded("v #>> '{}'")} as held
 const TEXT = `(s.held like lower($1::text)
       or cardinality($6::tsquery[]) > 0 and to_tsvector('simple', s.held) @@ any($6::tsquery[]))`;
 
-/** Whether `s.held` holds the text ($1, or null), a stored name ($6), a seed id ($3) or a shared agent's ($7). */
+/** Whether `s.held` holds the text ($1, or null), a stored name ($6), a seed id ($3) or a shared id ($7). */
 const HOLDS = `(${TEXT} or exists (select from unnest($3::text[] || $7::text[]) i where strpos(s.held, i) > 0))`;
 
 /**
  * Rows of business $2 holding the text, a stored name ($6), a seed ($3,
- * standing for people $4; $5 the given ids) or a shared agent's id ($7). The table is read first, so the statement's opening
+ * standing for people $4; $5 the given ids) or a shared id ($7). The table is read first, so the statement's opening
  * names it, as a lock wait shows it in pg_stat_activity.
  */
 const copies = (table) => `with r as (
@@ -212,7 +212,7 @@ async function main() {
     for (const { id, person } of found.shared) {
       stderr.write(
         id === person
-          ? `find-copies: ${id}, given with --id, is shared (an agent acting for others too, or its login), so it stands for no one; see shared\n`
+          ? `find-copies: ${id}, given with --id, is shared (an agent acting for others too, or a login an agent not standing for the given ids holds or held), so it stands for no one; see shared\n`
           : `find-copies: agent ${id} acts for ${person} and for others, so it stands for no one; see shared\n`,
       );
     }
