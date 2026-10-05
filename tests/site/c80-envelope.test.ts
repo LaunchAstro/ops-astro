@@ -21,7 +21,7 @@ const TARGET: CorrectionTarget = {
 
 const ABOUT = [
   '---',
-  "const title = 'About alongside';",
+  "import Layout from '../layouts/Layout.astro'; const title = 'About alongside';",
   '---',
   '<Layout title={title}>',
   '  <section class="intro">',

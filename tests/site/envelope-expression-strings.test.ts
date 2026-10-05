@@ -18,7 +18,7 @@ const TARGET: CorrectionTarget = {
 const source = (text: string): string =>
   [
     '---',
-    "const x = '';",
+    "import Layout from '../layouts/Layout.astro';",
     '---',
     '<Layout>',
     '  <section>',

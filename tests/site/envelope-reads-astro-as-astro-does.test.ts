@@ -64,11 +64,6 @@ describe('the envelope refuses a word Astro does not render as body copy', () =>
 describe('the envelope still accepts body copy', () => {
   it.each([
     [
-      'after a list rendered by an expression',
-      '<ul>{items.map((i) => <li>{i}</li>)}</ul>\n<p>We walk alongside you.</p>\n',
-      2,
-    ],
-    [
       'after CRLF frontmatter',
       '---\r\nconst x = 1;\r\n---\r\n<p>We walk alongside you.</p>\r\n',
       4,

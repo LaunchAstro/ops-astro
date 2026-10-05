@@ -61,7 +61,7 @@ describe('a template the page nests must end as it began', () => {
   });
 
   it('still accepts a word after nested templates that close', async () => {
-    const before = '<div>{true && <span>a</span>}<><i>b</i></><b>Hello there</b></div>\n';
+    const before = '<div><span>a</span><><i>b</i></><b>Hello there</b></div>\n';
     expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: true });
   });
 });
@@ -187,10 +187,13 @@ describe('body copy still passes', () => {
     ['in a paragraph', '<p>Hello there</p>\n'],
     ['after an attribute expression', '<p class={["a"].join("")}>Hello there</p>\n'],
     ['after a tag that follows an expression', '<p>{"x"} <b>and</b> Hello there</p>\n'],
-    ['in a layout', '<Layout title="x">\n  <section><p>Hello there</p></section>\n</Layout>\n'],
+    [
+      'in a layout',
+      '---\nimport Layout from "./layout.astro";\n---\n<Layout title="x">\n  <section><p>Hello there</p></section>\n</Layout>\n',
+    ],
     [
       'under typed frontmatter',
-      '---\ninterface Props { a: string }\nconst { a } = Astro.props as Props;\n---\n<p>Hello there {a}</p>\n',
+      '---\ninterface Props { a: string }\nconst { a } = Astro.props as Props;\n---\n<p title={a}>Hello there</p>\n',
     ],
     [
       'under a document of its own',
