@@ -107,6 +107,7 @@ export const DECLARED: Readonly<
   // A retype and back (WF-1): the old task keeps `type` and its `type_history`, the shell
   // neither; it ends untyped, so the share planted below still applies.
   'task.set_type': { carry: 'not carried', plant: retypedAndBack },
+  'map.revise': { carry: 'not carried', plant: 'revises a map; the duplicated task is none' },
   'task.start': {
     carry: 'not carried',
     plant: async (taskId) =>

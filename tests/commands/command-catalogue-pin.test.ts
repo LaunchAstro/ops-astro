@@ -222,6 +222,10 @@ vi.mock('../../packages/core-commands/src/commands/wayfinder.ts', async (origina
   setTaskType: recorder('setTaskType'),
   scopeMap: recorder('scopeMap'),
 }));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-revision.ts', async (original) => ({
+  ...(await original<object>()),
+  reviseMap: recorder('reviseMap'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-handback.ts', async (original) => ({
   ...(await original<object>()),
   handbackOwnLease: recorder('handbackOwnLease'),
@@ -436,6 +440,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'legal.approve_version',
   'legal.draft_version',
   'legal.publish_version',
+  'map.frontier',
+  'map.view',
   'model.call',
   'notifications.set_channel',
   'operations.change_installation_mode',
@@ -724,6 +730,7 @@ const REQUESTS: readonly CommandRequest[] = [
     reason: 'why',
   },
   { command: 'task.set_type', operationId: 'op', recordId: 'r', taskType: 'research' },
+  { command: 'map.revise', operationId: 'op', recordId: 'r', notes: 'n' },
   { command: 'map.scope', operationId: 'op', recordId: 'r', client: 'c' },
   {
     command: 'budget.set_planning_cap',
@@ -893,6 +900,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
   'task.set_type': ['setTaskType', 'request'],
+  'map.revise': ['reviseMap', 'request'],
   'map.scope': ['scopeMap', 'request'],
   'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
@@ -958,7 +966,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same ninety-seven from an expected revision', () => {
+  it('exempts the same ninety-nine from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

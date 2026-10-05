@@ -37,6 +37,7 @@ import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 import { WRITE_OPERANDS } from './write-operands.ts';
 
 export type { CommandName } from './command-names.ts';
+
 export type { CommandDeclaration } from './surface-declaration.ts';
 
 export type { Operand, OperandKind, OperandSpec } from './write-operands.ts';
@@ -616,11 +617,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // Wayfinder (WF-1). No agent reaches these until API-2's narrowed credential
   // lands: the retype rule's floor.
   declare('task.set_type', 'write'),
+  declare('map.revise', 'write', { serialise: WAYFINDER_MAP_LOCK }),
   // A client change, as `task.set_party`: `share`, and locked once the map has content.
   declare('map.scope', 'share', {
     serialise: WAYFINDER_MAP_LOCK,
     rule: 'once the map has content: refused CLIENT_LOCKED (409), writes nothing, as task.set_party (S0-5)',
   }),
+  read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
+  read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
   // `billing:decide` on the whole business (AW-04, U10): owners and
   // administrators set the planning cap; no agent route serves it.
   declare('budget.set_planning_cap', 'decide', {

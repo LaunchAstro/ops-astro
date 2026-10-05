@@ -216,9 +216,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'run.revise_state': writing(client('run_states')),
   // MP-6-1's check on a task's run.
   'task.check': writing(client('run_checks')),
-  // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap,
-  // AW-13's trace read, AW-12's harness result, AW-11's child work, and the
-  // accepted plan.
+  // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap, AW-13's trace read,
+  // AW-12's harness result, AW-11's child work, and the accepted plan.
   'conversation.allowance': READ,
   'definition.attribution': READ,
   'trace.read': READ,
@@ -278,9 +277,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.observe': writing(client('attempts')),
   'task.receipt': READ,
   'budget.top_up': writing(client('task_envelopes')),
-  // AW-10: the step's held calls take the outcome. A replacement stopped, or a
-  // resume at a hold its calls spent whole, ends the lease and the delegation
-  // and stops the run at its budget (AW-05).
+  // AW-10: the step's held calls take the outcome. A replacement stopped, or a resume at a hold its
+  // calls spent whole, ends the lease and the delegation and stops the run at its budget (AW-05).
   'budget.record_outcome': writing([
     ...client('alerts', 'attempts', 'budget_asks', 'leases', 'model_calls', 'planned_runs'),
     ...client('reservations', 'task_envelopes'),
@@ -294,4 +292,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_type': writing(MAP_TASK.writes.concat(client('inbox_items'))),
   // The map and every ticket under it carry the client.
   'map.scope': MAP_TASK,
+  // One numbered version: its components and the map's own version number,
+  // which refresh the map's summary and frontier as any write to the map does.
+  'map.revise': writing(MAP_TASK.writes.concat(client('map_components', 'map_versions'))),
+  'map.view': READ,
+  'map.frontier': READ,
 };
