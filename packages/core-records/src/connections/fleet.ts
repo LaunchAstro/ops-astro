@@ -94,10 +94,11 @@ export async function listConnections(
        left join public.connection_repairs r
          on r.business_id = c.business_id and r.connection_id = c.id
         and r.connection_revision = c.revision
-      where $1::boolean
+      where c.business_id = (select public.app_business_id())
+        and ($1::boolean
          or exists (select 1 from public.connection_clients cc
                      where cc.business_id = c.business_id and cc.connection_id = c.id
-                       and cc.client_id = any($2::uuid[]))
+                       and cc.client_id = any($2::uuid[])))
       order by c.label, c.id`,
     [whole, parties],
   );

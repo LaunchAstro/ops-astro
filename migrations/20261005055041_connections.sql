@@ -57,6 +57,27 @@ create table public.connections (
     references public.custody_secrets (business_id, id),
   constraint connections_connector_key_shape check (connector_key ~ '^[a-z][a-z0-9_.-]{1,63}$'),
   constraint connections_label_length check (char_length(label) between 1 and 200),
+  -- The text the fleet draws is a closed grammar, refused whole when it is not
+  -- one: a label is printable text with no edge spaces; a method is words of
+  -- letters, digits and `._-`; a scope is the provider's tokens, one space
+  -- apart; a component is a lower-case name. Nothing a provider sends back
+  -- can ride in on them (SEC-P02-PR.3).
+  constraint connections_label_shape check (
+    label ~ '^[^[:space:][:cntrl:]]([^[:cntrl:]]*[^[:space:][:cntrl:]])?$'),
+  constraint connections_auth_method_shape check (char_length(auth_method) <= 40
+    and auth_method ~ '^([A-Za-z0-9][A-Za-z0-9._-]*( [A-Za-z0-9._-]+)*)?$'),
+  constraint connections_scope_shape check (char_length(scope) <= 2000
+    and scope ~ '^([A-Za-z0-9_.:/-]+( [A-Za-z0-9_.:/-]+)*)?$'),
+  constraint connections_read_components_shape check (
+    coalesce(array_ndims(read_components), 1) = 1 and cardinality(read_components) <= 64
+    and array_to_string(read_components, ',', '!') ~ '^([a-z][a-z0-9_]{0,63}(,[a-z][a-z0-9_]{0,63})*)?$'
+    and cardinality(read_components)
+      = coalesce(array_length(string_to_array(array_to_string(read_components, ',', '!'), ','), 1), 0)),
+  constraint connections_execute_components_shape check (
+    coalesce(array_ndims(execute_components), 1) = 1 and cardinality(execute_components) <= 64
+    and array_to_string(execute_components, ',', '!') ~ '^([a-z][a-z0-9_]{0,63}(,[a-z][a-z0-9_]{0,63})*)?$'
+    and cardinality(execute_components)
+      = coalesce(array_length(string_to_array(array_to_string(execute_components, ',', '!'), ','), 1), 0)),
   constraint connections_status_known check (status in ('active', 'degraded', 'broken')),
   constraint connections_failure_class_known check (failure_class in (
     'auth_expired', 'auth_revoked', 'quota_exhausted', 'throttled', 'unreachable',
