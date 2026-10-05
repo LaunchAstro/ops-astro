@@ -52,6 +52,11 @@ export type ExportOutcome =
 /** The most events one export sends. */
 export const TRACE_BATCH = 100;
 
+/** The trace window, in days (contract 7.5): an event older than it when read is never sent. */
+export const TRACE_WINDOW_DAYS = 30;
+
+type Pending = Row & { readonly past: boolean };
+
 interface Row {
   readonly id: string;
   readonly runId: string;
@@ -85,22 +90,22 @@ export async function exportOnce(
   key: Buffer,
   deliver: Deliver,
 ): Promise<ExportOutcome> {
-  const batch = await database.withBusiness(businessId, async (tx) => {
-    const rows = await pending(tx);
-    for (const runId of new Set(rows.map((row) => row.runId))) {
+  const { from, batch } = await database.withBusiness(businessId, async (tx) => {
+    const cursor = await cursorOf(tx);
+    const rows = await pending(tx, cursor);
+    for (const runId of new Set(rows.filter((row) => !row.past).map((row) => row.runId))) {
       // eslint-disable-next-line no-await-in-loop -- one registration per run, in order
       await registerTraceCopy(tx, runId);
     }
-    return rows;
+    return { from: cursor, batch: rows };
   });
   const last = batch.at(-1);
   if (last === undefined) return { kind: 'idle' };
-  const spans = batch.map((row) => spanOf(key, businessId, row));
-  const answer = await deliver(otlp(spans));
-  const code = gapOf(answer);
+  const spans = batch.filter((row) => !row.past).map((row) => spanOf(key, businessId, row));
+  const code = spans.length === 0 ? null : gapOf(await deliver(otlp(spans)));
   await database.withBusiness(businessId, async (tx) => {
-    if (code === null) await advance(tx, last);
-    else await recordGap(tx, code, batch.length, last);
+    if (code === null) await advance(tx, last, from.version);
+    else await recordGap(tx, code, from, batch.length);
   });
   return code === null
     ? { kind: 'delivered', spans: spans.length }
@@ -118,28 +123,43 @@ const EVENT_CELLS = `ev.id, ev.run_id as "runId", ev.kind, ev.position::float8 a
             ev.detail ->> 'cause' as cause`;
 
 /**
- * A pending event, with the cursor its batch was read after (null at the
- * start): a gap records it, and the advance moves only that cursor, as of its
- * `updated_at` (the cursor's version).
+ * The cursor as one read saw it: its place `(tx, id)`, both null before the
+ * first advance, and its row's version (`xmin`), null before the row exists.
+ * Every write to the row gives it a new version.
  */
-type Pending = Row & {
-  readonly fromTx: string | null;
-  readonly fromId: string | null;
-  readonly fromVersion: string | null;
-};
+export interface Cursor {
+  readonly tx: string | null;
+  readonly id: string | null;
+  readonly version: string | null;
+}
 
-async function pending(tx: TenantQuery): Promise<readonly Pending[]> {
+async function cursorOf(tx: TenantQuery): Promise<Cursor> {
+  const [row] = await tx.query<Cursor>(
+    `select after_tx::text as tx, after_id as id, xmin::text as version
+       from public.trace_export_cursors where business_id = $1`,
+    [tx.businessId],
+  );
+  return row ?? { tx: null, id: null, version: null };
+}
+
+/**
+ * The batch after `from`, the cursor this export read: its gap, if it has one,
+ * names the same. An event `past` the window is passed by the cursor, never
+ * sent: retention would owe it a delete at once, and a run retention confirmed
+ * has only such events, so a retention step back that re-reads them brings no
+ * trace back.
+ */
+async function pending(tx: TenantQuery, from: Cursor): Promise<readonly Pending[]> {
   return await tx.query<Pending>(
-    `select ${EVENT_CELLS}, c.after_tx::text as "fromTx", c.after_id as "fromId",
-            c.updated_at::text as "fromVersion"
+    `select ${EVENT_CELLS},
+            ev.created_at < now() - make_interval(days => $5) as past
        from public.run_events ev
-       left join public.trace_export_cursors c on c.business_id = ev.business_id
       where ev.business_id = $1
         and ev.tx < pg_snapshot_xmin(pg_current_snapshot())
-        and (c.after_tx is null or (ev.tx, ev.id) > (c.after_tx, c.after_id))
+        and ($3::xid8 is null or (ev.tx, ev.id) > ($3::xid8, $4::uuid))
       order by ev.tx, ev.id
       limit $2`,
-    [tx.businessId, TRACE_BATCH],
+    [tx.businessId, TRACE_BATCH, from.tx, from.id, TRACE_WINDOW_DAYS],
   );
 }
 
@@ -242,36 +262,38 @@ async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> 
 }
 
 /**
- * From the cursor the batch was read after, as it was then, only: two exports
- * at once may read the same batch, and the slower must not move the cursor
- * back past what the faster delivered; retention may have put the cursor back,
- * or marked it, to re-send a trace it deleted (`trace-retention.ts`), and an
- * export read before that must not skip the re-send. Every move sets a new
- * `updated_at`, the cursor's version. The upsert's row lock orders them; the
- * comparison under it keeps whichever moved the cursor first.
+ * The advance lands only on the cursor version its batch was read under;
+ * otherwise it changes nothing and the next read starts wherever the row now
+ * is. Two exports that read the same batch: the slower never moves the
+ * cursor back. Retention's step back (`stepBack` in `trace-retention.ts`): an
+ * export that read before it, and may have delivered before the delete, never moves the cursor past
+ * the events the step sends again. The row lock orders them; the version
+ * under it decides.
  */
-async function advance(tx: TenantQuery, last: Pending): Promise<void> {
+async function advance(tx: TenantQuery, last: Row, version: string | null): Promise<void> {
   await tx.query(
     `insert into public.trace_export_cursors (business_id, after_tx, after_id)
      select $1, tx, id from public.run_events where business_id = $1 and id = $2
      on conflict (business_id) do update
-       set after_tx = excluded.after_tx, after_id = excluded.after_id,
-           updated_at = clock_timestamp()
-       where trace_export_cursors.updated_at is not distinct from $3::text::timestamptz`,
-    [tx.businessId, last.id, last.fromVersion],
+       set after_tx = excluded.after_tx, after_id = excluded.after_id, updated_at = now()
+       where trace_export_cursors.xmin = $3::xid`,
+    [tx.businessId, last.id, version],
   );
 }
 
-/** The gap starts where its batch was read from, wherever another export has moved the cursor since. */
+/**
+ * A gap names the cursor its batch was read after, never the row as it is
+ * now: another export may have advanced it while this one waited on the target.
+ */
 async function recordGap(
   tx: TenantQuery,
   code: GapCode,
+  from: Cursor,
   events: number,
-  batch: Pending,
 ): Promise<void> {
   await tx.query(
     `insert into public.trace_export_gaps (business_id, id, code, from_tx, from_id, events)
-     values ($1, $2, $3, $4::text::xid8, $5, $6)`,
-    [tx.businessId, randomUUID(), code, batch.fromTx, batch.fromId, events],
+     values ($1, $2, $3, $4::xid8, $5::uuid, $6)`,
+    [tx.businessId, randomUUID(), code, from.tx, from.id, events],
   );
 }
