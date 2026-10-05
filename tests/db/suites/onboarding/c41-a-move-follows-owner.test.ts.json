@@ -1,5 +1,0 @@
-{
-  "kind": "invariant",
-  "isolation": true,
-  "why": "C41-A: a step's move follows its assignee and its client (U38 owner rule), with two races over held locks"
-}

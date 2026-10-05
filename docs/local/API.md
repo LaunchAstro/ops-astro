@@ -3193,10 +3193,7 @@ credential, whose call runs as its agent, so its comment's source is the
 agent's (`agent:api`), never its person's. A person or client-wait step is a
 person's checkpoint, so an agent's result on one is
 `DELEGATION_EXCLUDES_OPERATION` 403 naming `kind`, asked under the locks before
-anything is written (ORCH79 P12STEPACTOR). A person records a step of any kind. A person's result clears the step's open
-item (`closeStepMove`); an agent's withdraws it, naming nobody, which is
-reached only by an agent step's task carrying an ordinary `task.assign` item,
-since the step's own items are raised on person and client-wait steps alone.
+anything is written (ORCH79 P12STEPACTOR). A person records a step of any kind.
 It answers `{ step, outcome, opened, stopped }`;
 `FIELD_VALUE_INVALID` 422 names `recordId`, `outcome` or `result`; a task that
 is no step here, or is in the trash, is `NOT_FOUND` 404, as `task.comment`
@@ -3217,16 +3214,9 @@ clock under the lock, so a grant revoked or lapsed during the wait is
 under the lock, and one revoked or lapsed during the wait is
 `DELEGATION_NOT_LIVE` 403. Either refusal writes nothing.
 
-A person or client-wait step that opens is parked with an inbox item
-(`assignment`, on the step's task) to whoever owns its move: the task's
-assignee, else the person who started the onboarding. Assigning, unassigning or
-moving the task to another client parks it again under that rule
-(`reparkStepMove`, from `task.assign` and `task.set_party`), and the item closes
-when the step's result is recorded. A step that opens while its task is in the
-trash is parked with nobody, and is parked under that rule when `task.restore`
-brings the task back (`parkRestoredSteps`). The second failure, which stops the
-onboarding, withdraws every open item on its steps' tasks (`withdrawStepMoves`),
-since no step of a stopped onboarding takes a result. The agent step's run and its gate, and the
+The owner-rule moves (U38: an inbox item parking a person or client-wait step
+with whoever owns its move) are not built here; they follow in their own pull
+request. The agent step's run and its gate, and the
 client email's draft and its one send path, are not built here;
 `tests/onboarding/c41-a-held.test.ts` holds each by name. S0-5's first-client
 gate runs on all three commands, each classed `client-data`: after authority on

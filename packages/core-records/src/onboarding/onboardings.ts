@@ -7,7 +7,6 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { isRecordsRefusal } from '../records/refusals.ts';
 import { nextTaskKey, planTaskPlacement } from '../tasks/placement.ts';
 import type { StepKind, TemplateStep } from './template.ts';
-import { withdrawStepMoves } from './moves.ts';
 
 export type StepState = 'blocked' | 'ready' | 'done' | 'stopped';
 
@@ -226,7 +225,7 @@ export async function closeStep(
   return opened;
 }
 
-/** Count one failure; the second stops step and onboarding and withdraws its moves (CS-15.4). Returns whether it stopped. */
+/** Count one failure; the second stops the step and the onboarding (CS-15.4). Returns whether it stopped. */
 export async function failStep(tx: TenantQuery, step: OnboardingStepRow): Promise<boolean> {
   const stops = step.failures + 1 >= 2;
   await tx.query(
@@ -242,7 +241,6 @@ export async function failStep(tx: TenantQuery, step: OnboardingStepRow): Promis
         where business_id = $1 and id = $2`,
       [tx.businessId, step.onboardingId],
     );
-    await withdrawStepMoves(tx, step.onboardingId);
   }
   return stops;
 }

@@ -14,7 +14,7 @@ describe('C41-A held until the work it leans on lands', () => {
   );
   it.todo('C41-A refusal run:write: without it no onboarding run starts (run:write, SL12-B-2)');
 
-  // The person and client-wait steps' inbox raise is `c41-a-inbox-raise.test.ts`.
+  // The person and client-wait steps' inbox raise (U38's moves) follows in its own pull request.
   // The agent step parks at its run's approval gate, whose decision item the
   // gate raises: it waits on the run start (AW-04's accept, via b0/SL12).
   it.todo(

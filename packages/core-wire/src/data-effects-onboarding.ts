@@ -11,14 +11,11 @@ type OnboardingCommand = Extract<
 >;
 
 export const ONBOARDING_EFFECTS: { readonly [Name in OnboardingCommand]: DataEffects } = {
-  // C41-A: the client row, its step tasks, a result comment, and the inbox item parking a step with its owner.
+  // C41-A: the client row, its step tasks, and a step's result as a comment.
   'record.create': writing(client('clients')),
-  // A step task moved to another client is no longer anyone's move.
-  'task.set_party': writing(client('records', 'record_unique_values', 'inbox_items')),
+  'task.set_party': writing(client('records', 'record_unique_values')),
   'onboarding.start': writing(
-    client('records', 'record_unique_values', 'onboardings', 'onboarding_steps', 'inbox_items'),
+    client('records', 'record_unique_values', 'onboardings', 'onboarding_steps'),
   ),
-  'onboarding.step_result': writing(
-    client('records', 'onboardings', 'onboarding_steps', 'inbox_items'),
-  ),
+  'onboarding.step_result': writing(client('records', 'onboardings', 'onboarding_steps')),
 };

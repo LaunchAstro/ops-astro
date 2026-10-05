@@ -15,7 +15,6 @@
 
 import {
   isRecordsRefusal,
-  parkRestoredSteps,
   purgeTrashedRecords,
   restoreBatch,
   trashSubtree,
@@ -104,8 +103,6 @@ export async function restoreTasks(
 ): Promise<HandlerOutcome> {
   const restored = await restoreBatch(tx, { batchId });
   if (isRecordsRefusal(restored)) return refused(restored);
-  // C41-A: an onboarding step that opened while its task was in the trash.
-  await parkRestoredSteps(tx, restored.recordIds);
   // The ids go in the stored result: the event this command writes has one
   // subject column and a restore has no single subject.
   return applied(null, null, {
