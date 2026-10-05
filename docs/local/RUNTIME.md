@@ -1549,8 +1549,10 @@ both tenancy-scoped with row security forced, and the fair share's count
   to that provider, and releases only when custody's lookup answers on the
   same credential kind and account. A row missing any of them (written
   before the migration, or a replay credential, which has no account)
-  releases nothing: a person records its outcome. Test:
-  `reconcile-releases-nothing-without-its-carrier`.
+  releases nothing: a person records its outcome. The account is the
+  credential file's `account` label, and the pass trusts it: it must be the
+  provider's own account or organisation id, never reused for another
+  account's key. Test: `reconcile-releases-nothing-without-its-carrier`.
 - Usage (`0098_model_call_usage`, ORCH37): a settled call records the model
   the provider says answered (`model_id`, null when the answer named none)
   and the units its answer says it used (`input_units`, `output_units`, both
