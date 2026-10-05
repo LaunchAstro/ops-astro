@@ -149,21 +149,29 @@ describe.skipIf(serverUrl === undefined)('API-3 isolation', () => {
     const picked = await w.pickUp(await w.decider('blocker-delegator'), 'agent blocked task');
     await w.blocks(hidden, picked.taskId);
     const agent = await w.agent(picked.credential);
-    for (const [who, answer] of [
-      ['scoped standard', await scoped.run('task', 'get', mine, '--json')],
-      ['scoped full', await scoped.run('task', 'get', mine, '--detail', 'full', '--json')],
-      ['agent standard', await agent.run('task', 'get', picked.taskId, '--json')],
-      ['agent full', await agent.run('task', 'get', picked.taskId, '--detail', 'full', '--json')],
-    ] as const) {
-      expect(answer.exit, `${who}: ${answer.out}`).toBe(0);
-      expect(answer.out, who).not.toContain(hidden);
-      expect(JSON.parse(answer.out) as Record<string, unknown>, who).toHaveProperty(
+    const read = async (caller: Caller, id: string, ...level: string[]) => {
+      const answer = await caller.run('task', 'get', id, ...level, '--json');
+      expect(answer.exit, answer.out).toBe(0);
+      expect(answer.out).not.toContain(hidden);
+      return JSON.parse(answer.out) as Record<string, unknown>;
+    };
+    // A member reading through record grants is a client login under owner
+    // answer 22: told no count of what it may not read, as task.board tells
+    // it none (SL07-B22-ANSWER).
+    for (const level of [[], ['--detail', 'full']]) {
+      expect(await read(scoped, mine, ...level), 'scoped').not.toHaveProperty('blockersWithheld');
+    }
+    // An agent is no client login: it is told the count, never the id.
+    for (const level of [[], ['--detail', 'full']]) {
+      expect(await read(agent, picked.taskId, ...level), 'agent').toHaveProperty(
         'blockersWithheld',
         1,
       );
     }
-    // The lead, who may read it, is shown it.
-    expect((await lead0.run('task', 'get', mine, '--json')).out).toContain(hidden);
+    // The lead, whose grant reaches the whole business, is shown it, and no count.
+    const shown = await lead0.run('task', 'get', mine, '--json');
+    expect(shown.out).toContain(hidden);
+    expect(JSON.parse(shown.out) as Record<string, unknown>).not.toHaveProperty('blockersWithheld');
   });
 
   it('API-3 isolation: a blocks link from a record that is not a task is never shown or counted', async () => {

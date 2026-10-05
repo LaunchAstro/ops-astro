@@ -95,6 +95,44 @@ it.skipIf(serverUrl === undefined)(
   },
 );
 
+it.skipIf(serverUrl === undefined)(
+  "a task:read credential's leveled task.read names no blocker, as the agent view withholds them (API-3)",
+  async () => {
+    const blocked = await harness.freshTask('credential blocked task');
+    const blocker = await harness.freshTask('API-3-CANARY-CREDENTIAL-BLOCKER');
+    // The `blocks` link WF-2's task.set_blocking writes, planted until it joins.
+    await harness.world.db.admin.execute(
+      `insert into public.record_links (business_id, id, link_type, from_record_id, to_record_id)
+       values ($1, $2, 'blocks', $3, $4)`,
+      [harness.world.alpha, randomUUID(), blocker.id, blocked.id],
+    );
+    const owner = await harness.asPerson('task.read', { recordId: blocked.id, detail: 'standard' });
+    expect(owner.code).toBe('ok');
+    expect(JSON.parse(owner.text)).toMatchObject({ view: { blockedBy: [blocker.id] } });
+    const credential = await issued({ scope: [{ collection: 'task', action: 'read' }] });
+    const levels = ['standard', 'full'] as const;
+    const answers = await Promise.all(
+      levels.map(
+        async (detail) =>
+          await asCredential(
+            'task.read',
+            { recordId: blocked.id, detail },
+            bearer(credential.secret),
+          ),
+      ),
+    );
+    for (const [at, agent] of answers.entries()) {
+      const detail = levels[at];
+      expect(agent.code, detail).toBe('ok');
+      expect(agent.text, detail).not.toContain(blocker.id);
+      expect(agent.text, detail).not.toContain('API-3-CANARY-CREDENTIAL-BLOCKER');
+      expect(JSON.parse(agent.text), detail).toMatchObject({
+        view: { blockedBy: [], blockersWithheld: 1 },
+      });
+    }
+  },
+);
+
 /** A fresh task with all three marks at `mark`. */
 const scored = async (title: string, mark: number) => {
   const task = await harness.freshTask(title);
