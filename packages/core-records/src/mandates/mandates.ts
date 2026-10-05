@@ -173,7 +173,7 @@ export const mandateOf = (row: MandateDbRow): MandateRow => ({
   revision: Number(row.revision),
 });
 
-interface ClassDbRow {
+export interface ClassDbRow {
   readonly id: string;
   readonly client_id: string;
   readonly client_label: string;
@@ -190,7 +190,7 @@ interface ClassDbRow {
   readonly revision: string;
 }
 
-const classOf = (row: ClassDbRow): GraduationClassRow => ({
+export const classOf = (row: ClassDbRow): GraduationClassRow => ({
   id: row.id,
   clientId: row.client_id,
   clientLabel: row.client_label,

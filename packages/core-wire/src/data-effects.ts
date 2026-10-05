@@ -184,6 +184,10 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'connection.fleet': READ,
   'connection.graduation': READ,
   'connector.repair': writing(business('connection_repairs')),
+  'mandate.file': writing(client('standing_mandates')),
+  'mandate.revoke': writing(client('standing_mandates', 'graduation_classes')),
+  'graduation.promote': writing(client('standing_mandates', 'graduation_classes')),
+  'graduation.demote': writing(client('standing_mandates', 'graduation_classes')),
   'client.create': writing(client('clients')),
   'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's

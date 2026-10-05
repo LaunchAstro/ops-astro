@@ -94,6 +94,7 @@ const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
 const CUSTODY_COLLECTION = 'custody';
+const MANDATE_COLLECTION = 'mandate';
 const CONVERSATION_COLLECTION = 'conversation';
 const TIME_COLLECTION = 'time';
 const TAG_COLLECTION = 'tag';
@@ -522,6 +523,28 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: ['connectionId'],
+  }),
+  // Standing mandates (MP-14-10a): every change is `mandate:manage` business-wide (owner and
+  // administrators; a mandate carries a spend ceiling, so C59's step-up applies), never an agent.
+  declare('mandate.file', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['clientId'],
+  }),
+  declare('mandate.revoke', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['mandateId'],
+  }),
+  declare('graduation.promote', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['classId'],
+  }),
+  declare('graduation.demote', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['classId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this
