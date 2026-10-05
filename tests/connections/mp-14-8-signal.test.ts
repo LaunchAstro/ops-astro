@@ -721,10 +721,13 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       );
       return rows.map((row) => row.h);
     };
-    const audit = async (): Promise<readonly { readonly id: string; readonly row: string }[]> =>
-      await controls.fixture.db.admin.execute(
+    // Plain arrays: the driver's result is an array subclass, which a strict
+    // comparison against a plain array refuses whatever its rows.
+    const audit = async (): Promise<readonly { readonly id: string; readonly row: string }[]> => [
+      ...(await controls.fixture.db.admin.execute<{ readonly id: string; readonly row: string }>(
         `select id, t::text as row from public.audit_events t order by id`,
-      );
+      )),
+    ];
     const tables = await snapshot();
     const events = await audit();
     await signal(admin);
@@ -738,7 +741,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     }>(`select actor_id, command from public.audit_events where not (id = any($1::uuid[]))`, [
       [...known],
     ]);
-    expect(added).toStrictEqual([{ actor_id: admin.actorId, command: 'connection.signal' }]);
+    expect([...added]).toStrictEqual([{ actor_id: admin.actorId, command: 'connection.signal' }]);
   });
 
   it('MP-14-8 the read feeds the export-volume detector one item per row it hands out', async () => {
