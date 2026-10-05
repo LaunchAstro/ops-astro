@@ -41,6 +41,8 @@ const id = (n: number): string => n.toString(16).padStart(64, '0');
 
 // A fake `docker` answering `ps -aq --no-trunc` with every id it holds and
 // `inspect <id>...` with those entries, or failing as a broken daemon does.
+// It refuses an inspect of more than 32 ids, so a report that asks for all
+// of them at once fails here even with a buffer large enough to hold them.
 // It is a script on PATH, so the report runs it exactly as it runs Docker.
 function fakeTools(
   containers: Container[],
@@ -54,6 +56,7 @@ const [command, ...rest] = process.argv.slice(2);
 ${fail ? `if (command === ${JSON.stringify(fail)}) { process.stderr.write('Error response from daemon: the fake is down\\n'); process.exit(1); }` : ''}
 const all = JSON.parse(readFileSync(${JSON.stringify(join(dir, 'containers.json'))}, 'utf8'));
 if (command === 'ps') process.stdout.write(${JSON.stringify(listed)} + all.map((c) => c.Id + '\\n').join(''));
+else if (command === 'inspect' && rest.length > 32) { process.stderr.write('fake: more than 32 ids in one inspect\\n'); process.exit(1); }
 else if (command === 'inspect') process.stdout.write(JSON.stringify(rest.map((i) => all.find((c) => c.Id === i))) + ${JSON.stringify(trailing)});
 else process.exit(64);
 `;
