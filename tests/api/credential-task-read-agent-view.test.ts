@@ -59,6 +59,42 @@ it.skipIf(serverUrl === undefined)(
   },
 );
 
+it.skipIf(serverUrl === undefined)(
+  'a task:read credential reads the agent view at every detail level (API-3)',
+  async () => {
+    const task = await harness.freshTask('credential agent view by level');
+    const note = 'API-3-LEVELED-INTERNAL-NOTE';
+    const commented = await harness.asPerson('task.comment', {
+      operationId: randomUUID(),
+      recordId: task.id,
+      expectedRevision: task.revision,
+      body: note,
+      audience: 'internal',
+    });
+    expect(commented.code).toBe('ok');
+    const owner = await harness.asPerson('task.read', { recordId: task.id, detail: 'full' });
+    expect(owner.code).toBe('ok');
+    const ownerView = (JSON.parse(owner.text) as { view: Record<string, unknown> }).view;
+    expect(ownerView, 'a member reads the Client field facts at full').toHaveProperty('hasContent');
+    const credential = await issued({ scope: [{ collection: 'task', action: 'read' }] });
+    const levels = ['standard', 'full'] as const;
+    const answers = await Promise.all(
+      levels.map(
+        async (detail) =>
+          await asCredential('task.read', { recordId: task.id, detail }, bearer(credential.secret)),
+      ),
+    );
+    for (const [at, agent] of answers.entries()) {
+      const detail = levels[at];
+      expect(agent.code, detail).toBe('ok');
+      expect(agent.text, `an internal note is absent at ${detail}`).not.toContain(note);
+      const { view } = JSON.parse(agent.text) as { view: Record<string, unknown> };
+      expect(view, detail).not.toHaveProperty('client');
+      expect(view, detail).not.toHaveProperty('hasContent');
+    }
+  },
+);
+
 /** A fresh task with all three marks at `mark`. */
 const scored = async (title: string, mark: number) => {
   const task = await harness.freshTask(title);
