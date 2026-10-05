@@ -66,9 +66,16 @@ function changedPaths(cwd, base, head, filter) {
     .filter(Boolean);
 }
 
-/** Runs a test file of this tree with the tree's own vitest. */
+/**
+ * Runs a test file of this tree with the tree's own vitest. The gate asks
+ * whether the check passes, not how fast: on a loaded machine the 5 s default
+ * timed the naming check out, a red with nothing wrong. A test naming its
+ * own timeout keeps it.
+ */
 function vitestFile(cwd, tools, file) {
-  return run(join(tools, 'node_modules', '.bin', 'vitest'), ['run', file], { cwd });
+  return run(join(tools, 'node_modules', '.bin', 'vitest'), ['run', '--testTimeout=60000', file], {
+    cwd,
+  });
 }
 
 /** Runs each step in order and stops at the first red. */
