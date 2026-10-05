@@ -1,5 +1,8 @@
 {
   "invariant": [
+    "tests/automations/c33-authority.test.ts",
+    "tests/automations/c33-command-races.test.ts",
+    "tests/automations/c33-commands.test.ts",
     "tests/automations/c33-occurrences.test.ts",
     "tests/automations/c33-registry-snapshot-and-claim-races.test.ts",
     "tests/automations/c33-versions.test.ts"

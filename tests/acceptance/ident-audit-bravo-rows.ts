@@ -5,11 +5,15 @@
 // Split from `ident-audit-cases.ts` to keep that file under the line limit.
 
 import type { World } from './world.ts';
+import { seedAutomation, type SeededAutomation } from '../automations/seed.ts';
 
 export async function bravoRecords(world: World): Promise<{
   readonly legalVersionId: string;
   readonly credentialId: string;
   readonly clientId: string;
+  /** An automation of bravo's (C33), and an alpha version a foreign activation is aimed past. */
+  readonly automation: SeededAutomation;
+  readonly alphaVersionId: string;
 }> {
   // A drafted legal document version of bravo's (C81), written directly: the
   // alpha caller is handed its id and must not learn it exists.
@@ -40,7 +44,12 @@ export async function bravoRecords(world: World): Promise<{
     [world.bravo, world.bea.actorId],
   );
 
+  const automation = await seedAutomation(world.db.admin, world.bravo, world.bea.actorId as string);
+  const alpha = await seedAutomation(world.db.admin, world.alpha, world.ada.actorId as string);
+
   return {
+    automation,
+    alphaVersionId: alpha.versionId,
     legalVersionId: String(bravoLegal[0]?.id),
     credentialId: String(bravoCredential[0]?.id),
     clientId: String(bravoClient[0]?.id),

@@ -474,11 +474,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:740-766`, run at `:899-907`). It gets a login and an acting identity,
-  and no membership and no business grant (`:158-161`, `:311-313`). The seed
+  user (`:743-769`, run at `:902-910`). It gets a login and an acting identity,
+  and no membership and no business grant (`:161-164`, `:314-316`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:760-789`, `:928-938`).
+  (`:763-792`, `:931-941`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -796,6 +796,14 @@ active membership, over the whole business or over one client of it
 (`client.create`) is `record:write`, never an agent's. Changing a client's
 privacy settings (`client.set_privacy`, C60) is `privacy:manage`, asked at that
 client's party scope, never an agent's.
+
+Settings ▸ Workflow triggers (C33) reads the business's automations under
+`settings:read` (`automation.registry`), changes an activation under
+`settings:manage` (`activation.change`) and releases a definition version under
+`automation:manage` (`definition.release`), each asked of the whole business
+and none ever an agent's. A definition carries no client, so a grant at one
+client's scope reaches none of the three. Switching an activation to a
+schedule or an event starts nothing; a run waits on C52-A's standing approval.
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a
