@@ -129,7 +129,7 @@ const PLANTS: [string, [string, string, string][], string][] = [
   ],
   [
     'the M5 named outright as a block list',
-    [gate('\n      - self-hosted\n      - ops-merge-m5')],
+    [gate('\n      - self-hosted\n      - Linux\n      - ops-merge-m5')],
     'contamination gate: reaches the M5 on pull_request',
   ],
   ['the M5 named outright as a label', [gate('ops-merge-m5')], 'asks for ops-merge-m5'],
@@ -141,7 +141,7 @@ const PLANTS: [string, [string, string, string][], string][] = [
   [
     'a label one character off',
     [gate(ROUTE.replace('merge-m5"', 'merge-m6"'))],
-    'asks for self-hosted,ops-merge-m6',
+    'asks for self-hosted,Linux,ops-merge-m6',
   ],
   [
     'an expression inside a longer string',

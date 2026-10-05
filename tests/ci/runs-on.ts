@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // CI-LOCAL: each job's `runs-on`, as GitHub evaluates it, for tests/ci/merge-group-runner.test.ts.
-// The route reads two values: the event, which GitHub sets, and the repository variable
-// OPS_CI_LOCAL, which only a repository admin sets. Anything else in a `runs-on` is refused, so a
-// route cannot read a value a pull request controls (a branch name, a title) or lean on a function
-// this does not model. Semantics per
-// https://docs.github.com/en/actions/reference/workflows-and-actions/expressions: && and || return
-// an operand, not a boolean; strings compare without case; a missing value is null.
+// The route reads two values: the event, which GitHub sets, and the variable OPS_CI_LOCAL, which
+// only an admin sets (a repository variable, or an organisation variable of the same name, which
+// would route too). Anything else in a `runs-on` is refused, so a route cannot read a value a pull
+// request controls (a branch name, a title) or lean on a function this does not model. From
+// https://docs.github.com/en/actions/reference/workflows-and-actions/expressions: strings compare
+// without case, and other types compare as numbers or, for arrays, by instance; this refuses any
+// comparison but of two strings rather than model those. From .../contexts: an unset variable reads
+// as an empty string. Not in the docs but the runner's own parser, which the `a && b || c` idiom
+// rests on: `!`, then comparisons, then `&&`, then `||`, left to right, and `&&` and `||` return an
+// operand, not a boolean.
 
 import { parseDocument } from 'yaml';
 import { read } from './merge-group-repo.ts';
@@ -14,19 +18,31 @@ import { read } from './merge-group-repo.ts';
 export type Value = string | boolean | null | Value[];
 export type Ctx = { event: string; on: string | undefined };
 
-export const LOCAL: string[] = ['self-hosted', 'ops-merge-m5'];
+export const LOCAL: string[] = ['self-hosted', 'Linux', 'ops-merge-m5'];
 export const HOSTED: ReadonlySet<string> = new Set(['ubuntu-latest', 'ubuntu-24.04']);
-/** Every event a workflow here starts on, and the ones a fork's pull request can bring. */
+/**
+ * The events every `runs-on` is evaluated on: each one a workflow here starts on (the test holds
+ * this list to them), each one a fork's contributor can start, and one no workflow starts on, so a
+ * route that names the events it excludes fails on the event it forgot.
+ */
 export const EVENTS: string[] = [
   'pull_request',
   'pull_request_target',
   'pull_request_review',
+  'pull_request_review_comment',
   'issue_comment',
+  'issues',
+  'discussion',
+  'discussion_comment',
+  'fork',
+  'watch',
   'workflow_run',
+  'branch_protection_rule',
   'push',
   'merge_group',
   'schedule',
   'workflow_dispatch',
+  'an_unlisted_event',
 ];
 /** The variable unset, empty, on in two cases, and values someone might mean as on. */
 export const SWITCH: (string | undefined)[] = [
@@ -42,10 +58,14 @@ export const SWITCH: (string | undefined)[] = [
 const isOn = (v: string | undefined) => v?.toLowerCase() === 'on';
 
 const truthy = (v: Value) => v !== null && v !== false && v !== '';
-const equal = (a: Value, b: Value) =>
-  typeof a === 'string' && typeof b === 'string'
-    ? a.toLowerCase() === b.toLowerCase()
-    : JSON.stringify(a) === JSON.stringify(b);
+const equal = (a: Value, b: Value) => {
+  if (typeof a !== 'string' || typeof b !== 'string') {
+    throw new TypeError(
+      `a runs-on compares a non-string: ${JSON.stringify(a)}, ${JSON.stringify(b)}`,
+    );
+  }
+  return a.toLowerCase() === b.toLowerCase();
+};
 
 class Expression {
   private readonly tokens: string[];
@@ -121,7 +141,7 @@ class Expression {
     if (t === 'null') return null;
     if (t.toLowerCase() === 'fromjson' && this.peek() === '(') return this.fromJSON();
     if (t.toLowerCase() === 'github.event_name') return this.ctx.event;
-    if (t.toLowerCase() === 'vars.ops_ci_local') return this.ctx.on ?? null;
+    if (t.toLowerCase() === 'vars.ops_ci_local') return this.ctx.on ?? '';
     throw new Error(`a runs-on reads ${t}, which the route may not: ${this.source}`);
   }
 
