@@ -84,3 +84,28 @@ it('task search exports contribute their record count to the security detector',
     expect.objectContaining({ kind: 'export', business: 'alpha', items: 1 }),
   ]);
 });
+
+it('invitation list exports contribute their record count to the security detector', async () => {
+  // Sol PRV-oa-1018-R1.2: names and addresses handed out by invitation.list
+  // count toward the export-volume threshold like any other list.
+  const created = await harness.asPerson('invitation.create', {
+    name: 'Ivy Invitee',
+    email: `ivy-${randomUUID()}@example.test`,
+    role: 'member',
+  });
+  expect(created.code).toBe('ok');
+  const signals: SecuritySignal[] = [];
+  const api = apiWith({ observe: (signal) => signals.push(signal) });
+  const listed = await call(
+    api,
+    personPath('alpha', '/invitation/list'),
+    {},
+    bearer(harness.world.ada.token),
+  );
+  expect(listed.code).toBe('ok');
+  const invitations = listed.body['invitations'] as readonly { invitationId: string }[];
+  expect(invitations.map((one) => one.invitationId)).toContain(created.body['invitationId']);
+  expect(signals.filter((signal) => signal.kind === 'export')).toEqual([
+    expect.objectContaining({ kind: 'export', business: 'alpha', items: invitations.length }),
+  ]);
+});
