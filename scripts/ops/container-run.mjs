@@ -15,9 +15,11 @@
 // was lost leaves the container and deletes the empty file). A removal docker
 // refuses is tried again; one it keeps refusing fails the run, naming the
 // container, and keeps the id file.
-// One case is left: a create stalled past `STOP_MS` that the daemon still
-// finishes more than `GRACE_MS` after the client has gone leaves a container
-// in `Created`, holding its login; the staging README says how to clear it.
+// One case is left: a create the daemon still finishes after the run's
+// removal by name (a stalled create past `STOP_MS` more than `GRACE_MS` after
+// a stop, or any late finish after a lost answer with no stop) leaves a
+// container in `Created`, holding its login; the staging README says how to
+// clear it.
 
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -87,11 +89,7 @@ export function runContainer(role, network, env, command, { stdin = false } = {}
   const exited = closed.then(async (succeeded) => {
     if (!succeeded) {
       const left = await removeRun(run);
-      if (left !== undefined) {
-        throw new Error(
-          `docker would not remove container ${left}: remove it with docker rm --force --volumes ${left} (its id file ${cidfile} is kept)`,
-        );
-      }
+      if (left !== undefined) throw notRemoved(left, cidfile);
     }
     rmSync(folder, { recursive: true, force: true });
     return succeeded;
@@ -129,8 +127,16 @@ async function stopRun(run, { child, closed, exited }) {
   }
   if (creating && id === undefined) {
     await pause(GRACE_MS);
-    await removed(run.name);
+    if (!(await removed(run.name))) throw notRemoved(run.name);
   }
+}
+
+/** The failure of a run whose container docker would not remove; no part of its login. */
+function notRemoved(ref, cidfile) {
+  const kept = cidfile === undefined ? '' : ` (the run's id file ${cidfile} is kept)`;
+  return new Error(
+    `docker would not remove container ${ref}: remove it with docker rm --force --volumes ${ref}${kept}`,
+  );
 }
 
 /** The id docker wrote for `run`, kept once read; undefined while there is none. */
@@ -145,11 +151,21 @@ function idOf(run) {
   return run.id;
 }
 
-/** Runs `docker <args>`; whether docker did it, or found no such container to do it to. */
+// What docker says when the container is gone, or going by its own `--rm`.
+const GONE = ['No such container', 'is already in progress'];
+
+/**
+ * Runs `docker <args>`; whether docker did it, found no such container, or
+ * is removing it already. With no docker at all, no container was made.
+ */
 function docker(args) {
   return new Promise((resolve) => {
     execFile('docker', args, { timeout: STOP_MS }, (error, _stdout, stderr) =>
-      resolve(error === null || String(stderr).includes('No such container')),
+      resolve(
+        error === null ||
+          error.code === 'ENOENT' ||
+          GONE.some((answer) => String(stderr).includes(answer)),
+      ),
     );
   });
 }

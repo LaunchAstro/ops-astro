@@ -43,14 +43,21 @@ Staging shares a machine with live services, so it is confined (ticket S0-1,
   that are removed when they end (`scripts/ops/container-run.mjs`). Their
   login goes in by environment name, so Docker holds it in that container's
   settings while it runs; the machine's Docker daemon runs without debug
-  logging, which would write it to the daemon's log. A run stopped during a
-  create the daemon stalls on for over 20 seconds, then finishes after the
-  client has gone, can leave one such container made but never started.
+  logging, which would write it to the daemon's log. A create the daemon
+  finishes after the run has removed its container by name (one stalled for
+  over 20 seconds under a stop, or one whose answer docker lost) can leave
+  one such container made but never started. A run whose container docker
+  will not remove fails, naming it (the backup records stage `container`).
   The runbook lists any by the run containers' own names, never staging's
   services, with
   `docker ps --all --filter status=created --filter 'name=^ops-astro-staging-(store|backup)-[0-9a-f]{16}$'`
   and removes each with `docker rm --volumes`, as the code does, so the
   image's empty data volume goes too.
+- The store logins (`BACKUP_STORE_URL`, `BACKUP_RETENTION_URL`,
+  `RESTORE_STORE_URL`) are read as exactly
+  `postgres://user:password@host[:port]/database[?sslmode=...]`, and must
+  read back from the URL parser as written: percent-encode the password and
+  the database name (`encodeURIComponent`), or the reach refuses the address.
 
 The staging worker and its outbox forwarder (`worker`, `forwarder`) are one
 unit: the same pinned Node image, running the checkout the runbook copies into

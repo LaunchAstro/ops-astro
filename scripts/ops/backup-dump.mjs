@@ -87,3 +87,13 @@ function printed(run) {
   }
   return started.then(() => Object.assign(pieces(), { stop }));
 }
+
+/**
+ * Stops a dump `source` a backup gives up on: answers `stage`, or `container`
+ * when docker would not remove its container (the run says which).
+ */
+export const stopped = (source, stage) =>
+  Promise.resolve(source.stop?.()).then(
+    () => stage,
+    () => 'container',
+  );

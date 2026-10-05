@@ -176,7 +176,7 @@ it('a dump whose container docker will not remove fails with that reason', async
   expect(failure.message).toContain(ID);
   expect(readdirSync(containers)).toEqual([ID]);
   // The id file it names is kept for that removal; the test clears it.
-  const kept = /its id file (\S+) is kept/u.exec(failure.message)?.[1] ?? '';
+  const kept = /id file (\S+) is kept/u.exec(failure.message)?.[1] ?? '';
   expect(readFileSync(kept, 'utf8').trim()).toBe(ID);
   rmSync(join(kept, '..'), { recursive: true, force: true });
 }, 15_000);
@@ -200,8 +200,8 @@ it('with no docker at all, a run fails without claiming a container was left', a
 }, 15_000);
 
 it("a stop whose late removal by the run's name is refused fails, naming the run", async () => {
-  // A create under way: the id file stays empty until the stop's TERM deletes it.
-  standIn([`trap 'rm -f "$cid"; exit 143' TERM`, '/bin/sleep 5 & wait $!', 'exit 0'], 99, {
+  // A create under way when the stop comes, which ends with no id.
+  standIn(['/bin/sleep 0.3', 'rm -f "$cid"', 'exit 125'], 99, {
     okFirst: 1,
   });
   const { run, arg } = await started();
