@@ -209,7 +209,8 @@ async function authorise(
     );
     if (!decision.ok) return decision.refusal;
     if (decision.value.some((grant) => held.has(grant.id))) return null;
-    return refuseCommand('SCOPE_NOT_GRANTED', [], ['no live grant covers it']);
+    const words = ['no live grant covers it', 'ask a holder who may delegate'];
+    return refuseCommand('SCOPE_NOT_GRANTED', [], words);
   };
   const readAndWrite = async (at: string) =>
     (await ask('read', { kind: 'record', id: oldId }, at)) ?? (await ask('write', there, at));
