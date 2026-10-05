@@ -11,9 +11,9 @@
 // not answer does not stop the run's: an older span may answer absent.
 // Reads the store does not answer, three in a row, end a pass's owed
 // read-back. A pass that leaves a run unanswered records the runs it read,
-// those it had no answer for with where their read stopped, and the
-// next pass reads the runs it reached least lately first, an unanswered run
-// from where it stopped
+// those it had no answer for with where their read stopped (the first
+// unanswered span after the last answered one), and the next pass reads the
+// runs it reached least lately first, an unanswered run from where it stopped
 // (`owedAsks` in `trace-owed.ts`).
 
 import { randomUUID } from 'node:crypto';
@@ -54,8 +54,9 @@ const spanOf = (key: Buffer, businessId: string, eventId: string): string =>
  * The runs a read finds gone; with `reading`, by each sent owed span from
  * where the run's last read stopped, until `UNANSWERED` unanswered reads in a
  * row. A run with an unanswered span and none absent is unanswered, and stops
- * at the first span its read did not reach (the unanswered ones before it
- * come round again at the end), or else at its first unanswered span.
+ * at the first unanswered span after the last one the store answered; when it
+ * answered none, at the span after the one its read began at. Each read moves
+ * on, and past no span the store would have answered.
  */
 export async function readBack(
   key: Buffer,
@@ -68,13 +69,12 @@ export async function readBack(
   for (const runId of runs) {
     if (reading !== undefined && reading.quiet >= UNANSWERED) break;
     let read: 'absent' | 'present' | 'unknown' = 'present';
+    let heard = false;
     let first: string | undefined;
-    let stop: string | undefined;
-    for (const eventId of from(reading, runId)) {
-      if (reading !== undefined && reading.quiet >= UNANSWERED) {
-        stop = eventId;
-        break;
-      }
+    let streak: string | undefined;
+    const order = from(reading, runId);
+    for (const eventId of order) {
+      if (reading !== undefined && reading.quiet >= UNANSWERED) break;
       // eslint-disable-next-line no-await-in-loop -- one read at a time; the store is not hurried
       const answer = await ports.present(
         traceOf(key, businessId, runId),
@@ -88,13 +88,17 @@ export async function readBack(
       if (answer === 'unknown') {
         read = 'unknown';
         first ??= eventId;
+        streak ??= eventId;
+      } else {
+        heard = true;
+        streak = undefined;
       }
     }
     if (read === 'absent') gone.push(runId);
     if (reading === undefined) continue;
     if (read === 'unknown') {
       reading.unanswered.push(runId);
-      reading.resumes.push(stop ?? first ?? null);
+      reading.resumes.push((heard ? (streak ?? first) : order[1]) ?? order[0] ?? null);
     } else reading.answered.push(runId);
   }
   return gone;
