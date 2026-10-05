@@ -133,3 +133,17 @@ it('a correction whose word the served page does not show stays accepted and rai
   });
   expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
 });
+
+it('a layout copy of the word ahead of the place raises a recovery task, never a place on the layout', async () => {
+  const target = { path: 'src/pages/contact.astro', word: 'Contcat', replacement: 'Contact' };
+  const before =
+    "---\nimport Layout from '../layouts/Layout.astro';\n---\n<Layout>\n<h2>Contcat</h2>\n<p>Call us.</p>\n</Layout>\n";
+  const nav = '<header><nav><a href="/contact">Contcat</a></nav></header>';
+  const result = await publishAndObserve(
+    target,
+    before,
+    `${nav}<main><h2>Contcat</h2><p>Call us.</p></main>`,
+    { corrected: `${nav}<main><h2>Contact</h2><p>Call us.</p></main>` },
+  );
+  expect(result).toEqual({ outcome: 'accepted', raised: 1, observed: { corrected: 'accepted' } });
+});
