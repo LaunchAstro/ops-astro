@@ -14,6 +14,27 @@
   "ignorePatterns": ["node_modules", "dist", "tests/gate/canary.txt", ".claude/skills", ".codex"],
   "overrides": [
     {
+      "files": [
+        "tests/api/an-ending-admitted-before-its-manager-grant-was-revoked-is-refused.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
+    },
+    {
+      "files": [
+        "tests/web/settings-late-step-up-refusal-stays-with-its-business.test.tsx",
+        "tests/web/settings-lost-save-intent-stays-with-its-business.test.tsx",
+        "tests/web/preference-recovery-read-keeps-earlier-restore.test.tsx",
+        "tests/web/settings-late-scope-refusal-stays-with-its-business.test.tsx",
+        "tests/web/layout-save-survives-same-person-client-refresh.test.tsx"
+      ],
+      "rules": {
+        "max-lines-per-function": "off",
+        "no-await-in-loop": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "unicorn/prefer-dom-node-dataset": "off"
+      }
+    },
+    {
       "files": ["tests/surfaces/receipt-read-refusal-does-not-claim-no-effect.test.tsx"],
       "rules": { "require-await": "off", "no-promise-executor-return": "off" }
     },
@@ -170,6 +191,10 @@
         "tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts"
       ],
       "rules": { "unicorn/no-useless-undefined": "off" }
+    },
+    {
+      "files": ["tests/broker/sweep-after-committed-renewal-leaves-call-startable.test.ts"],
+      "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
     },
     {
       "files": [

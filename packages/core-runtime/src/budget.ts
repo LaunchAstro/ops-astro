@@ -325,7 +325,7 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
   if (envelope?.id !== found.id || BigInt(envelope.maximumMinor) !== request.fromMaximumMinor) {
     return refused('VERSION_STALE', "the task's envelope has moved", 'Read the task again.');
   }
-  const at = await lockedInstant(tx);
+  const at = await lockedInstant(tx, ['four_eyes_threshold']);
   const scope = { kind: 'record', id: request.taskId } as const;
   const ask = { collection: request.collection, action: 'decide', scope } as const;
   const holds = async (subjects: readonly Subject[]): Promise<boolean> =>

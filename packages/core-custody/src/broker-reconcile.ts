@@ -34,7 +34,7 @@
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
-import { giveBack } from './broker-give-back.ts';
+import { giveBack, lockEnvelope } from './broker-give-back.ts';
 import { atCeiling } from './broker-reserve.ts';
 import type { Broker } from './broker-types.ts';
 
@@ -192,17 +192,6 @@ async function record(
     });
   }
   return { callId, proved: proof.proved, reason };
-}
-
-/** The call's envelope, locked before the call's row, in settlement's order (`lockCall`). */
-async function lockEnvelope(tx: TenantQuery, callId: string): Promise<void> {
-  await tx.query(
-    `select 1 from public.model_calls c
-       join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
-       join public.task_envelopes e on e.business_id = r.business_id and e.id = r.envelope_id
-      where c.business_id = $1 and c.id = $2 for update of e`,
-    [tx.businessId, callId],
-  );
 }
 
 /**
