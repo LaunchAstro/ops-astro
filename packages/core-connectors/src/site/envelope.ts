@@ -9,6 +9,9 @@
 // the page did not, the served stylesheets are equal and the decoy occurrence
 // elsewhere on the site is untouched (Receipt L fields 9 to 12).
 
+import { swapsOnlyBodyCopy } from './body-copy-tokens.ts';
+import { compiledApart } from './page-transform.ts';
+
 export interface CorrectionTarget {
   readonly path: string;
   readonly word: string;
@@ -67,55 +70,35 @@ function replacedAt(before: string, after: string, target: CorrectionTarget): nu
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-/** Whether `offset` is in body copy: not frontmatter, a tag, a comment, an expression, a script or a style. */
-function inTextNode(source: string, offset: number): boolean {
-  if (source.startsWith('---\n')) {
-    const close = source.indexOf('\n---', 4);
-    if (close < 0 || offset <= close + 4) return false;
-  }
-  let state: 'text' | 'tag' | 'comment' | 'raw' = 'text';
-  let quote = '';
-  let braces = 0;
-  let rawClose = '';
-  for (let at = 0; at < offset; at += 1) {
-    const rest = source.slice(at);
-    const character = source.charAt(at);
-    if (state === 'comment') {
-      if (rest.startsWith('-->')) {
-        state = 'text';
-        at += 2;
-      }
-    } else if (state === 'raw') {
-      if (rest.toLowerCase().startsWith(rawClose)) {
-        state = 'tag';
-        rawClose = '';
-      }
-    } else if (state === 'tag') {
-      if (quote !== '') {
-        if (character === quote) quote = '';
-      } else if (character === '"' || character === "'") {
-        quote = character;
-      } else if (character === '>') {
-        state = rawClose === '' ? 'text' : 'raw';
-      }
-    } else if (rest.startsWith('<!--')) {
-      state = 'comment';
-    } else if (/^<\/?[a-z!]/iu.test(rest)) {
-      state = 'tag';
-      const raw = /^<(script|style)\b/iu.exec(rest);
-      rawClose = raw === null ? '' : `</${raw[1]?.toLowerCase() ?? ''}`;
-      if (rest.startsWith('</')) rawClose = '';
-    } else if (character === '{') {
-      braces += 1;
-    } else if (character === '}') {
-      braces = Math.max(0, braces - 1);
-    }
-  }
-  return state === 'text' && braces === 0;
+/**
+ * Larger sources, or ones with more markup, are refused uncompiled and
+ * unscanned: the compiler is not trusted with them, and a long line is
+ * scanned in quadratic time.
+ */
+const MOST_BYTES = 64 * 1024;
+const MOST_TAG_OPENERS = 2000;
+
+function tooLarge(source: string): boolean {
+  if (source.length > MOST_BYTES) return true;
+  let openers = 0;
+  for (let at = source.indexOf('<'); at >= 0; at = source.indexOf('<', at + 1)) openers += 1;
+  return openers > MOST_TAG_OPENERS || new TextEncoder().encode(source).length > MOST_BYTES;
+}
+
+/**
+ * Whether the swap is one word of body copy in the page Astro's compiler
+ * prints, and changes nothing else there (`body-copy-tokens.ts`).
+ */
+async function inPrintedText(before: string, after: string, target: CorrectionTarget) {
+  const compiled = await compiledApart(before, after);
+  return compiled !== undefined && swapsOnlyBodyCopy(compiled.before, compiled.after, target);
 }
 
 /** Refuses anything wider than the envelope, naming why. */
-export function checkEnvelope(change: ProposedChange, target: CorrectionTarget): EnvelopeResult {
+export async function checkEnvelope(
+  change: ProposedChange,
+  target: CorrectionTarget,
+): Promise<EnvelopeResult> {
   if (!ONE_WORD.test(target.word) || !ONE_WORD.test(target.replacement)) {
     return exceeded('the correction is not one word for one word');
   }
@@ -123,7 +106,11 @@ export function checkEnvelope(change: ProposedChange, target: CorrectionTarget):
   if (change.files.length !== 1) return exceeded('more than one file');
   const [file] = change.files;
   if (file === undefined || file.path !== target.path) return exceeded('not the target file');
+  if (!file.path.endsWith('.astro')) return exceeded('not an Astro page');
   if (file.before === null || file.after === null) return exceeded('a create, delete or rename');
+  if (tooLarge(file.before) || tooLarge(file.after)) {
+    return exceeded('the page is larger than the parser is trusted with');
+  }
   const before = file.before.split('\n');
   const after = file.after.split('\n');
   if (before.length !== after.length) return exceeded('lines added or removed');
@@ -133,8 +120,9 @@ export function checkEnvelope(change: ProposedChange, target: CorrectionTarget):
   const index = changed[0] ?? 0;
   const at = replacedAt(before[index] ?? '', after[index] ?? '', target);
   if (at === undefined) return exceeded('not the one word replaced in place');
-  const offset = before.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0) + at;
-  if (!inTextNode(file.before, offset)) return exceeded('the word is not in body copy');
+  if (!(await inPrintedText(file.before, file.after, target))) {
+    return exceeded('the word is not in body copy, or the edit changes more than the word');
+  }
   return {
     ok: true,
     value: { path: file.path, line: index + 1, before: target.word, after: target.replacement },
