@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#963): three unanswered newer spans in a row, which end a pass, hide no older missing span."
+}

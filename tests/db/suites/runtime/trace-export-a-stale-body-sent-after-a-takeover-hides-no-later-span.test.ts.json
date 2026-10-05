@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#963): an export stalled after its renewal, sending a stale body after a takeover and a delete, hides no later span from recovery."
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#963): one export per business at a time; a stalled export's lease is taken over only after it expires, and the stalled export then sends nothing."
+}
