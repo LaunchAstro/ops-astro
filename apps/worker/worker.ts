@@ -221,9 +221,12 @@ async function effectOnce(
   try {
     link = await callProvider(SYNTHETIC_STEP, options.provider);
   } catch (fault) {
-    if (!(fault instanceof ProviderFault)) throw fault;
-    const drop = { cause: fault.dropCause, operationId: randomUUID() };
+    const cause = fault instanceof ProviderFault ? fault.dropCause : 'connection_lost';
+    const drop = { cause, operationId: randomUUID() };
     keep({ ...held, drop });
+    // Any other rejection still ends this pass, and the provider may have acted:
+    // the next pass hands the drop back and never calls it again.
+    if (!(fault instanceof ProviderFault)) throw fault;
     return await handBackDrop(drop);
   }
   keep({ ...held, effected: { link } });
