@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 20261005054843 a model call records the provider and credential that carried it (AW-10, catalogue #439, #943).
+-- 20261005100149 a model call records the provider and credential that carried it (AW-10, catalogue #439, #943).
 --
 -- The reconciliation pass asks a provider whether it began a call held as
 -- unknown liability, and an answer that proves nothing happened releases

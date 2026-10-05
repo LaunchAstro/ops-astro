@@ -91,7 +91,7 @@ function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
  * reach, credential kind, provider and credential (catalogue #439, #943),
  * and only while the operation still goes to that provider. The account is
  * the one custody named for the credential before the send (`describe`). A
- * row with no provider or credential (written before 20261005054843), or no
+ * row with no provider or credential (written before 20261005100149), or no
  * account (a `replay` credential has none, so one key cannot be told from
  * another), cannot name the account that carried it, and an absence elsewhere
  * proves nothing: a person records the outcome.
