@@ -522,6 +522,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['secretId'],
   }),
 
+  // The connector fleet (MP-14-7a): `connection:read`, asked per row of the caller's scopes. A
+  // repair touches the credential's custody, so `custody:manage` business-wide, never an agent.
+  read('connection.fleet', 'connection'),
+  declare('connector.repair', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['connectionId'],
+  }),
+
   // The grant manager's authority, which is `manage` on the task family this
   // head's grants are about, asked of the revoked row's own scope. The
   // envelope asks nothing business-wide here; `authority-controls.ts` asks the
@@ -875,27 +884,10 @@ export {
   SESSION_PATH,
 } from './paths.ts';
 
+// The writes an external party (R4) may reach, in their own file.
+export { EXTERNAL_WRITES, admitsSelfWrite } from './surface-external.ts';
+
 /** The reads, which no caller may reach through the command envelope. */
-/**
- * The writes an external party (R4) may reach: a comment, only in the client audience; signing
- * out, which writes only the record that this person's session ended (C23); opening their
- * own inbox item; and their own preference rows, which every signed-in person writes
- * (`preference:write`, CAPABILITY-SLICES.md; ORCH50's ruling). `commands/prepare.ts` refuses
- * every other write to a person without a membership, and `session.capabilities` and
- * discovery read this same list.
- */
-export const EXTERNAL_WRITES: readonly CommandName[] = [
-  'task.comment',
-  'session.end',
-  'inbox.seen',
-  'preference.save',
-  'preference.dismiss_tip',
-];
-
-/** Whether a person of this standing may send this write: the envelope and discovery ask it. */
-export const admitsSelfWrite = (member: boolean, command: CommandName): boolean =>
-  member || EXTERNAL_WRITES.includes(command);
-
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
   (command) => command.kind === 'read',
 ).map((command) => command.name);

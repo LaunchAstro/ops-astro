@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The records package's one way in: tenancy, identity, authority, the records
-// engine, the task type and the refusal register. It is the bottom layer. It
-// imports neither the runtime nor the command package, and every other package
-// reaches it through this file (`.dependency-cruiser.cjs`).
+// The records package's one way in: tenancy, identity, authority, the records engine, the task type
+// and the refusal register. It is the bottom layer. It imports neither the runtime nor the command
+// package, and every other package reaches it through this file (`.dependency-cruiser.cjs`).
 //
-// Two names are renamed here because two modules use them for different
-// things: `Refusal` is the authority check's, and the identity layer's is
-// `IdentityRefusal`.
+// Two names are renamed here because two modules use them for different things: `Refusal` is the
+// authority check's, and the identity layer's is `IdentityRefusal`.
 
 export * from './authority/agent-credential-surface.ts';
 export { readEnvFile } from './env-file.ts';
@@ -87,51 +85,7 @@ export {
   type ReadableScope,
 } from './authority/readable-scope.ts';
 export { issueShare, withdrawShares } from './authority/shares.ts';
-export {
-  EXPIRED_FIXES,
-  NO_AGENT_FIXES,
-  resolveAgentLogin,
-  type AgentSession,
-} from './identity/agent-login.ts';
-export {
-  recordAuthenticationAttempt,
-  recordBodyRefusal,
-} from './identity/authentication-attempts.ts';
-export {
-  NO_MEMBERSHIP_FIXES,
-  standsOnShares,
-  resolveLogin,
-  standingOf,
-  withSession,
-  type SecondFactorRule,
-  type Session,
-  type VerifiedSubject,
-} from './identity/login-resolution.ts';
-export { withStanding } from './identity/standing.ts';
-export {
-  NO_ASSURANCE,
-  SESSION_ABSOLUTE_SECONDS,
-  SIGN_IN_CLOCK_SKEW_SECONDS,
-  type Assurance,
-  type AssuranceLevel,
-} from './identity/verified-subject.ts';
-export {
-  liveFactor,
-  loginHasVerifiedFactor,
-  recordFactorEnrolled,
-  recordFactorRemoved,
-  recordFactorVerified,
-  type FactorStatus,
-  type SecondFactor,
-} from './identity/second-factor.ts';
-export {
-  endOtherSeenSessions,
-  endProviderSession,
-  endOwnSession,
-  listSeenSessions,
-  type SeenSession,
-  type SessionEndReason,
-} from './identity/sessions.ts';
+export * from './identity/index.ts';
 export {
   asksMoneyStepUp,
   isMoneyKey,
@@ -277,3 +231,5 @@ export { loginLiveElsewhere } from './identity/shared-login.ts';
 export * from './site/index.ts';
 export * from './automations/index.ts';
 export * from './custody/surface.ts';
+// The connector fleet and a repair's start (MP-14-7a): no value is read.
+export * from './connections/fleet.ts';

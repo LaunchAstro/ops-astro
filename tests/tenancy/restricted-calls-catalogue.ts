@@ -16,6 +16,8 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
+  // C40B: a reset token is spent by `spent_at` alone.
+  'public.password_reset_tokens': { from: '20261005144947', columns: ['spent_at'] },
   // C33: an activation's setting, pin and switch, each change by a person.
   'public.activations': {
     from: '20261005003850',
@@ -117,6 +119,19 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
       line: `ops_astro_app ${act} ops.second_factor_subjects.${column}`,
     })),
   ),
+  // C40 (20261005144947): a reset in flight; the application opens one and settles it.
+  ...[
+    ['INSERT', 'id'],
+    ['INSERT', 'subject_digest'],
+    ['SELECT', 'id'],
+    ['SELECT', 'open_until'],
+    ['SELECT', 'settled_at'],
+    ['SELECT', 'subject_digest'],
+    ['UPDATE', 'settled_at'],
+  ].map(([act, column]) => ({
+    from: '20261005144947',
+    line: `ops_astro_app ${act} ops.subject_resets.${column}`,
+  })),
   // Batch 2b's (C55, C59): the forwarder writes an alert's kind alone and the
   // application reads kind and time (0069); a second-factor code's rows are
   // read and written column by column (0072).

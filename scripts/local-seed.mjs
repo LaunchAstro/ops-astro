@@ -111,6 +111,8 @@ const GRANTS_BY_ROLE = {
     // administrators, never an agent. Without it no seeded identity could set
     // or clear a key on Settings ▸ Keys.
     ['custody', 'manage'],
+    // The connector fleet on Connections & signal (MP-14-7a).
+    ['connection', 'read'],
     // A person's own conversations with the agent (AW-03): the owner and
     // administrators hold `conversation:write` (the permission key catalogue).
     // `conversation:read`, the read-any grant, is seeded to nobody: it is given

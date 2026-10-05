@@ -295,7 +295,9 @@ business, seen here or not: a token whose first sign-in (`amr`) is at or
 before that ending, or within the minute the provider's clock may run ahead
 of the database's (`SIGN_IN_CLOCK_SKEW_SECONDS`), is refused; a sign-in after
 that is served (`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest
-of the subject). So a sign-in in the minute after the ending is refused once. The provider's sign-out, which revokes
+of the subject). So a sign-in in the minute after the ending is refused once.
+An agent login's bearer is refused by these endings too, whichever business
+ended them (C40). The provider's sign-out, which revokes
 the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
 longer admits the person) still ends the verified token's own session in
 every business and at the provider, and answers the refusal.
@@ -1667,6 +1669,8 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.list`                              | `listCustodySecrets` (`reads/custody.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `secret.set`                               | `setCustodySecret` (`commands/custody-secrets.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.log`                                 | `logTimeEntry` (`commands/tasks-time.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -2892,6 +2896,61 @@ In the web app, Settings ▸ General's "Your sessions" panel calls the first two
 ending the others only once confirmed, then listing again; it draws no session
 id (`apps/web/src/screens/settings/sessions.tsx`).
 
+`POST /api/password/set` with `{ token, password }` sets a new
+password with a reset link's one-time token (C40, ORCH77-C40B,
+`setPasswordByToken`, mounted by `mountPasswordSet` with the deployment's
+businesses and the broker; `main()` does not mount it yet). No provider
+session is read, trusted, opened or answered: the token is the authority, and
+no cookie or bearer is read or set. A token is 32 random bytes, base64url,
+kept only as its SHA-256 in `password_reset_tokens` (20261005144947), for one
+login of one business, good for 30 minutes and spent once. The reset asks
+for one is C40 P2. The token is found by `password_reset_token_find`, a
+narrow security definer function the application group alone runs (the
+business and the token's id for a hash exactly one business holds), then
+read in its own business. A login with a live verified second factor in any
+business is 403 `RESET_NEEDS_SUPPORT` (ORCH77-C40MFA), whatever code the body
+carries: refused before anything is spent, so the token stays live and the
+password and every session stay as they were; support resets it. A fault
+reading where the login stands is 503 `RESET_UNAVAILABLE`, never a set, and a
+login the token's own business no longer admits is 401 `RESET_LINK_INVALID`
+(read before the locks and not again, a decided risk: a person deactivated
+there in that moment still resets). Then,
+under C59's login lock (the one a factor's verification takes) and the token's
+row lock, the token is read again at that moment: spent or past its life is
+401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403
+`RESET_NEEDS_SUPPORT` with nothing spent. Otherwise every live token of the
+login is spent and the reset's window opens (`ops.subject_resets`,
+20261005144947): every session of the login, in every business, is ended up to
+the moment the window settles, and until then up to five minutes on. The
+password is set at the provider through custody under the catalogued
+`auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
+held by custody alone, whose `auth` destination lists that route and takes no
+POST, `post: false`; the answer must name the same user). In each business
+the login is mapped in, one transaction ends the sessions seen there. Last,
+whatever happened, one transaction in the token's business settles the window
+(`clock_timestamp()`; a sign-in after it is served) and, only when the
+password was set and every business's ending committed, audits
+`account.password_changed` there, once, as the person that business maps. The
+other businesses keep their ended sessions (`ended_sessions`) and no audit
+row, so a failure anywhere, in any business's ending, at the provider or in
+that last transaction, audits nothing anywhere (ORCH81 C40AUDIT).
+
+The answer is 200 `{ passwordSet: true }`. A token that is not live
+(unknown, out of shape, spent, past its 30 minutes, of a login no business
+maps) is 401 `RESET_LINK_INVALID`. A password outside 12 to 72 bytes is
+400 `PASSWORD_INVALID`, a body that is not a JSON object holding the token and
+password as strings 400 `RESET_MALFORMED`, and one over 1 KiB 413
+`RESET_TOO_LARGE`. Of two requests on one token at once, one sets the
+password and the other is 401. A password the provider refuses itself (its
+422: weak, leaked, the same as before) is 422 `RESET_PASSWORD_REFUSED`: the
+token is spent, so choose a different password and ask for a new link. Any
+other provider fault or wrong answer is 503 `RESET_UNAVAILABLE`; anything else
+failing is 503 `RESET_FAULT`. A reset that fails after the token is spent
+ends every session of the login again, a sign-in made while the provider was
+asked included, even when the database fails before the window settles, and
+audits nothing. Answers carry a code alone; nothing is
+logged. No limit holds the route's rate yet.
+
 ## The operations view and privacy incidents (C55)
 
 `operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, securityAlerts, serviceHealth, errorSink, lastTestedRestore }`
@@ -3425,3 +3484,29 @@ No answer carries a value, and a refusal names the field, never what was sent.
 No audit row holds a set's value either, a refusal's attempted values included.
 A set's `expectedRevision` is the revision `secret.list` showed, or `0` for a
 name the list did not hold: `0` is refused `VERSION_STALE` when the name exists.
+
+## Connections (MP-14-7a)
+
+The connector fleet on Connections & signal. The fleet is `connection:read`,
+filtered in its statement by the scopes the caller holds it at: a client-scoped
+reader sees the connections serving that client, and only that client in each
+list. A client in a list is a client of this business by foreign key, shown by
+its name. The repair is `custody:manage`, business-wide, never an agent. It
+records `connector repair started` on a broken connection of this business at
+its current revision and sends nothing: re-authorising is the broker's (AW-01),
+behind the approval gate on that revision. The insert checks again that the
+connection is still broken at that revision; one that healed or moved on since
+the read is refused `TRANSITION_NOT_PERMITTED` or `VERSION_STALE` and records
+nothing. Connection rows are written by MP-13-5 and the broker; this build only
+reads them.
+
+| Operation          | Route               | Body                                               | Answer or refusals                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.fleet` | `/connection/fleet` | `{}`                                               | `{ ok: true, connections: [{ id, connectorKey, label, authMethod, status, failureClass, cadenceMinutes, lastSyncedAt, lastAttemptAt, scope, readComponents, executeComponents, custody: { secretId, state }, clients: [{ id, label }], repairStartedAt, revision }], counts: { all, active, degraded, broken, clientConnections } }`; `SCOPE_NOT_GRANTED` 403 |
+| `connector.repair` | `/connector/repair` | `operationId`, `connectionId`, `expectedRevision?` | `detail: { repairId, connectionId, connectionRevision, state: 'awaiting approval' }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (another business's, made-up or malformed alike), `TRANSITION_NOT_PERMITTED` 409 (not broken), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                                                  |
+
+The custody field is a reference: the secret's id and whether custody holds a
+value, never any part of one. No sealed column is read. It is shown only for a
+secret the caller's scopes reach (a business-wide reader, a business-wide
+secret, or one of the caller's clients'); a secret scoped to another client the
+connection serves shows as `{ secretId: null, state: 'not set' }`.
