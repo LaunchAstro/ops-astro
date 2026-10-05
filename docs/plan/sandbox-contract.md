@@ -381,7 +381,8 @@ checked values, never the bytes it received.
   has a deadline too. At that deadline it kills the container, whatever the
   launcher does; a kill refused because the container is not running counts
   as landed. It force-deletes every recorded container, whatever its state,
-  at the latest 30 s after that deadline. An id leaves the record only when
+  at the latest 30 s after that deadline, and a `wall` crossing's container
+  (F1) not before. An id leaves the record only when
   its delete returns success or "no such container"; a delete of a
   recorded container that fails otherwise starts a sweep. The sweep does
   not depend on the record, since
@@ -485,9 +486,17 @@ extracted to disk.
   observation:
   - `memory`: the probe allocates the probed class's memory limit plus
     64 MiB once, then exits 0; it passes only when `OOMKilled` is true;
-  - `wall`: the probe sleeps without end; it passes only when the wait
-    returns no earlier than the deadline and within 30 s after it, with
-    `StatusCode` 137 and `OOMKilled` false;
+  - `wall`: the probe sleeps without end; it passes only when the
+    launcher's one wait, sent once after start, returns no earlier than the
+    deadline and within 30 s after it, with `StatusCode` 137, and a
+    `GET /containers/{id}/json` sent after that wait has returned then
+    reads `OOMKilled` false; a dropped wait connection fails it. Until that
+    read, or the end of that 30 s with no wait reply (a failed crossing),
+    the launcher sends no delete and keeps that container's attach
+    connection open (a half-close of stdin is not a close, P4), and P6
+    deletes that container no earlier than 30 s after its deadline, so no
+    delete reaches it inside the window and only P6's deadline kill can end
+    it there with a passing reply;
   - `output`: the probe writes the smallest valid O1 stream longer than
     S0's output cap; it passes only when every earlier byte passed O1 and the
     refusal is for the size cap.
@@ -694,11 +703,21 @@ Every numbered line is in at least one of these two lists:
     non-zero exit, leaves the launcher `unavailable`. An `output` crossing
     refused at S0's cap passes and leaves the launcher available; one
     refused for a bad name fails. With the launcher's kill in place and
-    P6's deadline removed, the wall crossing fails. An S2 request whose
+    P6's deadline removed, the wall crossing fails. In every wall run the
+    proxy receives from the launcher one wait, and no delete and no attach
+    close for that container before the launcher's
+    `GET /containers/{id}/json`, which comes after the wait reply, or, when
+    no wait reply has come by 30 s after the deadline the launcher measures
+    from its create request (F1), before then; P6's
+    delete of it is sent no earlier than 30 s after its deadline; a wall
+    run whose wait connection drops fails. An S2 request whose
     pair hashes to another digest is refused `pin mismatch`. Undo-red: take
     the in-run result for those three, or "the run ended", any OOM or any
     refusal for a pass; treat every S0 refusal as a failed probe; let the
-    launcher kill in the wall run; or drop S2's digest check; and its case
+    launcher kill in the wall run, or delete, close its attach or wait
+    again before its read, or read `OOMKilled` before its wait returns; let
+    P6 delete a wall run's container before 30 s after its deadline; or
+    drop S2's digest check; and its case
     fails.
   - The output rule (corpus): a build whose correctly framed stdout holds
     `dist/bad name.html`, or stdout past the S1 cap, is refused
