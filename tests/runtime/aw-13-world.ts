@@ -259,6 +259,7 @@ export async function awaitDue(s: Schedules): Promise<void> {
  */
 export async function drain(s: Schedules): Promise<void> {
   t.target.mode = 'ok';
+  await ageLease(s);
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     // eslint-disable-next-line no-await-in-loop -- one batch after another
@@ -267,6 +268,19 @@ export async function drain(s: Schedules): Promise<void> {
     await sleep(50);
   }
   throw new Error('the export did not catch up');
+}
+
+/**
+ * Runs out the business's export lease now, as time would (#963): a gap whose
+ * body may have landed keeps the business for the lease's length.
+ */
+export async function ageLease(s: Schedules): Promise<void> {
+  await rows(
+    s,
+    `update public.trace_export_cursors set lease_until = clock_timestamp() - interval '1 second'
+      where business_id = $1 and lease_holder is not null`,
+    [s.business],
+  );
 }
 
 async function ahead(s: Schedules, due = ''): Promise<number> {

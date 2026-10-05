@@ -3,7 +3,8 @@
 // Trace export (#475, #963): two exporters start from the same cursor while
 // run R's delete is owed. The failing one waits on the target while the
 // healthy one runs a whole tick on its own connection, then fails without
-// storing anything; three times over. The failing one's gap must never move
+// storing anything; three times over. A waits past its lease (#963), so B
+// takes the business over for its tick. The failing one's gap must never move
 // the cursor behind where the healthy one left it, and the unrelated run S,
 // past R's 2,001 pending events, is delivered.
 
@@ -15,7 +16,7 @@ import { derivedId, exportOnce, TRACE_WINDOW_DAYS } from '../../packages/core-ru
 import { liveWork } from './schedules-harness.ts';
 import { age, append, eventIds } from './aw-13-retention-world.ts';
 import { behind, gate, queuedAsk } from './aw-13-race-world.ts';
-import { awaitDue, drain, noDatabase, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
+import { ageLease, awaitDue, drain, noDatabase, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
 
 useAw13World('trexp_failing_exporter');
 
@@ -47,6 +48,7 @@ it.skipIf(noDatabase)(
     const healthy = connect(s.db.appUrl, { max: 1, source: 'trace-export-healthy' });
     const sole = async (): Promise<readonly string[]> => await Promise.resolve([s.business]);
     const seen = [await behind(s)];
+    const kinds: string[] = [];
     try {
       for (let round = 0; round < 3; round += 1) {
         const paused = gate();
@@ -57,14 +59,16 @@ it.skipIf(noDatabase)(
         const a = exportOnce(s.db.app, s.business, TRACE_KEY, failing);
         try {
           // eslint-disable-next-line no-await-in-loop -- A waits on its first body, or has none
-          await Promise.race([paused.reached, a]);
+          const waiting = await Promise.race([paused.reached.then(() => true), a.then(() => false)]);
+          // eslint-disable-next-line no-await-in-loop -- A's lease runs out while it waits
+          if (waiting) await ageLease(s);
           // eslint-disable-next-line no-await-in-loop -- B's whole tick while A waits
           await exportDeployment(healthy, sole, TRACE_KEY, t.target.deliver);
           // eslint-disable-next-line no-await-in-loop -- where B left the cursor
           seen.push(await behind(s));
           paused.release();
           // eslint-disable-next-line no-await-in-loop -- A's gap, or nothing to read
-          expect(['gap', 'idle']).toContain((await a).kind);
+          kinds.push((await a).kind);
           // eslint-disable-next-line no-await-in-loop -- where A's gap left it
           seen.push(await behind(s));
         } finally {
@@ -73,6 +77,7 @@ it.skipIf(noDatabase)(
           await Promise.allSettled([a]);
         }
       }
+      expect(kinds, 'A fails at the target at least once').toContain('gap');
       expect(seen, 'the cursor never moves back: A undoes none of B’s ticks').toEqual(
         seen.toSorted((x, y) => x - y),
       );

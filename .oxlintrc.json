@@ -119,7 +119,9 @@
         "tests/runtime/trace-export-an-overlapping-export-waits-while-another-holds-the-business.test.ts",
         "tests/runtime/trace-export-a-failing-exporter-never-undoes-a-healthy-ones-progress.test.ts",
         "tests/runtime/trace-export-a-slower-export-landing-after-a-delete-hides-no-later-span.test.ts",
-        "tests/runtime/trace-export-a-stalled-exporter-is-taken-over-only-after-its-lease-expires.test.ts"
+        "tests/runtime/trace-export-a-stalled-exporter-is-taken-over-only-after-its-lease-expires.test.ts",
+        "tests/runtime/trace-export-a-body-that-may-have-landed-keeps-the-business-for-its-lease.test.ts",
+        "tests/runtime/trace-retention-a-business-whose-export-never-advanced-is-asked-nothing.test.ts"
       ],
       "rules": {
         "max-lines-per-function": "off",
