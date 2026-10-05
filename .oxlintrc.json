@@ -80,7 +80,8 @@
         "tests/runtime/trace-retention-recovery-for-one-run-keeps-another-confirmed-run-gone.test.ts",
         "tests/runtime/trace-export-owed-tail-does-not-block-a-later-run.test.ts",
         "tests/runtime/trace-retention-unknown-reads-do-not-stop-a-later-recovery.test.ts",
-        "tests/runtime/trace-retention-reads-the-first-owed-span-back.test.ts"
+        "tests/runtime/trace-retention-reads-the-first-owed-span-back.test.ts",
+        "tests/runtime/trace-retention-reads-owed-runs-in-turn-order-across-places.test.ts"
       ],
       "rules": {
         "max-lines-per-function": "off",
