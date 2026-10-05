@@ -9,7 +9,7 @@ import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as pause } from 'node:timers/promises';
 import { promisify } from 'node:util';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it, onTestFinished } from 'vitest';
 import { findCopies } from './c81-privacy-runbook-finder.ts';
 import {
   type FinderWorld,
@@ -119,6 +119,10 @@ it('a large export reaches a reader that is slow to start reading', async () => 
   const child = spawn('node', [FINDER, '--business', 'alpha', '--text', slow, '--export'], {
     env: { ...process.env, DATABASE_ADMIN_URL: world.adminUrl },
   });
+  // A search that hangs is ended with the test, not left to the database drop.
+  onTestFinished(() => {
+    child.kill();
+  });
   child.stdout.pause();
   const chunks: Buffer[] = [];
   child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -139,9 +143,11 @@ it('a large export reaches a reader that is slow to start reading', async () => 
     child.on('close', () => resolve());
   });
   await searched;
-  // Nothing reads yet: a finder that calls exit() is gone within this wait and
-  // drops what the pipe still holds; one that leaves its output to drain is not.
-  await Promise.race([gone, pause(2000)]);
+  // Nothing reads yet: a finder that calls exit() is gone within this wait (its
+  // per-person lines and the connection's close come first, so the wait is
+  // long) and drops what the pipe still holds; one that leaves its output to
+  // drain cannot exit while it is unread.
+  await Promise.race([gone, pause(5000)]);
   child.stdout.resume();
   expect(await exited).toBe(0);
   const lines = Buffer.concat(chunks)
