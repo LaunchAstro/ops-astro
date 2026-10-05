@@ -3486,7 +3486,7 @@ answers the id); its `redemptions` are the applied calls its agent made on that 
 it held it, less the pickup that minted it. Nothing records what each call
 reached, and the credential is never read. Tripwires and night round steps are
 written by the checks and the round itself (`tripwires`, `night_round_steps`,
-migration 20261005182500); the application role only reads them. Every
+migration 20261005201200); the application role only reads them. Every
 tripwire and step column drawn as words is `signal_text`, an explicit
 allow-list (printable ASCII, Latin letters and signs, visible punctuation,
 currency signs and arrows; a space only inside); a task cite is a task key

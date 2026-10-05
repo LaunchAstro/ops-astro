@@ -863,7 +863,7 @@ update an activation's setting, pin, switch and revision by column grant;
 nothing deletes a row. Tenancy-keyed with the restrictive policy. The records
 are `packages/core-records/src/automations/`.
 
-## Tripwires and the night round (20261005182500, MP-14-8)
+## Tripwires and the night round (20261005201200, MP-14-8)
 
 `tripwires` holds each stated check a business runs: what it watches, whether
 it is armed or cannot be armed (and why), how often it fired and what the last
