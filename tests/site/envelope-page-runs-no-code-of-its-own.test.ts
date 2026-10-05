@@ -57,6 +57,10 @@ describe("a page's own code that steers the runtime is refused", () => {
     ['a directive', PAGE_IN_HTML('', ' set:html="<textarea>"')],
     ['a slot attribute', `---\n${CARD}\n---\n<Card><p slot="a">Hello there</p></Card>\n`],
     ['an expression in the body', '<div>{"a"}<b>Hello there</b></div>\n'],
+    [
+      'a fragment passed as a slot',
+      `---\n${CARD}\n---\n<Card><Fragment slot="a"><p>Hello there</p></Fragment></Card>\n`,
+    ],
   ])('refuses %s', async (_name, before) => {
     expect(await edit(before)).toMatchObject({ ok: false });
   });
@@ -79,6 +83,14 @@ describe('a component the page writes itself is refused', () => {
     [
       'an Astro file read as a string',
       '---\nimport X from "./x.astro?raw&.astro";\n---\n<div><X /><b>Hello there</b></div>\n',
+    ],
+    [
+      'a namespace import',
+      '---\nimport * as X from "./Card.astro";\n---\n<div><X /><b>Hello there</b></div>\n',
+    ],
+    [
+      'an import with attributes',
+      '---\nimport X from "./Card.astro" with { type: "json" };\n---\n<div><X /><b>Hello there</b></div>\n',
     ],
     [
       'the page itself',

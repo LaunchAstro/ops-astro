@@ -4,14 +4,34 @@
 // browser does. A word passes only in a character token in data state,
 // inside a tag printed where the source has it, after a tag that follows the
 // last expression. Whatever the grammar does not know is refused.
+//
+// The pages here go straight to that printed-output layer, compiled as the
+// check's worker compiles them but past its source check (`page-source.ts`,
+// whose own proof is `envelope-page-runs-no-code-of-its-own.test.ts`), so
+// each rule of the token grammar is proven on its own.
 
+import { transform } from '@astrojs/compiler';
+import { stripTypeScriptTypes } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import { checkEnvelope } from '../../packages/core-connectors/src/index.ts';
 import { swapsOnlyBodyCopy } from '../../packages/core-connectors/src/site/body-copy-tokens.ts';
 
-async function edit(word: string, replacement: string, before: string, path = 'src/pages/a.astro') {
-  const after = before.replace(word, replacement);
-  return await checkEnvelope({ files: [{ path, before, after }] }, { path, word, replacement });
+async function printed(page: string): Promise<string | undefined> {
+  const result = await transform(page, { filename: 'page.astro' });
+  if (result.diagnostics.some(({ severity }) => severity === 1)) return undefined;
+  return stripTypeScriptTypes(result.code, { mode: 'strip' });
+}
+
+async function edit(word: string, replacement: string, before: string) {
+  const [compiledBefore, compiledAfter] = [
+    await printed(before),
+    await printed(before.replace(word, replacement)),
+  ];
+  const ok =
+    compiledBefore !== undefined &&
+    compiledAfter !== undefined &&
+    swapsOnlyBodyCopy(compiledBefore, compiledAfter, { word, replacement });
+  return { ok };
 }
 
 describe('a word the built page reads inside a tag is refused', () => {
@@ -97,9 +117,9 @@ describe('a value the page computes is not taken as text', () => {
     expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: false });
   });
 
-  it('accepts a word after an imported component', async () => {
+  it('accepts a word after a literal string and an imported component', async () => {
     const before =
-      '---\nimport Card from "./card.astro";\n---\n<div><Card /><b>Hello there</b></div>\n';
+      '---\nimport Card from "./card.astro";\n---\n<div>{"x"}<Card /><b>Hello there</b></div>\n';
     expect(await edit('Hello', 'Howdy', before)).toMatchObject({ ok: true });
   });
 });
@@ -171,7 +191,9 @@ describe('a word a browser does not show as body copy is refused', () => {
   });
 
   it('refuses a page that is not an Astro file, whatever it holds', async () => {
-    expect(await edit('Hello', 'Hi', '<p>Hello there</p>\n', 'public/a.html')).toMatchObject({
+    const [path, before, after] = ['public/a.html', '<p>Hello there</p>\n', '<p>Hi there</p>\n'];
+    const target = { path, word: 'Hello', replacement: 'Hi' };
+    expect(await checkEnvelope({ files: [{ path, before, after }] }, target)).toMatchObject({
       ok: false,
     });
   });
@@ -185,6 +207,8 @@ describe('a word a browser does not show as body copy is refused', () => {
 describe('body copy still passes', () => {
   it.each([
     ['in a paragraph', '<p>Hello there</p>\n'],
+    ['after an attribute expression', '<p class={["a"].join("")}>Hello there</p>\n'],
+    ['after a tag that follows an expression', '<p>{"x"} <b>and</b> Hello there</p>\n'],
     [
       'in a layout',
       '---\nimport Layout from "./layout.astro";\n---\n<Layout title="x">\n  <section><p>Hello there</p></section>\n</Layout>\n',

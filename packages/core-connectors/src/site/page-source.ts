@@ -93,11 +93,7 @@ function plainBody(node: PageNode, components: ReadonlySet<string>): boolean {
     case 'element':
       return ELEMENTS.has(node.name) && plainAttributes(node.attributes) && body(node.children);
     case 'fragment':
-      return (
-        (node.name === '' || node.name === 'Fragment') &&
-        node.attributes.length === 0 &&
-        body(node.children)
-      );
+      return node.attributes.length === 0 && body(node.children);
     case 'component':
       return components.has(node.name) && plainAttributes(node.attributes) && body(node.children);
     default:
