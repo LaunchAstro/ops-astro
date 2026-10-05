@@ -251,6 +251,10 @@ export async function awaitDue(s: Schedules): Promise<void> {
   throw new Error('no event became due');
 }
 
+/** The gaps whose body the target may have stored all the same (`trace-lease.ts`). */
+const MAYBE_STORED_GAP =
+  'target_timeout,target_unreachable,target_malformed_reply,target_oversized_reply';
+
 /**
  * Export until every event of the business is behind the cursor, so each
  * case starts from a clean one. An idle export with events still ahead is
@@ -259,7 +263,7 @@ export async function awaitDue(s: Schedules): Promise<void> {
  */
 export async function drain(s: Schedules): Promise<void> {
   t.target.mode = 'ok';
-  await ageLease(s);
+  await ageLease(s, MAYBE_STORED_GAP);
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     // eslint-disable-next-line no-await-in-loop -- one batch after another
@@ -271,17 +275,23 @@ export async function drain(s: Schedules): Promise<void> {
 }
 
 /**
- * Runs out the business's export lease now, as time would (#963): a gap whose
- * body may have landed keeps the business for the lease's length.
+ * Runs out the business's export lease now, as time would (#963). The drain
+ * runs out only the hold a gap whose body may have landed keeps, and only
+ * when that gap is the business's last: any other lease left behind still
+ * fails it.
  */
-export async function ageLease(s: Schedules): Promise<void> {
+export async function ageLease(s: Schedules, onlyAfter?: string): Promise<void> {
   await rows(
     s,
     `update public.trace_export_cursors set lease_until = clock_timestamp() - interval '1 second'
-      where business_id = $1 and lease_holder is not null`,
-    [s.business],
+      where business_id = $1 and lease_holder is not null
+        and ($2::text[] is null or (select g.code from public.trace_export_gaps g
+                                   where g.business_id = $1
+                                   order by g.recorded_at desc limit 1) = any($2::text[]))`,
+    [s.business, onlyAfter === undefined ? null : `{${onlyAfter}}`],
   );
 }
+
 
 async function ahead(s: Schedules, due = ''): Promise<number> {
   const found = await rows<{ n: string }>(
