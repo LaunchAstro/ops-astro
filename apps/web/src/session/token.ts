@@ -77,15 +77,14 @@ const RETURN_KEY = 'ops-astro.return-to';
 const HELD_KEY = 'ops-astro.held-businesses';
 
 /**
- * A business key as this tab names one in storage: lower-case letters, digits,
- * `_` and `-`, starting with a letter or digit. The list is the tab's, not this
- * code's, so each entry is read on its own and any other is skipped, never
- * the whole list (the business a sign-in ends in is cleared whatever it holds).
+ * Each entry of the held list is read on its own, as a session's business key
+ * is (`isSession`): any string is one, nothing else is, and an entry of
+ * another shape is skipped, never the whole list. An entry is only ever used
+ * to remove the tab's copies under their fixed prefixes, and the business a
+ * sign-in ends in is cleared whatever the list holds.
  */
-const BUSINESS_KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/u;
-
 const businessesIn = (value: unknown[]): string[] =>
-  value.filter((each): each is string => typeof each === 'string' && BUSINESS_KEY.test(each));
+  value.filter((each): each is string => typeof each === 'string');
 
 /** What the tab keeps for one business: its confirmed settings, dock and layout copies. */
 function forgetBusiness(storage: StorageLike | null, businessKey: string): void {
