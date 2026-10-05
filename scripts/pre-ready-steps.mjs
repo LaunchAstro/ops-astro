@@ -17,7 +17,8 @@ const FRESH = ['review-evidence-check.mjs', 'review-evidence-read.mjs'];
 /**
  * Variables the composed checkers read, cleared so the caller's shell cannot
  * change a verdict or hand a checker a token; the gate sets the ones it means.
- * CHECK_SCOPE would switch pnpm check to its lighter set.
+ * CHECK_SCOPE would switch pnpm check to its lighter set, CHECK_SHARD to one
+ * shard of it.
  */
 const CHECKER_ENV = [
   'PR_BODY',
@@ -34,6 +35,7 @@ const CHECKER_ENV = [
   'HUB_RANGE_INCLUDE_ROOT',
   'CI',
   'CHECK_SCOPE',
+  'CHECK_SHARD',
 ];
 /**
  * Also cleared for the test files the gate runs, which need no database: with
