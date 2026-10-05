@@ -20,7 +20,7 @@ export interface Hit {
   readonly text: boolean;
   /** Whether the row holds an id given with --id. */
   readonly given: boolean;
-  /** The agents acting for the person and for others too whose ids the row holds. */
+  /** The shared ids the row holds: agents acting for others too, and their logins. */
   readonly shared: readonly string[];
   readonly row?: Record<string, unknown>;
 }
