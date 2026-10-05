@@ -124,6 +124,7 @@
     "tests/runtime/mp-6-2-placement.test.ts",
     "tests/runtime/mp-6-2-plan-record-isolation.test.ts",
     "tests/runtime/mp-6-2-plan-record-stored.test.ts",
+    "tests/runtime/pinned-read-needs-standing-delegation.test.ts",
     "tests/runtime/propose-open-envelope-and-lineage.test.ts",
     "tests/runtime/propose-operands-and-authority.test.ts",
     "tests/runtime/recovery-replay-pin.test.ts",
