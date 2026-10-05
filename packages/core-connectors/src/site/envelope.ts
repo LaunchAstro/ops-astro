@@ -42,6 +42,23 @@ const exceeded = (reason: string): EnvelopeResult => ({
 });
 
 const ONE_WORD = /^\p{L}+$/u;
+/** One path segment, by an explicit allow-list of characters. */
+const SEGMENT = /^[\p{L}\p{N}_\-.[\]]+$/u;
+const PAGE_FILE = /^[^.].*\.(?:astro|md)$/u;
+
+/**
+ * A page source (D21-15): a path of plain segments under `src/pages/`, an Astro or Markdown page.
+ * A layout or component renders on every page that uses it, so it is no one page's copy (#686).
+ */
+function pageSource(path: string): boolean {
+  const [top, pages, ...rest] = path.split('/');
+  return (
+    top === 'src' &&
+    pages === 'pages' &&
+    rest.every((segment) => SEGMENT.test(segment) && segment !== '.' && segment !== '..') &&
+    PAGE_FILE.test(rest.at(-1) ?? '')
+  );
+}
 const WORD_CHARACTER = /[\p{L}\p{M}\p{N}_]/u;
 
 /** Offsets at which `word` stands alone in `text`, not as part of a longer word. */
@@ -123,6 +140,7 @@ export function checkEnvelope(change: ProposedChange, target: CorrectionTarget):
   if (change.files.length !== 1) return exceeded('more than one file');
   const [file] = change.files;
   if (file === undefined || file.path !== target.path) return exceeded('not the target file');
+  if (!pageSource(file.path)) return exceeded('not a page source');
   if (file.before === null || file.after === null) return exceeded('a create, delete or rename');
   const before = file.before.split('\n');
   const after = file.after.split('\n');
