@@ -287,3 +287,74 @@ test('the login an issued agent signs in with is found, and its id kept for the 
   expect(line, "the issuing person's re-search line").toBeDefined();
   expect(line, "the agent's login id is among the --id flags").toContain(`--id ${ids.login}`);
 });
+
+test('an agent acting for two people through delegations stands for neither, while each delegation stands for its own person', async () => {
+  const { world } = harness;
+  const ids = {
+    personA: randomUUID(),
+    actorPA: randomUUID(),
+    personB: randomUUID(),
+    actorPB: randomUUID(),
+    agentG: randomUUID(),
+    delegationA: randomUUID(),
+    delegationB: randomUUID(),
+    grantH: randomUUID(),
+  };
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    for (const [person, actor, name] of [
+      [ids.personA, ids.actorPA, 'Nell Twofold'],
+      [ids.personB, ids.actorPB, 'Otis Elsewhere'],
+    ] as const) {
+      // oxlint-disable-next-line no-await-in-loop
+      await tx.query(
+        `insert into public.people (business_id, id, display_name) values ($1, $2, $3)`,
+        [world.alpha, person, name],
+      );
+      // oxlint-disable-next-line no-await-in-loop
+      await tx.query(
+        `insert into public.actors (business_id, id, kind, person_id) values ($1, $2, 'person', $3)`,
+        [world.alpha, actor, person],
+      );
+    }
+    await tx.query(
+      `insert into public.actors (business_id, id, kind, person_id) values ($1, $2, 'agent', null)`,
+      [world.alpha, ids.agentG],
+    );
+    for (const [delegation, person, actor, purpose] of [
+      [ids.delegationA, ids.personA, ids.actorPA, 'triage'],
+      [ids.delegationB, ids.personB, ids.actorPB, 'review'],
+    ] as const) {
+      // oxlint-disable-next-line no-await-in-loop
+      await tx.query(
+        `insert into public.delegations
+           (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
+            collections, actions, credential_hash, expires_at, purpose_scope_kind, purpose_scope_id)
+         values ($1, $2, $3, $4, $5, $6, array['tasks'], array['read'], $7,
+                 now() + interval '1 day', 'record', $8)`,
+        [world.alpha, delegation, ids.agentG, person, actor, purpose, 'c'.repeat(64), randomUUID()],
+      );
+    }
+    await tx.query(
+      `insert into public.grants
+         (business_id, id, subject_kind, subject_id, scope_kind, collection, action, granted_by_actor_id)
+       values ($1, $2, 'actor', $3, 'business', 'tasks', 'read', $4)`,
+      [world.alpha, ids.grantH, ids.agentG, ids.actorPB],
+    );
+  });
+
+  const found = await findCopies(adminUrl, ['--text', 'Nell Twofold', '--export'], 'alpha');
+  expect(found.code).toBe(0);
+  const hit = (table: string, id: string) =>
+    found.hits.find((each) => each.table === table && each.id === id);
+  expect(hit('delegations', ids.delegationA)?.people).toContain(ids.personA);
+  expect(hit('delegations', ids.delegationB), "the other person's delegation").toBeUndefined();
+  expect(hit('grants', ids.grantH), 'a grant naming only the shared agent').toBeUndefined();
+  expect(hit('actors', ids.agentG)?.people ?? []).not.toContain(ids.personA);
+  const searchAgain = found.stderr
+    .split('\n')
+    .find((line) => line.includes(`to search again for ${ids.personA} `));
+  expect(searchAgain, "the person's own delegation is kept for the re-search").toContain(
+    `--id ${ids.delegationA}`,
+  );
+  expect(searchAgain).not.toContain(ids.agentG);
+});
