@@ -224,7 +224,7 @@ export class UstarReader {
       this.afterData(padding);
     } else {
       const entry = { type, name, executable } as const;
-      const data = new Uint8Array(Math.min(size, FIRST_BUFFER));
+      const data = new Uint8Array(Math.min(size, FIRST_BUFFER, this.cap - this.bytes));
       this.state = { at: 'data', entry, size, data, fill: 0, padding };
     }
     return null;
