@@ -28,17 +28,22 @@
 // the route (a policy in the markup, mixed content) or rejected after it (a failed
 // integrity check) leaves one unasked, and the picture fails. So does an import a
 // browser skips (one after a rule, or under a condition it does not support): the
-// observation read a sheet the picture would lack.
+// observation read a sheet the picture would lack. A policy in the page's own markup can drop
+// an inline sheet the observation read, with no request to show it, so a page declaring one over
+// an inline sheet is refused. Each copy is served as UTF-8, so a sheet a browser would decode
+// otherwise fails the picture, as it fails the page observation.
 //
 // No credential reaches the browser: the fence sends none. Nor has the browser
 // a network of its own: a preconnect or DNS prefetch makes no request the
 // route could refuse, so the port starts it with PICTURE_BROWSER_ARGS.
 
 import { createHash, randomUUID } from 'node:crypto';
+import { parse, type DefaultTreeAdapterTypes as Tree } from 'parse5';
 import {
   MAX_STYLESHEETS,
   SHEETS_AT_ONCE,
   fencedFetch,
+  isUtf8Label,
   limiter,
   type FenceCode,
   type FenceRefusal,
@@ -125,6 +130,34 @@ interface RouteState {
   failed: FenceCode | undefined;
 }
 
+const CHARSET = '@charset "';
+
+/**
+ * Whether a browser decodes this fenced sheet as UTF-8, read in its order: the fence passed no
+ * BOM but UTF-8's and no header charset but UTF-8, so a `@charset` rule decides, and with none
+ * the page's (or the importing sheet's) UTF-8 does. A rule naming anything but UTF-8, or one CSS
+ * might read otherwise than here, is refused: the header it would lose to is not kept.
+ */
+function readsAsUtf8(css: string): boolean {
+  if (!css.startsWith(CHARSET)) return true;
+  const end = css.indexOf('";', CHARSET.length);
+  const label = css.slice(CHARSET.length, end);
+  return end > 0 && !label.includes('"') && isUtf8Label(label);
+}
+
+/** Whether the markup declares a policy of its own, which a browser applies over PICTURE_POLICY. */
+function declaresPolicy(document: Tree.Document): boolean {
+  const stack: Tree.Node[] = [document];
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    if ('attrs' in node && node.tagName === 'meta') {
+      const equiv = node.attrs.find((one) => one.name === 'http-equiv')?.value ?? '';
+      if (equiv.trim().toLowerCase() === 'content-security-policy') return true;
+    }
+    if ('childNodes' in node) stack.push(...node.childNodes);
+  }
+  return false;
+}
+
 /** A sheet, answered with an import of its copy: where the fence's fetch ended, and marked. */
 function answered(state: RouteState, fetched: Fetched): PictureAnswer {
   const copy = new URL(fetched.url);
@@ -166,8 +199,8 @@ function pictureRoute(
         cached ?? run(() => fencedFetch(request.url, { ...fenced, kind: 'stylesheet', page }));
       state.sheets.set(request.url, fetching);
       const sheet = await fetching;
-      if (!sheet.ok) {
-        state.failed ??= sheet.code;
+      if (!sheet.ok || !readsAsUtf8(sheet.value.body)) {
+        state.failed ??= sheet.ok ? 'CAPTURE_BODY_MALFORMED' : sheet.code;
         return null;
       }
       return answered(state, sheet.value);
@@ -203,6 +236,9 @@ export async function capturePicture(
   if (!page.ok) return page;
   const reading = readDocument(page.value.body);
   if (typeof reading === 'string') return { ok: false, code: reading };
+  // The reading held the markup within the capture's bounds, so parse5 may read it once more.
+  if (reading.styles.length > 0 && declaresPolicy(parse(page.value.body)))
+    return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
   state.read.push(...named(reading, page.value.url));
   let png: Uint8Array;
   try {
