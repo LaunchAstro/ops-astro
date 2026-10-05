@@ -80,3 +80,32 @@ export async function behind(s: Schedules): Promise<number> {
   );
   return row?.n ?? 0;
 }
+
+/**
+ * The target's reads as a store with an allowance answers them: the first
+ * `allowance` reads of each pass go to the target, later ones answer unknown
+ * (a 429), and `pass` renews the allowance. `unknown` names span ids whose
+ * every read answers unknown.
+ */
+export function rationed(
+  allowance: number,
+  unknown: ReadonlySet<string> = new Set(),
+): { readonly ports: ExpiryPorts; readonly pass: () => void; readonly spans: string[] } {
+  let used = 0;
+  const spans: string[] = [];
+  return {
+    spans,
+    pass: () => {
+      used = 0;
+    },
+    ports: {
+      expire: t.target.expiry.expire,
+      present: async (traceId, spanId) => {
+        spans.push(spanId ?? traceId);
+        used += 1;
+        if (used > allowance || (spanId !== undefined && unknown.has(spanId))) return 'unknown';
+        return await t.target.expiry.present(traceId, spanId);
+      },
+    },
+  };
+}
