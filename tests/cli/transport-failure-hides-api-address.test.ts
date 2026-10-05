@@ -59,6 +59,24 @@ describe('a failed request never prints a secret from the API address', () => {
     expectHidden([...out, ...err], address);
   });
 
+  it.each(ADDRESSES)('the worker exits 4 and hides %s', async (address) => {
+    const printed: string[] = [];
+    const capture = (chunk: string | Uint8Array): boolean => {
+      printed.push(streamText(chunk));
+      return true;
+    };
+    vi.spyOn(process.stdout, 'write').mockImplementation(capture);
+    vi.spyOn(process.stderr, 'write').mockImplementation(capture);
+    const code = await worker(['--once'], { ...SETTINGS, OPS_ASTRO_API_URL: address }, () =>
+      Promise.resolve('sent'),
+    );
+    vi.restoreAllMocks();
+    expect(code).toBe(4);
+    expectHidden(printed, address);
+  });
+});
+
+describe('a failed verb line never prints a secret from the address or the bearer', () => {
   it.each(ADDRESSES)('the agent verb line exits 3 and hides %s', async (address) => {
     const printed: string[] = [];
     const io = {
@@ -90,21 +108,5 @@ describe('a failed request never prints a secret from the API address', () => {
     );
     expect(code).toBe(3);
     expectHidden(printed, 'http://127.0.0.1:9/');
-  });
-
-  it.each(ADDRESSES)('the worker exits 4 and hides %s', async (address) => {
-    const printed: string[] = [];
-    const capture = (chunk: string | Uint8Array): boolean => {
-      printed.push(streamText(chunk));
-      return true;
-    };
-    vi.spyOn(process.stdout, 'write').mockImplementation(capture);
-    vi.spyOn(process.stderr, 'write').mockImplementation(capture);
-    const code = await worker(['--once'], { ...SETTINGS, OPS_ASTRO_API_URL: address }, () =>
-      Promise.resolve('sent'),
-    );
-    vi.restoreAllMocks();
-    expect(code).toBe(4);
-    expectHidden(printed, address);
   });
 });
