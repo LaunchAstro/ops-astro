@@ -115,6 +115,7 @@
     "tests/runtime/t3f-expired-lease.test.ts",
     "tests/runtime/t3f-lease-edges.test.ts",
     "tests/runtime/trace-export-gap-records-the-cursor-its-batch-read.test.ts",
+    "tests/runtime/trace-export-owed-tail-does-not-block-a-later-run.test.ts",
     "tests/runtime/trace-export-resends-a-run-whole-while-its-delete-is-owed.test.ts",
     "tests/runtime/trace-export-resends-every-fresh-event-of-an-owed-run.test.ts",
     "tests/runtime/trace-retention-expires-a-late-committed-event-once-past-the-window.test.ts",
@@ -128,6 +129,7 @@
     "tests/runtime/trace-retention-recovery-tests-reject-an-old-span-for-the-fresh-one.test.ts",
     "tests/runtime/trace-retention-step-back-cannot-bring-back-a-confirmed-run.test.ts",
     "tests/runtime/trace-retention-stops-reading-back-when-the-store-does-not-answer.test.ts",
+    "tests/runtime/trace-retention-unknown-reads-do-not-stop-a-later-recovery.test.ts",
     "tests/runtime/upgrade-guards.test.ts"
   ],
   "conformance": [
