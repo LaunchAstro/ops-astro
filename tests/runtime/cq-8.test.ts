@@ -99,24 +99,36 @@ describe('CQ-8 runtime structure', () => {
   });
 });
 
+/**
+ * The product files that call `advisoryLock`, sorted. A lock taken outside
+ * `acquire` or `advisoryLock` fails the scan above; this names the callers, so
+ * a new one is a decision rather than a drift.
+ */
+function advisoryLockCallers(): readonly string[] {
+  const product = [join(ROOT, 'packages'), join(ROOT, 'apps')].flatMap(sourceFiles);
+  return product
+    .filter((file) => /\badvisoryLock\(/u.test(readFileSync(file, 'utf8')))
+    .map((file) => relative(ROOT, file))
+    .toSorted();
+}
+
 describe('CQ-8 runtime structure', () => {
   it('CQ-8 one lock path: the runtime, the envelope and placement take advisory locks only through the helper', () => {
-    // A lock taken outside `acquire` or `advisoryLock` fails the scan above;
-    // this names the callers, so a new one is a decision rather than a drift.
-    const product = [join(ROOT, 'packages'), join(ROOT, 'apps')].flatMap(sourceFiles);
-    const callers = product
-      .filter((file) => /\badvisoryLock\(/u.test(readFileSync(file, 'utf8')))
-      .map((file) => relative(ROOT, file))
-      .toSorted();
-    expect(callers).toEqual([
+    expect(advisoryLockCallers()).toEqual([
       // The outbox forwarder's one lock, alone in its own transaction: no command order.
       'apps/forwarder/forward.ts',
       // C59: a login's one wrong-code lock, keyed by its subject's digest in
       // every business, taken first in a factor route's check transaction.
       'packages/core-commands/src/commands/account-factor-checks.ts',
       'packages/core-commands/src/commands/conversation-lifecycle.ts',
+      // #932: the operation identity's key, first in every identified call.
+      'packages/core-commands/src/commands/envelope.ts',
       'packages/core-commands/src/commands/occurrence-run.ts',
       'packages/core-commands/src/commands/prepare.ts',
+      // #413: an agent assignment takes the audit chain's key after its write,
+      // where the envelope's audit write would, so its last liveness read
+      // comes after every wait.
+      'packages/core-commands/src/commands/tasks-agent.ts',
       'packages/core-custody/src/broker-reserve.ts',
       // AW-07b: the mail cap, counted under one lock per business and client or person.
       'packages/core-custody/src/email-class.ts',
@@ -124,6 +136,10 @@ describe('CQ-8 runtime structure', () => {
       // who may do what (a grant given, a grant revoked, access ended),
       // inside the handler's transaction.
       'packages/core-records/src/authority/access.ts',
+      // #770: a business's lock on one observed identifier, taken by
+      // `resolveIdentifier` only when its lookup finds nobody, so two first
+      // observations make one person.
+      'packages/core-records/src/identity/identifier-resolution.ts',
       // C59: a login's one factor lock (`second-factor-subject:<digest>`), keyed
       // by its subject's digest in every business, taken first in a factor
       // route's record transaction, before the person's row.

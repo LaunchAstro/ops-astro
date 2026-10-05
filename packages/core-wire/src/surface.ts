@@ -251,6 +251,12 @@ function read(
   };
 }
 
+/**
+ * The key every write to a map's structure serialises on, taken before any
+ * task row: no two writes hold a map and a ticket in opposite orders.
+ */
+const WAYFINDER_MAP_LOCK = 'wayfinder.map';
+
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent credential's under its person's business-wide `task:write`
   // (API-2); under a pickup's one-task delegation it is outside the purpose.
@@ -601,6 +607,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['holderId'],
   }),
+  // C60: the tracked action `client privacy setting changed (model egress,
+  // providers, health, no agent edits)`, under `privacy:manage` on the named
+  // client (party scope), never an agent's.
+  declare('client.set_privacy', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['clientId'],
+  }),
 
   // The grant manager's authority, which is `manage` on the task family this
   // head's grants are about, asked of the revoked row's own scope. The
@@ -695,6 +710,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+  // Wayfinder (WF-1). No agent reaches these until API-2's narrowed credential
+  // lands: the retype rule's floor.
+  declare('task.set_type', 'write'),
+  // A client change, as `task.set_party`: `share`, and locked once the map has content.
+  declare('map.scope', 'share', {
+    serialise: WAYFINDER_MAP_LOCK,
+    rule: 'once the map has content: refused CLIENT_LOCKED (409), writes nothing, as task.set_party (S0-5)',
   }),
   // `billing:decide` on the whole business (AW-04, U10): owners and
   // administrators set the planning cap; no agent route serves it.

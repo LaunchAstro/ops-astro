@@ -83,6 +83,7 @@ export {
 } from './plan-record.ts';
 export {
   PLAN_CANDIDATES,
+  boundPlans,
   projectedPlan,
   readProjectedPlan,
   type ProjectedPlan,
@@ -259,6 +260,7 @@ export {
 export {
   TRACE_BATCH,
   TRACE_READ_LIMIT,
+  TRACE_WINDOW_DAYS,
   exportOnce,
   readTaskTrace,
   type ReadSpan,
@@ -271,7 +273,6 @@ export {
 export {
   EXPIRY_PAGE,
   expireOnce,
-  TRACE_WINDOW_DAYS,
   type ExpiryCode,
   type ExpiryPorts,
   type RetentionBatch,

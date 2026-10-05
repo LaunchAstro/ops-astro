@@ -10,8 +10,10 @@
 // worker and its outbox forwarder are one unit on the machine (the forwarder
 // holds a database session), so both stop together. The web app and sign-in
 // are not on the machine; the maintenance deployment takes them down.
-// It asks the operator gate first (`operator.ts`): a person's own sign-in
-// holding `operations:manage`, or it refuses and does nothing. Then it asks
+// It asks the installation's operator gate first (`operator.ts`,
+// requireOperatingOperator): a person's own sign-in holding
+// `operations:manage` over the installation's operating business, since the
+// worker is the installation's, or it refuses and does nothing. Then it asks
 // Docker to stop exactly the two containers below with a fixed argument list.
 // It takes no argument, so no caller can name another service. A container is
 // stopped, never removed, so it can be started again. Last, it writes the
@@ -19,7 +21,7 @@
 // 2 when given any argument.
 
 import { spawnSync } from 'node:child_process';
-import { recordDeployment, requireOperator } from './operator.ts';
+import { recordDeployment, requireOperatingOperator } from './operator.ts';
 
 /** Production's worker unit, as its definition names the containers. */
 const SERVICES = ['ops-astro-worker', 'ops-astro-forwarder'];
@@ -29,7 +31,7 @@ if (process.argv.length > 2) {
   process.exit(2);
 }
 
-const gate = await requireOperator();
+const gate = await requireOperatingOperator();
 if (!gate.ok) {
   console.error(`stop-production: REFUSED: ${gate.reason}`);
   process.exit(1);

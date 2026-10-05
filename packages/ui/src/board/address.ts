@@ -10,10 +10,9 @@
 // column or mode, a malformed sort, a word that did not decode. The address is
 // something anyone can type, so nothing in it is trusted.
 
+import { boundedWords } from './filters.ts';
 import type { BoardContext, BoardView, SortState } from './types.ts';
 
-const MAX_WORDS = 20;
-const MAX_WORD_LENGTH = 64;
 // A replacement character means the address did not decode; control
 // characters are never typed.
 const UNREADABLE = /[�\p{Cc}]/u;
@@ -37,10 +36,11 @@ export function readView<Row>(search: string, context: BoardContext<Row>): Board
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
   const facetIds = new Set(context.facets.map((facet) => facet.id));
   const ids = [...new Set((params.get('f') ?? '').split(','))].filter((id) => facetIds.has(id));
-  const text = [...new Set((params.get('q') ?? '').split(/\s+/u))]
-    .filter((word) => word !== '' && word.length <= MAX_WORD_LENGTH && !UNREADABLE.test(word))
-    .map((word) => word.toLowerCase())
-    .slice(0, MAX_WORDS);
+  const text = boundedWords(
+    [...new Set((params.get('q') ?? '').split(/\s+/u))]
+      .filter((word) => word !== '' && !UNREADABLE.test(word))
+      .map((word) => word.toLowerCase()),
+  );
   const modeId = params.get('mode');
   const mode = context.modes.some((one) => one.id === modeId) ? modeId : null;
   return { ids, text, sort: sortOf(params.get('sort'), context), mode, widths: null };

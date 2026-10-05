@@ -21,7 +21,7 @@
 // API path cannot be demonstrated against them.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { connect, connectAsAdmin } from '../packages/core-records/src/tenancy/database.ts';
 import { installTaskSpine } from '../packages/core-records/src/tasks/install.ts';
@@ -458,6 +458,17 @@ if (!adminUrl || !appUrl) {
   console.error('local-seed: no DATABASE_URL/DATABASE_ADMIN_URL. Run scripts/local/db-up.sh.');
   process.exit(1);
 }
+// The admin API's key, staging's hosted one above all, goes over TLS or stays
+// on this machine: refused before anything is read or written.
+const GOTRUE_URL = readAuthEnv('GOTRUE_URL') ?? 'http://127.0.0.1:54391';
+const gotrue = URL.parse(GOTRUE_URL);
+if (
+  gotrue?.protocol !== 'https:' &&
+  !(gotrue?.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(gotrue.hostname))
+) {
+  console.error('local-seed: REFUSED, GOTRUE_URL is neither https nor this machine: no key sent.');
+  process.exit(1);
+}
 
 // Staging holds made-up data only (S0-1). A database the seed cannot vouch for
 // from its own mark and guard is refused here, before a row or a file is
@@ -469,6 +480,29 @@ const signs = await admitMadeUp(admin, confirmed);
 if (signs.length > 0) {
   console.error(`local-seed: REFUSED, not provably made-up data: ${signs.join('; ')}.`);
   console.error('local-seed: a person confirms a new database once: LOCAL_SEED_MADE_UP=confirm');
+  await admin.close();
+  process.exit(1);
+}
+// The people and grants go through DATABASE_URL, so it must reach the database
+// just judged and no other copy: a lock the admin connection holds on it, under
+// a key no one else knows, is seen there (pg_locks names its database).
+const database = connect(appUrl, { source: 'seed' });
+const sameDatabase = await admin.transaction(async (execute) => {
+  const key = [randomInt(2 ** 31), randomInt(2 ** 31)];
+  await execute('select pg_advisory_xact_lock($1, $2)', key);
+  const [row] = await database.withBusiness(randomUUID(), (tx) =>
+    tx.query(
+      `select exists (select from pg_locks where locktype = 'advisory' and granted
+          and database = (select oid from pg_database where datname = current_database())
+          and classid = $1::int::oid and objid = $2::int::oid and objsubid = 2) as seen`,
+      key,
+    ),
+  );
+  return row?.seen === true;
+});
+if (!sameDatabase) {
+  console.error('local-seed: REFUSED, DATABASE_URL does not reach the database judged above.');
+  await database.close();
   await admin.close();
   process.exit(1);
 }
@@ -655,20 +689,36 @@ async function seedAgentUser(auth, agent) {
     apikey: auth.token,
     'content-type': 'application/json',
   };
+  // fetch follows a redirect with every header, the key included, wherever it
+  // points, plaintext HTTP too: a redirect is refused, never followed.
+  const redirect = 'error';
   const created = await fetch(`${auth.url}/admin/users`, {
     method: 'POST',
     headers,
+    redirect,
     body: JSON.stringify({ email: agent.email, password: agent.password, email_confirm: true }),
   });
   const body = await created.json().catch(() => {});
   if (typeof body?.id === 'string') return { subject: body.id, reachable: true };
-  // Already there: find it, and keep the subject GoTrue already issued.
-  const listed = await fetch(`${auth.url}/admin/users?page=1&per_page=200`, { headers });
+  // Already there: find it, keep the subject GoTrue already issued, and set its
+  // password to the file's, so the credential written for it signs in.
+  const listed = await fetch(`${auth.url}/admin/users?page=1&per_page=200`, {
+    headers,
+    redirect,
+  });
   const listedUsers = (await listed.json().catch(() => ({})))?.users ?? [];
   const found = Array.isArray(listedUsers)
     ? listedUsers.find((user) => user.email === agent.email)
     : undefined;
-  return { subject: found?.id ?? agent.subject, reachable: found !== undefined };
+  if (typeof found?.id !== 'string' || !/^[0-9a-f-]{36}$/u.test(found.id))
+    return { subject: agent.subject, reachable: false };
+  const reset = await fetch(`${auth.url}/admin/users/${found.id}`, {
+    method: 'PUT',
+    headers,
+    redirect,
+    body: JSON.stringify({ password: agent.password }),
+  });
+  return { subject: found.id, reachable: reset.ok };
 }
 
 /**
@@ -680,7 +730,7 @@ async function authAdmin() {
   const { localServiceToken } = await import('./local/signing-key.mjs');
   const token = process.env['SUPABASE_SERVICE_KEY'] || (await localServiceToken(root));
   if (token === undefined) return;
-  return { url: readAuthEnv('GOTRUE_URL') ?? 'http://127.0.0.1:54391', token };
+  return { url: GOTRUE_URL, token };
 }
 
 function readAuthEnv(name) {
@@ -694,9 +744,9 @@ function readAuthEnv(name) {
  * The entry lives in `.local/synthetic-users.json` beside the cast with
  * `role: 'external'`, and is added back when `scripts/local/auth-seed.mjs`
  * rewrites the file without it. GoTrue's user is created on the agent's path,
- * and on a fresh entry its password is then set to the file's: a no-op for a
- * user just created with it, and the fix for one that already existed under a
- * password the rewritten file lost. It touches this one user and nobody else.
+ * which sets an existing user's password to the file's: the fix for one that
+ * already existed under a password the rewritten file lost. It touches this
+ * one user and nobody else.
  */
 const EXTERNAL_LOCAL_PART = 'ext';
 
@@ -713,21 +763,6 @@ function ensureExternalEntry(list) {
   };
   list.push(entry);
   return { entry, fresh: true };
-}
-
-async function seedExternalUser(auth, entry, fresh) {
-  const user = await seedAgentUser(auth, entry);
-  if (!user.reachable || !fresh) return user;
-  const reset = await fetch(`${auth.url}/admin/users/${user.subject}`, {
-    method: 'PUT',
-    headers: {
-      authorization: `Bearer ${auth.token}`,
-      apikey: auth.token,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ password: entry.password }),
-  });
-  return { subject: user.subject, reachable: reset.ok };
 }
 
 /**
@@ -761,7 +796,6 @@ async function shareWithExternal(tx, taskName, adminEmail, externalEmail, people
   return { recordId: rows[0].id, grantId: shared.value };
 }
 
-const database = connect(appUrl, { source: 'seed' });
 try {
   const businessIds = {};
   for (const [tag, key] of Object.entries(BUSINESS_KEYS)) {
@@ -863,7 +897,7 @@ try {
   );
 
   const external = ensureExternalEntry(users);
-  const externalUser = await seedExternalUser(auth, external.entry, external.fresh);
+  const externalUser = await seedAgentUser(auth, external.entry);
   external.entry.subject = externalUser.subject;
   writeFileSync(usersFile, `${JSON.stringify(users, undefined, 2)}\n`, { mode: 0o600 });
   console.log(

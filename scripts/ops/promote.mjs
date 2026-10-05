@@ -18,15 +18,17 @@
 // file handed in could say stopped while the API runs, so the report's file
 // flags are refused here, and so is any argument the step does not know.
 //
-// A real run is a person's act under `operations:manage` (S0-1e): the operator
-// gate (`operator.ts`) answers before any argument is read and before the
+// A real run is a person's act under `operations:manage` in the
+// installation's operating business (S0-1e), since it migrates the whole
+// database: the installation's operator gate (`operator.ts`,
+// requireOperatingOperator) answers before any argument is read and before the
 // service manager is asked, and the deployment record is written only once
 // production serves the artefact. CI runs the dry run with no sign-in, and a dry
 // run writes no record.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { renameSync, rmSync, symlinkSync } from 'node:fs';
-import { recordDeployment, requireOperator } from './operator.ts';
+import { recordDeployment, requireOperatingOperator } from './operator.ts';
 import { parseService, promote } from './promotion.ts';
 import { snapshot } from './service-report.mjs';
 
@@ -42,7 +44,7 @@ const SAVED_REPORT = new Set(['--docker-inspect', '--launchctl']);
 
 const args = process.argv.slice(2);
 // No valued argument takes a value starting `--`, so this is the flag itself.
-const gate = args.includes('--dry-run') ? null : await requireOperator();
+const gate = args.includes('--dry-run') ? null : await requireOperatingOperator();
 if (gate && !gate.ok) {
   console.error(`promote: REFUSED: ${gate.reason}`);
   process.exit(1);

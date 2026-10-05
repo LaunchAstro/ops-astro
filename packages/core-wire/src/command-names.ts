@@ -125,6 +125,8 @@ export type CommandName =
   // and the lease owner's heartbeat. None is a new actor power; each asks for
   // authority the caller already holds (see each row below).
   | 'client.create'
+  // C60: a client's privacy settings, on its record.
+  | 'client.set_privacy'
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'
@@ -145,6 +147,10 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
+  // Wayfinder (WF-1): a map is a task of type `map`, its tickets its subtasks.
+  // Retyping to or from grilling, prototype or map also asks the owner's `decide`.
+  | 'task.set_type'
+  | 'map.scope'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
   // planning replies spend before the accept.
   | 'budget.set_planning_cap'

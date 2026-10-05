@@ -4,6 +4,7 @@
     "tests/pickup/pickup-receipt-binding.test.ts",
     "tests/pickup/pickup-replay-keys.test.ts",
     "tests/pickup/pickup-replay-lost-response.test.ts",
+    "tests/pickup/pickup-stop-at-spent-hold-lease.test.ts",
     "tests/pickup/pickup-version-binding.test.ts"
   ],
   "conformance": ["tests/pickup/pickup-refusal-order.test.ts"]

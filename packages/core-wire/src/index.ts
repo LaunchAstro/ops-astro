@@ -88,6 +88,7 @@ export type {
   CapabilitiesResult,
   SessionPersonResult,
   ClientListResult,
+  ClientPrivacyView,
   ClientView,
   CommentView,
   DecisionLink,
@@ -164,6 +165,8 @@ export type {
   PreReviewAttribution,
   PreReviewRun,
 } from './views-agent.ts';
+// AW-04: a plan version as a planning reply offers it in the chat
+export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
 // each command's data effects and its class, read by the first-client gate (S0-5)

@@ -10,12 +10,12 @@
 // sign-in drop it (ruling ORCH57, the panel host does it). Nothing reaches the
 // server until Create.
 //
-// **The create's identity is kept with the draft**, each part's too, from
-// before it goes out until the outcome is known, with the parts answered. A
-// reload, an unmount or an answer nobody knows reopens the draft with them: the
-// server replays the task, answered parts are skipped, and a part with no
-// answer stops Create and is sent again under its id. An edit writes the draft
-// without them, and a drop takes them with the draft.
+// **The create's identity is kept with the draft** until the outcome is known,
+// with the parts answered. A part's id is the create's and its place, a new
+// tag's `tag.create` its part's and `.tag`, so every run of one attempt sends
+// the same ids. A reload, an unmount or an unknown answer reopens the draft
+// with them: the server replays, answered parts are skipped, and a part with no
+// answer stops Create. An edit writes the draft without them; a drop drops all.
 //
 // **Create is the task first, then each part by its own command (DN-05).**
 // `task.create` writes the task; the client, the note, the tags, the subtasks
@@ -197,7 +197,7 @@ export async function createFromDraft(
   const now = (): Attempt => ({ ...attempt, parts: [...ids], done, revision: at.revision, missed });
   for (const [index, part] of partsOf(client, draft, recordId, at).entries()) {
     if (index < done) continue;
-    const operationId = ids[index] ?? client.newOperationId();
+    const operationId = ids[index] ?? `${attempt.id}.${String(index)}`;
     ids[index] = operationId;
     save(now());
     // eslint-disable-next-line no-await-in-loop -- in order: each part writes after the task, at its revision
@@ -290,7 +290,7 @@ async function addTag(
   const { recordId, name, operationId } = tag;
   let tagId = held.get(name.toLowerCase());
   if (tagId === undefined) {
-    const made = await client.mutate('tag.create', { name });
+    const made = await client.mutate('tag.create', { name }, { operationId: `${operationId}.tag` });
     if (isRefusal(made) || isUnavailable(made)) return made;
     const id = made.value.detail?.['tagId'];
     if (typeof id !== 'string') return { unavailable: true, because: 'No tag came back.' };

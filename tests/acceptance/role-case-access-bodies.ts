@@ -8,7 +8,8 @@
 import { randomUUID } from 'node:crypto';
 import type { BodyContext, Prepared } from './role-case-bodies.ts';
 
-type AccessCommand = 'client.create' | 'access.grant' | 'access.revoke' | 'access.end';
+type AccessCommand =
+  'client.create' | 'client.set_privacy' | 'access.grant' | 'access.revoke' | 'access.end';
 
 /** Clients made by the matrix, each under a name of its own (one name per business). */
 let clientsMade = 0;
@@ -27,6 +28,18 @@ export async function accessBody(name: AccessCommand, context: BodyContext): Pro
     // C32: `record:write`, a name no other call has used.
     case 'client.create':
       return { body: { name: nextClientName() } };
+    // C60: `privacy:manage`, which the admin holds as the owner does: a
+    // client made for the case, its "no agent edits" switched on.
+    case 'client.set_privacy':
+      return {
+        body: {
+          clientId: await madeClient(context),
+          modelEgress: false,
+          providers: [],
+          handlesHealth: false,
+          noAgentEdits: true,
+        },
+      };
     // C32: `access:manage`. The key is one the member already holds over
     // the whole business, so the answer is that grant and no caller's
     // holdings change under the cases that read them.

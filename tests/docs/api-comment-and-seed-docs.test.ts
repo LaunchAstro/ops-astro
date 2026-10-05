@@ -104,14 +104,14 @@ const SEED_CITES: readonly {
   {
     doc: 'AUTHORITY.md',
     after: 'creates its GoTrue user',
-    index: 0,
-    anchor: 'async function seedExternalUser(',
+    index: 1,
+    anchor: 'ensureExternalEntry(users)',
   },
   {
     doc: 'AUTHORITY.md',
     after: 'creates its GoTrue user',
     index: 1,
-    anchor: 'ensureExternalEntry(users)',
+    anchor: 'seedAgentUser(auth, external.entry)',
   },
   {
     doc: 'AUTHORITY.md',

@@ -113,3 +113,51 @@ tests/review/main-b1-p01-closed-tab-cookies-proof.test.ts
 # The condense pass's interim review proof (Opus, standing in for Sol), byte-for-byte apart from
 # its title, which names what it proves (tests/docs/test-files-by-behaviour.test.ts).
 tests/visual/coloured-summary-rejects-skipped-wrapper.test.ts
+
+# Sol's proofs on roles, staging logins and reset, the seed, the CodeQL queue gate
+# and the copy finder, byte-for-byte as the review patches held them apart from
+# each title, which names what it proves (tests/docs/test-files-by-behaviour.test.ts).
+tests/review/role-repair-drops-inherited-access-proof.test.ts
+tests/review/staging-logins-duplicate-sslmode-proof.test.ts
+tests/review/staging-logins-direct-privileges-proof.test.ts
+tests/review/staging-logins-group-race-proof.test.ts
+tests/review/staging-reset-encoded-user-proof.test.ts
+tests/review/staging-reset-write-after-admission-proof.test.ts
+tests/review/staging-reset-keeps-revoked-session-proof.test.ts
+tests/review/seed-boundaries-proof.test.mjs
+tests/operations/find-copies-values-only.proof.test.ts
+
+# Sol's proofs on the installation gate, backup part reads, the restore check and
+# drill, and the scan login, byte-for-byte as the review patches held them apart
+# from each title, which names what it proves, and cases owned by other pieces.
+tests/review/backup-read-part-appointment-proof.test.ts
+tests/review/backup-restore-revocation-proof.test.ts
+tests/review/stop-production-installation-gate-proof.test.ts
+tests/review/ow-063-deploy-business-proof.test.ts
+tests/review/ow-063-export-revocation-proof.test.ts
+tests/review/ow066-export-revocation-proof.test.ts
+tests/ci/restore-check-barrier-and-logs.proof.test.mjs
+tests/ci/restore-refuses-permissive-barrier.proof.test.mjs
+tests/ci/malformed-database-address-hidden.proof.test.ts
+tests/operations/scan-login-token-and-shared-login.proof.test.ts
+
+# Sol's D1-FIX1 proofs, byte-for-byte as the review patch held them, file names
+# and titles included.
+tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
+
+# Sol's D1-FIX2 proofs, byte-for-byte as the review patch held them apart from
+# each title; the export gate-gap proof is Sol's D1-FIX1 original, restored.
+tests/review/store-hands-out-no-part-after-session-end-proof.test.ts
+tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts
+tests/ci/restore-refuses-permissive-partitioned-barrier.proof.test.mjs
+tests/operations/scan-login-cleanup-subject-race.proof.test.ts
+
+# Sol's D1-FIX3 reset-proof precondition, byte-for-byte as the review patch held it apart
+# from each title, and the D1-FIX2 reset proof it checks, in Sol's layout with its
+# preparation corrected.
+tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts
+tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts
+
+# Sol's PR 364 round-2 proofs, byte-for-byte as the review patch held them apart from their titles,
+# which name what they prove (tests/docs/test-files-by-behaviour.test.ts).
+tests/site/c80-picture-sheets-applied.test.ts

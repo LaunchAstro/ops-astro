@@ -246,6 +246,13 @@ code on this head, and where that is shown.
 | `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                                                                                                                                                                                                     |
 | `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                                                                                                                                                                                                     |
 
+**`STEP_UP_REQUIRED`** for a client (no membership) names `sign_in`, fix "Sign
+in again with your password, then retry.", since a client may hold no second
+factor and any sign-in in the last 60 minutes will do; a team member's names
+nothing and asks for the authenticator code (C59, Q1). To replace the
+authenticator app, `/account/factor/remove` takes a code from the old one, and
+`/account/factor/enrol` is refused `FACTOR_ALREADY_ENROLLED` until it has.
+
 `DELEGATION_WIDENS` is off `UNPRODUCED_CODES` (`core-records/src/register.ts`). The
 mint reads the approving person's live grants when the agent picks the work
 up, not when the person approved it (`mintDelegation`,
@@ -467,11 +474,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:690-731`, run at `:865-873`). It gets a login and an acting identity,
+  user (`:740-766`, run at `:899-907`). It gets a login and an acting identity,
   and no membership and no business grant (`:158-161`, `:311-313`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:733-762`, `:902-912`).
+  (`:760-789`, `:928-938`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -774,6 +781,9 @@ its one-task delegation never does: `DELEGATION_OUT_OF_PURPOSE`, nothing written
 person and per business on calls a minute, calls at once and records handed out
 a minute (`apps/api/auth/agent-quota.ts`), answered `AGENT_QUOTA_EXCEEDED` 429.
 A call counts once, retried or not, and a call outside the reach counts too.
+Its records count when its answer is decided, inside its transaction: an
+answer that would pass a records limit is refused and rolls back, so calls
+let in together cannot hand out more between them than the limit.
 The quota is held in each API process, so it multiplies across instances.
 
 ## Settings ▸ Access (C32)
@@ -783,7 +793,9 @@ Giving and revoking a grant on Settings ▸ Access (`access.grant`,
 never an agent's. A grant given here is a root grant, to a person with an
 active membership, over the whole business or over one client of it
 (`scope_kind = 'party'`, `scope_id` the client). Making a client
-(`client.create`) is `record:write`, never an agent's.
+(`client.create`) is `record:write`, never an agent's. Changing a client's
+privacy settings (`client.set_privacy`, C60) is `privacy:manage`, asked at that
+client's party scope, never an agent's.
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a

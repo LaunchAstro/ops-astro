@@ -1,10 +1,37 @@
 {
   "invariant": [
+    "tests/review/backup-read-part-appointment-proof.test.ts",
+    "tests/review/backup-restore-revocation-proof.test.ts",
+    "tests/review/ow-063-deploy-business-proof.test.ts",
+    "tests/review/ow-063-export-revocation-proof.test.ts",
+    "tests/review/ow066-export-revocation-proof.test.ts",
+    "tests/review/stop-production-installation-gate-proof.test.ts",
+    "tests/review/export-session-ended-after-part-gate-proof.test.ts",
+    "tests/review/revocation-during-part-read-refuses-part.test.ts",
+    "tests/review/store-hands-out-no-part-after-session-end-proof.test.ts",
+    "tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts",
     "tests/review/sl12-18-hook-batch-proof.test.ts",
     "tests/review/sl12-18-mention-timing-proof.test.ts"
   ],
   "conformance": [
+    "tests/review/child-assign-refuses-parent-expired-in-audit-lock-wait.test.ts",
+    "tests/review/child-assign-refuses-parent-expired-in-delegation-lock-wait.test.ts",
+    "tests/review/child-assign-refuses-parent-expired-in-lock-wait.test.ts",
     "tests/review/column-grants-name-batch-1.test.ts",
-    "tests/review/sl01-rel-g2-health-proof.test.ts"
+    "tests/review/ended-parent-child-not-live-on-tasks.test.ts",
+    "tests/review/ow-042-access-sol-proof.test.ts",
+    "tests/review/same-operation-pair-waits-at-the-door.test.ts",
+    "tests/review/sl01-rel-g2-health-proof.test.ts",
+    "tests/review/role-repair-drops-inherited-access-proof.test.ts",
+    "tests/review/staging-logins-duplicate-sslmode-proof.test.ts",
+    "tests/review/staging-logins-direct-privileges-proof.test.ts",
+    "tests/review/staging-logins-group-race-proof.test.ts",
+    "tests/review/staging-reset-encoded-user-proof.test.ts",
+    "tests/review/staging-reset-write-after-admission-proof.test.ts",
+    "tests/review/staging-reset-keeps-revoked-session-proof.test.ts",
+    "tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts",
+    "tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts",
+    "tests/review/sl12-18-placement-lineage-proof.test.ts",
+    "tests/review/sl12-19-plan-record-restart-proof.test.ts"
   ]
 }
