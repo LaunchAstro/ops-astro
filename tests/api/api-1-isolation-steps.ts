@@ -115,8 +115,8 @@ export function ownStepControl(): void {
     expect(heard).toHaveLength(2);
     const [step] = await fixture.db.admin.execute<{ state: string; comments: number }>(
       `select s.state, (select count(*) from public.records c
-                         where c.business_id = $1 and c.data ->> 'task' = $2)::int as comments
-         from public.onboarding_steps s where s.business_id = $1 and s.task_id = $2`,
+                         where c.business_id = $1 and c.data ->> 'task' = $2::text)::int as comments
+         from public.onboarding_steps s where s.business_id = $1 and s.task_id = $2::uuid`,
       [fixture.business, ownStep],
     );
     expect(step).toEqual({ state: 'done', comments: 1 });

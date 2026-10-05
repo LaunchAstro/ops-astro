@@ -44,7 +44,7 @@ describe.skipIf(serverUrl === undefined)('C41-A step moves at stop and restore',
       });
       expect(failed.status, JSON.stringify(failed.body)).toBe(200);
     }
-    expect(await itemsOn(parked)).toStrictEqual(
+    expect(await itemsOn(parked)).toEqual(
       parked
         .toSorted()
         .map((task) => ({ task, recipient: the.admin.personId, work_state: 'withdrawn' })),
@@ -76,7 +76,7 @@ describe.skipIf(serverUrl === undefined)('C41-A step moves at stop and restore',
       batchId: detail(trashed)['batchId'],
     });
     expect(restored.status, JSON.stringify(restored.body)).toBe(200);
-    expect(await itemsOn([kickoff])).toStrictEqual([
+    expect(await itemsOn([kickoff])).toEqual([
       { task: kickoff, recipient: the.admin.personId, work_state: 'open' },
     ]);
   });

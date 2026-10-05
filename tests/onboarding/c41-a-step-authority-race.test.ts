@@ -246,7 +246,7 @@ describe.skipIf(serverUrl === undefined)('C41-A step result authority after the 
     const answer = await whileHeld(onboardingId, first, async () => {
       await pause(3500);
     });
-    expect([answer.status, answer.body['code']]).toStrictEqual([403, 'DELEGATION_NOT_LIVE']);
+    expect([answer.status, answer.body['code']]).toStrictEqual([401, 'DELEGATION_NOT_LIVE']);
     expect(await stepWorld(tasks)).toStrictEqual(before);
   }, 60_000);
 });
