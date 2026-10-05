@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
 // countedHold writes its argument into SQL text, and custody's index exports
 // it to every package. It takes a numbered placeholder only: other text fails
 // the type check, and anything that reaches it untyped is refused when it runs.
