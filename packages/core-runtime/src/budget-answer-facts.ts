@@ -75,6 +75,8 @@ export interface Locked extends Found {
   readonly held_minor: string;
   readonly version_id: string;
   readonly currency: string;
+  /** The run's task is out of the trash, read under the task lock: a top-up needs it, an end does not. */
+  readonly task_live: boolean;
 }
 
 export interface Opened {
@@ -186,7 +188,10 @@ async function readLocked(
                      where a.business_id = k.business_id and a.ask_id = k.id) as answered,
             lin.state as lineage_state, (ver.superseded_at is not null) as superseded,
             res.state as reservation_state, res.held_minor::text as held_minor,
-            res.version_id, e.currency
+            res.version_id, e.currency,
+            exists (select 1 from public.records t
+                     where t.business_id = run.business_id and t.id = run.task_id
+                       and t.deleted_at is null) as task_live
        from public.planned_runs run
        join lateral (select id, business_id from public.budget_asks
                       where business_id = run.business_id and run_id = run.id

@@ -29,6 +29,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import {
+  deny,
   invalid,
   NOT_WAITING_FIX,
   openAnswer,
@@ -111,12 +112,22 @@ export async function topUpAtBudgetStop(
   return { ok: true, value: { state: 'applied', answerId, heldMinor } };
 }
 
-/** The plan still live, a hold to raise, the currency the envelope's, and room in the cap. */
+/**
+ * The task out of the trash, the plan still live, a hold to raise, the
+ * currency the envelope's, and room in the cap.
+ */
 async function topUpRefusal(
   tx: TenantQuery,
   request: BudgetStopTopUpRequest,
   { locked }: Opened,
 ): Promise<BudgetAnswerResult<never> | null> {
+  if (!locked.task_live) {
+    return deny(
+      'NOT_FOUND',
+      'the task this run works on is in the trash, and a trashed task takes no top-up',
+      'Restore the task to top it up, or end the work.',
+    );
+  }
   if (locked.lineage_state !== 'live' || locked.superseded) {
     return refuse(
       'LINEAGE_TERMINAL',
