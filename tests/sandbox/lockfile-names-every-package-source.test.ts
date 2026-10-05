@@ -128,6 +128,14 @@ it('takes GitHub Packages only under a listed scope, with a 40-hex final segment
       refused('lockfile resolved'),
     );
   }
+  for (const host of ['https://evl.pkg.github.com', 'https://npm.pkg.github.org'])
+    expect(
+      withEntry(key, {
+        ...github('@agency/theme', '0.4.0-beta.1'),
+        resolved: `${host}/download/@agency/theme/0.4.0-beta.1/${'a'.repeat(40)}`,
+      }),
+      host,
+    ).toEqual(refused('lockfile resolved'));
 });
 
 it('refuses an alias entry and a link entry', () => {
@@ -152,6 +160,8 @@ it("refuses a key outside node_modules or a name outside npm's grammar", () => {
     'node_modules/astro/sub',
     'node_modules/astro//node_modules/vite',
     `node_modules/${'a'.repeat(215)}`,
+    'node_modulez/astro',
+    'vendor/libs/astro',
   ]) {
     expect(withEntry(key, registry('astro', '5.1.0')), key).toEqual(refused('lockfile name'));
   }
