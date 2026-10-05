@@ -14,6 +14,7 @@ import {
   linkSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -188,12 +189,14 @@ it('an earlier copy the promoter cannot write is still replaced by a fresh one',
   const store = storeWith();
   const copy = cached(store, (at) => {
     chmodSync(join(at, 'static', 'index.html'), 0o666);
+    chmodSync(join(at, 'static'), 0o555);
     chmodSync(at, 0o555);
   });
   const current = join(store, 'current');
   const { outcome } = promoted(store, current, () => true, true);
   expect(outcome).toMatchObject({ kind: 'promoted', artefactPath: copy });
   expect(statSync(join(current, 'static', 'index.html')).mode & 0o022).toBe(0);
+  expect(readdirSync(join(store, 'served')).filter((name) => name.startsWith('.'))).toEqual([]);
 });
 
 it("another user can search every folder from production's folder to the served page, and read it", () => {
