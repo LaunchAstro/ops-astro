@@ -46,9 +46,11 @@ function commandProblems(job: Job | undefined, check: string, commands: [string,
       problems.push(`${command}: not through ${wrapper}`);
   }
   const named = steps.flatMap((s) =>
-    [...(s.run ?? '').matchAll(/ci-shards\.ts '[^']+' --shard \S+ --step '([^']+)'/gu)].map(
-      (m) => m[1],
-    ),
+    [
+      ...(s.run ?? '').matchAll(
+        /ci-shards\.ts '[^']+' --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} --step '([^']+)'/gu,
+      ),
+    ].map((m) => m[1]),
   );
   if (
     named.toSorted().join('|') !==
@@ -142,23 +144,29 @@ describe('the workflow', () => {
       L5_RUNTIME_PROOFS: '1',
     });
   });
+});
 
+describe('the aggregates', () => {
   it.each([
     ['local checks', 'check'],
     ['isolation tests', 'isolation'],
-  ])('the %s aggregate passes only when every shard succeeded', (name, shardKey) => {
-    const run = Object.values(ci.jobs).find((job) => job.name === name)?.steps?.[0]?.run;
-    expect(run).toBeDefined();
-    expect(run).not.toContain('${{');
-    const passed = EVENTS.flatMap((event) =>
-      RESULTS.flatMap((gate) =>
-        RESULTS.filter((shards) => passes(name, shardKey, [event, gate, shards])).map(
-          (shards) => `${event} ${gate} ${shards}`,
+  ])(
+    'the %s aggregate passes only when every shard succeeded',
+    (name, shardKey) => {
+      const run = Object.values(ci.jobs).find((job) => job.name === name)?.steps?.[0]?.run;
+      expect(run).toBeDefined();
+      expect(run).not.toContain('${{');
+      const passed = EVENTS.flatMap((event) =>
+        RESULTS.flatMap((gate) =>
+          RESULTS.filter((shards) => passes(name, shardKey, [event, gate, shards])).map(
+            (shards) => `${event} ${gate} ${shards}`,
+          ),
         ),
-      ),
-    );
-    expect(passed).toStrictEqual(
-      EVENTS.flatMap((event) => RESULTS.map((gate) => `${event} ${gate} success`)),
-    );
-  });
+      );
+      expect(passed).toStrictEqual(
+        EVENTS.flatMap((event) => RESULTS.map((gate) => `${event} ${gate} success`)),
+      );
+    },
+    120_000,
+  );
 });

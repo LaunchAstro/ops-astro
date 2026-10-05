@@ -64,6 +64,9 @@ const scan = (results: L, errors: L = [], s = ['a.ts']) => ({
   paths: { scanned: s },
 });
 
+/** The job whose shards run the isolation suites behind the required `isolation tests`. */
+const ISOLATION_SHARDS = 'isolation tests shard ${{ matrix.shard }}';
+
 /** One job's block of ci.yml, from its name to the next job's key. */
 function job(name: string): string {
   const text = read('.github/workflows/ci.yml');
@@ -177,7 +180,8 @@ describe('CQ-15 security gate', () => {
   });
 
   it('CQ-15 isolation suites on a real Postgres: the four families, each also named in the manifest', () => {
-    const block = job('isolation tests');
+    // The suites run in the shards behind the required name (CI-SHARDS-2).
+    const block = job(ISOLATION_SHARDS);
     expect(block).toMatch(/image: postgres@sha256:[0-9a-f]{64}/u);
     expect(block).toContain('scripts/db-conformance.mjs --isolation');
     const { invariant } = readIsolationSuites(ROOT);
@@ -216,7 +220,12 @@ describe('CQ-15 security gate', () => {
   it('CQ-15 no secret printed: the gate reports rule and place, never the match, and the jobs hold no secret', () => {
     const { status, out } = gate('semgrep', scan([hit()]));
     expect(`${status} ${out.includes(TOKEN)} ${out.includes('a.ts:1')}`).toBe('1 false true');
-    for (const name of ['dependency audit', 'static analysis', 'isolation tests']) {
+    for (const name of [
+      'dependency audit',
+      'static analysis',
+      'isolation tests',
+      ISOLATION_SHARDS,
+    ]) {
       expect(job(name), name).not.toBe('');
       expect(job(name).match(/secrets\.|GITHUB_TOKEN|permissions:/u), name).toBeNull();
     }

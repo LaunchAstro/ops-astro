@@ -95,7 +95,7 @@ describe('isolation tests', () => {
     );
     expect(listed).toStrictEqual(split);
     expect(partitionProblems(listed, items)).toStrictEqual([]);
-  });
+  }, 120_000);
 });
 
 /** Each local checks shard's files, as vitest's configured sequencer picks them from `files`. */

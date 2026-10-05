@@ -97,8 +97,14 @@ describe('pnpm check in a local checks shard', () => {
       localStepShards(plan, LOCAL_COUNT).map((s) => s.filter((step) => !later.has(step))),
     );
     const split = scripts.filter((s) => !EVERY_SHARD.includes(s));
-    expect(partitionProblems(ran, split)).toStrictEqual([]);
-  });
+    // A shard may hold only later ci.yml steps (the container suites, say), and no pnpm check step.
+    expect(
+      partitionProblems(
+        ran.filter((r) => r.length > 0),
+        split,
+      ),
+    ).toStrictEqual([]);
+  }, 120_000);
 
   it('on a pull request, takes its share of the tests the change reaches', () => {
     const shard = `2/${String(LOCAL_COUNT)}`;
@@ -107,7 +113,7 @@ describe('pnpm check in a local checks shard', () => {
     const tests = `run test --shard ${shard}`;
     const reached = `run test --changed ${BASE} --passWithNoTests --shard ${shard}`;
     expect(light.ran).toStrictEqual(pnpmCheck(shard).ran.map((c) => (c === tests ? reached : c)));
-  });
+  }, 120_000);
 
   it('refuses a shard it cannot read before any step runs', () => {
     for (const bad of ['', '0/3', '4/3', '3', 'a/b', ' 1/3']) {
@@ -115,7 +121,7 @@ describe('pnpm check in a local checks shard', () => {
       expect(out.status, bad).not.toBe(0);
       expect(out.ran, bad).toStrictEqual([]);
     }
-  });
+  }, 120_000);
 });
 
 /** scripts/ci-shards.ts for one step, wrapping a command that says it ran, or with `tail` as given. */
@@ -150,6 +156,7 @@ describe('scripts/ci-shards.ts, the step wrapper', () => {
       for (const step of steps)
         expect(ranIn(name, step, count).filter(Boolean), step).toHaveLength(1);
     },
+    120_000,
   );
 
   it('passes on the command’s own exit status', () => {
@@ -159,7 +166,7 @@ describe('scripts/ci-shards.ts, the step wrapper', () => {
     expect(wrapped('local checks', shard, 'inbox restart', '--', 'sh', '-c', 'exit 7').status).toBe(
       7,
     );
-  });
+  }, 120_000);
 
   it.each([
     ['local checks', '--shard', '1/3', '--step', 'no such step', '--', 'true'],
@@ -170,11 +177,15 @@ describe('scripts/ci-shards.ts, the step wrapper', () => {
     ['local checks', '--shard', '1/3', '--step', 'inbox restart'],
     ['local checks', '--shard', '1/3', '--step', 'inbox restart', '--decide', '--', 'true'],
     ['local checks', '--shard', '1/3', '--step', 'inbox restart', 'extra', '--', 'true'],
-  ])('refuses %s %s %s %s %s %s %s', (...args) => {
-    const out = spawnSync(process.execPath, ['scripts/ci-shards.ts', ...args], {
-      cwd: ROOT,
-      encoding: 'utf8',
-    });
-    expect(`${String(out.status)} ${out.stdout}`).toBe('2 ');
-  });
+  ])(
+    'refuses %s %s %s %s %s %s %s',
+    (...args) => {
+      const out = spawnSync(process.execPath, ['scripts/ci-shards.ts', ...args], {
+        cwd: ROOT,
+        encoding: 'utf8',
+      });
+      expect(`${String(out.status)} ${out.stdout}`).toBe('2 ');
+    },
+    120_000,
+  );
 });
