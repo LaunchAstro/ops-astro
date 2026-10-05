@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "named in tests/db/named-suites/ before each suite had its own file; its reason is in tests/db/suites-history.json"
+}
