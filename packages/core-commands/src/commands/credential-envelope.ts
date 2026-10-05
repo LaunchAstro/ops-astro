@@ -21,10 +21,12 @@
 //
 // **What it reaches.** The surface rows an agent may reach under a delegation
 // that need no lease: not a lease's own work (a claim) and not a person-only
-// row. So `task.create`, under the ticked `task:write`, and
-// `session.capabilities`, whose answer is the ticked keys the person's grants
-// still cover (`readCapabilities` asks within them) and the agent actor as the
-// acting identity. `run.revise_state` is excluded by name (`OUTSIDE_REACH`).
+// row (`CREDENTIAL_REACH`: the task reads and writes an agent makes, comment
+// changes, `run.child_handback`). Among them `task.create`, under the ticked
+// `task:write`, and `session.capabilities`, whose answer is the ticked keys the
+// person's grants still cover (`readCapabilities` asks within them) and the
+// agent actor as the acting identity. A shared person handler holds the agent's
+// limits itself (`updateTask`, `assignTask`, `commentOnTask`, #420). `run.revise_state` is excluded by name (`OUTSIDE_REACH`).
 // Anything else is refused `DELEGATION_EXCLUDES_OPERATION`, recorded against
 // the agent.
 

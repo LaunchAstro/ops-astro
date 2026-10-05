@@ -315,7 +315,10 @@ is the one exception to "no credential, no call"
 `AGENT_OPERATIONS`), and the matrix's case (i) asserts the saved comment
 identity. The agent may write in the `internal` audience only
 (`AGENT_AUDIENCES`). A `client` comment is `AUDIENCE_NOT_PERMITTED` 422, which
-the same case asserts. Internal-only is Nathan's ruling (OWNER-CARD section 6),
+the same case asserts. An agent credential (API-2) runs the person handlers as
+its agent and is held the same way: internal comments, the agent's update
+fields and the assignee only (`updateTask`, `assignTask` and `commentOnTask`,
+#420). Internal-only is Nathan's ruling (OWNER-CARD section 6),
 and `tests/acceptance/comment-rulings.test.ts` holds it over HTTP.
 
 **`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
@@ -775,9 +778,13 @@ names the person it acts for. Every grant check asks the key within the ticked
 ones and the person's grants as they are now (`subjectsOf`, `askedFor`); the
 credential has no sign-in assurance, so a money step-up is never met. It
 reaches the rows an agent may reach under a delegation that need no lease
-(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.comment`, `task.propose`,
-`onboarding.step_result` and `session.capabilities`); anything else is
-`DELEGATION_EXCLUDES_OPERATION`,
+(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.update`, `task.assign`,
+`task.set_scores`, `task.set_adhoc`, `task.set_category`, `task.comment`,
+`task.edit_comment`, `task.delete_comment`, `task.propose`,
+`run.child_handback`, `onboarding.step_result` and `session.capabilities`), held
+to a delegated agent's limits where the handler has them (`updateTask`,
+`assignTask`, `commentOnTask`, and `onboarding.step_result`'s agent steps only);
+anything else is `DELEGATION_EXCLUDES_OPERATION`,
 `run.revise_state` included by name (`OUTSIDE_REACH`), though a run's delegation
 reaches it.
 A create asks the person's business-wide `task:write` within the ticked keys; it

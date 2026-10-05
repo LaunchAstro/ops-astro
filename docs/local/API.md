@@ -1251,21 +1251,28 @@ deployment started a broker, `composeApi` mounts `answerConversation` beside
 `executeModelCall`, and after `conversation.start` or `conversation.message`
 is applied on the person path the API asks it for the agent's answer, after
 the command has committed: the message stays kept whatever the answer is. It
-resolves the caller again, finds the message as the caller's own person
-message in a conversation of this business whose body is kept, and sends its
+resolves the caller again, asks that they still hold `conversation:write` (as
+`conversation.read` asks of an owner), finds the message as the caller's own
+person message in a conversation of this business whose body is kept, and
+sends its
 words through AW-01's conversation seam (`callModelInConversation`,
 `model.conversation_answer`, the owner's own session, local routes only,
 nothing held). The answer is kept as an `agent` message whose
 `answers_message_id` names the question (0099: one reply per message, in the
 same conversation), in a second transaction under the conversation's row
-lock. The HTTP answer then carries `reply` beside the command's own fields:
+lock, which then holds the caller's conversation grants for share without
+waiting (a revocation either is seen there or waits for the reply to commit; a
+grant being changed at that moment, even by a revocation then refused, keeps
+nothing, and the person asks again) and asks the grant again at
+the clock after the locks, so a grant that lapsed while it waited no longer
+counts. The HTTP answer then carries `reply` beside the command's own fields:
 `{ answered: true, messageId, body }`, or `{ answered: false, code, words }`
 in fixed words (`LOCAL_MODEL_REQUIRED`: models are off for this material and
 nothing was sent, AW-03 egress off; `RATE_LIMITED`; anything else, an answer
 that could not be used and nothing kept). No `reply` means nothing answers: no
-broker, or the message is not the caller's to have answered. A repeat of the
-same operation finds the reply kept and answers with it; the model is not
-asked again. The register stores the command's answer only, so the model's
+broker, the grant revoked, or the message is not the caller's to have
+answered. A repeat of the same operation finds the reply kept and answers with
+it while the grant holds; the model is not asked again. The register stores the command's answer only, so the model's
 words are in the reply's row and nowhere else.
 
 Two system operations, the worker's and no person's command
@@ -2742,10 +2749,10 @@ Named so they are not read as settled:
   verifies; only the gate and lineage checks stand against it. The key
   resolver holds one key: rows under an earlier key id fail the read.
 - **An agent comments in the `internal` audience only.** The `task.comment` row
-  passes `AGENT_AUDIENCES` (`commands/agent-operations.ts`) to
-  `writeTaskComment` (`commands/tasks-comment.ts`), which refuses `client` as
-  `AUDIENCE_NOT_PERMITTED`. This is Nathan's ruling (OWNER-CARD section 6), not
-  an open item.
+  passes `AGENT_AUDIENCES` (`commands/tasks-comment.ts`) to `writeTaskComment`,
+  which refuses `client` as `AUDIENCE_NOT_PERMITTED`. An agent credential
+  (API-2) reaches `commentOnTask` as its agent and gets the same set. This is
+  Nathan's ruling (OWNER-CARD section 6), not an open item.
 - **One lane choice awaits root or owner confirmation.** The heartbeat bounds are 1 hour a beat and 8 hours in total
   (`MAXIMUM_RENEWAL_SECONDS` and `MAXIMUM_LEASE_LIFETIME_SECONDS`,
   `core-runtime/src/heartbeat.ts`). Root ruling 6 at dd30aa8 covers bare agent
