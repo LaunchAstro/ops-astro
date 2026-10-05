@@ -213,14 +213,14 @@ it(
       writeFileSync(join(pause, 'paused'), '');
       throw new Error(`the gate ended before oxlint paused:\n${output}`);
     }
-    expect(output).toContain('pre-ready: (preflight) review preflight: green.');
-
     // Format the committed file in the working tree only, then release oxlint.
     writeFileSync(join(tree, PLANTED), 'export const sum = 1 + 1;\n');
     expect(git('status', '--porcelain')).toBe(`M ${PLANTED}`);
     expect(git('rev-parse', 'HEAD')).toBe(head);
     await writeFile(join(pause, 'release'), 'go\n');
     const code = await exited;
+    // The gate's stdout and the FIFO are separate channels: read its log only once it has ended.
+    expect(output).toContain('pre-ready: (preflight) review preflight: green.');
 
     // H still holds the unformatted file: the gate must refuse H, not announce it green.
     expect(git('show', `${head}:${PLANTED}`)).toBe('export const sum=1+1');
