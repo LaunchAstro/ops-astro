@@ -11,6 +11,8 @@ import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 // @ts-expect-error -- the gate is a plain JavaScript module, as lanes run it
 import * as gate from '../../scripts/pre-ready-steps.mjs';
+// @ts-expect-error -- the gate is a plain JavaScript module, as lanes run it
+import { gate as wholeGate } from '../../scripts/pre-ready.mjs';
 
 const { behaviourNames, changedLint, suiteRegistration } = gate;
 const root = join(import.meta.dirname, '../..');
@@ -120,6 +122,33 @@ it(
     expect(red.message).toContain('planted-title.test.ts');
     const green = behaviourNames(at('clean'));
     expect(green.ok, green.message).toBe(true);
+  },
+  SLOW,
+);
+
+it(
+  'judges the committed head when the working tree changes during the gate',
+  () => {
+    const { head } = at('unformatted');
+    const file = join(tree, 'tests/ci/planted-unformatted.test.ts');
+    const lines: string[] = [];
+    const result = wholeGate(
+      { cwd: tree, base, head, skip: true, pr: { body: '', labels: '', openIssues: '' } },
+      (line: string) => {
+        lines.push(line);
+        // After admission, the lane formats the file without committing it.
+        if (line.startsWith('pre-ready: (preflight)')) {
+          writeFileSync(
+            file,
+            "import { expect, it } from 'vitest';\n\nit('adds up', () => {\n  expect(1 + 1).toBe(2);\n});\n",
+          );
+        }
+      },
+    );
+    git('checkout', '-q', '--', '.');
+    expect(result.ok).toBe(false);
+    expect(result.failed, lines.join('\n')).toBe('b');
+    expect(lines.join('\n')).toContain('planted-unformatted.test.ts');
   },
   SLOW,
 );
