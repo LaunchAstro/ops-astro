@@ -113,6 +113,46 @@ describe.skipIf(serverUrl === undefined)('C33 limits on firing', () => {
     }
   }, 60_000);
 
+  it('a claimer that waited on the rate lock stamps its occurrence at or after its wait ended, so the row stays in the hour the count read', async () => {
+    await hourPasses(w);
+    const { activation } = await f.approved();
+    const held = barrier();
+    const firstIn = barrier();
+    const other = connect(w.db.appUrl, { source: 'runtime' });
+    try {
+      const first = w.inAlpha(async (tx) => {
+        try {
+          await claimOccurrence(tx, activation.id, { dueAt: f.nextDue() });
+          firstIn.release();
+          await held.held;
+        } finally {
+          firstIn.release();
+        }
+      });
+      await firstIn.held;
+      const second = other.withBusiness(w.alpha, async (tx) =>
+        occurrenceOf(await claimOccurrence(tx, activation.id, { dueAt: f.nextDue() })),
+      );
+      await awaitWaiters(w.db, 1);
+      // The database's clock while the second is still parked on the lock.
+      const [parked] = await w.db.admin.execute<{ readonly at: string }>(
+        `select clock_timestamp()::text as at`,
+      );
+      held.release();
+      await first;
+      const { id } = await second;
+      const [stamp] = await w.db.admin.execute<{ readonly after_wait: boolean }>(
+        `select recorded_at >= $2::timestamptz as after_wait
+           from public.activation_occurrences where id = $1`,
+        [id, parked?.at],
+      );
+      expect(stamp).toStrictEqual({ after_wait: true });
+    } finally {
+      held.release();
+      await other.close();
+    }
+  }, 60_000);
+
   it('the 601st occurrence in an hour per business is refused as over the business rate on an activation with room of its own, and the next window fires', async () => {
     await hourPasses(w);
     const busy = await f.approved();
