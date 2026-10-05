@@ -146,3 +146,144 @@ test('RD-2 find-copies lists a row naming only the agent of a credential the per
   const found = await findCopies(adminUrl, ['--text', name], 'alpha');
   expect(found.hits.map((hit) => [hit.table, hit.id])).toContainEqual(['grants', agentGrant]);
 });
+
+test('find-copies lists the agent acting for a person through a delegation, and a grant naming that agent alone', async () => {
+  const { world } = harness;
+  const ids = {
+    personA: randomUUID(),
+    actorPA: randomUUID(),
+    personB: randomUUID(),
+    actorPB: randomUUID(),
+    agentG: randomUUID(),
+    delegationD: randomUUID(),
+    grantH: randomUUID(),
+  };
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    await tx.query(
+      `insert into public.people (business_id, id, display_name) values ($1, $2, 'Rhea Delegate')`,
+      [world.alpha, ids.personA],
+    );
+    await tx.query(
+      `insert into public.actors (business_id, id, kind, person_id) values ($1, $2, 'person', $3)`,
+      [world.alpha, ids.actorPA, ids.personA],
+    );
+    await tx.query(
+      `insert into public.people (business_id, id, display_name) values ($1, $2, 'Otto Unrelated')`,
+      [world.alpha, ids.personB],
+    );
+    await tx.query(
+      `insert into public.actors (business_id, id, kind, person_id) values ($1, $2, 'person', $3)`,
+      [world.alpha, ids.actorPB, ids.personB],
+    );
+    await tx.query(
+      `insert into public.actors (business_id, id, kind, person_id) values ($1, $2, 'agent', null)`,
+      [world.alpha, ids.agentG],
+    );
+    await tx.query(
+      `insert into public.delegations
+         (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
+          collections, actions, credential_hash, expires_at, purpose_scope_kind, purpose_scope_id)
+       values ($1, $2, $3, $4, $5, 'triage', array['tasks'], array['read'], $6,
+               now() + interval '1 day', 'record', $7)`,
+      [
+        world.alpha,
+        ids.delegationD,
+        ids.agentG,
+        ids.personA,
+        ids.actorPA,
+        'b'.repeat(64),
+        randomUUID(),
+      ],
+    );
+    await tx.query(
+      `insert into public.grants
+         (business_id, id, subject_kind, subject_id, scope_kind, collection, action, granted_by_actor_id)
+       values ($1, $2, 'actor', $3, 'business', 'tasks', 'read', $4)`,
+      [world.alpha, ids.grantH, ids.agentG, ids.actorPB],
+    );
+  });
+
+  const found = await findCopies(adminUrl, ['--text', 'Rhea Delegate', '--export'], 'alpha');
+  expect(found.code).toBe(0);
+  const hit = (table: string, id: string) =>
+    found.hits.find((each) => each.table === table && each.id === id);
+
+  // The delegation itself is found through A's own ids (the Scenario's Actual).
+  expect(hit('delegations', ids.delegationD)?.people).toContain(ids.personA);
+
+  // Expected: the agent acting for A and the grant naming that agent alone are
+  // copies attributed to A, and the agent's id is in A's re-search flags.
+  expect(hit('actors', ids.agentG), 'agent G is listed').toBeDefined();
+  expect(hit('actors', ids.agentG)?.people, 'agent G is a copy attributed to A').toContain(
+    ids.personA,
+  );
+  expect(hit('grants', ids.grantH)?.people, 'grant H is a copy attributed to A').toContain(
+    ids.personA,
+  );
+  const searchAgain = found.stderr
+    .split('\n')
+    .find((line) => line.includes(`to search again for ${ids.personA} `));
+  expect(searchAgain, "A's re-search flags carry G").toContain(`--id ${ids.agentG}`);
+});
+
+test('the login an issued agent signs in with is found, and its id kept for the search after an erasure', async () => {
+  const { world } = harness;
+  const ids = {
+    person: randomUUID(),
+    actor: randomUUID(),
+    agent: randomUUID(),
+    credential: randomUUID(),
+    login: randomUUID(),
+    link: randomUUID(),
+  };
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    await tx.query(
+      `insert into public.people (business_id, id, display_name) values ($1, $2, 'Kit Issuer')`,
+      [world.alpha, ids.person],
+    );
+    await tx.query(
+      `insert into public.actors (business_id, id, kind, person_id) values ($1, $2, 'person', $3)`,
+      [world.alpha, ids.actor, ids.person],
+    );
+    await tx.query(
+      `insert into public.actors (business_id, id, kind, person_id) values ($1, $2, 'agent', null)`,
+      [world.alpha, ids.agent],
+    );
+    await tx.query(
+      `insert into public.agent_credentials
+         (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
+          credential_hash, credential_scheme, credential_key_id, expires_at)
+       values ($1, $2, $3, $4, $5, 'triage', array['tasks:read'], $6, 'hmac-sha256-v1', 'k1',
+               now() + interval '1 day')`,
+      [world.alpha, ids.credential, ids.agent, ids.person, ids.actor, 'a'.repeat(64)],
+    );
+    await tx.query(
+      `insert into public.logins (business_id, id, provider, subject) values ($1, $2, 'dry-run', $3)`,
+      [world.alpha, ids.login, `opaque-${randomUUID()}`],
+    );
+    await tx.query(
+      `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
+       values ($1, $2, $3, $4, $5)`,
+      [world.alpha, ids.link, ids.login, ids.agent, ids.actor],
+    );
+  });
+
+  const found = await findCopies(adminUrl, ['--text', 'Kit Issuer', '--export'], 'alpha');
+  expect(found.code).toBe(0);
+  const pairs = found.hits.map((hit) => [hit.table, hit.id]);
+  // Setup sanity: the agent and its sign-in mapping are found.
+  expect(pairs, 'the agent actor is found').toContainEqual(['actors', ids.agent]);
+  expect(pairs, 'the actor_logins mapping is found').toContainEqual(['actor_logins', ids.link]);
+
+  // Expected: the agent's own sign-in row, attributed to the issuing person.
+  const login = found.hits.find((hit) => hit.table === 'logins' && hit.id === ids.login);
+  expect(login, "the issued agent's logins row is listed").toBeDefined();
+  expect(login?.people, 'attributed to the issuing person').toContain(ids.person);
+
+  // Expected: its id is kept among the person's --id flags for the re-search.
+  const line = found.stderr
+    .split('\n')
+    .find((text) => text.includes(`to search again for ${ids.person} `));
+  expect(line, "the issuing person's re-search line").toBeDefined();
+  expect(line, "the agent's login id is among the --id flags").toContain(`--id ${ids.login}`);
+});

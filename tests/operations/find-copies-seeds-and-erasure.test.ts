@@ -277,3 +277,58 @@ it('a text naming two people prints the ids of each on a line of its own', async
     expect(line).not.toContain(other.actor);
   }
 });
+
+it('a row naming only the stored name of a person merged with the one named is found, by the name and by the printed ids', async () => {
+  const a = randomUUID();
+  const b = randomUUID();
+  await world.db.admin.execute(
+    `insert into public.people (business_id, id, display_name)
+     values ($1, $2, 'Anna Current'), ($1, $3, 'Eleanor Previous')`,
+    [world.alpha, a, b],
+  );
+  const operator = await plantPerson(world, world.alpha, 'Operator Cole');
+  await world.db.admin.execute(
+    `insert into public.person_merges
+       (business_id, id, surviving_person_id, absorbed_person_id, decided_by_actor_id, evidence)
+     values ($1, $2, $3, $4, $5, 'same person')`,
+    [world.alpha, randomUUID(), a, b, operator.actor],
+  );
+  const incident = randomUUID();
+  await world.db.admin.execute(
+    `insert into public.privacy_incidents
+       (business_id, id, what_happened, found_at, found_by, affected, information_kinds, status,
+        recorded_by_actor)
+     values ($1, $2, 'Misrouted message', now(), 'Operator', 'Eleanor Previous',
+             array['contact'], 'closed', $3)`,
+    [world.alpha, incident, operator.actor],
+  );
+
+  // The runbook's runs: the name with --export; neither person has an
+  // identifier, so there is no email or phone run.
+  const byName = await findCopies(world.adminUrl, ['--text', 'Anna Current', '--export'], 'alpha');
+  expect(byName.code).toBe(0);
+
+  // The re-search: the same text with A's and B's printed --id flags.
+  const flags = byName.stderr
+    .split('\n')
+    .filter((line) => line.includes(`for ${a} (`) || line.includes(`for ${b} (`))
+    .flatMap((line) => (line.split('add: ')[1] ?? '').split(' '))
+    .filter((part) => part !== '');
+  expect(flags, 'A and B each print their --id flags').toContain(b);
+  const again = await findCopies(
+    world.adminUrl,
+    ['--text', 'Anna Current', '--export', ...flags],
+    'alpha',
+  );
+  expect(again.code).toBe(0);
+
+  const holds = (hits: typeof byName.hits) =>
+    pairs(hits).some(([table, id]) => table === 'privacy_incidents' && id === incident);
+  expect({
+    'every-copy inventory includes I': holds(byName.hits),
+    're-search with printed --id flags includes I': holds(again.hits),
+  }).toEqual({
+    'every-copy inventory includes I': true,
+    're-search with printed --id flags includes I': true,
+  });
+});
