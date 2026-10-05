@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { createWorker } from '../../apps/worker/worker.ts';
-import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { SYNTHETIC_USAGE, type Provider } from '../../apps/worker/usage.ts';
 import type { Transport } from '../../apps/cli/client.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { attempts, HOST, launched, linking, r, useReceiptWorld } from './aw-08-receipt-world.ts';
@@ -37,6 +37,17 @@ const clientSignOff = async (value: 'true' | 'false') =>
     [r.fixture.business],
   );
 
+/** The worker on this world's agent login and the launched task's delegation. */
+const workerOn = (transport: Transport, delegation: string, provider: Provider) =>
+  createWorker({
+    transport,
+    businessKey: 'alpha',
+    credential: r.agentToken,
+    delegation,
+    reporter: SYNTHETIC_USAGE,
+    provider,
+  });
+
 it('an applied comment is still observed and settled after client sign-off turns on', async () => {
   const { taskId, credential } = await launched();
   await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
@@ -58,17 +69,10 @@ it('an applied comment is still observed and settled after client sign-off turns
     if (path.endsWith('/task/comment')) commentStatuses.push(answer.status);
     return answer;
   };
-  const worker = createWorker({
-    transport,
-    businessKey: 'alpha',
-    credential: r.agentToken,
-    delegation: credential,
-    reporter: SYNTHETIC_USAGE,
-    provider: {
-      call: async (...args) => {
-        providerCalls += 1;
-        return await linked.call(...args);
-      },
+  const worker = workerOn(transport, credential, {
+    call: async (...args) => {
+      providerCalls += 1;
+      return await linked.call(...args);
     },
   });
 
@@ -114,17 +118,10 @@ it('a provider answer whose comment answer was lost is kept through a sign-off r
     }
     return answer;
   };
-  const worker = createWorker({
-    transport,
-    businessKey: 'alpha',
-    credential: r.agentToken,
-    delegation: credential,
-    reporter: SYNTHETIC_USAGE,
-    provider: {
-      call: async (...args) => {
-        providerCalls += 1;
-        return await linked.call(...args);
-      },
+  const worker = workerOn(transport, credential, {
+    call: async (...args) => {
+      providerCalls += 1;
+      return await linked.call(...args);
     },
   });
 
@@ -164,14 +161,7 @@ it('an applied comment is observed and settled while client sign-off stays on', 
     }
     return await throughApi(path, body, bearer, delegation);
   };
-  const worker = createWorker({
-    transport,
-    businessKey: 'alpha',
-    credential: r.agentToken,
-    delegation: credential,
-    reporter: SYNTHETIC_USAGE,
-    provider: linked,
-  });
+  const worker = workerOn(transport, credential, linked);
 
   expect(await worker.applyOnce(taskId)).toEqual({ fault: { status: 503 } });
   await clientSignOff('true');
