@@ -168,18 +168,17 @@ function replaced(
   if (entry !== undefined) {
     const kept = unmovable(path, entry, uid);
     if (kept !== undefined) return kept;
-    renameSync(path, earlier);
   }
   try {
+    if (entry !== undefined) renameSync(path, earlier);
     renameSync(copy, path);
   } catch (error) {
     // If the put-back fails too, the earlier copy goes with the temporary
     // folder; one promotion at a time (the runbook) leaves no one to take the name.
-    if (lexists(earlier) && !lexists(path)) {
-      renameSync(earlier, path);
-      // Its own modes again, so the release production still points at reads as before.
-      if (entry?.isDirectory() === true) chmodSync(path, entry.mode & 0o7777);
-    }
+    if (lexists(earlier) && !lexists(path)) renameSync(earlier, path);
+    // The earlier copy, moved or not, gets its own modes again, so the release
+    // production still points at reads as before.
+    if (entry?.isDirectory() === true && lexists(path)) chmodSync(path, entry.mode & 0o7777);
     throw error;
   }
   return undefined;
