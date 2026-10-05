@@ -13,7 +13,6 @@ import { buildCatalogue, type CatalogueRow } from '../../packages/core-wire/src/
 import { authorised, createApiFixture, post, tokenFor, type ApiFixture } from './fixture.ts';
 import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
-import { seedSteps } from './api-1-isolation-steps.ts';
 
 export type Name = 'client1' | 'client2' | 'bravo' | 'other';
 /** Whose delegated work a task, title, lease or reservation is: the agent's own, or the second Alpha person's. */
@@ -49,6 +48,8 @@ export let ownRunId = '';
 export let ownLease: { leaseId: string; fence: unknown };
 /** An agent of Alpha with no delegation of its own, the helper a hand-over names. */
 export let helperAgentId = '';
+/** The second Alpha person and its token, and the delegating person's: what later seeding (C41-A's steps) acts as. */
+export let other: { person: Member; token: string; alphaToken: string };
 /** Raw id or title to its label, so a leak is named and no record value is printed. */
 const labels = new Map<string, string>();
 
@@ -174,7 +175,7 @@ async function seedDelegations(alphaToken: string): Promise<void> {
   foreignTaskId = theirs.delegatedTask;
   foreignRunId = theirs.runId;
   foreignLease = { leaseId: theirs.leaseId, fence: theirs.fence };
-  await seedSteps(otherPerson, otherToken, alphaToken);
+  other = { person: otherPerson, token: otherToken, alphaToken };
 }
 
 /** An Alpha person proposes and approves one task: its reservation, held for pickup. */

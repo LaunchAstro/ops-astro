@@ -4,11 +4,11 @@
 // on each of two onboardings the other Alpha person started. The agent picks
 // one up under its delegating person's own delegation (the control); no
 // delegation of the agent reaches the other (the crossing,
-// api-1-isolation-delegation.ts). Seeded by the world's setup; made-up names
+// api-1-isolation-delegation.ts). Seeded by `useSteps` after the world's setup; made-up names
 // only.
 
 import { randomUUID } from 'node:crypto';
-import { expect, it } from 'vitest';
+import { beforeAll, expect, it } from 'vitest';
 import type { CatalogueRow } from '../../packages/core-wire/src/index.ts';
 import { authorised, post } from './fixture.ts';
 import { grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
@@ -19,6 +19,7 @@ import {
   detail,
   fixture,
   labelAs,
+  other,
   rows,
 } from './api-1-isolation-world.ts';
 import { asAgent, canonical } from './api-1-isolation-surfaces.ts';
@@ -52,7 +53,7 @@ async function welcomeOf(otherToken: string, name: string): Promise<string> {
 }
 
 /** The other person's two onboardings, and the agent's pickup of its own step. */
-export async function seedSteps(
+async function seedSteps(
   otherPerson: Member,
   otherToken: string,
   alphaToken: string,
@@ -100,6 +101,13 @@ export async function foreignOnboarding(): Promise<unknown> {
       order by s.position`,
     [fixture.business, foreignStep],
   );
+}
+
+/** Seeds the steps in the calling suite, after the world's own setup. */
+export function useSteps(): void {
+  beforeAll(async () => {
+    await seedSteps(other.person, other.token, other.alphaToken);
+  }, 60_000);
 }
 
 export function ownStepControl(): void {
