@@ -31,6 +31,7 @@ import {
   WAIT_SECONDS,
   type ReservedCall,
 } from './broker-reserve.ts';
+import { sendingAccount } from './broker-carrier.ts';
 import { hold, release, settlementOf, settlePriced } from './broker-settle.ts';
 import type {
   Broker,
@@ -252,11 +253,10 @@ export async function callModelForPlanning(
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
   const { route } = chosen;
-  const account = (await broker.custody.describe(route.credentialRef, operation.destination))
-    ?.account;
+  const account = await sendingAccount(broker, route, operation.destination);
   const held = await database.withBusiness(
     businessId,
-    async (tx) => await holdPlanning(tx, request, operation, route, account ?? null),
+    async (tx) => await holdPlanning(tx, request, operation, route, account),
   );
   if (!('reserved' in held)) return held;
   return await sendPlanning(database, businessId, held.reserved, fields, broker);

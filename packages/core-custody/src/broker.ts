@@ -51,6 +51,7 @@ import { releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { resolveFields } from './broker-sources.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
+import { sendingAccount } from './broker-carrier.ts';
 import { settle, settlementOf } from './broker-settle.ts';
 import type {
   Broker,
@@ -208,9 +209,7 @@ export async function sendReservedCall(
 ): Promise<ModelCallResult> {
   // The account custody will present, recorded before the send: the only
   // proof a later lookup asks the account that carried it (broker-reconcile.ts).
-  const { credentialRef } = reserved.route;
-  const carrier = await broker.custody.describe(credentialRef, reserved.operation.destination);
-  const account = carrier?.account ?? null;
+  const account = await sendingAccount(broker, reserved.route, reserved.operation.destination);
   const started = await markStarted(
     database,
     businessId,

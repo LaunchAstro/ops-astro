@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
 import { mayCarry } from './credentials.ts';
+import { sendingAccount } from './broker-carrier.ts';
 import {
   atCeiling,
   registerPromptCopy,
@@ -191,12 +192,11 @@ export async function callModelInConversation(
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
   const { route } = chosen;
-  const account = (await broker.custody.describe(route.credentialRef, operation.destination))
-    ?.account;
+  const account = await sendingAccount(broker, route, operation.destination);
   const callId = await database.withBusiness(businessId, async (tx) =>
     (await atCeiling(tx, operation, route))
       ? null
-      : await insertStarted(tx, request.conversation.id, operation, route, account ?? null),
+      : await insertStarted(tx, request.conversation.id, operation, route, account),
   );
   if (callId === null) {
     return { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: WAIT_SECONDS };

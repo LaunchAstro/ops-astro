@@ -1552,7 +1552,9 @@ both tenancy-scoped with row security forced, and the fair share's count
   releases nothing: a person records its outcome. The account is the
   credential file's `account` label, and the pass trusts it: it must be the
   provider's own account or organisation id, never reused for another
-  account's key. Test: `reconcile-releases-nothing-without-its-carrier`.
+  account's key. A destination's address is not recorded: never re-point a
+  destination at another instance the same key reaches while calls on it are
+  held unknown. Test: `reconcile-releases-nothing-without-its-carrier`.
 - Usage (`0098_model_call_usage`, ORCH37): a settled call records the model
   the provider says answered (`model_id`, null when the answer named none)
   and the units its answer says it used (`input_units`, `output_units`, both
