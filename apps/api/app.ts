@@ -102,6 +102,7 @@ import {
   type Watching,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
+import { recordsIn } from './records-in.ts';
 import { mountFactorRoutes, mountPublicLegal } from './account-routes.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 import type { ErrorSinkLink } from './health/error-sink-link.ts';
@@ -917,13 +918,6 @@ const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
 const NO_CREDENTIAL = 'no-credential';
 
-/** How many records a read handed out: a task is one, a list (a search's hits too) is its length. */
-function recordsIn(read: object): number {
-  const lists = ['tasks', 'persons', 'queue', 'hits'].map((key): unknown => Reflect.get(read, key));
-  const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
-  if (listed !== undefined) return listed.length;
-  return 'task' in read || 'sharedTask' in read ? 1 : 0;
-}
 /** The answer's outcome, as the detector reads it: no content, only scopes and a code. */
 function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
   const presented = context.get(PRESENTED) as VerifiedSubject | undefined;

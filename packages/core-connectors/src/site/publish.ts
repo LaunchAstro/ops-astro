@@ -23,11 +23,11 @@
 import type { ProviderResult } from '../call.ts';
 import { checkEnvelope, type CorrectionTarget, type ProposedChange } from './envelope.ts';
 import {
+  calibrated,
   claimed,
-  occurrenceOf,
+  flipped,
   proven,
   reconciled,
-  showsAt,
   type Occurrence,
   type ReadBack,
 } from './reconcile.ts';
@@ -66,23 +66,24 @@ export interface Published {
   readonly liveUrl: string;
 }
 
+/** A send or read back by the seam, under the provider's idempotency key. */
+type Seamed = { readonly seam: string; readonly dispatchToken: string };
+
 export interface PublishPorts {
   /** `site.source.read` of the target file on the branch being published. */
   readonly readSource: () => Promise<ProviderResult<{ content: string; revision: string }>>;
   /** `site.request.read` by the seam: absent only while the request is provably unmerged. */
   // The wiring must return landed only when the merged head is the approved one, else unknown.
-  readonly readBack: (input: {
-    seam: string;
-    dispatchToken: string;
-  }) => Promise<ReadBack<Published>>;
+  readonly readBack: (input: Seamed) => Promise<ReadBack<Published>>;
   /** `site.publish`, once. */
-  readonly publish: (input: {
-    seam: string;
-    dispatchToken: string;
-    versionDigest: string;
-  }) => Promise<ProviderResult<Published>>;
+  readonly publish: (
+    input: Seamed & { versionDigest: string },
+  ) => Promise<ProviderResult<Published>>;
   readonly cancellation: () => Promise<'none' | 'requested'>;
-  readonly raiseTask: (reason: string) => Promise<void>;
+  /** At most one task per reason and key (one effect's token); the reasons are a closed set. */
+  readonly raiseTask: (reason: string, key: string) => Promise<void>;
+  /** `site.capture` of the catalogued page before the send: the occurrence is calibrated on it. */
+  readonly capture: ObservePorts['capture'];
 }
 
 export type PublishRefusal =
@@ -112,12 +113,12 @@ export type PublishOutcome =
 
 const refused = (code: PublishRefusal): PublishOutcome => ({ state: 'refused', code });
 
-/** Every check before the one dispatch, in order; drift counts only while nothing has landed. */
+/** Each check before the dispatch in order, then the served page; drift counts until a landing. */
 async function beforeDispatch(
   job: PublishJob,
   ports: PublishPorts,
   back: ReadBack<Published>,
-): Promise<PublishOutcome | undefined> {
+): Promise<PublishOutcome | { readonly preImage: string | undefined }> {
   const { decision } = job;
   if (decision === undefined || decision.decision !== 'approve') return refused('APPROVAL_MISSING');
   const bound =
@@ -126,7 +127,8 @@ async function beforeDispatch(
     versionDigestOf(job) === job.version.digest;
   if (!bound) return refused('PROPOSAL_SUPERSEDED');
   if (!checkEnvelope(job.change, job.target).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
-  if (back.state !== 'absent') return undefined;
+  // After a landing the page may already show the correction: nothing read then is a pre-image.
+  if (back.state !== 'absent') return { preImage: undefined };
   const current = await ports.readSource();
   if (current.kind !== 'ok') return refused('CONTENT_DRIFT_UNCHECKED');
   const pinned = contentDigest(job.change.files[0]?.before ?? null);
@@ -136,8 +138,13 @@ async function beforeDispatch(
   ) {
     return { state: 'refused', code: 'CONTENT_DRIFTED', waitsOn: 'person' };
   }
+  if ((await ports.cancellation()) === 'requested') return refused('CANCELLED');
+  const captured = await ports.capture(job.pageUrl);
+  // A capture that ended on another address (a redirect) is not this page's pre-image.
+  const onPage = captured.ok && captured.value.url === job.pageUrl;
+  const cleared = { preImage: onPage ? captured.value.text : undefined };
   // Last, after every awaited read: a cancellation that arrived during one still stops the send.
-  return (await ports.cancellation()) === 'requested' ? refused('CANCELLED') : undefined;
+  return (await ports.cancellation()) === 'requested' ? refused('CANCELLED') : cleared;
 }
 
 export async function publishCorrection(
@@ -148,18 +155,24 @@ export async function publishCorrection(
   const readBack = () => ports.readBack({ seam: job.seam, dispatchToken: token });
   const send = () =>
     ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest });
-  const answer = await claimed(job.seam, token, async () => {
+  const sent = await claimed(job.seam, token, async () => {
     const back = await readBack();
-    return (await beforeDispatch(job, ports, back)) ?? (await reconciled(back, send, readBack));
+    const checked = await beforeDispatch(job, ports, back);
+    if ('state' in checked) return checked;
+    return { ...checked, answer: await reconciled(back, send, readBack) };
   });
-  if ('state' in answer) return answer;
+  if ('state' in sent) return sent;
+  const { preImage, answer } = sent;
   const unknown = async (code: string): Promise<PublishOutcome> => {
-    await ports.raiseTask(code);
+    await ports.raiseTask(code, token);
     return { state: 'unknown', code, reference: job.seam, dispatchToken: token };
   };
   if ((await ports.cancellation()) === 'requested') return unknown('CANCELLED_AFTER_DISPATCH');
   if (answer.kind === 'ok') {
-    const occurrence = occurrenceOf(job.change, job.target);
+    // Live is read at the provider's address: the place holds only on the page it was read on.
+    const onPage = answer.value.liveUrl === job.pageUrl;
+    const occurrence = onPage ? calibrated(job.change, job.target, preImage) : undefined;
+    if (occurrence === undefined) await ports.raiseTask('LIVE_CHECK_UNPLACED', token);
     return { state: 'accepted', ...answer.value, dispatchToken: token, occurrence };
   }
   if (proven('site.publish', answer)) {
@@ -173,15 +186,25 @@ export interface Served {
   readonly served: boolean;
 }
 
+/** A fenced capture: the page's text and the address it ended on after any redirect. */
+export type Captured =
+  | { readonly ok: true; readonly value: { readonly text: string; readonly url: string } }
+  | { readonly ok: false };
+
 export interface ObservePorts {
   /** `site.deployment.read`. */
   readonly readDeployment: (deploymentId: string) => Promise<ProviderResult<Served>>;
   /** `site.capture` of the public address, through the fence. */
-  readonly capture: (
-    url: string,
-  ) => Promise<
-    { readonly ok: true; readonly value: { readonly text: string } } | { readonly ok: false }
-  >;
+  readonly capture: (url: string) => Promise<Captured>;
+  readonly raiseTask: PublishPorts['raiseTask'];
+}
+
+/** The deployment answers served, at this revision. */
+async function servedAt(ports: ObservePorts | RevertPorts, deploymentId: string, revision: string) {
+  const deployment = await ports.readDeployment(deploymentId);
+  return (
+    deployment.kind === 'ok' && deployment.value.served && deployment.value.revision === revision
+  );
 }
 
 /** Live is two observations: the revision served, and the fenced capture showing the new word where it was approved. */
@@ -190,52 +213,36 @@ export async function observeLanded(
   target: CorrectionTarget,
   ports: ObservePorts,
 ): Promise<Accepted | (Omit<Accepted, 'state'> & { readonly state: 'live' })> {
-  const deployment = await ports.readDeployment(accepted.deploymentId);
-  const served =
-    deployment.kind === 'ok' &&
-    deployment.value.served &&
-    deployment.value.revision === accepted.revision;
-  if (!served) return accepted;
+  if (!(await servedAt(ports, accepted.deploymentId, accepted.revision))) return accepted;
   const captured = await ports.capture(accepted.liveUrl);
-  const where = accepted.occurrence;
-  if (!captured.ok || !showsAt(captured.value.text, where, target.replacement, target.word)) {
-    return accepted;
-  }
-  return { ...accepted, state: 'live' };
+  if (!captured.ok || captured.value.url !== accepted.liveUrl) return accepted;
+  const live = flipped(captured.value.text, accepted.occurrence, target.word, target.replacement);
+  if (live === 'unconfirmable')
+    await ports.raiseTask('LIVE_CHECK_UNCONFIRMED', accepted.dispatchToken);
+  if (typeof live !== 'object') return accepted;
+  return { ...accepted, state: 'live', occurrence: { ...live, liveAt: captured.value.url } };
 }
+
+type Deployed = { readonly revision: string; readonly deploymentId: string };
 
 export interface RevertPorts extends Omit<ObservePorts, 'capture'> {
   readonly now: () => number;
   /** `site.source.read` of the default branch head: absent only while it provably holds no revert. */
-  readonly readBack: (input: {
-    seam: string;
-    dispatchToken: string;
-  }) => Promise<ReadBack<{ revision: string; deploymentId: string }>>;
+  readonly readBack: (input: Seamed) => Promise<ReadBack<Deployed>>;
   /** `site.source.revert`: the forward change back to the pinned pre-image. */
-  readonly revert: (input: {
-    seam: string;
-    dispatchToken: string;
-  }) => Promise<ProviderResult<{ revision: string; deploymentId: string }>>;
-  readonly capture: () => Promise<
-    { readonly ok: true; readonly value: { readonly text: string } } | { readonly ok: false }
-  >;
+  readonly revert: (input: Seamed) => Promise<ProviderResult<Deployed>>;
+  readonly capture: () => Promise<Captured>;
 }
 
+type RevertAccepted = Deployed & { readonly state: 'revert_accepted'; readonly decidedAt: string };
+
 export type RevertOutcome =
-  | {
+  | RevertAccepted
+  | (Omit<RevertAccepted, 'state'> & {
       readonly state: 'reverted';
-      readonly revision: string;
-      readonly deploymentId: string;
-      readonly decidedAt: string;
       readonly observedAt: string;
       readonly intervalMs: number;
-    }
-  | {
-      readonly state: 'revert_accepted';
-      readonly revision: string;
-      readonly deploymentId: string;
-      readonly decidedAt: string;
-    }
+    })
   | { readonly state: 'unknown' | 'failed'; readonly code: string; readonly decidedAt: string };
 
 /**
@@ -247,8 +254,8 @@ export async function revertCorrection(
   input: {
     readonly publishedRevision: string;
     readonly target: CorrectionTarget;
-    /** The approved change being reverted: it places the occurrence the page is observed at. */
-    readonly change: ProposedChange;
+    /** The place the live check saw change (the live outcome's): the page must return to it. */
+    readonly occurrence: Occurrence | undefined;
     readonly seam: string;
     /** When the revert was decided, kept across every resumed attempt until it is observed. */
     readonly decidedAt: number;
@@ -269,14 +276,18 @@ export async function revertCorrection(
   }
   const { revision, deploymentId } = reverted.value;
   const pending = { state: 'revert_accepted', revision, deploymentId, decidedAt } as const;
-  const deployment = await ports.readDeployment(deploymentId);
-  const served =
-    deployment.kind === 'ok' && deployment.value.served && deployment.value.revision === revision;
-  if (!served) return pending;
+  const where = input.occurrence;
+  // Only a place seen live tracks the target: without one no observation can confirm the revert.
+  if (where?.liveAt === undefined) {
+    await ports.raiseTask('REVERT_CHECK_UNPLACED', token);
+    return pending;
+  }
+  if (!(await servedAt(ports, deploymentId, revision))) return pending;
   const captured = await ports.capture();
-  const { word, replacement } = input.target;
-  const where = occurrenceOf(input.change, input.target);
-  if (!captured.ok || !showsAt(captured.value.text, where, word, replacement)) return pending;
+  if (!captured.ok || captured.value.url !== where.liveAt) return pending;
+  const back = flipped(captured.value.text, where, input.target.replacement, input.target.word);
+  if (back === 'unconfirmable') await ports.raiseTask('REVERT_CHECK_UNCONFIRMED', token);
+  if (typeof back !== 'object') return pending;
   const observed = ports.now();
   return {
     state: 'reverted',

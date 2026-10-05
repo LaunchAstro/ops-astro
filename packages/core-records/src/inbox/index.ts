@@ -20,7 +20,7 @@ export {
   type InboxReason,
   type InboxWorkState,
 } from './items.ts';
-export { INTERNAL_ROLE_KEYS, readScopes, taskAccess } from './access.ts';
+export { INTERNAL_ROLE_KEYS, REACH, readScopes, taskAccess } from './access.ts';
 export {
   raiseAssignment,
   raiseDecision,

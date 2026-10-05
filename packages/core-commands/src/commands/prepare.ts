@@ -529,12 +529,14 @@ const SCOPE_OF: Readonly<
  * The map whose record-scoped grant also covers this request: the map a
  * targeted ticket belongs to, or the map a new task is filed under. Only a
  * task collection command, and never the record itself (its own scope was
- * the first question).
+ * the first question). `hold` reads the named task `for share`, so no retype
+ * or move of it commits before the command does.
  */
 async function coveringMap(
   tx: TenantQuery,
   request: UncheckedRequest,
   declaration: CommandDeclaration,
+  hold = false,
 ): Promise<string | undefined> {
   if (declaration.collection !== 'task') return undefined;
   const named =
@@ -545,7 +547,7 @@ async function coveringMap(
         : undefined;
   if (!isUuid(named)) return undefined;
   const id = named.toLowerCase();
-  const facts = await wayfinderFacts(tx, id);
+  const facts = await wayfinderFacts(tx, id, hold);
   if (facts?.mapId === null || facts?.mapId === undefined) return undefined;
   // A create is covered only when filed under the map itself, never under a ticket.
   if (declaration.name === 'task.create') return facts.type === 'map' ? facts.mapId : undefined;
@@ -671,6 +673,15 @@ export async function prepareCommand(
         refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES),
       );
     }
+  } else if (
+    viaMap !== undefined &&
+    declaration.name === 'task.create' &&
+    (await coveringMap(tx, request, declaration, true)) !== viaMap.id
+  ) {
+    // A create admitted by its parent map's grant: the parent is held and read
+    // again, so a retype that committed while this waited is refused, and none
+    // commits before the task is filed under it (the handler holds it `for share` too).
+    return viaMap.refusal;
   }
 
   if ('refusal' in parsed) return refused(parsed.refusal);

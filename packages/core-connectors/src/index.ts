@@ -25,6 +25,11 @@ export {
   type SettleLevel,
 } from './operation.ts';
 export {
+  AUTH_UPDATE_USER_PASSWORD,
+  authPasswordAdapter,
+  PASSWORD_REFUSED_STATUS,
+} from './auth-password.ts';
+export {
   effectiveClass,
   eligibleRoutes,
   LOCAL_MODEL_REQUIRED_WORDS,
@@ -66,6 +71,7 @@ export {
   type EmailHookVerdict,
 } from './email-hook.ts';
 export {
+  checkableSender,
   checkSender,
   dmarcPolicy,
   type DmarcPolicy,

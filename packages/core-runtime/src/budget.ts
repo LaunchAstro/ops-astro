@@ -194,6 +194,10 @@ export type Settlement =
       readonly state: 'liability_unknown';
       readonly heldMinor: number;
       readonly observedMinor: number;
+      /** The attempt's own priced cost, apart from the hold's settled calls. */
+      readonly costMinor: number;
+      /** Why the hold stays whole: spend above it, or a model call on it still open. */
+      readonly cause: 'over_hold' | 'call_open';
     };
 
 export function settledAt(heldMinor: bigint, spentMinor: bigint): Settlement {
@@ -205,12 +209,29 @@ export function settledAt(heldMinor: bigint, spentMinor: bigint): Settlement {
   };
 }
 
+/** A hold's model calls: what the settled ones cost, and whether one was sent and never settled. */
+export interface HoldCalls {
+  readonly spentMinor: bigint;
+  readonly open: boolean;
+}
+
+/** No model calls: what a person's outcome passes, since it settles the whole hold itself. */
+export const NO_CALLS: HoldCalls = { spentMinor: 0n, open: false };
+
 /**
- * T2d: settle a dispatched attempt at its priced cost, under the caller's step,
- * lease and reservation locks. The step's attempt, the reservation and the
- * envelope move in the caller's one transaction, with the command's audit
- * event after them, so a failure in any rolls back all. The envelope gives
- * back the hold and takes the cost, which releases the difference to the cap.
+ * T2d: settle a dispatched attempt at its priced cost, under the caller's
+ * envelope, step, lease and reservation locks (the envelope first, in the
+ * contract's order). The step's attempt, the reservation and the envelope move
+ * in the caller's one transaction, with the command's audit event after them,
+ * so a failure in any rolls back all.
+ *
+ * The hold spent the attempt's cost and what its settled model calls cost
+ * (`calls`: observation and the reconciliation pass read them with
+ * `modelCallsOn`; a person's "happened" outcome settles the whole hold and
+ * passes `NO_CALLS`). A call sent and never settled, or a total above
+ * the hold, keeps the whole hold as `liability_unknown` for a person (O9,
+ * #832). Otherwise the envelope gives back the hold and takes that total,
+ * which releases the difference to the cap; the attempt records its own cost.
  * No lease, run or task state moves: money settles on its own (an expired
  * lease included). Settling, failing or keeping the hold for a person raises
  * the attempt's one alert (T2h).
@@ -224,48 +245,61 @@ export async function settleAtObserved(
     readonly envelopeId: string;
     readonly heldMinor: bigint;
     readonly costMinor: bigint;
+    readonly calls: HoldCalls;
     readonly outcome: 'completed' | 'failed';
   },
 ): Promise<Settlement> {
-  if (of.costMinor > of.heldMinor) {
-    await tx.query(
-      `update public.attempts set state = 'liability_unknown' where business_id = $1 and id = $2`,
-      [tx.businessId, of.attemptId],
-    );
-    await raiseAlert(tx, {
-      taskId: of.taskId,
-      causeId: of.attemptId,
-      raised: { kind: 'awaiting_person', waitingReason: 'liability_unknown' },
-    });
+  const { calls } = of;
+  const spentMinor = of.costMinor + calls.spentMinor;
+  if (calls.open || spentMinor > of.heldMinor) {
+    await keepWhole(tx, of);
     return {
       state: 'liability_unknown',
       heldMinor: Number(of.heldMinor),
-      observedMinor: Number(of.costMinor),
+      observedMinor: Number(spentMinor),
+      costMinor: Number(of.costMinor),
+      cause: calls.open ? 'call_open' : 'over_hold',
     };
   }
-  const cost = of.costMinor.toString();
   await tx.query(
     `update public.attempts set state = 'settled', actual_minor = $3, outcome = $4, settled_at = now()
       where business_id = $1 and id = $2`,
-    [tx.businessId, of.attemptId, cost, of.outcome],
+    [tx.businessId, of.attemptId, of.costMinor.toString(), of.outcome],
   );
+  const spent = spentMinor.toString();
   await tx.query(
     `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
       where business_id = $1 and id = $2`,
-    [tx.businessId, of.reservationId, cost],
+    [tx.businessId, of.reservationId, spent],
   );
   await tx.query(
     `update public.task_envelopes
         set held_minor = held_minor - $3, actual_minor = actual_minor + $4
       where business_id = $1 and id = $2`,
-    [tx.businessId, of.envelopeId, of.heldMinor.toString(), cost],
+    [tx.businessId, of.envelopeId, of.heldMinor.toString(), spent],
   );
   await raiseAlert(tx, {
     taskId: of.taskId,
     causeId: of.attemptId,
     raised: { kind: of.outcome === 'failed' ? 'failed' : 'settled' },
   });
-  return settledAt(of.heldMinor, of.costMinor);
+  return settledAt(of.heldMinor, spentMinor);
+}
+
+/** The hold stays whole for a person: the attempt is held as an unknown liability, alerted once. */
+async function keepWhole(
+  tx: TenantQuery,
+  of: { readonly taskId: string; readonly attemptId: string },
+): Promise<void> {
+  await tx.query(
+    `update public.attempts set state = 'liability_unknown' where business_id = $1 and id = $2`,
+    [tx.businessId, of.attemptId],
+  );
+  await raiseAlert(tx, {
+    taskId: of.taskId,
+    causeId: of.attemptId,
+    raised: { kind: 'awaiting_person', waitingReason: 'liability_unknown' },
+  });
 }
 
 /** What a top-up did (T2e): raised the envelope, or recorded a first approval. */
