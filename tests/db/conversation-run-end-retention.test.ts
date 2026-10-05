@@ -5,7 +5,6 @@ import { purgeConversation, writeWrapUp } from '../../packages/core-commands/src
 import { createWorld, type World, type Answer } from '../acceptance/world.ts';
 import { asPerson, plannedTask, signed } from '../api/c54-fixture.ts';
 import { setConversationWindow } from '../api/aw-03-fixture.ts';
-import { insertActor, insertPerson } from '../identity/fixture.ts';
 
 // Deliberately no skip: a missing database is missing proof.
 let w: World;
@@ -18,15 +17,22 @@ afterAll(async () => await w?.close());
 function conversationIdOf(answer: Answer): string {
   expect(answer.code).toBe('ok');
   const detail = answer.body['detail'];
-  if (typeof detail !== 'object' || detail === null || !('conversationId' in detail)
-      || typeof detail.conversationId !== 'string') throw new Error('no conversation id');
+  if (
+    typeof detail !== 'object' ||
+    detail === null ||
+    !('conversationId' in detail) ||
+    typeof detail.conversationId !== 'string'
+  )
+    throw new Error('no conversation id');
   return detail.conversationId;
 }
 
 async function openConversation(): Promise<string> {
-  return conversationIdOf(await asPerson(w, signed(w.ada), 'conversation.start', {
-    body: 'Sol OW-013 retention request',
-  }));
+  return conversationIdOf(
+    await asPerson(w, signed(w.ada), 'conversation.start', {
+      body: 'Sol OW-013 retention request',
+    }),
+  );
 }
 
 async function ageAndWrap(conversationId: string): Promise<void> {
@@ -35,14 +41,19 @@ async function ageAndWrap(conversationId: string): Promise<void> {
        last_activity_at = last_activity_at - interval '8 days' where id = $1`,
     [conversationId],
   );
-  expect(await w.db.app.withBusiness(w.alpha, async (tx) =>
-    await writeWrapUp(tx, { conversationId, codeRevision: '4126931' }),
-  )).toMatchObject({ ok: true, written: true });
+  expect(
+    await w.db.app.withBusiness(
+      w.alpha,
+      async (tx) => await writeWrapUp(tx, { conversationId, codeRevision: '4126931' }),
+    ),
+  ).toMatchObject({ ok: true, written: true });
 }
 
-const purge = async (conversationId: string) => await w.db.app.withBusiness(w.alpha,
-  async (tx) => await purgeConversation(tx, { conversationId, operationId: randomUUID() }),
-);
+const purge = async (conversationId: string) =>
+  await w.db.app.withBusiness(
+    w.alpha,
+    async (tx) => await purgeConversation(tx, { conversationId, operationId: randomUUID() }),
+  );
 
 it('a run ending now keeps the conversation body for the retention window', async () => {
   const taskId = await plannedTask(w, signed(w.ada));
@@ -53,18 +64,23 @@ it('a run ending now keeps the conversation body for the retention window', asyn
   );
   if (run === undefined) throw new Error('approved task has no run');
   // Seed the new migration's valid origin link; lifecycle operations remain the real ones.
-  await w.db.admin.execute('update public.planned_runs set origin_conversation_id = $2 where id = $1',
-    [run.id, conversationId]);
+  await w.db.admin.execute(
+    'update public.planned_runs set origin_conversation_id = $2 where id = $1',
+    [run.id, conversationId],
+  );
   await ageAndWrap(conversationId);
   expect(await purge(conversationId)).toEqual({ ok: false, code: 'WORK_OPEN' });
   const cancelled = await asPerson(w, signed(w.ada), 'task.cancel', {
-    recordId: taskId, lineageId: run.lineage_id, reason: 'Work ended now',
+    recordId: taskId,
+    lineageId: run.lineage_id,
+    reason: 'Work ended now',
   });
   expect(cancelled.code).toBe('ok');
   const [ended] = await w.db.admin.execute<{ state: string; recent: boolean }>(
     `select r.state, l.terminal_at > clock_timestamp() - interval '1 minute' as recent
        from public.planned_runs r join public.proposal_lineages l on l.id = r.lineage_id
-      where r.id = $1`, [run.id],
+      where r.id = $1`,
+    [run.id],
   );
   expect(ended).toMatchObject({ state: 'cancelled', recent: true });
   expect(await purge(conversationId)).toEqual({ ok: false, code: 'NOT_DUE' });

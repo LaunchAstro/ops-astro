@@ -1,31 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Review proofs on frozen head 4126931. Product code is unchanged.
 import { randomUUID } from 'node:crypto';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   purgeConversation,
   sweepConversations,
   writeWrapUp,
 } from '../../packages/core-commands/src/index.ts';
-import {
-  connect,
-  endProviderSession,
-  revokeGrant,
-  type Database,
-  type TenantQuery,
-} from '../../packages/core-records/src/index.ts';
+import { connect, type Database } from '../../packages/core-records/src/index.ts';
 import {
   conversationWorld,
-  detail,
   setConversationWindow,
   started,
   type ConversationWorld,
 } from './aw-03-fixture.ts';
 import { localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
-import { authorised, post, tokenFor } from './fixture.ts';
 import { createControls, type Controls } from './controls-fixture.ts';
-import { addClient, enrol, grantTo } from '../commands/fixture.ts';
+import { grantTo } from '../commands/fixture.ts';
 
 describe('conversation retention holds for created work, decided gates and an unreadable window', () => {
   let w: ConversationWorld;
@@ -70,17 +60,6 @@ describe('conversation retention holds for created work, decided gates and an un
       'select count(*) as n from public.conversation_messages where conversation_id = $1',
       [conversationId],
     );
-  const setClient = async (taskId: string, clientId: string) => {
-    const read = await w.as(w.owner, 'task.read', { recordId: taskId });
-    expect(read.status).toBe(200);
-    const answer = await w.as(w.owner, 'task.set_party', {
-      operationId: randomUUID(),
-      recordId: taskId,
-      expectedRevision: (read.body['task'] as { revision: number }).revision,
-      fields: { client: clientId },
-    });
-    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
-  };
 
   it('an open task created by a conversation holds its body and is left open in the wrap-up', async () => {
     const conversationId = await started(w, w.owner, { body: 'Create the follow-up work' });
