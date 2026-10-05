@@ -24,6 +24,7 @@
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { raiseBudgetWait, stopWords } from '../../core-custody/src/index.ts';
+import { COUNTED_CAUSES, countedHold } from '../../core-custody/src/broker-give-back.ts';
 import { raiseAlert } from './alerts.ts';
 
 /**
@@ -41,6 +42,24 @@ export const callsSpentOf = (r: string): string =>
 
 /** SQL: what the classifier's settle of `r` counts now, never above the figure it settled at. */
 export const spentNowOf = (r: string): string => `least(${r}.actual_minor, ${callsSpentOf(r)})`;
+
+/**
+ * Before a top-up's answer marks a closed stopped hold counted (`countedHold`),
+ * its calls never sent on an ended lease, which no count took, are released
+ * uncounted, so the sweep gives nothing back for them. Under the answer's locks.
+ */
+export async function releaseUncounted(tx: TenantQuery, reservationId: string): Promise<void> {
+  await tx.query(
+    `update public.model_calls c set state = 'released', ended_at = clock_timestamp()
+       from public.reservations r, public.leases l
+      where c.business_id = $1 and c.reservation_id = $2 and c.state = 'reserved'
+        and r.business_id = c.business_id and r.id = c.reservation_id
+        and l.business_id = c.business_id and l.id = c.lease_id
+        and (l.state <> 'live' or l.expires_at <= clock_timestamp())
+        and not ${countedHold('$3')}`,
+    [tx.businessId, reservationId, COUNTED_CAUSES],
+  );
+}
 
 /** A hold's spend to date, and the calls it counted while still unsent. */
 export interface Spent {

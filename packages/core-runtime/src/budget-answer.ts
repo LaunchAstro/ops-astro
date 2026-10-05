@@ -38,7 +38,7 @@ import {
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
-import { spentOn } from './budget-stop.ts';
+import { releaseUncounted, spentOn } from './budget-stop.ts';
 import { giveBackReleased } from '../../core-custody/src/index.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
@@ -89,6 +89,9 @@ export async function topUpAtBudgetStop(
       value: { state: 'awaiting_second', approvalId, thresholdMinor: threshold.minor },
     };
   }
+  // Before the answer marks a closed stopped hold counted (`releaseUncounted`).
+  if (CLOSED_STOPS.includes(opened.value.locked.reservation_state))
+    await releaseUncounted(tx, opened.value.locked.reservation_id);
   const answerId = randomUUID();
   await tx.query(
     `insert into public.budget_answers
