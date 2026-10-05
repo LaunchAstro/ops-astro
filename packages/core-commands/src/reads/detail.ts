@@ -119,7 +119,6 @@ async function blockersOf(tx: TenantQuery, recordId: string): Promise<readonly s
   return rows.map((row) => row.id);
 }
 
-/** Ids, name and state: all a brief read carries. */
 export function briefOf(task: TaskSummary): View {
   return { id: task.id, title: task.title, state: task.state?.label ?? null };
 }

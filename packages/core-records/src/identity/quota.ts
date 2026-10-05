@@ -37,7 +37,6 @@ export interface QuotaOptions {
 /** Who a call is charged to, all three verified by login resolution. */
 export interface QuotaHolders {
   readonly business: string;
-  /** The login the call presented. */
   readonly credential: string;
   /** The person, or for an agent's call the agent actor it acts as. */
   readonly person: string;

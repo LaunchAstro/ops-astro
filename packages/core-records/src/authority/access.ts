@@ -28,9 +28,9 @@ export interface AccessGrant {
   readonly clientId: string | null;
 }
 
-/** The business's one lock for a change to who may do what. */
-export async function lockAccess(tx: TenantQuery): Promise<void> {
-  await advisoryLock(tx, `access:${tx.businessId}`);
+/** The business's one lock for a change to who may do what; a write's judgement holds it shared. */
+export async function lockAccess(tx: TenantQuery, mode?: 'shared'): Promise<void> {
+  await advisoryLock(tx, `access:${tx.businessId}`, mode);
 }
 
 /**

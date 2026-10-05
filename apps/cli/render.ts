@@ -7,7 +7,6 @@ type Json = Readonly<Record<string, unknown>>;
 const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** Only the fields named, in the order named; every field when none are. */
 export function select(value: Json, fields: readonly string[] | undefined): Json {
   if (fields === undefined) return value;
   return Object.fromEntries(fields.filter((key) => key in value).map((key) => [key, value[key]]));
@@ -36,14 +35,12 @@ export function text(value: Json): string {
   return lines.join('\n');
 }
 
-/** A page: one line per item, then the next token when there is one. */
 export function pageText(items: readonly Json[], next: string | null): string {
   const lines = items.map((item) => joined(Object.values(item), ' | '));
   if (next !== null) lines.push(`next: ${next}`);
   return lines.join('\n');
 }
 
-/** Codes about who may act, which name the key the caller lacks. */
 const AUTHORITY = /GRANT|PERMIT|DELEGATION|AUTH|AGENT/u;
 
 /** A refusal in one line: its code, the key it needs if about authority, the first fix. */
