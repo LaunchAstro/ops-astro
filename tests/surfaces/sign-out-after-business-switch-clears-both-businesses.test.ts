@@ -101,3 +101,21 @@ it('one unreadable entry in the held list does not stop sign-out clearing the ot
 
   expect(settingsLeft(storage)).toEqual([]);
 });
+
+it.each([['acme.co'], ['Acme']])(
+  'a business keyed %s is cleared at sign-out after a switch and a reload',
+  (businessKey) => {
+    const storage = map();
+    const first = new SessionStore(storage);
+    const odd: Session = { businessKey, email: 'ada@example.test', sessionId: 's-ada' };
+    first.set(ADA_ALPHA);
+    first.set(odd);
+    first.set(ADA_BRAVO);
+    // An answer for the odd business lands after the switch away from it.
+    keep(storage, odd, { fourEyes: 700 });
+
+    new SessionStore(storage).clear();
+
+    expect(settingsLeft(storage)).toEqual([]);
+  },
+);
