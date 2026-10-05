@@ -5,12 +5,13 @@
 // `packageManager` field. Every non-root package entry has a `sha512`
 // integrity and a `resolved` URL of exactly one of two forms, built from the
 // entry's own name and version; an alias, a link or any other host is a
-// refusal. Both files are read with the strict JSON parser. A `resolved`
+// refusal. Both files are read with the strict JSON parser, `package.json`
+// under its 1 MiB and the lockfile under its own 16 MB. A `resolved`
 // value is compared whole against the form spelt from the entry's key and
 // version, never matched by pattern, so no other URL can pass.
 
 import { type Refused, type SandboxResult, type Why } from './refusal.ts';
-import { type Json, parseStrictJson } from './strict-json.ts';
+import { type Json, MAX_JSON_BYTES, parseStrictJson } from './strict-json.ts';
 
 /** npm's name grammar for new packages: lowercase, URL-safe, no leading `.` or `_`. */
 const PART = '[a-z0-9~-][a-z0-9._~-]*';
@@ -34,8 +35,8 @@ type JsonObject = { readonly [key: string]: Json };
 const isObject = (value: Json | undefined): value is JsonObject =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-function parse(text: string): SandboxResult<{ object: JsonObject }> {
-  const read = parseStrictJson(new TextEncoder().encode(text));
+function parse(text: string, maxBytes = MAX_JSON_BYTES): SandboxResult<{ object: JsonObject }> {
+  const read = parseStrictJson(new TextEncoder().encode(text), { maxBytes });
   if (!read.ok) return refusal(read.why);
   return isObject(read.value) ? { ok: true, object: read.value } : refusal('lockfile entry');
 }
@@ -89,7 +90,7 @@ export function checkLockfile(
   const manifest = parse(packageJson);
   if (!manifest.ok) return manifest;
   if (Object.hasOwn(manifest.object, 'packageManager')) return refusal('package manager');
-  const lock = parse(lockfile);
+  const lock = parse(lockfile, LOCKFILE_CAP);
   if (!lock.ok) return lock;
   if (lock.object['lockfileVersion'] !== 3) return refusal('lockfile version');
   const packages = lock.object['packages'];

@@ -4,8 +4,9 @@
 // the preamble and P1). `JSON.parse` keeps the last of two equal keys, so a
 // body read here and a body read by the Docker daemon could disagree; this
 // parser refuses that and every other ambiguity instead: duplicate keys at
-// any depth, more than 1 MiB, more than 32 levels, input that is not UTF-8,
-// a byte-order mark and a lone surrogate.
+// any depth, more than 1 MiB (or the cap a caller names, such as I5's
+// lockfile), more than 32 levels, input that is not UTF-8, a byte-order mark
+// and a lone surrogate.
 //
 // A number is taken only when its text means the value read: an integer
 // written without a fraction or exponent and within 2^53, or a non-integer.
@@ -200,7 +201,7 @@ export function parseStrictJson(
   bytes: Uint8Array,
   options: { readonly foldCase?: boolean; readonly maxBytes?: number } = {},
 ): SandboxResult<{ value: Json }> {
-  if (bytes.length > MAX_JSON_BYTES) return fault('too large');
+  if (bytes.length > (options.maxBytes ?? MAX_JSON_BYTES)) return fault('too large');
   let text: string;
   try {
     text = UTF8.decode(bytes);
