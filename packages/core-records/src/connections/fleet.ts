@@ -70,6 +70,33 @@ interface Row {
   readonly revision: string;
 }
 
+/**
+ * One statement: the business, then every connection the scopes reach or only
+ * those serving one of the caller's clients (`$1` business-wide, `$2` clients).
+ */
+const FLEET_SQL = `select c.id, c.connector_key, c.label, c.auth_method, c.status, c.failure_class,
+        c.cadence_minutes, c.last_synced_at, c.last_attempt_at, c.scope, c.read_components,
+        c.execute_components, s.id as secret_id, s.set_at is not null as secret_set,
+        r.started_at as repair_started_at, c.revision,
+        coalesce((select json_agg(json_build_object('id', k.id, 'label', k.name)
+                                  order by k.name, k.id)
+                    from public.connection_clients cc
+                    join public.clients k on k.business_id = cc.business_id and k.id = cc.client_id
+                   where cc.business_id = c.business_id and cc.connection_id = c.id
+                     and ($1::boolean or cc.client_id = any($2::uuid[]))), '[]'::json) as clients
+   from public.connections c
+   left join public.custody_secrets s on s.business_id = c.business_id and s.id = c.secret_id
+    and ($1::boolean or s.scope_kind = 'business' or s.scope_id = any($2::uuid[]))
+   left join public.connection_repairs r
+     on r.business_id = c.business_id and r.connection_id = c.id
+    and r.connection_revision = c.revision
+  where c.business_id = (select public.app_business_id())
+    and ($1::boolean
+     or exists (select 1 from public.connection_clients cc
+                 where cc.business_id = c.business_id and cc.connection_id = c.id
+                   and cc.client_id = any($2::uuid[])))
+  order by c.label, c.id`;
+
 /** The connections these scopes may read, each with its clients filtered alike. */
 export async function listConnections(
   tx: TenantQuery,
@@ -77,31 +104,7 @@ export async function listConnections(
 ): Promise<readonly ConnectionRow[]> {
   const whole = scopes.some((scope) => scope.kind === 'business');
   const parties = scopes.filter((scope) => scope.kind === 'party').map((scope) => scope.id);
-  const rows = await tx.query<Row>(
-    `select c.id, c.connector_key, c.label, c.auth_method, c.status, c.failure_class,
-            c.cadence_minutes, c.last_synced_at, c.last_attempt_at, c.scope, c.read_components,
-            c.execute_components, s.id as secret_id, s.set_at is not null as secret_set,
-            r.started_at as repair_started_at, c.revision,
-            coalesce((select json_agg(json_build_object('id', k.id, 'label', k.name)
-                                      order by k.name, k.id)
-                        from public.connection_clients cc
-                        join public.clients k on k.business_id = cc.business_id and k.id = cc.client_id
-                       where cc.business_id = c.business_id and cc.connection_id = c.id
-                         and ($1::boolean or cc.client_id = any($2::uuid[]))), '[]'::json) as clients
-       from public.connections c
-       left join public.custody_secrets s on s.business_id = c.business_id and s.id = c.secret_id
-        and ($1::boolean or s.scope_kind = 'business' or s.scope_id = any($2::uuid[]))
-       left join public.connection_repairs r
-         on r.business_id = c.business_id and r.connection_id = c.id
-        and r.connection_revision = c.revision
-      where c.business_id = (select public.app_business_id())
-        and ($1::boolean
-         or exists (select 1 from public.connection_clients cc
-                     where cc.business_id = c.business_id and cc.connection_id = c.id
-                       and cc.client_id = any($2::uuid[])))
-      order by c.label, c.id`,
-    [whole, parties],
-  );
+  const rows = await tx.query<Row>(FLEET_SQL, [whole, parties]);
   return rows.map((row) => ({
     id: row.id,
     connectorKey: row.connector_key,
