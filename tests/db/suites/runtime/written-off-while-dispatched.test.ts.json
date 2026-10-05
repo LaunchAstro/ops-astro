@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a hold written off while its call was still dispatched leaves that call open with no outcome; a stop raised on the closed hold takes no top-up, so a later release of the call gives back nothing the envelope never carried"
+}

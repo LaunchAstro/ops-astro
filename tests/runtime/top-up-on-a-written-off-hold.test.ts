@@ -9,13 +9,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { catalogue, REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
-import type { Broker } from '../../packages/core-custody/src/index.ts';
-import { COUNTED_CAUSES, countedHold } from '../../packages/core-custody/src/broker-give-back.ts';
-import { settle } from '../../packages/core-custody/src/broker-settle.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { CLOUD } from '../broker/broker-world.ts';
 import { grantTo } from '../commands/fixture.ts';
 import {
   appliedDetail,
@@ -24,9 +19,7 @@ import {
   codeOf,
   openSchedules,
   pickup,
-  rows,
   type Schedules,
-  type Work,
 } from './schedules-harness.ts';
 import { writeOffBody } from './t3c-harness.ts';
 import {
@@ -44,6 +37,7 @@ import {
   sweep,
   topUp,
 } from './version-room-world.ts';
+import { answerLate, answersOn, attemptOf, counted, priced } from './written-off-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -70,84 +64,6 @@ afterAll(async () => {
   await s?.db.drop();
 });
 
-const UNUSED = (): never => {
-  throw new Error('the late settle dispatches nothing');
-};
-// Not annotated, so custody's other members (`describe` on main) need no listing here.
-const NO_CUSTODY = { pid: 0, dispatch: UNUSED, describe: UNUSED, stderr: () => '', raw: UNUSED };
-const LATE_BROKER: Broker = {
-  custody: { ...NO_CUSTODY, kill: UNUSED, stop: UNUSED },
-  operations: catalogue([REPLAY_COMPOSE]),
-  providers: new Map(),
-  routes: [CLOUD],
-  installation: 'here',
-  audit: async () => await Promise.resolve(),
-};
-const LATE_ANSWER = { text: 'late', model: null, usage: { inputUnits: 1, outputUnits: 1 } };
-
-/** The broker's own settle of the written-off call, priced at `cost` by its late answer. */
-async function settleLate(work: Work, callId: string, cost: number): Promise<void> {
-  const operation = LATE_BROKER.operations.get(REPLAY_COMPOSE.key);
-  const [call] = await rows<{ reserved: string }>(
-    s,
-    'select reserved_minor::text as reserved from public.model_calls where id = $1',
-    [callId],
-  );
-  if (operation === undefined || call === undefined) throw new Error('settleLate: no call');
-  const { leaseId, fence, delegationId } = work.picked;
-  await settle(
-    s.db.app,
-    s.business,
-    { actorId: s.agentActorId, delegationId: String(delegationId), attendedByPersonId: null },
-    {
-      leaseId: String(leaseId),
-      fence: Number(fence),
-      stepId: '',
-      operation: operation.key,
-      fields: [],
-    },
-    { callId, operation, route: CLOUD, reservedMinor: Number(call.reserved) },
-    {
-      kind: 'priced',
-      answer: { ...LATE_ANSWER, providerCode: null },
-      costMinor: cost,
-      account: null,
-      credentialKind: 'replay',
-    },
-    LATE_BROKER,
-  );
-}
-
-async function attemptOf(reservationId: unknown): Promise<string> {
-  const [found] = await rows<{ id: string }>(
-    s,
-    'select id from public.attempts where business_id = $1 and reservation_id = $2',
-    [s.business, reservationId],
-  );
-  if (found === undefined) throw new Error('attemptOf: no attempt');
-  return found.id;
-}
-
-/** Custody's own reading: the hold counted its open calls at their maximum. */
-async function counted(reservationId: unknown): Promise<boolean | undefined> {
-  const [found] = await rows<{ counted: boolean }>(
-    s,
-    `select ${countedHold('$3')} as counted from public.reservations r
-      where r.business_id = $1 and r.id = $2`,
-    [s.business, reservationId, COUNTED_CAUSES],
-  );
-  return found?.counted;
-}
-
-async function answersOn(runId: string): Promise<number> {
-  const [found] = await rows<{ n: string }>(
-    s,
-    'select count(*)::text as n from public.budget_answers where business_id = $1 and run_id = $2',
-    [s.business, runId],
-  );
-  return Number(found?.n);
-}
-
 /**
  * A person writes off the first hold at 0 while its dispatched call is held
  * unknown, so it closes at its settled 300 with the call still open. The
@@ -164,7 +80,7 @@ async function stopOnWrittenOff() {
   await sweep(s);
   const writtenOff = await asPerson(
     s,
-    writeOffBody({ taskId: work.taskId, attemptId: await attemptOf(first) }, 0),
+    writeOffBody({ taskId: work.taskId, attemptId: await attemptOf(s, first) }, 0),
   );
   appliedDetail(writtenOff, 'budget.write_off');
 
@@ -191,9 +107,9 @@ describe.skipIf(serverUrl === undefined)('a top-up on a stop raised on a written
       stopped: codeOf(stopped),
       call: await callState(s, c2),
       code: codeOf(topped),
-      answers: await answersOn(runId),
+      answers: await answersOn(s, runId),
       money: await moneyOf(s, work, versionId),
-      counted: await counted(first),
+      counted: await counted(s, first),
     }).toEqual({
       stopped: 'BUDGET_UNAVAILABLE',
       call: 'liability_unknown',
@@ -213,7 +129,7 @@ describe.skipIf(serverUrl === undefined)('a top-up on a stop raised on a written
     expect({
       code: codeOf(ended),
       money: await moneyOf(s, work, versionId),
-      counted: await counted(first),
+      counted: await counted(s, first),
     }).toEqual({ code: 'applied', money: before, counted: false });
   });
 });
@@ -222,7 +138,7 @@ describe.skipIf(serverUrl === undefined)('a top-up after the written-off call se
   it("tops up once the written-off call settles late, the settle leaving the envelope alone and the version room counting the hold at the write-off's 300", async () => {
     const { work, versionId, first, c2, stopped } = await stopOnWrittenOff();
     const before = await envelopeOf(s, work);
-    await settleLate(work, c2, 150);
+    await answerLate(s, work.picked, c2, priced(150));
     const settled = { call: await callState(s, c2), envelope: await envelopeOf(s, work) };
     const topped = await topUp(s, work, first, 100);
     // The top-up's fresh hold, picked up and stopped unspent: its replacement
