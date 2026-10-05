@@ -10,8 +10,11 @@
 -- body was held for good.
 --
 -- The server stamps the end on every change of state, whatever the statement
--- supplies: `now()` into handed_back or cancelled, cleared on a claim after a
--- hand-back, and unchanged by any write that leaves the state alone. Rows
+-- supplies: `clock_timestamp()` into handed_back or cancelled, cleared on a
+-- claim after a hand-back, and unchanged by any write that leaves the state
+-- alone. The clock is read as the row changes, after any lock the change
+-- waited on, not at the transaction's start: an end held up by another
+-- writer is never stamped before the run could leave work. Rows
 -- already written: a hand-back takes its run event's time; a cancel, whose
 -- time was never stored, takes this migration's instant (later than the true
 -- end, never earlier, so no body is purged early).
@@ -37,7 +40,7 @@ begin
   if tg_op = 'UPDATE' and new.state is not distinct from old.state then
     new.ended_at := old.ended_at;
   elsif new.state in ('handed_back', 'cancelled') then
-    new.ended_at := now();
+    new.ended_at := clock_timestamp();
   else
     new.ended_at := null;
   end if;
