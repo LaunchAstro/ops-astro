@@ -30,7 +30,7 @@ export const CASE = {
 } as const;
 
 /**
- * The forty-nine operations that name no identifier, each with a minimal valid body.
+ * The fifty operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line

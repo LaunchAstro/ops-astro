@@ -623,7 +623,8 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
 
     // SEC-P04A-RB4.1: a call recorded after the revocation, then the helper
     // hands back as the refusal tells it to. The parent ended first, so the
-    // grant stays taken back at the parent's end and the call is outside it.
+    // grant stays taken back at the parent's end; its one real read, made
+    // before the revocation, counts and the later call does not.
     const parentEnd = grantOf(after, parentId)?.endedAt;
     await applied(helper, recordId, '0 seconds');
     await owner(`update public.delegations set settled_at = now() where id = $1`, [
@@ -635,13 +636,23 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       handed?.endedAt,
       handed?.revocationCause,
       handed?.redemptions,
-    ]).toStrictEqual(['taken_back', parentEnd, 'delegation_revoked', 0]);
+    ]).toStrictEqual(['taken_back', parentEnd, 'delegation_revoked', 1]);
   });
 
   it('MP-14-8 a child grant whose parent ran out ends at the parent expiry, and later calls count none', async () => {
     // SEC-P04A-RB4.2: the parent's expiry bounds the child's end and its
-    // window, though the child's own expiry is an hour away.
+    // window, though the child's own expiry is an hour away. A child is
+    // minted under a live parent only (0100), so ran_out_for_b is live for
+    // the mint and runs out again after it.
     const childId = randomUUID();
+    const was = await controls.fixture.db.admin.execute<{ readonly expires_at: Date }>(
+      `select expires_at from public.delegations where id = $1`,
+      [grants.ranOutB],
+    );
+    await owner(
+      `update public.delegations set expires_at = now() + interval '1 hour' where id = $1`,
+      [grants.ranOutB],
+    );
     await owner(
       `insert into public.delegations
          (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
@@ -654,6 +665,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
          from public.delegations where id = $1`,
       [grants.ranOutB, childId, agentB],
     );
+    await owner(`update public.delegations set expires_at = $2 where id = $1`, [
+      grants.ranOutB,
+      was[0]?.expires_at,
+    ]);
     const task = await controls.fixture.db.admin.execute<{ readonly id: string }>(
       `select purpose_scope_id as id from public.delegations where id = $1`,
       [grants.ranOutB],
@@ -661,10 +676,26 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     await applied(agentB, task[0]?.id, '30 minutes');
     const result = await signal(admin);
     const shown = grantOf(result, childId);
+    const expired = grantOf(result, grants.ranOutB)?.expiresAt;
     expect([shown?.state, shown?.endedAt, shown?.redemptions]).toStrictEqual([
       'ran_out',
-      grantOf(result, grants.ranOutB)?.expiresAt,
+      expired,
       0,
+    ]);
+    // SEC-P04A-RB5.3: a revocation after the parent ran out is not what ended
+    // the child: it still ran out at the expiry, with no cause. A recorded
+    // cause is fixed (0023), so ran_out_for_b stays taken back from here; no
+    // later case reads its state.
+    await owner(
+      `update public.delegations
+          set revoked_at = now(), revocation_cause = 'work_retired' where id = $1`,
+      [grants.ranOutB],
+    );
+    const later = grantOf(await signal(admin), childId);
+    expect([later?.state, later?.endedAt, later?.revocationCause]).toStrictEqual([
+      'ran_out',
+      expired,
+      null,
     ]);
   });
 
