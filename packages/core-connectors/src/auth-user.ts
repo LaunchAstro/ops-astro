@@ -17,7 +17,8 @@
 //
 // An address that already holds a login is answered 422 by the provider, and
 // nothing is made or changed (`AUTH_EMAIL_EXISTS`); an update naming no user
-// is answered 404, and nothing is changed (`AUTH_USER_NOT_FOUND`).
+// is answered 404, and nothing is changed (`AUTH_USER_NOT_FOUND`). A password
+// its rules refuse is 422 too, on either (`AUTH_WEAK_PASSWORD`).
 
 import { AUTH_USERS_PATH } from './auth-password.ts';
 import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';
@@ -25,14 +26,11 @@ import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './o
 /** The provider's code for an address that already holds a login: nothing was made. */
 export const AUTH_EMAIL_EXISTS = 'email_exists';
 
-/** The HTTP status the provider answers `email_exists` with. */
-export const AUTH_EXISTS_STATUS = 422;
-
 /** The provider's code for an update naming no user: nothing was changed. */
 export const AUTH_USER_NOT_FOUND = 'user_not_found';
 
-/** The HTTP status the provider answers `user_not_found` with. */
-export const AUTH_NOT_FOUND_STATUS = 404;
+/** The provider's code for a password its rules refuse, on either: nothing was made or set. */
+export const AUTH_WEAK_PASSWORD = 'weak_password';
 
 /** A provider user id: a UUID, lower or upper case, nothing that could carry more. */
 const USER_ID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu;
@@ -91,7 +89,7 @@ export const AUTH_CREATE_USER: ModelOperationDeclaration = {
   maxResponseBytes: 16 * 1024,
   maximumMinor: 1,
   settlesAt: 'accepted',
-  nothingHappened: [AUTH_EMAIL_EXISTS],
+  nothingHappened: [AUTH_EMAIL_EXISTS, AUTH_WEAK_PASSWORD],
   billed: false,
   concurrency: 4,
 };
@@ -104,5 +102,5 @@ export const AUTH_UPDATE_USER: ModelOperationDeclaration = {
   ...AUTH_CREATE_USER,
   key: 'auth.update_user',
   provider: 'supabase_auth_update',
-  nothingHappened: [AUTH_USER_NOT_FOUND, AUTH_EMAIL_EXISTS],
+  nothingHappened: [AUTH_USER_NOT_FOUND, AUTH_EMAIL_EXISTS, AUTH_WEAK_PASSWORD],
 };

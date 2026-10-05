@@ -19,7 +19,15 @@ import { request as httpRequest, type IncomingMessage, type RequestOptions } fro
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 import { presented, type StoredCredential } from './credentials.ts';
-import { parseExtras, pathAllowed, type Extras, type Method } from './egress-routes.ts';
+import {
+  parseExtras,
+  pathAllowed,
+  statusFault,
+  type Extras,
+  type Method,
+  type OutboundFailure,
+  type OutboundFault,
+} from './egress-routes.ts';
 
 /** A listed origin, with any fixed headers and non-POST routes of its own (AW-13). */
 export interface Destination extends Extras {
@@ -116,19 +124,10 @@ export interface OutboundRequest {
   readonly maxResponseBytes: number;
 }
 
-export type OutboundFault =
-  | 'unlisted'
-  | 'bad_path'
-  | 'forbidden'
-  | 'redirect'
-  | 'timeout'
-  | 'too_large'
-  | 'status'
-  | 'network';
+export type { OutboundFault };
 
 export type Outbound =
-  | { readonly ok: true; readonly status: number; readonly body: string }
-  | { readonly ok: false; readonly fault: OutboundFault; readonly status: number | null };
+  { readonly ok: true; readonly status: number; readonly body: string } | OutboundFailure;
 
 async function readBounded(
   response: IncomingMessage,
@@ -227,7 +226,7 @@ async function answerOf(
     return failed(status);
   }
   if (!read.ok) return { ok: false, fault: 'too_large', status };
-  if (status < 200 || status >= 300) return { ok: false, fault: 'status', status };
+  if (status < 200 || status >= 300) return statusFault(status, read.text);
   return { ok: true, status, body: read.text };
 }
 

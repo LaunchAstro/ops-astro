@@ -27,11 +27,12 @@
 //    address's login is someone else's (another business's, or made
 //    elsewhere): it gets none and its password is not touched, the answer is
 //    `sign_in`, and nothing is spent, so its holder may accept once signed in
-//    (that binding is a follow-up). A fault spends nothing and binds nothing;
-//    a login it stranded is adopted by the next accept.
-// 3. In one transaction, under the invitation's lock and every check again
-//    (pending, the token unspent and newest, this business, and the address
-//    the login was made for, SEC27 F5): spend every unspent token of the invitation, mark it accepted, give its
+//    (that binding is a follow-up). A password the provider's rules refuse
+//    is `PASSWORD_INVALID`, nothing made or set. A fault spends nothing and
+//    binds nothing; a login it stranded is adopted by the next accept.
+// 3. In one transaction, under the invitation's lock and every check again,
+//    on the clock once the lock is held (pending, the token unspent and
+//    newest, this business, and the address the login was made for, SEC27 F5): spend every unspent token of the invitation, mark it accepted, give its
 //    one enduring person an acting identity, a membership in the invited
 //    role and the confirmed address, map the new login to that person, and
 //    write both audit events. The link then does nothing, and nothing here
@@ -122,8 +123,8 @@ async function liveToken(
   const [row] = await tx.query<Omit<Found, 'business'> & { live: boolean }>(
     `select t.id as "tokenId", i.id as "invitationId", i.person_id as "personId",
             i.role_key as "roleKey", i.address,
-            (t.spent_at is null and t.expires_at > now()
-              and i.state = 'pending' and i.expires_at > now()
+            (t.spent_at is null and t.expires_at > clock_timestamp()
+              and i.state = 'pending' and i.expires_at > clock_timestamp()
               and not exists (select 1 from enrolment_tokens n
                                where n.business_id = t.business_id
                                  and n.invitation_id = t.invitation_id
@@ -253,6 +254,7 @@ export async function acceptInvitation(
   const asked: LoginAsked = { id, email: found.address, password: request.password };
   let login = await createLogin(broker, asked);
   if (!login.ok && login.kind === 'refused') login = await updateLogin(broker, asked);
+  if (!login.ok && login.kind === 'password') return { ok: false, code: 'PASSWORD_INVALID' };
   if (!login.ok) {
     return login.kind === 'refused'
       ? { ok: true, state: 'sign_in' }

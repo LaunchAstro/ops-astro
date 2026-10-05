@@ -22,6 +22,7 @@ function route(reached: string[]): Hono {
   const database = {
     withBusiness: async () => {
       reached.push('database');
+      await Promise.resolve();
       throw new Error('a planted fault naming business 7f3c');
     },
   } as unknown as Database;

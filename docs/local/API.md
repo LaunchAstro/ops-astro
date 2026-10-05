@@ -2449,9 +2449,12 @@ worker. The answer is 200 `{ state: 'enrolled' }` and opens no session. An
 address whose login is someone else's (no user under our id), or one this
 business has bound under our id already, gets none and no password is set:
 200 `{ state: 'sign_in' }`, nothing spent. Every other token is 404
-`ENROLMENT_LINK_INVALID`, a password outside 12 to 72 bytes 400
-`PASSWORD_INVALID`, and a provider fault or hostile answer 503
-`ENROLMENT_UNAVAILABLE`, nothing spent or bound. The page
+`ENROLMENT_LINK_INVALID`, a password outside 12 to 72 bytes, or one the
+provider's rules refuse (its `weak_password`), 400 `PASSWORD_INVALID`, and a
+provider fault or hostile answer 503 `ENROLMENT_UNAVAILABLE`, nothing spent
+or bound. A body over 2 KiB is 413 `ENROL_TOO_LARGE`, one that is not a JSON
+object holding the token and password as strings 400 `ENROL_MALFORMED`, and
+any other fault 503 `ENROL_FAULT`. The page
 is `/enrol/:token`. Not here yet: the send mounted after the command, the
 hook and the enrolment route wired in `main`, the signed-in accept for an
 address with a login, the second factor first (C59) and the Access screen.

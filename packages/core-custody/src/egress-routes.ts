@@ -123,3 +123,41 @@ export function pathAllowed(extras: Extras, method: Method, path: string): boole
     return path.startsWith(prefix) && SEGMENT.test(path.slice(prefix.length));
   });
 }
+
+// How a request that did not succeed comes back: the fault's kind and the
+// status, and for a provider's refusal its `error_code` when that is one short
+// lower-case token. One status can mean more than one thing (the login
+// provider's 422 is an address holding a login, or a password its rules
+// refuse, C39-T SEC-P3A-1 S1); the code says which. Nothing else of the
+// answer leaves custody: its message may carry anything.
+
+export type OutboundFault =
+  | 'unlisted'
+  | 'bad_path'
+  | 'forbidden'
+  | 'redirect'
+  | 'timeout'
+  | 'too_large'
+  | 'status'
+  | 'network';
+
+export interface OutboundFailure {
+  readonly ok: false;
+  readonly fault: OutboundFault;
+  readonly status: number | null;
+  /** A refusal's `error_code`, one short lower-case token; never the answer itself. */
+  readonly code?: string;
+}
+
+/** A status outside 2xx as a failure, naming its refusal's code when the answer holds one. */
+export function statusFault(status: number, text: string): OutboundFailure {
+  const failure = { ok: false, fault: 'status', status } as const;
+  let answer: unknown;
+  try {
+    answer = JSON.parse(text);
+  } catch {
+    return failure;
+  }
+  const code = (answer as Record<string, unknown> | null)?.['error_code'];
+  return typeof code === 'string' && /^[a-z_]{1,64}$/u.test(code) ? { ...failure, code } : failure;
+}
