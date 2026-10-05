@@ -40,7 +40,11 @@ it.skipIf(noDatabase)(
     const ports: ExpiryPorts = {
       expire: async (ids) => {
         queued = async () => await t.target.expiry.expire(ids);
-        const answer = await asAgent(s, handbackBody(work.picked), String(work.picked['credential']));
+        const answer = await asAgent(
+          s,
+          handbackBody(work.picked),
+          String(work.picked['credential']),
+        );
         expect(codeOf(answer)).toBe('applied');
         await drain(s);
         return { ok: false, fault: 'timeout', status: null };

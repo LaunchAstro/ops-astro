@@ -94,6 +94,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'trace_export_gaps'],
   // AW-13: a retention batch is a fact, never rewritten.
   ['si', 'trace_expiry_batches'],
+  // #475: a retention ask is a fact, never rewritten.
+  ['si', 'trace_expiry_asks'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
   ['si', 'inbox_attention inbox_delivery_attempts'],
   ['siu', 'inbox_items'],

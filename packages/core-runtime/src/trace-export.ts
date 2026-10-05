@@ -17,6 +17,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
+import { owedSince } from './trace-owed.ts';
 import {
   TRACE_ERRORS,
   TRANSFORM_VERSION,
@@ -90,18 +91,19 @@ export async function exportOnce(
   key: Buffer,
   deliver: Deliver,
 ): Promise<ExportOutcome> {
-  const { from, batch } = await database.withBusiness(businessId, async (tx) => {
+  const { from, batch, sent } = await database.withBusiness(businessId, async (tx) => {
     const cursor = await cursorOf(tx);
     const rows = await pending(tx, cursor);
     for (const runId of new Set(rows.filter((row) => !row.past).map((row) => row.runId))) {
       // eslint-disable-next-line no-await-in-loop -- one registration per run, in order
       await registerTraceCopy(tx, runId);
     }
-    return { from: cursor, batch: rows };
+    const owed = await owedSince<Row>(tx, EVENT_CELLS, rows, cursor, TRACE_WINDOW_DAYS);
+    return { from: cursor, batch: rows, sent: [...owed, ...rows.filter((row) => !row.past)] };
   });
   const last = batch.at(-1);
   if (last === undefined) return { kind: 'idle' };
-  const spans = batch.filter((row) => !row.past).map((row) => spanOf(key, businessId, row));
+  const spans = sent.map((row) => spanOf(key, businessId, row));
   const code = spans.length === 0 ? null : gapOf(await deliver(otlp(spans)));
   await database.withBusiness(businessId, async (tx) => {
     if (code === null) await advance(tx, last, from.version);
@@ -145,9 +147,8 @@ async function cursorOf(tx: TenantQuery): Promise<Cursor> {
 /**
  * The batch after `from`, the cursor this export read: its gap, if it has one,
  * names the same. An event `past` the window is passed by the cursor, never
- * sent: retention would owe it a delete at once, and a run retention confirmed
- * has only such events, so a retention step back that re-reads them brings no
- * trace back.
+ * sent: retention would owe it a delete at once, and a confirmation covers only
+ * such events, so a step back that re-reads them brings no trace back.
  */
 async function pending(tx: TenantQuery, from: Cursor): Promise<readonly Pending[]> {
   return await tx.query<Pending>(
@@ -265,10 +266,10 @@ async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> 
  * The advance lands only on the cursor version its batch was read under;
  * otherwise it changes nothing and the next read starts wherever the row now
  * is. Two exports that read the same batch: the slower never moves the
- * cursor back. Retention's step back (`stepBack` in `trace-retention.ts`): an
- * export that read before it, and may have delivered before the delete, never moves the cursor past
- * the events the step sends again. The row lock orders them; the version
- * under it decides.
+ * cursor back. Retention's step back (`sendAgain` in `trace-retention.ts`): an
+ * export that read before it, and may have delivered before the delete, never
+ * moves the cursor past the events the step sends again. The row lock orders
+ * them; the version under it decides.
  */
 async function advance(tx: TenantQuery, last: Row, version: string | null): Promise<void> {
   await tx.query(

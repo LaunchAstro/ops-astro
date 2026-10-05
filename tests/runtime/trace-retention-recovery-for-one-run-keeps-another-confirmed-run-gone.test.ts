@@ -64,9 +64,9 @@ it.skipIf(noDatabase)(
         );
         expect(passB.at(-1)).toMatchObject({ code: null, confirmed: 1 });
         expect(t.target.stored.has(traceOf(runB))).toBe(false);
-        expect(
-          (await batchesOf(t.alpha)).some((one) => one.expired_run_ids.includes(runB)),
-        ).toBe(true);
+        expect((await batchesOf(t.alpha)).some((one) => one.expired_run_ids.includes(runB))).toBe(
+          true,
+        );
         // Release retention A's deletion.
         return await t.target.expiry.expire(ids);
       },

@@ -390,6 +390,9 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.trace_expiry_batches': `insert into public.trace_expiry_batches
        (business_id, id, window_days, runs, expired_run_ids)
      values ($1, gen_random_uuid(), 30, 1, array[gen_random_uuid()]) returning 1`,
+  'public.trace_expiry_asks': `insert into public.trace_expiry_asks
+       (business_id, id, run_id, after_tx, after_id)
+     values ($1, gen_random_uuid(), gen_random_uuid(), '1', gen_random_uuid()) returning 1`,
   'public.bootstrap_bytes': `insert into public.bootstrap_bytes
        (business_id, content_digest, content_size, bytes)
      values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,

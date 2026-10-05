@@ -1940,26 +1940,34 @@ and codes, never a sentence, to a trace target an operator reads.
   product is the trace store's deletion authority. A pass for one business
   takes the runs with a registered trace copy, every event behind the
   export's cursor (a pending event would be exported after its trace went),
-  the newest event older than the window (30 days) and no batch confirming
-  them since; deletes their derived ids through custody, at most 1,000 per
+  the newest event older than the window (30 days) and an event after the
+  place of their last confirmation, if any; writes an ask per run
+  (`trace_expiry_asks`, append only, under tenancy; select and insert) with
+  the export's cursor that check read, the run's place, in the same
+  transaction; deletes their derived ids through custody, at most 1,000 per
   call; then reads each id back, because the endpoint may answer success for
   work it skipped: only a 404 confirms a run. Each page is one
   `trace_expiry_batches` row (append only, under tenancy; the application
   group may select and insert): the window, the runs asked, the runs
-  confirmed, and the gap code when it did not finish (a delivery code, or
-  `expiry_unconfirmed`). A failed delete confirms nothing; an unconfirmed run
-  is due again next pass. A run can take a new event after the due check and
-  an export can send it before the delete, so the batch row's transaction
-  rechecks first: when a run asked has an event after the cursor the check
-  read, the cursor steps back to just before the earliest such event (or
+  confirmed at their place, and the gap code when it did not finish (a
+  delivery code, or `expiry_unconfirmed`). A failed delete confirms nothing;
+  an unconfirmed run is due again next pass. The store applies a delete
+  whenever it likes, even after a timeout or after the pass failed, so an
+  ask is owed until a batch confirms its run at its place or later. Each
+  pass reads back the owed asks it did not just make; a run found gone has
+  its events after its place sent again, in the transaction that confirms
+  it: the cursor steps back to just before the earliest such event (or
   stays, if already behind it) under its row lock, the lock the export's
-  advance takes, and its version changes. Those events are sent again after
-  the delete, an export that read before the step never advances, and the
-  batch does not confirm those runs (`expiry_unconfirmed`): each is due again
-  once its fresh event is past the window. Two passes at once are harmless: deletion by derived id
-  is idempotent, and a step back re-sends only fresh events onward, never a
-  run the other pass just confirmed (its events sort earlier unless a
-  transaction stayed open longer than the window). The server runs it hourly beside the export.
+  advance takes, and its version changes, so an export that read before
+  the step never advances. While a run's ask is owed, an export that sends
+  one of its events sends all of them since the place, so a delete landing
+  between two exports leaves the trace whole. A confirmation covers only
+  the events up to its place: a run with a later event, even one committed
+  after the pass, is due again once that event is past the window. Two
+  passes at once are harmless: deletion by derived id is idempotent, and a
+  step back re-sends only events after a gone run's place, never the old
+  events of a run the other pass just confirmed (the export passes events
+  older than the window without sending them). The server runs it hourly beside the export.
 - Readers: `trace.read` serves a task's runs' spans from `run_events`
   (`readTaskTrace`), held to the same allowlist without the ids
   (`traceCells`), behind `operations:read` and the task's own read
