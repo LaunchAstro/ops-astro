@@ -3439,8 +3439,9 @@ Connections & signal sections 006 to 008, one read on `connection:read`, never
 an agent. Each list is filtered in its statement by the scopes the caller holds
 the key at. A business-wide reader sees every row; a client-scoped reader sees
 only the rows bound to one of their clients (a grant whose task carries that
-client, a tripwire or a night round step naming it), never a fleet row, and a
-roster of only the agents holding a grant it can see. The night round is the
+client, a tripwire or a night round step naming it), never a fleet row nor a
+grant on a trashed task, a map or a map's ticket, and a roster of only the
+agents holding a grant it can see. The night round is the
 latest round among the steps the caller can see. Every count is derived from
 the rows beside it.
 
@@ -3449,10 +3450,13 @@ name; its `redemptions` are the applied calls its agent made on that task while
 it held it, less the pickup that minted it. Nothing records what each call
 reached, and the credential is never read. Tripwires and night round steps are
 written by the checks and the round itself (`tripwires`, `night_round_steps`,
-migration 20261005161600); the application role only reads them. Every column
-drawn as words is `signal_text`, a closed grammar with no control, bidi or
-invisible character; a task cite is a task key and a filed item a display id;
-a client named is a client of the same business by foreign key.
+migration 20261005161600); the application role only reads them. Every
+tripwire and step column drawn as words is `signal_text`, an explicit
+allow-list (printable ASCII, Latin letters and signs, visible punctuation,
+currency signs and arrows; a space only inside); a task cite is a task key
+and a filed item a display id; a client named is a client of the same
+business by foreign key. A grant's client label is the client's name as
+`clients` holds it, outside that grammar.
 
 | Operation           | Route                | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------- | -------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

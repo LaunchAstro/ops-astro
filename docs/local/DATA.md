@@ -862,3 +862,17 @@ standing approval lands. The application may select and insert all four, and
 update an activation's setting, pin, switch and revision by column grant;
 nothing deletes a row. Tenancy-keyed with the restrictive policy. The records
 are `packages/core-records/src/automations/`.
+
+## Tripwires and the night round (20261005161600, MP-14-8)
+
+`tripwires` holds each stated check a business runs: what it watches, whether
+it is armed or cannot be armed (and why), how often it fired and what the last
+firing filed. One that cannot be armed carries no firing history
+(`tripwires_unarmed_never_fired`). `night_round_steps` holds each step of a
+night round, by the morning it hands over, with where the fact it reports
+lives (a section of the page, or a task by its key). Both may name a client of
+their own business by foreign key. Every column drawn as words is the
+`signal_text` domain, an explicit allow-list of characters refused whole. The
+application may only select both; the checks and the round write them (not
+built). Tenancy-keyed with the restrictive policy. The records are
+`packages/core-records/src/connections/signal.ts`.

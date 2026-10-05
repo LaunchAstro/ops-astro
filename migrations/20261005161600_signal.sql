@@ -13,15 +13,20 @@
 -- loops, not built); until then the tests seed them as the database owner, as
 -- they do connections (20261005153051).
 --
--- Every column the page draws as words is `signal_text`: a closed grammar
--- refused whole unless it matches, the same one `connections.label` holds (no
--- control, bidi or invisible operator character, no space, filler or joiner at
--- either end), so a writer cannot put a line break or a direction override in
--- front of a reader. A task cite is a task key (`T-<n>`, `nextTaskKey`), a
--- filed item an attention item's display id. A row naming a client names a
+-- Every column the page draws as words is `signal_text`: a closed grammar,
+-- an explicit allow-list refused whole unless every character is on it.
+-- Printable ASCII; Latin-1 and Latin Extended letters and signs (U+00A1 to
+-- U+024F, less the soft hyphen U+00AD); dashes, quotes, bullets and the
+-- other visible general punctuation (U+2010 to U+2027, U+2030 to U+205E);
+-- currency signs; arrows. A space only between two of those. Everything else
+-- is refused: control, format, bidi, tag and invisible characters, variation
+-- selectors, combining marks, separators other than the space, and any script
+-- the list does not name. A task cite is a task key (`T-<n>`, `nextTaskKey`),
+-- a filed item an attention item's display id. A row naming a client names a
 -- client of its own business, by foreign key.
 create domain public.signal_text as text
-  constraint signal_text_shape check (value ~ '^[^  ͏ᅟᅠ  - ‌‍  ⠀　ㅤﾠ\u0001-\u001F\u007F-\u009F­؜᠎​‎‏ -‮⁠-⁤⁦-⁯﻿￹-￻]([^\u0001-\u001F\u007F-\u009F­؜᠎​‎‏ -‮⁠-⁤⁦-⁯﻿￹-￻]*[^  ͏ᅟᅠ  - ‌‍  ⠀　ㅤﾠ\u0001-\u001F\u007F-\u009F­؜᠎​‎‏ -‮⁠-⁤⁦-⁯﻿￹-￻])?$');
+  constraint signal_text_shape check (
+    value ~ '^[!-~\u00A1-\u00AC\u00AE-\u024F\u2010-\u2027\u2030-\u205E\u20A0-\u20C0\u2190-\u21FF]([ !-~\u00A1-\u00AC\u00AE-\u024F\u2010-\u2027\u2030-\u205E\u20A0-\u20C0\u2190-\u21FF]*[!-~\u00A1-\u00AC\u00AE-\u024F\u2010-\u2027\u2030-\u205E\u20A0-\u20C0\u2190-\u21FF])?$');
 
 -- A tripwire is a stated check. `cannot_be_armed` is not "off": the data the
 -- check needs does not exist, and `blocked_reason` names which. Such a check

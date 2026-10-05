@@ -8,7 +8,8 @@
 // row. A client-scoped reader sees only the rows bound to one of their
 // clients: a grant whose task carries that client, a tripwire or a step that
 // names it. Fleet rows (no client) are not theirs, since a fleet grant or a
-// fleet step reports on every client at once. Every join is on the business
+// fleet step reports on every client at once; nor is a grant on a trashed
+// task, a map or a map's ticket, which no client view shows (WF-1). Every join is on the business
 // as well as the id, beside the tenancy policy.
 //
 // A grant is a delegation (0008). Its client is its purpose task's client
@@ -20,6 +21,7 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Scope } from '../authority/grants.ts';
+import { wayfinderCondition } from '../tasks/wayfinder.ts';
 
 export type GrantState = 'live' | 'ran_out' | 'taken_back';
 
@@ -114,7 +116,8 @@ const GRANTS_SQL = `with visible as (
        from public.delegations d
        left join public.records t on t.business_id = d.business_id and t.id = d.purpose_scope_id
       where d.business_id = (select public.app_business_id())
-        and ($1::boolean or t.uuid_7 = any($2::uuid[])))
+        and ($1::boolean or (t.uuid_7 = any($2::uuid[]) and t.deleted_at is null
+                             and not ${wayfinderCondition('t')})))
    select v.id, v.agent_actor_id, v.purpose, v.collections, v.actions, v.client_id,
           k.name as client_label, v.granted_at, v.expires_at,
           coalesce(v.revoked_at, v.settled_at) as ended_at, v.revocation_cause, v.state,

@@ -6,8 +6,9 @@
 /**
  * One grant: a delegation, a named agent's time-boxed claim for one job.
  * `access` is `exec` when any of its actions is more than a read.
- * `redemptions` counts the applied calls made under it; nothing records what
- * each reached. `client` is null for a fleet grant.
+ * `redemptions` counts its agent's applied calls on its task inside its
+ * window, less the pickup; nothing records what each reached. `client` is
+ * null for a fleet grant.
  */
 export interface GrantView {
   readonly id: string;
