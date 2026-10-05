@@ -82,6 +82,9 @@ export default defineConfig({
         ? []
         : [
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
+            'tests/api/server-entry-hosted-sign-in-key.test.ts',
+            'tests/review/forwarder-replay-time-order.test.ts',
+            'tests/runtime/trace-export-gap-cursor.test.ts',
             'tests/api/end-others-provider-clock-skew.test.ts',
             'tests/api/end-others-delayed-ending.test.ts',
             'tests/api/end-others-ended-session-leaves-live-list.test.ts',
