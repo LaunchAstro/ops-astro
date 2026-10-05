@@ -134,7 +134,9 @@ it.skipIf(noDatabase)(
       // eslint-disable-next-line no-await-in-loop -- export, then retention, in turn
       const outcome = await exportLimited();
       outcomes.push(
-        outcome.kind === 'idle' ? 'idle' : `${outcome.kind}:${outcome.spans}${'code' in outcome ? `:${outcome.code}` : ''}`,
+        outcome.kind === 'idle'
+          ? 'idle'
+          : `${outcome.kind}:${outcome.spans}${'code' in outcome ? `:${outcome.code}` : ''}`,
       );
       // eslint-disable-next-line no-await-in-loop -- export, then retention, in turn
       await expireOnce(s.db.app, s.business, TRACE_KEY, t.target.expiry);

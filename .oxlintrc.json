@@ -77,13 +77,21 @@
         "tests/runtime/trace-retention-expires-a-late-committed-event-once-past-the-window.test.ts",
         "tests/runtime/trace-retention-recovers-a-delete-after-a-database-fault.test.ts",
         "tests/runtime/trace-retention-recovers-a-delete-that-lands-after-a-timeout.test.ts",
-        "tests/runtime/trace-retention-recovery-for-one-run-keeps-another-confirmed-run-gone.test.ts"
+        "tests/runtime/trace-retention-recovery-for-one-run-keeps-another-confirmed-run-gone.test.ts",
+        "tests/runtime/trace-export-owed-tail-does-not-block-a-later-run.test.ts",
+        "tests/runtime/trace-retention-unknown-reads-do-not-stop-a-later-recovery.test.ts",
+        "tests/runtime/trace-retention-reads-the-first-owed-span-back.test.ts"
       ],
       "rules": {
         "max-lines-per-function": "off",
         "unicorn/consistent-function-scoping": "off",
+        "unicorn/no-array-callback-reference": "off",
         "require-await": "off"
       }
+    },
+    {
+      "files": ["tests/runtime/aw-13-world.ts"],
+      "rules": { "max-lines": "off" }
     },
     {
       "files": ["tests/api/live-board-lost-access.test.ts"],

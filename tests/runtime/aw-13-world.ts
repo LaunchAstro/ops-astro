@@ -51,7 +51,8 @@ export const TRACE_KEY: Buffer = Buffer.from('aw13-test-trace-key-not-a-secret')
 
 /**
  * The trace store's side: an export stores spans by trace id; a delete drops whole traces unless
- * the target is `skipping` (success for work its guard skipped); a read 404s once one is gone.
+ * the target is `skipping` (success for work its guard skipped); a read of a trace or one of
+ * its spans 404s once it is gone.
  */
 function store(target: TraceTarget, method: string, url: string, body: string): number {
   if (method === 'POST') {
@@ -66,7 +67,9 @@ function store(target: TraceTarget, method: string, url: string, body: string): 
       target.spans.delete(id);
     }
   } else if (method === 'GET') {
-    return target.stored.has(url.split('/').at(-1) ?? '') ? 200 : 404;
+    const id = url.split('/').at(-1) ?? '';
+    const held = url.includes('/observations/') ? [...target.spans.values()] : [target.stored];
+    return held.some((ids) => ids.has(id)) ? 200 : 404;
   }
   return 200;
 }

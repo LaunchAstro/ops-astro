@@ -122,6 +122,7 @@
     "tests/runtime/trace-retention-fresh-export-test-rejects-a-lost-fresh-span.test.ts",
     "tests/runtime/trace-retention-keeps-an-event-exported-after-its-due-check.test.ts",
     "tests/runtime/trace-retention-keeps-recovering-while-a-second-delete-is-queued.test.ts",
+    "tests/runtime/trace-retention-reads-the-first-owed-span-back.test.ts",
     "tests/runtime/trace-retention-recovers-a-delete-after-a-database-fault.test.ts",
     "tests/runtime/trace-retention-recovers-a-delete-that-lands-after-a-timeout.test.ts",
     "tests/runtime/trace-retention-recovery-for-one-run-keeps-another-confirmed-run-gone.test.ts",
