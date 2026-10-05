@@ -142,6 +142,14 @@ describe.skipIf(noDatabase)(
         [address],
       );
       expect(made?.n).toBe(0);
+      const [trace] = await w.db.admin.execute<{ people: number; applied: number }>(
+        `select (select count(*)::int from public.people
+                  where business_id = $1 and display_name = 'Ivy Admin') as people,
+                (select count(*)::int from public.audit_events
+                  where actor_id = $2 and command = 'invitation.create' and outcome = 'applied') as applied`,
+        [w.alpha, inviter.actorId],
+      );
+      expect(trace).toStrictEqual({ people: 0, applied: 0 });
     });
 
     it('a create waiting at the address limiter replaces an invitation that lapsed meanwhile', async () => {
@@ -179,6 +187,14 @@ describe.skipIf(noDatabase)(
           );
           return row?.ready === true;
         });
+        // The create's transaction began before the expiry, or the proof proves nothing.
+        const [began] = await w.db.admin.execute<{ before: boolean }>(
+          `select bool_and(a.xact_start < i.expires_at) as before
+             from pg_stat_activity a, public.invitations i
+            where $2 = any(pg_blocking_pids(a.pid)) and i.id = $1`,
+          [id, pid],
+        );
+        expect(began?.before).toBe(true);
         release.release();
         expect(codeOf(await running)).toBe('applied');
       } finally {
