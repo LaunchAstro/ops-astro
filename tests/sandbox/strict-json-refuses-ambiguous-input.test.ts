@@ -67,6 +67,10 @@ it.each([
   expect(parseStrictJson(bytes(text))).toMatchObject({ ok: false, reason: 'internal' });
 });
 
+it('reads an escaped surrogate pair as one character', () => {
+  expect(parseStrictJson(bytes('"\\ud83d\\ude00"'))).toEqual({ ok: true, value: '\u{1F600}' });
+});
+
 it('refuses bytes that are not UTF-8', () => {
   expect(parseStrictJson(new Uint8Array([0x22, 0xff, 0x22]))).toMatchObject({ ok: false });
 });
