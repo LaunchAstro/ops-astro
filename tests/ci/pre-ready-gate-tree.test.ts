@@ -219,3 +219,31 @@ it(
   },
   SLOW,
 );
+
+it(
+  'leaves alone a link that only looks like a killed run’s snapshot',
+  () => {
+    const { head } = at('clean');
+    const common = git('rev-parse', '--path-format=absolute', '--git-common-dir');
+    const gone = spawnSync(process.execPath, ['-e', '']).pid;
+    // Another lane's worktree, holding uncommitted work.
+    const kept = mkdtempSync(join(tmpdir(), 'pre-ready-kept-'));
+    git('worktree', 'add', '-q', '--detach', kept, head);
+    const link = join(common, 'pre-ready', `head-${gone}-link`);
+    mkdirSync(join(common, 'pre-ready'), { recursive: true });
+    writeFileSync(join(kept, 'work.txt'), 'uncommitted\n');
+    symlinkSync(kept, link);
+    try {
+      wholeGate(
+        { cwd: tree, base, head, skip: true, pr: { body: '', labels: '', openIssues: '' } },
+        () => {},
+      );
+      expect(existsSync(join(kept, 'work.txt'))).toBe(true);
+    } finally {
+      rmSync(link, { force: true });
+      if (existsSync(kept)) git('worktree', 'remove', '--force', kept);
+      git('worktree', 'prune');
+    }
+  },
+  SLOW,
+);
