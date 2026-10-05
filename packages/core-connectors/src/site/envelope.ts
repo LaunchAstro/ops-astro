@@ -87,17 +87,36 @@ function replacedAt(before: string, after: string, target: CorrectionTarget): nu
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+/** A frontmatter fence: a line of exactly `---`, its line ending's `\r` aside. */
+function isFence(line: string): boolean {
+  return (line.endsWith('\r') ? line.slice(0, -1) : line) === '---';
+}
+
+/**
+ * Where body copy can start: just after the frontmatter's closing fence, or at zero when the file
+ * opens with no frontmatter (blank lines aside). The scan starts there, so nothing in the
+ * frontmatter (a quoted brace included, Sol R2.2) is read as markup. A first line that begins
+ * `---` but is no fence, or a fence that never closes, is `undefined`: no offset is body copy.
+ */
+function bodyStart(source: string): number | undefined {
+  const lines = source.split('\n');
+  const first = lines.findIndex((line) => line.trim() !== '');
+  if (first < 0 || !(lines[first] ?? '').trimStart().startsWith('---')) return 0;
+  if (!isFence(lines[first] ?? '')) return undefined;
+  const close = lines.findIndex((line, index) => index > first && isFence(line));
+  if (close < 0) return undefined;
+  return lines.slice(0, close + 1).reduce((sum, line) => sum + line.length + 1, 0);
+}
+
 /** Whether `offset` is in body copy: not frontmatter, a tag, a comment, an expression, a script or a style. */
 function inTextNode(source: string, offset: number): boolean {
-  if (source.startsWith('---\n')) {
-    const close = source.indexOf('\n---', 4);
-    if (close < 0 || offset <= close + 4) return false;
-  }
+  const start = bodyStart(source);
+  if (start === undefined || offset < start) return false;
   let state: 'text' | 'tag' | 'comment' | 'raw' = 'text';
   let quote = '';
   let braces = 0;
   let rawClose = '';
-  for (let at = 0; at < offset; at += 1) {
+  for (let at = start; at < offset; at += 1) {
     const rest = source.slice(at);
     const character = source.charAt(at);
     if (state === 'comment') {
