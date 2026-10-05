@@ -64,9 +64,10 @@ grant select, insert on public.trace_expiry_asks to ops_astro_app;
 -- run up to it is gone from the store. A batch from before this migration
 -- has no place and confirms nothing: its runs are asked once more, a delete
 -- of what is already gone, and confirmed at a place. The owed check looks a
--- run up in the batches' runs, so they get an index. A pass's owed reads
--- record the runs the store answered and the runs it did not, each of those
--- with the span its read stopped at (aligned), and the next pass reads the
+-- run up in the batches' runs, so they get an index. A pass whose owed reads
+-- leave a run unanswered records the runs the store answered and those it
+-- did not, each with the span its read did not reach (aligned); the next
+-- pass, from the rows inside the window, reads the
 -- runs it read longest ago first, a run left unanswered before one answered
 -- in the same pass, and an unanswered run from where its read stopped.
 alter table public.trace_expiry_batches

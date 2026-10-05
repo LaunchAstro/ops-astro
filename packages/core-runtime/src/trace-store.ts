@@ -10,9 +10,10 @@
 // span it took stays missing for every later read. A read the store does
 // not answer does not stop the run's: an older span may answer absent.
 // Reads the store does not answer, three in a row, end a pass's owed
-// read-back. The pass records the runs it read, those it had no answer for
-// with the span their read stopped at, and the next pass reads the runs it
-// reached least lately first, an unanswered run from where it stopped
+// read-back. A pass that leaves a run unanswered records the runs it read,
+// those it had no answer for with the span their read did not reach, and the
+// next pass reads the runs it reached least lately first, an unanswered run
+// from where it stopped
 // (`owedAsks` in `trace-owed.ts`).
 
 import { randomUUID } from 'node:crypto';
@@ -53,8 +54,8 @@ const spanOf = (key: Buffer, businessId: string, eventId: string): string =>
  * The runs a read finds gone; with `reading`, by each sent owed span from
  * where the run's last read stopped, until `UNANSWERED` unanswered reads in a
  * row. A run with an unanswered span and none absent is unanswered, and stops
- * at the first span of the unanswered reads its read ended on, or else at its
- * first unanswered span.
+ * at the first span its read did not reach (the unanswered ones before it
+ * come round again at the end), or else at its first unanswered span.
  */
 export async function readBack(
   key: Buffer,
@@ -68,11 +69,10 @@ export async function readBack(
     if (reading !== undefined && reading.quiet >= UNANSWERED) break;
     let read: 'absent' | 'present' | 'unknown' = 'present';
     let first: string | undefined;
-    let streak: string | undefined;
     let stop: string | undefined;
     for (const eventId of from(reading, runId)) {
       if (reading !== undefined && reading.quiet >= UNANSWERED) {
-        stop = streak ?? eventId;
+        stop = eventId;
         break;
       }
       // eslint-disable-next-line no-await-in-loop -- one read at a time; the store is not hurried
@@ -88,8 +88,7 @@ export async function readBack(
       if (answer === 'unknown') {
         read = 'unknown';
         first ??= eventId;
-        streak ??= eventId;
-      } else streak = undefined;
+      }
     }
     if (read === 'absent') gone.push(runId);
     if (reading === undefined) continue;

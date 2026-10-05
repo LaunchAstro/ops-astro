@@ -86,7 +86,7 @@ export async function owedAsks(
            select b.recorded_at, b.read_run_ids @> array[o.run_id] as answered,
                   b.resume_ids[array_position(b.unanswered_run_ids, o.run_id)]::text as resume
              from public.trace_expiry_batches b
-            where b.business_id = $1
+            where b.business_id = $1 and b.recorded_at >= now() - make_interval(days => $3)
               and (b.unanswered_run_ids @> array[o.run_id] or b.read_run_ids @> array[o.run_id])
             order by b.recorded_at desc limit 1) r on true) owed
       where $4::text is null

@@ -139,7 +139,7 @@ async function readOwed(
     if (owed.length < page || end === undefined) break;
     after = { turn: end.turn, answered: end.answered, runId: end.runId };
   }
-  if (reading.unanswered.length > 0 || reading.answered.length > 0) {
+  if (reading.unanswered.length > 0) {
     await database.withBusiness(
       businessId,
       async (tx) => await recordReading(tx, reading, windowDays),

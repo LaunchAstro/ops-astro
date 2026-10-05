@@ -1997,10 +1997,11 @@ and codes, never a sentence, to a trace target an operator reads.
   so the run counts as gone. Each owed run costs one read per such event
   each pass. A span the store does not answer does not end the run's read:
   an older one may answer absent. Three reads in a row the store does not
-  answer end the pass. The pass records the runs it read on a batch row
-  (code `expiry_unconfirmed`, nothing confirmed): those answered
+  answer end the pass. A pass that leaves a run unanswered records the runs
+  it read on a batch row (code `expiry_unconfirmed`, nothing confirmed;
+  rows older than the window are not read again): those answered
   (`read_run_ids`), and those not (`unanswered_run_ids`), each with the span
-  its read stopped at (`resume_ids`). The next pass reads the runs it read
+  its read did not reach (`resume_ids`). The next pass reads the runs it read
   longest ago first, never-read ones before all, and of one pass's, those it
   left unanswered first, each from where its read stopped and round to it. So
   neither a few traces that never answer nor runs that always answer can
