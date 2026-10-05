@@ -797,6 +797,17 @@ definer with its search path pinned and no argument, run as `ops_astro_upkeep`,
 a role no one logs in as that holds execute on it and nothing else. PUBLIC and the
 application may not run it.
 
+## Send Email hook messages claimed (20261005190651, C39-T)
+
+`ops.auth_hook_messages` holds one row per login-provider Send Email hook
+message that an invitation send took: a SHA-256 digest of the message id.
+Installation-wide, no business, person, address or invitation. The send
+inserts it in its own transaction, after every check and before its token
+and attempt; a second send of the same message, from any business or hook
+process, waits on the first's transaction, finds the row and is refused
+`REPLAYED`, writing nothing. A refused send claims nothing. The application
+may insert and read the digest; nothing changes or deletes a row.
+
 ## Overseas-services register (0052, C81)
 
 `overseas_services` holds one row per outside service that receives personal
