@@ -20,7 +20,8 @@ import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { advisoryLock, readBusinessSetting } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
-import { itemsOf, requestQuotation, workOf, type Locked } from './conversation-contents.ts';
+import { itemsOf, requestQuotation, type Locked } from './conversation-contents.ts';
+import { workOf } from './conversation-work.ts';
 
 /** Quiet: twenty-four hours without a message. */
 export const QUIET_HOURS = 24;
