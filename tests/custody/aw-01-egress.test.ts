@@ -61,6 +61,10 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   // provider calls should leave through custody instead is open for Sol.
   'packages/core-connectors/src/capture/transport.ts':
     "C80's pinned HTTPS transport: only to an address already checked, no redirect",
+  'packages/core-connectors/src/site/page-transform.ts':
+    'starts the page compiler worker; no network',
+  'packages/core-connectors/src/site/page-transform-worker.ts':
+    'compiles one pair of pages (#781); no network',
   // Main's, taken at the a352c11 join (reviewed in batch 2):
   'apps/api/auth/factors.ts':
     "the sign-in provider's second-factor calls at its one fixed address (C59)",
