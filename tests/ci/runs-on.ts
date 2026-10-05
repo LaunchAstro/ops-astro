@@ -197,6 +197,17 @@ export const required: ReadonlySet<string> = new Set(
   ).required_status_checks.map((c) => c.context),
 );
 
+/** Every event any of the workflows given starts on: each key of `on:`, or its string or list form. */
+export function workflowEvents(texts: Map<string, string>): Set<string> {
+  const events = new Set<string>();
+  for (const text of texts.values()) {
+    const on = (parseDocument(text).toJS() as { on?: unknown } | null)?.on;
+    const keys = typeof on === 'string' ? [on] : Array.isArray(on) ? on : Object.keys(on ?? {});
+    for (const key of keys) events.add(String(key));
+  }
+  return events;
+}
+
 /** The jobs that report a required check, and every job they wait on, as `file id`. */
 export function behindRequired(jobs: Job[]): Set<string> {
   const out = new Set<string>();
