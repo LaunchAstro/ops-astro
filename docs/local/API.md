@@ -292,9 +292,10 @@ whichever route asked (`ops.ended_provider_sessions`, 0061; each business's
 own record is `ended_sessions`, 0057). Ending the other sessions, or a factor
 change, also ends every session of the login but the kept one in every
 business, seen here or not: a token whose first sign-in (`amr`) is at or
-before that ending is refused; a sign-in after it is served
-(`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest of the
-subject). The provider's sign-out, which revokes
+before that ending, or within the minute the provider's clock may run ahead
+of the database's (`SIGN_IN_CLOCK_SKEW_SECONDS`), is refused; a sign-in after
+that is served (`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest
+of the subject). So a sign-in in the minute after the ending is refused once. The provider's sign-out, which revokes
 the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
 longer admits the person) still ends the verified token's own session in
 every business and at the provider, and answers the refusal.
@@ -681,7 +682,7 @@ no route written by hand.
 
 | Operation                                  | Route                                        | Body                                                                                                        | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.comment`                             | `/task/comment`                              | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?`, `parentId?`, `mentions?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience`, `comment_type` or `mentions`; naming `parentId` for a parent that is not a live top-level message on this task, or `audience` for a reply outside its message's audience), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `MENTION_NOT_READABLE` 422 (naming each person mentioned who cannot read the comment; nothing saves), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
+| `task.comment`                             | `/task/comment`                              | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?`, `parentId?`, `mentions?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience`, `comment_type` or `mentions`; naming `parentId` for a parent that is not a live top-level message on this task, or `audience` for a reply outside its message's audience), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `MENTION_NOT_READABLE` 422 (per unreadable mention, named only where its author sees it; none saved), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
 | `task.edit_comment`, `task.delete_comment` | `/task/edit_comment`, `/task/delete_comment` | `operationId`, `recordId`, `expectedRevision`, `commentId`, `body` (edit only)                              | `SCOPE_NOT_GRANTED` 403 without `task:comment` on the task, or naming `commentId` when the caller did not write it; `NOT_FOUND` 404 for a comment not live on this task; `FIELD_VALUE_INVALID` 422 naming `body` (edit only) (MP-4-5)                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `preset.plan`                              | `/preset/plan`                               | `recordTypeKey`, `presetKey`, `fields[]`                                                                    | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `settings.set_four_eyes_threshold`         | `/settings/set_four_eyes_threshold`          | `operationId`, `value` (number or `null`), `expectedRevision?`                                              | `SCOPE_NOT_GRANTED` 403 (it asks `spend:decide`), `STEP_UP_REQUIRED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -701,7 +702,9 @@ hold. The author is the acting actor and the posting time is the server's;
 neither is a payload field. `mentions` lists person ids. Each person
 mentioned is raised an inbox item in the same transaction (INB-1). If one of
 them cannot read the task, or is an outside party named in an `internal`
-comment, the whole comment is refused before it saves.
+comment, the whole comment is refused before it saves. The register keeps
+that refusal naming each person by the identifier as sent, so a replay names
+nobody the author may no longer see.
 
 `preset.plan` is declared `kind: 'read'` because it writes nothing, even on
 success. It is the one read that does not take the `read` action, which is why
@@ -1329,11 +1332,14 @@ Its serve is the broker's reserve (`reserveModelCall`,
 operation's priced maximum, the prompt copy's registration, the register row
 and the audit event commit together. A repeat of the operation id replays the
 register row and sends nothing; two at once cannot both hold, because the
-second loses the register's identity key and replays. After that commit the
-broker starts the call, sends it through custody and settles it
+second waits at `enter`'s door (#932) and replays, the register's identity key
+the backstop. After that commit the broker starts the call, sends it through
+custody and settles it
 (`sendReservedCall`), re-reading the task's client link, the lease, the
 delegation and the reservation under their locks, so authority lost in between refuses the call when its
-effect applies.
+effect applies. The start sends only a call it moves from `reserved` to
+`dispatched` itself: a second send of the same hold, at once or later, or a
+hold the sweep released meanwhile, sends nothing (`EFFECT_NOT_RECONCILABLE`).
 
 The answer is the call as its ledger row stands: `callId`, `state`,
 `reservedMinor`, `actualMinor`, `observedMinor`, `drop`, and `text`, the
@@ -1355,7 +1361,8 @@ with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
 run stops and asks in the same transaction (AW-05, the budget wait in
 [RUNTIME.md](RUNTIME.md)), its lease ends, and every later call on that lease
 is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
-each counting a call from its hold until it ends: the business's own per
+each counting a call from its hold until it ends, and a reconciliation pass's
+provider lookup while its slot lasts (AW-10, [RUNTIME.md](RUNTIME.md)): the business's own per
 operation, and its fair share of the route's, which is the installation's.
 The business's own is a durable limit (`hasRoom`, `core-records/src/tenancy/limit.ts`):
 a count read back from the records under a lock keyed by the business, against
@@ -1445,9 +1452,9 @@ file pinned in the same transaction. The command line and the app's client
 post it to the same route. No agent reaches it: an agent may propose a plan,
 never activate one.
 
-| Operation          | Route                          | Body                                                                                                                | Authority                                                                                          |
-| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `task.accept_plan` | `/api/b/:key/task/accept_plan` | `operationId`, `gateId`, `versionId`, `note`, `planText`, `plan`, `entryPath`, `paths`, `conversationId` (optional) | `decide`, asked of the gate's own task as `task.decide` is; `decide` asks it again under its locks |
+| Operation          | Route                          | Body                                                                                                                                                          | Authority                                                                                          |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `task.accept_plan` | `/api/b/:key/task/accept_plan` | `operationId`, `gateId`, `versionId`, `note`, `planText`, `plan`, `entryPath`, `paths`, `ceilingMinor` and `currency` (optional), `conversationId` (optional) | `decide`, asked of the gate's own task as `task.decide` is; `decide` asks it again under its locks |
 
 `versionId` is the plan version shown beside the button; a newer reply makes
 it stale and the accept is `PROPOSAL_SUPERSEDED` 409. `planText` is the exact
@@ -1459,7 +1466,11 @@ references, no cycle; anything else is `FIELD_VALUE_INVALID` 422 naming `plan`
 files in the server's instruction root (`OPS_ASTRO_INSTRUCTION_ROOT`); an odd
 path, a symlink, a name outside the root, a directory or a missing file is
 `DEFINITION_UNAVAILABLE`. With no root configured the accept is
-`DEPENDENCY_NOT_LANDED`. `conversationId` is the caller's own conversation
+`DEPENDENCY_NOT_LANDED`. `ceilingMinor` and `currency` are the rough cost the
+card drew, sent together or not at all (half of one, or a fraction of a minor
+unit, is `FIELD_VALUE_INVALID` 422); under the locks, a ceiling other than the
+version's maximum and currency is `VERSION_STALE` 409 and nothing is approved
+or held. Callers that draw no ceiling send neither. `conversationId` is the caller's own conversation
 or `NOT_FOUND` 404, and becomes the audit event's origin. Every other refusal
 is `task.decide`'s. It answers the approval's detail with `runId`, `pin`,
 `manifestDigest`, `planRecordId`, `textDigest` and `recordDigest`. A repeat of
@@ -1516,9 +1527,12 @@ releasedMinor, spentMinor }`. The task stays open for a person. It reaches a
   an earlier stop never applies to a later one). A refusal writes nothing.
 - **No agent answers.** Neither row is in `AGENT_SURFACE`: the agent prefix
   answers `DELEGATION_EXCLUDES_OPERATION` 403 with or without a delegation.
+- **Recent sign-in.** `run.top_up` holds `billing:decide`, so C59's step-up
+  asks it in the envelope: `STEP_UP_REQUIRED` 403 past 60 minutes while the
+  business's money step-up setting is on (`C54 recent sign-in`). The end holds
+  `gate:decide`, which the step-up does not ask.
 - **Not here yet.** The question and its two buttons in the conversation where
-  the plan was approved (AW-04), and the recent sign-in a money answer asks
-  for (C59).
+  the plan was approved (AW-04).
 
 ## The launch and its receipt
 
@@ -1997,7 +2011,7 @@ proposals: {
     runId;                             // the run it holds for: one per-run row
     state; heldMinor; actualMinor; classifiedCause; leaseId;
     lease: { id; fence; state; expiresAt; holderActorId } | null;
-    attempt: { id; state; dispatchMarker; observed } | null;
+    attempt: { id; state; dispatchMarker; observed; dropCause; outcome } | null;
   }[];
 }[]
 ```
@@ -2217,8 +2231,9 @@ answers today's refusal (for example `DELEGATION_NARROWED` or
 `DELEGATION_NOT_LIVE`), with no stored detail, once the grant, delegation or
 expiry has changed. Those rows of `AGENT_OPERATIONS` replay as `reauthorise`,
 and `releaseReplay` (`commands/agent-replay.ts`) runs `authorise` again. A
-capabilities replay is projected again for the credential presented now
-(`replayCapabilities`). A pickup replay is checked against the delegation it
+`session.capabilities` or `task.queue` replay is served again for the rights
+held now (`serveAgain`), so a queue read before a pickup and repeated under a
+delegation answers the narrowed queue (#169). A pickup replay is checked against the delegation it
 minted (`replayPickup`). A handback settles its own delegation, so its receipt
 is returned only to the credential that settled it (`replaySettledHandback`).
 All three are in `commands/agent-replay.ts`. The register row is left as it
@@ -2352,8 +2367,9 @@ revision, and two setters at once from one limit leave one applied. The answer i
 and `{ key: 'planning', limitMinor, currency }`. A lower limit is taken even
 below what is committed: the next planning reply that no longer fits is
 refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). Until a person moves
-it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. Not here
-yet: the recent sign-in a money action asks (C59).
+it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. It holds
+`billing:decide`, so C59's step-up asks it in the envelope: `STEP_UP_REQUIRED`
+403 past 60 minutes while the business's money step-up setting is on.
 
 ## Tags
 
@@ -2598,7 +2614,7 @@ agent answer keeps its payload under `detail`.
 The agent answer's `grants` is read on every call and on every replay: a
 replay is authorised as a fresh call and projected again for the credential
 presented now, so a replay under another delegation answers that delegation's
-scope and never the first one's (`replayCapabilities`).
+scope and never the first one's (`serveAgain`).
 `tests/commands/agent-capabilities-intersection.test.ts` holds both over HTTP.
 `tests/api/capabilities-shape.test.ts` asserts the one shape on both prefixes
 and on a replay ("answers flattened beside ok on both, and on a replay").
@@ -2797,7 +2813,7 @@ the removal when `enrol` answers `FACTOR_ALREADY_ENROLLED` (`WEB.md`).
 
 | Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                                                      |
 | ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                                                       |
+| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `VERSION_STALE` 409 (a newer enrolment recorded first), `PROVIDER_ANSWER_INVALID` 502               |
 | `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `FACTOR_ALREADY_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
 | `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                                                 |
 
@@ -2819,12 +2835,14 @@ call, beside the record it changes, and carries the sent code's id as its
 too, so it stops counting, and a provider fault on the code leaves it counted. GoTrue served under a path (`/auth/v1`) is called
 under that path. The record step locks the login (a transaction-scoped
 advisory lock, `second-factor-subject:` and its subject's digest), then the
-person's own row (`for no key update`), so two tabs enrolling at once queue: the
-later enrolment replaces the earlier unverified one, and one live factor
-remains. Two businesses completing enrolments for one login at once queue too:
-the later is refused `FACTOR_ALREADY_ENROLLED`, and the factor the provider has
-just verified for it is removed there, best effort, so the login holds one
-verified factor.
+person's own row (`for no key update`), so two tabs enrolling at once queue.
+An enrolment replaces only the unverified factor it started from: one recorded
+after it started (another tab's) stays the factor the first code completes, and
+this one is refused `VERSION_STALE`, its provider factor reported as an
+`account.factor_orphaned` event. One live factor remains. Two businesses
+completing enrolments for one login at once queue too: the later is refused
+`FACTOR_ALREADY_ENROLLED`, and the factor the provider has just verified for it
+is removed there, best effort, so the login holds one verified factor.
 
 `PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.
@@ -3277,6 +3295,8 @@ has the table, the sealing and the compromise runbook.
 
 No answer carries a value, and a refusal names the field, never what was sent.
 No audit row holds a set's value either, a refusal's attempted values included.
+A set's `expectedRevision` is the revision `secret.list` showed, or `0` for a
+name the list did not hold: `0` is refused `VERSION_STALE` when the name exists.
 
 ## Connections (MP-14-7a)
 

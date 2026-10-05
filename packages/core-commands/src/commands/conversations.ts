@@ -26,7 +26,7 @@ import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts
 const BODY_LIMIT = 20_000;
 export const TITLE_LIMIT = 120;
 const SUBJECT_LIMIT = 200;
-const DEFAULT_TITLE = 'New conversation';
+export const DEFAULT_TITLE = 'New conversation';
 
 /** The conversation's address: the page C36 draws, and the API's read of it. */
 export const conversationAddress = (conversationId: string): string => `/agent/${conversationId}`;

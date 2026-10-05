@@ -33,7 +33,7 @@ import {
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { replayRecordedTransitions } from '../../packages/core-runtime/src/index.ts';
 import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
-import { enrol, grantTo, type Member } from './fixture.ts';
+import { enrol, grantTo, WHOLE_BUSINESS, type Member } from './fixture.ts';
 import { clearingWorld, detailOf, ok, proposal, readable } from './inbox-clearing-world.ts';
 import type { Answer, ApiFixture } from '../api/fixture.ts';
 
@@ -80,6 +80,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     clientStaff = await enrol(fixture.db.app, fixture.business, 'Cleo Clientside');
     clientA = randomUUID();
     await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+      // The commenting member reads the people directory, as every seeded
+      // member does: a refusal names staff only to such a reader (#419).
+      await grantTo(tx, fixture.member, 'read', WHOLE_BUSINESS, false, 'person');
       await grantTo(tx, clientStaff, 'read', { kind: 'party', id: clientA });
       // An outside party: a person with no membership, reading client A's work.
       outsider = await insertPerson(tx, 'Olga Outside');

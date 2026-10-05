@@ -9,11 +9,19 @@
 // incident shows in its table. A refused field is drawn under that field in
 // the server's words, with the code on the outcome line; a refused grant says
 // the person may not record incidents. Either way nothing else is sent and
-// what was typed stays.
+// what was typed stays. A send whose answer was lost keeps its `operationId`
+// until one comes back, so sending the unchanged form again is the same
+// attempt and the server replays the incident it recorded; a changed form is
+// a new one.
 
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { Button, Card, Checkbox, TextField } from '@launchastro/ui';
-import { isRefusal, type OperationsClient, type WireRefusal } from '../../operations/client.ts';
+import {
+  isRefusal,
+  isUnavailable,
+  type OperationsClient,
+  type WireRefusal,
+} from '../../operations/client.ts';
 import { describeFailure, describeRefusal } from '../../records/submit.ts';
 
 /**
@@ -92,6 +100,7 @@ function useRecord(client: OperationsClient, onRecorded: () => void) {
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<WireRefusal | null>(null);
+  const held = useRef<Record<string, string | undefined>>({});
   const set = (field: keyof Facts) => (value: string) => {
     setFacts((was) => ({ ...was, [field]: value }));
   };
@@ -102,8 +111,11 @@ function useRecord(client: OperationsClient, onRecorded: () => void) {
   };
   const send = async (): Promise<void> => {
     setBusy(true);
-    const informationKinds = KINDS.filter((kind) => chosen.has(kind));
-    const result = await client.mutate('privacy.record_incident', { ...facts, informationKinds });
+    const body = { ...facts, informationKinds: KINDS.filter((kind) => chosen.has(kind)) };
+    const sent = JSON.stringify(body);
+    const operationId = (held.current[sent] ??= client.newOperationId());
+    const result = await client.mutate('privacy.record_incident', body, { operationId });
+    if (!isUnavailable(result)) held.current[sent] = undefined;
     setBusy(false);
     setRefusal(isRefusal(result) ? result : null);
     setOutcome(outcomeOf(result));

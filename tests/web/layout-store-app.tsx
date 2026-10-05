@@ -98,6 +98,8 @@ export async function layoutAt(input: {
         new Response(body, { status: 200, headers: { 'content-type': 'application/json' } }),
       );
     }
+    if (at.endsWith('/preference/save'))
+      return Promise.resolve(new Response(JSON.stringify({ recordId: null, revision: null })));
     return new Promise<Response>(() => {});
   }) as typeof globalThis.fetch;
   const page = await mount(

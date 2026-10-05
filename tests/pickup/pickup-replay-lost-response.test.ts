@@ -16,6 +16,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { LOCAL_KEY_FILE } from '../../packages/core-records/src/authority/credential-keys.ts';
 import { detailOf, replayWorld, type Approver, type ReplayWorld } from './pickup-replay-harness.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -50,7 +51,7 @@ describe.skipIf(serverUrl === undefined)('a pickup whose response was lost', () 
   beforeEach(() => {
     for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
       vi.spyOn(console, method).mockImplementation((...parts: unknown[]) => {
-        logged.push(parts.map((part) => String(part)).join(' '));
+        logged.push(consoleLine(...parts));
       });
     }
   });

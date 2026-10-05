@@ -55,9 +55,13 @@ const NO_KEY_FIXES = [
 
 type Revision = { readonly ok: true; readonly value: number | undefined } | { readonly ok: false };
 
-function revisionOf(value: unknown): Revision {
+/**
+ * A safe whole number from `least`, so the bigint compare cannot overflow; a
+ * set's 0 means the name must not exist yet.
+ */
+function revisionOf(value: unknown, least: 0 | 1): Revision {
   if (value === undefined) return { ok: true, value: undefined };
-  if (typeof value === 'number' && Number.isInteger(value) && value >= 1)
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= least)
     return { ok: true, value };
   return { ok: false };
 }
@@ -151,7 +155,7 @@ export async function setCustodySecret(
   }
   const value = valueOf(request.value);
   if (!value.ok) return value.refusal;
-  const revision = revisionOf(request.expectedRevision);
+  const revision = revisionOf(request.expectedRevision, 0);
   if (!revision.ok) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['expectedRevision'], REVISION_FIXES));
   }
@@ -187,7 +191,7 @@ export async function clearCustodySecret(
   context: CommandContext,
   request: { readonly secretId: string; readonly expectedRevision?: unknown },
 ): Promise<HandlerOutcome> {
-  const revision = revisionOf(request.expectedRevision);
+  const revision = revisionOf(request.expectedRevision, 1);
   if (!revision.ok) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['expectedRevision'], REVISION_FIXES));
   }

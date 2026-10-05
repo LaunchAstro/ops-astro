@@ -28,7 +28,7 @@ import {
   type Database,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
-import type { ModelOperation } from '../../core-connectors/src/index.ts';
+import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { Broker, BrokerRoute, ProviderAdapter } from './broker-types.ts';
 import type { CustodyOutcome } from './custody.ts';
 
@@ -39,9 +39,12 @@ export const EMAIL_OPERATION = 'email.send';
 export interface MailSettings {
   readonly appOrigin: string;
   readonly from: string;
+  /** The sending subdomain's setup check (`checkSender`): nothing is sent until it verified. */
+  readonly sender: SenderReport;
 }
 
 export type EmailRefusal =
+  | 'SENDER_NOT_VERIFIED'
   | 'OPERATION_NOT_CATALOGUED'
   | 'ITEM_NOT_OPEN'
   | 'ITEM_WITHHELD'
@@ -65,6 +68,11 @@ export type EmailResult =
  * have sent, so it is never followed by a second send (the broker's rule).
  */
 const NOTHING_SENT: ReadonlySet<string> = new Set(['refused', 'unlisted', 'bad_path', 'forbidden']);
+
+/** RFC 5322's dot-atom in ASCII: a from's local part, never a display name, space or line break. */
+const DOT_ATOM = /^[\w!#$%&'*+/=?^`{|}~-]+(?:\.[\w!#$%&'*+/=?^`{|}~-]+)*$/u;
+/** Printable ASCII: a domain that lower-cases to the verified subdomain only if it already is one. */
+const ASCII = /^[!-~]+$/u;
 
 /** Emails in flight for this business: items whose last email observation is still `asked`. */
 async function emailsInFlight(tx: TenantQuery): Promise<number> {
@@ -104,20 +112,63 @@ async function mayStillSend(tx: TenantQuery, itemId: string): Promise<boolean> {
   return last === undefined || (last.state === 'failed' && NOTHING_SENT.has(last.evidence ?? ''));
 }
 
-/** Step 1: every check, then the `asked` observation. The address stays in this process. */
-async function ask(
-  tx: TenantQuery,
-  itemId: string,
-  operation: ModelOperation,
-): Promise<{ readonly attemptId: string; readonly to: string } | EmailRefusal> {
-  const [item] = await tx.query<{ readonly recipient: string; readonly subject: string }>(
+interface HeldItem {
+  readonly recipient: string;
+  readonly subject: string;
+}
+
+async function lockOpenItem(tx: TenantQuery, itemId: string): Promise<HeldItem | undefined> {
+  const [item] = await tx.query<HeldItem>(
     `select recipient_person_id as recipient, subject_record_id as subject
        from public.inbox_items
       where business_id = $1 and id = $2 and work_state = 'open'
       for update`,
     [tx.businessId, itemId],
   );
+  return item;
+}
+
+async function holdTask(tx: TenantQuery, taskId: string, wait: boolean): Promise<boolean> {
+  const rows = await tx.query(
+    `select 1 from public.records where business_id = $1 and id = $2
+        for share${wait ? '' : ' skip locked'}`,
+    [tx.businessId, taskId],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Lock the open item and hold its task `for share`, never waiting on the task
+ * while holding the item: `task.assign` locks a task, then its items, so every
+ * wait here goes task then item. The item is kept only when its task can be
+ * held at once. Otherwise the item is released, the task is waited for, and
+ * the item is locked again and must still be the open item first read.
+ */
+async function holdItem(
+  tx: TenantQuery,
+  itemId: string,
+): Promise<HeldItem | 'ITEM_NOT_OPEN' | 'ITEM_WITHHELD'> {
+  await tx.query('savepoint email_item');
+  const item = await lockOpenItem(tx, itemId);
   if (item === undefined) return 'ITEM_NOT_OPEN';
+  if (await holdTask(tx, item.subject, false)) return item;
+  await tx.query('rollback to savepoint email_item');
+  await holdTask(tx, item.subject, true);
+  const again = await lockOpenItem(tx, itemId);
+  if (again === undefined) return 'ITEM_NOT_OPEN';
+  return again.recipient === item.recipient && again.subject === item.subject
+    ? again
+    : 'ITEM_WITHHELD';
+}
+
+/** Step 1: every check, then the `asked` observation. The address stays in this process. */
+async function ask(
+  tx: TenantQuery,
+  itemId: string,
+  operation: ModelOperation,
+): Promise<{ readonly attemptId: string; readonly to: string } | EmailRefusal> {
+  const item = await holdItem(tx, itemId);
+  if (typeof item === 'string') return item;
   if ((await taskAccess(tx, item.recipient, item.subject)) !== 'readable') return 'ITEM_WITHHELD';
   const [address] = await tx.query<{ readonly value: string }>(
     `select value from public.person_identifiers
@@ -165,6 +216,17 @@ export async function sendInboxEmail(
   broker: Broker,
   mail: MailSettings,
 ): Promise<EmailResult> {
+  // The report vouches for one subdomain: mail from anything but one bare address on it is
+  // not verified, and only a report that says it is not from the fake source (`mock`) counts.
+  const [local = '', domain = '', ...rest] = mail.from.split('@');
+  const onSubdomain =
+    DOT_ATOM.test(local) &&
+    rest.length === 0 &&
+    ASCII.test(domain) &&
+    domain.toLowerCase() === mail.sender.subdomain.toLowerCase();
+  if (!mail.sender.verified || mail.sender.mock !== false || !onSubdomain) {
+    return { ok: false, code: 'SENDER_NOT_VERIFIED' };
+  }
   const found = routed(broker);
   if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
   const { operation, route, adapter } = found;

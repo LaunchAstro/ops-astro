@@ -69,7 +69,11 @@ export async function admitReads(
     for (const request of requests) {
       // eslint-disable-next-line no-await-in-loop -- one transaction, one statement at a time.
       const admitted = await admitRead(tx, session, request);
-      admissions.push(isCommandRefusal(admitted) ? asCallerVisible(admitted) : admitted);
+      admissions.push(
+        isCommandRefusal(admitted)
+          ? asCallerVisible(admitted)
+          : { ...admitted, personId: session.personId },
+      );
     }
     return admissions;
   });
@@ -107,5 +111,6 @@ export async function viewerOf(
   return isCommandRefusal(outcome) ? asCallerVisible(outcome) : outcome;
 }
 
-/** One read admitted, and the record it is about; or the refusal it would have met. */
-export type Admission = { readonly recordId: string | undefined } | CommandRefusal;
+/** One read admitted, the record it is about and the person it admitted; or the refusal it would have met. */
+export type Admission =
+  { readonly recordId: string | undefined; readonly personId: string } | CommandRefusal;

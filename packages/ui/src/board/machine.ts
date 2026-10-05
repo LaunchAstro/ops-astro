@@ -12,7 +12,7 @@
 // mode or column) changes nothing and records nothing.
 
 import { nextSort } from './sort.ts';
-import { parseQuery, pressFacet } from './filters.ts';
+import { boundedWords, parseQuery, pressFacet } from './filters.ts';
 import { isWidth } from './widths.ts';
 import type { BoardAction, BoardContext, BoardView, MachineState } from './types.ts';
 
@@ -179,7 +179,7 @@ function searchStep<Row>(
     return record(state, `search ${words.join(' + ')}`, {
       ...view,
       ids: unique([...view.ids, ...parsed.ids]),
-      text: unique([...view.text, ...parsed.text]),
+      text: boundedWords(unique([...view.text, ...parsed.text])),
     });
   }
   const words = action.text
@@ -189,7 +189,7 @@ function searchStep<Row>(
   if (words.length === 0) return state;
   return record(state, `search “${words.join(' ')}”`, {
     ...view,
-    text: unique([...view.text, ...words]),
+    text: boundedWords(unique([...view.text, ...words])),
   });
 }
 

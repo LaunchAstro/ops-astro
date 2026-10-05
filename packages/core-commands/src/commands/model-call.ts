@@ -12,7 +12,8 @@
 //    broker's reserve in the same transaction, so the hold, the prompt copy's
 //    registration, the register row and the audit event commit as one. A
 //    repeat of the operation id replays that row, and two at once cannot
-//    both hold: the second loses the register's identity key and replays.
+//    both hold: the second waits at `enter`'s door and replays, the
+//    register's identity key the backstop.
 // 2. After commit, the broker starts, sends through custody and settles, each
 //    in its own transaction, re-reading the lease, the delegation and the
 //    reservation under their locks (`sendReservedCall`).
@@ -101,8 +102,8 @@ export function modelCallExecutor(broker: ModelBroker): ModelCallExecutor {
     if (isCommandRefusal(admitted)) return admitted;
     const callId = String(admitted.detail['callId']);
     // Held by this request and committed: the answer's call is the one it
-    // held. Anything else is a replay, including a first attempt that lost
-    // the identity key and was retried into one.
+    // held. Anything else is a replay, including a second attempt that
+    // waited at the identity's door, or lost the identity key and was retried.
     if (held === undefined || held.reserved.callId !== callId) {
       return await answerFrom(database, businessId, admitted, callId);
     }

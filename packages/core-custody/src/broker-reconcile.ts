@@ -24,9 +24,13 @@
 // A lookup goes out under the gate a model call takes (`atCeiling`, AW-01):
 // the business's own ceiling for the operation, then the route's ceiling and
 // the business's fair share of it. With no room the lookup waits: nothing is
-// sent and nothing written, so the next pass asks again. The gate is read in
-// its own transaction just before the lookup; the lookup holds no row of its
-// own, so the pass sends one at a time.
+// sent and nothing written, so the next pass asks again. With room, the
+// transaction that read the gate, still under its locks, takes the lookup's
+// slot on the asked call's row (`lookup_until`, migration 20261004040000), which every
+// one of those counts sees, so a second pass or a model call cannot take the
+// same place. The slot is given back when the lookup ends, whatever it
+// answered or if custody threw; a worker lost while asking leaves it to
+// expire at the operation's timeout plus `SLOT_MARGIN_MS`.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
@@ -41,6 +45,14 @@ const LOOKUP_BYTES = 4 * 1024;
 const MOST = 50;
 
 const NOTE_MOST = 300;
+
+/**
+ * How long a lookup's slot outlives the operation's timeout. Custody's
+ * deadline covers the whole lookup (`send`, egress.ts), so a slot still held
+ * past that is a lost worker's; the margin covers custody's hand-off and the
+ * transaction that gives the slot back.
+ */
+const SLOT_MARGIN_MS = 60_000;
 
 export interface ProviderProof {
   readonly callId: string;
@@ -57,8 +69,9 @@ interface Asked {
 
 const nothing = (reason: string): Proof => ({ proved: false, reason });
 
-/** A lookup with no room on its route: not sent, and nothing written on the call. */
-const WAITS = "its route has no room for this business's lookup; the next pass asks again";
+/** A lookup with no room on its route, or one another pass is making: not sent, nothing written. */
+const WAITS =
+  "its route has no room for this business's lookup, or another pass is asking; the next pass asks again";
 
 /** How the call is reconciled; a call the sweep held from a lost worker learns it here. */
 function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
@@ -88,12 +101,13 @@ async function ask(
   if (route.credentialKind === 'subscription') {
     return nothing("the route's credential is a person's own; a person records the outcome");
   }
-  const full = await database.withBusiness(
-    businessId,
-    async (tx) => await atCeiling(tx, operation, route),
-  );
-  if (full) return 'waits';
   const request = adapter.lookup(call.id);
+  const slot = await database.withBusiness(businessId, async (tx) =>
+    (await atCeiling(tx, operation, route))
+      ? null
+      : await takeSlot(tx, call.id, operation.timeoutMs + SLOT_MARGIN_MS),
+  );
+  if (slot === null) return 'waits';
   try {
     const outcome = await broker.custody.dispatch(route.credentialRef, {
       destination: operation.destination,
@@ -106,7 +120,37 @@ async function ask(
     return proofOf(outcome, operation, adapter);
   } catch {
     return { proved: false, reason: 'custody could not ask the provider', silent: true };
+  } finally {
+    await database.withBusiness(businessId, async (tx) => {
+      await giveSlot(tx, call.id, slot);
+    });
   }
+}
+
+/**
+ * The lookup's slot on its call, in the gate's transaction: null when the
+ * call is no longer held unknown or another pass's slot on it is unexpired.
+ * The answer is the slot's end, which only this taking wrote, so the give
+ * back clears this slot and never a later one.
+ */
+async function takeSlot(tx: TenantQuery, callId: string, boundMs: number): Promise<string | null> {
+  const [taken] = await tx.query<{ until: string }>(
+    `update public.model_calls set lookup_until = clock_timestamp() + $3 * interval '1 millisecond'
+      where business_id = $1 and id = $2 and state = 'liability_unknown' and outcome is null
+        and (lookup_until is null or lookup_until <= clock_timestamp())
+      returning lookup_until::text as until`,
+    [tx.businessId, callId, boundMs],
+  );
+  return taken?.until ?? null;
+}
+
+/** Sent as text: a parameter typed `timestamptz` would pass through a JS Date and lose microseconds. */
+async function giveSlot(tx: TenantQuery, callId: string, slot: string): Promise<void> {
+  await tx.query(
+    `update public.model_calls set lookup_until = null
+      where business_id = $1 and id = $2 and lookup_until = $3::text::timestamptz`,
+    [tx.businessId, callId, slot],
+  );
 }
 
 /**

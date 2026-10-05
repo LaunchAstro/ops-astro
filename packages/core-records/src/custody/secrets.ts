@@ -5,12 +5,12 @@
 // Nothing here returns a value. `setSecret` takes one and seals it before the
 // statement is built, so the plaintext never becomes a bound parameter, a log
 // line or a row. `listSecrets` selects only the columns the application role
-// is granted (migration 20261003001523), and a statement that named a sealed column
+// is granted (migration 20261004103606), and a statement that named a sealed column
 // would be refused by the server.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
-import type { Scope } from '../authority/grants.ts';
+import { EFFECTIVE, askedFor, type Subject } from '../authority/grants.ts';
 import { seal, type SealingKey } from './sealing.ts';
 
 /** A secret's scope: the business, or one client (a party). */
@@ -109,8 +109,9 @@ export async function readSecret(tx: TenantQuery, id: string): Promise<SecretRow
  * when neither row exists yet: the loser of that insert race waits, then
  * updates the winner's row. `expectedRevision` is compared in the upsert
  * itself, against the row it would replace under that lock, so a stale caller
- * changes nothing whichever way the race went. Setting again leaves
- * `last_used_at` where it was: a new value has not been used.
+ * changes nothing whichever way the race went; 0 (rows start at 1) refuses
+ * any existing row, so a first set never replaces a newer caller's. Setting
+ * again leaves `last_used_at` where it was: a new value has not been used.
  */
 export async function setSecret(
   tx: TenantQuery,
@@ -130,7 +131,7 @@ export async function setSecret(
         set_at, set_by_actor_id)
      values ((select public.app_business_id()), $1, $2, $3, $4::uuid, $5, $6, $7, $8, now(), $9)
      -- Parameters, not excluded.*: reading an excluded sealed column needs
-     -- the select privilege the application role is refused (20261003001523).
+     -- the select privilege the application role is refused (20261004103606).
      on conflict (business_id, name, scope_kind, scope_id) do update
        set sealed = $5, ephemeral_public = $6, nonce = $7, key_id = $8, set_at = now(),
            set_by_actor_id = $9,
@@ -190,34 +191,68 @@ export async function clearSecret(
   return { id: row.id, revision: Number(row.revision) };
 }
 
+/** What `custody:manage` reaches: every row business-wide, else its clients' rows. */
+export interface SecretsHeld {
+  readonly whole: boolean;
+  readonly rows: readonly SecretRow[];
+}
+
 /**
- * The secrets at the scopes the caller holds. A business-wide scope sees every
- * row; a party scope sees that party's rows only. The filter is in the
- * statement, so a row outside it is never read, counted or ordered.
+ * The secrets the subjects hold `custody:manage` over, or null when they hold
+ * it nowhere. The grant walk and the rows are one statement, one snapshot: a
+ * revocation committed while the list runs leaves no row behind it, and a row
+ * outside the grant is never read, counted or ordered.
  */
 export async function listSecrets(
   tx: TenantQuery,
-  scopes: readonly Scope[],
-): Promise<readonly SecretRow[]> {
-  const whole = scopes.some((scope) => scope.kind === 'business');
-  const parties = scopes.filter((scope) => scope.kind === 'party').map((scope) => scope.id);
-  const rows = await tx.query<Row>(
-    `select ${COLUMNS} from public.custody_secrets
-      where $1::boolean or (scope_kind = 'party' and scope_id = any($2::uuid[]))
+  subjects: readonly Subject[],
+): Promise<SecretsHeld | null> {
+  const request = { collection: 'custody', action: 'manage' };
+  const asked = askedFor(subjects, request);
+  const rows = await tx.query<
+    { readonly held: boolean; readonly whole: boolean } & (Row | { readonly id: null })
+  >(
+    `${EFFECTIVE},
+     mine as (
+       select e.scope_kind, e.scope_id from effective e
+        where e.collection = $1 and e.action = $2
+          and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+                       where s.kind = e.subject_kind and s.id = e.subject_id)
+     )
+     select exists (select 1 from mine) as held,
+            exists (select 1 from mine where scope_kind = 'business') as whole,
+            ${COLUMNS}
+       from (select 1) as one
+       left join public.custody_secrets c
+         on exists (select 1 from mine m
+                     where m.scope_kind = 'business'
+                        or (m.scope_kind = 'party' and c.scope_kind = 'party'
+                            and c.scope_id = m.scope_id))
       order by name, scope_kind, scope_id nulls first`,
-    [whole, parties],
+    [
+      request.collection,
+      request.action,
+      asked.map((subject) => subject.kind),
+      asked.map((subject) => subject.id),
+    ],
   );
-  return rows.map((row) => toRow(row));
+  if (rows[0]?.held !== true) return null;
+  return {
+    whole: rows[0].whole,
+    rows: rows.flatMap((row) => (row.id === null ? [] : [toRow(row)])),
+  };
 }
 
 /**
  * The broker's use of a set secret moves its last-used time. Called by the
  * dispatch that injected it (AW-01); a clear secret cannot be used, so it
- * answers false and moves nothing.
+ * answers false and moves nothing. The time is the use's own
+ * (`clock_timestamp()`, not the transaction's start), and it only moves
+ * forward, so an older transaction committing later never winds it back.
  */
 export async function markSecretUsed(tx: TenantQuery, id: string): Promise<boolean> {
   const rows = await tx.query<{ readonly id: string }>(
-    `update public.custody_secrets set last_used_at = now()
+    `update public.custody_secrets set last_used_at = greatest(last_used_at, clock_timestamp())
       where id = $1 and set_at is not null
       returning id`,
     [id],
