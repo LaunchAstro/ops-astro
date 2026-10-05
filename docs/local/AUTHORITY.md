@@ -474,11 +474,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:690-731`, run at `:865-873`). It gets a login and an acting identity,
-  and no membership and no business grant (`:161-164`, `:314-316`). The seed
+  user (`:746-772`, run at `:905-913`). It gets a login and an acting identity,
+  and no membership and no business grant (`:164-167`, `:317-319`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:733-762`, `:902-912`).
+  (`:760-789`, `:928-938`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -803,6 +803,9 @@ its one-task delegation never does: `DELEGATION_OUT_OF_PURPOSE`, nothing written
 person and per business on calls a minute, calls at once and records handed out
 a minute (`apps/api/auth/agent-quota.ts`), answered `AGENT_QUOTA_EXCEEDED` 429.
 A call counts once, retried or not, and a call outside the reach counts too.
+Its records count when its answer is decided, inside its transaction: an
+answer that would pass a records limit is refused and rolls back, so calls
+let in together cannot hand out more between them than the limit.
 The quota is held in each API process, so it multiplies across instances.
 
 ## Settings ▸ Access (C32)

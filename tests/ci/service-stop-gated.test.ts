@@ -100,6 +100,11 @@ describe.skipIf(serverUrl === undefined)('S0-1 gated stop', () => {
     db = await createFreshDatabase({ part: 's01g' });
     alphaBusiness = await insertBusiness(db.app, 'alpha');
     const beta = await insertBusiness(db.app, 'beta');
+    // Installation: alpha is the operating business (migration 0045); the stop
+    // acts on the installation, so only alpha's operator may run it.
+    await db.admin.execute('insert into ops.operating_business (operating_business) values ($1)', [
+      alphaBusiness,
+    ]);
     await db.app.withBusiness(alphaBusiness, async (tx) => {
       operatorPerson = await person(tx, 'Olive', subjects.operator, { scope: 'business' });
       secondOperator = await person(tx, 'Omar', subjects.second, { scope: 'business' });

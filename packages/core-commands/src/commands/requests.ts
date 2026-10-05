@@ -28,7 +28,8 @@ import type { BudgetRequest } from './requests-budget.ts';
 import type { CheckRequest } from './requests-check.ts';
 import type { ConversationRequest } from './requests-conversation.ts';
 import type { RunRequest } from './requests-run.ts';
-import type { Envelope } from './request-envelope.ts';
+import type { Envelope, Targeted } from './request-envelope.ts';
+import type { WayfinderRequest } from './requests-wayfinder.ts';
 import type { CommentOrChatRequest } from './requests-comments.ts';
 import type { DuplicateRequest } from './requests-duplicate.ts';
 import type { TagRequest } from './requests-tags.ts';
@@ -63,13 +64,6 @@ export function hasIdentity(request: UncheckedRequest): request is IdentifiedReq
   return typeof request.operationId === 'string' && OPERATION_ID.test(request.operationId);
 }
 
-// Type aliases rather than interfaces, so each member of the union is also an
-// `UncheckedRequest`: a parsed request is still the body it was parsed from.
-type Targeted = Envelope & {
-  readonly recordId: string;
-  readonly expectedRevision?: number;
-};
-
 export type CommandRequest =
   | ({
       readonly command: 'task.create';
@@ -78,8 +72,11 @@ export type CommandRequest =
       readonly board?: string | null;
       readonly boardSection?: string | null;
       readonly stateKey?: string;
+      /** The ticket type (WF-1); `task` when absent. Checked by value in the handler. */
+      readonly taskType?: unknown;
       readonly conversationId?: string | null;
     } & Envelope)
+  | WayfinderRequest
   | ({ readonly command: 'task.update'; readonly fields: FieldValues } & Targeted)
   | ({ readonly command: 'task.complete' } & Targeted)
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)

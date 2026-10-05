@@ -861,8 +861,8 @@ API 8799, Vite 5199):
   answered 401 `AUTH_UNKNOWN_LOGIN`. The lane's
   `.local/synthetic-agents.json` password for the alpha agent's login is not
   the one the shared GoTrue holds (`invalid_credentials`). Another lane
-  created that user, and `scripts/local-seed.mjs` keeps an existing agent
-  user's password rather than resetting it. These cells are unproved on
+  created that user, and `scripts/local-seed.mjs` then kept an existing agent
+  user's password rather than resetting it (it now sets it to the file's). These cells are unproved on
   the mounted browser, not passed.
 - **`verify:browser` on the same stack:** 84 of 85. B6 threw at the same
   agent pickup.

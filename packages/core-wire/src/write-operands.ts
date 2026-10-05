@@ -5,6 +5,7 @@
 // `surface.ts` reads it into each declaration and re-exports the operand types.
 
 import type { CommandName } from './command-names.ts';
+import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
 
 /**
  * The JSON kind of one operand: `id` and `text` are strings, `count` a finite
@@ -31,6 +32,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     board: 'id?|null',
     boardSection: 'id?|null',
     stateKey: 'any',
+    taskType: 'any',
     // The caller's own conversation the task is created from (AW-03's origin).
     conversationId: 'id?|null',
   },
@@ -184,6 +186,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
   // The task, the attempt held unknown, the minor units charged and why (T3c).
   'budget.write_off': { recordId: 'any', attemptId: 'any', amountMinor: 'count', reason: 'text' },
+  ...WAYFINDER_OPERANDS,
   // Minor units in the price book's currency, against the limit last seen (null: unset).
   'budget.set_planning_cap': {
     limitMinor: 'count',

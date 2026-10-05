@@ -156,7 +156,9 @@ function useFocusAndOneEscape(
 /**
  * The service's answer to `query`, asked once typing has rested; a new answer
  * moves the highlight back to the first hit through `setActive`. An answer is
- * the client's that asked it: another business or person sees none of it.
+ * the client's that asked it: another business or person sees none of it. It
+ * is also the query's that asked it: while a new query waits, no older hit is
+ * drawn, so Enter cannot open one.
  */
 function useAnswer(
   client: OperationsClient,
@@ -164,14 +166,15 @@ function useAnswer(
   setActive: (index: number) => void,
 ): Answer {
   const asked = useRef(0);
-  const [held, setHeld] = useState<{ readonly of: OperationsClient; readonly answer: Answer }>({
-    of: client,
-    answer: IDLE,
-  });
+  const [held, setHeld] = useState<{
+    readonly of: OperationsClient;
+    readonly query: string;
+    readonly answer: Answer;
+  }>({ of: client, query, answer: IDLE });
   useEffect(() => {
     const ask = ++asked.current;
     const setAnswer = (answer: Answer): void => {
-      setHeld({ of: client, answer });
+      setHeld({ of: client, query, answer });
     };
     if (!hasWord(query)) {
       setAnswer(IDLE);
@@ -191,7 +194,7 @@ function useAnswer(
       clearTimeout(rest);
     };
   }, [client, query, setActive]);
-  return held.of === client ? held.answer : IDLE;
+  return held.of === client && held.query === query ? held.answer : IDLE;
 }
 
 /** Arrows move the highlight round the hits; Enter opens the highlighted one. */

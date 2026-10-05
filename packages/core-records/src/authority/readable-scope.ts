@@ -5,7 +5,7 @@
 // walks (grants.ts), so a list and a single-record check cannot disagree.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { EFFECTIVE, type Action, type ScopeKind, type Subject } from './grants.ts';
+import { askedFor, EFFECTIVE, type Action, type ScopeKind, type Subject } from './grants.ts';
 
 /** What a caller's live grants reach for one collection and action. */
 export interface ReadableScope {
@@ -19,7 +19,9 @@ export interface ReadableScope {
  * The records a list read may answer, from the same effective chain the check
  * uses. A list read filters by this inside its query and counts the rest as
  * withheld, never naming them (the withheld count, records and authority,
- * 14 September 2026). Party-scoped grants reach no record here.
+ * 14 September 2026). Party-scoped grants reach no record here. A subject held
+ * within ticked keys (an agent credential) is asked only of those, as
+ * `checkAuthority` asks it (`askedFor`).
  */
 export async function readableScope(
   tx: TenantQuery,
@@ -27,6 +29,7 @@ export async function readableScope(
   collection: string,
   action: Action,
 ): Promise<ReadableScope> {
+  const asked = askedFor(subjects, { collection, action });
   const rows = await tx.query<{ readonly scope_kind: ScopeKind; readonly scope_id: string | null }>(
     `${EFFECTIVE}
      select distinct e.scope_kind, e.scope_id
@@ -36,12 +39,7 @@ export async function readableScope(
         and e.scope_kind in ('business', 'record')
         and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
                      where s.kind = e.subject_kind and s.id = e.subject_id)`,
-    [
-      collection,
-      action,
-      subjects.map((subject) => subject.kind),
-      subjects.map((subject) => subject.id),
-    ],
+    [collection, action, asked.map((subject) => subject.kind), asked.map((subject) => subject.id)],
   );
   if (rows.some((row) => row.scope_kind === 'business')) return { business: true, records: [] };
   return {
@@ -59,7 +57,8 @@ export async function readableScope(
  * a record the subjects hold no grant on never leaves the database. A business
  * grant reaches every record; a record grant, its one record. A party grant is
  * not read here, as `checkAuthority` does not read it for a record either, so
- * the list is exactly the records a single-record check would admit.
+ * the list is exactly the records a single-record check would admit, a
+ * subject held within ticked keys included.
  */
 export async function readableRecordIds(
   tx: TenantQuery,
@@ -70,6 +69,7 @@ export async function readableRecordIds(
     readonly recordTypeId: string;
   },
 ): Promise<readonly string[]> {
+  const asked = askedFor(subjects, request);
   const rows = await tx.query<{ readonly id: string }>(
     `${EFFECTIVE}
      select r.id
@@ -88,8 +88,8 @@ export async function readableRecordIds(
       request.recordTypeId,
       request.collection,
       request.action,
-      subjects.map((subject) => subject.kind),
-      subjects.map((subject) => subject.id),
+      asked.map((subject) => subject.kind),
+      asked.map((subject) => subject.id),
     ],
   );
   return rows.map((row) => row.id);
