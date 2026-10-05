@@ -185,7 +185,6 @@ export function Row(props: {
       className="conn__row"
       data-connection={row.id}
       data-status={row.status}
-      aria-expanded={props.open}
       onClick={props.toggle}
     >
       <td>
