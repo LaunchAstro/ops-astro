@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { blockedBefore, holdRow, instantOf, waitPast } from '../support/lock-wait-race.ts';
 import {
   alpha,
@@ -71,11 +72,17 @@ describe.skipIf(serverUrl === undefined)(
       let startedLive = false;
       try {
         startedLive = await blockedBefore(db, held, expiry);
-        // Business-wide, so it answers the record's read; a record-scoped
-        // grant's key on the held row would wait on the holder itself.
-        await db.app.withBusiness(alpha, async (tx) => {
-          await grantTo(tx, reader, 'read');
-        });
+        // Business-wide, so it answers the record's read (a record-scoped
+        // grant's key on the held row would wait on the holder itself), on a
+        // connection of its own: the duplicate holds the app pool's one.
+        const issuer = connect(db.appUrl);
+        try {
+          await issuer.withBusiness(alpha, async (tx) => {
+            await grantTo(tx, reader, 'read');
+          });
+        } finally {
+          await issuer.close();
+        }
         await waitPast(db, expiry);
       } finally {
         await held.letGo();
