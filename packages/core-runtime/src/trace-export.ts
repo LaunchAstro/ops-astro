@@ -97,7 +97,10 @@ export async function exportOnce(
   for (const body of sent) {
     spans += body.length;
     // eslint-disable-next-line no-await-in-loop -- one body after another, in the cursor's order
-    code = gapOf(await deliver(otlp(body.map((row) => spanOf(key, businessId, row)))));
+    code = await send(
+      deliver,
+      body.map((row) => spanOf(key, businessId, row)),
+    );
     if (code !== null) break;
   }
   await database.withBusiness(businessId, async (tx) => {
@@ -105,6 +108,18 @@ export async function exportOnce(
     else await recordGap(tx, code, from, batch.length);
   });
   return code === null ? { kind: 'delivered', spans } : { kind: 'gap', code, spans };
+}
+
+/**
+ * One body. A body the target refuses as too large goes again as two halves,
+ * in order, so no limit of the target's holds the cursor for good, and the
+ * earliest span still leaves first.
+ */
+async function send(deliver: Deliver, spans: readonly TraceSpan[]): Promise<GapCode | null> {
+  const code = gapOf(await deliver(otlp(spans)));
+  if (code !== 'target_oversized_body' || spans.length < 2) return code;
+  const half = Math.ceil(spans.length / 2);
+  return (await send(deliver, spans.slice(0, half))) ?? (await send(deliver, spans.slice(half)));
 }
 
 /** The owed events in bodies of `TRACE_BATCH`, the batch's own (up to `TRACE_BATCH` more) with the last; none when both are empty. */

@@ -1974,7 +1974,8 @@ and codes, never a sentence, to a trace target an operator reads.
   the step never advances. While a run's ask is owed, an export that sends
   one of its events sends all of them since the place inside the window,
   earliest first, in bodies of at most 100 owed events with the export's own
-  (up to 100 more) in the last, so a delete landing between two exports leaves the trace whole
+  (up to 100 more) in the last, a body the target refuses as too large
+  (413) going again as two halves in order, so a delete landing between two exports leaves the trace whole
   and one landing between two bodies takes the earliest span the read looks
   for. A confirmation covers only
   the events up to its place: a run with a later event, even one committed
