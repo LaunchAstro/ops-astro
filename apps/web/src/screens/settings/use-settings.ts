@@ -130,13 +130,15 @@ export function useSettings(
   const desk = useDesk(ownerOf(client, grantKey));
   const [pressed, setPressed] = useState<Which>('four-eyes');
   const [complaint, setComplaint] = useState<string | null>(null);
-  const [conflict, setConflict] = useState<Conflict | null>(null);
-  // The command's last write and the refusal that closed the controls, each
-  // drawn only for the owner it was sent for: the command outlives a switch.
+  // The command's last write, the refusal that closed the controls and a
+  // conflict, each drawn only for the owner it was sent for: the command and
+  // the screen outlive a switch, and a conflict's write-over is its owner's.
   const [ran, setRan] = useState<Tag | null>(null);
   const [closedBy, setClosedBy] = useState<Tag | null>(null);
+  const [stale, setConflict] = useState<{ readonly tag: Tag; readonly is: Conflict } | null>(null);
   const ours = ran === null || desk.owns(ran);
   const closed = closedBy !== null && desk.owns(closedBy);
+  const conflict = stale !== null && desk.owns(stale.tag) ? stale.is : null;
   // One write at a time, whoever it is for; "Saving" only for its own owner.
   const busy = command.busy && ours ? pressed : null;
   // A stale write is the conflict, drawn with its draft, not a reason line.
@@ -200,7 +202,7 @@ export function useSettings(
     if (settlement.kind === 'stale') {
       // Reread, so the conflict shows what the row holds *now* rather than the
       // value this attempt was made against.
-      setConflict({ which, draft: value, because: settlement.because });
+      setConflict({ tag, is: { which, draft: value, because: settlement.because } });
       settings.reload();
       return;
     }
