@@ -73,9 +73,10 @@ async function taskWork(
 
 /**
  * The runs and gates the conversation started, each pointing at its task. A
- * run ends at its last hand-back with no claim after it, or when its lineage
- * ends; a cancelled run whose lineage is still live (a budget stop waiting on
- * a person) has not ended, so it holds the body. A gate ends at its decision.
+ * run ends when it is handed back or cancelled, at the instant the server
+ * stamped (`ended_at`); a claim after a hand-back opens it again. A run
+ * waiting at a budget stop for a person's answer is still open. A gate
+ * ends at its decision, or at its expiry when it is left pending past it.
  */
 async function startedWork(tx: TenantQuery, conversationId: string): Promise<readonly Work[]> {
   const runs = await tx.query<{
@@ -84,20 +85,7 @@ async function startedWork(tx: TenantQuery, conversationId: string): Promise<rea
     state: string;
     ended_at: Date | null;
   }>(
-    `select run.id, run.task_id, run.state,
-            case run.state
-              when 'handed_back' then (
-                select max(e.created_at) from run_events e
-                 where e.business_id = run.business_id and e.run_id = run.id
-                   and e.kind = 'handed_back'
-                   and not exists (select 1 from run_events l
-                                    where l.business_id = e.business_id and l.run_id = e.run_id
-                                      and l.kind = 'claimed' and l.position > e.position))
-              when 'cancelled' then lin.terminal_at
-            end as ended_at
-       from planned_runs run
-       left join proposal_lineages lin
-         on lin.business_id = run.business_id and lin.id = run.lineage_id
+    `select run.id, run.task_id, run.state, run.ended_at from planned_runs run
       where run.business_id = $1 and run.origin_conversation_id = $2 order by run.id`,
     [tx.businessId, conversationId],
   );
@@ -105,9 +93,13 @@ async function startedWork(tx: TenantQuery, conversationId: string): Promise<rea
     id: string;
     task_id: string;
     state: string;
-    decided_at: Date | null;
+    ended_at: Date | null;
   }>(
-    `select g.id, l.task_id, g.state, g.decided_at from gates g
+    `select g.id, l.task_id, g.state,
+            case when g.state <> 'pending' then g.decided_at
+                 when g.expires_at <= now() then g.expires_at
+            end as ended_at
+       from gates g
        join proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
       where g.business_id = $1 and g.origin_conversation_id = $2 order by g.id`,
     [tx.businessId, conversationId],
@@ -120,8 +112,8 @@ async function startedWork(tx: TenantQuery, conversationId: string): Promise<rea
     })),
     ...gates.map((gate): Work => ({
       pointer: { kind: 'gate', id: gate.id, address: `/task/${gate.task_id}`, state: gate.state },
-      terminal: gate.state !== 'pending',
-      endedAt: gate.decided_at,
+      terminal: gate.ended_at !== null,
+      endedAt: gate.ended_at,
     })),
   ];
 }
