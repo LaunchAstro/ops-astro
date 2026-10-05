@@ -38,7 +38,8 @@ export interface Sent {
 }
 
 /** What the next write or read does instead of answering normally. */
-export type Next = 'stale' | 'step-up' | 'lost' | 'read-fails' | null;
+/** `stored-lost`: the write is stored, and its answer never arrives. */
+export type Next = 'stale' | 'step-up' | 'lost' | 'stored-lost' | 'read-fails' | null;
 
 export interface FourEyesWorld {
   readonly sent: Sent[];
@@ -87,6 +88,7 @@ function write(held: Row, next: Next, body: Record<string, unknown>): Promise<Re
   }
   held.value = body['value'];
   held.revision += 1;
+  if (next === 'stored-lost') return Promise.reject(new TypeError('Failed to fetch'));
   return Promise.resolve(json({ recordId: 'row', revision: held.revision, detail: held }));
 }
 
@@ -114,6 +116,11 @@ export function fourEyesWorld(start: Row): FourEyesWorld {
         const next = world.write;
         world.write = null;
         return write(held, next, body);
+      }
+      if (at.endsWith('/settings/set_client_sign_off')) {
+        return Promise.resolve(
+          json({ recordId: 'sign-off', revision: null, detail: { value: true } }),
+        );
       }
       if (at.endsWith('/account/sessions/list')) return Promise.resolve(json({ sessions: [] }));
       return Promise.resolve(json({}));

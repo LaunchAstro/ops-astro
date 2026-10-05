@@ -83,3 +83,21 @@ it('a reload between the switch and the sign-out still clears the business it le
 
   expect(settingsLeft(storage)).toEqual([]);
 });
+
+it('one unreadable entry in the held list does not stop sign-out clearing the others', () => {
+  const storage = map();
+  const store = new SessionStore(storage);
+  store.set(ADA_ALPHA);
+  store.set(ADA_BRAVO);
+  keep(storage, ADA_ALPHA, { fourEyes: 500 });
+  keep(storage, ADA_BRAVO, { fourEyes: 900 });
+  // Something else in the tab wrote a value of another shape into the list.
+  storage.setItem(
+    'ops-astro.held-businesses',
+    JSON.stringify(['alpha', { not: 'a key' }, 'bravo']),
+  );
+
+  new SessionStore(storage).clear();
+
+  expect(settingsLeft(storage)).toEqual([]);
+});

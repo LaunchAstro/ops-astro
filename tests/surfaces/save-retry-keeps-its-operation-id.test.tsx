@@ -47,6 +47,44 @@ it('a settings save retried after a lost answer keeps its operation id; a new va
   }
 });
 
+it('a settings retry after a reread carries the revision its first attempt was sent at', async () => {
+  window.sessionStorage.clear();
+  const world = fourEyesWorld({ value: 500, revision: 7 });
+  const page = await mount(
+    <SettingsScreen
+      client={world.client()}
+      grantKey="alpha:ada:0"
+      storage={window.sessionStorage}
+    />,
+  );
+  try {
+    await tick();
+    // Stored at revision 7, its answer lost: the server now holds 1200 at revision 8.
+    world.write = 'stored-lost';
+    await page.type('#settings-four-eyes', '1200');
+    await page.click('[data-settings="save-four-eyes"]');
+    await tick();
+    // Another save on the page answers and rereads, so the row on screen is at revision 8.
+    await page.click('[data-settings="save-sign-off"]');
+    await tick();
+    expect(world.sent.filter((call) => call.at.endsWith('/settings/read')).length).toBeGreaterThan(
+      1,
+    );
+    await page.click('[data-settings="save-four-eyes"]');
+    await tick();
+    const [lost, retry] = writesOf(world)
+      .filter((call) => call.at.endsWith('/set_four_eyes_threshold'))
+      .map((call) => call.body);
+    expect(retry?.['operationId']).toBe(lost?.['operationId']);
+    expect(
+      retry?.['expectedRevision'],
+      'the retry moved to the reread revision, so the register would refuse it as reused',
+    ).toBe(7);
+  } finally {
+    await page.unmount();
+  }
+});
+
 it('a preference choice repeated after a lost answer keeps its operation id; another choice does not', async () => {
   const saves: Record<string, unknown>[] = [];
   let lose = true;
