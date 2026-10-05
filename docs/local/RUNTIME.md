@@ -1900,7 +1900,11 @@ or delete.
   spend to date as actual. The run becomes `cancelled`. The task is not
   written: it stays open for a person. A trashed task is reached too: its
   hold is still counted, and the end is how it is given back. A hold a
-  lineage cancel already classified is not released again.
+  lineage cancel already classified is not released again. A hold an
+  observation kept whole (the step's priced cost and its calls above it, the
+  attempt `liability_unknown`) is not ended: that cost is counted nowhere
+  yet, so the end is refused `TRANSITION_NOT_PERMITTED` with nothing written,
+  and the hold waits for a person's recorded outcome (`budget.record_outcome`).
 - **The spend to date** is counted as the broker counts it: settled calls at
   their actual, calls still open at the maximum they hold.
 
