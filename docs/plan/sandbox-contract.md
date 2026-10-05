@@ -17,9 +17,16 @@ reply from our own pinned daemon is parsed with P1's parser (duplicate keys
 refused, at most 1 MiB, depth at most 32) and read for the keys a line
 names, each checked as stated; its other keys are ignored. `_ping`'s body
 is exactly `OK`, a 204 has no body, and the attach stream is read only as
-Docker's multiplexed frames of stream 1 or 2, its stdout under O1, O2 or
-F1's probe result, and within B6's caps. A reply that breaks these rules is `internal`
-and leaves the launcher `unavailable` until a new probe passes (F3).
+Docker's multiplexed frames of stream 1 or 2. A daemon reply that breaks
+these rules is `internal` and leaves the launcher `unavailable` until a new
+probe passes (F3). The bytes a run writes inside those frames are that
+run's output, judged by its class's grammar alone: O1 for S1, O2 for S2,
+and for S0 F1's probe result for the probe run, or for a crossing run only
+the observation F1 names. Stdout past its class's output cap is refused;
+stderr past 64 KiB is discarded, never refused. For S1 and S2 a refusal is
+that run's `output refused` (R1), and the launcher's availability stays as
+it was. For S0, an outcome other than the one F1 names for that run is a
+failed probe (F3); the `output` crossing's size-cap refusal is its pass.
 
 Terms, each used in one sense only:
 
@@ -28,9 +35,10 @@ Terms, each used in one sense only:
   (lockfile digest, base and entrypoint digests per platform, image id,
   and, while one is being made, the site commit F2 builds);
 - **pin list**: the file the socket proxy reads the pins from, one entry per
-  site with its lockfile digest, its image id for S1 only (empty while a
-  pin is being made, B8), its pin-making attempt number, the site commit F2
-  builds and its S1 `Env` list (B3), plus one entry for the probe image (S0
+  site (a **site entry**) with its lockfile digest, its image id for S1
+  only (empty while a pin is being made, B8), its pin-making attempt
+  number, while one is being made the site commit F2 builds, and its S1
+  `Env` list (B3), plus one entry for the probe image (S0
   only) and one per platform for the base-plus-entrypoint image (S2 only,
   with the one S2 `Env` list); written only by the deploy of a reviewed
   change;
@@ -82,7 +90,10 @@ The launcher knows exactly three run classes. Any other request is refused.
   only
   `package.json`, `package-lock.json`, the package tarballs (E2) and an npm
   configuration the launcher writes; never the site tree or any
-  configuration file from it. Anything given to it is treated as public. It
+  configuration file from it. Its `package.json` and `package-lock.json`
+  must hash to the site entry's lockfile digest (I4), or the run is refused
+  `pin mismatch`. Anything given to it is
+  treated as public. It
   runs in the base-plus-entrypoint image (no `node_modules` layer), whose id
   is pinned per platform.
 
@@ -195,8 +206,9 @@ ends, whatever the outcome.
   | S2    | 600 s           | 4 GiB            | 1   | 256       | 600 MB | 1 GB   | 64 KiB      |
   | S0    | as probed class | as probed class  | 1   | 256       | 1 MB   | 1 MB   | 64 KiB      |
 
-  The socket proxy enforces the wall clock from its own durable record, not
-  only the launcher (P6).
+  MB and GB are decimal (10^6 and 10^9 bytes); KiB, MiB and GiB are
+  binary. The socket proxy enforces the wall clock from its own durable
+  record, not only the launcher (P6).
 
 - **B7. Machine share.** One sandbox at a time, a queue of at most four and a
   queue wait of at most 300 s. Every sandbox runs with `OomScoreAdj` 1000.
@@ -228,8 +240,9 @@ ends, whatever the outcome.
   entry's lockfile digest and attempt number. On every read of the pin
   list, at start included, a site entry's id that differs from its accepted
   id is accepted only when it equals the proxy's candidate for that entry
-  and attempt, and that candidate recorded all three of F2's creates, each
-  of whose waits returned exit code 0 before its deadline; otherwise the
+  and attempt, the candidate's lockfile digest equals the entry's deployed
+  digest, and that candidate recorded all three of F2's creates, each of
+  whose waits returned exit code 0 before its deadline; otherwise the
   entry has no image id. A deploy that changes the entry's id, lockfile
   digest or attempt number clears the accepted id, an emptied id included.
   The probe and base-plus-entrypoint entries are not made by F2: their ids
@@ -300,11 +313,13 @@ checked values, never the bytes it received.
     candidate load for a pin-list entry that has a lockfile digest and no
     image id yet (B8). Its create is compared with that entry's S1 body.
 
-  The candidate record (entry, attempt number, id, creates left) is
-  durable, separate from the container record, and never cleared by a
+  The candidate record (entry, attempt number, the entry's lockfile digest
+  at the load, id, creates left) is durable, separate from the container record, and never cleared by a
   sweep. An entry has at most one open candidate, bound to its attempt
   number. The record also counts the creates recorded for each candidate;
   ending an admission sets creates left to 0 and leaves that count alone.
+  For each counted create it also holds the wait's `StatusCode` and
+  whether the wait returned before the deadline.
   A load admits it for exactly three S1 creates, F2's, each counted in the
   same durable write that records the container's id, so a create the
   daemon made but the proxy never recorded does not count. A second load
@@ -330,7 +345,7 @@ checked values, never the bytes it received.
     `stream=1&stdin=1&stdout=1&stderr=1`, before start;
   - `POST /containers/{id}/start`, `POST /containers/{id}/wait` and
     `POST /containers/{id}/kill`, each with no query and no body (kill is
-    SIGKILL);
+    SIGKILL); of `wait`'s reply only `StatusCode` is read;
   - `GET /containers/{id}/json`, no query, of which only `State.OOMKilled`
     is read;
   - `DELETE /containers/{id}?force=1`.
@@ -447,21 +462,42 @@ extracted to disk.
 - **F1. Probe.** At start and after any F3 difference, the launcher runs S0
   once per run class with that class's create body (the appendix gives the
   differences). Every 15 minutes it probes S1 only, without the wall-clock
-  crossing; S2's probe also runs before each S2 run. From inside it proves each limit by
-  crossing it:
+  crossing; S2's probe also runs before each S2 run, as its in-run probe
+  and its `memory` and `output` crossings, without `wall`. The probe proves
+  from
+  inside each limit it can observe, by crossing it:
   - the kernel is gVisor's, and the only interface is loopback;
   - no address answers: a public address, the metadata address, the VM's and
     the machine's addresses, Docker's host gateway, the LAN, the proxy, and
     IPv6;
   - the root filesystem refuses a write, the complete writable set is
-    `/work`, `/tmp` and `/dev/shm`, and each fills to ENOSPC at its size;
+    `/work`, `/tmp` and `/dev/shm`, and the probe fills each to ENOSPC at
+    its size and frees it before the next;
   - the environment is exactly B3, and effective capabilities are zero;
-  - allocating past the memory limit ends the run for memory, a fork past
-    256 is refused, and outliving the wall clock ends in the kill;
-  - writing past the output cap gives the refusal.
+  - a fork past 256 is refused.
 
   The probe writes one JSON object to stdout, parsed with P1's parser, with
-  exactly one boolean key per limit above, every one true for a pass.
+  exactly the boolean keys `kernel`, `interfaces`, `addresses`, `rootfs`,
+  `writable`, `env`, `caps` and `fork`, every one true, and passes only with
+  exit code 0 and `OOMKilled` false. The three crossings that end or refuse
+  the run itself are proved from outside, each by its own S0 run with a
+  fixed crossing argument (appendix), and pass only on the launcher's own
+  observation:
+  - `memory`: the probe allocates the probed class's memory limit plus
+    64 MiB once, then exits 0; it passes only when `OOMKilled` is true;
+  - `wall`: the probe sleeps without end; it passes only when the wait
+    returns no earlier than the deadline and within 30 s after it, with
+    `StatusCode` 137 and `OOMKilled` false;
+  - `output`: the probe writes the smallest valid O1 stream longer than
+    S0's output cap; it passes only when every earlier byte passed O1 and the
+    refusal is for the size cap.
+
+  In the three crossing runs the launcher sends no kill. For `wall` the
+  deadline is P6's, and the launcher measures it from its own create
+  request. Any other outcome of those runs, a probe-result object on stdout
+  from them included, fails the probe. The `output` crossing proves S0's
+  cap only; S1's and S2's output caps are proved by B6's crossing
+  (section 13).
 
   Outside the probe, the VM's boot check and a machine-side check at deploy
   and after any F3 difference (never the launcher; F3 reads their last
@@ -553,7 +589,9 @@ until its new pin is reviewed.
    token through the credential broker. Approving this contract amends
    those two rules; refusing it keeps them and leaves #972 without a build.
 4. **Unverified mechanisms.** Whether GitHub Packages downloads redirect and
-   to which hosts (E2), and how runsc backs `/dev/shm`. Each is settled by a
+   to which hosts (E2), how runsc backs `/dev/shm`, and whether Docker sets
+   `State.OOMKilled` for a runsc sandbox its memory limit kills (F1, O3).
+   Each is settled by a
    crossing test before the line that needs it may pass; until then that
    line refuses.
 5. **The split (new in round 2).** The envelope's comparison, publish
@@ -640,8 +678,34 @@ Every numbered line is in at least one of these two lists:
     the old accepted id is treated as no image id; a C whose third run was
     killed is not accepted; C accepted, its image deleted, the proxy
     restarted and C reloaded in the plain form gives an S1 create of C that
-    passes. Undo-red: key the accepted id on the entry only, or count a
-    killed run, and its case fails.
+    passes. Undo-red: drop the clear on a changed or emptied id, or count
+    a killed run, and its case fails. A deploy that changes only the entry's
+    lockfile digest, same attempt and same C, leaves the entry with no
+    image id. Undo-red: drop the candidate's digest from the acceptance
+    rule and C is accepted under the new digest.
+  - F1's outside crossings (crossing): a healthy installation passes the
+    probe, with `memory`, `wall` and `output` judged by `OOMKilled`, the
+    deadline kill and O1's cap refusal; with the memory limit, the deadline
+    or the output cap removed, its crossing fails the probe; a crossing run
+    that writes an all-true stdout result still fails; a wall run whose
+    probe exits at 1 s fails, a deadline set at twice B6's wall fails, a
+    memory limit raised by 128 MiB fails, and an output run of non-ustar
+    bytes fails; an in-run result with a missing or extra key, or with a
+    non-zero exit, leaves the launcher `unavailable`. An `output` crossing
+    refused at S0's cap passes and leaves the launcher available; one
+    refused for a bad name fails. With the launcher's kill in place and
+    P6's deadline removed, the wall crossing fails. An S2 request whose
+    pair hashes to another digest is refused `pin mismatch`. Undo-red: take
+    the in-run result for those three, or "the run ended", any OOM or any
+    refusal for a pass; treat every S0 refusal as a failed probe; let the
+    launcher kill in the wall run; or drop S2's digest check; and its case
+    fails.
+  - The output rule (corpus): a build whose correctly framed stdout holds
+    `dist/bad name.html`, or stdout past the S1 cap, is refused
+    `output refused`, and the next valid build of another site passes with
+    no new probe; a build whose stderr passes 64 KiB is not refused; a frame of stream 0
+    leaves the launcher `unavailable`. Undo-red: treat an O1 refusal as a
+    daemon fault and the next build is refused `unavailable`.
   - O4's credential (corpus): the launcher unit's environment and mounts
     hold no secret. Undo-red: give it one and the case fails.
   - P1's daemon replies, P4's half-close and the pin list's probe and S2
@@ -678,7 +742,9 @@ values, and in nothing else:
 - `site.prepare`: `Cmd` `["prepare"]`; `Env` the S2 list from B3;
   `Memory` and `MemorySwap` 4294967296; `Tmpfs` `/work` size 2147483648 and
   `/tmp` size 1073741824.
-- `probe`: `Image` the pinned probe image; `Cmd` `["probe", "<class>"]`;
+- `probe`: `Image` the pinned probe image; `Cmd` `["probe", "<class>"]`,
+  or `["probe", "<class>", "<crossing>"]` with `<crossing>` one of
+  `memory`, `wall` or `output` (F1);
   for S1, `Env` the fixed variables of B3 and no site variables; every other
   key as the probed class's body.
 
