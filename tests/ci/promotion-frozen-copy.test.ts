@@ -174,6 +174,28 @@ it('a promoter whose umask is 077 still serves a copy another user can read', ()
   expect(closedToOthers(store, join(outcome.artefactPath, 'static', 'index.html'))).toEqual([]);
 });
 
+it('a served/ already there but closed to others is opened again, so the services can read the copy', () => {
+  const store = storeWith();
+  chmodSync(store, 0o755);
+  mkdirSync(join(store, 'served'), { mode: 0o700 });
+  chmodSync(join(store, 'served'), 0o700);
+  const { outcome } = promoted(store);
+  if (outcome.kind !== 'promoted') throw new Error(`not promoted: ${JSON.stringify(outcome)}`);
+  expect(closedToOthers(store, join(outcome.artefactPath, 'static', 'index.html'))).toEqual([]);
+});
+
+it('an earlier copy the promoter cannot write is still replaced by a fresh one', () => {
+  const store = storeWith();
+  const copy = cached(store, (at) => {
+    chmodSync(join(at, 'static', 'index.html'), 0o666);
+    chmodSync(at, 0o555);
+  });
+  const current = join(store, 'current');
+  const { outcome } = promoted(store, current, () => true, true);
+  expect(outcome).toMatchObject({ kind: 'promoted', artefactPath: copy });
+  expect(statSync(join(current, 'static', 'index.html')).mode & 0o022).toBe(0);
+});
+
 it("another user can search every folder from production's folder to the served page, and read it", () => {
   // The folders above production's link are the operator's (the runbook names
   // the services' search there); this fixture's own temp folder is private.
