@@ -38,7 +38,7 @@ interface Place {
  * One owed ask: its run, its place, the run's earliest event after the place
  * that the export has sent and the window still holds, and its turn: when a
  * read of it last went unanswered, as ISO 8601 text in UTC to the microsecond
- * whatever the session's settings, or `-infinity`.
+ * whatever the session's settings, or `-infinity` when none did.
  */
 export type Owed = {
   readonly runId: string;
@@ -62,8 +62,9 @@ export async function owedAsks(
 ): Promise<readonly Owed[]> {
   return await tx.query<Owed>(
     `select run_id as "runId", after_tx::text as tx, after_id as id, first,
-            case when turn = '-infinity' then '-infinity'
-                 else to_char(turn at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') end as turn
+            case when isfinite(turn)
+                 then to_char(turn at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+                 else turn::text end as turn
        from (
        select o.*,
               (select ev.id from public.run_events ev
