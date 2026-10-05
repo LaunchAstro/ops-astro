@@ -11,31 +11,40 @@ export const PARSED = 16_000;
 export const PHRASED = 1_000;
 
 /**
+ * Whether the parser reads `value` whole against `query`: the query is a
+ * phrase, the value at most PARSED bytes, and none of the query's `lexemes`
+ * past the 256 positions the parser keeps of a word in it, where a phrase
+ * after a word's 256th use would be lost.
+ */
+const readable = (value, query, lexemes) => `case
+      when ${query} is not null and octet_length(${value}) <= ${PARSED}
+      then not exists (select from unnest(to_tsvector('simple', ${value})) u
+                        where u.lexeme = any(${lexemes}) and cardinality(u.positions) >= 256)
+      else false end`;
+
+/**
  * Whether `value` holds the words of `query` in order: both go through the
  * database's own text-search parser, so the words are its words and its
- * letter folding ("Anna" is in "Anna-Maria Lee", never in "Joanna"). A longer
- * value would overflow the parser or lose its word order, and a null query
- * is a name too long to be a phrase, so then `value` holds them when it holds
+ * letter folding ("Anna" is in "Anna-Maria Lee", never in "Joanna"). A value
+ * the parser cannot read whole (`readable`) would overflow it or lose word
+ * order, and a null query is a name too long to be a phrase, so then `value` holds them when it holds
  * each of `lexemes`, the query's words, anywhere, even inside other words: a
  * looser match, listing more for the owner to judge and never less.
  */
 export const wholeWords = (value, query, lexemes) => `(${value} is not null
       and cardinality(${lexemes}) > 0 and case
-      when ${query} is not null and octet_length(${value}) <= ${PARSED}
-      then to_tsvector('simple', ${value}) @@ ${query}
+      when ${readable(value, query, lexemes)} then to_tsvector('simple', ${value}) @@ ${query}
       else not exists (select from unnest(${lexemes}) w where strpos(lower(${value}), w) = 0) end)`;
 
+/** The text ($2) as a phrase (null when too long to be one) and as its words. */
+const TEXT_QUERY = `case when octet_length($2::text) <= ${PHRASED} then phraseto_tsquery('simple', $2) end`;
+const TEXT_LEXEMES = `tsvector_to_array(to_tsvector('simple', $2))`;
 /** Whether `value` holds the text ($2) as whole words, in order, or loosely. */
-const NAMES = (value) =>
-  wholeWords(
-    value,
-    `case when octet_length($2::text) <= ${PHRASED} then phraseto_tsquery('simple', $2) end`,
-    `tsvector_to_array(to_tsvector('simple', $2))`,
-  );
+const NAMES = (value) => wholeWords(value, TEXT_QUERY, TEXT_LEXEMES);
 
 /** Whether `value` holds the text ($2) as whole words read by the parser, not loosely. */
-const EXACTLY = (value) =>
-  `(octet_length(${value}) <= ${PARSED} and octet_length($2::text) <= ${PHRASED} and ${NAMES(value)})`;
+const EXACTLY = (value) => `case when ${readable(value, TEXT_QUERY, TEXT_LEXEMES)}
+      then ${NAMES(value)} else false end`;
 
 /** How a person is found by the text: as whole words, or only loosely. */
 const NAMED = (...values) => `case when ${values.map((value) => EXACTLY(value)).join(' or ')}

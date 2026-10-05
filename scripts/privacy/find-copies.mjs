@@ -23,12 +23,13 @@
 // stored name of one of those people as whole words (when it has four letters
 // or digits, as the text needs), or one of those ids in any letter case; a
 // column's or a JSON field's name never counts ("granted_at" names no Grant).
-// A value over 16,000 bytes, too long for the parser, or any value against a
-// name or text over 1,000 bytes, too long to be a phrase, holds it loosely:
-// when it holds each of its words anywhere, even inside other words (more
-// listed, never less; a person found so is 'named loosely by the text'). A
-// stored name over 16,000 bytes, or with no word the parser keeps, is not
-// searched, and the summary says so.
+// A value over 16,000 bytes, too long for the parser, one using a word of the
+// name 256 times or more (the parser keeps 256 places of a word), or any
+// value against a name or text over 1,000 bytes, too long to be a phrase,
+// holds it loosely: when it holds each of its words anywhere, even inside
+// other words (more listed, never less; a person found so is 'named loosely
+// by the text'). A stored name over 16,000 bytes, or with no word the parser
+// keeps, is not searched, and the summary says so.
 // Letters are folded by the database, and each run of white space is one
 // space, so the text is matched as the database's locale cases it.
 //
