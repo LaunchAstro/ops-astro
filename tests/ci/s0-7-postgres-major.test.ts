@@ -3,11 +3,13 @@
 // S0-7: CI tests on the hosted database's major. The hosted database runs
 // Postgres 17 (LF-3), so the required database jobs, the local database, the
 // restart proof and the local auth stack run the one 17 image staging runs,
-// by digest, and a Postgres 18 job runs beside them as a look-ahead that is
-// not required. Each case is named after a line of the ticket.
+// by digest, and a Postgres 18 run is a look-ahead that is not required: each
+// night since CI-SPEED, no longer beside them. Each case is named after a line
+// of the ticket.
 
 import {
   copyFileSync,
+  existsSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -17,6 +19,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { migrate } from '../../packages/core-records/src/tenancy/migrate.ts';
 import {
   createFreshDatabase,
@@ -63,12 +66,41 @@ const required = (
 ).required_status_checks.map((c) => c.context);
 
 const LOOKAHEAD_JOB = 'database look-ahead, Postgres 18 (not required)';
+/** Where the look-ahead runs since CI-SPEED: nightly, on its own. */
+const NIGHTLY = '.github/workflows/lookahead.yml';
+
+interface Step {
+  readonly uses?: string;
+  readonly with?: Record<string, unknown>;
+  readonly run?: string;
+  readonly env?: Record<string, string>;
+}
+interface Job {
+  readonly name: string;
+  readonly if?: string;
+  readonly needs?: string[];
+  readonly permissions?: Record<string, string>;
+  readonly services?: { postgres?: { image?: string } };
+  readonly 'timeout-minutes'?: number;
+  readonly 'continue-on-error'?: unknown;
+  readonly steps: Step[];
+}
+interface Workflow {
+  readonly on: Record<string, unknown> & { schedule?: unknown };
+  readonly permissions?: unknown;
+  readonly jobs: Record<string, Job>;
+}
+const nightly = () => parse(read(NIGHTLY)) as Workflow;
+/** The look-ahead job's id and block in the nightly workflow. */
+const lookahead = (workflow: Pick<Workflow, 'jobs'>) =>
+  Object.entries(workflow.jobs).find(([, each]) => each.name.startsWith(LOOKAHEAD_JOB)) ?? [];
 /** The shards the required `database conformance` check rolls up (#252). */
 const SHARD_JOB = 'database conformance shard ${{ matrix.shard }}';
 
 describe('S0-7 CI on the hosted major', () => {
   ciOnTheCases1();
   ciOnTheCases2();
+  ciOnTheCases3();
 });
 
 function ciOnTheCases1() {
@@ -104,13 +136,13 @@ function ciOnTheCases1() {
     const block = job(SHARD_JOB);
     expect(required).toContain('database conformance');
     // The required check passes only when every shard did.
-    expect(job('database conformance')).toMatch(/^ {4}needs: \[database-shard\]$/mu);
+    expect(job('database conformance')).toMatch(/^ {4}needs: \[gate, database-shard\]$/mu);
     expect(required).toContain('isolation tests');
     expect(images(block)).toStrictEqual([`postgres@sha256:${DIGEST}`]);
     // The runner it calls is the one that fails a run with a skipped test
     // (tests/ci/db-conformance-cases.mjs holds that to cases).
     expect(block).toMatch(
-      /^ {6}- run: pnpm run db:conformance --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}$/mu,
+      /^ {6}- run: node scripts\/ci-scope\.ts 'database conformance' --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} -- pnpm run db:conformance --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}$/mu,
     );
     expect(read('scripts/db-conformance.mjs')).toMatch(/A skip is the failure/u);
     // The required jobs never ask for another major.
@@ -122,28 +154,59 @@ function ciOnTheCases1() {
 }
 
 function ciOnTheCases2() {
-  it('S0-7 a Postgres 18 look-ahead runs on every pull request, not required, its failure reported', () => {
-    const block = job(LOOKAHEAD_JOB);
+  it('S0-7 the Postgres 18 look-ahead runs nightly, never on a pull request or in the queue', () => {
+    // The owner, 4 October 2026 (NATHAN-CF-RECORD item 1): the look-ahead moves to a nightly
+    // run, not on pull requests or the queue. It never passed on one in 776 runs and held a
+    // quarter of CI's minutes (CI-AUDIT, 1 to 4 October).
+    expect(read('.github/workflows/ci.yml')).not.toContain(LOOKAHEAD_JOB);
+    expect(read('.github/workflows/ci.yml')).not.toContain(LOOKAHEAD);
+    expect(required).not.toContain(LOOKAHEAD_JOB);
+    expect(existsSync(join(ROOT, NIGHTLY))).toBe(true);
+    const workflow = nightly();
+    expect(Object.keys(workflow.on)).toStrictEqual(['schedule', 'workflow_dispatch']);
+    // 03:00 in Sydney under daylight saving (16:00 UTC); schedules run from main only.
+    expect(workflow.on.schedule).toStrictEqual([{ cron: '0 16 * * *' }]);
+    expect(workflow.permissions).toStrictEqual({ contents: 'read' });
     const pins = read('docs/supply-chain-pins.md');
     const eighteen = /\| `postgres` +\| `18-alpine` +\| `sha256:([0-9a-f]{64})` \|/u.exec(
       pins,
     )?.[1];
     expect(eighteen).toHaveLength(64);
-    expect(images(block)).toStrictEqual([`postgres@sha256:${eighteen}`]);
-    expect(block).toMatch(new RegExp(`${LOOKAHEAD}: '18'`, 'u'));
-    expect(block).toMatch(/^ {6}- run: pnpm run db:conformance$/mu);
-    // Every pull request: the workflow runs on them and the job has no condition.
-    expect(read('.github/workflows/ci.yml')).toMatch(/^on:\n {2}pull_request:/mu);
-    expect(block).not.toMatch(/^ {4}if:/mu);
-    // Not required, and nothing required waits on it.
-    expect(required).not.toContain(LOOKAHEAD_JOB);
-    const id = [...jobs()].find(([, b]) => b === block)?.[0] ?? '';
-    for (const other of jobs().values())
-      expect(other).not.toMatch(new RegExp(`needs:.*\\b${id}\\b`, 'u'));
-    // Its failure shows red on the pull request: nothing turns it green.
-    expect(block).not.toMatch(/continue-on-error/u);
+    const [, run] = lookahead(workflow);
+    expect(run?.services?.postgres?.image).toBe(`postgres@sha256:${eighteen ?? ''}`);
     // ORCH57PG18, ORCH57B3: a hung run gives its runner back after 90 minutes, not GitHub's 360.
-    expect(block).toMatch(/^ {4}timeout-minutes: 90$/mu);
+    expect(run?.['timeout-minutes']).toBe(90);
+    // Its failure is a failure: nothing turns it green.
+    expect(run?.['continue-on-error']).toBeUndefined();
+    const conformance = run?.steps.find((step) => step.run?.includes('pnpm run db:conformance'));
+    expect(conformance?.env?.[LOOKAHEAD]).toBe('18');
+    // The upgrade drill, a named conformance suite, seeds through an older commit's checkout,
+    // found in the history: on a one-commit clone it refuses every night.
+    const checkout = run?.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
+    expect(checkout?.with?.['fetch-depth']).toBe(0);
+  });
+}
+
+function ciOnTheCases3() {
+  it('S0-7 a failed look-ahead is reported on one standing issue, by the one job that may write issues', () => {
+    const workflow = existsSync(join(ROOT, NIGHTLY)) ? nightly() : { jobs: {} };
+    const [runId] = lookahead(workflow);
+    const [reportId, report] =
+      Object.entries(workflow.jobs).find(([, each]) => each.permissions !== undefined) ?? [];
+    // Any outcome but success: a run that hits its timeout is cancelled, not failed.
+    expect(report?.if).toBe(`always() && needs.${runId ?? ''}.result != 'success'`);
+    expect(report?.needs).toStrictEqual([runId]);
+    expect(report?.permissions).toStrictEqual({ issues: 'write' });
+    const script = report?.steps.map((step) => step.run ?? '').join('\n') ?? '';
+    // Only an issue this workflow opened: anyone may open one under that title.
+    expect(script).toMatch(/\bgh issue list\b[^\n]* --author app\/github-actions /u);
+    expect(script).toMatch(/\bgh issue comment\b/u);
+    expect(script).toMatch(/\bgh issue create\b/u);
+    for (const [key, each] of Object.entries(workflow.jobs)) {
+      if (key !== reportId) expect(each.permissions, key).toBeUndefined();
+      // Values reach a script through env, never as script text.
+      for (const step of each.steps) expect(step.run ?? '', key).not.toContain('${{');
+    }
   });
 
   it('S0-7 the watch line: one ticket moves production, staging, CI and the restore drill to 18', () => {

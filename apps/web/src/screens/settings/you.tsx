@@ -12,16 +12,14 @@
 // decision or an incident is never silenced, which the server refuses too
 // (`notifications.set_channel`, inbox-escalation-settings.test.ts).
 
-import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { NotConnected, Segmented, Switch } from '@launchastro/ui';
 import { dismissedTipCount } from '../../../../../packages/core-wire/src/index.ts';
 import { applyAppearance, isAppearance, type Appearance } from '../../appearance.ts';
-import { isRefusal, type OperationsClient } from '../../operations/client.ts';
-import { describeFailure, describeRefusal } from '../../records/submit.ts';
+import type { OperationsClient } from '../../operations/client.ts';
 import type { StorageLike } from '../../session/token.ts';
 import { OnOff } from './panels.tsx';
-
-type Preferences = Readonly<Record<string, unknown>>;
+import { usePreferences, type Preferences } from './use-preferences.ts';
 
 /** The label, one quiet sentence, and the control on the right (DS-COMP-26 rows). */
 function Row(props: {
@@ -59,48 +57,6 @@ function Group(props: {
       </div>
     </section>
   );
-}
-
-/** The person's own preferences: read once per reader, changed at once, then saved. */
-function usePreferences(client: OperationsClient, grantKey: string) {
-  const [held, setHeld] = useState<{ readonly of: string; readonly value: Preferences } | null>(
-    null,
-  );
-  const [because, setBecause] = useState<string | null>(null);
-
-  const reread = useCallback(() => {
-    let current = true;
-    void client.read<{ readonly preferences?: unknown }>('preference.read', {}).then((answer) => {
-      if (!current) return answer;
-      const preferences = 'value' in answer ? answer.value.preferences : undefined;
-      if (typeof preferences === 'object' && preferences !== null)
-        setHeld({ of: grantKey, value: preferences as Preferences });
-      else if (isRefusal(answer)) setBecause(describeRefusal(answer));
-      else setBecause('Your preferences could not be read.');
-      return answer;
-    });
-    return () => {
-      current = false;
-    };
-  }, [client, grantKey]);
-
-  useEffect(reread, [reread]);
-
-  const save = (preference: string, value: unknown): void => {
-    setHeld((before) => ({ of: grantKey, value: { ...before?.value, [preference]: value } }));
-    setBecause(null);
-    void client.mutate('preference.save', { preference, value }).then((result) => {
-      const failed = describeFailure(result);
-      if (failed !== null) {
-        setBecause(failed);
-        reread();
-      }
-      return result;
-    });
-  };
-
-  const preferences = held !== null && held.of === grantKey ? held.value : null;
-  return { preferences, because, save };
 }
 
 function AppearanceRow(props: {
@@ -251,7 +207,10 @@ export function YouGroups(props: {
           appearance={isAppearance(stored) ? stored : 'system'}
           choose={(value) => {
             applyAppearance(value, props.storage, true);
-            save('appearance', value);
+            // Refused, the page and the tab's copy go back to what is stored.
+            save('appearance', value, (back) => {
+              applyAppearance(isAppearance(back) ? back : 'system', props.storage);
+            });
           }}
         />
         <TipsRow preferences={preferences} save={save} />

@@ -33,6 +33,7 @@ function job(overrides: Partial<PublishJob> = {}): PublishJob {
     preImageDigest: contentDigest(BEFORE),
     baseRevision: 'abc123',
     pageUrl: 'https://agency.example/throwaway/',
+    seam: 'request-17',
   };
   const versionDigest = versionDigestOf(pinned);
   return {
@@ -45,7 +46,6 @@ function job(overrides: Partial<PublishJob> = {}): PublishJob {
       versionId: 'version-2',
       versionDigest,
     },
-    seam: 'request-17',
     ...overrides,
   };
 }
@@ -72,6 +72,7 @@ function ports(overrides: Partial<PublishPorts> = {}): PublishPorts & { calls: C
         },
       });
     },
+    readBack: () => Promise.resolve({ state: 'absent' as const }),
     cancellation: () => Promise.resolve('none' as const),
     raiseTask: (reason) => {
       calls.raised.push(reason);
@@ -265,6 +266,7 @@ describe('C80 accepted not landed', () => {
     deploymentId: 'dpl_1',
     liveUrl: 'https://www.example.com/throwaway',
     dispatchToken: 'x',
+    occurrence: { left: 'We walk ', right: ' you.' },
   };
 
   it('is live only when the deployment is served for that revision and the fenced capture shows the new word', async () => {

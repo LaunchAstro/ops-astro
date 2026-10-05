@@ -118,6 +118,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'record',
   // MP-2-11: the four-eyes threshold asks `spend:decide`, a money action.
   'spend',
+  // Custody (C31): `custody:manage` is the owner's and administrators'.
+  'custody',
 ];
 
 /**
@@ -134,6 +136,8 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   ['access', 'share'],
   ['time', 'write'],
   ['tag', 'write'],
+  // C33: releasing a definition version, the owner's and administrators'.
+  ['automation', 'manage'],
 ];
 
 export async function tokenFor(

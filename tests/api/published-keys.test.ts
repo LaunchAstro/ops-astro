@@ -39,6 +39,7 @@ import {
   testSignIn,
   type ServedKeySet,
 } from '../support/sign-in.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const OLD_SECRET = `${ISSUER}/the-shared-secret-the-api-used-to-hold`;
@@ -244,10 +245,9 @@ function publishedKeysOnlyCases2() {
 describe('S0-6 signing-key canary', () => {
   it('a key set carrying private material is refused by reason, and the material reaches no answer or log', async () => {
     const canary = `s0-6-canary-${randomUUID()}`;
-    const [published] = TEST_KEY_SET.keys;
-    const leaking = { keys: [{ ...published, d: canary }] };
-    const lines: unknown[] = [];
-    const push = (...parts: unknown[]) => lines.push(...parts) > 0;
+    const leaking = { keys: [{ ...TEST_KEY_SET.keys[0], d: canary }] };
+    const lines: string[] = [];
+    const push = (...parts: unknown[]) => lines.push(consoleLine(...parts)) > 0;
     const levels = ['log', 'info', 'warn', 'error', 'debug', 'trace'] as const;
     const spies = levels.map((level) => vi.spyOn(console, level).mockImplementation(push));
     try {
@@ -274,7 +274,7 @@ describe('S0-6 signing-key canary', () => {
       const text = await response.text();
       expect(response.status).toBe(401);
       expect(JSON.parse(text)).toMatchObject({ code: 'AUTH_UNKNOWN_LOGIN' });
-      const seen = JSON.stringify([text, lines.map(String)]);
+      const seen = JSON.stringify([text, lines]);
       expect(seen).toContain('private_key');
       expect(seen).not.toContain(canary);
     } finally {

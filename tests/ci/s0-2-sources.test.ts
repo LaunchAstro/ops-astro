@@ -3,11 +3,14 @@
 // scanner, `scripts/secrets-scan.mjs`, run as the deploy runs it.
 //
 // A throwaway repository carries the repository's gitleaks settings and, in
-// the failing case, a made-up key in the gitleaks generic shape, generated
-// here so no key is ever committed. The sink is a fake on a loopback port.
-// Without a sink the scan fails the same way and sends nothing.
+// the failing case, a made-up key in the gitleaks generic shape, derived here
+// from a fixed label so no key is ever committed. It is fixed, not random: the
+// generic rule wants entropy of 3.5 or more, and 32 of 3,000 random 48-hex
+// keys fell under it, so a random key made this proof red by chance. The sink
+// is a fake on a loopback port. Without a sink the scan fails the same way
+// and sends nothing.
 import { execFile } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -44,7 +47,8 @@ afterAll(async () => {
 function repository(withKey: boolean): { dir: string; key: string } {
   const dir = mkdtempSync(join(tmpdir(), 's0-2-scan-'));
   copyFileSync('.gitleaks.toml', join(dir, '.gitleaks.toml'));
-  const key = randomBytes(24).toString('hex');
+  // Entropy 3.85; gitleaks 8.30.1 finds it every run.
+  const key = createHash('sha256').update('S0-2 made-up service token').digest('hex').slice(0, 48);
   writeFileSync(join(dir, 'service.env'), withKey ? `SERVICE_TOKEN="${key}"\n` : 'NOTHING=here\n');
   return { dir, key };
 }

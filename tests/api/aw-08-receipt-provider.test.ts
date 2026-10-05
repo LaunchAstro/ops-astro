@@ -31,6 +31,7 @@ import {
   useReceiptWorld,
   workerOn,
 } from './aw-08-receipt-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -190,7 +191,7 @@ it('AW-08 canary: a planted credential and planted provider content reach no row
   const output: string[] = [];
   const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
     vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
-      output.push(args.map(String).join(' '));
+      output.push(consoleLine(...args));
     }),
   );
   try {

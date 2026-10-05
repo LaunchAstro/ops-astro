@@ -3,6 +3,8 @@
 // Every command's name, one union. Type-only, so the command surface
 // (`surface.ts`, which re-exports it) stays under the product line cap.
 
+import type { SetupCommandName } from './surface-setup.ts';
+
 export type CommandName =
   // The contract's nine.
   | 'task.create'
@@ -125,6 +127,8 @@ export type CommandName =
   // and the lease owner's heartbeat. None is a new actor power; each asks for
   // authority the caller already holds (see each row below).
   | 'client.create'
+  // C60: a client's privacy settings, on its record.
+  | 'client.set_privacy'
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'
@@ -152,6 +156,14 @@ export type CommandName =
   | 'live_correction.read'
   | 'live_correction.decide'
   | 'settings.set_live_correction_approver'
+  // Wayfinder (WF-1): a map is a task of type `map`, its tickets its subtasks.
+  // Retyping to or from grilling, prototype or map also asks the owner's `decide`.
+  | 'task.set_type'
+  | 'map.revise'
+  | 'map.scope'
+  | 'map.view'
+  // WF-2: a map's frontier and fog, from their read models.
+  | 'map.frontier'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
   // planning replies spend before the accept.
   | 'budget.set_planning_cap'
@@ -225,4 +237,12 @@ export type CommandName =
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
   | 'trace.read'
   // The harness adoption test's result on one run (AW-12): the team's.
-  | 'harness.read';
+  | 'harness.read'
+  // Settings ▸ Workflow triggers (C33): the registry is one read by
+  // `settings:read`; changing an activation is `settings:manage` and releasing
+  // a definition version `automation:manage`, neither an agent's.
+  | 'automation.registry'
+  | 'activation.change'
+  | 'definition.release'
+  // Setup's operations (C31 on), in `surface-setup.ts`.
+  | SetupCommandName;

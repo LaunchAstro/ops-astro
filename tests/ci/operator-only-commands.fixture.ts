@@ -53,7 +53,7 @@ export const manager = (apiRunning: boolean): { path: string; calls: string } =>
   ]);
   writeFileSync(
     join(bin, 'docker'),
-    `#!/bin/sh\necho "docker $*" >> '${calls}'\nif [ "$1" = ps ]; then echo api-id; exit 0; fi\nif [ "$1" = inspect ]; then printf '%s\\n' '${inspect}'; exit 0; fi\nif [ "$1" = start ]; then exit 0; fi\nif [ "$1" = compose ]; then exit 0; fi\nexit 2\n`,
+    `#!/bin/sh\necho "docker $*" >> '${calls}'\nif [ "$1" = ps ]; then echo ${'a'.repeat(64)}; exit 0; fi\nif [ "$1" = inspect ]; then printf '%s\\n' '${inspect}'; exit 0; fi\nif [ "$1" = start ]; then exit 0; fi\nif [ "$1" = compose ]; then exit 0; fi\nexit 2\n`,
   );
   writeFileSync(
     join(bin, 'launchctl'),

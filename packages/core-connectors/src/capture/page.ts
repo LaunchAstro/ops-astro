@@ -13,8 +13,9 @@ import {
   defaultTreeAdapter,
   html as markup,
   type DefaultTreeAdapterTypes as Tree,
+  type TreeAdapter,
 } from 'parse5';
-import type { PageObservation } from '../site/envelope.ts';
+import type { PageObservation } from '../site/captures.ts';
 import {
   MAX_STYLESHEETS,
   SHEETS_AT_ONCE,
@@ -27,61 +28,73 @@ import {
 } from './fence.ts';
 
 export type CaptureOptions = Omit<FetchOptions, 'kind' | 'page'>;
+const digest = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
-const digest = (text: string): string =>
-  `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
-
-// parse5, the HTML standard's tree builder, reads the page as a browser does. Four of its costs
-// grow with the square of a hostile page, so each is bounded: a tag, or an <html> or <body> that
-// later tags merge theirs onto, past MAX_ATTRIBUTES (each name is checked against all before it),
-// and nesting or active formatting entries past MAX_DEPTH (walked by many tags) are refused as
-// oversized; a sibling is looked for from the end, where it sits.
-const [MAX_ATTRIBUTES, MAX_DEPTH] = [256, 256];
+// parse5, the HTML standard's tree builder, reads the page as a browser does. Costs that outgrow a
+// hostile page are refused as oversized past: MAX_ATTRIBUTES on a tag, or on an <html> or <body>
+// later tags merge theirs onto; MAX_DEPTH open elements or formatting entries; WORK times the
+// page's length of siblings moves scan and shift (found from the end); and the page's length and
+// IMPLIED of nodes and attributes made (text rebuilds each formatting element closed but listed).
+const [MAX_ATTRIBUTES, MAX_DEPTH, WORK, IMPLIED] = [256, 256, 64, 64];
 const PAST_BOUND = new Error('past a bound');
-
-/* oxlint-disable no-underscore-dangle -- the name is parse5's own */
 class BoundedTokenizer extends Tokenizer {
   protected override _leaveAttrName(): void {
     const token = this.currentToken;
     if (token && 'attrs' in token && token.attrs.length >= MAX_ATTRIBUTES) throw PAST_BOUND;
+    // oxlint-disable-next-line no-underscore-dangle -- the name is parse5's own
     super._leaveAttrName();
   }
 }
-/* oxlint-enable no-underscore-dangle */
 
-const fromEnd = {
-  insertBefore(parent: Tree.ParentNode, node: Tree.ChildNode, before: Tree.ChildNode): void {
-    parent.childNodes.splice(parent.childNodes.lastIndexOf(before), 0, node);
-    node.parentNode = parent;
-  },
-  detachNode(node: Tree.ChildNode): void {
-    node.parentNode?.childNodes.splice(node.parentNode.childNodes.lastIndexOf(node), 1);
-    node.parentNode = null;
-  },
-  insertTextBefore(parent: Tree.ParentNode, text: string, before: Tree.ChildNode): void {
-    const previous = parent.childNodes[parent.childNodes.lastIndexOf(before) - 1];
-    if (previous && defaultTreeAdapter.isTextNode(previous)) previous.value += text;
-    else fromEnd.insertBefore(parent, defaultTreeAdapter.createTextNode(text), before);
-  },
-  adoptAttributes(recipient: Tree.Element, attrs: Tree.Element['attrs']): void {
-    defaultTreeAdapter.adoptAttributes(recipient, attrs);
-    if (recipient.attrs.length > MAX_ATTRIBUTES) throw PAST_BOUND;
-  },
-};
+function moves(length: number) {
+  let [left, nodes] = [WORK * length, length + IMPLIED];
+  const made = <Made>(node: Made, attributes = 0): Made => {
+    if ((nodes -= 1 + attributes) < 0) throw PAST_BOUND;
+    return node;
+  };
+  const at = (parent: Tree.ParentNode, node: Tree.ChildNode): number => {
+    const index = parent.childNodes.lastIndexOf(node);
+    left -= parent.childNodes.length - index;
+    if (left < 0) throw PAST_BOUND;
+    return index;
+  };
+  const adapter = {
+    createElement: (tag, space, attrs) =>
+      made(defaultTreeAdapter.createElement(tag, space, attrs), attrs.length),
+    createCommentNode: (data) => made(defaultTreeAdapter.createCommentNode(data)),
+    createDocumentFragment: () => made(defaultTreeAdapter.createDocumentFragment()),
+    insertText: (parent, text) => defaultTreeAdapter.insertText(made(parent), text),
+    insertBefore(parent: Tree.ParentNode, node: Tree.ChildNode, before: Tree.ChildNode): void {
+      parent.childNodes.splice(at(parent, before), 0, node);
+      node.parentNode = parent;
+    },
+    detachNode(node: Tree.ChildNode): void {
+      if (node.parentNode) node.parentNode.childNodes.splice(at(node.parentNode, node), 1);
+      node.parentNode = null;
+    },
+    insertTextBefore(parent: Tree.ParentNode, text: string, before: Tree.ChildNode): void {
+      const previous = parent.childNodes[at(made(parent), before) - 1];
+      if (previous && defaultTreeAdapter.isTextNode(previous)) previous.value += text;
+      else adapter.insertBefore(parent, defaultTreeAdapter.createTextNode(text), before);
+    },
+    adoptAttributes(recipient: Tree.Element, attrs: Tree.Element['attrs']): void {
+      defaultTreeAdapter.adoptAttributes(recipient, attrs);
+      if (recipient.attrs.length > MAX_ATTRIBUTES) throw PAST_BOUND;
+    },
+  } satisfies Partial<TreeAdapter<Tree.DefaultTreeAdapterMap>>;
+  return adapter;
+}
 
 // Elements whose text a browser does not show: these in HTML, and script and style anywhere.
 const HIDDEN = new Set('script style noscript template iframe noembed noframes'.split(' '));
 // Attributes that make a browser render what the capture cannot read: a declarative shadow root
 // (its own text and sheets, the element's children hidden) and a frame's inline document. A sheet
 // with no charset of its own is decoded in its link's charset, so that must name UTF-8 or nothing.
-const UNREAD = new Map([
-  ['template', ['shadowrootmode', 'shadowroot']],
-  ['iframe', ['srcdoc']],
-]);
-
+const UNREAD = new Map<string, string[]>()
+  .set('template', ['shadowrootmode', 'shadowroot'])
+  .set('iframe', ['srcdoc']);
 /** What the page shows and loads: its text, linked and inline sheets, and its base ('' if none). */
 type Reading = Readonly<{ text: string; links: string[]; styles: string[]; base: string }>;
-
 /** The page's tree, or undefined where it passes a bound. */
 function parsed(html: string): Tree.Document | undefined {
   // Read from parse5's own counts after each push; a count it no longer keeps reads as past.
@@ -91,7 +104,7 @@ function parsed(html: string): Tree.Document | undefined {
       throw PAST_BOUND;
   };
   const parser = new Parser<Tree.DefaultTreeAdapterMap>({
-    treeAdapter: { ...defaultTreeAdapter, ...fromEnd, onItemPush },
+    treeAdapter: { ...defaultTreeAdapter, ...moves(html.length), onItemPush },
   });
   parser.tokenizer = new BoundedTokenizer(parser.options, parser);
   try {
@@ -102,34 +115,27 @@ function parsed(html: string): Tree.Document | undefined {
     throw error;
   }
 }
-
 // The bounds lean on parse5's internals. If a release drops a member they override, or stops
 // honouring one, the capture refuses to load rather than read pages unbounded.
 const names = Array.from({ length: MAX_ATTRIBUTES }, (_, at) => ` a${at}`).join('');
-const members = [
+const held = [
   Reflect.get(Tokenizer.prototype, '_leaveAttrName'),
-  ...Object.keys(fromEnd).map((name) => Reflect.get(defaultTreeAdapter, name)),
-];
-const probes = [`<p${names} z>`, `<html${names}><html z>`, '<b>'.repeat(MAX_DEPTH)];
-if (
-  members.some((member) => typeof member !== 'function') ||
-  probes.some((probe) => parsed(probe) !== undefined)
-)
+  ...Object.keys(moves(0)).map((name) => Reflect.get(defaultTreeAdapter, name)),
+].every((member) => typeof member === 'function');
+const moved = `<b><p>${'<br>'.repeat(16 * WORK)}</b>`;
+const rebuilt = `<div${names.split(' ', 65).join('><b ')}></div>${'<div>X</div>'.repeat(64)}`;
+const probes = [`<p${names} z>`, `<html${names}><html z>`, '<b>'.repeat(MAX_DEPTH), moved, rebuilt];
+if (!held || probes.some((probe) => parsed(probe) !== undefined))
   throw new Error('parse5 no longer holds the capture bounds');
 
 /** Reads the tree in document order with a stack of its own, so no depth can overflow the call stack. */
-function readDocument(html: string): Reading | FenceCode {
+export function readDocument(html: string): Reading | FenceCode {
   const document = parsed(html);
   if (document === undefined) return 'CAPTURE_OVERSIZED';
   const [text, links, styles]: [string[], string[], string[]] = [[], [], []];
   let base: string | undefined;
-  const stack: (readonly [Tree.Node, boolean] | undefined)[] = [[document, false]];
-  while (stack.length > 0) {
-    const entry = stack.pop();
-    if (entry === undefined) {
-      text.push(' ');
-      continue;
-    }
+  const stack: (readonly [Tree.Node, boolean])[] = [[document, false]];
+  for (let entry = stack.pop(); entry !== undefined; entry = stack.pop()) {
     const [node, hidden] = entry;
     if (node.nodeName === '#text' && !hidden) text.push((node as Tree.TextNode).value);
     if (!('childNodes' in node)) continue;
@@ -150,7 +156,7 @@ function readDocument(html: string): Reading | FenceCode {
         styles.push(node.childNodes.map((child) => ('value' in child ? child.value : '')).join(''));
       hides ||= HIDDEN.has(name) && (html5 || name === 'script' || name === 'style');
       text.push(' ');
-      stack.push(undefined);
+      stack.push([defaultTreeAdapter.createTextNode(' '), false]);
     }
     for (const child of node.childNodes.toReversed()) stack.push([child, hides]);
   }
@@ -187,10 +193,8 @@ const cssText = (raw: string, atEnd = ''): string =>
   raw.replaceAll(/\\(?:([0-9a-f]{1,6})[ \t\n]?|(\n)|([^])|$)/giu, (all, hex, line, char) =>
     unescaped(all, hex, line, char ?? atEnd),
   );
-
 /** A token's kind, its text (a string's or url's, undefined where CSS reads it bad) and its end. */
 type CssToken = { readonly kind: string; readonly text?: string | undefined; readonly end: number };
-
 /** The token at `at`: space, a comment, a string, a url, `url(` before a string, `@name`, other. */
 function cssToken(css: string, at: number): CssToken {
   TOKEN.lastIndex = at;
@@ -212,7 +216,7 @@ function cssToken(css: string, at: number): CssToken {
 }
 
 /** Every address the sheet's `@import` rules name; undefined for one CSS cannot read. */
-function importsOf(source: string): (string | undefined)[] {
+export function importsOf(source: string): (string | undefined)[] {
   const css = source.replaceAll(/\r\n?|\f/gu, '\n').replaceAll('\0', '\uFFFD');
   const next = (from: number): CssToken => {
     let token = cssToken(css, from);
@@ -234,28 +238,29 @@ function importsOf(source: string): (string | undefined)[] {
 
 /** Rounds of `@import` followed past the sheets the page names; one more is refused as oversized. */
 const IMPORT_DEPTH = 3;
-
-const resolved = (href: string | undefined, from: string): string | undefined =>
+export const resolved = (href: string | undefined, from: string): string | undefined =>
   href !== undefined && URL.canParse(href, from) ? new URL(href, from).href : undefined;
-
 /** The encoding a sheet declares as CSS reads it: a `@charset` rule at its very start. */
 const declared = (css: string): string => /^@charset "([^"]*)";/u.exec(css)?.[1] ?? 'utf-8';
-
+/** The sheets the page names: linked, or imported by its inline styles, from its base. */
+export function named(document: Reading, at: string): (string | undefined)[] {
+  const hrefs = [...document.links, ...document.styles.flatMap(importsOf)];
+  return hrefs.map((href) => resolved(href, resolved(document.base, at) ?? at));
+}
 /** The digest of every sheet the page serves: inline, linked, and imported by either. */
 async function readSheets(
   url: string,
-  base: string,
-  document: { readonly links: readonly string[]; readonly styles: readonly string[] },
+  at: string,
+  document: Reading,
   options: CaptureOptions,
 ): Promise<Fenced<Record<string, string>>> {
   const stylesheets: Record<string, string> = {};
   for (const [index, css] of document.styles.entries())
     stylesheets[`inline:${index}`] = digest(css);
-  const seen = new Set<string>();
-  const run = limiter(SHEETS_AT_ONCE);
-  let wanted = [...document.links, ...document.styles.flatMap(importsOf)].map((href) =>
-    resolved(href, base),
-  );
+  const [seen, run] = [new Set<string>(), limiter(SHEETS_AT_ONCE)];
+  const fetchSheet = (href: string) =>
+    run(() => fencedFetch(href, { ...options, kind: 'stylesheet', page: url }));
+  let wanted = named(document, at);
   for (let depth = 0; wanted.length > 0; depth += 1) {
     if (wanted.includes(undefined)) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
     const fresh = [...new Set(wanted as string[])].filter((href) => !seen.has(href));
@@ -263,11 +268,7 @@ async function readSheets(
       return { ok: false, code: 'CAPTURE_OVERSIZED' };
     for (const href of fresh) seen.add(href);
     // oxlint-disable-next-line no-await-in-loop -- one round of imports waits on the last
-    const fetched = await Promise.all(
-      fresh.map((href) =>
-        run(() => fencedFetch(href, { ...options, kind: 'stylesheet', page: url })),
-      ),
-    );
+    const fetched = await Promise.all(fresh.map((href) => fetchSheet(href)));
     wanted = [];
     for (const [index, sheet] of fetched.entries()) {
       if (!sheet.ok) return sheet;
@@ -289,8 +290,7 @@ export async function capturePage(
   const html = page.value.body;
   const document = readDocument(html);
   if (typeof document === 'string') return { ok: false, code: document };
-  const base = resolved(document.base, page.value.url) ?? page.value.url;
-  const sheets = await readSheets(url, base, document, options);
+  const sheets = await readSheets(url, page.value.url, document, options);
   if (!sheets.ok) return sheets;
   const sorted = Object.fromEntries(
     Object.entries(sheets.value).toSorted(([left], [right]) => (left < right ? -1 : 1)),

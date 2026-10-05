@@ -23,8 +23,11 @@ import type {
   PresetPlan,
   SettingValueType,
 } from '../../core-records/src/index.ts';
-import type { TaskLedgerView } from './views-agent.ts';
+import type { AttemptView, TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
+import type { ClientPrivacyView, ClientView } from './views-client.ts';
+
+export type { ClientListResult, ClientPrivacyView, ClientView } from './views-client.ts';
 
 // A run's pins, reads, checks and scope, and the task's execution and receipt
 // reads, live in their own module, re-exported here, so this one stays under
@@ -61,6 +64,7 @@ export type {
   ConversationReadResult,
   AwaitingReviewView,
   AwaitingReviewResult,
+  AttemptView,
 } from './views-agent.ts';
 
 export type {
@@ -461,15 +465,6 @@ export interface LeaseView {
   readonly holderActorId: string | null;
 }
 
-export interface AttemptView {
-  readonly id: string;
-  readonly state: string;
-  readonly dispatchMarker: boolean;
-  readonly observed: boolean;
-  /** Why the work dropped under it (T3e1), or null: never a person's cancellation. */
-  readonly dropCause: string | null;
-}
-
 export interface GateView {
   readonly id: string;
   /**
@@ -639,6 +634,12 @@ export interface BoardTask extends TaskSummary {
   readonly stage: string | null;
   /** True when the task is put under a client (`task.set_party`). */
   readonly clientSet: boolean;
+  /**
+   * The task's client by id and name (the Clients row door), as `task.read` and
+   * `client.list` answer them: null for none, and null beside `clientSet: true`
+   * for a client the reader's grants do not reach (CS-4.12).
+   */
+  readonly client: ClientView | null;
   /**
    * Every finished minute logged on the task (MP-4-6), the total `task.read`'s
    * time answers: one number, no names. Derived at read; 0 for none.
@@ -928,18 +929,8 @@ export interface AccessReadResult {
   readonly agents: readonly AccessAgent[];
   /** The business's client records, which a `party` scope in a preview names. */
   readonly clientRecords: readonly ClientView[];
-}
-
-/** One client record (C32): an organisation the business works for. */
-export interface ClientView {
-  readonly clientId: string;
-  readonly name: string;
-}
-
-/** `client.list`'s answer: the clients the caller's live grants reach. */
-export interface ClientListResult {
-  readonly ok: true;
-  readonly clients: readonly ClientView[];
+  /** Each client record's privacy settings (C60), in the same order. */
+  readonly clientPrivacy: readonly ClientPrivacyView[];
 }
 
 /**

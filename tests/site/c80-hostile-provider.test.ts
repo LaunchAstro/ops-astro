@@ -4,7 +4,7 @@
 // call meeting a hostile answer, an unlisted destination, undeclared
 // parameters and a planted credential canary.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   SITE_OPERATIONS,
   callConnector,
@@ -183,5 +183,75 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
     );
     const shown = JSON.stringify({ results, recorded });
     expect(shown).not.toContain('canary-token-C80-never-shown');
+  });
+});
+
+describe('C80 the guarded provider call', () => {
+  const canary = 'canary-token-C80-never-shown';
+
+  it('a credential echoed in a declared string field cannot escape', async () => {
+    const recorded: string[] = [];
+    const transport = httpOf(json({ merged: true, sha: canary }));
+    const result = await callConnector(publishRegistration, params, deps(transport, recorded));
+    // The provider did get the credential, so the search below is not vacuous.
+    expect(transport.seen[0]?.headers['authorization']).toBe(`Bearer ${canary}`);
+    // A boolean, so a failure never prints the credential.
+    expect(JSON.stringify({ result, recorded }).includes(canary)).toBe(false);
+    expect(result).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
+    expect(recorded).toEqual(['PROVIDER_CREDENTIAL_ECHOED']);
+  });
+
+  it('the provider deadline also bounds DNS preparation', async () => {
+    const { timeoutMs } = publishRegistration.connector;
+    vi.useFakeTimers();
+    try {
+      const stalled = httpOf(json({ merged: true, sha: 'def456' }));
+      const pending = callConnector(publishRegistration, params, {
+        ...deps(stalled),
+        resolve: () => new Promise<readonly string[]>(() => {}),
+      });
+      await vi.advanceTimersByTimeAsync(timeoutMs + 1);
+      const settled = await Promise.race([pending, Promise.resolve('still pending')]);
+      expect({ settled, sent: stalled.seen.length }).toEqual({
+        settled: { kind: 'refused', code: 'PROVIDER_TIMEOUT' },
+        sent: 0,
+      });
+      // One deadline: a slow answer leaves the transport only what remains of it.
+      const slow = httpOf(json({ merged: true, sha: 'def456' }));
+      const call = callConnector(publishRegistration, params, {
+        ...deps(slow),
+        resolve: () =>
+          new Promise<readonly string[]>((answer) => {
+            setTimeout(() => answer(['140.82.112.6']), 4_000);
+          }),
+      });
+      await vi.advanceTimersByTimeAsync(4_000);
+      await call;
+      expect(slow.seen[0]?.timeoutMs).toBe(timeoutMs - 4_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('C80 the guarded provider call', () => {
+  it('source reads send the declared pinned ref', async () => {
+    const read = SITE_OPERATIONS.find(
+      (entry) => entry.declaration.operation_name === 'site.source.read',
+    )!;
+    const transport = httpOf(json({ sha: 'abc', content: 'PHA+', encoding: 'base64' }));
+    const at = (ref: string) =>
+      callConnector(
+        read,
+        { repository: 'agency/site', path: 'src/pages/about.astro', ref },
+        deps(transport),
+      );
+    expect((await at('approved/branch')).kind).toBe('ok');
+    expect((await at('main')).kind).toBe('ok');
+    expect(transport.seen.map((sent) => sent.url.searchParams.get('ref'))).toEqual([
+      'approved/branch',
+      'main',
+    ]);
+    expect(transport.seen[0]?.body).toBeUndefined();
   });
 });

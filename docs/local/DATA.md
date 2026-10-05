@@ -285,7 +285,9 @@ each field with a null write mode (`every field has a non-null write mode`,
 ## What the tenancy proofs are
 
 The suites under `tests/tenancy/` each run against a database of their own,
-migrated from empty. With `DATABASE_URL` unset they print that nothing ran
+migrated from empty: a copy of the one database the run migrated from empty
+(`tests/support/migrated-template.ts`), or migrated by the suite itself where it
+asks to be (`fromEmpty`, or `OPS_ASTRO_DB_TEMPLATE=off` for all of them). With `DATABASE_URL` unset they print that nothing ran
 instead of showing a green tick, and `scripts/db-conformance.mjs` fails any run
 in which a named suite skipped.
 
@@ -340,7 +342,9 @@ whom it refuses. `model_route_room` (migration 0085, AW-01's fair share) is
 the second, and the one read across businesses: a route's ceiling is the
 installation's, which a tenant transaction cannot count under row security.
 It answers one whole number, 1 when the transaction's own business may hold
-one more call on the route and 0 when it may not, with no id and no count;
+one more call on the route and 0 when it may not, with no id and no count; a
+provider lookup's unexpired slot counts as a call (migration 20261004040000 replaces it,
+keeping its grants and rights);
 the business is `app_business_id()`, never an argument, and none is 0. It
 runs with `row_security = off`, so an owner that does not bypass row security
 is refused rather than answered from one business's rows. PUBLIC and the
@@ -349,7 +353,24 @@ application group may not execute it. Only `ops_astro_broker` may, a
 not inherit it, so the broker takes it for the one statement with
 `set_config('role', ..., true)` and gives it back. The suites sort that role
 into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
-proves the separation and the grants.
+proves the separation and the grants. `take_lease` (migration 20261004040200, SL11-30) is
+the third, and the one way a lease is written. The application group holds no
+insert on `leases` and updates only `expires_at`, `state` and `released_at`, so
+it can neither rewrite a lease's holder nor forge a lease, and 0111's check
+that a reviewed output is its lease holder's work stands on the holder column.
+Pickup calls it after its own checks under the locks. It checks again inside, in
+`app_business_id()`'s business: the reservation is claimable, the approving
+person is the one named, the claimant's authority is live (a person's own write
+on the task, or an agent's own delegation for this lease from the approving
+person, judged as `EFFECTIVE` judges grants), and the expiry is within a lease's
+lifetime. It computes the fence itself. The application role still writes
+delegations, grants, gate decisions and actors, so a new lease is only as
+trustworthy as those rows; the delegation mint behind this path is the next step. It runs as its own
+role, `ops_astro_lease_path` (no login, no bypass, not the owner, and the
+application group cannot set it), so row security and the made-up guard judge
+its one insert as the application's; its search path is `pg_catalog, pg_temp`, PUBLIC may not execute it, and a call naming
+nothing answers null. `tests/db/take-lease-path.test.ts` and
+`tests/db/lease-holder-guard.test.ts` prove it.
 
 `ops_astro_occurrence` (migration 0097, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's
@@ -366,9 +387,9 @@ At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
 (the header of `restricted-calls-prefixes.test.ts`, and its
 `answers every caller as the contract says after <version>`). At the full
-schema, the suite seeds `person_identifiers`, `person_merges`, `record_links` and
-the three `inbox_` tables itself. The suite counts the own-tenant insert positive control (TC:108) per
-table: one insert through the production wrapper on each tenant table the
+schema, the suite seeds `person_identifiers`, `person_merges`, `record_links`
+and the three `inbox_` tables itself. The suite counts the own-tenant insert
+positive control (TC:108) per table: one insert through the production wrapper on each tenant table the
 application may insert into, each `rows 1`, and each rolled back
 (`restricted-calls.test.ts`,
 `admits an own-business insert on every table the application inserts into`).
@@ -578,18 +599,28 @@ Two identities carry negative cases:
 The seed enrols one external party (R4). It adds an entry with
 `role: 'external'` to `.local/synthetic-users.json`, creates its GoTrue user,
 and gives it a login and an acting identity with no membership and no business
-grant (`scripts/local-seed.mjs`, `ensureExternalEntry` and `seedExternalUser`).
+grant (`scripts/local-seed.mjs`, `ensureExternalEntry` and `seedAgentUser`).
 It shares a task with it only when rerun with `LOCAL_SEED_SHARE_TASK` naming a
 task by key or id, through `shareRecord` under the admin's own `share` grant
 (`shareWithExternal`). The tests make their own external party with
 `tests/acceptance/world.ts`'s `enrolExternal`.
 
-**Carry the existing external entry before seeding against a shared GoTrue.**
-When `.local/synthetic-users.json` has no `role: 'external'` entry, the seed
-writes a new one with a new password and then sets that password on the GoTrue
-user (`ensureExternalEntry`, `seedExternalUser`). Against a GoTrue that other
-checkouts also use, that resets the external party's password for all of them.
-Copy the existing entry into the file first.
+**Carry the existing external entry and agents file before seeding against a
+shared GoTrue.** The seed sets the password of a GoTrue user it finds already
+there, the agents' and the external party's, to the one its file holds
+(`seedAgentUser`), so the credential it writes signs in. When
+`.local/synthetic-users.json` has no `role: 'external'` entry, or
+`.local/synthetic-agents.json` is absent, it writes new passwords
+(`ensureExternalEntry`, `readAgents`). Against a GoTrue that other checkouts
+also use, that resets those passwords for all of them. Copy the existing entry
+and file in first.
+
+Before it reads or writes anything, the seed refuses a `GOTRUE_URL` that is
+neither https nor this machine, since the admin API's key goes with every call.
+Once the admin connection's database is admitted as made-up, it refuses a
+`DATABASE_URL` that does not reach that same database: the admin connection
+holds a lock under a random key, and the application connection must see it
+in `pg_locks` for its own database.
 
 Identity comes from `.local/synthetic-users.json`, which `auth:seed`
 (`scripts/local/auth-seed.mjs`) writes because the GoTrue subjects are its to
@@ -651,8 +682,11 @@ That function is a security definer with its search path pinned, takes no
 argument and stamps the database's own time, never moving it back, so the
 drill cannot name a date. The drill takes the role by name on the owner's
 connection (`scripts/ops/tested-restore.ts`), as the business lookup takes
-0046's. The application may select the row and nothing more; PUBLIC holds
-nothing on the table or the function. `operations.read` serves it as
+0046's. Where the owner's login is not a superuser (hosted Supabase holds
+both with ADMIN OPTION alone), 20261005063514 grants it each of the two with
+SET and without INHERIT: it may take them by name and holds nothing of
+theirs otherwise. The application may select the row and nothing more;
+PUBLIC holds nothing on the table or the function. `operations.read` serves it as
 `lastTestedRestore` ([API.md](API.md)).
 
 ## Legal documents (0051, C81)
@@ -676,8 +710,18 @@ and who made it and when. It is the party a party-scoped grant names in
 `grants.scope_id` and a task names in its `client` link (`records.uuid_7`).
 Neither carries a foreign key to it, so `access.grant` and `task.set_party`
 check a client is of this business before writing its id. The application may
-select and insert; nothing updates or deletes a row. Tenancy-keyed with the
-restrictive policy.
+select and insert; nothing deletes a row. Tenancy-keyed with the restrictive
+policy.
+
+C60 (20261003000423) adds the client's privacy settings, each off for a new
+client: `model_egress` with `model_providers` (on only with a provider named,
+`clients_egress_names_providers`), `handles_health` (which keeps model egress
+off, `clients_health_keeps_egress_off`) and `no_agent_edits`. The application
+may update those four columns alone, by `client.set_privacy`.
+`client_model_requests` keeps each written request for model use: who asked,
+when, the link to the request, the providers and the outcome (`applied` or the
+refusal's code), with who recorded it. Select and insert only; written once.
+Tenancy-keyed with the restrictive policy.
 
 ## Access endings (0056, C58)
 
@@ -717,9 +761,13 @@ row.
 factor change: a SHA-256 digest of the login's subject, the session kept
 (null keeps none) and when. Installation-wide, no business, person or
 reason. Login resolution refuses a token of that subject whose session is not
-the kept one and whose first sign-in is at or before the ending. The
+the kept one and whose first sign-in is at or before the ending, allowing
+the minute the provider's clock may run ahead (`SIGN_IN_CLOCK_SKEW_SECONDS`). The
+ending's time is set as its transaction commits (20261004040300: a deferred
+constraint trigger, a pinned security definer that only moves the new row's
+time later), not when the transaction began. The
 application may insert the digest and the kept session and read the three
-columns; nothing changes or deletes a row.
+columns; it changes and deletes nothing, and only that trigger changes a row.
 
 ## Second factors by subject (0064, C59)
 
@@ -791,3 +839,26 @@ revocation (`revoked_at` with `revoked_by_actor_id`, both or neither). The
 secret itself is stored nowhere. A guard keeps every issued column as written
 and lets the revocation be set once. The application may select, insert and
 update; nothing deletes a row. Tenancy-keyed with the restrictive policy.
+
+## Automations (20261004091552, C33)
+
+`automation_definitions` holds one skill or automation a business keeps (its
+kind and name). `definition_versions` holds each release of one: the bytes
+pinned by SHA-256 digest and size, the inputs and operations it declares, and
+the activation modes it permits, numbered from 1 per definition. A version is
+never changed or removed, the owner's update or delete included
+(`definition_versions_immutable`). `activations` runs one definition in one
+mode (`manual`, `scheduled` every 1 to 10,080 minutes, or `event` on a named
+event kind), always pinned to one of that definition's versions, and refuses
+a mode its pinned version does not permit (`activations_mode_permitted`, an
+after trigger so row security answers another business first; an update that
+keeps the mode and the pin is not asked again). `activation_occurrences` holds
+each due time or event once (`activation_occurrences_due_once`,
+`activation_occurrences_event_once`), with its outcome and a version of its
+activation's own definition (`activation_occurrences_version_of_definition`),
+and names a run only when it started one, at most one occurrence per run. Nothing here starts a run:
+every occurrence is `activation_off` or `no_standing_approval` until C52-A's
+standing approval lands. The application may select and insert all four, and
+update an activation's setting, pin, switch and revision by column grant;
+nothing deletes a row. Tenancy-keyed with the restrictive policy. The records
+are `packages/core-records/src/automations/`.

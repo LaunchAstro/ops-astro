@@ -20,9 +20,11 @@ import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   PICTURE_BROWSER_ARGS,
+  capturePage,
   capturePicture,
   type PictureBrowser,
   type Transport,
+  type TransportAnswer,
 } from '../../packages/core-connectors/src/index.ts';
 import { launchChromium } from '../support/chromium.ts';
 import { ABOUT, PAGE, POOL, SHEET, publicResolver, site } from './c80-picture-world.ts';
@@ -68,8 +70,14 @@ async function profiled(args: readonly string[]): Promise<Opened> {
   return { context, close };
 }
 
+interface Probe {
+  ran?: string | null;
+  /** The first paragraph's text colour, as the browser computed it. */
+  colour?: string;
+}
+
 /** The worker's browser port, as a real one: every request goes to the route. */
-function chromiumPort(probe: { ran?: string | null }, open = fresh): PictureBrowser {
+function chromiumPort(probe: Probe, open = fresh): PictureBrowser {
   return async (url, route) => {
     const { context, close } = await open();
     try {
@@ -91,6 +99,10 @@ function chromiumPort(probe: { ran?: string | null }, open = fresh): PictureBrow
       });
       await page.goto(url, { waitUntil: 'load' });
       probe.ran = await page.getAttribute('html', 'data-ran');
+      probe.colour = await page
+        .locator('p')
+        .first()
+        .evaluate((p) => getComputedStyle(p).color);
       return new Uint8Array(await page.screenshot({ fullPage: true }));
     } finally {
       await close();
@@ -101,7 +113,7 @@ function chromiumPort(probe: { ran?: string | null }, open = fresh): PictureBrow
 describe.skipIf(!installed)('C80 capture picture, in a real browser', () => {
   it('renders through the fence alone, and the page runs no script', async () => {
     const transport = site();
-    const probe: { ran?: string | null } = {};
+    const probe: Probe = {};
     const picture = await capturePicture(
       ABOUT,
       { pool: POOL, resolve: publicResolver, transport },
@@ -162,5 +174,45 @@ describe.skipIf(!installed)('C80 capture picture, in a real browser, no network 
     } finally {
       server.close();
     }
+  }, 60_000);
+});
+
+// One site's answers for the observation and the picture of ABOUT, side by side.
+const MOVED = 'https://www.example.com/new/about';
+const ok = (type: string, body: string): TransportAnswer => ({
+  kind: 'answer',
+  status: 200,
+  headers: { 'content-type': type },
+  body: new TextEncoder().encode(body),
+});
+const page = (head: string) => ok('text/html; charset=utf-8', `${head}<p>Hello</p>`);
+const sheet = (colour: string) => ok('text/css', `p { color: ${colour}; }`);
+
+/** The observation and the picture of ABOUT on one site, and the colour the picture showed. */
+async function both(pages: Record<string, TransportAnswer>) {
+  const transport: Transport = (request) =>
+    Promise.resolve(pages[request.url.href] ?? ok('text/plain', 'missing'));
+  const pool = { ...POOL, agencyPages: [ABOUT, MOVED] };
+  const options = { pool, resolve: publicResolver, transport };
+  const observed = await capturePage(ABOUT, options);
+  const probe: Probe = {};
+  const picture = await capturePicture(ABOUT, options, chromiumPort(probe));
+  return { observed, shown: picture.ok ? probe.colour : 'refused' };
+}
+
+// The eleventh security re-bind, L1: the document's policy (style-src 'self') blocked a sheet on
+// another host before any request reached the route, so the picture succeeded without a sheet the
+// page links, one the observation refuses. The review's case, a page redirected to another host
+// linking the first host's sheet, is refused already: Chromium hands a cross-site redirect to no
+// route, so the browser meets its proxy and the load fails.
+describe.skipIf(!installed)('C80 capture picture, in a real browser, the eleventh re-bind', () => {
+  it('is refused where a sheet the page links is refused, not shown without it', async () => {
+    const elsewhere = 'https://studio.example.org/site.css';
+    const { observed, shown } = await both({
+      [ABOUT]: page(`<link rel=stylesheet href=${elsewhere}>`),
+      [elsewhere]: sheet('red'),
+    });
+    expect(observed.ok).toBe(false);
+    expect(shown).toBe('refused');
   }, 60_000);
 });

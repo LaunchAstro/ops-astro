@@ -50,13 +50,60 @@ product.
 ## Claiming product conformance
 
 `database conformance` runs `pnpm run db:conformance` against Postgres
-service containers, reading `tests/db/named-suites.json`.
+service containers, reading the named suites through
+`scripts/named-suites.ts`. Each named suite has a file of its own (MERGE-PLAN
+item 5, so two pull requests that add suites never edit the same file): the
+suite `tests/<path>` is named by `tests/db/suites/<path>.json`, holding
+`"kind"` (`"invariant"` or `"conformance"`), `"isolation"` (`true` when
+`isolation tests` runs it too) and `"why"` (what it proves). To name a suite,
+add its file; to stop naming one, delete its test file with it. The reader
+refuses a file with another key, a missing or empty reason, a name that is
+not a test file's plus `.json`, a symlink, or the old lists
+(`tests/db/named-suites/`, `tests/db/isolation-suites.json`) beside the
+folder, and names the file. The old lists' comment lines are kept, unchanged,
+in `tests/db/suites-history.json`.
+
+Deleting one of those files would drop a suite with no list diff to show it,
+so `database conformance gate` runs `node scripts/named-suites.ts kept
+<base>` on every event. On a pull request or a merge group it runs through
+`scripts/merge-group.mjs each`, once per pull request the check judges: on a
+pull request the base is the pull request's base. On a group it is the base
+branch's tip as merge-group.mjs fetches it, which is why the job checks out
+the full history, and every run compares the whole checked-out group with
+it, so one pull request's drop fails each run. On a push the base is the
+push's `before`. It reads the manifest at the base from git in whichever
+layout the base has (the single file, the per-area folder or one file per
+suite), and fails naming each suite the base named, or marked isolation,
+that the head does not, unless the change deleted its test file.
+A renamed test file (git's rename detection, a change of case included) takes
+its suite with it: the new path must be named with the same kind, and marked
+isolation when the old one was, or the step fails naming both paths. A rename
+git does not detect (a file moved and much rewritten) counts as a deletion, so
+it shows in the change as a deleted test file. A base
+it cannot read, an id that is not 40 or 64 hex, an all-zero base or a failed
+git command fails the step.
 
 Run one after another the named suites took 40 to 50 minutes, so the hosted
 job is a matrix of shards (`database conformance shard <i>`), each running
 `db:conformance --shard <i>/<n>` against a Postgres of its own. The required
-check is the aggregate job named `database conformance`: it needs every shard
-and fails unless all of them succeeded, a skipped or cancelled shard included.
+check is the aggregate job named `database conformance`: it needs the
+contamination gate and every shard, and fails unless all of the shards
+succeeded, a skipped or cancelled shard included.
+
+The shards run in the merge queue and on a push to `main`, never on a pull
+request (CI-SPEED, light pull requests). A pull request's checks are the light
+set and flag issues; the full set runs in the merge queue, which is the only
+way into `main`. So on a pull request the shards skip and the aggregate passes
+on that skip when the contamination gate passed, and nowhere else. A failed,
+cancelled or skipped gate skips the shards too, and that skip fails the
+aggregate, so a red gate never shows a green `database conformance`. On a
+merge group or a push a skipped shard fails it, and a failed or cancelled shard
+fails it everywhere.
+`isolation tests` defers its suites to the queue the same way, still reporting
+under its name. A green `database conformance` on a pull request therefore
+proves nothing about the suites; builders run the full `pnpm check` locally,
+and `pnpm db:conformance` against a local database for a change that reaches
+the database, before declaring ready.
 `scripts/db-shards.ts` splits the run items by the seconds in
 `tests/db/shard-plan.json`; an item with no timing weighs the median, so a
 newly named suite is assigned without editing that file, which only keeps the
@@ -65,7 +112,28 @@ and runs as k items, each with `SUITE_PART=i/k`; the suite registers only its
 part's cases (`inPart`), so each case runs once, in one part.
 `tests/acceptance/d06-generated.test.ts`, about 15 minutes whole, runs in six.
 `tests/ci/db-shards.test.ts` proves every item lands in exactly one shard and
-every case of a split suite in exactly one part. Each shard still checks the
+every case of a split suite in exactly one part.
+
+Since CI-SPEED (the owner, 4 October 2026) there are 16 shards, and
+`node scripts/db-census.ts` lists every run item's tests with vitest and shows
+the 8-way and 16-way splits hold each item once and the same number of tests.
+Each shard also starts from one migrated template rather than migrating every
+database from empty: `tests/support/migrated-template.ts` migrates
+`migrated_<digest>` from empty once (the conformance runner builds it before
+its first counter read, locking in `postgres`, and a suite's global setup only
+reads it beside the configured database, so rule 7's counter does not move,
+even with `postgres` configured:
+`tests/ci/database-free-suite-refused-on-postgres.proof.test.mjs`), and
+`createFreshDatabase` clones it.
+`tests/support/migrated-template.test.ts` proves a clone equals a database
+migrated from empty, catalogue and privileges alike, and
+`tests/support/template-lock-and-clone-catalogue.test.ts` that builders share
+one lock, leave template1 free, and that the comparison sees disabled triggers
+and membership options. A suite that must migrate
+itself passes `fromEmpty` or its own `migrationsDirectory`, and
+`OPS_ASTRO_DB_TEMPLATE=off` sends every suite the old way. The Postgres 18
+look-ahead runs the same suites each night (`.github/workflows/lookahead.yml`),
+not on pull requests or the queue, and reports a failure on one standing issue. Each shard still checks the
 whole manifest for rules 2 and 3 below, and applies every other rule to its
 own items, one at a time.
 
@@ -128,7 +196,10 @@ run this locally**. In the hosted job one URL is enough, because the service
 container's URL is already the owner's.
 
 A green here means what the last line the runner prints says it means: the
-named suites ran against a real database and none of them skipped. It does not
+named suites ran against a real database and none of them skipped. That holds
+for the merge queue's run and a push to `main`; on a pull request the runner
+does not run, and the green says only that the gate passed and the shards
+skipped there. It does not
 mean the product is correct, and it does not mean anything is accepted. It is
 the floor the other refusals stand on, not a verdict.
 
@@ -169,12 +240,12 @@ The order:
    and `database conformance gate` as required contexts on ruleset
    `23396133`. That is owner-only, and nothing in this file authorises it.
 3. The first port head carries its real named invariant and conformance suites
-   in `tests/db/named-suites.json`, and must pass `database conformance` on
+   in `tests/db/suites/`, and must pass `database conformance` on
    its own head.
 
 ### What the job's result means now
 
-The manifest is no longer empty. `tests/db/named-suites.json` names the suites
+The manifest is no longer empty. It names the suites
 the landed parts contributed, so a failure of `database conformance` is now a
 real one: a suite missing from disk, a skipped test, a run that executed
 nothing, a named suite the database never heard from, or vitest's own verdict.
@@ -226,8 +297,9 @@ one vitest process per suite instead of one for the manifest, and that cost is
 what makes the number belong to a path rather than to a total.
 
 Nothing vitest runs before a suite may use that database. The vitest global
-setup, `tests/support/global-setup.ts`, creates the cluster-wide roles through
-`postgres` for this reason. Run through the configured database, it moved the
+setup, `tests/support/global-setup.ts`, ensures the migrated template, which
+creates the cluster-wide roles. The runner has built it already, so the setup
+only reads it, beside the configured database. Run through the configured database, it moved the
 counter by 15 on a new cluster and by 3 on a warm one, so a suite that never
 touched the database looked as if it had.
 

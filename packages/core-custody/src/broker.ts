@@ -46,9 +46,12 @@
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
+import { giveBack, lockEnvelope } from './broker-give-back.ts';
+import { releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { resolveFields } from './broker-sources.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
+import { sendingAccount } from './broker-carrier.ts';
 import { settle, settlementOf } from './broker-settle.ts';
 import type {
   Broker,
@@ -89,7 +92,14 @@ export {
  * under their locks, so a lease, delegation or reservation lost since the
  * hold, a sibling call held unknown since, or a client put on the task since,
  * sends nothing. The hold is then released, never started, with the route it
- * would have taken and no start time. Only then is the call marked `dispatched`.
+ * would have taken and no start time, and gives back what a top-up or a stop
+ * counted of it (`giveBack`, catalogue #756), under its envelope's lock, taken
+ * first as settlement takes it. Only then is the call marked `dispatched`.
+ * Both updates move only a `reserved` call, and the start sends only when its
+ * update moved one: a retried or concurrent send of the same hold, or one the
+ * sweep released meanwhile, finds none and sends nothing
+ * (`EFFECT_NOT_RECONCILABLE`). A release that moved nothing records nothing
+ * and gives nothing back.
  */
 async function markStarted(
   database: Database,
@@ -98,20 +108,27 @@ async function markStarted(
   request: ModelCallRequest,
   reserved: ReservedCall,
   broker: Broker,
+  account: string | null,
 ): Promise<{ readonly fields: readonly ResolvedField[] } | BrokerRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
-    const route = [reserved.route.key, reserved.route.reach, reserved.route.credentialKind];
+    const { key, reach, credentialKind, provider, credentialRef } = reserved.route;
+    const route = [key, reach, credentialKind, provider, credentialRef, account];
+    await lockEnvelope(tx, reserved.callId);
     const facts = await lockFacts(tx, caller, request);
     const unknown = facts.ok && (await heldUnknown(tx, facts.facts.reservationId));
     const checked = startable(facts, request, reserved, unknown);
     if (!checked.ok) {
-      await tx.query(
+      const released = await tx.query(
         `update public.model_calls
             set state = 'released', ended_at = clock_timestamp(),
-                route_key = $3, route_reach = $4, credential_kind = $5
-          where business_id = $1 and id = $2 and state = 'reserved'`,
+                route_key = $3, route_reach = $4, credential_kind = $5,
+                provider = $6, credential_ref = $7, account = $8
+          where business_id = $1 and id = $2 and state = 'reserved'
+          returning id`,
         [tx.businessId, reserved.callId, ...route],
       );
+      if (released.length === 0) return checked.code;
+      await giveBack(tx, reserved.callId);
       await broker.audit(tx, {
         action: 'model.call_released',
         outcome: 'refused',
@@ -121,13 +138,16 @@ async function markStarted(
       return checked.code;
     }
     if (!(await promptCopyRegistered(tx, reserved.callId))) return 'COPY_NOT_REGISTERED';
-    await tx.query(
+    const started = await tx.query(
       `update public.model_calls
           set state = 'dispatched', started_at = clock_timestamp(),
-              route_key = $3, route_reach = $4, credential_kind = $5
-        where business_id = $1 and id = $2 and state = 'reserved'`,
+              route_key = $3, route_reach = $4, credential_kind = $5,
+              provider = $6, credential_ref = $7, account = $8
+        where business_id = $1 and id = $2 and state = 'reserved'
+        returning id`,
       [tx.businessId, reserved.callId, ...route],
     );
+    if (started.length === 0) return 'EFFECT_NOT_RECONCILABLE';
     return { fields: checked.fields };
   });
 }
@@ -187,7 +207,18 @@ export async function sendReservedCall(
   reserved: ReservedCall,
   broker: Broker,
 ): Promise<ModelCallResult> {
-  const started = await markStarted(database, businessId, caller, request, reserved, broker);
+  // The account custody will present, recorded before the send: the only
+  // proof a later lookup asks the account that carried it (broker-reconcile.ts).
+  const account = await sendingAccount(broker, reserved.route, reserved.operation.destination);
+  const started = await markStarted(
+    database,
+    businessId,
+    caller,
+    request,
+    reserved,
+    broker,
+    account,
+  );
   if (typeof started === 'string') return { ok: false, code: started, callId: reserved.callId };
   const adapter = broker.providers.get(reserved.operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${reserved.operation.provider}`);
@@ -207,8 +238,9 @@ export async function sendReservedCall(
 
 /**
  * The lease-expiry sweep's half: a started call with no answer is held, never
- * released; one never started is released. A conversation call's lease is its
- * age.
+ * released; one never started is released, and gives back what a top-up or a
+ * stop counted of it under its hold's lock (`giveBack`, catalogue #756). A
+ * conversation call's lease is its age.
  */
 export async function sweepModelCalls(
   tx: TenantQuery,
@@ -235,14 +267,6 @@ export async function sweepModelCalls(
       returning id`,
     [tx.businessId],
   );
-  const released = await tx.query(
-    `update public.model_calls c
-        set state = 'released', ended_at = clock_timestamp()
-       from public.leases l
-      where c.business_id = $1 and l.business_id = c.business_id and l.id = c.lease_id
-        and c.state = 'reserved' and (l.state <> 'live' or l.expires_at <= clock_timestamp())
-      returning c.id`,
-    [tx.businessId],
-  );
+  const released = await releaseUnsent(tx);
   return { held: held.length + conversations.length, released: released.length };
 }

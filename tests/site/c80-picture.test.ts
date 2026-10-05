@@ -17,13 +17,29 @@ import { ABOUT, PAGE, POOL, SHEET, TRACKER, publicResolver, site } from './c80-p
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 
-/** A browser that makes the given requests in order and keeps every answer. */
+/** The import a served sheet opens with, which a browser that accepts the sheet asks for. */
+const importOf = (answer: Awaited<ReturnType<PictureRoute>>): string | undefined =>
+  /^@import "([^"]*)";/u.exec(answer?.body ?? '')?.[1];
+
+/**
+ * A browser that makes the given requests in order and keeps every answer, then asks for the
+ * import each sheet it was served opens with, as a browser that accepts every sheet does.
+ */
 function scripted(requests: readonly PictureRequest[]) {
   const answers: (Awaited<ReturnType<PictureRoute>> | 'unasked')[] = requests.map(() => 'unasked');
   const browser: PictureBrowser = async (_url, route) => {
+    const imports: string[] = [];
     for (const [index, request] of requests.entries()) {
       // oxlint-disable-next-line no-await-in-loop -- a browser's requests, in order
-      answers[index] = await route(request);
+      const answer = await route(request);
+      answers[index] = answer;
+      if (request.kind === 'stylesheet') imports.push(importOf(answer) ?? '');
+    }
+    for (let url = imports.shift(); url !== undefined; url = imports.shift()) {
+      if (url === '') continue;
+      // oxlint-disable-next-line no-await-in-loop -- each import, as its sheet is read
+      const answer = await route({ url, kind: 'stylesheet', mainFrame: false });
+      imports.push(importOf(answer) ?? '');
     }
     return PNG;
   };
@@ -67,11 +83,11 @@ describe('C80 capture picture', () => {
 
   it('refuses every other request, recording code and origin only', async () => {
     const transport = site();
-    const { browser, answers } = scripted([DOCUMENT, ...OTHERS]);
+    const { browser, answers } = scripted([DOCUMENT, STYLESHEET, ...OTHERS]);
     const picture = await capturePicture(ABOUT, options(transport), browser);
-    expect(answers).toHaveLength(OTHERS.length + 1);
-    expect(answers.slice(1).filter((answer) => answer !== null)).toEqual([]);
-    expect(transport.seen).toEqual([ABOUT]);
+    expect(answers).toHaveLength(OTHERS.length + 2);
+    expect(answers.slice(2).filter((answer) => answer !== null)).toEqual([]);
+    expect(transport.seen).toEqual([ABOUT, SHEET]);
     if (!picture.ok) throw new Error('the picture should be taken');
     expect(picture.value.refused).toHaveLength(OTHERS.length);
     expect(picture.value.refused[0]).toEqual({
@@ -101,7 +117,7 @@ describe('C80 capture picture, failures', () => {
       ok: false,
       code: 'CAPTURE_HOST_NOT_CATALOGUED',
     });
-    expect([answers[0], transport.seen]).toEqual([null, []]);
+    expect([answers[0], transport.seen]).toEqual(['unasked', []]);
   });
 });
 
@@ -134,7 +150,7 @@ describe('C80 capture picture, no network of its own', () => {
     expect(directives).toEqual(
       expect.arrayContaining([
         "default-src 'none'",
-        "style-src 'self' 'unsafe-inline'",
+        "style-src https: 'unsafe-inline'",
         'img-src data:',
         "script-src 'none'",
       ]),

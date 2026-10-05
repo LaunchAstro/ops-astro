@@ -2,7 +2,7 @@
 //
 // The positive control's fixed recipes: the declarations whose minimal valid
 // body is the same literal every time. `role-case-positive-body.ts` answers
-// these before its switch; every body that needs a record made first stays
+// these (through `role-case-setup.ts`) before its switch; every body that needs a record made first stays
 // there. The probe body's operands are here too.
 
 import { randomUUID } from 'node:crypto';

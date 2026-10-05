@@ -562,7 +562,11 @@ describe('the case count across the renames', () => {
 
 describe('test files for one task step, in one folder', () => {
   it('the test files for task pickup come back by name, from one folder', () => {
-    const pickup = tracked('tests').filter((file) => /pickup/u.test(file.split('/').pop() ?? ''));
+    // tests/db/suites/ holds one file per named suite, named for its test file
+    // (pickup/pickup-receipt-binding.test.ts.json); it is an index, not a test file.
+    const pickup = tracked('tests')
+      .filter((file) => !file.startsWith('tests/db/suites/'))
+      .filter((file) => /pickup/u.test(file.split('/').pop() ?? ''));
     expect(pickup.filter((file) => file.endsWith('.test.ts')).length).toBeGreaterThanOrEqual(6);
     expect(pickup.filter((file) => !file.startsWith('tests/pickup/'))).toEqual([]);
   });

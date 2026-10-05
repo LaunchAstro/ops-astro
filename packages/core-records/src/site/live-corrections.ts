@@ -11,11 +11,19 @@
 // waited for, never half-read.
 //
 // The system write that records an observed publish or revert with its
-// receipt is `correction-receipts.ts`; the decision read, `correction-decisions.ts`.
+// receipt is `correction-receipts.ts`; the decision read and the approver
+// reads, `correction-decisions.ts`; the grant filter and its lock, `covering.ts`.
 
 import { randomUUID } from 'node:crypto';
-import { EFFECTIVE, askedFor, type Subject } from '../authority/grants.ts';
+import type { Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import {
+  COVERED,
+  EFFECTIVE_AT,
+  coveringParameters,
+  holdCoveringGrants,
+  type Covering,
+} from './covering.ts';
 
 export const RUN_COLLECTION = 'run';
 export const GATE_COLLECTION = 'gate';
@@ -159,71 +167,59 @@ export async function insertLiveCorrection(
 }
 
 /**
- * One correction by its id, locked, with no grant filter: the system's read
- * for the runner, whose authority is the worker lease on the correction's own
- * task (`correction-receipts.ts` checks it in the same transaction).
+ * One correction by its id on `taskId`, locked, with no grant filter: the
+ * system's read for the runner, whose authority is the worker lease on that
+ * task (`correction-receipts.ts` checks it in the same transaction). A
+ * correction on another task is not read, locked or told apart from none.
  */
 export async function lockCorrectionForSystem(
   tx: TenantQuery,
   id: string,
+  taskId: string,
 ): Promise<LiveCorrection | undefined> {
   const rows = await tx.query<Row>(
     `select ${COLUMNS} from public.live_corrections c
-      where c.business_id = $1 and c.id = $2
+      where c.business_id = $1 and c.id = $2 and c.task_id = $3
       for update of c`,
-    [tx.businessId, id],
+    [tx.businessId, id, taskId],
   );
   const [row] = rows;
   return row === undefined ? undefined : correctionFrom(row);
 }
 
-export const COVERED = `exists (
-    select 1 from effective e
-     where e.collection = $2 and e.action = $3
-       and exists (select 1 from unnest($4::text[], $5::uuid[]) as s (kind, id)
-                    where s.kind = e.subject_kind and s.id = e.subject_id)
-       and (e.scope_kind = 'business' or (e.scope_kind = 'party' and e.scope_id = c.party_id)))`;
-
-export interface Covering {
-  readonly subjects: readonly Subject[];
-  readonly collection: string;
-  readonly action: string;
-}
-
-/**
- * The query's parameters, with only the subjects asked about this key: an
- * agent credential's person counts within the keys it ticked (API-2), so the
- * guarantee lives here and not in each caller.
- */
-export const coveringParameters = (covering: Covering): readonly unknown[] => {
-  const asked = askedFor(covering.subjects, covering);
-  return [
-    covering.collection,
-    covering.action,
-    asked.map((subject) => subject.kind),
-    asked.map((subject) => subject.id),
-  ];
-};
-
 /**
  * One correction the caller's grant covers at its party, locked for the
  * caller's write, or undefined: absent, in another business, or not covered
  * are one answer.
+ *
+ * The grant is judged twice: in the locking read, so a caller it does not
+ * cover never waits on the row, and again once the lock is held and the
+ * covering grants are share-locked, in a fresh statement at the clock read
+ * then. A grant revoked or expired while the lock waited covers nothing, and
+ * a revocation after the second judgement waits for the caller's write.
  */
 export async function lockCoveredCorrection(
   tx: TenantQuery,
   id: string,
   covering: Covering,
 ): Promise<LiveCorrection | undefined> {
-  const rows = await tx.query<Row>(
-    `${EFFECTIVE}
+  const parameters = [tx.businessId, ...coveringParameters(covering), id];
+  const [row] = await tx.query<Row>(
+    `${EFFECTIVE_AT}
      select ${COLUMNS} from public.live_corrections c
       where c.business_id = $1 and c.id = $6 and ${COVERED}
       for update of c`,
-    [tx.businessId, ...coveringParameters(covering), id],
+    parameters,
   );
-  const [row] = rows;
-  return row === undefined ? undefined : correctionFrom(row);
+  if (row === undefined) return undefined;
+  await holdCoveringGrants(tx, covering);
+  const still = await tx.query<{ readonly id: string }>(
+    `${EFFECTIVE_AT}
+     select c.id from public.live_corrections c
+      where c.business_id = $1 and c.id = $6 and ${COVERED}`,
+    parameters,
+  );
+  return still.length === 0 ? undefined : correctionFrom(row);
 }
 
 /** Every correction the caller's run:write reaches (ORCH33), newest first, filtered in the query. */
@@ -232,7 +228,7 @@ export async function listCoveredCorrections(
   subjects: readonly Subject[],
 ): Promise<readonly LiveCorrection[]> {
   const rows = await tx.query<Row>(
-    `${EFFECTIVE}
+    `${EFFECTIVE_AT}
      select ${COLUMNS} from public.live_corrections c
       where c.business_id = $1 and ${COVERED}
       order by c.created_at desc, c.id`,
@@ -242,32 +238,6 @@ export async function listCoveredCorrections(
     ],
   );
   return rows.map((row) => correctionFrom(row));
-}
-
-/**
- * The configured approver's person id, read under a share lock on its setting
- * row so a concurrent change waits for this decision (or this decision for it).
- * Undefined when the business has no such row or the value is unset.
- */
-export async function lockConfiguredApprover(tx: TenantQuery): Promise<string | undefined> {
-  const rows = await tx.query<{ readonly value: unknown }>(
-    `select value from public.business_settings
-      where business_id = $1 and key = $2
-      for share`,
-    [tx.businessId, APPROVER_SETTING],
-  );
-  const value = rows[0]?.value;
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-/** Whether a person is an active member here in a staff role, as `isInternalReader` admits. */
-export async function isActiveMember(tx: TenantQuery, personId: string): Promise<boolean> {
-  const rows = await tx.query<{ readonly present: boolean }>(
-    `select true as present from public.memberships where business_id = $1 and person_id = $2
-        and active and ended_at is null and role_key in ('owner', 'admin', 'member')`,
-    [tx.businessId, personId],
-  );
-  return rows.length > 0;
 }
 
 export interface DecisionWrite {

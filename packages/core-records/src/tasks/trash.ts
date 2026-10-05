@@ -553,10 +553,16 @@ export async function purgeTrashedRecords(
     [tx.businessId, gone],
   );
   // A conversation opened on a purged task keeps its body, its wrap-ups and
-  // its address and loses only the scope: 0092's key to `records` does not
-  // cascade, and deleting the task under it would fault the whole purge.
+  // its address. It loses the scope, since 0092's key to `records` does not
+  // cascade and deleting the task under it would fault the whole purge. It
+  // also loses the subject, which carries the task's title, and a title taken
+  // from that subject goes back to 'New conversation' (core-commands'
+  // DEFAULT_TITLE, which this package may not import): with no scope left,
+  // the reads have no task to check a reader against.
   await tx.query(
-    `update public.conversations set scope_kind = null, scope_record_id = null
+    `update public.conversations
+        set scope_kind = null, scope_record_id = null, subject = null,
+            title = case when title = subject then 'New conversation' else title end
       where business_id = $1 and scope_record_id = any ($2::uuid[])`,
     [tx.businessId, gone],
   );

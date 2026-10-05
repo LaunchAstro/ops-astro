@@ -1,15 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Rows of bravo's that the identifier cases hand an alpha caller by id (C81,
-// API-2, C32): written directly, so the alpha caller must not learn they exist.
+// API-2, C32, C31): written directly, so the alpha caller must not learn they exist.
 // Split from `ident-audit-cases.ts` to keep that file under the line limit.
 
 import type { World } from './world.ts';
+import { seedAutomation, type SeededAutomation } from '../automations/seed.ts';
+
+/** An automation of bravo's (C33), and an alpha version a foreign activation is aimed past. */
+export interface BravoAutomation {
+  readonly automation: SeededAutomation;
+  readonly alphaVersionId: string;
+}
+
+export async function bravoAutomation(world: World): Promise<BravoAutomation> {
+  const automation = await seedAutomation(world.db.admin, world.bravo, world.bea.actorId as string);
+  const alpha = await seedAutomation(world.db.admin, world.alpha, world.ada.actorId as string);
+  return { automation, alphaVersionId: alpha.versionId };
+}
 
 export async function bravoRecords(world: World): Promise<{
   readonly legalVersionId: string;
   readonly credentialId: string;
   readonly clientId: string;
+  readonly secretId: string;
 }> {
   // A drafted legal document version of bravo's (C81), written directly: the
   // alpha caller is handed its id and must not learn it exists.
@@ -40,9 +54,17 @@ export async function bravoRecords(world: World): Promise<{
     [world.bravo, world.bea.actorId],
   );
 
+  // C31: a custody key of bravo's, cleared (a whole row with no sealed value).
+  const bravoSecret = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.custody_secrets (business_id, id, name, scope_kind, scope_id)
+     values ($1, gen_random_uuid(), 'bravo.key', 'business', null) returning id`,
+    [world.bravo],
+  );
+
   return {
     legalVersionId: String(bravoLegal[0]?.id),
     credentialId: String(bravoCredential[0]?.id),
     clientId: String(bravoClient[0]?.id),
+    secretId: String(bravoSecret[0]?.id),
   };
 }
