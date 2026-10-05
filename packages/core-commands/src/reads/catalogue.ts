@@ -167,9 +167,15 @@ export interface SpineRow<K extends ReadName> extends RowBase<K> {
   ) => Promise<ReadResult | CommandRefusal>;
 }
 
-/** A read about the business that needs no spine and names no record. */
+/** A read about the business that needs no spine and names no record before it is served. */
 export interface BusinessRow<K extends ReadName> extends RowBase<K> {
   readonly spine: false;
+  /**
+   * The one record a served answer disclosed, for its audit row's subject: asked of an answer
+   * only, never a refusal, so the audit names what the reader was shown and nothing they were
+   * refused. Absent, the row names no record.
+   */
+  readonly disclosed?: (answer: ReadResult) => string | undefined;
   readonly serve: (
     tx: TenantQuery,
     session: Session,
@@ -950,16 +956,18 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return 'refused' in harness ? harness : { ok: true, harness };
     },
   },
-  // C80: one correction's decision, for its card. No subject record, as
-  // `gate.pending`: the door asks for any grant, and the read filters by the
-  // caller's `run:write` at the correction's own party inside its query, so a
-  // correction out of reach and one that does not exist are one answer.
+  // C80: one correction's decision, for its card. No subject record before
+  // it is served, as `gate.pending`: the door asks for any grant, and the read
+  // filters by the caller's `run:write` at the correction's own party inside
+  // its query, so a correction out of reach and one that does not exist are
+  // one answer. The answer's correction is its audit subject (Sol R2.3).
   'live_correction.read': {
     identifiers: ['correctionId'],
     parse: parseCorrectionRead,
     spine: false,
     authority: 'holds-any-grant',
     outsiderNotFound: false,
+    disclosed: (answer) => ('correction' in answer ? answer.correction.correctionId : undefined),
     serve: serveCorrectionRead,
   },
   // The business's definitions, versions and activations (C33): asked like
