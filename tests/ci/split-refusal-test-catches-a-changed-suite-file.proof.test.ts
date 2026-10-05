@@ -6,7 +6,7 @@
 // that damages the registry on its way out cannot pass as harmless. The
 // same copy without the damage must pass, so a failure for any other reason
 // does not count as caught.
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
@@ -28,17 +28,21 @@ const SELECTED =
   'split, run as a command in the repository, refuses now each suite has its own file and changes nothing';
 
 /**
- * A disposable copy holding the split command, with `damage` run first, one
- * suite file and the refusal test. The test reads the cut parent's manifest
- * with `git show` at load, so the copy keeps the worktree's `.git` pointer;
- * the copied test runs no other git command.
+ * The repository's git directory, a folder in a clone and inside the common
+ * one in a linked worktree. The copied test reads the cut parent's manifest
+ * with `git show` at load and runs no other git command, so the inner run
+ * reads this through GIT_DIR and the copy holds no `.git` of its own.
  */
-function copyWith(damage: string): string {
-  const copy = mkdtempSync(join(tmpdir(), 'split-refusal-'));
+const GIT_DIR = execFileSync('git', ['rev-parse', '--absolute-git-dir'], {
+  cwd: ROOT,
+  encoding: 'utf8',
+}).trim();
+
+/** Fills `copy` with the split command, `damage` run first, one suite file and the refusal test. */
+function copyWith(copy: string, damage: string): void {
   mkdirSync(join(copy, 'scripts'), { recursive: true });
   mkdirSync(join(copy, 'tests/ci'), { recursive: true });
   mkdirSync(join(copy, 'tests/db/suites/api'), { recursive: true });
-  copyFileSync(join(ROOT, '.git'), join(copy, '.git'));
   symlinkSync(join(ROOT, 'node_modules'), join(copy, 'node_modules'));
   writeFileSync(join(copy, 'package.json'), JSON.stringify({ type: 'module' }));
   for (const name of ['ci-areas.ts', 'suite-files.ts']) {
@@ -61,7 +65,6 @@ function copyWith(damage: string): string {
     join(copy, 'vitest.config.mjs'),
     'export default { test: { include: ["tests/ci/*.test.ts"] } };\n',
   );
-  return copy;
 }
 
 /** The refusal test's status when run in `copy`, with no results cache written. */
@@ -83,7 +86,12 @@ function refusalTestIn(copy: string): string | undefined {
       '-t',
       SELECTED,
     ],
-    { cwd: copy, env: { ...process.env, TMPDIR: copy }, encoding: 'utf8', timeout: 60_000 },
+    {
+      cwd: copy,
+      env: { ...process.env, GIT_DIR, TMPDIR: copy },
+      encoding: 'utf8',
+      timeout: 60_000,
+    },
   );
   const result = JSON.parse(readFileSync(report, 'utf8')) as {
     testResults: { assertionResults: { fullName: string; status: string }[] }[];
@@ -107,8 +115,9 @@ it.each([
 ] as const)(
   'when split %s a suite file before refusing, the split refusal test has %s',
   (_, status, damage, left) => {
-    const copy = copyWith(damage);
+    const copy = mkdtempSync(join(tmpdir(), 'split-refusal-'));
     try {
+      copyWith(copy, damage);
       expect(refusalTestIn(copy), 'the refusal test must catch a damaged suite file').toBe(status);
       // The damage really happened in the copy, or nothing did.
       const suiteFile = join(copy, SUITE);

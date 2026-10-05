@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-only
 # Audit proof, criterion 7: the split refusal proof test fails in setup in an
 # ordinary clone, where the repository root `.git` is a directory.
 #
