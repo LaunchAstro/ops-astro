@@ -8,7 +8,15 @@
 // the promoter, with no group or other write and no sticky bit. One fixture
 // tree per refusal case; each refusal migrates nothing and points nothing.
 
-import { chmodSync, existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { stampOutput } from '../../scripts/ops/build-output.ts';
@@ -38,13 +46,19 @@ function fixture(): { root: string; store: string } {
   return { root, store };
 }
 
-function promoted(store: string, current: string) {
+const promoted = (store: string, current: string) => promotedAfter(store, current, () => {});
+
+/** A promotion whose service check (after selection, before the copy) runs `meanwhile`. */
+function promotedAfter(store: string, current: string, meanwhile: () => void) {
   const calls: string[] = [];
   const effects: PromotionEffects = {
-    services: () => [
-      { manager: 'docker', name: 'prod-api', running: false },
-      { manager: 'docker', name: 'prod-auth', running: false },
-    ],
+    services: () => {
+      meanwhile();
+      return [
+        { manager: 'docker', name: 'prod-api', running: false },
+        { manager: 'docker', name: 'prod-auth', running: false },
+      ];
+    },
     migrate: () => {
       calls.push('migrate');
       return true;
@@ -147,4 +161,19 @@ it('a fully trusted path is promoted', () => {
   const { outcome, calls } = promoted(store, join(prod, 'current'));
   expect(outcome.kind).toBe('promoted');
   expect(calls).toEqual(['migrate', expect.stringContaining(join(parent, 'prod', 'served'))]);
+});
+
+it('an artefact swapped for a link after selection is refused as changed, not blamed on served/', () => {
+  const { root, store } = fixture();
+  const artefact = join(store, artefactName(VERSION));
+  mkdirSync(join(root, 'prod'));
+  const { outcome, calls } = promotedAfter(store, join(root, 'prod', 'current'), () => {
+    renameSync(artefact, `${artefact}-moved`);
+    symlinkSync(`${artefact}-moved`, artefact);
+  });
+  expect(outcome).toMatchObject({
+    kind: 'refused',
+    reason: expect.stringContaining(`${artefactName(VERSION)} changed while it was copied`),
+  });
+  expect(calls).toEqual([]);
 });
