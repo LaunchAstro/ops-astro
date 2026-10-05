@@ -55,6 +55,7 @@ export interface ReservationRow {
   readonly attempt_dispatch_marker: boolean | null;
   readonly attempt_observed: boolean | null;
   readonly attempt_drop_cause: string | null;
+  readonly attempt_outcome: string | null;
 }
 
 export interface CheckRow {
@@ -219,6 +220,7 @@ export function asReservation(row: ReservationRow): ReservationView {
             dispatchMarker: row.attempt_dispatch_marker ?? false,
             observed: row.attempt_observed ?? false,
             dropCause: row.attempt_drop_cause,
+            outcome: row.attempt_outcome,
           },
   };
 }

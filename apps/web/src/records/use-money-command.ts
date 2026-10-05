@@ -16,7 +16,9 @@
 //
 // Once, and only then: a resend refused again is drawn as any refusal is, with
 // no second prompt queued behind it, and a session ended while the code or the
-// password was checked (`sessionGeneration`) sends nothing.
+// password was checked (`sessionGeneration`) sends nothing. Nor does one
+// cancelled while it was checked, whatever the check answers after, nor one a
+// new write replaced before the new sign-in's client landed.
 
 import { createContext, useContext, useEffect, useRef, useState, type RefObject } from 'react';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
@@ -51,6 +53,8 @@ export type MoneyCommand = Omit<Command, 'run'> & {
   ) => void;
   /** The step-up prompt, or null when nothing waits on a code. */
   readonly stepUp: StepUpAsk | null;
+  /** Drops the held write: the prompt closes, and a code that passed sends nothing. */
+  readonly withdraw: () => void;
 };
 
 type Send = (client: OperationsClient) => void;
@@ -73,6 +77,7 @@ interface Prompt {
   /** Hold a refused write for a code or a password; null where nothing can step up. */
   readonly hold: ((send: Send, names: readonly string[]) => void) | null;
   readonly ask: StepUpAsk | null;
+  readonly withdraw: () => void;
 }
 
 interface Asked {
@@ -87,6 +92,9 @@ function useResend(client: OperationsClient) {
   const [checking, setChecking] = useState(false);
   const [because, setBecause] = useState<string | null>(null);
   const pending = useRef<Pending | null>(null);
+  // Each cancel moves the round on: a check from an earlier round, however it
+  // ends, holds and sends nothing.
+  const round = useRef(0);
   // The resend waits for the client the application builds for the new sign-in.
   useEffect(() => {
     const held = pending.current;
@@ -95,9 +103,11 @@ function useResend(client: OperationsClient) {
   const check = (send: Send, attempt: () => Promise<StepUpResult>, passed: () => void): void => {
     if (checking) return;
     const held = { send, from: latest.current, generation: sessionGeneration() };
+    const mine = round.current;
     setChecking(true);
     setBecause(null);
     void attempt().then((result) => {
+      if (round.current !== mine) return result;
       setChecking(false);
       if (!result.ok) {
         setBecause(result.because);
@@ -109,7 +119,12 @@ function useResend(client: OperationsClient) {
       return result;
     });
   };
-  return { checking, because, setBecause, check };
+  const withdraw = (): void => {
+    round.current += 1;
+    pending.current = null;
+    setChecking(false);
+  };
+  return { checking, because, setBecause, check, withdraw };
 }
 
 /** The prompt: the write it holds, and which way it is met, a code or a password. */
@@ -117,10 +132,14 @@ function usePrompt(client: OperationsClient): Prompt {
   const stepUp = useContext(StepUpContext);
   const signInAgain = useContext(SignInAgainContext);
   const [asked, setAsked] = useState<Asked | null>(null);
-  const { checking, because, setBecause, check } = useResend(client);
+  const { checking, because, setBecause, check, withdraw } = useResend(client);
   const open = (next: Asked | null): void => {
     setBecause(null);
     setAsked(next);
+  };
+  const drop = (): void => {
+    withdraw();
+    open(null);
   };
   const by = (way: StepUpAsk['way'], attempt: () => Promise<StepUpResult>): void => {
     if (asked?.way === way) check(asked.send, attempt, () => open(null));
@@ -135,14 +154,14 @@ function usePrompt(client: OperationsClient): Prompt {
     submitPassword: (password) => {
       if (signInAgain !== null) by('password', async () => await signInAgain(password));
     },
-    cancel: () => open(null),
+    cancel: drop,
   };
   const hold = (send: Send, names: readonly string[]): void => {
     const way = names.includes('sign_in') && signInAgain !== null ? 'password' : 'code';
     if (way === 'password' || stepUp !== null) open({ send, way });
   };
   const none = stepUp === null && signInAgain === null;
-  return { hold: none ? null : hold, ask: asked === null ? null : ask };
+  return { hold: none ? null : hold, ask: asked === null ? null : ask, withdraw: drop };
 }
 
 export function useMoneyCommand(client: OperationsClient): MoneyCommand {
@@ -151,7 +170,7 @@ export function useMoneyCommand(client: OperationsClient): MoneyCommand {
   const latest = useRef({ client, command });
   latest.current = { client, command };
   const run: MoneyCommand['run'] = (work, then) => {
-    prompt.ask?.cancel();
+    prompt.withdraw();
     const send: Send = (to) => {
       latest.current.command.run(() => work(to), then);
     };
@@ -165,5 +184,5 @@ export function useMoneyCommand(client: OperationsClient): MoneyCommand {
     );
   };
   const { run: _plain, ...rest } = command;
-  return { ...rest, run, stepUp: prompt.ask };
+  return { ...rest, run, stepUp: prompt.ask, withdraw: prompt.withdraw };
 }

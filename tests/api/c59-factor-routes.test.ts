@@ -101,10 +101,14 @@ describe.skipIf(serverUrl === undefined)(
   },
 );
 
+/** The applied `account.factor_enrol` events so far. */
+const appliedOf = async (): Promise<number> =>
+  (await eventsFor('account.factor_enrol')).filter((event) => event.outcome === 'applied').length;
+
 describe.skipIf(serverUrl === undefined)(
   'C59 a person’s own second factor, through the API',
   () => {
-    it('C59 two enrolments at once: both tabs are answered, and one live factor remains', async () => {
+    it('C59 two enrolments at once: the later record is refused, and one live factor remains', async () => {
       // Both requests pass the check before the provider call, and the provider
       // answers neither until it holds both, so both record steps run together.
       const held: Array<() => void> = [];
@@ -120,12 +124,17 @@ describe.skipIf(serverUrl === undefined)(
       const wide = connect(world.db.appUrl, { source: 'runtime', max: 2 });
       const token = await fresh(clientD);
       const via = build(undefined, '', wide);
+      const appliedBefore = await appliedOf();
+      const orphanedBefore = (await eventsFor('account.factor_orphaned')).length;
       const [first, second] = await Promise.all([
         act('enrol', token, {}, via),
         act('enrol', token, {}, via),
       ]).finally(async () => await wide.close());
 
-      expect([first.status, second.status]).toEqual([200, 200]);
+      // The one recorded second finds a factor that was not live when it began,
+      // so it is refused and the first stays the target (Sol F1-FIX1 criterion 5).
+      expect([first.status, second.status].toSorted()).toEqual([200, 409]);
+      expect((first.status === 409 ? first : second).code).toBe('VERSION_STALE');
       const rows = await world.db.app.withBusiness(world.alpha, (tx) =>
         tx.query<{ readonly provider_factor_id: string; readonly status: string }>(
           `select provider_factor_id, status from public.second_factors
@@ -133,16 +142,12 @@ describe.skipIf(serverUrl === undefined)(
           [clientD.personId],
         ),
       );
-      // The later record replaces the earlier: one live, the other ended.
-      expect(rows.map((row) => row.status).toSorted()).toEqual(['removed', 'unverified']);
-      expect(new Set(rows.map((row) => row.provider_factor_id))).toEqual(
-        new Set(['factor-race-1', 'factor-race-2']),
-      );
+      // The refused enrolment writes no row: one live factor, nothing ended.
+      expect(rows.map((row) => row.status)).toEqual(['unverified']);
       expect(await factorOf(clientD.personId)).toMatchObject({ status: 'unverified' });
-      const applied = (await eventsFor('account.factor_enrol')).filter(
-        (event) => event.outcome === 'applied',
-      );
-      expect(applied.length).toBeGreaterThanOrEqual(2);
+      expect((await appliedOf()) - appliedBefore).toBe(1);
+      // The refused enrolment's provider factor is reported as an orphan.
+      expect((await eventsFor('account.factor_orphaned')).length - orphanedBefore).toBe(1);
     });
   },
 );

@@ -4,7 +4,8 @@
 // and removes. Every refusal comes before anything connects, named by setting:
 // on staging each address is staging's project and not production's; the local
 // place takes this machine only.
-// Removal checks first that the sign-in and the person are the scan login's.
+// Removal checks first that the sign-in and the person are the scan login's,
+// and that no other business maps the sign-in to a person of its own.
 
 import { databaseProject, Refusal } from '../ops/staging-reset.ts';
 

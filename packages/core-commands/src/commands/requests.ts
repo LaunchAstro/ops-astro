@@ -116,9 +116,8 @@ export type CommandRequest =
       readonly note: string;
       readonly recipientPersonId?: string | null;
     } & Envelope)
-  // The plan accept (AW-04): a decision on the plan's gate, the words and the
-  // structured record it binds, and the instruction files the run may read.
-  // The record and the paths are checked by value, so they are `unknown` here.
+  // The plan accept (AW-04): the decision on the plan's gate, the words, record and
+  // files it binds (checked by value, so `unknown` here), and the ceiling shown.
   | ({
       readonly command: 'task.accept_plan';
       readonly gateId: string;
@@ -128,6 +127,8 @@ export type CommandRequest =
       readonly plan: unknown;
       readonly entryPath: unknown;
       readonly paths: unknown;
+      readonly ceilingMinor?: number;
+      readonly currency?: string;
       readonly conversationId?: string | null;
     } & Envelope)
   | ({

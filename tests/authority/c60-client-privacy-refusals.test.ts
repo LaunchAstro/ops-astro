@@ -36,6 +36,7 @@ import {
   tiaToken,
   useClientsWorld,
 } from './c60-client-privacy-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 useClientsWorld();
 
@@ -166,7 +167,7 @@ async function plantedAnswers(clientId: string, logged: string[]): Promise<reado
     requestedBy: `Dana ${CANARY}`,
     requestLink: `https://files.example.test/${CANARY}.pdf`,
   });
-  const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+  const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
   const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
     vi.spyOn(console, level).mockImplementation(capture),
   );

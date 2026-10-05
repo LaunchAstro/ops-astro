@@ -45,6 +45,11 @@ export interface AgentPaneProps {
   readonly busy: boolean;
   /** The server's refusal of the last action, quoted as it came. */
   readonly refusal: string | null;
+  /**
+   * The server refused a decision of this reader's on the task for want of the
+   * grant. Every decide control is drawn closed rather than asking again.
+   */
+  readonly decideClosed: boolean;
   readonly onDecide: (gate: GateRef, decision: GateDecision) => void;
   readonly onReject: (gate: GateRef) => void;
   readonly onCancel: (lineageId: string) => void;
@@ -71,6 +76,8 @@ export interface AgentPaneProps {
   readonly onEndAtStop?: (runId: string, askId: string) => void;
   /** The server's word that the last top-up at a stop waits on a second person, or null. */
   readonly stopAwaiting?: string | null;
+  /** AW-04: Start a new attempt asks the drawer to plan one; absent, it is drawn unavailable. */
+  readonly onStartAttempt?: () => void;
   /** The operational log (MP-6-2): `task.execution`'s events and bound plan; absent, no log. */
   readonly activity?: RunActivity;
 }
@@ -93,7 +100,7 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
   return (
     <section className="agent" data-agent="pane" data-agent-lineage={shown.lineageId}>
       <RunView {...props} shown={shown} />
-      <Attempts stories={stories} shown={shown} onOpen={setOpened} />
+      <Attempts stories={stories} shown={shown} onOpen={setOpened} onStart={props.onStartAttempt} />
     </section>
   );
 }
@@ -108,6 +115,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         <ProposalHeader
           story={shown}
           busy={props.busy}
+          decideClosed={props.decideClosed}
           onReject={props.onReject}
           onCancel={props.onCancel}
         />
@@ -132,6 +140,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
           story={shown}
           effect={props.effect}
           busy={props.busy}
+          closed={props.decideClosed}
           nameOf={props.nameOf}
           decisions={lineage?.decisions ?? []}
           onDecide={props.onDecide}
