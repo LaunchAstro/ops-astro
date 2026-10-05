@@ -125,7 +125,8 @@ export function FleetTable(props: FleetTableProps): ReactElement {
     <>
       <Facets view={view} setView={setView} counts={props.counts} />
       <p className="approval__meta">Click a column heading to sort</p>
-      <div className="card card--flush conn__scroll">
+      {/* The kit's table box: a phone scrolls the table inside its card, never the page. */}
+      <div className="card card--flush conn__scroll tbl-box">
         <table className="table conn">
           <Header view={view} setView={setView} />
           <tbody>
