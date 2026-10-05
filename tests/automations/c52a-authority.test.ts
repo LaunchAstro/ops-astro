@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { claimOccurrence, dispatchOccurrence } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
+import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
 import type { Answer } from '../api/fixture.ts';
 import { starter } from './firing.ts';
 import { createRegistryWorld, detail, type RegistryWorld } from './registry-world.ts';
@@ -136,6 +137,13 @@ describe.skipIf(serverUrl === undefined)('C52-A standing approval authority', ()
       expect(events.length, command).toBeGreaterThan(0);
       for (const event of events) expect(event.hash).toMatch(/^[0-9a-f]{64}$/u);
     }
+    // Each hash recomputed from its row, each linked to the one before, no gap.
+    const chain = await w.controls.fixture.db.app.withBusiness(
+      w.alpha,
+      async (tx) => await verifyAuditChain(tx),
+    );
+    expect(chain.firstBreak).toBeUndefined();
+    expect(chain.intact).toBe(true);
     const record = await w.controls.fixture.db.admin.execute<{
       readonly act: string;
       readonly decided: string;

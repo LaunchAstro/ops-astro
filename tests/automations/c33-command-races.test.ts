@@ -13,52 +13,11 @@
 // nothing.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import type { Answer } from '../api/fixture.ts';
+import { overlapped } from './race-hold.ts';
 import { createRegistryWorld, detail, RELEASE, type RegistryWorld } from './registry-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
-const WAITING = `select count(*)::text as n from pg_stat_activity
-  where datname = current_database() and wait_event_type = 'Lock'`;
-
-type Execute = (sql: string, params: readonly unknown[]) => Promise<readonly unknown[]>;
-
-/** Polls until `count` statements of this database wait on a lock. */
-async function waitingOn(execute: Execute, count: number): Promise<void> {
-  const deadline = Date.now() + 15_000;
-  for (;;) {
-    // eslint-disable-next-line no-await-in-loop -- polling until both wait
-    const [row] = (await execute(WAITING, [])) as readonly { readonly n: string }[];
-    if (Number(row?.n) >= count) return;
-    if (Date.now() > deadline) throw new Error(`only ${String(row?.n)} of ${count} ever waited`);
-    // eslint-disable-next-line no-await-in-loop -- as above
-    await new Promise((resolve) => {
-      setTimeout(resolve, 50);
-    });
-  }
-}
-
-/** Both requests sent while the owner holds `hold`, and their answers once it lets go. */
-async function overlapped(
-  w: RegistryWorld,
-  hold: (execute: Execute) => Promise<unknown>,
-  send: () => Promise<Answer>,
-): Promise<readonly Answer[]> {
-  const holder = connectAsAdmin(w.holderUrl(), { source: 'harness' });
-  const sent: Promise<Answer>[] = [];
-  try {
-    await holder.transaction(async (execute) => {
-      await hold(execute);
-      sent.push(send(), send());
-      await waitingOn(execute, 2);
-    });
-    return await Promise.all(sent);
-  } finally {
-    await holder.close();
-  }
-}
 
 // eslint-disable-next-line max-lines-per-function -- one world, the two races that share it
 describe.skipIf(serverUrl === undefined)('C33 command races', () => {
