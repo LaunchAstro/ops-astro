@@ -366,7 +366,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // 0067: nothing in the journey saves a preference yet.
   'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
-  // Automations (C33, 20261004201434): the journey releases and fires none.
+  // Automations (C33, 20261005003850): the journey releases and fires none.
   'public.automation_definitions': {
     kind: 'automation',
     name: 'restricted calls',
