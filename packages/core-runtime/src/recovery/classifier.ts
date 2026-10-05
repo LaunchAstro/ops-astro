@@ -512,7 +512,8 @@ export async function affectedByVersions(
  * neither side ever waits on a grant row while holding a runtime lock.
  * `task.decide` holds its decide grants the same way,
  * which is why this lives here, beside the authority-loss classifier
- * `grant.revoke` runs, rather than in either caller.
+ * `grant.revoke` runs, rather than in either caller. It answers the ids it
+ * holds, so a caller can refuse a check that rests on a grant it does not.
  */
 export async function holdCoveringGrants(
   tx: TenantQuery,
@@ -521,7 +522,7 @@ export async function holdCoveringGrants(
   // `nowait` is for a hold taken under runtime locks (the top-up's late first
   // approver): it never waits on a grant row there, and contention rolls back.
   wait: 'wait' | 'nowait' = 'wait',
-): Promise<void> {
+): Promise<readonly string[]> {
   // A subject held within ticked keys (an agent credential) covers only those
   // keys' grants in this collection: one row per ticked action; null is any.
   const asked = subjects.flatMap((subject): { subject: Subject; action: string | null }[] =>
@@ -531,7 +532,7 @@ export async function holdCoveringGrants(
           .filter((key) => key.startsWith(`${collection}:`))
           .map((key) => ({ subject, action: key.slice(collection.length + 1) })),
   );
-  await tx.query(
+  const held = await tx.query<{ readonly id: string }>(
     `with recursive chain as (
        select g.id, g.parent_grant_id from public.grants g
         where g.business_id = $1 and g.collection = $2
@@ -555,6 +556,7 @@ export async function holdCoveringGrants(
       asked.map(({ action }) => action),
     ],
   );
+  return held.map((row) => row.id);
 }
 
 /**

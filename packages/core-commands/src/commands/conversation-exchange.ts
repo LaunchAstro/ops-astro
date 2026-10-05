@@ -18,7 +18,9 @@
 // 3. The answer is kept as the agent's message answering that one message
 //    (0099), in a second transaction that resolves the caller again, takes
 //    the conversation's row lock, as a message and the purge do, so a reply
-//    never lands in a body being purged, and asks the grant again under it.
+//    never lands in a body being purged, and asks the grant again under it,
+//    with the grants held for share and judged at the clock after the locks;
+//    a grant being changed at that moment keeps nothing.
 //
 // A message has at most one reply. A repeat of the request finds the reply
 // kept and answers with it, and the model is not asked again; two repeats at
@@ -32,7 +34,7 @@ import {
   callModelInConversation,
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
-import { isUuid, withSession } from '../../../core-records/src/index.ts';
+import { isUuid, subjectsOf, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -40,6 +42,7 @@ import type {
   TenantQuery,
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
+import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
 import { bounded, holdsOwnConversations } from './conversations.ts';
 import { auditAs, type ModelBroker } from './model-call.ts';
 import { isCommandRefusal } from './refusal.ts';
@@ -153,7 +156,18 @@ async function keep(
     [tx.businessId, asked.conversationId, session.actorId],
   );
   if (conversation === undefined || conversation.body_purged_at !== null) return undefined;
-  if (!(await holdsOwnConversations(tx, session))) return undefined;
+  // The caller's conversation grants are held for share once the row is
+  // locked, a grant issued while this waited included: a revocation that
+  // committed first is seen by the check below, and one that comes later waits
+  // for this reply to commit. `nowait`, because the trash purge locks grants
+  // before conversations: one being changed now rolls the reply back
+  // (`heldElsewhere`). The check is asked at the clock after the locks, so a
+  // grant that lapsed while this waited no longer counts, and must rest on a
+  // grant held here, so one issued after the hold does not.
+  const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
+  if (!(await holdsOwnConversations(tx, session, { at: await lockedInstant(tx), held }))) {
+    return undefined;
+  }
   const id = randomUUID();
   const inserted = await tx.query(
     `insert into conversation_messages
@@ -172,6 +186,12 @@ async function keep(
     [tx.businessId, asked.conversationId],
   );
   return { id, body };
+}
+
+/** A grant being changed under the reply's `nowait` hold: the reply rolled back, nothing kept. */
+function heldElsewhere(cause: unknown): undefined {
+  if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
+  return undefined;
 }
 
 /** The exchange over a deployment's broker, for the API's person path. */
@@ -202,7 +222,7 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
       businessId,
       presented,
       async (tx, now) => await keep(tx, now, asked, result.text),
-    );
+    ).catch(heldElsewhere);
     return kept === undefined || isCommandRefusal(kept) ? null : answered(kept);
   };
 }

@@ -1260,7 +1260,12 @@ words through AW-01's conversation seam (`callModelInConversation`,
 nothing held). The answer is kept as an `agent` message whose
 `answers_message_id` names the question (0099: one reply per message, in the
 same conversation), in a second transaction under the conversation's row
-lock, which asks the grant again. The HTTP answer then carries `reply` beside the command's own fields:
+lock, which then holds the caller's conversation grants for share without
+waiting (a revocation either is seen there or waits for the reply to commit; a
+grant being changed at that moment, even by a revocation then refused, keeps
+nothing, and the person asks again) and asks the grant again at
+the clock after the locks, so a grant that lapsed while it waited no longer
+counts. The HTTP answer then carries `reply` beside the command's own fields:
 `{ answered: true, messageId, body }`, or `{ answered: false, code, words }`
 in fixed words (`LOCAL_MODEL_REQUIRED`: models are off for this material and
 nothing was sent, AW-03 egress off; `RATE_LIMITED`; anything else, an answer

@@ -18,6 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import { checkAuthorityAt } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -34,16 +35,25 @@ export const conversationAddress = (conversationId: string): string => `/agent/$
 /**
  * Whether the caller still holds their own conversations: a member holding
  * `conversation:write`, which `conversation.read` and `conversation.list` ask
- * of the owner and the exchange asks before it reads or keeps a reply.
+ * of the owner and the exchange asks before it reads or keeps a reply. A
+ * writer passes what it holds: the instant read once its locks are held (a
+ * grant that ends at or before it no longer counts) and the grant ids it holds
+ * for share (a check resting on none of them does not count).
  */
-export async function holdsOwnConversations(tx: TenantQuery, session: Session): Promise<boolean> {
+export async function holdsOwnConversations(
+  tx: TenantQuery,
+  session: Session,
+  under?: { readonly at: string; readonly held: ReadonlySet<string> },
+): Promise<boolean> {
   if (session.roleKey === null) return false;
-  const own = await checkAuthority(tx, subjectsOf(session), {
+  const request = {
     collection: 'conversation',
     action: 'write',
     scope: { kind: 'business', id: null },
-  });
-  return own.ok;
+  } as const;
+  if (under === undefined) return (await checkAuthority(tx, subjectsOf(session), request)).ok;
+  const own = await checkAuthorityAt(tx, subjectsOf(session), request, under.at);
+  return own.ok && own.value.some((grant) => under.held.has(grant.id));
 }
 
 export const bounded = (value: unknown, limit: number): value is string =>
