@@ -99,3 +99,20 @@ it('concurrent resumptions of a held attempt do not duplicate its provider effec
   expect(await attempts(taskId)).toMatchObject([{ state: 'settled', observed: true }]);
   expect(providerEffects, 'the same held attempt was resumed twice').toBe(1);
 });
+
+it('a provider call that rejects is never made again for the attempt: the next pass hands it back', async () => {
+  const { taskId, credential } = await launched();
+  let providerEffects = 0;
+  const worker = workerWith(throughApi, credential, () => {
+    providerEffects += 1;
+    // A connection lost after the request left, as fetch rejects it: the provider may have acted.
+    return providerEffects === 1
+      ? Promise.reject(new TypeError('fetch failed'))
+      : Promise.resolve({ status: 200, body: '{}' });
+  });
+  await expect(worker.applyOnce(taskId)).rejects.toThrow('fetch failed');
+  expect(await worker.applyOnce(taskId)).toEqual({
+    dropped: { taskId, cause: 'connection_lost' },
+  });
+  expect(providerEffects, 'one provider call for the attempt').toBe(1);
+});
