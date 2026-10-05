@@ -56,11 +56,13 @@ function adoptOf(
   activation: ActivationView,
   standing: boolean,
 ): { readonly versionId: string; readonly label: string } | null {
+  // Only an automation that is on is approved: no adoption while off.
+  if (!activation.enabled) return null;
   const newer = definition.versions
     .filter((version) => version.modes.includes(activation.mode))
     .findLast((version) => version.number > activation.versionNumber);
   if (newer !== undefined) return { versionId: newer.id, label: `Adopt v${String(newer.number)}` };
-  if (standing || !activation.enabled) return null;
+  if (standing) return null;
   return {
     versionId: activation.versionId,
     label: `Approve v${String(activation.versionNumber)}`,
@@ -94,7 +96,8 @@ function controlsOf(definition: AutomationDefinitionView, activation: Activation
     const body = { ...at, versionId: adopt.versionId };
     controls.push({ control: 'adopt', label: adopt.label, command: 'activation.adopt', body });
   }
-  if (activation.versionNumber > 1) {
+  // Only an automation that is on is approved: no roll back while off.
+  if (activation.versionNumber > 1 && activation.enabled) {
     controls.push({
       control: 'roll-back',
       label: 'Roll back',
