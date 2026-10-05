@@ -114,12 +114,14 @@ export type PublishOutcome =
 
 const refused = (code: PublishRefusal): PublishOutcome => ({ state: 'refused', code });
 
+type Captured = Awaited<ReturnType<ObservePorts['capture']>>;
+
 /** Each check before the dispatch in order, then the served page; drift counts until a landing. */
 async function beforeDispatch(
   job: PublishJob,
   ports: PublishPorts,
   back: ReadBack<Published>,
-): Promise<PublishOutcome | { readonly preImage: string | undefined }> {
+): Promise<PublishOutcome | { readonly captured: Captured }> {
   const { decision } = job;
   if (decision === undefined || decision.decision !== 'approve') return refused('APPROVAL_MISSING');
   const bound =
@@ -128,9 +130,7 @@ async function beforeDispatch(
     versionDigestOf(job) === job.version.digest;
   if (!bound) return refused('PROPOSAL_SUPERSEDED');
   if (!checkEnvelope(job.change, job.target).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
-  const captured = await ports.capture(job.pageUrl);
-  const cleared = { preImage: captured.ok ? captured.value.text : undefined };
-  if (back.state !== 'absent') return cleared;
+  if (back.state !== 'absent') return { captured: await ports.capture(job.pageUrl) };
   const current = await ports.readSource();
   if (current.kind !== 'ok') return refused('CONTENT_DRIFT_UNCHECKED');
   const pinned = contentDigest(job.change.files[0]?.before ?? null);
@@ -140,6 +140,7 @@ async function beforeDispatch(
   ) {
     return { state: 'refused', code: 'CONTENT_DRIFTED', waitsOn: 'person' };
   }
+  const cleared = { captured: await ports.capture(job.pageUrl) };
   // Last, after every awaited read: a cancellation that arrived during one still stops the send.
   return (await ports.cancellation()) === 'requested' ? refused('CANCELLED') : cleared;
 }
@@ -159,13 +160,14 @@ export async function publishCorrection(
     return { ...checked, answer: await reconciled(back, send, readBack) };
   });
   if ('state' in sent) return sent;
-  const { preImage, answer } = sent;
+  const { captured, answer } = sent;
   const unknown = async (code: string): Promise<PublishOutcome> => {
     await ports.raiseTask(code);
     return { state: 'unknown', code, reference: job.seam, dispatchToken: token };
   };
   if ((await ports.cancellation()) === 'requested') return unknown('CANCELLED_AFTER_DISPATCH');
   if (answer.kind === 'ok') {
+    const preImage = captured.ok ? captured.value.text : undefined;
     const occurrence = calibrated(job.change, job.target, preImage);
     // No place: the check can never read it live, so a person confirms the page by eye.
     if (occurrence === undefined) await ports.raiseTask('LIVE_CHECK_UNPLACED');

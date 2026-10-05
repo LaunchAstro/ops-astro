@@ -260,3 +260,21 @@ it('an unchanged sentence never reads live when an equal match straddles the lin
   const { accepted } = await accept(about, source, unchanged);
   expect((await observe(accepted, about, unchanged)).state).toBe('accepted');
 });
+
+it('a refused publish never reads the page', async () => {
+  const source = `${LAYOUT}<Layout>\n<p>We walk alongside you.</p>\n</Layout>\n`;
+  const approved = job(about, source);
+  const read = async (attempt: PublishJob, content: string) => {
+    const { ports: p, captured } = ports(source, aboutPage('alongside'));
+    const readSource = async () => ({ kind: 'ok' as const, value: { content, revision: 'base' } });
+    const outcome = await publishCorrection(attempt, { ...p, readSource });
+    return { state: outcome.state, captured: captured.length };
+  };
+  expect({
+    unapproved: await read({ ...approved, decision: undefined }, source),
+    drifted: await read(approved, `${source}<p>Edited since.</p>\n`),
+  }).toEqual({
+    unapproved: { state: 'refused', captured: 0 },
+    drifted: { state: 'refused', captured: 0 },
+  });
+});
