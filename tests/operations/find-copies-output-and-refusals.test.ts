@@ -35,19 +35,26 @@ afterAll(async () => {
 const person = async (business: string, name: string) => await plantPerson(world, business, name);
 const hex = () => randomUUID().replaceAll('-', '');
 
-it('the text is searched without the spaces around it, and a run of spaces in it is one space', async () => {
+it('the text is searched without the spaces around it, and a run of spaces of any kind in it is one space', async () => {
   const tess = word('tess');
-  const client = randomUUID();
+  const clients = [randomUUID(), randomUUID()];
   const author = await person(world.alpha, `Ola ${word('ola')}`);
   await world.db.admin.execute(
-    'insert into public.clients (business_id, id, name, created_by_actor_id) values ($1, $2, $3, $4)',
-    [world.alpha, client, `Call ${tess}  Lee.`, author.actor],
+    `insert into public.clients (business_id, id, name, created_by_actor_id)
+     values ($1, $2, $4, $6), ($1, $3, $5, $6)`,
+    [world.alpha, ...clients, `Call ${tess}  Lee.`, `Ring ${tess}\u00A0\u2009Lee.`, author.actor],
   );
-  for (const text of [`  ${tess}  `, `${tess} Lee`, `${tess} \t Lee`]) {
+  for (const text of [
+    `${tess} Lee`,
+    `\u00A0${tess} \t Lee `,
+    `${tess}\u00A0Lee`,
+    `${tess}\u3000Lee`,
+  ]) {
     // oxlint-disable-next-line no-await-in-loop
     const found = await findCopies(world.adminUrl, ['--text', text], 'alpha');
     expect(found.code, text).toBe(0);
-    expect(pairs(found.hits), text).toContainEqual(['clients', client]);
+    expect(pairs(found.hits), text).toContainEqual(['clients', clients[0]]);
+    expect(pairs(found.hits), text).toContainEqual(['clients', clients[1]]);
   }
 });
 
@@ -130,6 +137,8 @@ it('the finder refuses an id that is not a UUID, a repeated option and an unknow
     ['--text', 'Casey', '--Export'],
     ['--text', '--export'],
     ['--id', '--export'],
+    ['--text', 'a  b'],
+    ['--text', '\u00A0ab\u00A0\u00A0c'],
   ]) {
     // oxlint-disable-next-line no-await-in-loop
     const refused = await findCopies('postgres://finder:unused@127.0.0.1:1/none', args, 'alpha');

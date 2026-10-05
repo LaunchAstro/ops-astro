@@ -49,6 +49,7 @@ it('a name seeds the person it names as a whole word, never another whose name o
   expect(pairs(found.hits)).not.toContainEqual(['actors', other.actor]);
   // Their own row holds the text, so it is listed, and the hit says it stands for no one found.
   expect(hitOn(found.hits, 'people', other.id)?.people).toEqual([]);
+  expect(hitOn(found.hits, 'people', other.id)?.text).toBe(true);
 });
 
 it('a rejected identifier holding the text seeds no one, and a confirmed one seeds its person', async () => {
@@ -152,7 +153,7 @@ async function plantErasable() {
     `insert into public.person_identifiers
        (business_id, id, person_id, kind, value, observed_value, source_system)
      values ($1, $2, $3, 'email', $4, $4, 'dry-run')`,
-    [world.bravo, randomUUID(), bravoTwin.id, `${erin}@example.test`],
+    [world.bravo, randomUUID(), bravoTwin.id, erin],
   );
   return { erin, erased, grants, bravoTwin };
 }
@@ -185,6 +186,7 @@ it('after an erasure, the search with the ids the first list printed still finds
   expect(after.code).toBe(0);
   expect(pairs(after.hits)).toEqual([['grants', grants.alpha]]);
   expect(hitOn(after.hits, 'grants', grants.alpha)?.people).toEqual([erased]);
+  expect(hitOn(after.hits, 'grants', grants.alpha)?.text, 'found by id alone').toBe(false);
   expect(after.stdout).not.toContain(grants.bravo);
   expect(after.stdout).not.toContain(world.bravo);
 });
@@ -201,33 +203,54 @@ it('after an erasure, the id alone in any letter case finds the row naming the p
   }
 });
 
+/** A merge of `absorbed` into `surviving`, reversed or standing. */
+async function merge(
+  business: string,
+  surviving: { readonly id: string; readonly actor: string },
+  absorbed: { readonly id: string },
+  reversed: boolean,
+) {
+  await world.db.admin.execute(
+    `insert into public.person_merges
+       (business_id, id, surviving_person_id, absorbed_person_id, decided_by_actor_id, evidence,
+        reversed_at, reversed_by_actor_id, reversal_evidence)
+     values ($1, $2, $3, $4, $5, 'same phone',
+             case when $6 then now() end, case when $6 then $5::uuid end,
+             case when $6 then 'different people' end)`,
+    [business, randomUUID(), surviving.id, absorbed.id, surviving.actor, reversed],
+  );
+}
+
+it('an id given for another business follows none of its merges', async () => {
+  const first = await person(world.bravo, `Nia ${word('nia')}`);
+  const second = await person(world.bravo, `Noa ${word('noa')}`);
+  await merge(world.bravo, first, second, false);
+  const found = await findCopies(world.adminUrl, ['--id', first.id], 'alpha');
+  expect(found.code).toBe(0);
+  expect(found.stderr).not.toContain(second.id);
+  expect(found.stderr).not.toContain(second.actor);
+});
+
 it('a person merged into another is the same person: the merge is followed, a reversed one is not', async () => {
   const mia = word('mia');
   const requested = await person(world.alpha, `Mia ${mia}`);
   const absorbed = await person(world.alpha, `M. ${word('m')}`);
   const unmerged = await person(world.alpha, `Max ${word('max')}`);
-  await world.db.admin.execute(
-    `insert into public.person_merges
-       (business_id, id, surviving_person_id, absorbed_person_id, decided_by_actor_id, evidence,
-        reversed_at, reversed_by_actor_id, reversal_evidence)
-     values ($1, $2, $3, $4, $5, 'same phone', null, null, null),
-            ($1, $6, $3, $7, $5, 'same email', now(), $5, 'different people')`,
-    [
-      world.alpha,
-      randomUUID(),
-      requested.id,
-      absorbed.id,
-      requested.actor,
-      randomUUID(),
-      unmerged.id,
-    ],
-  );
+  const duplicate = await person(world.alpha, `Mia ${mia} Jr`);
+  await merge(world.alpha, requested, absorbed, false);
+  await merge(world.alpha, requested, duplicate, false);
+  await merge(world.alpha, requested, unmerged, true);
   const found = await findCopies(world.adminUrl, ['--text', mia], 'alpha');
   expect(found.code).toBe(0);
   expect(pairs(found.hits)).toContainEqual(['memberships', absorbed.membership]);
   expect(hitOn(found.hits, 'memberships', absorbed.membership)?.people).toEqual([absorbed.id]);
-  expect(found.stderr).toContain(`${requested.id} (named by the text)`);
-  expect(found.stderr).toContain(`${absorbed.id} (merged with a person found)`);
+  expect(found.stderr).toContain(
+    `${requested.id} (named by the text; merged with ${duplicate.id})`,
+  );
+  expect(found.stderr).toContain(`${absorbed.id} (merged with ${requested.id})`);
+  expect(found.stderr).toContain(
+    `${duplicate.id} (named by the text; merged with ${requested.id})`,
+  );
   expect(pairs(found.hits), 'the reversed merge joins no one').not.toContainEqual([
     'memberships',
     unmerged.membership,
