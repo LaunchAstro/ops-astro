@@ -272,4 +272,10 @@ it('a reference name as the word cannot borrow a layout that shows references as
   const served = '<header>A &amp;lt; B</header><p>A &amp; B</p><p>A &amp;amp; B</p>';
   const corrected = served.replace('<p>A &amp; B', '<p>A &lt; B');
   expect(readsLive(before, after, 'amp', 'lt', corrected, served)).toBe(false);
+  // A header showing the paragraph's markup as text lines the equals up with the source's, so the
+  // place calibrates; only the marker's binding to the shown word keeps the header's change from
+  // reading as the paragraph's.
+  const shown = '<header>A &amp;amp; B</header><p>A &amp; B</p><p>A &amp;amp; B</p>';
+  const header = shown.replace('<header>A &amp;amp; B', '<header>A &amp;lt; B');
+  expect(readsLive(before, after, 'amp', 'lt', header, shown)).toBe(false);
 });
