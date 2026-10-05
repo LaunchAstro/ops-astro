@@ -70,6 +70,7 @@
     "tests/runtime/lifecycle-propose-handback.test.ts",
     "tests/runtime/lifecycle-stale-handback.test.ts",
     "tests/runtime/o3-held-recheck.test.ts",
+    "tests/runtime/occurrence-run-holds-conversation-work.test.ts",
     "tests/runtime/person-replay-current-rights.test.ts",
     "tests/runtime/person-work-http.test.ts",
     "tests/runtime/person-work-schedules.test.ts",

@@ -265,5 +265,11 @@ it('a run picked up and then superseded by a new version has ended at the supers
     lineageId: proposal['lineageId'],
   });
   expect(revised.status).toBe(200);
+  // The supersede leaves the run claimed: this case is the claimed run's end.
+  const [after] = await w.fixture.db.admin.execute<{ state: string }>(
+    'select state from public.planned_runs where version_id = $1',
+    [proposal['versionId']],
+  );
+  expect(after).toEqual({ state: 'claimed' });
   expect(await purge(conversationId)).toEqual({ ok: false, code: 'NOT_DUE' });
 });
