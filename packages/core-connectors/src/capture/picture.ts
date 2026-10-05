@@ -149,17 +149,21 @@ function readsAsUtf8(css: string): boolean {
 
 const lower = (text: string): string =>
   text.replaceAll(/[A-Z]/gu, (letter) => letter.toLowerCase());
-// The `http-equiv` values a browser honours that leave the picture as the observation read the
-// page: the fence holds the charset, a language or compatibility mode moves no sheet, and a
-// report-only policy blocks nothing (in markup a browser ignores it). Any other is refused:
-// a policy can drop a sheet, a default set chooses among titled ones, a refresh navigates
-// away from the page pictured, and an unknown one is not guessed at.
+// The `http-equiv` values that leave the picture as the observation read the page: the fence
+// holds the charset, a language or compatibility mode moves no sheet, the picture's browser has
+// no network to prefetch on, and a browser ignores a report-only policy and cache headers in
+// markup. Any other is refused: a policy can drop a sheet, a default set chooses among titled
+// ones, a refresh navigates away from the page pictured, and an unknown one is not guessed at.
 const PICTURED_EQUIV = new Set([
   '',
   'content-type',
   'content-language',
   'x-ua-compatible',
   'content-security-policy-report-only',
+  'x-dns-prefetch-control',
+  'cache-control',
+  'pragma',
+  'expires',
 ]);
 
 /**
