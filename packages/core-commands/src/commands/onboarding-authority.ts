@@ -89,20 +89,23 @@ export async function grantsStillHold(tx: TenantQuery, session: Session): Promis
 }
 
 /**
- * A delegated agent's, once the lock is held: the delegation read `for share`
- * (after the task rows, as the lock order puts a delegation) and live at the
- * clock, and the delegating person's `task:write` on the step's task asked at
- * it. A revocation for lost authority, or the person's grant lapsing during
- * the wait, is `DELEGATION_NARROWED`, as the agent envelope answers it; any
- * other end of the delegation is `DELEGATION_NOT_LIVE`. A revocation after
- * this read reaches the delegation row (its classification locks it) and
- * waits for the write.
+ * A delegated agent's: the delegating person's task grants held for share
+ * now, before the onboarding's lock, as the person path holds its own, so a
+ * revocation of one comes after the write. Once the lock is held, the
+ * delegation is read `for share` (after the task rows, as the lock order puts
+ * a delegation) and must be live at the clock, so a `delegation.revoke` after
+ * that read waits too; and the person's `task:write` on the step's task is
+ * asked at that clock. A revocation for lost authority, or the person's grant
+ * lapsing during the wait, is `DELEGATION_NARROWED`, as the agent envelope
+ * answers it; any other end is `DELEGATION_NOT_LIVE`. A child's parent row is
+ * read, not held: its revocation after the read is not waited on.
  */
-export function delegationStillHolds(
+export async function delegationStillHolds(
   tx: TenantQuery,
   delegation: Pick<Delegation, 'id' | 'delegatePersonId'>,
-): StillHolds {
+): Promise<StillHolds> {
   const person: readonly Subject[] = [{ kind: 'person', id: delegation.delegatePersonId }];
+  await holdCoveringGrants(tx, person, 'task');
   return async ({ taskId }) => {
     const [row] = await tx.query<{ readonly live: boolean; readonly narrowed: boolean }>(
       `select ${DELEGATION_STANDS_AT_CHECK} as live,

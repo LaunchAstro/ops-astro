@@ -797,7 +797,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             actorKind: 'agent',
             entryPoint: 'api',
             commentTypeId: spine.taskCommentTypeId,
-            stillHolds: delegationStillHolds(tx, delegation),
+            stillHolds: await delegationStillHolds(tx, delegation),
           },
           { recordId: taskId, outcome: request['outcome'], result: request['result'] },
         );
