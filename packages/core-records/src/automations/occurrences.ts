@@ -163,8 +163,9 @@ export async function claimOccurrence(
   cause: OccurrenceCause,
 ): Promise<OccurrenceClaim> {
   const found = await tx.query<ActivationDbRow>(
-    `select ${ACTIVATION_COLUMNS} from public.activations where id = $1 for share`,
-    [activationId],
+    `select ${ACTIVATION_COLUMNS} from public.activations
+      where business_id = $1 and id = $2 for share`,
+    [tx.businessId, activationId],
   );
   if (found[0] === undefined) return { kind: 'unknown' };
   const activation = activationOf(found[0]);
@@ -198,8 +199,8 @@ export async function claimOccurrence(
   if (inserted[0] !== undefined) return { kind: 'claimed', occurrence: occurrenceOf(inserted[0]) };
   const first = await tx.query<OccurrenceDbRow>(
     `select ${OCCURRENCE_COLUMNS} from public.activation_occurrences
-      where activation_id = $1 and (due_at = $2 or event_id = $3)`,
-    [activation.id, dueAt, eventId],
+      where business_id = $1 and activation_id = $2 and (due_at = $3 or event_id = $4)`,
+    [tx.businessId, activation.id, dueAt, eventId],
   );
   if (first[0] === undefined)
     throw new Error('claimOccurrence: a conflicting occurrence is not visible');

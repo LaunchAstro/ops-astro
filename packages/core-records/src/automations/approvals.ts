@@ -90,8 +90,9 @@ export async function lockActivation(
   activationId: string,
 ): Promise<ActivationRow | null> {
   const rows = await tx.query<ActivationDbRow>(
-    `select ${ACTIVATION_COLUMNS} from public.activations where id = $1 for update`,
-    [activationId],
+    `select ${ACTIVATION_COLUMNS} from public.activations
+      where business_id = $1 and id = $2 for update`,
+    [tx.businessId, activationId],
   );
   return rows[0] === undefined ? null : activationOf(rows[0]);
 }
@@ -192,9 +193,9 @@ export async function readStandingApproval(
   const rows = await tx.query<ApprovalDbRow>(
     `select ${APPROVAL_COLUMNS}
        from public.activations a
-       join public.standing_approvals s on s.id = a.approval_id
-      where a.id = $1`,
-    [activationId],
+       join public.standing_approvals s on s.business_id = a.business_id and s.id = a.approval_id
+      where a.business_id = $1 and a.id = $2`,
+    [tx.businessId, activationId],
   );
   return rows[0] === undefined ? null : approvalOf(rows[0]);
 }
