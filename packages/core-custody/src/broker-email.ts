@@ -34,9 +34,9 @@ import {
   type InboxReason,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
-import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
-import type { Broker, BrokerRoute, ProviderAdapter } from './broker-types.ts';
-import type { CustodyOutcome } from './custody.ts';
+import type { SenderReport } from '../../core-connectors/src/index.ts';
+import { observed, sendRoute } from './broker-email-route.ts';
+import type { Broker } from './broker-types.ts';
 import { holdItem } from './email-item-lock.ts';
 import {
   classOf,
@@ -52,12 +52,11 @@ import {
   windowSpent,
   type Room,
 } from './email-class.ts';
-import { isLoopbackMock, senderVerifiedFor } from './email-mock-custody.ts';
+import { isLoopbackMock } from './email-mock-custody.ts';
 
 export { recordAsked, stillReadable, type CheckedItem, type Room } from './email-class.ts';
 
-/** The catalogued name the send dispatches by. */
-export const EMAIL_OPERATION = 'email.send';
+export { EMAIL_OPERATION } from './broker-email-route.ts';
 
 /** Where the installation's own pages are, and who its mail is from. */
 export interface MailSettings {
@@ -87,20 +86,6 @@ export type EmailResult =
       readonly attemptId: string;
       readonly fault: string;
     };
-
-interface Routed {
-  readonly operation: ModelOperation;
-  readonly route: BrokerRoute;
-  readonly adapter: ProviderAdapter;
-}
-
-function routed(broker: Broker): Routed | undefined {
-  const operation = broker.operations.get(EMAIL_OPERATION);
-  if (operation === undefined) return undefined;
-  const route = broker.routes.find((entry) => entry.provider === operation.provider);
-  const adapter = broker.providers.get(operation.provider);
-  return route === undefined || adapter === undefined ? undefined : { operation, route, adapter };
-}
 
 /**
  * Every check on one item, in its business, locking it (`holdItem`: its task, then the item): open,
@@ -186,26 +171,6 @@ export interface Asked {
   readonly reserved: Reading;
 }
 
-/** Step 3's reading: the message id (whose: `source`), or the fault's kind. Never the body. */
-function observed(
-  outcome: CustodyOutcome,
-  operation: ModelOperation,
-  source: 'provider' | 'mock',
-): { readonly state: 'accepted' | 'failed'; readonly evidence: string } {
-  if (outcome.kind === 'refused') return { state: 'failed', evidence: 'refused' };
-  if (outcome.kind === 'worker_lost') return { state: 'failed', evidence: 'worker_lost' };
-  if (!outcome.outbound.ok) return { state: 'failed', evidence: outcome.outbound.fault };
-  let body: unknown;
-  try {
-    body = JSON.parse(outcome.outbound.body);
-  } catch {
-    return { state: 'failed', evidence: 'malformed' };
-  }
-  const answer = operation.answer(body);
-  if (answer === undefined) return { state: 'failed', evidence: 'malformed' };
-  return { state: 'accepted', evidence: `${source}:${answer.text}` };
-}
-
 export type Delivered<R extends string> =
   | { readonly ok: false; readonly code: R | DeliverRefusal }
   | {
@@ -226,10 +191,8 @@ export async function deliver<R extends string>(
   mail: MailSettings,
   ask: (tx: TenantQuery, room: Room) => Promise<Asked | R>,
 ): Promise<Delivered<R>> {
-  if (!senderVerifiedFor(mail.from, mail.sender, broker.custody))
-    return { ok: false, code: 'SENDER_NOT_VERIFIED' };
-  const found = routed(broker);
-  if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
+  const found = sendRoute(broker, mail);
+  if (typeof found === 'string') return { ok: false, code: found };
   const { operation, route, adapter } = found;
   const asked = await database.withBusiness(
     businessId,

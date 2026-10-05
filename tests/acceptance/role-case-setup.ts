@@ -2,9 +2,10 @@
 //
 // The role-case matrix's positive bodies for setup's commands: custody (C31)
 // and the connector fleet (MP-14-7a). `tableBody` answers these, the fixed
-// literals (`role-case-fixed-bodies.ts`) and C80's live correction
-// (`c80-bodies.ts`) in one call from `role-case-positive-body.ts`, so that
-// file stays under the per-file cap.
+// literals (`role-case-fixed-bodies.ts`), team invitations (C39-T,
+// `role-case-invitation-bodies.ts`) and C80's live correction (`c80-bodies.ts`)
+// in one call from `role-case-positive-body.ts`, so that file stays under the
+// per-file cap.
 
 import { randomUUID } from 'node:crypto';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -12,12 +13,14 @@ import type { Answer } from './world.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
 import { C80_NAMES, c80PositiveBody } from './c80-bodies.ts';
 import type { BodyContext, Prepared } from './role-case-bodies.ts';
+import { invitationBody, isInvitation } from './role-case-invitation-bodies.ts';
 
 type Body = { readonly body: Readonly<Record<string, unknown>> } | undefined;
 
-/** What these recipes need from the world: `BodyContext`'s person. */
-interface SetupContext {
+/** What these recipes need from the world: `BodyContext`'s person and inviter. */
+export interface SetupContext {
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
+  freshInviter?(): Promise<void>;
   /** A broken connection to repair, owner-written; absent, a made-up id is named. */
   brokenConnection?(): Promise<string>;
 }
@@ -43,10 +46,11 @@ async function custodyBody(name: CommandName, context: SetupContext): Promise<Bo
   }
 }
 
-/** A fixed literal's, a setup command's or C80's positive body; undefined for every other command. */
+/** A fixed literal's, a setup command's, an invitation's or C80's positive body; else undefined. */
 export async function tableBody(name: CommandName, context: BodyContext): Promise<Body | Prepared> {
   const fixed = FIXED_BODIES[name];
   if (fixed !== undefined) return { body: { ...fixed } };
+  if (isInvitation(name)) return await invitationBody(name, context);
   if (C80_NAMES.has(name)) return await c80PositiveBody(name, context);
   // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
   if (name === 'connection.fleet') return { body: {} };

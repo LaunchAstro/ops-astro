@@ -2383,6 +2383,37 @@ it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. It holds
 `billing:decide`, so C59's step-up asks it in the envelope: `STEP_UP_REQUIRED`
 403 past 60 minutes while the business's money step-up setting is on.
 
+### Team invitations (C39-T)
+
+`POST /api/b/<key>/invitation/create` with `name`, `email` and `role`
+(`member` or `admin`); `invitation/resend` and `invitation/revoke` with
+`invitationId`. Each asks `share` on `access` for the whole business
+(`access:share`: owners and administrators), and no agent route serves them
+(`DELEGATION_EXCLUDES_OPERATION`). A create or resend of an `admin`
+invitation also asks `access:manage` for the whole business, and without it
+is `SCOPE_NOT_GRANTED` 403 naming `role`, writing nothing; a revoke asks
+`access:share` alone. A create writes a new person and the
+invitation, pending for seven days; a resend moves that on by seven days; a
+revoke ends it. An ended invitation is `TRANSITION_NOT_PERMITTED` 409 naming
+`state`, another business's or an unissued id `NOT_FOUND`, an address already
+pending or confirmed on a member `UNIQUE_VALUE_TAKEN` naming `email`. Creates
+and resends are limited to 3 an hour per address and 30 an hour per person,
+counted from the applied audit events (`RATE_LIMITED` naming `email` or
+`account`). The answer is the invitation's id, its revision and
+`{ invitationId, state }`. The business's worker expires lapsed invitations
+(`expireInvitations`, audited `invitation.expire`).
+
+Each create and each resend allows one email: `sendInvitation`
+(`core-custody`) sends through the broker's `email.send` only while the
+invitation is pending and has an applied act no send has answered, mints a
+fresh enrolment token, keeps its SHA-256 alone and records the attempt
+against it. It shares the inbox email's ceiling: one limit, `email.send`'s
+catalogued concurrency, counts inbox and invitation emails in flight
+together, each ask until custody's timeout and a minute's grace have passed
+(`EMAIL_AT_CEILING` at it, writing nothing). Not here yet: the send mounted
+after the command, Auth's Send Email hook, the enrolment page and the Access
+screen (C39-T P2 and P3).
+
 ## Tags
 
 `task.read` carries `tags` (MP-4-11): the tags the task carries, `{ id, name }`
