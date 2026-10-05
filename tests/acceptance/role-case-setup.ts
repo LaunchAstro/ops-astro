@@ -71,10 +71,12 @@ const MANDATE_COMMANDS: ReadonlySet<CommandName> = new Set([
 
 /** MP-14-10a: the admin holds `mandate:manage` and signs in with a second factor. */
 async function mandateBody(name: CommandName, context: SetupContext): Promise<Body> {
-  const made = await context.readyClass?.();
-  if (made === undefined) return undefined;
   const ceiling = { amountMinor: 100, currency: 'AUD' };
   const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+  const made = await context.readyClass?.();
+  // Absent the hook (external-party item 3), each names a made-up id, as
+  // `connector.repair` does, and sets nothing up first.
+  if (made === undefined) return { body: madeUpMandateBody(name, ceiling, expiresAt) };
   const filing = { clientId: made.clientId, classes: ['social.post'], ceiling, expiresAt };
   const promoting = { classId: made.classId, ceiling, expiresAt };
   if (name === 'mandate.file') return { body: { ...filing, label: 'The matrix files one' } };
@@ -87,4 +89,28 @@ async function mandateBody(name: CommandName, context: SetupContext): Promise<Bo
   return {
     body: { mandateId: String((filed.body['detail'] as Record<string, unknown>)['mandateId']) },
   };
+}
+
+/** A well-formed body naming a made-up client, class or mandate. */
+function madeUpMandateBody(
+  name: CommandName,
+  ceiling: Readonly<Record<string, unknown>>,
+  expiresAt: string,
+): Readonly<Record<string, unknown>> {
+  switch (name) {
+    case 'mandate.file':
+      return {
+        clientId: randomUUID(),
+        classes: ['social.post'],
+        ceiling,
+        expiresAt,
+        label: 'The matrix files one',
+      };
+    case 'graduation.promote':
+      return { classId: randomUUID(), ceiling, expiresAt };
+    case 'graduation.demote':
+      return { classId: randomUUID() };
+    default:
+      return { mandateId: randomUUID() };
+  }
 }
