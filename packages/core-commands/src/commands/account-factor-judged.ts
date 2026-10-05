@@ -75,7 +75,7 @@ export async function judged(
       // the audit chain): one signed out meanwhile undoes the act, and the
       // refusal is recorded in its place (#443).
       if (refusal !== undefined || stage === 'before') return refusal;
-      if (!(await sessionEnded(tx, caller.presented))) return undefined;
+      if (!(await sessionEnded(tx, caller.presented))) return;
       await tx.query('rollback to savepoint factor_act');
       return await settle(refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES));
     },
