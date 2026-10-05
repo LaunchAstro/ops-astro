@@ -15,12 +15,17 @@ export interface Countdown {
 
 /**
  * What is left on a grant: "37m left" in warning ink under an hour, "5h 0m
- * left" otherwise, and a word once it has ended.
+ * left" otherwise, and a word once it has ended. Whether it ended is the
+ * read's to say: a grant the read calls live whose expiry this clock has
+ * passed waits for the next re-read in warning ink, never "Ran out".
  */
 export function countdownOf(grant: GrantView, now: number): Countdown {
   if (grant.state === 'taken_back') return { words: 'Taken back', tone: 'plain' };
-  const minutes = Math.floor((Date.parse(grant.expiresAt) - now) / 60_000);
-  if (grant.state === 'ran_out' || minutes <= 0) return { words: 'Ran out', tone: 'plain' };
+  if (grant.state === 'ran_out') return { words: 'Ran out', tone: 'plain' };
+  const left = Date.parse(grant.expiresAt) - now;
+  if (left <= 0) return { words: 'Expiry passed, re-reading', tone: 'warn' };
+  const minutes = Math.floor(left / 60_000);
+  if (minutes < 1) return { words: 'Under 1m left', tone: 'warn' };
   if (minutes < HOUR) return { words: `${minutes}m left`, tone: 'warn' };
   return { words: `${Math.floor(minutes / HOUR)}h ${minutes % HOUR}m left`, tone: 'plain' };
 }
@@ -44,7 +49,8 @@ export const plural = (count: number, one: string, many = `${one}s`): string =>
   `${count} ${count === 1 ? one : many}`;
 
 export function grantsLede(live: number, liveExec: number): string {
-  const held = `${plural(live, 'grant')} live across the book.`;
+  // The read answers what the caller may see, which may be some clients only.
+  const held = `${plural(live, 'grant')} live that you can see.`;
   if (liveExec === 0) return `${held} None of them carries execute access.`;
   return `${held} ${liveExec} of them carry execute access; none can act until the executor is connected.`;
 }

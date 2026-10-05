@@ -53,10 +53,13 @@ function GrantRow(props: { readonly grant: GrantView; readonly now: number }): R
         <strong>{grant.agentId.slice(0, 8)}</strong> {grant.purpose}
       </p>
       <p>
+        {/* A client's name is free text: isolated, so it cannot reorder the line. */}
         {grant.client === null ? (
-          <span className="t-warn">Fleet · every client</span>
+          <span className="t-warn" data-grant-fleet>
+            Fleet · every client
+          </span>
         ) : (
-          (grant.client.label ?? 'Client (no name)')
+          <bdi data-grant-client>{grant.client.label ?? 'Client (no name)'}</bdi>
         )}{' '}
         · {grant.collections.join(', ')}{' '}
         <span className="tag" data-grant-access title={access}>
@@ -84,7 +87,7 @@ export function GrantsSection(props: {
   const { grants, grantCounts } = props.signal;
   return (
     <section id="grants" data-section="006">
-      <SectionHead index="006" title="Grants" right="Fleet · what is live right now" />
+      <SectionHead index="006" title="Grants" right="What is live right now" />
       <p className="grl__lede">{grantsLede(grantCounts.live, grantCounts.liveExec)}</p>
       {grants.length === 0 ? <p>No grants on the ledger.</p> : null}
       {GROUPS.map((group) => {

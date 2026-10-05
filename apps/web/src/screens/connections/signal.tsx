@@ -85,7 +85,7 @@ function TripwiresSection(props: { readonly signal: ConnectionSignalResult }): R
   const { tripwires, tripwireCounts } = props.signal;
   return (
     <section id="tripwires" data-section="007">
-      <SectionHead index="007" title="Tripwires" right="Fleet · what is watching" />
+      <SectionHead index="007" title="Tripwires" right="What is watching" />
       <p className="tw__lede">
         {tripwiresLede(tripwireCounts.armed, tripwireCounts.cannotBeArmed)} Anything that fires and
         needs a person is filed in the one attention feed.
@@ -103,17 +103,27 @@ function TripwiresSection(props: { readonly signal: ConnectionSignalResult }): R
   );
 }
 
+/** The only task cite that links: a task key, as the migration shapes it. */
+const TASK_KEY = /^T-[1-9][0-9]{0,17}$/u;
+
 function Cite(props: { readonly cite: NonNullable<NightStepView['cite']> }): ReactElement {
   const { cite } = props;
   const href =
-    cite.kind === 'task' && cite.ref !== null
-      ? pathTo('agency:task-detail', { key: cite.ref })
+    cite.kind === 'task' && TASK_KEY.test(cite.ref ?? '')
+      ? pathTo('agency:task-detail', { key: cite.ref ?? '' })
       : cite.kind === 'grants' || cite.kind === 'tripwires'
         ? `#${cite.kind}`
         : null;
   if (href === null) {
     return (
-      <span data-night-cite title="The exceptions section arrives with MP-14-10">
+      <span
+        data-night-cite
+        title={
+          cite.kind === 'exceptions'
+            ? 'The exceptions section arrives with MP-14-10'
+            : 'No task key to open'
+        }
+      >
         {cite.label}
       </span>
     );
@@ -158,7 +168,7 @@ function NightSection(props: { readonly signal: ConnectionSignalResult }): React
   const round = props.signal.nightRound;
   return (
     <section id="night-round" data-section="008">
-      <SectionHead index="008" title="The night round" right="Fleet · 23:00 to 08:10" />
+      <SectionHead index="008" title="The night round" right="23:00 to 08:10" />
       {round === null ? (
         <p data-night-lede>No night round has run yet.</p>
       ) : (
