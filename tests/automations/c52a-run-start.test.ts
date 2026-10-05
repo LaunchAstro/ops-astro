@@ -46,30 +46,41 @@ interface RunRow {
   readonly has_client: boolean;
 }
 
-/** Every source file under `root` (not tests, not built output). */
+/** Every source file under `root`, skipping installed and built output. */
 function sourcesUnder(root: string): string[] {
-  return readdirSync(root, { recursive: true, encoding: 'utf8' })
-    .filter((path) => /\.(ts|tsx|mjs)$/u.test(path) && !path.includes('node_modules'))
-    .map((path) => join(root, path));
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(root, entry.name);
+    if (entry.isDirectory())
+      return /^(node_modules|dist|\.astro)$/u.test(entry.name) ? [] : sourcesUnder(path);
+    return /\.(ts|tsx|mts|mjs|js|cjs|astro|svelte)$/u.test(entry.name) ? [path] : [];
+  });
 }
 
+const RUN_START = /\b(occurrenceRunStarter|dispatchOccurrence|startOccurrenceRun)\b/u;
+// The two defining files, the third's own module, and the barrels that
+// re-export each by its own name; the worker is the one caller allowed.
+const DEFINING = new Set([
+  'packages/core-commands/src/commands/automation-run.ts',
+  'packages/core-commands/src/commands/occurrence-run.ts',
+  'packages/core-records/src/automations/dispatch.ts',
+  'packages/core-commands/src/index.ts',
+  'packages/core-records/src/automations/index.ts',
+]);
+
 describe('C52-A run start has no route', () => {
-  it('an approved occurrence run start is reached by no API route, command-line verb, agent operation or wire command', () => {
-    const callers = [
-      'apps/api',
-      'apps/cli',
-      'apps/web',
-      'packages/core-wire/src',
-      'packages/core-commands/src/commands',
-    ]
-      .flatMap((root) => sourcesUnder(root))
-      .filter((path) => !path.endsWith('automation-run.ts') && !path.endsWith('occurrence-run.ts'))
-      .filter((path) =>
-        /occurrenceRunStarter|dispatchOccurrence|startOccurrenceRun/u.test(
-          readFileSync(path, 'utf8'),
-        ),
-      );
+  it('an approved occurrence run start is reached from no app or package outside the worker, and is never renamed on the way', () => {
+    const sources = ['apps', 'packages'].flatMap((root) => sourcesUnder(root));
+    const callers = sources
+      .filter((path) => !path.startsWith('apps/worker/') && !DEFINING.has(path))
+      .filter((path) => RUN_START.test(readFileSync(path, 'utf8')));
     expect(callers).toEqual([]);
+    // Fail closed on an alias: no file exports or imports one under another name.
+    const renamed = sources.filter((path) =>
+      /\b(occurrenceRunStarter|dispatchOccurrence|startOccurrenceRun)\s+as\b/u.test(
+        readFileSync(path, 'utf8'),
+      ),
+    );
+    expect(renamed).toEqual([]);
   });
 });
 
