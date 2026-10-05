@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-13 export: two exports at once read the same batch; the faster delivers
-// and advances the cursor while the slower waits on the target, then fails.
-// The slower one's gap must name the cursor its batch was read after.
+// AW-13 export: two exports at once start on the same batch; the faster
+// waits while the slower holds the business (#963) and waits on the target,
+// then fails. The slower one's gap must name the cursor its batch was read
+// after.
 
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
@@ -83,7 +84,7 @@ it('a failed concurrent export records the cursor its batch was read from', asyn
     const fast = await exportOnce(alpha.db.app, alpha.business, Buffer.from('proof key'), () =>
       Promise.resolve({ ok: true, status: 200, body: '{}' }),
     );
-    expect(fast.kind).toBe('delivered');
+    expect(fast.kind).toBe('held');
     release();
     expect(await slow).toMatchObject({ kind: 'gap', code: 'target_unreachable' });
     const gaps = await alpha.db.app.withBusiness(
