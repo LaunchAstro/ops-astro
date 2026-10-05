@@ -213,7 +213,8 @@ export interface HoldCalls {
   readonly open: boolean;
 }
 
-const NO_CALLS: HoldCalls = { spentMinor: 0n, open: false };
+/** No model calls: what a person's outcome passes, since it settles the whole hold itself. */
+export const NO_CALLS: HoldCalls = { spentMinor: 0n, open: false };
 
 /**
  * T2d: settle a dispatched attempt at its priced cost, under the caller's
@@ -223,8 +224,9 @@ const NO_CALLS: HoldCalls = { spentMinor: 0n, open: false };
  * so a failure in any rolls back all.
  *
  * The hold spent the attempt's cost and what its settled model calls cost
- * (`calls`, which an observation passes; a person's outcome and reconcile
- * settle the attempt alone). A call sent and never settled, or a total above
+ * (`calls`: observation and the reconciliation pass read them with
+ * `modelCallsOn`; a person's "happened" outcome settles the whole hold and
+ * passes `NO_CALLS`). A call sent and never settled, or a total above
  * the hold, keeps the whole hold as `liability_unknown` for a person (O9,
  * #832). Otherwise the envelope gives back the hold and takes that total,
  * which releases the difference to the cap; the attempt records its own cost.
@@ -241,11 +243,11 @@ export async function settleAtObserved(
     readonly envelopeId: string;
     readonly heldMinor: bigint;
     readonly costMinor: bigint;
-    readonly calls?: HoldCalls;
+    readonly calls: HoldCalls;
     readonly outcome: 'completed' | 'failed';
   },
 ): Promise<Settlement> {
-  const calls = of.calls ?? NO_CALLS;
+  const { calls } = of;
   const spentMinor = of.costMinor + calls.spentMinor;
   if (calls.open || spentMinor > of.heldMinor) {
     await keepWhole(tx, of);

@@ -24,7 +24,8 @@
 
 import { revokeDelegation } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { settleAtObserved, type Settlement } from '../budget.ts';
+import { settleAtObserved, type HoldCalls, type Settlement } from '../budget.ts';
+import { modelCallsOn } from '../model-calls-on.ts';
 import { remainingOf, stopAtSpentHold } from '../budget-stop.ts';
 import { reserve } from '../decide.ts';
 import type { LockRequest } from '../locks.ts';
@@ -169,7 +170,10 @@ async function answer(tx: TenantQuery, row: Unknown, lookup: EffectLookup): Prom
     { priceBook: row.price_book, currency: row.currency },
     { item: row.step_kind, quantity: 1 },
   );
-  if (cost === undefined || cost > BigInt(row.held_minor)) {
+  // The hold's model calls are part of what it spent, and one sent and never settled leaves
+  // the hold whole for a person: the rule observation settles by (#832).
+  const calls = await modelCallsOn(tx, row.reservation_id);
+  if (cost === undefined || calls.open || cost + calls.spentMinor > BigInt(row.held_minor)) {
     return {
       attemptId,
       answer: 'unanswered',
@@ -181,7 +185,7 @@ async function answer(tx: TenantQuery, row: Unknown, lookup: EffectLookup): Prom
     `update public.attempts set observed = true where business_id = $1 and id = $2 and dispatch_marker`,
     [tx.businessId, attemptId],
   );
-  await settle(tx, row, cost, 'completed');
+  await settle(tx, row, cost, calls, 'completed');
   return { attemptId, answer: 'present', reason: `settled once at ${cost.toString()} by the book` };
 }
 
@@ -189,6 +193,7 @@ export const settle = async (
   tx: TenantQuery,
   row: Unknown,
   costMinor: bigint,
+  calls: HoldCalls,
   outcome: 'completed',
 ): Promise<Settlement> =>
   await settleAtObserved(tx, {
@@ -198,6 +203,7 @@ export const settle = async (
     envelopeId: row.envelope_id,
     heldMinor: BigInt(row.held_minor),
     costMinor,
+    calls,
     outcome,
   });
 

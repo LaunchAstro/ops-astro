@@ -117,6 +117,10 @@ it('a model call lost mid-flight keeps the whole hold at observation', async () 
   const observed = await observeOf(w, { usage: PRICED });
 
   keptWhole(observed);
+  // Observed again, the held attempt is refused in words that still name the open call.
+  const again = await observeOf(w, { usage: PRICED });
+  expect(codeOf(again)).toBe('BUDGET_UNAVAILABLE');
+  expect(JSON.stringify(again)).toContain('never settled');
   expect(await money(w)).toMatchObject({
     state: 'held',
     actual: null,

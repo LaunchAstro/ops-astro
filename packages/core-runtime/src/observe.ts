@@ -130,7 +130,7 @@ export async function observe(
   if (state.attempt_state === 'liability_unknown') {
     return refuse(
       'BUDGET_UNAVAILABLE',
-      'this attempt reported more than its hold and is held as an unknown liability',
+      'this attempt is held as an unknown liability: what its hold spent was above the hold, or a model call on it was never settled',
       'Nothing was settled. A person records this attempt’s outcome.',
     );
   }
@@ -176,7 +176,7 @@ async function settlementOf(
     taskId: found.task_id,
     attemptId: found.attempt_id,
     reservationId: found.reservation_id,
-    envelopeId: state.envelope_id,
+    envelopeId: found.envelope_id,
     heldMinor,
     costMinor: cost,
     calls: await modelCallsOn(tx, found.reservation_id),
@@ -253,11 +253,11 @@ async function heldState(tx: TenantQuery, attemptId: string, leaseId: string): P
       `select (res.lease_id = $3 and (res.state = 'held' or att.state = 'settled')) as held,
               att.dispatch_marker as marked, att.observed, att.state as attempt_state,
               res.held_minor::text as held_minor, res.actual_minor::text as actual_minor,
-              att.price_book, att.envelope_id, env.currency, step.kind as step_kind
+              att.price_book, res.envelope_id, env.currency, step.kind as step_kind
          from public.attempts att
          join public.planned_steps step on step.business_id = att.business_id and step.id = att.step_id
          join public.reservations res on res.business_id = att.business_id and res.id = att.reservation_id
-         join public.task_envelopes env on env.business_id = att.business_id and env.id = att.envelope_id
+         join public.task_envelopes env on env.business_id = res.business_id and env.id = res.envelope_id
         where att.business_id = $1 and att.id = $2`,
       [tx.businessId, attemptId, leaseId],
     )
