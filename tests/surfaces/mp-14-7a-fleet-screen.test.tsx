@@ -749,6 +749,32 @@ describe('MP-14-7a Connections & signal fleet', () => {
     }
   });
 
+  it('MP-14-7a a fleet read that never answers is superseded after three ticks, so a revoke still draws', async () => {
+    vi.useFakeTimers({ now: NOW });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const stub = server();
+    const reads = (): number =>
+      stub.sent.filter((call) => call.includes('/connection/fleet')).length;
+    const page = await mount(SCREENS['agency:connections'](alphaContext(stub)));
+    try {
+      await pass(1);
+      // The read asked at 30 s never answers; connection:read is then revoked.
+      stub.holdFleet('alpha');
+      stub.refuseFleet();
+      await pass(FLOOR_MS);
+      await pass(FLOOR_MS * 3);
+      expect(reads()).toBe(2);
+      expect(page.find('[data-outcome="loading"]')).not.toBeNull();
+      // The fourth tick in its wait asks again, and the refusal draws.
+      await pass(FLOOR_MS);
+      expect(reads()).toBe(3);
+      expect(page.find('[data-outcome="denied"]')?.textContent).toContain('SCOPE_NOT_GRANTED');
+      expect(page.all('[data-connection]')).toHaveLength(0);
+    } finally {
+      await page.unmount();
+    }
+  });
+
   it('MP-14-7a a re-read on the floor that is refused drops the drawn fleet', async () => {
     vi.useFakeTimers({ now: NOW });
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
