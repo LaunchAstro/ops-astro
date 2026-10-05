@@ -20,6 +20,8 @@ describe('a word the built page reads inside a tag is refused', () => {
     ['an empty fragment', '<p>Look <<></>img src="x" alt here</p>\n'],
     ['a component', '<p>Look <<Empty />img src="x" alt here</p>\n'],
     ['an expression, behind a slash', '<p>Look </{""}img src="x" alt here</p>\n'],
+    // Empty prints nothing here; one that prints `img alt="` puts the word in that attribute.
+    ['a component, then a tag', '<p>Look <<Empty /><b>here</b> now</p>\n'],
   ])('after a dangling less-than and %s', async (_name, before) => {
     expect(await edit('here', 'hidden', before)).toMatchObject({ ok: false });
   });
@@ -53,12 +55,24 @@ describe('a word a browser does not show as body copy is refused', () => {
     ['in a button', '<button>Hello there</button>\n'],
     ['at the root of the page', 'Hello there\n'],
     ['in a page that prints raw markup', '<div set:html={"<b>"} />\n<p>Hello there</p>\n'],
+    [
+      'in a page that prints raw markup in another template',
+      '<div set:html={"<b>"} />\n<Layout><p>Hello there</p></Layout>\n',
+    ],
+    ['sharing its text run with a reference', '<p>Hello&amp;there</p>\n'],
+    ['in a page the compiler reports an error in', '<p>Hello there</p>\n<Foo client:only />\n'],
     ['after an expression with no tag between', '<p>{"x"} and Hello there</p>\n'],
     ['after a component with no tag between', '<p><Empty /> and Hello there</p>\n'],
     ['after a reference opener in its own run', '<p>Fish &Hello there</p>\n'],
     ['joined to a reference', '<p>&amp;Hello there</p>\n'],
   ])('%s', async (_name, before) => {
     expect(await edit('Hello', 'Hi', before)).toMatchObject({ ok: false });
+  });
+
+  it('refuses a page that is not an Astro file, whatever it holds', async () => {
+    expect(await edit('Hello', 'Hi', '<p>Hello there</p>\n', 'public/a.html')).toMatchObject({
+      ok: false,
+    });
   });
 
   it('refuses a word in a script the compiler keeps as text', async () => {
@@ -100,8 +114,13 @@ describe('the compiled modules bind the word', () => {
     expect(swapsOnlyBodyCopy(module('Hello'), after, swap)).toBe(false);
   });
 
-  it('refuses a swap in code rather than in a render template', () => {
-    const before = 'const a = `Hello there`;\n';
+  it('refuses a swap in a template the runtime does not render', () => {
+    const before = 'const a = html`<p>Hello there</p>`;\n';
+    expect(swapsOnlyBodyCopy(before, before.replace('Hello', 'Hi'), swap)).toBe(false);
+  });
+
+  it('refuses an attribute call that does not land in a tag', () => {
+    const before = 'const a = $$render`<p>${$$addAttribute(x, "t")}<b>Hello</b> there</p>`;\n';
     expect(swapsOnlyBodyCopy(before, before.replace('Hello', 'Hi'), swap)).toBe(false);
   });
 
