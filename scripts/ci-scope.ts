@@ -36,7 +36,7 @@ import { join, resolve } from 'node:path';
 import { areaOf } from './ci-areas.ts';
 import { dependenciesOf } from './import-closure.ts';
 import { assignShards, parseShard, planItems, readPlan, type Part } from './db-shards.ts';
-import { readNamedSuites } from './named-suites.ts';
+import { readIsolationSuites, readNamedSuites } from './named-suites.ts';
 
 export interface ScopeMap {
   readonly scopable: readonly string[];
@@ -170,12 +170,7 @@ const pullRequestBase = (root: string): string =>
  * Isolation runs when one of its own suites is reached; every one is also a named
  * suite (tests/ci/ci-scope.test.ts), so its area is read the same way.
  */
-const isolationSuites = (root: string): string[] =>
-  (
-    JSON.parse(readFileSync(join(root, 'tests/db/isolation-suites.json'), 'utf8')) as {
-      invariant?: string[];
-    }
-  ).invariant ?? [];
+const isolationSuites = (root: string): string[] => readIsolationSuites(root).invariant;
 
 function main(argv: readonly string[]): number {
   const root = resolve(import.meta.dirname, '..');
