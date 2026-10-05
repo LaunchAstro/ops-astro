@@ -125,8 +125,23 @@ it('a large export reaches a reader that is slow to start reading', async () => 
   const exited = new Promise<number | null>((resolve) => {
     child.on('close', resolve);
   });
-  // The finder finishes its search while nothing reads; an exit() then drops what the pipe still holds.
-  await pause(3000);
+  const gone = new Promise<void>((resolve) => {
+    child.on('exit', () => resolve());
+  });
+  // The count goes to stderr right after the list's one write, so the search is
+  // over once it shows, however long the search took.
+  let said = '';
+  const searched = new Promise<void>((resolve) => {
+    child.stderr.on('data', (chunk: Buffer) => {
+      said += chunk.toString('utf8');
+      if (said.includes('row(s) hold the text')) resolve();
+    });
+    child.on('close', () => resolve());
+  });
+  await searched;
+  // Nothing reads yet: a finder that calls exit() is gone within this wait and
+  // drops what the pipe still holds; one that leaves its output to drain is not.
+  await Promise.race([gone, pause(2000)]);
   child.stdout.resume();
   expect(await exited).toBe(0);
   const lines = Buffer.concat(chunks)
