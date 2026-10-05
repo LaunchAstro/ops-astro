@@ -25,7 +25,6 @@ import { timeRecipes } from './time-recipes.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient } from './role-case-access-bodies.ts';
-import { invitationBody, isInvitation } from './role-case-invitation-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
 import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { tableBody } from './role-case-setup.ts';
@@ -50,7 +49,6 @@ export function createPositiveBody(
     };
     const tabled = await tableBody(declaration.name, context);
     if (tabled !== undefined) return tabled;
-    if (isInvitation(declaration.name)) return await invitationBody(declaration.name, context);
     switch (declaration.name) {
       case 'task.create':
         return { body: { fields: { title: 'the admin creates a task' } } };

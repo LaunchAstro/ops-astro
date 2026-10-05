@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // S0-5: what each command does to data, declared beside its permission key.
-// Its shapes and the class the gate reads, derived from it and never set by
-// hand, are in `data-effects-types.ts`, re-exported here.
+// Its shapes, the class the gate reads (derived from it and never set by
+// hand) and the three constructors below are in `data-effects-types.ts`.
 
 import type { CommandName } from './surface.ts';
-import type { DataEffects, OutsideEffect, RecordWrite } from './data-effects-types.ts';
+import type { DataEffects } from './data-effects-types.ts';
+import { business, client, writing } from './data-effects-types.ts';
 
 export type {
   ClassedEffects,
@@ -17,15 +18,6 @@ export type {
   RecordWrite,
 } from './data-effects-types.ts';
 export { classOf } from './data-effects-types.ts';
-
-const business = (...kinds: string[]): RecordWrite[] =>
-  kinds.map((kind) => ({ kind, scope: 'business' }));
-const client = (...kinds: string[]): RecordWrite[] =>
-  kinds.map((kind) => ({ kind, scope: 'client' }));
-const writing = (
-  writes: readonly RecordWrite[],
-  outside: readonly OutsideEffect[] = [],
-): DataEffects => ({ writes, intake: [], outside, access: false });
 
 const READ = writing([]);
 // A task is a row of `records`, with its unique values beside it.
