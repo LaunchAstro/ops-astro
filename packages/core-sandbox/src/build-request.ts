@@ -3,13 +3,14 @@
 // I1 (docs/plan/sandbox-contract.md, section 3): a `site.build` request is
 // strict JSON with exactly `site`, `baseRevision`, `path` and `content`. The
 // site must have a record (else `unknown site`) and a pin with an image id
-// (else `no pin`, I4). `baseRevision` is 40 lowercase hex. The path is plain
+// (else `no pin`, I4); the id is held to the pin list's grammar before any
+// lookup. `baseRevision` is 40 lowercase hex. The path is plain
 // segments in I3's character set under one of the record's content
 // directories, its last segment a name ending in one of the record's
 // extensions; the content is a string of at most 64 KiB of UTF-8. Whether
 // the path is a regular file at `baseRevision` is judged from the tree (I2).
 
-import type { SiteEntry } from './pin-list.ts';
+import { type SiteEntry, SITE_ID } from './pin-list.ts';
 import type { Refused, SandboxResult, Why } from './refusal.ts';
 import type { SiteRecord } from './site-record.ts';
 import { SEGMENT } from './input-tree.ts';
@@ -51,7 +52,12 @@ export function readBuildRequest(
   const value = read.value;
   if (!hasExactKeys(value, KEYS) || !isJsonObject(value)) return refusal('request key');
   const { site, baseRevision, path, content } = value;
-  if (typeof site !== 'string' || typeof baseRevision !== 'string' || !REVISION.test(baseRevision))
+  if (
+    typeof site !== 'string' ||
+    !SITE_ID.test(site) ||
+    typeof baseRevision !== 'string' ||
+    !REVISION.test(baseRevision)
+  )
     return refusal('request value');
   const known = siteOf(site);
   if (known === null) return { ok: false, reason: 'unknown site', why: 'site id' };

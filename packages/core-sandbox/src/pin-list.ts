@@ -8,11 +8,14 @@
 // `Env` list. Each site entry, keyed by a site id, holds its lockfile
 // digest, its S1 image id, its attempt number, the site commit F2 builds and
 // its S1 `Env` list; the image id is empty exactly while a pin is being
-// made, and only then is the commit named. An `Env` list is `NAME=value`
-// items of printable ASCII with distinct names. A file that breaks any of
-// this is `internal`: the proxy admits no create from it.
+// made, and only then is the commit named. An `Env` list opens with its
+// class's fixed B3 pairs in order (S1 for a site, S2 for a base), then
+// uppercase `NAME=value` items of printable ASCII, each name once and none of
+// them npm configuration. A file that breaks any of this is `internal`: the
+// proxy admits no create from it.
 
 import { fault, type SandboxResult } from './refusal.ts';
+import { basePair, S1_OPENING, S2_OPENING } from './run-env.ts';
 import { hasExactKeys, isJsonObject, type Json, parseStrictJson } from './strict-json.ts';
 
 export type SiteEntry = {
@@ -31,51 +34,58 @@ export type PinList = {
 
 const IMAGE = /^sha256:[0-9a-f]{64}$/u;
 const COMMIT = /^[0-9a-f]{40}$/u;
-const SITE_ID = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
-const ENV_ITEM = /^([A-Za-z_][A-Za-z0-9_]*)=[ -~]*$/u;
+/** A site id: lowercase letters and digits, inner hyphens, at most 63. */
+export const SITE_ID: RegExp = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 const PLATFORMS: ReadonlySet<string> = new Set(['linux/arm64', 'linux/amd64']);
 const MAX_ATTEMPT = 2 ** 31 - 1;
 
-const image = (value: Json | undefined): value is string =>
+const isImage = (value: Json | undefined): value is string =>
   typeof value === 'string' && IMAGE.test(value);
 
-function envList(value: Json | undefined): string[] | null {
+/**
+ * An `Env` list that opens with its class's fixed B3 pairs, in order, followed
+ * by base and record variables as `basePair` reads them, each name once: so no
+ * spelling of npm's configuration can follow the opening.
+ */
+function envList(value: Json | undefined, opening: readonly string[]): string[] | null {
   if (!Array.isArray(value)) return null;
-  const names = new Set<string>();
-  const env: string[] = [];
-  for (const item of value) {
-    const name = typeof item === 'string' ? ENV_ITEM.exec(item)?.[1] : undefined;
-    if (name === undefined || names.has(name)) return null;
-    names.add(name);
-    env.push(item as string);
+  const items = value.filter((item): item is string => typeof item === 'string');
+  if (items.length !== value.length || opening.some((item, at) => items[at] !== item)) return null;
+  const names = new Set(opening.map((item) => item.slice(0, item.indexOf('='))));
+  for (const item of items.slice(opening.length)) {
+    const pair = basePair(item);
+    if (pair === null || names.has(pair[0])) return null;
+    names.add(pair[0]);
   }
-  return env;
+  return items;
 }
 
 function baseEntry(value: Json | undefined): BaseEntry | null {
   if (!hasExactKeys(value, ['image', 'env']) || !isJsonObject(value)) return null;
-  const env = envList(value['env']);
-  return image(value['image']) && env !== null ? { image: value['image'], env } : null;
+  const { image: id } = value;
+  const env = envList(value['env'], S2_OPENING);
+  return isImage(id) && env !== null ? { image: id, env } : null;
 }
 
 function siteEntry(value: Json | undefined): SiteEntry | null {
   const keys = ['lockfile', 'image', 'attempt', 'commit', 'env'];
   if (!hasExactKeys(value, keys) || !isJsonObject(value)) return null;
-  const { lockfile, attempt, commit } = value;
-  const env = envList(value['env']);
-  const making = value['image'] === '' && typeof commit === 'string' && COMMIT.test(commit);
-  const pinned = image(value['image']) && commit === '';
+  const { lockfile, image: id, attempt, commit } = value;
+  const env = envList(value['env'], S1_OPENING);
+  if (typeof id !== 'string' || typeof commit !== 'string' || typeof attempt !== 'number')
+    return null;
+  const making = id === '' && COMMIT.test(commit);
+  const pinned = isImage(id) && commit === '';
   if (
-    !image(lockfile) ||
+    !isImage(lockfile) ||
     !(making || pinned) ||
     !Number.isSafeInteger(attempt) ||
-    typeof attempt !== 'number' ||
     attempt < 1 ||
     attempt > MAX_ATTEMPT ||
     env === null
   )
     return null;
-  return { lockfile, image: value['image'] as string, attempt, commit: commit as string, env };
+  return { lockfile, image: id, attempt, commit, env };
 }
 
 /** The entries of an object whose keys each pass `fits` and whose values each read. */
@@ -106,7 +116,7 @@ export function readPinList(bytes: Uint8Array): SandboxResult<{ pins: PinList }>
   if (
     !hasExactKeys(probe, ['image']) ||
     !isJsonObject(probe) ||
-    !image(probe['image']) ||
+    !isImage(probe['image']) ||
     base === null ||
     base.size === 0 ||
     sites === null

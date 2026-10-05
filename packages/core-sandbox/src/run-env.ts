@@ -8,9 +8,13 @@
 // configuration the launcher writes (offline, ignore-scripts, cache path)
 // and the base image's own variables, and no site variable. A name keeps the
 // first value listed, so neither the base image nor a record can change a
-// fixed value: a record naming HOME gets B3's.
+// fixed value: a record naming HOME gets B3's. A base variable is an
+// uppercase NAME=value of printable ASCII and never npm configuration: npm
+// reads every `npm_config_` variable whatever its case and lets the later one
+// win, so a base image could otherwise undo S2's offline or ignore-scripts.
+// A base list that breaks this is `internal`.
 
-import type { SandboxResult } from './refusal.ts';
+import { fault, type SandboxResult } from './refusal.ts';
 
 type Pair = readonly [string, string];
 
@@ -35,14 +39,25 @@ const S2_FIXED: readonly Pair[] = [
 
 /** The names S1 fixes; a site record may name one and gets B3's value (I6). */
 export const S1_FIXED_NAMES: ReadonlySet<string> = new Set(S1_FIXED.map(([name]) => name));
+/** Each class's fixed pairs as its `Env` list opens with them (the pin list, B3). */
+export const S1_OPENING: readonly string[] = S1_FIXED.map(([name, value]) => `${name}=${value}`);
+export const S2_OPENING: readonly string[] = S2_FIXED.map(([name, value]) => `${name}=${value}`);
 
-/** `NAME=value` items as pairs; the base image's config writes no other form. */
-function pairs(env: readonly string[]): Pair[] {
-  return env.map((item) => {
-    const at = item.indexOf('=');
-    if (at < 1) throw new Error('B3 reads the base image variables as NAME=value');
-    return [item.slice(0, at), item.slice(at + 1)];
-  });
+const BASE_NAME = /^[A-Z_][A-Z0-9_]*$/u;
+const VALUE = /^[ -~]*$/u;
+
+/** A base image variable as a pair, or null when it breaks uppercase NAME=value or is npm's. */
+export function basePair(item: string): Pair | null {
+  const at = item.indexOf('=');
+  const name = item.slice(0, at);
+  const value = item.slice(at + 1);
+  const fits = at > 0 && BASE_NAME.test(name) && VALUE.test(value);
+  return fits && !name.toLowerCase().startsWith('npm_config_') ? [name, value] : null;
+}
+
+function pairs(env: readonly string[]): Pair[] | null {
+  const read = env.map((item) => basePair(item));
+  return read.every((pair) => pair !== null) ? read : null;
 }
 
 /** Each name once, at the first value listed. */
@@ -61,9 +76,13 @@ export function s1Env(
   base: readonly string[],
   record: { readonly buildEnv: readonly Pair[] },
 ): SandboxResult<{ env: string[] }> {
-  return { ok: true, env: exact([S1_FIXED, pairs(base), record.buildEnv]) };
+  const own = pairs(base);
+  return own === null
+    ? fault('base env')
+    : { ok: true, env: exact([S1_FIXED, own, record.buildEnv]) };
 }
 
 export function s2Env(base: readonly string[]): SandboxResult<{ env: string[] }> {
-  return { ok: true, env: exact([S2_FIXED, pairs(base)]) };
+  const own = pairs(base);
+  return own === null ? fault('base env') : { ok: true, env: exact([S2_FIXED, own]) };
 }

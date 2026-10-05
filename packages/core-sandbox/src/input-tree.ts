@@ -5,7 +5,8 @@
 // at most 20,000 entries and 50 MB of regular files and directories, every
 // name in O1's character set plus `[` and `]`, NFC, unique after ASCII case
 // folding, with no build output or tool directory and no package manager or
-// git configuration file at any depth. The character set is ASCII only, so
+// git configuration file at any depth, and no `.git` in any spelling git
+// itself refuses to check out (any case, trailing dots, or `git~1`). The character set is ASCII only, so
 // every accepted name is NFC by construction.
 
 import type { Refused, SandboxResult, Why } from './refusal.ts';
@@ -44,6 +45,12 @@ const CONFIG: ReadonlySet<string> = new Set([
 
 const refusal = (why: Why): Refused => ({ ok: false, reason: 'input refused', why });
 
+/** True for `.git` as git's checkout refuses it: any case, trailing dots, or its 8.3 short name. */
+function isGitDirectory(segment: string): boolean {
+  const lower = segment.toLowerCase();
+  return lower === 'git~1' || /^\.git\.*$/u.test(lower);
+}
+
 /** The clause a name breaks, or null when every segment is plain, allowed and not reserved. */
 function nameClause(path: string): Why | null {
   const segments = path.split('/');
@@ -51,7 +58,8 @@ function nameClause(path: string): Why | null {
     if (!SEGMENT.test(segment) || segment === '.' || segment === '..') return 'tree name';
   }
   if (segments.some((segment) => RESERVED.has(segment))) return 'tree reserved';
-  if (segments.some((segment) => CONFIG.has(segment))) return 'tree config';
+  if (segments.some((segment) => CONFIG.has(segment) || isGitDirectory(segment)))
+    return 'tree config';
   return null;
 }
 

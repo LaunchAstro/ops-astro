@@ -5,8 +5,9 @@
 // `packageManager` field. Every non-root package entry has a `sha512`
 // integrity and a `resolved` URL of exactly one of two forms, built from the
 // entry's own name and version; an alias, a link or any other host is a
-// refusal. Both files are read with the strict JSON parser, `package.json`
-// under its 1 MiB and the lockfile under its own 16 MB. A `resolved`
+// refusal. Both files are read as bytes with the strict JSON parser, which
+// checks the cap before decoding and refuses bad UTF-8 and a byte-order
+// mark: `package.json` under its 1 MiB and the lockfile under its own 16 MB. A `resolved`
 // value is compared whole against the form spelt from the entry's key and
 // version, never matched by pattern, so no other URL can pass.
 
@@ -39,8 +40,11 @@ export const LOCKFILE_CAP = 16_000_000;
 
 const refusal = (why: Why): Refused => ({ ok: false, reason: 'lockfile refused', why });
 
-function parse(text: string, maxBytes = MAX_JSON_BYTES): SandboxResult<{ object: JsonObject }> {
-  const read = parseStrictJson(new TextEncoder().encode(text), { maxBytes });
+function parse(
+  bytes: Uint8Array,
+  maxBytes = MAX_JSON_BYTES,
+): SandboxResult<{ object: JsonObject }> {
+  const read = parseStrictJson(bytes, { maxBytes });
   if (!read.ok) return refusal(read.why);
   return isObject(read.value) ? { ok: true, object: read.value } : refusal('lockfile entry');
 }
@@ -87,12 +91,10 @@ function entryClause(key: string, entry: Json | undefined, scopes: readonly stri
 }
 
 export function checkLockfile(
-  packageJsonBytes: Uint8Array,
-  lockfileBytes: Uint8Array,
+  packageJson: Uint8Array,
+  lockfile: Uint8Array,
   scopes: readonly string[],
 ): SandboxResult<object> {
-  const packageJson = new TextDecoder().decode(packageJsonBytes);
-  const lockfile = new TextDecoder().decode(lockfileBytes);
   const manifest = parse(packageJson);
   if (!manifest.ok) return manifest;
   if (Object.hasOwn(manifest.object, 'packageManager')) return refusal('package manager');

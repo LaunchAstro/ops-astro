@@ -13,7 +13,9 @@
 // what is left of I3's 50 MB. A name is UTF-8 of at most 255 bytes with no
 // slash, a path at most 4,096 bytes. The changed file must replace a
 // regular file at `baseRevision`, and the edited tree is judged by I3.
-// A broker failure is thrown to the caller.
+// A broker failure is thrown to the caller, which names its R1 reason (2e).
+// The sha1 here has no collision detection (git and GitHub use SHA-1DC), so
+// the broker must read only from a host that rejects known collision objects.
 
 import { createHash } from 'node:crypto';
 import { checkTree, MAX_BYTES, MAX_ENTRIES, type TreeEntry } from './input-tree.ts';
