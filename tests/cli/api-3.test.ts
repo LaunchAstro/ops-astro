@@ -18,7 +18,7 @@ import type { Transport } from '../../apps/cli/client.ts';
 import { COMMAND_SURFACE, DELEGATION_HEADER, PREFIX } from '../../packages/core-wire/src/index.ts';
 import { shareWithClient, type Member } from '../commands/fixture.ts';
 import { tokenFor } from '../api/fixture.ts';
-import { connect } from '../../packages/core-records/src/index.ts';
+import { connect, lockAccess } from '../../packages/core-records/src/index.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -404,7 +404,8 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
    * A write held at the business's audit chain (`audit_events_chain`'s lock,
    * taken by another transaction on a connection of its own) while its
    * writer's only write grant is revoked: the revocation waits for the write
-   * to commit, and the write commits under the grant it was judged on.
+   * to commit, and the write commits under the grant it was judged on. The
+   * revocation takes the access lock first, as `revokeGrantRow` does.
    */
   async function revokeAtAuditChain<T>(
     name: string,
@@ -420,6 +421,7 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
       holding = resolve;
     });
     const side = connect(w.db.appUrl, { max: 1 });
+    const revoker = connect(w.db.appUrl, { max: 1 });
     const holder = side.withBusiness(w.business, async (tx) => {
       await tx.query('select pg_advisory_xact_lock(hashtextextended($1::text, 0))', [w.business]);
       holding?.();
@@ -429,15 +431,19 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
       await held;
       const writing = write(await w.person(writer));
       await blockedOnLock(Date.now() + 10_000);
+      // Revoked as every revocation is: the access lock first (`lockAccess`), on a third connection.
       let revoked = false;
-      const revoking = w.db.admin
-        .execute(
-          `update public.grants set revoked_at = now()
-            where business_id = $1 and subject_kind = 'person' and subject_id = $2
-              and collection = 'task' and action = 'write' and revoked_at is null
-            returning id`,
-          [w.business, writer.personId],
-        )
+      const revoking = revoker
+        .withBusiness(w.business, async (tx) => {
+          await lockAccess(tx);
+          return await tx.query(
+            `update public.grants set revoked_at = now()
+              where business_id = $1 and subject_kind = 'person' and subject_id = $2
+                and collection = 'task' and action = 'write' and revoked_at is null
+              returning id`,
+            [w.business, writer.personId],
+          );
+        })
         .then((rows) => {
           revoked = true;
           return rows;
@@ -453,6 +459,7 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
       release?.();
       await holder.catch(() => null);
       await side.close();
+      await revoker.close();
     }
   }
 
