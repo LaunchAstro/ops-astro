@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// catalogue #439: Sol's OW-016 criterion 1 proof, body as given (file named by
+// catalogue #439: Sol's OW-016 criterion 1 proof, body as given (file and title named by
 // behaviour; the other two OW-016 proofs belong to #601 and #440).
 import { expect, it } from 'vitest';
 import {
@@ -16,7 +16,7 @@ import { ask, local, ownerOf, rowsFor } from './aw-04-planning-world.ts';
 // Deliberately no skip: a Sol proof requires a reachable throwaway database.
 useBrokerWorld('solow016lookup');
 
-it('Sol proof, criterion 1: reconciliation uses the eligible route that carried the call when route keys collide', async () => {
+it('reconciliation uses the eligible route that carried the call when route keys collide', async () => {
   const on = await seedSchedules(s.db, 'solow016twinroute', 1_000_000);
   const route = { ...LOCAL, key: 'sol_twin_route' };
   // The cloud subscription route is configured for attended own work. It is
