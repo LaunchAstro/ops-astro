@@ -15,6 +15,12 @@
   "overrides": [
     {
       "files": [
+        "tests/acceptance/a-credential-cannot-write-another-clients-or-persons-task.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
         "tests/api/an-ending-admitted-before-its-manager-grant-was-revoked-is-refused.test.ts"
       ],
       "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
