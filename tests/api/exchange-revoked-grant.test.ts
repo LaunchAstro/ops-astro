@@ -6,11 +6,20 @@
 // conversation.read asks. The first case is the review's proof, renamed for
 // what it proves and otherwise as written. The second revokes the grant while
 // the model answers: the reply is kept only under the conversation's row lock,
-// and the grant is asked again there.
+// and the grant is asked again there. The third pins that a writer's check
+// counts only a grant it holds. The races on that re-check are in
+// exchange-grant-races.test.ts.
 
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { revokeGrant, type TenantQuery } from '../../packages/core-records/src/index.ts';
+import {
+  revokeGrant,
+  subjectsOf,
+  withSession,
+  type TenantQuery,
+} from '../../packages/core-records/src/index.ts';
+import { holdCoveringGrants, lockedInstant } from '../../packages/core-runtime/src/index.ts';
+import { holdsOwnConversations } from '../../packages/core-commands/src/commands/conversations.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { conversationWorld, detail, type ConversationWorld } from './aw-03-fixture.ts';
 import { localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
@@ -20,9 +29,9 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
-// eslint-disable-next-line max-lines-per-function -- one world, both cases on it
 describe.skipIf(serverUrl === undefined)(
   'the conversation exchange and the conversation grant',
+  // eslint-disable-next-line max-lines-per-function -- one world, every case on it
   () => {
     let w: ConversationWorld;
     let c: Controls;
@@ -117,6 +126,23 @@ describe.skipIf(serverUrl === undefined)(
           async (tx) => await grantTo(tx, w.owner, 'write', undefined, false, 'conversation'),
         );
       }
+    });
+
+    it("a writer's conversation grant check counts only a grant it holds", async () => {
+      const answers = await withSession(
+        w.fixture.db.app,
+        w.fixture.business,
+        w.owner.presented,
+        async (tx, session) => {
+          const at = await lockedInstant(tx);
+          const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation'));
+          return [
+            await holdsOwnConversations(tx, session, { at, held: new Set() }),
+            await holdsOwnConversations(tx, session, { at, held }),
+          ];
+        },
+      );
+      expect(answers).toEqual([false, true]);
     });
 
     async function revokeConversationWrite(tx: TenantQuery): Promise<void> {
