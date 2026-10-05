@@ -222,3 +222,21 @@ it('judges the edited tree by I3', async () => {
     refused('tree duplicate'),
   );
 });
+
+it('refuses a name over 255 bytes and a path over 4,096 bytes', async () => {
+  const fileId = blob('x');
+  const longName = commit(level([`100644 ${fileId} ${'a'.repeat(256)}.md`]));
+  const deep = Array.from(
+    { length: 17 },
+    (_, n) => `${String(n).padStart(2, '0')}${'d'.repeat(253)}`,
+  );
+  let nested = level([`100644 ${fileId} a.md`]);
+  for (const name of deep.toReversed()) nested = level([`040000 ${nested} ${name}`]);
+  await allRefused(
+    [assembleTree(read, longName, EDIT), assembleTree(read, commit(nested), EDIT)],
+    'tree name',
+  );
+  const fits = commit(level([`100644 ${fileId} ${'a'.repeat(252)}.md`]));
+  const result = await assembleTree(read, fits, { ...EDIT, path: `${'a'.repeat(252)}.md` });
+  expect(result.ok).toBe(true);
+});
