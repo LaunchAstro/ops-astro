@@ -126,21 +126,28 @@ const TEXT = `s.held like lower($1::text)`;
 /** Whether `s.held` holds the text ($1, or null) or a seed id ($3). */
 const HOLDS = `(${TEXT} or exists (select from unnest($3::text[]) i where strpos(s.held, i) > 0))`;
 
-/** Rows of business $2 holding the text or a seed ($3, standing for people $4; $5 the given ids). */
-const copies = (table) => `select t.ctid::text as address, to_jsonb(t) as row,
-      array(select c.key from jsonb_each(to_jsonb(t)) c
+/**
+ * Rows of business $2 holding the text or a seed ($3, standing for people $4;
+ * $5 the given ids). The table is read first, so the statement's opening
+ * names it, as a lock wait shows it in pg_stat_activity.
+ */
+const copies = (table) => `with r as (
+      select t.ctid as address, to_jsonb(t) as row
+        from public."${table}" t
+       where t.business_id = $2)
+  select r.address::text as address, r.row,
+      array(select c.key from jsonb_each(r.row) c
              where exists (select from ${values('c.value')} where ${HOLDS})
              order by c.key) as columns,
       array(select distinct seed.person from unnest($3::text[], $4::text[]) seed(id, person)
-             where exists (select from ${values('to_jsonb(t)')} where strpos(s.held, seed.id) > 0)
+             where exists (select from ${values('r.row')} where strpos(s.held, seed.id) > 0)
              order by 1) as people,
-      exists (select from ${values('to_jsonb(t)')} where ${TEXT}) as text,
-      exists (select from ${values('to_jsonb(t)')}
+      exists (select from ${values('r.row')} where ${TEXT}) as text,
+      exists (select from ${values('r.row')}
                where exists (select from unnest($5::text[]) g where strpos(s.held, g) > 0)) as given
-    from public."${table}" t
-   where t.business_id = $2
-     and exists (select from ${values('to_jsonb(t)')} where ${HOLDS})
-   order by t.ctid`;
+    from r
+   where exists (select from ${values('r.row')} where ${HOLDS})
+   order by r.address`;
 
 /** The public schema's tables, materialised views and foreign tables, never a partition. */
 const TABLES = `select c.relname as name, c.relkind as kind,
