@@ -194,6 +194,8 @@ export type Settlement =
       readonly state: 'liability_unknown';
       readonly heldMinor: number;
       readonly observedMinor: number;
+      /** The attempt's own priced cost, apart from the hold's settled calls. */
+      readonly costMinor: number;
       /** Why the hold stays whole: spend above it, or a model call on it still open. */
       readonly cause: 'over_hold' | 'call_open';
     };
@@ -255,6 +257,7 @@ export async function settleAtObserved(
       state: 'liability_unknown',
       heldMinor: Number(of.heldMinor),
       observedMinor: Number(spentMinor),
+      costMinor: Number(of.costMinor),
       cause: calls.open ? 'call_open' : 'over_hold',
     };
   }

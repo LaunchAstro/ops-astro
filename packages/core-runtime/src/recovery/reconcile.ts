@@ -173,7 +173,15 @@ async function answer(tx: TenantQuery, row: Unknown, lookup: EffectLookup): Prom
   // The hold's model calls are part of what it spent, and one sent and never settled leaves
   // the hold whole for a person: the rule observation settles by (#832).
   const calls = await modelCallsOn(tx, row.reservation_id);
-  if (cost === undefined || calls.open || cost + calls.spentMinor > BigInt(row.held_minor)) {
+  if (calls.open) {
+    return {
+      attemptId,
+      answer: 'unanswered',
+      reason:
+        'the effect happened, but a model call on this hold was sent and never settled; a person records it',
+    };
+  }
+  if (cost === undefined || cost + calls.spentMinor > BigInt(row.held_minor)) {
     return {
       attemptId,
       answer: 'unanswered',
@@ -186,7 +194,12 @@ async function answer(tx: TenantQuery, row: Unknown, lookup: EffectLookup): Prom
     [tx.businessId, attemptId],
   );
   await settle(tx, row, cost, calls, 'completed');
-  return { attemptId, answer: 'present', reason: `settled once at ${cost.toString()} by the book` };
+  const spent = (cost + calls.spentMinor).toString();
+  return {
+    attemptId,
+    answer: 'present',
+    reason: `settled once at ${spent} by the book and its calls`,
+  };
 }
 
 export const settle = async (

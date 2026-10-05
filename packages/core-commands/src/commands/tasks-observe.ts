@@ -117,7 +117,7 @@ async function observeAs(
           'Nothing was settled. The attempt is held at its maximum as an unknown liability until a person records its outcome.',
         ],
       ),
-      { observedMinor: settlement.observedMinor },
+      { observedMinor: settlement.observedMinor, costMinor: settlement.costMinor },
     );
   }
   return applied(taskId, null, observed);
