@@ -18,6 +18,7 @@ import type { Transport } from '../../apps/cli/client.ts';
 import { COMMAND_SURFACE, DELEGATION_HEADER, PREFIX } from '../../packages/core-wire/src/index.ts';
 import { shareWithClient, type Member } from '../commands/fixture.ts';
 import { tokenFor } from '../api/fixture.ts';
+import { connect } from '../../packages/core-records/src/index.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -290,6 +291,7 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
       );
       expect(said.exit, said.out).toBe(0);
     }
+    await w.grant(lead, 'share');
     const client = await shareWithClient(w.db.app, w.business, lead, id);
     const view = async (detail: string): Promise<Record<string, unknown>> => {
       const answer = await post(client, '/task/read', { recordId: id, detail });
@@ -345,8 +347,10 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
     const held = new Promise<void>((resolve) => {
       holding = resolve;
     });
-    // Another transaction holds the task, unchanged, on a connection of its own.
-    const holder = w.db.app.withBusiness(w.business, async (tx) => {
+    // Another transaction holds the task, unchanged, on a connection of its own
+    // (the world's pool, which the API uses, has one).
+    const side = connect(w.db.appUrl, { max: 1 });
+    const holder = side.withBusiness(w.business, async (tx) => {
       await tx.query(
         'select id from public.records where business_id = $1 and id = $2 for update',
         [w.business, id],
@@ -392,6 +396,7 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
     } finally {
       release?.();
       await holder.catch(() => null);
+      await side.close();
     }
   });
 
