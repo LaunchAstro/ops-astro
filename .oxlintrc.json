@@ -15,6 +15,12 @@
   "overrides": [
     {
       "files": [
+        "tests/acceptance/a-credential-cannot-write-another-clients-or-persons-task.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
         "tests/api/an-ending-admitted-before-its-manager-grant-was-revoked-is-refused.test.ts"
       ],
       "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
@@ -235,6 +241,10 @@
     {
       "files": ["tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs"],
       "rules": { "no-promise-executor-return": "off", "sort-vars": "off" }
+    },
+    {
+      "files": ["tests/broker/reconcile-keeps-call-when-its-carrier-changes.test.ts"],
+      "rules": { "max-lines-per-function": "off", "no-promise-executor-return": "off" }
     },
     {
       "files": ["tests/surfaces/term-tip-test-detects-invisible-tooltip.mjs"],

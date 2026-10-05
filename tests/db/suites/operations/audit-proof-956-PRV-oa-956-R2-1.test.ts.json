@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "Sol's proof PRV-oa-956-R2.1: an unrelated record holding a value too long for the text-search parser does not abort the copy finder's inventory."
+}

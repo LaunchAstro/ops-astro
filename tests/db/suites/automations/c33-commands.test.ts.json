@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "PORT-P10 (C33 commands): owner check, release numbering and value refusals, mode and pin refusals, no run without approval."
+}
