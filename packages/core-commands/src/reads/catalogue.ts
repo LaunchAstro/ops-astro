@@ -418,7 +418,11 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) };
       if (operands.detail !== undefined) {
         const blockers = await blockersFor(tx, subjectsOf(session), recordId);
-        return { ok: true, detail: operands.detail, view: taskAt(operands.detail, shown, blockers) };
+        return {
+          ok: true,
+          detail: operands.detail,
+          view: taskAt(operands.detail, shown, blockers),
+        };
       }
       return { ok: true, task: shown, states: await readStateChoices(tx, spine.taskStateTypeId) };
     },
