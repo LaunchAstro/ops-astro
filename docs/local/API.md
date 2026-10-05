@@ -3352,7 +3352,11 @@ once. The caller's `automation:manage` grants are held from before any
 automation row, so a revocation of one waits for the change; under the
 activation's lock the key is asked again at the clock after the wait, so a
 grant that ran out meanwhile refuses it, and a rollback picks its target
-there, after any revocation of an approval that held the lock. A repeat is
+there, after any revocation of an approval that held the lock. Once its rows
+are written, the change takes the audit chain's lock and asks the key a last
+time at that clock: a grant that ran out while it waited there, or a session
+signed out while it waited (`AUTH_SESSION_EXPIRED`), refuses it and nothing
+applies. A repeat is
 refused: a revoked approval, or an automation already off, answers
 `TRANSITION_NOT_PERMITTED`; the same `operationId` sent again is replayed. The
 registry shows each activation's

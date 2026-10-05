@@ -101,6 +101,7 @@ export {
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
   resolveLogin,
+  sessionEndedSince,
   withSession,
   type SecondFactorRule,
   type Session,

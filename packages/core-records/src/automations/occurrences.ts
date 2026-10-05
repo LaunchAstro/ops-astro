@@ -8,6 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { readStandingApproval } from './approvals.ts';
 import {
   ACTIVATION_COLUMNS,
   activationOf,
@@ -75,13 +76,8 @@ export async function claimOccurrence(
   activationId: string,
   cause: OccurrenceCause,
 ): Promise<OccurrenceClaim> {
-  const found = await tx.query<ActivationDbRow & { readonly standing: string | null }>(
-    `select ${ACTIVATION_COLUMNS},
-            (select s.id from public.standing_approvals s
-              where s.id = activations.approval_id
-                and not exists (select 1 from public.standing_approval_revocations r
-                                 where r.approval_id = s.id)) as standing
-       from public.activations where id = $1 for share`,
+  const found = await tx.query<ActivationDbRow>(
+    `select ${ACTIVATION_COLUMNS} from public.activations where id = $1 for share`,
     [activationId],
   );
   if (found[0] === undefined) return { kind: 'unknown' };
@@ -90,10 +86,14 @@ export async function claimOccurrence(
   if (activation.mode !== (scheduled ? 'scheduled' : 'event')) {
     return { kind: 'not_firing', mode: activation.mode };
   }
-  const standing = found[0].standing;
+  // In a statement of its own, after the lock: one that waited on an adoption
+  // sees the new pin, but anything else it reads keeps the snapshot it began with.
+  const standing = await readStandingApproval(tx, activation.id);
   let outcome: OccurrenceOutcome = 'activation_off';
-  if (activation.enabled) outcome = standing === null ? 'no_standing_approval' : 'approved';
-  const approvalId = outcome === 'approved' ? standing : null;
+  if (activation.enabled) {
+    outcome = standing === null || standing.revoked ? 'no_standing_approval' : 'approved';
+  }
+  const approvalId = outcome === 'approved' ? (standing?.id ?? null) : null;
   const dueAt = scheduled ? cause.dueAt : null;
   const eventId = scheduled ? null : cause.eventId;
   const inserted = await tx.query<OccurrenceDbRow>(

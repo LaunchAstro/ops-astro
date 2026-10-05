@@ -18,8 +18,10 @@
 // either refuses it or waits for it; then it locks the activation and asks
 // once more at the clock after that wait, so a grant that ran out meanwhile
 // refuses it too. A rollback picks its target under that lock, after any
-// revocation that held it has committed. Only an automation that is on is
-// approved.
+// revocation that held it has committed. Once its rows are written, each
+// takes the audit chain's lock, its last wait, and asks a last time at that
+// clock, its session included (`standsAtCommit`). Only an automation that is
+// on is approved.
 //
 // A repeat is refused, not answered as done: revoking a revoked approval and
 // turning off an automation that is off are each TRANSITION_NOT_PERMITTED.
@@ -27,6 +29,7 @@
 
 import {
   adoptVersion,
+  advisoryLock,
   approvalActivation,
   isUuid,
   lockActivation,
@@ -34,6 +37,7 @@ import {
   readVersion,
   revokeApproval,
   rollbackTarget,
+  sessionEndedSince,
   turnOffActivation,
   type ActivationRow,
   type AdoptionAct,
@@ -46,10 +50,10 @@ import type {
   ActivationTurnOffRequest,
   ApprovalRevokeRequest,
 } from './automation-requests.ts';
-import { holdAutomationAuthority } from './automation-authority.ts';
+import { askAutomationAuthority, holdAutomationAuthority } from './automation-authority.ts';
 import { invalid, isRevision, notPermitted, staleAt } from './automations.ts';
 import type { CommandContext } from './context.ts';
-import { refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 
 const unknownActivation = (): HandlerOutcome => refused(refuseNotFound(['activationId']));
@@ -82,6 +86,28 @@ async function lockedAuthority(
 ): Promise<HandlerOutcome | null> {
   await lockActivation(tx, activationId);
   return await holdAutomationAuthority(tx, context);
+}
+
+/**
+ * The last authority read, once the change's rows are written: after the
+ * audit chain's lock, its last wait (as `tasks-agent.ts` takes it; the key is
+ * the chain trigger's, `business_id::text`, lower case). The key is asked at
+ * that clock, the grants still held, and the session that sent the change must
+ * not have ended meanwhile: a sign-out here writes its own audit event, so it
+ * either committed before this lock and refuses the change, or waits for it.
+ * A refusal rolls the change's rows back with the handler's savepoint.
+ */
+async function standsAtCommit(
+  tx: TenantQuery,
+  context: CommandContext,
+): Promise<HandlerOutcome | null> {
+  await advisoryLock(tx, tx.businessId.toLowerCase());
+  if (await sessionEndedSince(tx, context.session)) {
+    return refused(
+      refuseCommand('AUTH_SESSION_EXPIRED', [], ['sign in again: this session was signed out']),
+    );
+  }
+  return await askAutomationAuthority(tx, context);
 }
 
 /** The caller's grants held before any automation row, then `lockedAuthority`. */
@@ -120,6 +146,8 @@ async function adopt(
   });
   if (result.kind === 'unknown') return unknownActivation();
   if (result.kind === 'stale') return staleAt(result.revision);
+  const atCommit = await standsAtCommit(tx, context);
+  if (atCommit !== null) return atCommit;
   const { activation, approval } = result;
   return applied(activation.id, activation.revision, {
     activationId: activation.id,
@@ -185,6 +213,8 @@ export async function turnOffActivationAsPerson(
   if (result.kind === 'already_off') {
     return notPermitted('enabled=false', 'The automation is already off.');
   }
+  const atCommit = await standsAtCommit(tx, context);
+  if (atCommit !== null) return atCommit;
   const { activation } = result;
   return applied(activation.id, activation.revision, {
     activationId: activation.id,
@@ -212,5 +242,7 @@ export async function revokeStandingApproval(
   if (result === 'already_revoked') {
     return notPermitted('revoked', 'This approval is already revoked.');
   }
+  const atCommit = await standsAtCommit(tx, context);
+  if (atCommit !== null) return atCommit;
   return applied(request.approvalId, null, { approvalId: request.approvalId, revoked: true });
 }

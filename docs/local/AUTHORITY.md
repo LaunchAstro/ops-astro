@@ -822,7 +822,10 @@ the pin, mode, schedule or event, or a switch off), never give one. Each of
 the four holds the caller's `automation` grants for share before any
 automation row, so a revocation of one waits for the change, and asks the key
 again after it has locked the activation, at the clock after that wait: a
-grant that ran out while it waited refuses it. An automation that is off is
+grant that ran out while it waited refuses it. Once its rows are written it
+takes the audit chain's lock, its last wait, and asks again at that clock,
+refusing too if the session that sent it was signed out meanwhile. An
+automation that is off is
 never approved, so switching one on under `settings:manage` carries no
 approval.
 
