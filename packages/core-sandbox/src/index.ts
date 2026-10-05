@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The sandbox's grammars' one way in (docs/plan/sandbox-contract.md, ADR
-// 0048): requests, replies and a run's output. It imports nothing of the
+// 0048): requests, replies, a run's input and its output. It imports nothing of the
 // product and runs no container.
 
 export { AttachFrames, type AttachEnd } from './attach-frames.ts';
@@ -12,7 +12,9 @@ export {
   type Crossing,
 } from './create-body.ts';
 export * from './daemon-reply.ts';
+export { checkTree, type TreeEntry } from './input-tree.ts';
 export { writeLayer } from './layer-writer.ts';
+export { checkLockfile } from './lockfile.ts';
 export { outputDigest } from './output-digest.ts';
 export { forwardBytes, forwardLoadHead } from './proxy-forward.ts';
 export {

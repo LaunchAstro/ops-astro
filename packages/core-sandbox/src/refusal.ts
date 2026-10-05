@@ -3,7 +3,8 @@
 // A refusal from the sandbox's grammars. `reason` is one of the contract's
 // R1 reasons (docs/plan/sandbox-contract.md, section 9): a launcher request
 // the proxy will not forward is `proxy refused`, a run's output its grammar
-// refuses is `output refused`, and a daemon reply that breaks the
+// refuses is `output refused`, an input tree I3 refuses is `input refused`,
+// a lockfile I5 refuses is `lockfile refused`, and a daemon reply that breaks the
 // preamble's rules is `internal`. `why` names the clause that
 // refused, for the person reading the refusal and for the corpus tests.
 
@@ -39,7 +40,22 @@ export type Why =
   | 'tar duplicate'
   | 'tar link'
   | 'tar end'
-  | 'too many entries';
+  | 'too many entries'
+  | 'tree entries'
+  | 'tree size'
+  | 'tree type'
+  | 'tree name'
+  | 'tree duplicate'
+  | 'tree reserved'
+  | 'tree config'
+  | 'lockfile version'
+  | 'package manager'
+  | 'lockfile entry'
+  | 'lockfile integrity'
+  | 'lockfile resolved'
+  | 'lockfile alias'
+  | 'lockfile link'
+  | 'lockfile name';
 
 /** R1's reasons (section 9), in the contract's order, `internal` last. */
 export const REASONS = [
@@ -72,7 +88,8 @@ export const readReason = (value: unknown): Reason =>
 
 export type Refused = {
   readonly ok: false;
-  readonly reason: 'proxy refused' | 'output refused' | 'internal';
+  readonly reason:
+    'input refused' | 'lockfile refused' | 'proxy refused' | 'output refused' | 'internal';
   readonly why: Why;
 };
 
