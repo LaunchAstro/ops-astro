@@ -42,7 +42,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     expect(approval).toMatchObject({ versionId: version.id, act: 'adopted', revoked: false });
     const occurrence = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
     expect(occurrence).toMatchObject({ outcome: 'approved', versionId: version.id });
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     const sent = await f.dispatch(occurrence.id, s.start);
     expect(sent.kind).toBe('dispatched');
     expect(s.runs).toEqual([
@@ -58,7 +58,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     const activation = await w.activate(version, 'scheduled');
     const occurrence = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
     expect(occurrence.outcome).toBe('no_standing_approval');
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     expect(await f.dispatch(occurrence.id, s.start)).toEqual({
       kind: 'not_approved',
       outcome: 'no_standing_approval',
@@ -73,7 +73,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     expect(await f.revoke(approval.id)).toBe('already_revoked');
     const occurrence = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
     expect(occurrence.outcome).toBe('no_standing_approval');
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     expect(await f.dispatch(occurrence.id, s.start)).toEqual({
       kind: 'not_approved',
       outcome: 'no_standing_approval',
@@ -93,7 +93,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     await f.turnOff(activation.id);
     const occurrence = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
     expect(occurrence.outcome).toBe('activation_off');
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     expect(await f.dispatch(occurrence.id, s.start)).toEqual({
       kind: 'not_approved',
       outcome: 'activation_off',
@@ -109,7 +109,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     const held = occurrenceOf(await w.claim(revoked.activation.id, { dueAt: f.nextDue() }));
     expect(held.outcome).toBe('approved');
     expect(await f.revoke(revoked.approval.id)).toBe('revoked');
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     const late = await f.dispatch(held.id, s.start);
     expect(late).toEqual({
       kind: 'dispatched',
@@ -155,7 +155,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     expect(ids.size).toBe(1);
     expect(await w.occurrences(activation.id)).toBe(1);
     const [id] = [...ids] as [string];
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     const sent = await f.dispatchedTogether(activation.id, [id, id], s.start);
     sent.push(await f.dispatch(id, s.start));
     expect(sent.map((one) => one.kind).toSorted()).toEqual(['dispatched', 'replayed', 'replayed']);
@@ -171,7 +171,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
       w.claim(activation.id, { eventId }),
     ]);
     expect(occurrenceOf(a).id).toBe(occurrenceOf(b).id);
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     const sent = await f.dispatchedTogether(
       activation.id,
       [occurrenceOf(a).id, occurrenceOf(b).id],
