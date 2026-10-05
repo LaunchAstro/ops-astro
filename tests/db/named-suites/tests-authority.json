@@ -17,6 +17,7 @@
   ],
   "conformance": [
     "tests/authority/party-capability-reads.test.ts",
+    "tests/authority/readable-scope-within.test.ts",
     "tests/authority/revoke-keeps-a-manager-past-dependent-grants.test.ts",
     "tests/authority/share-revoke-on-trashed-task.test.ts"
   ]

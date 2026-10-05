@@ -103,6 +103,7 @@ import { usePresence } from '../data/presence.ts';
 import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
 import { useFreshOnPage } from '../views/freshness.tsx';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
+import { keepsClosure } from '../views/gate-controls.tsx';
 import { ConflictNotice, MovedNotice, UnsavedBar, changedSince } from './task/Notices.tsx';
 import { TaskHeader } from './task/Header.tsx';
 import { TaskFacts } from './task/Facts.tsx';
@@ -117,7 +118,7 @@ import {
   type PanelOpener,
   type Perspective,
 } from './task/Perspectives.tsx';
-import { TeamSubtasks } from './task/Subtasks.tsx';
+import { StepTitleHeld, TeamSubtasks } from './task/Subtasks.tsx';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RunProgress } from '../views/run-progress.tsx';
@@ -175,11 +176,23 @@ interface SaveAttempt {
   readonly generation: number;
 }
 
+/**
+ * The page, mounted afresh for each task under each grant. Every answer below
+ * belongs to the task and grant it was read for, so a route to another task
+ * (another client, person or business) starts with nothing drawn: React would
+ * otherwise render the new route once over the old read before the read
+ * resets, and commit the preceding task's run map, receipts and inspector
+ * under it. The key is the route's identity, never anything from an answer.
+ */
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
+  return <TaskPage key={`${props.grantKey}\u0000${props.taskKey}`} {...props} />;
+}
+
+function TaskPage(props: TaskDetailProps): ReactElement {
   const client = props.client;
   const hub = hubOf(client);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const { state, reload } = useRead<TaskReadResult>({
+  const { state, reload, live } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
     deps: [props.taskKey, props.changes ?? 0],
@@ -190,30 +203,25 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   });
   useFreshOnPage(state, hub);
 
-  // **The draft lives above the read.** A re-read under a draft keeps `Loaded`
-  // mounted (C4 live-sync 4: the rest of the page stays live and the edit is
-  // never read over), and any other re-read unmounts it, so the draft has to
-  // outlive that to be settled at all.
-  // It is still dropped exactly where it always was: a different task, a
-  // different grant, or a read the server denied. A draft that outlived its
-  // authority would be stale authorised data left on the screen, which is the
-  // thing that must not happen.
+  // **The draft lives above the read.** A re-read under a draft or from the live
+  // channel keeps `Loaded` mounted (C4 live-sync 4: the edit is never read over;
+  // MP-6-3: the map keeps its graph and selected card), and any other re-read
+  // unmounts it, so the draft has to outlive that to be settled at all. It is
+  // still dropped where it always was: a different task, a different grant, or a
+  // read the server denied. A draft that outlived its authority would be stale
+  // authorised data left on the screen, which must not happen.
   const identity = `${props.grantKey}\u0000${props.taskKey}`;
-  if (draft !== null && (draft.identity !== identity || state.outcome === 'denied')) {
-    setDraft(null);
-  }
+  const denied = state.outcome === 'denied';
+  if (draft !== null && (draft.identity !== identity || denied)) setDraft(null);
   const held = draft !== null && draft.identity === identity ? draft : null;
 
   // **A refused decision is remembered above the read, for one task under one
-  // grant.** Deciding rereads the task, and a reread unmounts everything below
-  // `RecordState`, so a refusal held inside the proposals view would disappear
-  // together with the version it was about — the screen would change and say
-  // nothing about why. It is dropped when the task or the reader changes, for
-  // the same reason a draft is: it is an answer about one record read under one
-  // authority. The comment and proposal refusals, and a stale press's quote,
-  // are held the same way for the same reason.
-  const denied = state.outcome === 'denied';
-  const [note, setNote] = useHeld<DecisionNote>(identity, denied);
+  // grant.** A reread unmounts everything below `RecordState`, so a refusal held
+  // in the proposals view would go with the version it was about, and the screen
+  // say nothing about why. It is dropped when the task or the reader changes, as
+  // a draft is. The other refusals, a stale press's quote and unsent words (the
+  // subtask box's too) are held the same way.
+  const [note, setNote] = useHeld<DecisionNote>(identity, denied, keepsClosure);
   const [commentRefusal, setCommentRefusal] = useHeld<string>(identity, denied);
   const [proposeRefusal, setProposeRefusal] = useHeld<string>(identity, denied);
   const [moved, setMoved] = useHeld<string>(identity, denied);
@@ -224,6 +232,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
   const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
   const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
+  const [stepTitle, setStepTitle] = useHeld<string>(identity, denied);
+  const [keep, setStepUp] = useKeep(held, identity, denied);
 
   return (
     <div className="stack">
@@ -235,7 +245,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
       {state.outcome === 'denied' && state.refusal.code === 'NOT_FOUND' ? (
         <TaskUnknown typed={props.taskKey} refusal={state.refusal} />
       ) : (
-        <RecordState state={state} subject="task" onRetry={reload} keep={held !== null}>
+        <RecordState state={state} subject="task" onRetry={reload} keep={keep || live}>
           {(value) =>
             'sharedTask' in value ? (
               <SharedTaskDetail task={value.sharedTask} />
@@ -268,6 +278,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 onShowAllTime={setShowAllTime}
                 showFinished={showFinished}
                 onShowFinished={setShowFinished}
+                stepTitle={stepTitle}
+                onStepTitle={setStepTitle}
                 onOpenPanel={props.onOpenPanel}
                 onAttempt={(attempt) => {
                   setDraft((current) =>
@@ -317,6 +329,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                   reload();
                 }}
                 onChanged={reload}
+                onStepUp={setStepUp}
               />
             )
           }
@@ -379,17 +392,36 @@ function RefreshRow(props: {
   );
 }
 
+/** The page kept under a reread: by an unsaved draft, or an open step-up prompt (OW-085.4). */
+function useKeep(held: Draft | null, identity: string, denied: boolean) {
+  const [stepUp, setStepUp] = useHeld<true>(identity, denied);
+  return [held !== null || stepUp !== null, setStepUp] as const;
+}
+
 function useHeld<T>(
   identity: string,
   denied: boolean,
+  keeps?: (held: T, next: T | null) => boolean,
 ): readonly [T | null, (next: T | null) => void] {
-  const [held, setHeld] = useState<{ readonly identity: string; readonly value: T } | null>(null);
-  if (held !== null && (held.identity !== identity || denied)) {
-    setHeld(null);
+  // The slot always names the task and grant it is for, empty or not, so a
+  // setter from an older task or grant can tell it writes nothing here.
+  const [held, setHeld] = useState<{ readonly identity: string; readonly value: T | null }>({
+    identity,
+    value: null,
+  });
+  if (held.identity !== identity || (denied && held.value !== null)) {
+    setHeld({ identity, value: null });
   }
-  const value = held !== null && held.identity === identity ? held.value : null;
+  const value = held.identity === identity ? held.value : null;
   const set = (next: T | null): void => {
-    setHeld(next === null ? null : { identity, value: next });
+    // Writing what is already held keeps the same slot, so no render follows.
+    setHeld((current) =>
+      current.identity !== identity ||
+      current.value === next ||
+      (current.value !== null && keeps?.(current.value, next) === true)
+        ? current
+        : { identity, value: next },
+    );
   };
   return [value, set];
 }
@@ -575,6 +607,9 @@ interface LoadedProps {
   /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
   readonly showFinished: boolean | null;
   readonly onShowFinished: (next: boolean | null) => void;
+  /** The subtask add box's unsent name, held above the read so a reread keeps it. */
+  readonly stepTitle: string | null;
+  readonly onStepTitle: (next: string | null) => void;
   /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
   readonly showAllTime: boolean;
   readonly onShowAllTime: (next: boolean) => void;
@@ -585,6 +620,7 @@ interface LoadedProps {
   readonly onSaved: (generation: number) => void;
   readonly onDiscard: () => void;
   readonly onChanged: () => void;
+  readonly onStepUp: (open: true | null) => void;
 }
 
 /** The names this reader may list, by person. */
@@ -734,7 +770,9 @@ function TeamSide(side: TeamSideProps): ReactElement {
 
       <TeamControls {...side} />
 
-      <TeamSubtasks {...side.props} />
+      <StepTitleHeld value={[side.props.stepTitle ?? '', side.props.onStepTitle]}>
+        <TeamSubtasks {...side.props} />
+      </StepTitleHeld>
 
       <TeamComments {...side.props} />
 
@@ -877,6 +915,9 @@ function AgentHead({
       people={persons}
       ledger={task.ledger}
       onChanged={props.onChanged}
+      note={props.note}
+      onDecided={props.onDecided}
+      onStepUp={props.onStepUp}
     />
   );
 }
@@ -905,7 +946,13 @@ function AgentSide({
       <div className="tpg">
         <div className="tpg__main">
           <BriefSection brief={task.agentBrief} />
-          <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
+          <RunProgress
+            client={client}
+            grantKey={props.grantKey}
+            proposals={task.proposals}
+            readOf={task}
+            taskKey={task.key}
+          />
           <Proposals
             capCurrency={task.capCurrency}
             client={client}

@@ -220,10 +220,11 @@ describe.skipIf(serverUrl === undefined)('L6 schedules: W02 (b) and W04', () => 
     );
     const original = answered(first);
     expect(codeOf(original)).toBe('applied');
-    // The retry in flight behind the original loses the operation-identity
-    // claim once, and the agent entry's one bounded retry (as the person
-    // entry's, `envelope.ts` `executeCommand`) reads the committed row and
-    // replays it: no fault reaches the caller (DB-PROOF-GAPS-B F1).
+    // The retry in flight behind the original waits at the identity's door
+    // (#932), or loses the operation-identity claim once and the agent
+    // entry's one bounded retry (as the person entry's, `envelope.ts`
+    // `executeCommand`) reads the committed row and replays it: no fault
+    // reaches the caller (DB-PROOF-GAPS-B F1).
     expect(faultedWith(second, 'operations_identity_key')).toBe(false);
     const retry = answered(second);
     expect(codeOf(retry)).toBe('applied');

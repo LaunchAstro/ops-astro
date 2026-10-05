@@ -38,6 +38,7 @@ import {
   tracingOf,
   useHealthWorld,
 } from './c34-service-health-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 useHealthWorld();
 
@@ -231,7 +232,7 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
 describe.skipIf(serverUrl === undefined)('C34 service health on the operations view', () => {
   it('C34 canary: a source’s words reach no answer, refusal or log', async () => {
     const logged: string[] = [];
-    const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+    const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(capture),
     );

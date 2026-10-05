@@ -225,7 +225,7 @@ function NotificationsList(props: NotificationsProps & { readonly name: string }
     tab,
     groups: groupsOf(props.items, tab.id, props.groupOf),
   }));
-  if (panes.every((pane) => pane.groups.length === 0)) {
+  if (props.owedCount === 0 && panes.every((pane) => pane.groups.length === 0)) {
     return (
       <Empty
         title="Nothing is waiting on you."

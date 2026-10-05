@@ -230,7 +230,9 @@ the gesture law, it marks that client above the book from `client.list`) and Set
 Settings panel beside the page rather than navigating (MP-3-1). Agent has no
 address of its own: like the task panel it is drawn by the dock itself
 (`apps/web/src/dock/agent-dock.ts`), carries the page's standing scope only,
-and its door goes to the board. The dock's head names and closes it, over the
+and its door goes to the board. A door that asks for it, and Back and Forward through the dock's
+history, open it like any registered panel; only the open set restored from
+storage after a reload does not bring it back. The dock's head names and closes it, over the
 drawer's model picker and Page; the drawer draws no head of its own. A plain press shows one panel, shift adds one, each X
 closes only its own, Close all closes every one, and Escape closes the last
 opened unless a field, menu or editor took the key
@@ -374,7 +376,14 @@ the note, the tags, the subtasks and the time, each by its own command
 (`screens/task/task-draft.ts`); a part refused after the task exists is named,
 never retried as a second task. Closing the panel, or opening another task or
 a draft, while the reader's timer runs on the task stops it through
-`time.stop`. The name is
+`time.stop`, also when the panel closes before its reread lands or while a
+reread has failed: the panel holds the running timer's stop and its unsent
+comment above its read. The draft's fields are read-only while Create is out;
+a dock close refused then remounts the draft, which waits for that Create's
+answer. On the task page, a subtask add or a time log that answers late
+clears only the words it sent, and the subtask box's words and an open
+comment edit's words are held above the page's read, so a live reread keeps
+them. The name is
 edited in place in the head (Enter saves, Escape leaves it), and the field
 grid (`screens/task/PanelFields.tsx`) sets the assignee (a person from
 `person.list`, or Unassigned) through `task.assign` and the due date through
@@ -713,6 +722,15 @@ and a fold saves at once. The tab keeps a copy per business as
 `ops-astro.layout.<business>`, naming its person, so a reload draws the layout
 on its first render; another person signed in to the tab never reads it, and a
 switch or sign-out removes it. The read then brings what another device saved.
+
+Preference saves through one client leave one at a time, each once the last
+has answered (`data/preference-saves.ts`), so the last change is the one the
+store keeps: the appearance, a task fold, the rail and the dock alike. A read
+started before a save never overwrites what that save changed; the screen keeps
+the newer choice. A refused save's reread counts from that save, so a later
+save, queued or landed, keeps its choice, and the refusal and its reread end
+with their reader, so neither reaches another business or person
+(`settings/you.tsx`).
 
 This business draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through

@@ -14,7 +14,7 @@ type Sort = { readonly key: string; readonly dir: 'asc' | 'desc' } | null;
 
 interface Grip {
   readonly live: string | null;
-  readonly start: (key: string, clientX: number) => void;
+  readonly start: (key: string, clientX: number, pointerId: number) => void;
   readonly nudge: (key: string, dx: number) => void;
 }
 
@@ -168,7 +168,7 @@ function GripHandle(props: {
       title="Drag, or use the arrow keys, to resize"
       onPointerDown={(event) => {
         event.preventDefault();
-        grip.start(column.key, event.clientX);
+        grip.start(column.key, event.clientX, event.pointerId);
       }}
       onKeyDown={(event) => {
         if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
