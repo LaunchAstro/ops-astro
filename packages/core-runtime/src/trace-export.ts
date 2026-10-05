@@ -13,13 +13,12 @@
 // custody's egress, which names the target's origin itself, refuses redirects
 // and bounds the reply by time and bytes. Anything short of a 2xx JSON reply
 // to every body is recorded as a gap with a fixed code and the cursor stays
-// where it was, or, when the batch carried owed events, steps back to it
-// (`stepBackBefore`); an export with no reachable target is never reported as success.
+// where it was; an export with no reachable target is never reported as success.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { gapOf, type Deliver, type GapCode } from './trace-delivery.ts';
-import { owedSince, stepBackBefore } from './trace-owed.ts';
+import { owedSince } from './trace-owed.ts';
 import {
   TRACE_ERRORS,
   TRANSFORM_VERSION,
@@ -66,9 +65,7 @@ export interface TraceDatabase {
  * no transaction is open while the target is asked. The events owed again
  * (`owedSince`) go first, in bodies of at most `TRACE_BATCH` in the cursor's
  * order, the batch's own events with the last; one refused body stops the
- * rest, and the gap steps the cursor back to this batch's place (`stepBackBefore`):
- * another export may have advanced past it meanwhile, and a delete between the
- * two leaves only this one's earlier bodies; the batch read again sends them all.
+ * rest, and the next export sends them all again.
  *
  * The read takes only events whose writing transaction is below its
  * snapshot's horizon, in transaction order (0090): every transaction below
@@ -82,7 +79,7 @@ export async function exportOnce(
   key: Buffer,
   deliver: Deliver,
 ): Promise<ExportOutcome> {
-  const { from, batch, sent, owing } = await database.withBusiness(businessId, async (tx) => {
+  const { from, batch, sent } = await database.withBusiness(businessId, async (tx) => {
     const cursor = await cursorOf(tx);
     const rows = await pending(tx, cursor);
     for (const runId of new Set(rows.filter((row) => !row.past).map((row) => row.runId))) {
@@ -91,11 +88,10 @@ export async function exportOnce(
     }
     const owed = await owedSince<Row>(tx, EVENT_CELLS, rows, cursor, TRACE_WINDOW_DAYS);
     const fresh = rows.filter((row) => !row.past);
-    return { from: cursor, batch: rows, sent: bodiesOf(owed, fresh), owing: owed.length > 0 };
+    return { from: cursor, batch: rows, sent: bodiesOf(owed, fresh) };
   });
-  const [first] = batch;
   const last = batch.at(-1);
-  if (first === undefined || last === undefined) return { kind: 'idle' };
+  if (last === undefined) return { kind: 'idle' };
   let code: GapCode | null = null;
   let spans = 0;
   for (const body of sent) {
@@ -110,7 +106,6 @@ export async function exportOnce(
   await database.withBusiness(businessId, async (tx) => {
     if (code === null) await advance(tx, last, from.version);
     else await recordGap(tx, code, from, batch.length);
-    if (code !== null && owing) await stepBackBefore(tx, first.id);
   });
   return code === null ? { kind: 'delivered', spans } : { kind: 'gap', code, spans };
 }
@@ -264,11 +259,11 @@ async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> 
 /**
  * The advance lands only on the cursor version its batch was read under;
  * otherwise it changes nothing and the next read starts wherever the row now
- * is. Two exports that read the same batch: the slower's advance never
- * moves the cursor back. A step back (`stepBack` in `trace-owed.ts`,
- * retention's or a failed owed resend's): an export that read before it, and
- * may have delivered before a delete, never moves the cursor past the events
- * the step sends again. The row lock orders them; the version under it decides.
+ * is. Two exports that read the same batch: the slower never moves the
+ * cursor back. Retention's step back (`sendAgain` in `trace-retention.ts`): an
+ * export that read before it, and may have delivered before the delete, never
+ * moves the cursor past the events the step sends again. The row lock orders
+ * them; the version under it decides.
  */
 async function advance(tx: TenantQuery, last: Row, version: string | null): Promise<void> {
   await tx.query(

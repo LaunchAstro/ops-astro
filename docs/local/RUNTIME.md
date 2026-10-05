@@ -1897,12 +1897,8 @@ and codes, never a sentence, to a trace target an operator reads.
   `target_oversized_reply`, `target_oversized_body` for a 413 (the target
   must take a body of 100 spans; below that, it holds the cursor),
   `target_malformed_reply`, `target_refused`, `target_forbidden`) and the
-  cursor stays, or, when the export was sending owed events again (below),
-  steps back to the place its batch was read after, in the gap's transaction
-  under the row lock with a new version: another export may have advanced
-  past it while this one waited, and a delete landing between the two leaves
-  only this one's earlier bodies. The batch read again sends them all. The
-  gap names the cursor the batch was read after, read once in the read's transaction, never the row as
+  cursor stays. The gap names the cursor the
+  batch was read after, read once in the read's transaction, never the row as
   it is when the gap is written: another export may have moved it while this
   one waited on the target. No run reads either table and no run waits on the
   exporter.
@@ -1913,8 +1909,8 @@ and codes, never a sentence, to a trace target an operator reads.
   write has a higher id, so an event that commits late never lands behind
   the cursor. A long transaction anywhere on the cluster holds the export
   back until it ends; it never loses an event. The read also takes the cursor
-  row's version (`xmin`), and the advance lands only on that version, so the
-  advances of two exports at once that read the same batch never move it back (the upsert's
+  row's version (`xmin`), and the advance lands only on that version, so two
+  exports at once that read the same batch never move it back (the upsert's
   row lock orders them, the version under it decides). `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and
   insert, and update the cursor.

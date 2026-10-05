@@ -41,7 +41,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { gapOf, type GapCode } from './trace-delivery.ts';
 import { TRACE_WINDOW_DAYS, type Cursor, type TraceDatabase } from './trace-export.ts';
-import { byPlace, owedAsks, stepBack, type Owed, type OwedFrom } from './trace-owed.ts';
+import { byPlace, owedAsks, type Owed, type OwedFrom } from './trace-owed.ts';
 import {
   readBack,
   traceOf,
@@ -236,10 +236,14 @@ async function confirm(
 
 /**
  * A gone run's events after its place were in the trace the delete took, or
- * will be sent after it: the cursor steps back before the earliest
- * (`stepBack`). Answers the runs it found, which the batch does not confirm:
- * their asks stay owed, and each is due again once its later event is past
- * the window.
+ * will be sent after it. The cursor goes back to just before the earliest
+ * such event, or stays if it is already behind that, and the update gives
+ * the row a new version even when the place is the same, under the row lock
+ * the export's `advance` takes: an export that read before this never
+ * advances past them. An event that commits after this statement's snapshot
+ * is read after it too, so it is sent after the delete and needs nothing.
+ * Answers the runs it found, which the batch does not confirm: their asks
+ * stay owed, and each is due again once its later event is past the window.
  */
 async function sendAgain(
   tx: TenantQuery,
@@ -247,9 +251,25 @@ async function sendAgain(
   place: Place,
 ): Promise<ReadonlySet<string>> {
   const rows = await tx.query<{ readonly runId: string }>(
-    `${stepBack(`select ev.run_id, ev.tx, ev.id from public.run_events ev
+    `with fresh as (
+       select ev.run_id, ev.tx, ev.id from public.run_events ev
         where ev.business_id = $1 and ev.run_id = any($2::uuid[])
-          and (ev.tx, ev.id) > ($3::xid8, $4::uuid)`)}
+          and (ev.tx, ev.id) > ($3::xid8, $4::uuid)
+     ), back as (
+       select p.tx, p.id from public.run_events p
+        where p.business_id = $1
+          and (p.tx, p.id) < (select f.tx, f.id from fresh f order by f.tx, f.id limit 1)
+        order by p.tx desc, p.id desc limit 1
+     ), stepped as (
+       update public.trace_export_cursors c
+          set (after_tx, after_id) = (
+                select b.tx, b.id
+                  from (values (c.after_tx, c.after_id),
+                               ((select tx from back), (select id from back))) b(tx, id)
+                 order by b.tx nulls first, b.id nulls first limit 1),
+              updated_at = now()
+        where c.business_id = $1 and exists (select 1 from fresh)
+     )
      select distinct run_id as "runId" from fresh`,
     [tx.businessId, runs, place.tx, place.id],
   );
