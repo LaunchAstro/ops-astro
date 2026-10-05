@@ -83,6 +83,9 @@ interface Held {
   };
 }
 
+/** Refusals that can clear while a provider answer waits: the client signs off, or no longer must. */
+const CLEARS: ReadonlySet<string> = new Set(['CLIENT_SIGNOFF_REQUIRED']);
+
 /** A pickup asked for and not yet answered: asked again under its identity, it replays. */
 interface Asked {
   readonly reservationId: unknown;
@@ -124,11 +127,12 @@ async function applyOnce(
     kept.set(taskId, next);
   });
   // A fault may be a lost answer, so the work is kept, and so is a provider
-  // answer whose comment or observe was refused: the provider may have acted,
+  // answer refused for a reason that can clear: the provider may have acted,
   // and a later pass finishes it. Anything else ends it here.
   const now = kept.get(taskId);
   const answered = now !== undefined && 'effected' in now && now.effected !== undefined;
-  if (!('fault' in outcome) && !('refused' in outcome && answered)) kept.delete(taskId);
+  const waits = answered && 'refused' in outcome && CLEARS.has(outcome.refused.code);
+  if (!('fault' in outcome) && !waits) kept.delete(taskId);
   return outcome;
 }
 
