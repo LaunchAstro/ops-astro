@@ -19,7 +19,7 @@ import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { createControls, type Controls } from '../api/controls-fixture.ts';
-import { createClient } from '../../packages/core-records/src/index.ts';
+import { classMatches, createClient } from '../../packages/core-records/src/index.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { standingMandateVerdict } from '../../packages/core-runtime/src/index.ts';
 import type {
@@ -315,7 +315,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     });
     expect(await verdict({ currency: 'USD' })).toStrictEqual({
       covered: false,
-      reason: 'over-ceiling',
+      reason: 'other-currency',
       mandateId,
     });
     expect(await verdict({ actionClass: 'social.post' })).toStrictEqual({
@@ -328,7 +328,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
     expect(await verdict({})).toStrictEqual({ covered: false, reason: 'none' });
   });
 
-  it('MP-14-10a core: a scope word covers only the whole account, its family or the class itself', async () => {
+  it('MP-14-10a a mandate word is the whole account, a family or a class, and nothing else is stored or matched', async () => {
     const hostile = [
       'report*',
       'rep*',
@@ -341,23 +341,27 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
       'report.send.*',
       'report.send ',
       'r%',
+      'report..send',
+      '',
     ];
-    const ids = await Promise.all(
-      hostile.map(async (word) => await seedMandate({ classes: [word] })),
-    );
-    expect(await verdict({})).toStrictEqual({ covered: false, reason: 'none' });
-    for (const id of ids) {
-      // eslint-disable-next-line no-await-in-loop -- one revoke at a time
-      await revoke(id);
+    const before = await mandateRows();
+    for (const word of hostile) {
+      // eslint-disable-next-line no-await-in-loop -- one word at a time
+      await expect(seedMandate({ classes: [word] }), word).rejects.toMatchObject({
+        code: '23514',
+      });
+      // A refusal with the word would hold nothing, so it is refused alike.
+      // eslint-disable-next-line no-await-in-loop -- one word at a time
+      await expect(
+        seedMandate({ classes: ['*', word], refuses: true }),
+        word,
+      ).rejects.toMatchObject({ code: '23514' });
+      expect(classMatches(word, 'report.send'), word).toBe(false);
     }
-    // A family word is the first part only: no deeper word is ever offered,
-    // so none covers a deeper class either.
-    const deeper = await seedMandate({ classes: ['report.send.*'] });
-    expect(await verdict({ actionClass: 'report.send.daily' })).toStrictEqual({
-      covered: false,
-      reason: 'none',
-    });
-    await revoke(deeper);
+    expect(await mandateRows()).toBe(before);
+    // A family word is the first part only, so no deeper word covers a deeper class.
+    expect(classMatches('report.send.*', 'report.send.daily')).toBe(false);
+    expect(classMatches('report.*', 'report.send.daily')).toBe(true);
     for (const word of ['*', 'report.*', 'report.send']) {
       // eslint-disable-next-line no-await-in-loop -- one word at a time
       const id = await seedMandate({ classes: [word] });
@@ -365,6 +369,42 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
       expect(await verdict({}), word).toStrictEqual({ covered: true, mandateId: id });
       // eslint-disable-next-line no-await-in-loop -- one word at a time
       await revoke(id);
+    }
+  });
+
+  it('MP-14-10a core: an approval never covers a class a rule stopped or a class the client does not have', async () => {
+    const all = await seedMandate({ classes: ['*'], ceilingMinor: 1_000_000 });
+    expect(await verdict({ actionClass: 'ads.budget', valueMinor: 1 })).toStrictEqual({
+      covered: false,
+      reason: 'not-graduable',
+    });
+    expect(await verdict({ actionClass: 'social.share', valueMinor: 1 })).toStrictEqual({
+      covered: false,
+      reason: 'not-graduable',
+    });
+    // A class the list shows short is one a person may still approve directly.
+    expect(await verdict({ actionClass: 'report.send', valueMinor: 1 })).toStrictEqual({
+      covered: true,
+      mandateId: all,
+    });
+    await revoke(all);
+  });
+
+  it('MP-14-10a core: a malformed question is refused before anything is read', async () => {
+    for (const question of [
+      { actionClass: '' },
+      { actionClass: 'report' },
+      { actionClass: 'Report.send' },
+      { actionClass: 'report.' },
+      { actionClass: 'report.*' },
+      { actionClass: '*' },
+      { currency: 'aud' },
+      { currency: 'AUDX' },
+      { clientId: 'not-a-uuid' },
+      { valueMinor: -1 },
+    ]) {
+      // eslint-disable-next-line no-await-in-loop -- one question at a time
+      await expect(verdict(question), JSON.stringify(question)).rejects.toThrow(RangeError);
     }
   });
 
@@ -433,6 +473,87 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
       covered: false,
       reason: 'none',
     });
+  });
+
+  it('MP-14-10a a refusal being filed waits for a check under way, and the next check sees it', async () => {
+    const approval = await seedMandate({ classes: ['email.send'] });
+    let filed = false;
+    let filing: Promise<void> | undefined;
+    const effect = await controls.fixture.db.app.withBusiness(alpha, async (tx) => {
+      const checked = await standingMandateVerdict(tx, {
+        clientId: clientA,
+        actionClass: 'email.send',
+        valueMinor: 1,
+        currency: 'AUD',
+      });
+      // A filing takes the client's row for update first, on its own connection.
+      filing = (async () => {
+        await controls.fixture.db.admin.transaction(async (execute) => {
+          await execute('select id from public.clients where id = $1 for no key update', [clientA]);
+          filed = true;
+        });
+      })();
+      await pause(400);
+      expect(filed).toBe(false);
+      return checked;
+    });
+    expect(effect).toStrictEqual({ covered: true, mandateId: approval });
+    await filing;
+    expect(filed).toBe(true);
+    const refusal = await seedMandate({ classes: ['email.*'], refuses: true });
+    expect(await verdict({ actionClass: 'email.send', valueMinor: 1 })).toStrictEqual({
+      covered: false,
+      reason: 'refused',
+      mandateId: refusal,
+    });
+    await revoke(refusal);
+    await revoke(approval);
+  });
+
+  it('MP-14-10a a mandate is written once: the application can revoke it, never edit, backdate or revive it', async () => {
+    const id = await seedMandate({ classes: ['social.post'] });
+    const asApp = async (sql: string, parameters: readonly unknown[]): Promise<string> => {
+      try {
+        await controls.fixture.db.app.withBusiness(alpha, async (tx) => {
+          await tx.query(sql, parameters);
+        });
+        return 'ok';
+      } catch (error) {
+        return String((error as { readonly code?: unknown }).code);
+      }
+    };
+    expect(
+      await asApp('update public.standing_mandates set label = $2 where id = $1', [id, 'x']),
+    ).toBe('42501');
+    expect(
+      await asApp(
+        `insert into public.standing_mandates
+           (business_id, id, client_id, classes, refuses, ceiling_minor, currency, expires_at,
+            label, authored_by_actor_id, created_at)
+         values ((select public.app_business_id()), $1, $2, '{social.post}', false, 1, 'AUD',
+                 now() + interval '1 day', 'backdated', $3, now() - interval '1 year')`,
+        [randomUUID(), clientA, admin.actorId],
+      ),
+    ).toBe('42501');
+    expect(
+      await asApp(
+        `update public.standing_mandates
+            set revoked_at = clock_timestamp(), revoked_by_actor_id = $2, revision = revision + 1
+          where id = $1`,
+        [id, admin.actorId],
+      ),
+    ).toBe('ok');
+    expect(
+      await asApp(
+        'update public.standing_mandates set revoked_at = null, revoked_by_actor_id = null where id = $1',
+        [id],
+      ),
+    ).toBe('23001');
+    const after = await controls.fixture.db.admin.execute<{ readonly revoked: boolean }>(
+      'select revoked_at is not null as revoked from public.standing_mandates where id = $1',
+      [id],
+    );
+    expect(after[0]?.revoked).toBe(true);
   });
 
   it('MP-14-10a the read and the scope bar add no audit event beyond the read operation row', async () => {
