@@ -1,7 +1,8 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- Brings a backup store made from an earlier backup-store.sql up to its
--- current rule, as the store's admin, from the restore runbook:
+-- The first rule added to the backup store after backup-store.sql, run by
+-- the store's admin after it, from the restore runbook (a store made earlier
+-- runs it then):
 --
 --   \i deploy/staging/backup-store-upgrade-1.sql
 --

@@ -103,9 +103,9 @@ the machine. Its data is on `ops-astro-staging-backups-data`, the one
 persistent volume staging has, so backups and drill receipts outlive a
 restart. S0-1's disk row names that volume as its only exception, and the
 store bounds it itself (`S0-3 store bounded`). The store's admin makes it with
-`backup-store.sql`; a store made from an earlier copy of that file takes
-each later rule from the numbered `backup-store-upgrade-*.sql` files, in
-order, each safe to run again.
+`backup-store.sql` and then each numbered `backup-store-upgrade-<n>.sql` in
+order; a store made earlier runs the upgrades it has not had. Each is safe to
+run again, and each rule lives in one of these files only.
 
 The restore drill is a person's act under `operations:manage`, asked of the
 operator gate before anything else, like staging preparation and the promotion.
