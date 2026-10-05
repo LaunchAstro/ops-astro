@@ -69,13 +69,15 @@ function useInvite(onInvite: OnInvite) {
     if (own.current) return;
     own.current = true;
     setSending(true);
+    const sent = fields;
     void (async () => {
-      const result = await onInvite(fields);
+      const result = await onInvite(sent);
       own.current = false;
       setSending(false);
       if (result === null) return;
       setRefusal(isRefusal(result) ? result : null);
-      if ('ok' in result) setFields(BLANK);
+      // Only the draft that was sent is cleared; anything typed since stays.
+      if ('ok' in result) setFields((was) => (was === sent ? BLANK : was));
     })();
   };
   return { fields, refusal, sending, set, submit };
