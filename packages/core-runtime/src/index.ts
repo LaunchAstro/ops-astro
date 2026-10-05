@@ -278,3 +278,4 @@ export {
   type ExpiryPorts,
   type RetentionBatch,
 } from './trace-retention.ts';
+export { standingMandateVerdict, type MandateQuestion, type MandateVerdict } from './mandates.ts';

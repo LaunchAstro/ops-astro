@@ -1,0 +1,514 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one ticket's named cases over one seeded world */
+//
+// MP-14-10a, the data half: the per-client graduation region on Connections
+// & signal and core's standing mandate check, over HTTP and real transactions
+// against a real database. Each case is named after the acceptance line or
+// supporting checklist line it proves (U39).
+//
+// Graduation records are written by the agent loops as decisions land (AW-01,
+// not built), and mandates by the mandate commands (the next piece), so the
+// cases seed both as the database owner. The clients are real clients of the
+// business (`clients`, C32); client B's name carries a planted record canary,
+// so the isolation cases can look for it where it must not be.
+
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { insertBusiness } from '../identity/fixture.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
+import { createControls, type Controls } from '../api/controls-fixture.ts';
+import { createClient } from '../../packages/core-records/src/index.ts';
+import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
+import { standingMandateVerdict } from '../../packages/core-runtime/src/index.ts';
+import type {
+  ConnectionGraduationResult,
+  GraduationRowView,
+} from '../../packages/core-wire/src/index.ts';
+
+const serverUrl = databaseUrlFromEnvironment();
+const RECORD_CANARY = `record-canary-${randomUUID()}`;
+const BRAVO_CANARY = `bravo-canary-${randomUUID()}`;
+
+const path = (business: string, name: string): string =>
+  `/api/b/${business}/${name.replace('.', '/')}`;
+
+const pause = async (ms: number): Promise<void> => {
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+};
+
+type Question = Parameters<typeof standingMandateVerdict>[1];
+
+// eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
+describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandate check', () => {
+  let controls: Controls;
+  let admin: Member;
+  let clientReader: Member;
+  let plain: Member;
+  let bravoAdmin: Member;
+  let alpha: string;
+  let bravo: string;
+  let clientA: string;
+  let clientB: string;
+  let bravoClient: string;
+  const clientALabel = 'Client A';
+  const clientBLabel = `Client B ${RECORD_CANARY}`;
+  const cls: Record<string, string> = {};
+  const answers: Answer[] = [];
+
+  const as = async (who: Member, name: string, business = 'alpha'): Promise<Answer> => {
+    const answer = await post(
+      controls.api,
+      path(business, name),
+      { operationId: randomUUID() },
+      authorised(await tokenFor(who.presented.subject)),
+    );
+    answers.push(answer);
+    return answer;
+  };
+
+  const region = async (who: Member, business = 'alpha'): Promise<ConnectionGraduationResult> => {
+    const answer = await as(who, 'connection.graduation', business);
+    expect(answer.status).toBe(200);
+    return answer.body as unknown as ConnectionGraduationResult;
+  };
+
+  const rowOf = async (id: string): Promise<GraduationRowView | undefined> =>
+    (await region(admin)).rows.find((one) => one.id === id);
+
+  const verdict = async (question: Partial<Question>, business = alpha) =>
+    await controls.fixture.db.app.withBusiness(
+      business,
+      async (tx) =>
+        await standingMandateVerdict(tx, {
+          clientId: clientA,
+          actionClass: 'report.send',
+          valueMinor: 5000,
+          currency: 'AUD',
+          ...question,
+        }),
+    );
+
+  /** A mandate as the commands will file it, written by the owner. */
+  const seedMandate = async (
+    row: {
+      readonly client?: string;
+      readonly classes: readonly string[];
+      readonly refuses?: boolean;
+      readonly ceilingMinor?: number;
+      readonly currency?: string;
+      readonly expires?: string;
+      readonly graduationClass?: string;
+      readonly label?: string;
+    },
+    business = alpha,
+    author = admin,
+  ): Promise<string> => {
+    const id = randomUUID();
+    const refuses = row.refuses ?? false;
+    await controls.fixture.db.admin.execute(
+      `insert into public.standing_mandates
+         (business_id, id, client_id, classes, refuses, ceiling_minor, currency, expires_at,
+          label, graduation_class, authored_by_actor_id)
+       values ($1, $2, $3, $4, $5, $6, $7, now() + $8::interval, $9, $10, $11)`,
+      [
+        business,
+        id,
+        row.client ?? clientA,
+        row.classes,
+        refuses,
+        refuses ? null : (row.ceilingMinor ?? 10_000),
+        refuses ? null : (row.currency ?? 'AUD'),
+        row.expires ?? '30 days',
+        row.label ?? 'A standing approval',
+        row.graduationClass ?? null,
+        author.actorId,
+      ],
+    );
+    return id;
+  };
+
+  const revoke = async (id: string): Promise<void> => {
+    await controls.fixture.db.admin.execute(
+      `update public.standing_mandates
+          set revoked_at = clock_timestamp(), revoked_by_actor_id = authored_by_actor_id,
+              revision = revision + 1
+        where id = $1`,
+      [id],
+    );
+  };
+
+  const mandateRows = async (): Promise<number> =>
+    await controls.count('select count(*) as n from public.standing_mandates', []);
+
+  async function seedClass(
+    business: string,
+    client: string,
+    actionClass: string,
+    earned: string,
+    extra: Readonly<Record<string, unknown>> = {},
+  ): Promise<string> {
+    const id = randomUUID();
+    await controls.fixture.db.admin.execute(
+      `insert into public.graduation_classes
+         (business_id, id, client_id, action_class, class_label, clearance, earned,
+          never_why, approved, edited, rejected, since, note)
+       values ($1, $2, $3, $4, $5, 'Draft', $6, $7, $8, 1, $9, '2026-08-01', $10)`,
+      [
+        business,
+        id,
+        client,
+        actionClass,
+        extra['label'] ?? `Class ${actionClass}`,
+        earned,
+        extra['neverWhy'] ?? null,
+        extra['approved'] ?? 30,
+        extra['rejected'] ?? 0,
+        extra['note'] ?? '',
+      ],
+    );
+    return id;
+  }
+
+  const madeClient = async (business: string, name: string, by: Member): Promise<string> =>
+    await controls.fixture.db.app.withBusiness(business, async (tx) => {
+      const made = await createClient(tx, name, by.actorId);
+      if (!made.ok) throw new Error('mp-14-10a: the client was not made');
+      return made.value;
+    });
+
+  // eslint-disable-next-line max-lines-per-function -- the world, built in one place
+  beforeAll(async () => {
+    controls = await createControls('mp1410a');
+    const { db, business } = controls.fixture;
+    alpha = business;
+    admin = controls.manager;
+    clientReader = await enrol(db.app, business, 'clientreader');
+    plain = await enrol(db.app, business, 'plain');
+    clientA = await madeClient(alpha, clientALabel, admin);
+    clientB = await madeClient(alpha, clientBLabel, admin);
+    const whole = { kind: 'business', id: null } as const;
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, admin, 'read', whole, false, 'connection');
+      await grantTo(tx, clientReader, 'read', { kind: 'party', id: clientA }, false, 'connection');
+      await grantTo(tx, plain, 'read', whole, false, 'task');
+    });
+
+    cls['aPost'] = await seedClass(alpha, clientA, 'social.post', 'ready');
+    cls['aReply'] = await seedClass(alpha, clientA, 'social.reply', 'ready');
+    cls['aLike'] = await seedClass(alpha, clientA, 'social.like', 'ready');
+    cls['aBudget'] = await seedClass(alpha, clientA, 'ads.budget', 'never', {
+      neverWhy: 'ceiling',
+    });
+    cls['aReport'] = await seedClass(alpha, clientA, 'report.send', 'short', { approved: 12 });
+    cls['aEmail'] = await seedClass(alpha, clientA, 'email.send', 'mixed', { rejected: 4 });
+    cls['aInvoice'] = await seedClass(alpha, clientA, 'billing.invoice', 'none', { approved: 0 });
+    cls['bPost'] = await seedClass(alpha, clientB, 'social.post', 'ready', {
+      note: `B note ${RECORD_CANARY}`,
+    });
+
+    bravo = await insertBusiness(db.app, 'bravo');
+    await installSpine(db.app, bravo);
+    bravoAdmin = await enrol(db.app, bravo, 'bravoadmin');
+    await db.app.withBusiness(bravo, async (tx) => {
+      await grantTo(tx, bravoAdmin, 'read', whole, false, 'connection');
+    });
+    bravoClient = await madeClient(bravo, `Bravo ${BRAVO_CANARY}`, bravoAdmin);
+    cls['bravoPost'] = await seedClass(bravo, bravoClient, 'social.post', 'ready');
+  }, 120_000);
+
+  afterAll(async () => {
+    await controls?.drop();
+  });
+
+  it('MP-14-10a one select drives all three sections: one read carries every client and its scope list', async () => {
+    const result = await region(admin);
+    expect(result.clients.map((one) => [one.id, one.label])).toStrictEqual([
+      [clientA, clientALabel],
+      [clientB, clientBLabel],
+    ]);
+    const a = result.clients.find((one) => one.id === clientA);
+    expect(a?.scopes).toStrictEqual([
+      '*',
+      'ads.*',
+      'billing.*',
+      'email.*',
+      'report.*',
+      'social.*',
+      'ads.budget',
+      'billing.invoice',
+      'email.send',
+      'report.send',
+      'social.like',
+      'social.post',
+      'social.reply',
+    ]);
+    expect(result.rows.filter((one) => one.clientId === clientA)).toHaveLength(7);
+    const never = result.rows.find((one) => one.id === cls['aBudget']);
+    expect([never?.state, never?.neverWhy]).toStrictEqual(['never', 'ceiling']);
+  });
+
+  it('MP-14-10a a class shows promoted only while its promoting mandate is live', async () => {
+    const live = await seedMandate({ classes: ['social.reply'], graduationClass: 'social.reply' });
+    const promoted = await rowOf(String(cls['aReply']));
+    expect(promoted?.state).toBe('promoted');
+    expect(promoted?.promotedAt).not.toBeNull();
+    await revoke(live);
+    expect((await rowOf(String(cls['aReply'])))?.state).toBe('ready');
+    expect((await region(admin)).mandates.map((one) => one.id)).not.toContain(live);
+
+    const lapsed = await seedMandate({
+      classes: ['social.reply'],
+      graduationClass: 'social.reply',
+      expires: '1 second',
+    });
+    await pause(1500);
+    const result = await region(admin);
+    expect(result.rows.find((one) => one.id === cls['aReply'])?.state).toBe('ready');
+    expect(result.mandates.find((one) => one.id === lapsed)?.expired).toBe(true);
+    await revoke(lapsed);
+  });
+
+  it('MP-14-10a a refusal holds matching classes of its own client and revoking it releases them', async () => {
+    const promote = await seedMandate({ classes: ['social.like'], graduationClass: 'social.like' });
+    const refusal = await seedMandate({
+      classes: ['social.*'],
+      refuses: true,
+      label: 'Nothing social runs on its own for A this month',
+    });
+    const held = await region(admin);
+    for (const id of [cls['aLike'], cls['aPost']]) {
+      const row = held.rows.find((one) => one.id === id);
+      expect([row?.state, row?.heldBy]).toStrictEqual(['held', refusal]);
+    }
+    // Client B's social.post is another client's and is not held; a class
+    // that never earned the bar has nothing for the refusal to hold.
+    expect(held.rows.find((one) => one.id === cls['bPost'])?.state).toBe('ready');
+    expect(held.rows.find((one) => one.id === cls['aReport'])?.state).toBe('short');
+    await revoke(refusal);
+    const released = await region(admin);
+    expect(released.rows.find((one) => one.id === cls['aLike'])?.state).toBe('promoted');
+    expect(released.rows.find((one) => one.id === cls['aPost'])?.state).toBe('ready');
+    await revoke(promote);
+  });
+
+  it('MP-14-10a core checks class, scope, ceiling, currency, client and revocation at the effect', async () => {
+    const mandateId = await seedMandate({ classes: ['report.*'], ceilingMinor: 10_000 });
+    expect(await verdict({})).toStrictEqual({ covered: true, mandateId });
+    expect(await verdict({ valueMinor: 10_000 })).toStrictEqual({ covered: true, mandateId });
+    expect(await verdict({ valueMinor: 10_001 })).toStrictEqual({
+      covered: false,
+      reason: 'over-ceiling',
+      mandateId,
+    });
+    expect(await verdict({ currency: 'USD' })).toStrictEqual({
+      covered: false,
+      reason: 'over-ceiling',
+      mandateId,
+    });
+    expect(await verdict({ actionClass: 'social.post' })).toStrictEqual({
+      covered: false,
+      reason: 'none',
+    });
+    expect(await verdict({ clientId: clientB })).toStrictEqual({ covered: false, reason: 'none' });
+    await expect(verdict({ valueMinor: 1.5 })).rejects.toThrow(RangeError);
+    await revoke(mandateId);
+    expect(await verdict({})).toStrictEqual({ covered: false, reason: 'none' });
+  });
+
+  it('MP-14-10a core: a scope word covers only the whole account, its family or the class itself', async () => {
+    const hostile = [
+      'report*',
+      'rep*',
+      'report.',
+      '*.send',
+      '.*',
+      'report.s*',
+      'REPORT.*',
+      ' report.*',
+      'report.send.*',
+      'report.send ',
+      'r%',
+    ];
+    const ids = await Promise.all(hostile.map(async (word) => await seedMandate({ classes: [word] })));
+    expect(await verdict({})).toStrictEqual({ covered: false, reason: 'none' });
+    for (const id of ids) {
+      // eslint-disable-next-line no-await-in-loop -- one revoke at a time
+      await revoke(id);
+    }
+    for (const word of ['*', 'report.*', 'report.send']) {
+      // eslint-disable-next-line no-await-in-loop -- one word at a time
+      const id = await seedMandate({ classes: [word] });
+      // eslint-disable-next-line no-await-in-loop -- one word at a time
+      expect(await verdict({}), word).toStrictEqual({ covered: true, mandateId: id });
+      // eslint-disable-next-line no-await-in-loop -- one word at a time
+      await revoke(id);
+    }
+  });
+
+  it('MP-14-10a core: a live matching refusal wins over an approval at the effect', async () => {
+    const question = { actionClass: 'billing.invoice', valueMinor: 1 };
+    const approval = await seedMandate({ classes: ['billing.invoice'], ceilingMinor: 100_000 });
+    const refusal = await seedMandate({ classes: ['billing.*'], refuses: true });
+    expect(await verdict(question)).toStrictEqual({
+      covered: false,
+      reason: 'refused',
+      mandateId: refusal,
+    });
+    await revoke(refusal);
+    expect(await verdict(question)).toStrictEqual({ covered: true, mandateId: approval });
+    await revoke(approval);
+  });
+
+  it('MP-14-10a core: expiry is judged on the database clock after the lock wait', async () => {
+    const mandateId = await seedMandate({ classes: ['email.send'], expires: '1500 milliseconds' });
+    let release: () => void = () => undefined;
+    let locked: () => void = () => undefined;
+    const isLocked = new Promise<void>((resolve) => {
+      locked = resolve;
+    });
+    const held = controls.fixture.db.admin.transaction(async (execute) => {
+      await execute('select id from public.standing_mandates where id = $1 for update', [
+        mandateId,
+      ]);
+      locked();
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    await isLocked;
+    const checking = verdict({ actionClass: 'email.send', valueMinor: 1 });
+    await pause(2500);
+    release();
+    await held;
+    // The check began while the mandate was live and waited on the lock
+    // past its expiry: it is judged expired, not covered.
+    expect(await checking).toStrictEqual({ covered: false, reason: 'expired', mandateId });
+    await revoke(mandateId);
+  });
+
+  it('MP-14-10a revoking stops pre-approval at once, and an effect already past its check is not undone', async () => {
+    const mandateId = await seedMandate({ classes: ['email.send'] });
+    let revokeDone = false;
+    let revoking: Promise<void> | undefined;
+    const effect = await controls.fixture.db.app.withBusiness(alpha, async (tx) => {
+      const checked = await standingMandateVerdict(tx, {
+        clientId: clientA,
+        actionClass: 'email.send',
+        valueMinor: 1,
+        currency: 'AUD',
+      });
+      // The revoke runs on the owner's own connection, not this one.
+      revoking = revoke(mandateId).then(() => {
+        revokeDone = true;
+      });
+      await pause(400);
+      // The revoke waits on the share lock this effect holds.
+      expect(revokeDone).toBe(false);
+      return checked;
+    });
+    expect(effect).toStrictEqual({ covered: true, mandateId });
+    await revoking;
+    expect(revokeDone).toBe(true);
+    expect(await verdict({ actionClass: 'email.send', valueMinor: 1 })).toStrictEqual({
+      covered: false,
+      reason: 'none',
+    });
+  });
+
+  it('MP-14-10a the read and the scope bar add no audit event beyond the read operation row', async () => {
+    const count = async (): Promise<number> =>
+      await controls.count(`select count(*) as n from public.audit_events where actor_id = $1`, [
+        clientReader.actorId,
+      ]);
+    const before = await count();
+    const mandatesBefore = await mandateRows();
+    await region(clientReader);
+    expect(await count()).toBe(before + 1);
+    const last = await controls.fixture.db.admin.execute<{ readonly command: string }>(
+      `select command from public.audit_events where actor_id = $1 order by seq desc limit 1`,
+      [clientReader.actorId],
+    );
+    expect(last[0]?.command).toBe('connection.graduation');
+    expect(await mandateRows()).toBe(mandatesBefore);
+  });
+
+  it('MP-14-10a refusal connection:read: a member without it is refused the region and shown nothing', async () => {
+    const answer = await as(plain, 'connection.graduation');
+    expect([answer.status, answer.body['code']]).toStrictEqual([403, 'SCOPE_NOT_GRANTED']);
+    expect(answer.body['rows']).toBeUndefined();
+    expect(JSON.stringify(answer.body)).not.toContain(clientA);
+  });
+
+  it('MP-14-10a isolation: an agent under a live delegation reads none of it', async () => {
+    const live = await seedMandate({ classes: ['social.post'], label: `Agent ${RECORD_CANARY}` });
+    const task = await controls.createTask('agent crossing');
+    const proposal = await controls.propose(task.id, task.revision);
+    const picked = await controls.pickup(await controls.approve(proposal));
+    const answer = await controls.asAgent('connection.graduation', {}, String(picked['credential']));
+    answers.push(answer);
+    expect(answer.status).toBe(403);
+    expect(String(answer.body['code'])).toMatch(/^(DELEGATION_|AUTH_)/u);
+    expect(answer.body['rows']).toBeUndefined();
+    const text = JSON.stringify(answer.body);
+    for (const mine of [clientA, live, RECORD_CANARY]) expect(text).not.toContain(mine);
+    await revoke(live);
+  });
+
+  it('MP-14-10a isolation: another business never sees, counts or is covered by these mandates', async () => {
+    const ours = await seedMandate({ classes: ['social.post'], label: `Ours ${RECORD_CANARY}` });
+    const theirs = await seedMandate(
+      { client: bravoClient, classes: ['social.post'], label: `Theirs ${BRAVO_CANARY}` },
+      bravo,
+      bravoAdmin,
+    );
+    const seen = await region(bravoAdmin, 'bravo');
+    expect(seen.rows.map((one) => one.id)).toStrictEqual([cls['bravoPost']]);
+    expect(seen.mandates.map((one) => one.id)).toStrictEqual([theirs]);
+    expect(seen.clients.map((one) => one.id)).toStrictEqual([bravoClient]);
+    const text = JSON.stringify(seen);
+    for (const mine of [clientA, clientB, ours, RECORD_CANARY]) expect(text).not.toContain(mine);
+    // Core's check in bravo's transaction, asked about alpha's client, sees nothing.
+    expect(await verdict({ actionClass: 'social.post', valueMinor: 1 }, bravo)).toStrictEqual({
+      covered: false,
+      reason: 'none',
+    });
+    expect(await verdict({ actionClass: 'social.post', valueMinor: 1 })).toStrictEqual({
+      covered: true,
+      mandateId: ours,
+    });
+    expect(JSON.stringify(await region(admin))).not.toContain(BRAVO_CANARY);
+    await revoke(ours);
+    await revoke(theirs);
+  });
+
+  it('MP-14-10a isolation: a client-scoped reader sees that client only, in rows, mandates and the client list', async () => {
+    const onA = await seedMandate({ classes: ['social.post'] });
+    const onB = await seedMandate({
+      client: clientB,
+      classes: ['social.post'],
+      label: `For B ${RECORD_CANARY}`,
+    });
+    const result = await region(clientReader);
+    expect(result.clients.map((one) => one.id)).toStrictEqual([clientA]);
+    expect(new Set(result.rows.map((one) => one.clientId))).toStrictEqual(new Set([clientA]));
+    expect(result.mandates.map((one) => one.id)).toStrictEqual([onA]);
+    const text = JSON.stringify(result);
+    for (const theirs of [clientB, onB, RECORD_CANARY]) expect(text).not.toContain(theirs);
+    await revoke(onA);
+    await revoke(onB);
+  });
+
+  it('MP-14-10a parity: the region is connection:read, person only', () => {
+    const row = COMMAND_SURFACE.find((one) => one.name === 'connection.graduation');
+    expect([row?.kind, row?.collection, row?.action, row?.agent]).toStrictEqual([
+      'read',
+      'connection',
+      'read',
+      'never',
+    ]);
+  });
+});
