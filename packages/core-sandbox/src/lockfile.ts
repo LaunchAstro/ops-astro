@@ -42,7 +42,7 @@ function nameOf(key: string): string | null {
   if (!key.startsWith(ROOT)) return null;
   const parts = key.slice(ROOT.length).split(NESTED);
   const fits = (part: string) => part.length <= MAX_NAME && NAME.test(part);
-  return parts.every(fits) ? (parts.at(-1) ?? null) : null;
+  return parts.every((part) => fits(part)) ? (parts.at(-1) ?? null) : null;
 }
 
 function resolvedFits(
