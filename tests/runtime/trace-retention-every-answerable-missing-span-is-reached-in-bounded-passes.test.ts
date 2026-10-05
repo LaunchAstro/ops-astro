@@ -5,13 +5,17 @@
 // pass in `owedAsks`' order (oldest turn, unanswered, run id), each from
 // where its last read stopped. The store answers `allowance` reads a pass
 // and unknown after, and never answers for some spans. Run R has a missing
-// block at place m, under up to four such spans just newer than it. Alone,
-// R must be found gone within m + 1 passes (each pass moves its read on at
-// least one span and never past a span the store would answer), and within
+// block at place m, under up to four such spans just newer than it or one
+// at the newest place. Alone, R must be found gone within m + 1 passes
+// (each pass moves its read on at least one span and never past a span the
+// store would answer), and within
 // ceil((m + 1) / allowance) when every span answers. With a run B always
 // present, B's id before or after R's and B's reads spending the allowance
 // first, R must be found within 2(m + 1) + 2 passes: a run the pass left
 // with nothing answered keeps its turn and its place, and goes first next.
+// The worlds are finite and the allowance is spent only by these owed
+// reads: reads before them in the pass (the asks' own, another business's)
+// are not modelled (named on #994).
 
 import { expect, it } from 'vitest';
 import {
@@ -120,6 +124,8 @@ function* targets(length: number, sizes: number, quiet: number): Generator<Run> 
       for (let q = 0; q <= Math.min(quiet, m); q += 1) {
         yield { id: R, length, missing, silent: Array.from({ length: q }, (_, at) => m - q + at) };
       }
+      // One silent span well above the block: a read that answers past it goes on from there.
+      if (m >= 2) yield { id: R, length, missing, silent: [0] };
     }
   }
 }
