@@ -15,7 +15,7 @@ import {
   type DefaultTreeAdapterTypes as Tree,
   type TreeAdapter,
 } from 'parse5';
-import type { PageObservation } from '../site/envelope.ts';
+import type { PageObservation } from '../site/captures.ts';
 import {
   MAX_STYLESHEETS,
   SHEETS_AT_ONCE,
