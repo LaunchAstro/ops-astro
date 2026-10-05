@@ -73,7 +73,7 @@ export async function owedAsks(
                          where b.business_id = $1 and b.unanswered_run_ids @> array[o.run_id]),
                        '-infinity') as turn
          from (${OWED_ASKS}) o) owed
-      where $4::timestamptz is null or (turn, run_id) > ($4::timestamptz, $5::uuid)
+      where $4::text is null or (turn, run_id) > ($4::text::timestamptz, $5::uuid)
       order by turn, run_id limit $6`,
     [tx.businessId, null, windowDays, after?.turn ?? null, after?.runId ?? null, page],
   );
