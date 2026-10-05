@@ -66,6 +66,7 @@
     "tests/api/function-entry.test.ts",
     "tests/api/function-outbox-before-response.test.ts",
     "tests/api/function-outbox-waits-for-own-events.test.ts",
+    "tests/api/held-answer-sign-off.proof.test.ts",
     "tests/api/held-attempt-calls-provider-once.test.ts",
     "tests/api/history-trail-preference.test.ts",
     "tests/api/id-operand-shape.test.ts",
