@@ -137,8 +137,8 @@ async function topUpRefusal(
   if (CLOSED_STOPS.includes(locked.reservation_state) && (await openCallOn(tx, locked))) {
     return refuse(
       'TRANSITION_NOT_PERMITTED',
-      "a call a person closed on this run's stopped hold is still unresolved",
-      "End the run instead; a top-up cannot count a call a person's write-off or outcome closed.",
+      "a call open on this run's stopped hold when a person closed it is still unresolved",
+      'End the run instead; a top-up cannot count a call left open when a person closed the hold.',
     );
   }
   if (request.currency !== locked.currency) {

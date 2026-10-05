@@ -64,12 +64,19 @@ export async function releaseUncounted(tx: TenantQuery, reservationId: string): 
   );
 }
 
-/** The hold `r` has a call sent and never resolved that a person's write-off or outcome closed. */
+/**
+ * The closed hold `r` has a call sent and never resolved that no top-up counts
+ * again: a person's write-off or outcome closed it, or the hold is not counted
+ * (custody's `countedHold`, reused), so it was open when a person closed the hold.
+ */
 export async function openCallOn(tx: TenantQuery, r: { reservation_id: string }): Promise<boolean> {
   const open = await tx.query(
-    `select 1 from public.model_calls where business_id = $1 and reservation_id = $2
-        and state in ('dispatched', 'liability_unknown') and outcome is not null`,
-    [tx.businessId, r.reservation_id],
+    `select 1 from public.model_calls c join public.reservations r
+         on r.business_id = c.business_id and r.id = c.reservation_id
+      where c.business_id = $1 and c.reservation_id = $2
+        and c.state in ('dispatched', 'liability_unknown')
+        and (c.outcome is not null or not ${countedHold('$3')})`,
+    [tx.businessId, r.reservation_id, COUNTED_CAUSES],
   );
   return open.length > 0;
 }
