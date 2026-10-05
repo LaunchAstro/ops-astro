@@ -167,6 +167,49 @@ describe('C52-A standing approvals on the Workflow triggers panel', () => {
     await page.unmount();
   });
 
+  it('C52-A after a change, every control waits for the reload that shows its effect', async () => {
+    const stub = server();
+    const held: (() => void)[] = [];
+    let holding = false;
+    const fetch = (async (url: string | URL, init?: RequestInit) => {
+      if (holding && String(url).endsWith('/automation/registry')) {
+        await new Promise<void>((resolve) => {
+          held.push(resolve);
+        });
+      }
+      return await stub.fetch(url, init);
+    }) as typeof globalThis.fetch;
+    const page = await mount(<TriggersPanel client={clientOf(fetch)} />);
+    await tick();
+    // Version 2 adopted and shown: approval s-3 stands, with its revoke control.
+    await page.click(`${ROW} [data-control="adopt"]`);
+    await tick();
+    holding = true;
+    await page.click(`${ROW} [data-control="roll-back"]`);
+    await tick();
+    // The rollback is answered (approval s-4); the row on screen still shows s-3.
+    expect(held).toHaveLength(1);
+    for (const control of ['revoke', 'turn-off', 'roll-back']) {
+      expect(
+        page.find(`${ROW} [data-control="${control}"]`)?.hasAttribute('disabled'),
+        control,
+      ).toBe(true);
+    }
+    holding = false;
+    await act(async () => {
+      held[0]?.();
+      await Promise.resolve();
+    });
+    await tick();
+    await page.click(`${ROW} [data-control="revoke"]`);
+    await tick();
+    // The revocation names the approval the reload showed, never the replaced one.
+    expect(bodiesOf(stub, '/approval/revoke')).toStrictEqual([
+      expect.objectContaining({ approvalId: 's-4' }),
+    ]);
+    await page.unmount();
+  });
+
   it('C52-A a business switch drops the last business refusal, its late change answer and its rows', async () => {
     const held: ((response: Response) => void)[] = [];
     const alpha = server({ refuse: '/activation/turn_off', name: 'Alpha only' });
