@@ -39,6 +39,7 @@ import {
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
 import { spentOn } from './budget-stop.ts';
+import { giveBackReleased } from '../../core-custody/src/index.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
 
@@ -176,7 +177,7 @@ async function raiseHold(
   { locked }: Opened,
 ): Promise<number> {
   if (locked.reservation_state === 'actual') return await holdTopUp(tx, request, locked);
-  const spent = await spentOn(tx, locked.reservation_id);
+  const { spent, unsent } = await spentOn(tx, locked.reservation_id);
   const heldMinor = Number(locked.held_minor) + request.amountMinor - spent;
   await tx.query(
     `update public.reservations set held_minor = $3 where business_id = $1 and id = $2`,
@@ -189,6 +190,7 @@ async function raiseHold(
       where business_id = $1 and id = $2`,
     [tx.businessId, locked.envelope_id, request.amountMinor, spent],
   );
+  await giveBackReleased(tx, unsent);
   await tx.query(
     `update public.planned_runs set state = 'planned' where business_id = $1 and id = $2`,
     [tx.businessId, request.runId],
@@ -252,7 +254,8 @@ export async function endAtBudgetStop(
   let releasedMinor = 0;
   let spentMinor = 0;
   if (locked.reservation_state === 'held') {
-    spentMinor = await spentOn(tx, locked.reservation_id);
+    const counted = await spentOn(tx, locked.reservation_id);
+    spentMinor = counted.spent;
     releasedMinor = Number(locked.held_minor) - spentMinor;
     await tx.query(
       `update public.reservations
@@ -267,6 +270,7 @@ export async function endAtBudgetStop(
         where business_id = $1 and id = $2`,
       [tx.businessId, locked.envelope_id, locked.held_minor, spentMinor],
     );
+    await giveBackReleased(tx, counted.unsent);
   }
   await tx.query(
     `update public.planned_runs set state = 'cancelled' where business_id = $1 and id = $2`,

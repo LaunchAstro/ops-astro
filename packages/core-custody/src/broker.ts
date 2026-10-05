@@ -46,7 +46,8 @@
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
-import { COUNTED_CAUSES, countedHold, giveBack, lockEnvelope } from './broker-give-back.ts';
+import { giveBack, lockEnvelope } from './broker-give-back.ts';
+import { releaseUnsent } from './broker-release.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { resolveFields } from './broker-sources.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
@@ -252,49 +253,4 @@ export async function sweepModelCalls(
   );
   const released = await releaseUnsent(tx);
   return { held: held.length + conversations.length, released: released.length };
-}
-
-/**
- * The sweep's release of calls never started on a lease that ended. One its
- * hold counted (a top-up, or the end at a stop) gives that back (`giveBack`).
- */
-async function releaseUnsent(tx: TenantQuery): Promise<readonly { readonly id: string }[]> {
-  // A counted call's envelope and hold, before its row, as settlement takes
-  // them. This runs after the lost-worker sweep's locks in one transaction, so
-  // it never waits out of the contract's order: a counted call whose envelope
-  // or hold another transaction holds is skipped, and the next pass takes it.
-  const counted = await tx.query<{ readonly id: string }>(
-    `select c.id from public.model_calls c
-       join public.leases l on l.business_id = c.business_id and l.id = c.lease_id
-       join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
-       join public.task_envelopes e on e.business_id = r.business_id and e.id = r.envelope_id
-      where c.business_id = $1 and c.state = 'reserved'
-        and (l.state <> 'live' or l.expires_at <= clock_timestamp())
-        and ${countedHold('$2')}
-        for update of e, r skip locked`,
-    [tx.businessId, COUNTED_CAUSES],
-  );
-  // A call its hold never counted has nothing to give back and is released
-  // without the hold's lock, so a start that holds it, its lease run out since
-  // its checks, finds the call released and sends nothing (catalogue #421).
-  // "Never counted" is read from this statement's snapshot: a top-up or end
-  // committing as the sweep runs can count a call released here, and nothing
-  // gives it back (catalogue #939).
-  const released = await tx.query<{ readonly id: string; readonly counted: boolean }>(
-    `update public.model_calls c
-        set state = 'released', ended_at = clock_timestamp()
-       from public.leases l, public.reservations r
-      where c.business_id = $1 and l.business_id = c.business_id and l.id = c.lease_id
-        and r.business_id = c.business_id and r.id = c.reservation_id
-        and c.state = 'reserved' and (l.state <> 'live' or l.expires_at <= clock_timestamp())
-        and (c.id = any($2::uuid[]) or not ${countedHold('$3')})
-      returning c.id, c.id = any($2::uuid[]) as counted`,
-    [tx.businessId, counted.map((row) => row.id), COUNTED_CAUSES],
-  );
-  for (const { id, counted: due } of released) {
-    // One call at a time, on the sweep's one connection.
-    // eslint-disable-next-line no-await-in-loop
-    if (due) await giveBack(tx, id);
-  }
-  return released;
 }

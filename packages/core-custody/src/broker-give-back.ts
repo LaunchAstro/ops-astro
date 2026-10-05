@@ -62,6 +62,29 @@ export async function lockEnvelope(tx: TenantQuery, callId: string): Promise<voi
   );
 }
 
+/**
+ * After a count (a top-up, or the end at a stop) has written its figures:
+ * `unsent` are the calls it read `reserved` and counted at their maximum,
+ * without their rows' locks, so the sweep may have released one since,
+ * reading its hold uncounted (catalogue #939). Their rows are locked now, so
+ * a sweep from here on skips them and the next one finds them counted; one
+ * released meanwhile gives back here, under the envelope and hold the count
+ * holds.
+ */
+export async function giveBackReleased(tx: TenantQuery, unsent: readonly string[]): Promise<void> {
+  if (unsent.length === 0) return;
+  const rows = await tx.query<{ readonly id: string; readonly state: string }>(
+    `select id, state from public.model_calls
+      where business_id = $1 and id = any($2::uuid[]) order by id for update`,
+    [tx.businessId, unsent],
+  );
+  for (const { id, state } of rows) {
+    // One call at a time, on the count's one connection.
+    // eslint-disable-next-line no-await-in-loop
+    if (state === 'released') await giveBack(tx, id);
+  }
+}
+
 /** Give back what the ended call did not spend, when its hold counted it at its maximum. */
 export async function giveBack(tx: TenantQuery, callId: string): Promise<void> {
   const [due] = await tx.query<Due>(
