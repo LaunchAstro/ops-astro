@@ -3,9 +3,10 @@
 /* eslint-disable max-lines-per-function -- each proof holds its lock schedule in one place */
 import { setTimeout as delay } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
-import { connect } from '../../packages/core-records/src/tenancy/database.ts';
+import { advisoryLock, connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { sendInvitation } from '../../packages/core-custody/src/index.ts';
 import {
+  addressFor,
   c,
   invite,
   as,
@@ -83,6 +84,56 @@ describe.skipIf(noDatabase)(
       const result = await pastExpiry(id, async () => await send(id));
       expect(result).toStrictEqual({ ok: false, code: 'INVITATION_NOT_PENDING' });
       expect(w.provider.received.length).toBe(before);
+    });
+
+    it('a create waiting at the address limiter replaces an invitation that lapsed meanwhile', async () => {
+      // Sol PRV-oa-1018-R1.5: expiry is judged once the create holds its locks.
+      const address = addressFor('lapsing');
+      const id = await invite(c.admin, address);
+      await w.db.admin.execute(
+        "update public.invitations set expires_at = clock_timestamp() + interval '1500 milliseconds' where id = $1",
+        [id],
+      );
+      const blocker = connect(w.db.appUrl);
+      const held = latch();
+      const release = latch();
+      let pid = 0;
+      const holding = blocker.withBusiness(w.alpha, async (tx) => {
+        const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
+        pid = row?.pid ?? 0;
+        await advisoryLock(tx, `limit:${w.alpha}:invitation:address:${address}`);
+        held.release();
+        await release.promise;
+      });
+      try {
+        await held.promise;
+        const running = as(c.admin, 'invitation.create', {
+          name: 'Ivy Again',
+          email: address,
+          role: 'member',
+        });
+        await waitUntil(async () => {
+          const [row] = await w.db.admin.execute<{ ready: boolean }>(
+            `select clock_timestamp() > expires_at and exists (
+               select 1 from pg_stat_activity where $2 = any(pg_blocking_pids(pid))) as ready
+               from public.invitations where id = $1`,
+            [id, pid],
+          );
+          return row?.ready === true;
+        });
+        release.release();
+        expect(codeOf(await running)).toBe('applied');
+      } finally {
+        release.release();
+        await holding;
+        await blocker.close();
+      }
+      const rows = await w.db.admin.execute<{ id: string; state: string }>(
+        'select id, state from public.invitations where address = $1 order by created_at',
+        [address],
+      );
+      expect(rows.map((row) => row.state)).toStrictEqual(['expired', 'pending']);
+      expect(rows[0]?.id).toBe(id);
     });
 
     it('a resend waiting for the invitation lock cannot revive a lapsed invitation', async () => {
