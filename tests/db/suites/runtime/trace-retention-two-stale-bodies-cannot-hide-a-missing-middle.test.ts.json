@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#963): two stale bodies restoring a run's first and last spans cannot hide the missing middle from recovery."
+}

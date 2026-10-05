@@ -239,6 +239,27 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.custody_secrets': `insert into public.custody_secrets
        (business_id, id, name, scope_kind, scope_id)
      values ($1, gen_random_uuid(), 'restricted-calls.seed', 'business', null) returning 1`,
+  // The connector fleet (MP-14-7a): nothing the journey does writes a
+  // connection, so each of the three is written here, foreign keys off. The
+  // repair names the business's own connection, at its revision, and its
+  // first actor, so a copy of the row meets its keys in the own insert.
+  'public.connections': `insert into public.connections
+       (business_id, id, connector_key, label, status)
+     values ($1, gen_random_uuid(), 'restricted-calls', 'restricted calls', 'active') returning 1`,
+  'public.connection_clients': `insert into public.connection_clients
+       (business_id, connection_id, client_id)
+     values ($1, gen_random_uuid(), gen_random_uuid()) returning 1`,
+  'public.connection_repairs': `insert into public.connection_repairs
+       (business_id, id, connection_id, connection_revision, started_by_actor_id)
+     select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), coalesce(c.revision, 1),
+            coalesce(a.id, gen_random_uuid())
+       from (select 1) one
+       left join lateral (
+         select id, revision from public.connections
+          where business_id = $1 order by id limit 1) c on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
   // C80's two tables: the journey requests no live correction. The receipt
@@ -394,6 +415,9 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.trace_expiry_batches': `insert into public.trace_expiry_batches
        (business_id, id, window_days, runs, expired_run_ids)
      values ($1, gen_random_uuid(), 30, 1, array[gen_random_uuid()]) returning 1`,
+  'public.trace_expiry_asks': `insert into public.trace_expiry_asks
+       (business_id, id, run_id, after_tx, after_id)
+     values ($1, gen_random_uuid(), gen_random_uuid(), '1', gen_random_uuid()) returning 1`,
   'public.bootstrap_bytes': `insert into public.bootstrap_bytes
        (business_id, content_digest, content_size, bytes)
      values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,
@@ -449,6 +473,24 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, activation_id, version_id, due_at, outcome)
      select a.business_id, gen_random_uuid(), a.id, a.version_id, now(), 'activation_off'
        from public.activations a where a.business_id = $1 limit 1 returning 1`,
+  // C39-T: nothing on the journey invites anyone, so one invitation, the token
+  // its send minted and that send's attempt are written here, in order. The
+  // invitation names the business's first person and actor.
+  'public.invitations': `insert into public.invitations
+       (business_id, id, person_id, role_key, address, expires_at, created_by_actor_id)
+     select $1, gen_random_uuid(),
+            (select id from public.people where business_id = $1 order by id limit 1),
+            'member', 'invitee@example.test', now() + interval '7 days',
+            (select id from public.actors where business_id = $1 order by id limit 1)
+     returning 1`,
+  'public.enrolment_tokens': `insert into public.enrolment_tokens
+       (business_id, id, invitation_id, token_hash, expires_at)
+     select business_id, gen_random_uuid(), id, encode(sha256(id::text::bytea), 'hex'), expires_at
+       from public.invitations where business_id = $1 order by id limit 1 returning 1`,
+  'public.invitation_delivery_attempts': `insert into public.invitation_delivery_attempts
+       (business_id, id, invitation_id, token_id, state)
+     select business_id, gen_random_uuid(), invitation_id, id, 'asked'
+       from public.enrolment_tokens where business_id = $1 order by id limit 1 returning 1`,
 };
 
 /**

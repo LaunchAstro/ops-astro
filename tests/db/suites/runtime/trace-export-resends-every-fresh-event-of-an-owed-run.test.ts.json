@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#475): a delete landing between two exports still leaves every fresh event of the owed run in the store."
+}

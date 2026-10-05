@@ -26,6 +26,8 @@ import {
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { agentPath, bearer, call, createWorld, personPath, type Answer } from './world.ts';
 import { enrol } from '../commands/fixture.ts';
+import { enrolCaller, type Caller } from './cast.ts';
+import { isInvitation } from './role-case-invitation-bodies.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
 import { gateContext } from './role-case-gate-bodies.ts';
@@ -34,6 +36,7 @@ import { ownTaskRecipes } from './role-case-own-tasks.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 import { heldByWithAdminTopUp } from './role-case-admin-grants.ts';
+import { seedBrokenConnection } from '../connections/fixture.ts';
 
 export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
@@ -59,6 +62,18 @@ export async function createHarness(part: string): Promise<Harness> {
   const clients = await seedFixtureClients(world);
 
   const heldBy = await heldByWithAdminTopUp(world);
+
+  // C39-T's limit is 30 invitation acts an hour per account, and the cells
+  // of one run send many more: each recipe enrols a fresh inviter holding
+  // `access:share` alone, so no cell spends another's hour.
+  let inviter: Caller = world.ada;
+  async function freshInviter(): Promise<void> {
+    inviter = await enrolCaller(world.db, world.alpha, 'alpha', 'inviter', {
+      membership: true,
+      actions: ['share'],
+      collections: ['access'],
+    });
+  }
 
   async function asPerson(
     name: CommandName,
@@ -224,20 +239,24 @@ export async function createHarness(part: string): Promise<Harness> {
     clients,
     pairFor,
     asPerson,
+    inviter: () => inviter,
     asAgent,
     freshTask,
     probeBody,
     positiveBody: createPositiveBody({
       alphaTaskId: alphaTask.id,
       assigneePersonId: world.mia.personId as string,
-      asPerson: async (name, body) => await asPerson(name, body),
+      asPerson: async (name, body) =>
+        await asPerson(name, body, 'alpha', isInvitation(name) ? inviter : world.ada),
       asAgent,
       freshTask,
       clientTask,
       ownComment: async (author) => await ownComment(author as { readonly token: string }),
+      freshInviter,
       freshMember: async () =>
         (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
       ...gateContext(world.db.admin, world.alpha),
+      brokenConnection: async () => await seedBrokenConnection(world.db.admin, world.alpha),
     }),
     approvedReservation,
     reserve,

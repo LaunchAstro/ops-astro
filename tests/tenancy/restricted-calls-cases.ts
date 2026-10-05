@@ -96,10 +96,15 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'trace_export_gaps'],
   // AW-13: a retention batch is a fact, never rewritten.
   ['si', 'trace_expiry_batches'],
+  // #475: a retention ask is a fact, never rewritten.
+  ['si', 'trace_expiry_asks'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
   // 20261005144947 (C40B): a reset token is written once, then spent by its column grant alone.
   ['si', 'inbox_attention inbox_delivery_attempts password_reset_tokens'],
   ['siu', 'inbox_items'],
+  // 20261005154858 (C39-T): an invitation's attempt and token are written once (INB-1a).
+  ['si', 'enrolment_tokens invitation_delivery_attempts'],
+  ['siu', 'invitations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'planned_steps proposal_lineages proposal_versions'],
   // AW-02 and SL11-30: a historical run and a lease's holder are never rewritten; the
@@ -161,6 +166,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005023013 (C31): custody's select is a column grant without the sealed
   // columns, proved by name in `tests/custody/c31-credentials.test.ts`.
   ['siu', 'custody_secrets'],
+  // 20261005153051 (MP-14-7a): the fleet is read here and written by MP-13-5 and
+  // the broker, and a repair is recorded once and never changed.
+  ['s', 'connection_clients connections'],
+  ['si', 'connection_repairs'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

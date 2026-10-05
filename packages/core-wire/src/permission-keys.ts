@@ -17,7 +17,7 @@ const CATALOGUE: Readonly<Record<string, readonly string[]>> = {
   automation: ['decide', 'manage'],
   billing: ['decide', 'manage', 'write'],
   chat: ['comment', 'manage'],
-  connection: ['write'],
+  connection: ['read', 'write'],
   conversation: ['read', 'write'],
   custody: ['manage'],
   docs: ['decide', 'write'],

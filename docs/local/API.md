@@ -1666,6 +1666,8 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.list`                              | `listCustodySecrets` (`reads/custody.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `secret.set`                               | `setCustodySecret` (`commands/custody-secrets.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.log`                                 | `logTimeEntry` (`commands/tasks-time.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -2380,6 +2382,37 @@ refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). Until a person moves
 it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. It holds
 `billing:decide`, so C59's step-up asks it in the envelope: `STEP_UP_REQUIRED`
 403 past 60 minutes while the business's money step-up setting is on.
+
+### Team invitations (C39-T)
+
+`POST /api/b/<key>/invitation/create` with `name`, `email` and `role`
+(`member` or `admin`); `invitation/resend` and `invitation/revoke` with
+`invitationId`. Each asks `share` on `access` for the whole business
+(`access:share`: owners and administrators), and no agent route serves them
+(`DELEGATION_EXCLUDES_OPERATION`). A create or resend of an `admin`
+invitation also asks `access:manage` for the whole business, and without it
+is `SCOPE_NOT_GRANTED` 403 naming `role`, writing nothing; a revoke asks
+`access:share` alone. A create writes a new person and the
+invitation, pending for seven days; a resend moves that on by seven days; a
+revoke ends it. An ended invitation is `TRANSITION_NOT_PERMITTED` 409 naming
+`state`, another business's or an unissued id `NOT_FOUND`, an address already
+pending or confirmed on a member `UNIQUE_VALUE_TAKEN` naming `email`. Creates
+and resends are limited to 3 an hour per address and 30 an hour per person,
+counted from the applied audit events (`RATE_LIMITED` naming `email` or
+`account`). The answer is the invitation's id, its revision and
+`{ invitationId, state }`. The business's worker expires lapsed invitations
+(`expireInvitations`, audited `invitation.expire`).
+
+Each create and each resend allows one email: `sendInvitation`
+(`core-custody`) sends through the broker's `email.send` only while the
+invitation is pending and has an applied act no send has answered, mints a
+fresh enrolment token, keeps its SHA-256 alone and records the attempt
+against it. It shares the inbox email's ceiling: one limit, `email.send`'s
+catalogued concurrency, counts inbox and invitation emails in flight
+together, each ask until custody's timeout and a minute's grace have passed
+(`EMAIL_AT_CEILING` at it, writing nothing). Not here yet: the send mounted
+after the command, Auth's Send Email hook, the enrolment page and the Access
+screen (C39-T P2 and P3).
 
 ## Tags
 
@@ -3403,3 +3436,29 @@ No answer carries a value, and a refusal names the field, never what was sent.
 No audit row holds a set's value either, a refusal's attempted values included.
 A set's `expectedRevision` is the revision `secret.list` showed, or `0` for a
 name the list did not hold: `0` is refused `VERSION_STALE` when the name exists.
+
+## Connections (MP-14-7a)
+
+The connector fleet on Connections & signal. The fleet is `connection:read`,
+filtered in its statement by the scopes the caller holds it at: a client-scoped
+reader sees the connections serving that client, and only that client in each
+list. A client in a list is a client of this business by foreign key, shown by
+its name. The repair is `custody:manage`, business-wide, never an agent. It
+records `connector repair started` on a broken connection of this business at
+its current revision and sends nothing: re-authorising is the broker's (AW-01),
+behind the approval gate on that revision. The insert checks again that the
+connection is still broken at that revision; one that healed or moved on since
+the read is refused `TRANSITION_NOT_PERMITTED` or `VERSION_STALE` and records
+nothing. Connection rows are written by MP-13-5 and the broker; this build only
+reads them.
+
+| Operation          | Route               | Body                                               | Answer or refusals                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.fleet` | `/connection/fleet` | `{}`                                               | `{ ok: true, connections: [{ id, connectorKey, label, authMethod, status, failureClass, cadenceMinutes, lastSyncedAt, lastAttemptAt, scope, readComponents, executeComponents, custody: { secretId, state }, clients: [{ id, label }], repairStartedAt, revision }], counts: { all, active, degraded, broken, clientConnections } }`; `SCOPE_NOT_GRANTED` 403 |
+| `connector.repair` | `/connector/repair` | `operationId`, `connectionId`, `expectedRevision?` | `detail: { repairId, connectionId, connectionRevision, state: 'awaiting approval' }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (another business's, made-up or malformed alike), `TRANSITION_NOT_PERMITTED` 409 (not broken), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                                                  |
+
+The custody field is a reference: the secret's id and whether custody holds a
+value, never any part of one. No sealed column is read. It is shown only for a
+secret the caller's scopes reach (a business-wide reader, a business-wide
+secret, or one of the caller's clients'); a secret scoped to another client the
+connection serves shows as `{ secretId: null, state: 'not set' }`.
