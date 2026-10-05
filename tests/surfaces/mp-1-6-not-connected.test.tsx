@@ -128,10 +128,16 @@ it('MP-1-6 the header freshness marker is an indicator only, in five states, and
   expect(rulesMentioning('.fresh').filter((r) => /:(hover|focus|active)/u.test(r))).toEqual([]);
   // No page draws a sync control. (The task page's Refresh re-reads after a
   // conflict; whether live updates replace it is the live page kit's to decide.)
+  // One exception: a fleet connector's Sync now stays as a quiet fallback on a
+  // source that is behind, failed or never synced, never as a headline (owner
+  // register 26-28 Sep, :9 item 3 and :89 AG-C18; MP-14-7,
+  // docs/mockup-inventory/TICKET-PLAN.md:380).
+  const fallbacks = new Set(['apps/web/src/screens/connections/fleet-row.tsx']);
   const offenders = sources().filter(
-    ({ text }) =>
-      />\s*(Sync|Sync now|Resync)\s*</u.test(text) ||
-      /(label|aria-label|busy)="(Sync|Resync)[^"]*"/u.test(text),
+    ({ path, text }) =>
+      !fallbacks.has(path) &&
+      (/>\s*(Sync|Sync now|Resync)\s*</u.test(text) ||
+        /(label|aria-label|busy)="(Sync|Resync)[^"]*"/u.test(text)),
   );
   expect(offenders.map((o) => o.path)).toEqual([]);
 });
