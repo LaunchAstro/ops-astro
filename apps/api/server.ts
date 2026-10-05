@@ -139,6 +139,9 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
   };
 }
 
+/** The business lookup identity (0046) the resolver takes by name. */
+export const LOOKUP_ROLE = 'ops_astro_lookup';
+
 /**
  * The business key to its identifier, cached after the first answer.
  *
@@ -154,9 +157,6 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
  * came back first, as the backstop for a database below 0027. That refusal is
  * not cached, so the key resolves again once only one business holds it.
  */
-/** The business lookup identity (0046) the resolver takes by name. */
-export const LOOKUP_ROLE = 'ops_astro_lookup';
-
 export function createBusinessResolver(
   admin: AdminConnection,
 ): (businessKey: string) => Promise<string | undefined> {
