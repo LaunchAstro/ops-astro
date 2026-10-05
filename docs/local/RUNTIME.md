@@ -1851,15 +1851,24 @@ or delete.
   unanswered, the grant live at the locked instant. The four-eyes threshold
   is read `for share` under those locks, so a change in flight is waited on.
   Two answers at once meet on the run lock and the second is refused
-  `TRANSITION_NOT_PERMITTED`. Every write is in one transaction: a failure at
-  any step applies nothing.
+  `TRANSITION_NOT_PERMITTED`. If the run stopped again between the find and
+  the locks, the open ask's hold is no longer the one found: the answer rolls
+  back with `AffectedSetChanged` and the command entry retries it once, so it
+  answers the new ask against that ask's own hold. An answer naming the
+  earlier ask is refused `TRANSITION_NOT_PERMITTED` instead. Every write is in
+  one transaction: a failure at any step applies nothing.
 - **The top-up** (`topUpAtBudgetStop`, `billing:decide` on the task, a
   person). An agent is refused `DELEGATION_EXCLUDES_DECISION`. The plan's
   lineage must be live (`LINEAGE_TERMINAL`), the currency the envelope's
   (`CAP_BINDING_MISMATCH`) and the amount within the business cap
   (`BUDGET_EXHAUSTED`): the cap is the hard ceiling and no answer raises it.
-  The plan approver approves where they still hold `billing:decide`,
-  otherwise any holder (`SCOPE_NOT_GRANTED` names the approver). Four eyes
+  A trashed task takes no top-up: whether the task is live is read again
+  under the task lock, so a trash that commits before the lock is seen, and
+  the answer is `NOT_FOUND` with nothing written. The ordinary top-up
+  (`budget.ts`) reads it the same way. The plan approver approves where they
+  still hold `billing:decide`, otherwise any holder (`SCOPE_NOT_GRANTED`
+  names the approver). Where the plan approver's approval waits, it pairs
+  first, ahead of an earlier one (`pairFor`'s `prefer`). Four eyes
   is the core's one rule (`four-eyes.ts`), the one T2e's top-up and T3c's
   write-off use: the band is `four_eyes_threshold` in the envelope currency's
   major unit, read `for share` under the locks, null is off and no stored row
@@ -1889,8 +1898,9 @@ or delete.
   call with no confirmation (U7). The hold becomes `abandoned` with the cause
   `budget_stop_ended`; the envelope releases the unspent part and keeps the
   spend to date as actual. The run becomes `cancelled`. The task is not
-  written: it stays open for a person. A hold a lineage cancel already
-  classified is not released again.
+  written: it stays open for a person. A trashed task is reached too: its
+  hold is still counted, and the end is how it is given back. A hold a
+  lineage cancel already classified is not released again.
 - **The spend to date** is counted as the broker counts it: settled calls at
   their actual, calls still open at the maximum they hold.
 
