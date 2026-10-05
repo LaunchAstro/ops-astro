@@ -43,7 +43,12 @@ Staging shares a machine with live services, so it is confined (ticket S0-1,
   that are removed when they end (`scripts/ops/container-run.mjs`). Their
   login goes in by environment name, so Docker holds it in that container's
   settings while it runs; the machine's Docker daemon runs without debug
-  logging, which would write it to the daemon's log.
+  logging, which would write it to the daemon's log. A run stopped during a
+  create the daemon stalls on for over 20 seconds, then finishes after the
+  client has gone, can leave one such container made but never started.
+  The runbook lists any with
+  `docker ps --all --filter status=created --filter name=ops-astro-staging-`
+  and removes each with `docker rm`.
 
 The staging worker and its outbox forwarder (`worker`, `forwarder`) are one
 unit: the same pinned Node image, running the checkout the runbook copies into

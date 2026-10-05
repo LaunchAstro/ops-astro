@@ -11,6 +11,9 @@
 // create still under way waits for the id, and if none comes, removes the
 // run's own name (64 random bits, never another run's). A run that ends by a
 // signal, or with any code but 0, has failed, and its container is removed too.
+// One case is left: a create stalled past `STOP_MS` that the daemon still
+// finishes more than `GRACE_MS` after the client has gone leaves a container
+// in `Created`, holding its login; the staging README says how to clear it.
 
 import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
