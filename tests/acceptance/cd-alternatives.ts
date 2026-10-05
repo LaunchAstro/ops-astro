@@ -157,7 +157,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The fifty identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The fifty-four identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -215,6 +215,11 @@ export const IDENTIFIER_BEARING: Readonly<
   // New client onboarding (C41-A): the client a start names, the step task a result names.
   'onboarding.start': ['clientId', 'control'],
   'onboarding.step_result': ['recordId', 'control'],
+  // C52-A: an activation and the version it adopts, and an approval to revoke.
+  'activation.adopt': ['activationId and versionId', 'control'],
+  'activation.roll_back': ['activationId', 'control'],
+  'activation.turn_off': ['activationId', 'control'],
+  'approval.revoke': ['approvalId', 'control'],
 };
 
 /**

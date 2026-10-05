@@ -56,10 +56,12 @@ concurrency:
   # Never a merge group (CI-SPEED); see ci.yml.
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
+# CI-LOCAL: with OPS_CI_LOCAL set to `on`, a merge group's run asks for our
+# own runners, as ci.yml's required jobs do; see the note there.
 jobs:
   review-evidence:
     name: review evidence for this revision
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 1.1 min.
     timeout-minutes: 10
     steps:

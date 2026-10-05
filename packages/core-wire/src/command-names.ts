@@ -246,5 +246,11 @@ export type CommandName =
   | 'automation.registry'
   | 'activation.change'
   | 'definition.release'
+  // Standing approvals (C52-A): adopting a version, rolling back, turning off
+  // and revoking an approval, each `automation:manage` and never an agent's.
+  | 'activation.adopt'
+  | 'activation.roll_back'
+  | 'activation.turn_off'
+  | 'approval.revoke'
   // Setup's operations (C31 on), in `surface-setup.ts`.
   | SetupCommandName;

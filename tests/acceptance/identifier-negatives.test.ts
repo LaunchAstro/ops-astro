@@ -78,7 +78,7 @@ const pair = (
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
 
-/** C33's three identifier cells: a foreign version, activation and definition. */
+/** C33's three identifier cells: a foreign version, activation and definition; then C52-A's. */
 function automationCells(f: IdentWorld['foreign']): [CommandName, ReturnType<typeof pair>][] {
   const manual = { mode: 'manual', enabled: false } as const;
   const release = {
@@ -107,6 +107,35 @@ function automationCells(f: IdentWorld['foreign']): [CommandName, ReturnType<typ
       'definition.release',
       pair('definitionId', automation.definitionId, (id) => ({ definitionId: id, ...release })),
     ],
+    ...approvalCells(f),
+  ];
+}
+
+/** An activation named at revision 1, as the seeded ones are. */
+const atFirst = (activationId: string): Body => ({ activationId, expectedRevision: 1 });
+
+/** C52-A's identifier cells: a foreign activation, version and approval. */
+function approvalCells(f: IdentWorld['foreign']): [CommandName, ReturnType<typeof pair>][] {
+  const at = atFirst;
+  const { automation } = f;
+  return [
+    [
+      'activation.adopt',
+      pair('activationId', automation.activationId, (id) => ({
+        ...at(id),
+        versionId: f.alphaVersionId,
+      })),
+    ],
+    [
+      'activation.adopt',
+      pair('versionId', automation.versionId, (id) => ({
+        ...at(f.alphaActivationId),
+        versionId: id,
+      })),
+    ],
+    ['activation.roll_back', pair('activationId', automation.activationId, at)],
+    ['activation.turn_off', pair('activationId', automation.activationId, at)],
+    ['approval.revoke', pair('approvalId', automation.approvalId, (id) => ({ approvalId: id }))],
   ];
 }
 

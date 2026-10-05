@@ -210,6 +210,11 @@ export const DECLARED: Readonly<
   // C31: a business's custody key, never task content.
   'secret.set': { carry: 'not carried', plant: 'a business key, not task content' },
   'secret.clear': { carry: 'not carried', plant: 'a business key, not task content' },
+  // C52-A: an activation's standing approval, carrying no task.
+  'activation.adopt': { carry: 'not carried', plant: 'an automation, not task content' },
+  'activation.roll_back': { carry: 'not carried', plant: 'an automation, not task content' },
+  'activation.turn_off': { carry: 'not carried', plant: 'an automation, not task content' },
+  'approval.revoke': { carry: 'not carried', plant: 'an automation, not task content' },
   // MP-14-7a: a repair names a connection, never task content.
   'connector.repair': { carry: 'not carried', plant: 'a connection, not task content' },
 };
