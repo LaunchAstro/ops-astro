@@ -61,11 +61,11 @@ export async function releaseUncounted(tx: TenantQuery, reservationId: string): 
   );
 }
 
-/** The hold `r` has a call sent and never resolved: a write-off or outcome may have closed over it. */
+/** The hold `r` has a call sent and never resolved that a person's write-off or outcome closed. */
 export async function openCallOn(tx: TenantQuery, r: { reservation_id: string }): Promise<boolean> {
   const open = await tx.query(
     `select 1 from public.model_calls where business_id = $1 and reservation_id = $2
-        and state in ('dispatched', 'liability_unknown')`,
+        and state in ('dispatched', 'liability_unknown') and outcome is not null`,
     [tx.businessId, r.reservation_id],
   );
   return open.length > 0;
