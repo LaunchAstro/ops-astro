@@ -7,11 +7,14 @@
 // 200,000, plus symlinks that stay inside it, and no `.wh.` segment.
 //
 // The reader judges each byte as it arrives and keeps its first refusal,
-// so a refusal for the size cap means every earlier byte passed and one
-// byte went past the cap (F1's `output` crossing). A header or end block
+// so a refusal for the size cap means every earlier byte passed and the
+// stream went past the cap (F1's `output` crossing). A header or end block
 // the cap cuts is read whole first, at most 511 bytes past the cap into
 // the fixed block buffer, and judged as a larger cap would judge it, so
-// the cap never hides a fault in it. A file's bytes are kept
+// the cap never hides a fault in it; a stream that stops inside that block
+// is `tar end`. So a caller pushes the whole stream, or at least 511 bytes
+// past the cap, before `end()`: F1's crossing stream ends 448 bytes past
+// S0's cap, inside its second end block. A file's bytes are kept
 // in one buffer that doubles as they arrive, never past the declared size
 // or what the cap still lets arrive, and copied, so the caller may reuse its chunk. Every header byte is
 // read: the pad and device fields hold only zeros or octal, and a name
@@ -268,7 +271,7 @@ export class UstarReader {
 
   end(): OutputRead {
     if (this.refused !== null) return this.refused;
-    // A stream that stops inside a block ends as `tar end`, past the cap or not.
+    // Past the cap with no block left open; one that stops inside a block is `tar end`.
     if (this.bytes > this.cap && this.blockFill === 0) return refusal('too large');
     if (this.state.at !== 'ended') return refusal('tar end');
     return { ok: true, entries: this.entries };
