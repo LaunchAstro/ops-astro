@@ -10,7 +10,7 @@ import { expect, it } from 'vitest';
 import type { ExpiryPorts } from '../../packages/core-runtime/src/index.ts';
 import { derivedId, expireOnce, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
 import { asAgent, codeOf, handbackBody, liveWork } from './schedules-harness.ts';
-import { age } from './aw-13-retention-world.ts';
+import { age, handbackSpan } from './aw-13-retention-world.ts';
 import {
   cursorOf,
   drain,
@@ -83,8 +83,9 @@ it.skipIf(noDatabase)(
     await exportFor(t.alpha);
     await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
     await exportFor(t.alpha);
+    // The fresh handback's own span, not only some span under R's trace id.
     expect(
-      t.target.stored.has(traceId),
+      t.target.spans.get(traceId)?.has(await handbackSpan(runId)) === true,
       'the fresh handback must remain retrievable or be exported again after D2 lands',
     ).toBe(true);
   },

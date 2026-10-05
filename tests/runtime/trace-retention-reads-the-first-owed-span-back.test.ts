@@ -3,7 +3,7 @@
 // Trace retention (#475): an owed run's tail longer than one export body goes
 // in several bodies, its earliest span first. A queued delete that lands
 // between two of them leaves a trace that reads present without the earlier
-// spans, so retention reads the run's earliest owed span back, finds it gone
+// spans, so retention reads the run's owed spans back, finds the earliest gone
 // and sends the tail again. That read goes through custody's one observation
 // route: one identifier segment, any other shape refused before a socket. A
 // body the target refuses as too large (413) is a gap with its own code, and

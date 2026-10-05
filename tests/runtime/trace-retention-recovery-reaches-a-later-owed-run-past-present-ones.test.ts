@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 import type { ExpiryPorts, TraceDatabase } from '../../packages/core-runtime/src/index.ts';
 import { derivedId, expireOnce, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
 import { asAgent, codeOf, handbackBody, liveWork } from './schedules-harness.ts';
-import { age } from './aw-13-retention-world.ts';
+import { age, handbackSpan } from './aw-13-retention-world.ts';
 import { cursorOf, drain, noDatabase, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
 
 useAw13World('trret_owed_pages');
@@ -95,8 +95,9 @@ it.skipIf(noDatabase)(
       await drain(t.alpha);
     }
     expect(t.target.stored.has(traceOf(runA)), 'A stays present').toBe(true);
+    // B's fresh handback's own span, not only some span under B's trace id.
     expect(
-      t.target.stored.has(traceOf(runB)),
+      t.target.spans.get(traceOf(runB))?.has(await handbackSpan(runB)) === true,
       'recovery must read B absent and export its fresh span again despite A staying present',
     ).toBe(true);
   },

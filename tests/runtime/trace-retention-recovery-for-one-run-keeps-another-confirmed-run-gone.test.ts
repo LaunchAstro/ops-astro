@@ -11,7 +11,7 @@ import { expect, it } from 'vitest';
 import type { ExpiryPorts } from '../../packages/core-runtime/src/index.ts';
 import { derivedId, expireOnce, TRACE_WINDOW_DAYS } from '../../packages/core-runtime/src/index.ts';
 import { asAgent, codeOf, handbackBody, liveWork } from './schedules-harness.ts';
-import { age, batchesOf } from './aw-13-retention-world.ts';
+import { age, batchesOf, handbackSpan } from './aw-13-retention-world.ts';
 import { cursorOf, drain, noDatabase, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
 
 useAw13World('trret_other_run');
@@ -76,7 +76,11 @@ it.skipIf(noDatabase)(
 
     // Recovery: drain the export, then retention again.
     await drain(t.alpha);
-    expect(t.target.stored.has(traceOf(runA)), 'A’s fresh trace is restored').toBe(true);
+    // A's fresh handback's own span, not only some span under A's trace id.
+    expect(
+      t.target.spans.get(traceOf(runA))?.has(await handbackSpan(runA)) === true,
+      'A’s fresh trace is restored',
+    ).toBe(true);
     await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, t.target.expiry);
     await drain(t.alpha);
     expect(
