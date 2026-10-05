@@ -27,6 +27,8 @@ import {
   startRepair,
   type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
+import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
+import type { TransactionQuery } from '../../packages/core-records/src/tenancy/transaction.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import type { ConnectionFleetResult, ConnectionView } from '../../packages/core-wire/src/index.ts';
 
@@ -76,6 +78,44 @@ function afterFirst(tx: TenantQuery, between: () => Promise<void>): TenantQuery 
   };
 }
 
+/** The repair's first read of the connection, the statement the races below pause after. */
+const CONNECTION_READ = 'select status, revision from public.connections';
+
+/**
+ * `database`, with `paused` awaited once per transaction straight after that
+ * transaction's first connection read returns, savepoints included. The
+ * command runs through it end to end; nothing else is stood in for.
+ */
+function pausingAfterRead(database: Database, paused: () => Promise<void>): Database {
+  const pausing = (tx: TransactionQuery, state: { read: boolean }): TransactionQuery => ({
+    businessId: tx.businessId,
+    async query<Row>(text: string, parameters?: readonly unknown[]) {
+      const rows = await tx.query<Row>(text, parameters);
+      if (!state.read && text.includes(CONNECTION_READ)) {
+        state.read = true;
+        await paused();
+      }
+      return rows;
+    },
+    async savepoint(work) {
+      return await tx.savepoint(async (inner) => {
+        await work(pausing(inner, state));
+      });
+    },
+  });
+  return {
+    log: database.log,
+    close: async () => {
+      await database.close();
+    },
+    withBusiness: async (businessId, run) =>
+      await database.withBusiness(
+        businessId,
+        async (tx) => await run(pausing(tx, { read: false })),
+      ),
+  };
+}
+
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
   const pair = generateSealingPair('test/mp-14-7a@1');
@@ -116,6 +156,28 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     );
     answers.push(answer);
     return answer;
+  };
+
+  // The races: the same composed boundary on an application pool of its own,
+  // `max` connections wide, pausing each transaction after its connection read.
+  const pausedApi = (max: number, paused: () => Promise<void>) => {
+    const pool = connect(controls.fixture.db.appUrl, { source: 'runtime', max });
+    const api = controls.fixture.compose(
+      { custody: pair.key },
+      undefined,
+      pausingAfterRead(pool, paused),
+    );
+    const repairVia = async (who: Member, connectionId: string): Promise<Answer> => {
+      const answer = await post(
+        api,
+        path('alpha', 'connector.repair'),
+        { operationId: randomUUID(), connectionId, expectedRevision: 1 },
+        authorised(await tokenFor(who.presented.subject)),
+      );
+      answers.push(answer);
+      return answer;
+    };
+    return { repairVia, close: async () => await pool.close() };
   };
 
   const fleet = async (who: Member, business = 'alpha'): Promise<ConnectionFleetResult> => {
@@ -627,7 +689,35 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
       status: 'broken',
       clients: [clientA],
     });
-    const [one, two] = await Promise.all([repair(admin, fresh.id), repair(admin, fresh.id)]);
+    // Sol PRV-oa-978-R1.3: two connections, and the first transaction is held
+    // after its read until the second has read too (or 3 s pass), so both
+    // inserts really meet. `together` is how many had read when it let go.
+    let reads = 0;
+    let together: number | undefined;
+    let letGo: (() => void) | undefined;
+    const bothRead = new Promise<void>((resolve) => {
+      letGo = resolve;
+    });
+    const race = pausedApi(2, async () => {
+      reads += 1;
+      if (reads >= 2) letGo?.();
+      else {
+        let timer: NodeJS.Timeout | undefined;
+        await Promise.race([
+          bothRead,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, 3_000);
+          }),
+        ]);
+        clearTimeout(timer);
+      }
+      together ??= reads;
+    });
+    const [one, two] = await Promise.all([
+      race.repairVia(admin, fresh.id),
+      race.repairVia(admin, fresh.id),
+    ]).finally(race.close);
+    expect(together).toBe(2);
     expect([one.status, two.status]).toStrictEqual([200, 200]);
     const ids = [one, two].map((answer) =>
       String((answer.body['detail'] as Record<string, unknown>)['repairId']),
@@ -667,6 +757,84 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
       await attempt(`status = 'active', failure_class = null, revision = revision + 1`),
     ).toStrictEqual(['not-broken', 0]);
     expect(await attempt('revision = revision + 1')).toStrictEqual(['stale', 0]);
+  });
+
+  it('MP-14-7a an earlier repair of the revision does not hide a heal or a move between the read and the insert', async () => {
+    // Sol PRV-oa-978-R1.2: repair R of revision 1 is already there; the
+    // connection heals (or moves on, still broken) after the new start reads it.
+    const { db } = controls.fixture;
+    const attempt = async (change: string): Promise<readonly [string, readonly string[]]> => {
+      const moved = await seed(alpha, { label: 'Repaired source', status: 'broken', clients: [] });
+      const earlier = await db.app.withBusiness(
+        alpha,
+        async (tx) =>
+          await startRepair(tx, {
+            connectionId: moved.id,
+            actorId: admin.actorId,
+            expectedRevision: 1,
+          }),
+      );
+      if (isRepairRefusal(earlier)) throw new Error('mp-14-7a: the earlier repair was refused');
+      const started = await db.app.withBusiness(
+        alpha,
+        async (tx) =>
+          await startRepair(
+            afterFirst(tx, async () => {
+              await db.admin.execute(`update public.connections set ${change} where id = $1`, [
+                moved.id,
+              ]);
+            }),
+            { connectionId: moved.id, actorId: admin.actorId, expectedRevision: 1 },
+          ),
+      );
+      const rows = await db.admin.execute<{ readonly id: string; readonly revision: string }>(
+        `select id, connection_revision::text as revision from public.connection_repairs
+          where connection_id = $1`,
+        [moved.id],
+      );
+      expect(rows.map(({ id, revision }) => ({ id, revision }))).toStrictEqual([
+        { id: earlier.id, revision: '1' },
+      ]);
+      return [isRepairRefusal(started) ? started.refused : 'started', rows.map((row) => row.id)];
+    };
+    expect(
+      (await attempt(`status = 'active', failure_class = null, revision = revision + 1`))[0],
+    ).toBe('not-broken');
+    expect((await attempt('revision = revision + 1'))[0]).toBe('stale');
+  });
+
+  it('MP-14-7a a repair whose one custody:manage grant is revoked after its read is refused and records nothing', async () => {
+    // Sol PRV-oa-978-R1.1: the starter holds exactly one business-wide
+    // custody:manage grant; the administrator revokes it, through the real
+    // command on its own connection, while the start sits after its read.
+    const { db } = controls.fixture;
+    const fresh = await seed(alpha, { label: 'Revoked source', status: 'broken', clients: [] });
+    const starter = await enrol(db.app, alpha, 'revokedstarter');
+    let grantId = '';
+    await db.app.withBusiness(alpha, async (tx) => {
+      grantId = await grantTo(
+        tx,
+        starter,
+        'manage',
+        { kind: 'business', id: null },
+        false,
+        'custody',
+      );
+    });
+    let revoked: Answer | undefined;
+    const race = pausedApi(1, async () => {
+      revoked = await as(admin, 'access.revoke', { grantId });
+    });
+    const answer = await race.repairVia(starter, fresh.id).finally(race.close);
+    expect(revoked?.status).toBe(200);
+    expect(answer.status).toBe(403);
+    expect(answer.body['code']).toBe('SCOPE_NOT_GRANTED');
+    expect(
+      await controls.count(
+        'select count(*) as n from public.connection_repairs where connection_id = $1',
+        [fresh.id],
+      ),
+    ).toBe(0);
   });
 
   it('MP-14-7a nothing leaves before the approval gate: a started repair sends nothing and uses no credential', async () => {
