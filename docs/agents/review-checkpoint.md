@@ -36,3 +36,16 @@ A later commit makes earlier review evidence stale. Required security
 review refers to that same revision. Verify that the ruleset and the check exist
 on the hosted repository; a local checkpoint alone cannot enforce merging
 behaviour.
+
+## Before a push that goes to review
+
+Run `node scripts/pre-ready.mjs --pr <number>` (or `--body-file <path>` with
+the body you are about to post, and `--labels a,b`) on the committed head. It
+runs the review preflight, then in order, stopping at the first red: the whole
+`pnpm check`, changed-file lint and the lint ratchet, named-suite registration
+of new test files, commit trailers on every commit in the range (merge commits
+included), review evidence on the body with the checker taken fresh from
+`origin/main`, behaviour test names, and `git merge-tree` against
+`origin/main`. `pnpm check` is heavy: run it on the M5 and pass `--skip-check`;
+the gate then says it did not run it. The gate calls the existing checkers and
+changes none of them.
