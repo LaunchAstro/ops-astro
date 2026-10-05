@@ -295,7 +295,9 @@ business, seen here or not: a token whose first sign-in (`amr`) is at or
 before that ending, or within the minute the provider's clock may run ahead
 of the database's (`SIGN_IN_CLOCK_SKEW_SECONDS`), is refused; a sign-in after
 that is served (`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest
-of the subject). So a sign-in in the minute after the ending is refused once. The provider's sign-out, which revokes
+of the subject). So a sign-in in the minute after the ending is refused once.
+An agent login's bearer is refused by these endings too, whichever business
+ended them (C40). The provider's sign-out, which revokes
 the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
 longer admits the person) still ends the verified token's own session in
 every business and at the provider, and answers the refusal.
@@ -765,13 +767,13 @@ Every operation in `COMMAND_SURFACE` is built. The one `DEPENDENCY_NOT_LANDED`
 a command answers for a missing part is `task.comment` on a business with no
 comment record type.
 
-| Operation       | Route            | Body                                                                                                                                                                                                                                                                                                                   | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?`                                                                                                                                                                             | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_SCOPE_EXCEEDED` 422 (also a `currency` other than the task's cap's, which is its envelope's cap or else the business cap, or a ceiling past the cap's remaining room, or past the task's open envelope's remaining room, each less the hold the superseded version releases), `GATE_NOT_FOUND` 404, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404 (also a trashed task, in the same bytes as a missing one, before the handler's operand checks and the revision), `FIELD_VALUE_INVALID` 422 (naming `purpose` when absent, not a string or out of shape; `currency` when absent, not a string or empty; `payload` when not a JSON object; `step`; `expiresInSeconds`; `lineageId` when neither a string nor `null`) |
-| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision` (`approve`, `reject`, `request_changes`, or `escalate` at the revision bound), `note`, `recipientPersonId` (escalate's only: a holder of `decide` at business scope, not the assignee; the gate stays open and from then on only a business-scope decider decides it) | `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (escalate before the bound), `SCOPE_NOT_GRANTED` 403 naming `recipientPersonId` (a recipient outside the escalation role), `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `PROPOSAL_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `CLIENT_SIGNOFF_REQUIRED` 409 (approving a reviewed output while the business requires the client's sign-off, AW-08; nothing written), `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 naming `gateId` or `versionId` when it is absent or not a string, `recipientPersonId` when escalate lacks one or another decision carries one, or `note` when the note is not a string or carries a NUL or an unpaired surrogate                  |
-| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                                                                                                                                                                                                        | `RESERVATION_NOT_CLAIMABLE` 409, `LEASE_HELD` 409, `BUDGET_UNAVAILABLE` 409 (a hold its spend used whole: the run stops at its budget and asks the person), `SCOPE_NOT_GRANTED` 403 (person), `DELEGATION_ALREADY_LIVE` 409 (agent), `DELEGATION_WIDENS` 403, `DEPENDENCY_NOT_LANDED` 501 (agent, no delegation key), `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400 (person)                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                                                                                                                                                                                                  | `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422 (also naming `report` or `successor.<key>` when it holds a NUL or an unpaired surrogate, on both prefixes)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Operation       | Route            | Body                                                                                                                                                                                                                                                                                                                   | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?`                                                                                                                                                                             | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_SCOPE_EXCEEDED` 422 (also a `currency` other than the task's cap's, which is its envelope's cap or else the business cap, or a ceiling past the cap's remaining room, or past the task's open envelope's remaining room, each less what superseding the live versions gives back: a settled model call's spend stays committed, and a marked hold or one with a call still open gives back nothing), `GATE_NOT_FOUND` 404, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404 (also a trashed task, in the same bytes as a missing one, before the handler's operand checks and the revision), `FIELD_VALUE_INVALID` 422 (naming `purpose` when absent, not a string or out of shape; `currency` when absent, not a string or empty; `payload` when not a JSON object; `step`; `expiresInSeconds`; `lineageId` when neither a string nor `null`) |
+| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision` (`approve`, `reject`, `request_changes`, or `escalate` at the revision bound), `note`, `recipientPersonId` (escalate's only: a holder of `decide` at business scope, not the assignee; the gate stays open and from then on only a business-scope decider decides it) | `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (escalate before the bound), `SCOPE_NOT_GRANTED` 403 naming `recipientPersonId` (a recipient outside the escalation role), `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `PROPOSAL_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `CLIENT_SIGNOFF_REQUIRED` 409 (approving a reviewed output while the business requires the client's sign-off, AW-08; nothing written), `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 naming `gateId` or `versionId` when it is absent or not a string, `recipientPersonId` when escalate lacks one or another decision carries one, or `note` when the note is not a string or carries a NUL or an unpaired surrogate                                                                                                                                         |
+| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                                                                                                                                                                                                        | `RESERVATION_NOT_CLAIMABLE` 409, `LEASE_HELD` 409, `BUDGET_UNAVAILABLE` 409 (a hold its spend used whole: the run stops at its budget and asks the person), `SCOPE_NOT_GRANTED` 403 (person), `DELEGATION_ALREADY_LIVE` 409 (agent), `DELEGATION_WIDENS` 403, `DEPENDENCY_NOT_LANDED` 501 (agent, no delegation key), `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400 (person)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                                                                                                                                                                                                  | `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422 (also naming `report` or `successor.<key>` when it holds a NUL or an unpaired surrogate, on both prefixes)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 **A trashed task's work is not handed out.** `task.queue` leaves it out, and
 `task.pickup` of its reservation answers exactly as an unknown reservation
@@ -1664,6 +1666,8 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.list`                              | `listCustodySecrets` (`reads/custody.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `secret.set`                               | `setCustodySecret` (`commands/custody-secrets.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.log`                                 | `logTimeEntry` (`commands/tasks-time.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -1684,6 +1688,9 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `settings.set_conversation_window`         | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `settings.set_retention_window`            | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 
+| `automation.registry` | `readAutomationRegistry` (`reads/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.change` | `changeActivationAsPerson` (`commands/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `definition.release` | `releaseDefinitionVersion` (`commands/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
 
@@ -2376,6 +2383,37 @@ it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. It holds
 `billing:decide`, so C59's step-up asks it in the envelope: `STEP_UP_REQUIRED`
 403 past 60 minutes while the business's money step-up setting is on.
 
+### Team invitations (C39-T)
+
+`POST /api/b/<key>/invitation/create` with `name`, `email` and `role`
+(`member` or `admin`); `invitation/resend` and `invitation/revoke` with
+`invitationId`. Each asks `share` on `access` for the whole business
+(`access:share`: owners and administrators), and no agent route serves them
+(`DELEGATION_EXCLUDES_OPERATION`). A create or resend of an `admin`
+invitation also asks `access:manage` for the whole business, and without it
+is `SCOPE_NOT_GRANTED` 403 naming `role`, writing nothing; a revoke asks
+`access:share` alone. A create writes a new person and the
+invitation, pending for seven days; a resend moves that on by seven days; a
+revoke ends it. An ended invitation is `TRANSITION_NOT_PERMITTED` 409 naming
+`state`, another business's or an unissued id `NOT_FOUND`, an address already
+pending or confirmed on a member `UNIQUE_VALUE_TAKEN` naming `email`. Creates
+and resends are limited to 3 an hour per address and 30 an hour per person,
+counted from the applied audit events (`RATE_LIMITED` naming `email` or
+`account`). The answer is the invitation's id, its revision and
+`{ invitationId, state }`. The business's worker expires lapsed invitations
+(`expireInvitations`, audited `invitation.expire`).
+
+Each create and each resend allows one email: `sendInvitation`
+(`core-custody`) sends through the broker's `email.send` only while the
+invitation is pending and has an applied act no send has answered, mints a
+fresh enrolment token, keeps its SHA-256 alone and records the attempt
+against it. It shares the inbox email's ceiling: one limit, `email.send`'s
+catalogued concurrency, counts inbox and invitation emails in flight
+together, each ask until custody's timeout and a minute's grace have passed
+(`EMAIL_AT_CEILING` at it, writing nothing). Not here yet: the send mounted
+after the command, Auth's Send Email hook, the enrolment page and the Access
+screen (C39-T P2 and P3).
+
 ## Tags
 
 `task.read` carries `tags` (MP-4-11): the tags the task carries, `{ id, name }`
@@ -2886,6 +2924,61 @@ In the web app, Settings ▸ General's "Your sessions" panel calls the first two
 ending the others only once confirmed, then listing again; it draws no session
 id (`apps/web/src/screens/settings/sessions.tsx`).
 
+`POST /api/password/set` with `{ token, password }` sets a new
+password with a reset link's one-time token (C40, ORCH77-C40B,
+`setPasswordByToken`, mounted by `mountPasswordSet` with the deployment's
+businesses and the broker; `main()` does not mount it yet). No provider
+session is read, trusted, opened or answered: the token is the authority, and
+no cookie or bearer is read or set. A token is 32 random bytes, base64url,
+kept only as its SHA-256 in `password_reset_tokens` (20261005144947), for one
+login of one business, good for 30 minutes and spent once. The reset asks
+for one is C40 P2. The token is found by `password_reset_token_find`, a
+narrow security definer function the application group alone runs (the
+business and the token's id for a hash exactly one business holds), then
+read in its own business. A login with a live verified second factor in any
+business is 403 `RESET_NEEDS_SUPPORT` (ORCH77-C40MFA), whatever code the body
+carries: refused before anything is spent, so the token stays live and the
+password and every session stay as they were; support resets it. A fault
+reading where the login stands is 503 `RESET_UNAVAILABLE`, never a set, and a
+login the token's own business no longer admits is 401 `RESET_LINK_INVALID`
+(read before the locks and not again, a decided risk: a person deactivated
+there in that moment still resets). Then,
+under C59's login lock (the one a factor's verification takes) and the token's
+row lock, the token is read again at that moment: spent or past its life is
+401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403
+`RESET_NEEDS_SUPPORT` with nothing spent. Otherwise every live token of the
+login is spent and the reset's window opens (`ops.subject_resets`,
+20261005144947): every session of the login, in every business, is ended up to
+the moment the window settles, and until then up to five minutes on. The
+password is set at the provider through custody under the catalogued
+`auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
+held by custody alone, whose `auth` destination lists that route and takes no
+POST, `post: false`; the answer must name the same user). In each business
+the login is mapped in, one transaction ends the sessions seen there. Last,
+whatever happened, one transaction in the token's business settles the window
+(`clock_timestamp()`; a sign-in after it is served) and, only when the
+password was set and every business's ending committed, audits
+`account.password_changed` there, once, as the person that business maps. The
+other businesses keep their ended sessions (`ended_sessions`) and no audit
+row, so a failure anywhere, in any business's ending, at the provider or in
+that last transaction, audits nothing anywhere (ORCH81 C40AUDIT).
+
+The answer is 200 `{ passwordSet: true }`. A token that is not live
+(unknown, out of shape, spent, past its 30 minutes, of a login no business
+maps) is 401 `RESET_LINK_INVALID`. A password outside 12 to 72 bytes is
+400 `PASSWORD_INVALID`, a body that is not a JSON object holding the token and
+password as strings 400 `RESET_MALFORMED`, and one over 1 KiB 413
+`RESET_TOO_LARGE`. Of two requests on one token at once, one sets the
+password and the other is 401. A password the provider refuses itself (its
+422: weak, leaked, the same as before) is 422 `RESET_PASSWORD_REFUSED`: the
+token is spent, so choose a different password and ask for a new link. Any
+other provider fault or wrong answer is 503 `RESET_UNAVAILABLE`; anything else
+failing is 503 `RESET_FAULT`. A reset that fails after the token is spent
+ends every session of the login again, a sign-in made while the provider was
+asked included, even when the database fails before the window settles, and
+audits nothing. Answers carry a code alone; nothing is
+logged. No limit holds the route's rate yet.
+
 ## The operations view and privacy incidents (C55)
 
 `operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, securityAlerts, serviceHealth, errorSink, lastTestedRestore }`
@@ -3287,6 +3380,47 @@ holding that lock lands wholly before it (the change is refused) or wholly
 after it (the write is stale against the change's revision and retried). A
 trashed task still answers `NOT_FOUND`.
 
+## Workflow triggers (C33)
+
+Settings ▸ Workflow triggers: one read on `settings:read`, and two changes,
+each held business-wide and never an agent's. `activation.change` is
+`settings:manage`; `definition.release` is `automation:manage` (the key
+catalogue: owner and administrators). Definitions carry no client, so the
+registry is the business's; a holder at one client's scope is refused all
+three (`tests/automations/c33-authority.test.ts`).
+
+A person releases a definition version: the first release names a new
+definition by `name` and `kind`, a later one names it by `definitionId`. The
+version takes the next number, pins its bytes by digest and size, and lists
+its inputs, its operations and the activation modes it permits. It never
+changes after release (`definition_versions`, migration 20261005003850). Two
+releases at once on one definition both land, on distinct numbers: the one
+that finds its number taken asks again in its own transaction. The digest and
+size are the caller's until AW-02's pinned read computes them from the bytes.
+
+An activation is pinned to one version of its own definition, in a mode that
+version permits (checked by the command and again by the database). Without an
+`activationId` the change writes a new activation; with one it changes that
+activation at the revision the caller read, compared in the update itself, so
+two changes sent at one revision apply once. Changing a mode starts nothing:
+no occurrence and no planned run, since a run needs an occurrence and C52-A's
+standing approval.
+
+Every value is checked against a closed grammar before anything is written,
+and refused `FIELD_VALUE_INVALID` naming its field: a digest is 64 lower-case
+hex digits, a mode, kind or mode list comes from its fixed set, an operation
+or event kind is a dotted lower-case name, and a name or an input's key or
+value is at most 200 characters of storable text (an allow-list of code points:
+no control character, line break, bidi mark or override, or lone surrogate).
+Another business's definition, version or activation answers exactly as a
+fabricated identifier does.
+
+| Operation             | Route                  | Body                                                                                        | Answer or refusals                                                                                                                                                                                                                                                                         |
+| --------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `automation.registry` | `/automation/registry` | `{}`                                                                                        | `{ ok: true, definitions: [{ id, kind, name, versions: [{ id, number, contentDigest, contentSize, modes, releasedBy, releasedAt }], activations: [{ id, versionId, versionNumber, mode, everyMinutes, eventKind, enabled, changedBy, changedAt, revision }] }] }`; `SCOPE_NOT_GRANTED` 403 |
+| `activation.change`   | `/activation/change`   | `{ activationId?, versionId, mode, everyMinutes?, eventKind?, enabled, expectedRevision? }` | `{ activationId, versionId, mode, enabled }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for a mode the version does not permit or another definition's version; `VERSION_STALE` 409                                                      |
+| `definition.release`  | `/definition/release`  | `{ definitionId? \| name, kind, contentDigest, contentSize, inputs, operations, modes }`    | `{ definitionId, versionId, number }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404 for a definition not in the business; `VERSION_STALE` 409 when three releases in a row find their number taken                                                                          |
+
 ## Custody (C31)
 
 Three rows, `custody:manage` each and never an agent. [CUSTODY.md](CUSTODY.md)
@@ -3302,3 +3436,29 @@ No answer carries a value, and a refusal names the field, never what was sent.
 No audit row holds a set's value either, a refusal's attempted values included.
 A set's `expectedRevision` is the revision `secret.list` showed, or `0` for a
 name the list did not hold: `0` is refused `VERSION_STALE` when the name exists.
+
+## Connections (MP-14-7a)
+
+The connector fleet on Connections & signal. The fleet is `connection:read`,
+filtered in its statement by the scopes the caller holds it at: a client-scoped
+reader sees the connections serving that client, and only that client in each
+list. A client in a list is a client of this business by foreign key, shown by
+its name. The repair is `custody:manage`, business-wide, never an agent. It
+records `connector repair started` on a broken connection of this business at
+its current revision and sends nothing: re-authorising is the broker's (AW-01),
+behind the approval gate on that revision. The insert checks again that the
+connection is still broken at that revision; one that healed or moved on since
+the read is refused `TRANSITION_NOT_PERMITTED` or `VERSION_STALE` and records
+nothing. Connection rows are written by MP-13-5 and the broker; this build only
+reads them.
+
+| Operation          | Route               | Body                                               | Answer or refusals                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.fleet` | `/connection/fleet` | `{}`                                               | `{ ok: true, connections: [{ id, connectorKey, label, authMethod, status, failureClass, cadenceMinutes, lastSyncedAt, lastAttemptAt, scope, readComponents, executeComponents, custody: { secretId, state }, clients: [{ id, label }], repairStartedAt, revision }], counts: { all, active, degraded, broken, clientConnections } }`; `SCOPE_NOT_GRANTED` 403 |
+| `connector.repair` | `/connector/repair` | `operationId`, `connectionId`, `expectedRevision?` | `detail: { repairId, connectionId, connectionRevision, state: 'awaiting approval' }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (another business's, made-up or malformed alike), `TRANSITION_NOT_PERMITTED` 409 (not broken), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                                                  |
+
+The custody field is a reference: the secret's id and whether custody holds a
+value, never any part of one. No sealed column is read. It is shown only for a
+secret the caller's scopes reach (a business-wide reader, a business-wide
+secret, or one of the caller's clients'); a secret scoped to another client the
+connection serves shows as `{ secretId: null, state: 'not set' }`.

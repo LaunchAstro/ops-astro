@@ -24,8 +24,17 @@ export {
   type OutboundRequest,
 } from './egress.ts';
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
+export { onThisMachine, startLoopbackMockCustody } from './email-mock-custody.ts';
 export { raiseBudgetWait, stopWords } from './broker-wait.ts';
 export { giveBack, giveBackReleased } from './broker-give-back.ts';
+export { setLoginPassword, type LoginPasswordSet } from './broker-login-password.ts';
+export {
+  ENROL_PATH,
+  INVITATION_SEND_ACTS,
+  sendInvitation,
+  type InvitationSendRefusal,
+  type InvitationSendResult,
+} from './broker-invitation.ts';
 export {
   callModelInConversation,
   type ConversationCallRequest,
@@ -46,8 +55,25 @@ export {
   type EmailResult,
   type MailSettings,
 } from './broker-email.ts';
+export { fromVerifiedSender } from './broker-email-route.ts';
 export { landEmailEvent, type EmailHookOutcome } from './broker-email-hook.ts';
 export { tellCommentClients } from './broker-email-mention.ts';
+export {
+  emailAtOnce,
+  emailDailyBatch,
+  type BatchResult,
+  type EmailChoice,
+  type EmailPreferences,
+  type EmailTiming,
+} from './email-timing.ts';
+export {
+  AT_ONCE_EVERY_MS,
+  deliverDue,
+  startMailWorker,
+  type DeliveryPass,
+  type MailCadence,
+  type MailTarget,
+} from './email-worker.ts';
 export {
   callModel,
   promptCopyRegistered,

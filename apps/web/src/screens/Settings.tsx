@@ -49,7 +49,9 @@ import {
   Written,
 } from './settings/panels.tsx';
 import { PlanningCapSection } from './settings/planning-cap.tsx';
+import { seesTriggers, TriggersPanel } from './settings/triggers.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
+import { KeysPanel } from './settings/keys.tsx';
 import { StepUpPrompt } from '../views/step-up-prompt.tsx';
 import { WindowRow } from './settings/windows.tsx';
 
@@ -276,6 +278,21 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
         capabilities={model.capabilities}
         reload={model.reload}
       />
+
+      {/*
+        Keys (C31) only for a caller the server says holds custody:manage.
+        Custody is owner and administrator only, so an absent or refused
+        capability read shows nothing rather than a panel that is refused.
+      */}
+      {(model.capabilities.outcome === 'ready' || model.capabilities.outcome === 'empty') &&
+      model.capabilities.value.grants.some(
+        (grant) => grant.collection === 'custody' && grant.action === 'manage',
+      ) ? (
+        <KeysPanel client={props.client} />
+      ) : null}
+
+      {/* Workflow triggers (C33), for a caller the server says holds settings:read. */}
+      {seesTriggers(model.capabilities) ? <TriggersPanel client={props.client} /> : null}
     </div>
   );
 }

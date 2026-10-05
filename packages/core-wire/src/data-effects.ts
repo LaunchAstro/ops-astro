@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // S0-5: what each command does to data, declared beside its permission key.
-// Its shapes and the class the gate reads, derived from it and never set by
-// hand, are in `data-effects-types.ts`, re-exported here.
+// Its shapes, the class the gate reads (derived from it and never set by
+// hand) and the three constructors below are in `data-effects-types.ts`.
 
 import type { CommandName } from './surface.ts';
-import type { DataEffects, OutsideEffect, RecordWrite } from './data-effects-types.ts';
+import type { DataEffects } from './data-effects-types.ts';
+import { business, client, writing } from './data-effects-types.ts';
 
 export type {
   ClassedEffects,
@@ -17,15 +18,6 @@ export type {
   RecordWrite,
 } from './data-effects-types.ts';
 export { classOf } from './data-effects-types.ts';
-
-const business = (...kinds: string[]): RecordWrite[] =>
-  kinds.map((kind) => ({ kind, scope: 'business' }));
-const client = (...kinds: string[]): RecordWrite[] =>
-  kinds.map((kind) => ({ kind, scope: 'client' }));
-const writing = (
-  writes: readonly RecordWrite[],
-  outside: readonly OutsideEffect[] = [],
-): DataEffects => ({ writes, intake: [], outside, access: false });
 
 const READ = writing([]);
 // A task is a row of `records`, with its unique values beside it.
@@ -189,6 +181,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.list': READ,
   'secret.set': writing(client('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
+  'connection.fleet': READ,
+  'connector.repair': writing(business('connection_repairs')),
   'client.create': writing(client('clients')),
   'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
@@ -225,13 +219,16 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'run.revise_state': writing(client('run_states')),
   // MP-6-1's check on a task's run.
   'task.check': writing(client('run_checks')),
-  // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap,
-  // AW-13's trace read, AW-12's harness result, AW-11's child work, and the
-  // accepted plan.
+  // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap, AW-13's trace read,
+  // AW-12's harness result, AW-11's child work, and the accepted plan.
   'conversation.allowance': READ,
   'definition.attribution': READ,
   'trace.read': READ,
   'harness.read': READ,
+  // C39-T: admits no outsider, sends nothing; a create writes its person, expiring a lapsed one.
+  'invitation.create': writing(business('people', 'invitations', 'actors')),
+  'invitation.resend': writing(business('invitations')),
+  'invitation.revoke': writing(business('invitations')),
   'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
   'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
   'run.child_handback': writing([...client('run_events'), ...business('delegations')]),
@@ -290,6 +287,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_type': writing(MAP_TASK.writes.concat(client('inbox_items'))),
   // The map and every ticket under it carry the client.
   'map.scope': MAP_TASK,
+  // Settings ▸ Workflow triggers (C33): a definition carries no client, so its
+  // versions and activations are the business's own rows.
+  'automation.registry': READ,
+  'activation.change': writing(business('activations')),
+  'definition.release': writing(business('automation_definitions', 'definition_versions')),
   // One numbered version: its components and the map's own version number,
   // which refresh the map's summary and frontier as any write to the map does.
   'map.revise': writing(MAP_TASK.writes.concat(client('map_components', 'map_versions'))),

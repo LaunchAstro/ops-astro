@@ -260,5 +260,29 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
   'inbox.seen': { itemId: 'id' },
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
+  'invitation.create': { name: 'text', email: 'text', role: 'text' },
+  'invitation.resend': { invitationId: 'id' },
+  'invitation.revoke': { invitationId: 'id' },
+  // C33: every value but the identifiers is checked in the command, which names
+  // the field it refuses; a version's modes against the activation's in the database.
+  'activation.change': {
+    activationId: 'id?',
+    versionId: 'id',
+    mode: 'any',
+    everyMinutes: 'any',
+    eventKind: 'any',
+    enabled: 'any',
+    expectedRevision: 'any',
+  },
+  'definition.release': {
+    definitionId: 'id?',
+    name: 'any',
+    kind: 'any',
+    contentDigest: 'any',
+    contentSize: 'any',
+    inputs: 'any',
+    operations: 'any',
+    modes: 'any',
+  },
   ...SETUP_OPERANDS,
 };

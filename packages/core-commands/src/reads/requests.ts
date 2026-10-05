@@ -48,12 +48,14 @@ import type {
   ConversationReadResult,
   SettingsReadResult,
   SecretListResult,
+  ConnectionFleetResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
   UnattendedView,
   TaskSearchResult,
   TaskLedgerResult,
+  AutomationRegistryResult,
   MapViewResult,
   MapFrontierResult,
 } from '../../../core-wire/src/index.ts';
@@ -143,6 +145,8 @@ export interface ReadOperands {
   readonly 'settings.read': NoOperands;
   /** Custody's rows at the scopes the caller holds `custody:manage` (C31). */
   readonly 'secret.list': NoOperands;
+  /** The connections at the scopes the caller holds `connection:read` (MP-14-7a). */
+  readonly 'connection.fleet': NoOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -190,6 +194,8 @@ export interface ReadOperands {
   readonly 'trace.read': { readonly recordId: string };
   /** The run whose harness test result is read (AW-12). */
   readonly 'harness.read': { readonly runId: string };
+  /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
+  readonly 'automation.registry': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -220,6 +226,7 @@ export type ReadResult =
   | PresetPlanResult
   | SettingsReadResult
   | SecretListResult
+  | ConnectionFleetResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
@@ -246,4 +253,5 @@ export type ReadResult =
         readonly complete: boolean;
       };
     }
-  | { readonly ok: true; readonly harness: TriggerReading };
+  | { readonly ok: true; readonly harness: TriggerReading }
+  | AutomationRegistryResult;

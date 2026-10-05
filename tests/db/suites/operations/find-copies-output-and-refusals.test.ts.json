@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "The copy finder's output (hit fields, export, withheld hashes, summary) and its refusals (command line, tables it cannot vouch for, driver errors without secrets)."
+}

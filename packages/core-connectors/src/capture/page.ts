@@ -296,5 +296,5 @@ export async function capturePage(
     Object.entries(sheets.value).toSorted(([left], [right]) => (left < right ? -1 : 1)),
   );
   const value = { url: page.value.url, status: page.value.status, documentDigest: digest(html) };
-  return { ok: true, value: { ...value, text: document.text, stylesheets: sorted } };
+  return { ok: true, value: { ...value, text: document.text, html, stylesheets: sorted } };
 }

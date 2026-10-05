@@ -6,8 +6,9 @@
 //
 // The event is looked for in each of the deployment's businesses in turn, as
 // the other system work does, by the `provider:<id>` evidence the send
-// recorded on `accepted`. In the business that holds it, the item is locked
-// (`for update`, the lock the send takes), and under that lock a replayed
+// recorded on `accepted`: one item for an email sent at once, every item a
+// daily batch covered. In the business that holds it, each item is locked in
+// turn (`for update`, the lock the send takes), and under that lock a replayed
 // event id is refused and the attempt's last observation is read:
 //
 // - `email.delivered` moves an accepted attempt to `delivered`;
@@ -50,26 +51,20 @@ const MOVES: Readonly<
 };
 const KNOWN_UNMOVED: ReadonlySet<string> = new Set(['email.sent']);
 
-/** In one business: the event's attempt moved, refused or not found (undefined). */
-async function landIn(
+/** One item's attempt under its lock: moved, refused as a replay, or left as it was. */
+async function landOn(
   tx: TenantQuery,
   event: EmailHookEvent,
-): Promise<EmailHookOutcome | undefined> {
-  const [sent] = await tx.query<{ readonly item: string }>(
-    `select item_id as item from public.inbox_delivery_attempts
-      where business_id = $1 and channel = 'email' and state = 'accepted' and evidence = $2
-      limit 1`,
-    [tx.businessId, `provider:${event.messageId}`],
-  );
-  if (sent === undefined) return undefined;
+  itemId: string,
+): Promise<EmailHookOutcome> {
   await tx.query('select 1 from public.inbox_items where business_id = $1 and id = $2 for update', [
     tx.businessId,
-    sent.item,
+    itemId,
   ]);
   const replayed = await tx.query(
     `select 1 from public.inbox_delivery_attempts
       where business_id = $1 and item_id = $2 and evidence = any($3::text[])`,
-    [tx.businessId, sent.item, Object.values(MOVES).map((move) => `${move.kind}:${event.id}`)],
+    [tx.businessId, itemId, Object.values(MOVES).map((move) => `${move.kind}:${event.id}`)],
   );
   if (replayed.length > 0) return 'REPLAYED';
   const move = MOVES[event.type];
@@ -78,16 +73,44 @@ async function landIn(
     `select state from public.inbox_delivery_attempts
       where business_id = $1 and item_id = $2 and channel = 'email'
       order by observed_seq desc limit 1`,
-    [tx.businessId, sent.item],
+    [tx.businessId, itemId],
   );
   if (!move.from.includes(last?.state ?? '')) return 'UNCHANGED';
   await recordDeliveryAttempt(tx, {
-    itemId: sent.item,
+    itemId,
     channel: 'email',
     state: move.state,
     evidence: `${move.kind}:${event.id}`,
   });
   return move.state === 'delivered' ? 'DELIVERED' : 'BOUNCED';
+}
+
+/**
+ * In one business: every item the message covered (a daily batch records one
+ * id on each), locked in item order, or undefined when none is here. A move on
+ * any item is the answer; else a replay; else whatever the first item gave.
+ */
+async function landIn(
+  tx: TenantQuery,
+  event: EmailHookEvent,
+): Promise<EmailHookOutcome | undefined> {
+  const sent = await tx.query<{ readonly item: string }>(
+    `select distinct item_id as item from public.inbox_delivery_attempts
+      where business_id = $1 and channel = 'email' and state = 'accepted' and evidence = $2
+      order by item_id`,
+    [tx.businessId, `provider:${event.messageId}`],
+  );
+  if (sent.length === 0) return undefined;
+  const outcomes: EmailHookOutcome[] = [];
+  for (const row of sent) {
+    // oxlint-disable-next-line no-await-in-loop -- one lock at a time, in item order
+    outcomes.push(await landOn(tx, event, row.item));
+  }
+  return (
+    outcomes.find((outcome) => outcome === 'DELIVERED' || outcome === 'BOUNCED') ??
+    outcomes.find((outcome) => outcome === 'REPLAYED') ??
+    outcomes[0]
+  );
 }
 
 /** Land a verified event in whichever of the deployment's businesses sent its message. */

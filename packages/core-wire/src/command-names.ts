@@ -231,5 +231,16 @@ export type CommandName =
   | 'trace.read'
   // The harness adoption test's result on one run (AW-12): the team's.
   | 'harness.read'
+  // C39-T: a team invitation made, sent again and withdrawn under
+  // `access:share`; its expiry is the business's worker's, never a command.
+  | 'invitation.create'
+  | 'invitation.resend'
+  | 'invitation.revoke'
+  // Settings ▸ Workflow triggers (C33): the registry is one read by
+  // `settings:read`; changing an activation is `settings:manage` and releasing
+  // a definition version `automation:manage`, neither an agent's.
+  | 'automation.registry'
+  | 'activation.change'
+  | 'definition.release'
   // Setup's operations (C31 on), in `surface-setup.ts`.
   | SetupCommandName;

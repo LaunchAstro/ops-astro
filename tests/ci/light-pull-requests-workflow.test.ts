@@ -39,6 +39,11 @@ const FULL_ON_PR = new Set([
 ]);
 /** The checks whose heavy part a pull request defers to the merge queue. */
 const DEFERRED = new Set(['local checks', 'isolation tests']);
+/** The shard job behind each required check that runs as shards beside `database conformance`. */
+const SHARDED = [
+  ['check', 'local checks'],
+  ['isolation', 'isolation tests'],
+] as const;
 const required = (
   JSON.parse(read('.github/required-checks.json')) as {
     required_status_checks: { context: string; integration_id: number }[];
@@ -142,6 +147,18 @@ export function workflowProblems(ci: Workflow, review: Workflow, queueOnly: stri
     needsOf(aggregate).toSorted().join(' ') !== 'database-shard gate'
   )
     problems.push('database: must always run over the gate and database-shard');
+  // CI-SHARDS-2: `local checks` and `isolation tests` run as shards on every event they ran on
+  // whole, each behind an aggregate that always runs over the gate and its shards.
+  for (const [shardKey, name] of SHARDED) {
+    const cond = condition(ci.jobs[shardKey]?.if);
+    if (cond !== undefined) problems.push(`${shardKey}: if: ${String(cond)}`);
+    const sum = Object.values(ci.jobs).find((job) => job.name === name);
+    if (
+      condition(sum?.if) !== 'always()' ||
+      needsOf(sum).toSorted().join(' ') !== [shardKey, 'gate'].toSorted().join(' ')
+    )
+      problems.push(`${name}: must always run over the gate and ${shardKey}`);
+  }
   for (const entry of queueOnly)
     if (!DEFERRED.has(entry)) problems.push(`queueOnly: ${entry} runs in full`);
   for (const job of Object.values(ci.jobs))
@@ -204,9 +221,28 @@ describe('planted: each goes red', () => {
 
   it('a required check skipped on a pull request', () => {
     const ci = load(CI);
-    const local = ci.jobs['check'];
+    const local = ci.jobs['local-checks'];
     if (local !== undefined) local.if = SKIPS_PULL_REQUESTS;
     expect(problemsNow(ci)).toContain(`local checks: if: ${SKIPS_PULL_REQUESTS}`);
+  });
+
+  it.each(['check', 'isolation'])('the %s shards skipped on a pull request', (key) => {
+    const ci = load(CI);
+    const shards = ci.jobs[key];
+    if (shards !== undefined) shards.if = SKIPS_PULL_REQUESTS;
+    expect(problemsNow(ci)).toContain(`${key}: if: ${SKIPS_PULL_REQUESTS}`);
+  });
+
+  it('an aggregate over shards that does not always run', () => {
+    const ci = load(CI);
+    ci.jobs['isolation-tests'] = {
+      ...ci.jobs['isolation-tests'],
+      needs: ['gate', 'isolation'],
+      if: 'success()',
+    };
+    expect(problemsNow(ci)).toContain(
+      'isolation tests: must always run over the gate and isolation',
+    );
   });
 });
 

@@ -15,6 +15,20 @@
   "overrides": [
     {
       "files": [
+        "tests/surfaces/c31-keys-panel-latest-read-and-settings-harness.test.tsx",
+        "tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx",
+        "tests/surfaces/c31-keys-panel-stale-set-refused.test.tsx",
+        "tests/surfaces/c31-keys-panel-write-denial-drops-the-list.test.tsx"
+      ],
+      "rules": {
+        "require-await": "off",
+        "no-promise-executor-return": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "max-lines-per-function": "off"
+      }
+    },
+    {
+      "files": [
         "tests/acceptance/a-credential-cannot-write-another-clients-or-persons-task.test.ts"
       ],
       "rules": { "max-lines-per-function": "off" }
@@ -92,6 +106,7 @@
         "tests/api/live-board-client-move-prompt-review.test.ts",
         "tests/api/live-board-task-resync-isolation-review.test.ts",
         "tests/api/live-task-frame-no-identifier-review.test.ts",
+        "tests/api/c40-password-set-races.test.ts",
         "tests/ci/inb1f-rebind-mutation-review.test.ts"
       ],
       "rules": {
@@ -283,6 +298,10 @@
     {
       "files": ["tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs"],
       "rules": { "no-promise-executor-return": "off", "sort-vars": "off" }
+    },
+    {
+      "files": ["tests/broker/reconcile-keeps-call-when-its-carrier-changes.test.ts"],
+      "rules": { "max-lines-per-function": "off", "no-promise-executor-return": "off" }
     },
     {
       "files": ["tests/surfaces/term-tip-test-detects-invisible-tooltip.mjs"],

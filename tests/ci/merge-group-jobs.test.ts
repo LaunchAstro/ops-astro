@@ -122,8 +122,8 @@ const PLANTS: [string, [string, string][]][] = [
       ['  parity:\n', '# note\n  parity:\n'],
       [PARITY, '    name: command parity\n    needs:\n      - database-lookahead\n'],
       [
-        '    name: isolation tests\n    needs: [gate]\n',
-        '    name: isolation tests\n    needs: [gate, parity]\n',
+        '    name: isolation tests shard ${{ matrix.shard }}\n    needs: [gate]\n',
+        '    name: isolation tests shard ${{ matrix.shard }}\n    needs: [gate, parity]\n',
       ],
     ],
   ],
