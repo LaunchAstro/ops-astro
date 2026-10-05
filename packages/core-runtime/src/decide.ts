@@ -45,7 +45,7 @@ import {
   classifyVersions,
   holdCoveringGrants,
 } from './recovery.ts';
-import type { LockRequest, LockSet } from './locks.ts';
+import type { LockSet } from './locks.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import {
   CHAIN_GENESIS,
@@ -342,27 +342,17 @@ interface LockedDecision {
 }
 
 /**
- * Lock the complete set, in the contract's order. `acquire` sorts it, so the
- * listing order here is documentation and the statement order is the law. The
- * chain lock is R10: the sequence is business-wide and two decisions sharing
- * no other row must still be ordered.
+ * Lock the complete set, in the contract's order (`acquire` sorts it). The
+ * chain lock is R10: two decisions sharing no other row are still ordered.
+ * Opening the envelope is a write, so this only reads it and `openEnvelope`
+ * writes under the locks: two approvals that both inserted once met a
+ * unique-index violation instead of the typed refusal.
  *
- * Opening the envelope is a *write*, and a write before the lock set is the
- * thing the contract's ordering exists to prevent: two concurrent approvals
- * on one task both found no envelope, both inserted, and the loser met a
- * unique-index violation instead of the typed refusal it had earned. So this
- * only reads it, and `openEnvelope` writes under the locks.
- *
- * R8: the holds a rejection makes nonclaimable are released in
- * the same transaction, so their accounting parents are discovered before the
- * locks and rediscovered under them. A hold that appeared in between rolls
- * back as `AffectedSetChanged` rather than meeting the classifier as a
- * lock-order fault; a set that only shrank is covered (N1). An approval
- * discovers no holds.
- *
- * G06: the clock is read after the locks, not `now()`,
- * which is when this transaction began, so a decide that waited on its locks
- * past the deadline is refused.
+ * The accounting parents, the open envelope with its cap and R8's holds a
+ * rejection releases, are discovered before the locks and again under them.
+ * One that appeared in between rolls back as `AffectedSetChanged`, and the
+ * retry meets it; a set that only shrank is covered (N1). G06: the clock is
+ * read after the locks, so a decide that waited past the deadline is refused.
  */
 async function lockDecision(
   tx: TenantQuery,
@@ -384,7 +374,7 @@ async function lockDecision(
     locks: ({ envelope, held }) => [
       { lockClass: 'chain', id: 'gate_decisions' },
       { lockClass: 'cap', id: envelope?.capId ?? request.capId },
-      ...(envelope === null ? [] : [{ lockClass: 'envelope' as const, id: envelope.id }]),
+      ...(envelope === undefined ? [] : [{ lockClass: 'envelope' as const, id: envelope.id }]),
       { lockClass: 'task', id: found.task_id },
       { lockClass: 'run', id: found.run_id },
       { lockClass: 'lineage', id: found.lineage_id },
@@ -396,12 +386,9 @@ async function lockDecision(
       "decide: the task's envelope or the holds on the rejected lineage changed under discovery; roll back and rediscover rather than extending the lock set",
   });
   // R2. The envelope's own cap is the cap this approval draws on, and the
-  // request's is a claim about it. Otherwise an existing envelope with room, a
-  // requested cap with room and an exhausted actual cap would pass preflight,
-  // write the signed decision and the approved gate, and then refuse on a cap
-  // nothing had locked. Read under the locks and before the first write.
-  const envelope = parents.envelope;
-  if (envelope !== null && envelope.capId !== request.capId) {
+  // request's is a claim about it, refused under the locks before any write.
+  const { envelope } = parents;
+  if (envelope !== undefined && envelope.capId !== request.capId) {
     return capBindingMismatch(envelope.capId, request.capId);
   }
   const lockedAt = await lockedInstant(tx, ['client_sign_off_required']);
@@ -409,30 +396,21 @@ async function lockDecision(
 }
 
 /**
- * The decision's accounting parents: the task's open envelope, with the cap it
- * draws on, and a rejection's affected holds. Both are rediscovered under the
- * locks, so an envelope another approval opened in between is a parent this
- * transaction did not lock, and it rolls back rather than draw on it. A gate
- * decided in between draws on nothing, since the recheck refuses it, so its
- * envelope is no parent of this decision.
+ * The open envelope and a rejection's affected holds. A gate decided during
+ * the lock wait draws on nothing (the recheck refuses it), so it has no
+ * envelope parent.
  */
 async function decisionParents(
   tx: TenantQuery,
   of: { readonly taskId: string; readonly gateId: string },
   lineageVersions: readonly string[],
-): Promise<{
-  readonly envelope: { readonly id: string; readonly capId: string } | null;
-  readonly held: readonly LockRequest[];
-}> {
-  const [gate] = await tx.query<{ readonly state: string }>(
-    `select state from public.gates where business_id = $1 and id = $2`,
+) {
+  const pending = await tx.query(
+    `select 1 from public.gates where business_id = $1 and id = $2 and state = 'pending'`,
     [tx.businessId, of.gateId],
   );
-  const open = gate?.state === 'pending' ? await openEnvelopeOf(tx, of.taskId) : undefined;
-  return {
-    envelope: open === undefined ? null : { id: open.id, capId: open.capId },
-    held: await affectedByVersions(tx, lineageVersions),
-  };
+  const envelope = pending.length === 0 ? undefined : await openEnvelopeOf(tx, of.taskId);
+  return { envelope, held: await affectedByVersions(tx, lineageVersions) };
 }
 
 function capBindingMismatch(envelopeCapId: string, capId: string): RuntimeResult<never> {
@@ -998,7 +976,6 @@ async function budgetRoom(
 ): Promise<RuntimeResult<null>> {
   const envelope = await openEnvelopeOf(tx, of.taskId);
   if (envelope !== undefined) {
-    // The envelope draws on the cap this decision checked and locked, or nothing.
     if (envelope.capId !== of.capId) return capBindingMismatch(envelope.capId, of.capId);
     if (envelope.currency !== of.currency) {
       return refuse(
