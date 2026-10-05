@@ -21,7 +21,7 @@ import {
   labelAs,
   rows,
 } from './api-1-isolation-world.ts';
-import { asAgent } from './api-1-isolation-surfaces.ts';
+import { asAgent, canonical } from './api-1-isolation-surfaces.ts';
 
 export let foreignStep = '';
 let ownStep = '';
@@ -106,15 +106,13 @@ export function ownStepControl(): void {
   it('API-1 isolation: the agent records the result of its own delegated onboarding step', async () => {
     const row = rows.find((one) => one.command === 'onboarding.step_result') as CatalogueRow;
     const body = { recordId: ownStep, outcome: 'done', result: 'made-up' };
-    // The CLI's call closes the step; the API's, the same body again, finds it closed.
+    // The CLI's call closes the step; the API's, under the same operation id, replays it.
     const heard = await asAgent(row, 'alpha', body, ownStepDelegation);
     expect(
-      heard.map((one) => [one.status, one.code]),
+      heard.map((one) => [one.status, one.code, canonical(one.body)]),
       JSON.stringify(heard),
-    ).toStrictEqual([
-      [200, undefined],
-      [409, 'TRANSITION_NOT_PERMITTED'],
-    ]);
+    ).toStrictEqual(heard.map(() => [200, undefined, canonical(heard[0]?.body)]));
+    expect(heard).toHaveLength(2);
     const [step] = await fixture.db.admin.execute<{ state: string; comments: number }>(
       `select s.state, (select count(*) from public.records c
                          where c.business_id = $1 and c.data ->> 'task' = $2)::int as comments
