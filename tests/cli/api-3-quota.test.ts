@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* eslint-disable no-await-in-loop, max-lines-per-function -- a burst is calls in order; one suite over one world */
+/* eslint-disable no-await-in-loop, max-lines, max-lines-per-function -- a burst is calls in order; one suite over one world */
 //
 // `API-3 quota` (TR-SEC-4): requests and concurrent calls per credential, per
 // person and per business, and the page size, set in one place
@@ -20,6 +20,7 @@ import { testSignIn } from '../support/sign-in.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { wayfinderWorld, type WayfinderWorld } from '../wayfinder/world.ts';
 import type { Member } from '../commands/fixture.ts';
+import { insertLogin, insertMapping } from '../identity/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -184,9 +185,17 @@ describe.skipIf(serverUrl === undefined)('API-3 quota', () => {
   it('API-3 quota: a person’s requests are counted across what they call with', async () => {
     const api = app(limits({ requests: { person: 2 } }));
     clock += WINDOW + 1;
-    await call(api, ann, '/task/board', board);
-    await call(api, ann, '/task/board', board);
+    // Ann's second login: another credential, the same person.
+    const other = await w.db.app.withBusiness(w.business, async (tx) => {
+      const subject = `ann-second-${crypto.randomUUID()}`;
+      await insertMapping(tx, await insertLogin(tx, subject), ann.personId, ann.actorId);
+      return subject;
+    });
+    expect((await call(api, ann, '/task/board', board)).status).toBe(200);
+    expect((await call(api, other, '/task/board', board)).status).toBe(200);
+    // Each credential has made one call; the person has made two.
     expectQuotaRefusal(await call(api, ann, '/task/board', board), 'requests', 'person');
+    expectQuotaRefusal(await call(api, other, '/task/board', board), 'requests', 'person');
   });
 
   it('API-3 quota: a business’s requests are shared by its people, and never another business’s', async () => {
@@ -261,6 +270,26 @@ describe.skipIf(serverUrl === undefined)('API-3 quota', () => {
     expectQuotaRefusal(await agentCall(), 'requests', 'credential');
     // The agent's burst is not the person's.
     expect((await call(api, ann, '/task/board', board)).status).toBe(200);
+  });
+
+  it('API-3 quota: a configured page size sets the default page and the largest page asked for', async () => {
+    const api = app({ ...limits({}), pageSize: { standard: 1, most: 2 } });
+    clock += WINDOW + 1;
+    for (let n = 0; n < 3; n += 1) {
+      const made = await call(api, ann, '/task/create', {
+        operationId: crypto.randomUUID(),
+        fields: { title: `page size ${String(n)}` },
+      });
+      expect(made.status).toBe(200);
+    }
+    const first = await call(api, ann, '/task/board', board);
+    expect(first.status).toBe(200);
+    expect(first.body['page']).toHaveLength(1);
+    expect(typeof first.body['next']).toBe('string');
+    const over = await call(api, ann, '/task/board', { ...board, limit: 3 });
+    expect(over.status).toBe(422);
+    expect(over.body['code']).toBe('FIELD_VALUE_INVALID');
+    expect(over.body['names']).toStrictEqual(['limit']);
   });
 
   it('API-3 quota: page size is set in the one quota table, and a larger page is refused', async () => {
