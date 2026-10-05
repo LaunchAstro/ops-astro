@@ -18,12 +18,11 @@ export type OperandKind = 'id' | 'text' | 'count' | 'flag' | 'map' | 'any';
 export type Operand = `${OperandKind}${'' | '?'}${'' | '|null'}`;
 export type OperandSpec = Readonly<Record<string, Operand>>;
 
-// Each write's operands, as `requests.ts` types them. `recordId` is here on
-// every targeted command, and `operationId` and `expectedRevision` nowhere:
-// the envelope reads those two itself. An operand whose kind its command
-// already answers in its own words (a comment's `comment_type`, a pickup's
-// reservation, a revocation's absent id, a reparent's parent after its task)
-// is `any` here, so the caller keeps that answer and its place.
+// Each write's operands, as `requests.ts` types them. `recordId` is here on every targeted command,
+// and `operationId` and `expectedRevision` nowhere: the envelope reads those two itself. An operand
+// whose kind its command already answers in its own words (a comment's `comment_type`, a pickup's
+// reservation, a revocation's absent id, a reparent's parent after its task, a live correction's
+// request after its delegation) is `any` here, so the caller keeps that answer and its place.
 const TARGET = { recordId: 'id' } as const;
 const FIELDS = { ...TARGET, fields: 'map' } as const;
 export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
@@ -203,8 +202,6 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     outcome: 'any',
     receiptLink: 'any',
   },
-  // Typed by the handler, after authority, on both entries: an agent holding
-  // nothing is told that before anything about its body.
   'live_correction.request': {
     partyId: 'any',
     taskId: 'any',
