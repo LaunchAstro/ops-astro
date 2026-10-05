@@ -210,3 +210,55 @@ it('a revert at a place never seen live raises one recovery task across its atte
     tasks: ['REVERT_CHECK_UNPLACED'],
   });
 });
+
+it('a revert capture redirected to another page never reads reverted', async () => {
+  const source = '<p>We walk alongside you.</p>\n';
+  const outcome = await publishCorrection(
+    job(about, source),
+    publishPorts(source, { html: '<p>We walk alongside you.</p>', url: PAGE }),
+  );
+  if (outcome.state !== 'accepted') throw new Error(`fixture was ${outcome.state}`);
+  const live = await observe(outcome, about, '<p>We walk beside you.</p>');
+  const revert = (url: string) =>
+    revertCorrection(
+      {
+        publishedRevision: 'rev-1',
+        target: about,
+        occurrence: live.occurrence,
+        seam: 'revert-982',
+        decidedAt: 0,
+      },
+      {
+        now: () => 1000,
+        readBack: async () => ({ state: 'absent' }),
+        revert: async () => ({ kind: 'ok', value: { revision: 'rev-2', deploymentId: 'dep-2' } }),
+        readDeployment: async () => ({ kind: 'ok', value: { revision: 'rev-2', served: true } }),
+        capture: async () => ({ ok: true, value: { text: 'We walk alongside you.', url } }),
+        raiseTask: async () => {},
+      },
+    );
+  expect({
+    live: live.state,
+    redirected: (await revert(OTHER)).state,
+    onPage: (await revert(PAGE)).state,
+  }).toEqual({ live: 'live', redirected: 'revert_accepted', onPage: 'reverted' });
+});
+
+it('a page where two equal copies changed never reads live', async () => {
+  const sentence = '<p>We walk alongside you.</p>\n';
+  const source = sentence + sentence;
+  const outcome = await publishCorrection(
+    job(about, source),
+    publishPorts(source, {
+      html: '<p>We walk alongside you.</p><p>We walk alongside you.</p>',
+      url: PAGE,
+    }),
+  );
+  if (outcome.state !== 'accepted') throw new Error(`fixture was ${outcome.state}`);
+  expect({
+    both: (await observe(outcome, about, '<p>We walk beside you.</p><p>We walk beside you.</p>'))
+      .state,
+    one: (await observe(outcome, about, '<p>We walk beside you.</p><p>We walk alongside you.</p>'))
+      .state,
+  }).toEqual({ both: 'accepted', one: 'live' });
+});
