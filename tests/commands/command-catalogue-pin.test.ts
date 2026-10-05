@@ -432,6 +432,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'client.list',
   'client.set_privacy',
   'connection.fleet',
+  'connection.graduation',
   'connector.repair',
   'conversation.allowance',
   'conversation.list',

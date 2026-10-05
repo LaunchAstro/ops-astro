@@ -47,6 +47,8 @@ export async function tableBody(name: CommandName, context: SetupContext): Promi
   if (fixed !== undefined) return { body: { ...fixed } };
   // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
   if (name === 'connection.fleet') return { body: {} };
+  // The graduation region (MP-14-10a): the admin reads it.
+  if (name === 'connection.graduation') return { body: {} };
   if (name === 'connector.repair') {
     return { body: { connectionId: (await context.brokenConnection?.()) ?? randomUUID() } };
   }

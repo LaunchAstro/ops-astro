@@ -48,6 +48,8 @@ export const READ_NAMES = [
   'secret.list',
   // The connector fleet on Connections & signal (MP-14-7a).
   'connection.fleet',
+  // The per-client graduation region on the same page (MP-14-10a).
+  'connection.graduation',
   // The gates waiting on the caller's decision (MP-6-1).
   'gate.pending',
   // A conversation at its address (AW-03).

@@ -100,6 +100,7 @@ const DECLARED_READS = [
   'automation.registry',
   'client.list',
   'connection.fleet',
+  'connection.graduation',
   'conversation.allowance',
   'conversation.list',
   'conversation.read',
@@ -134,7 +135,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the thirty-five reads as reads, and everything else as a write', () => {
+  it('declares the thirty-six reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

@@ -24,6 +24,8 @@ const NOT_DRAWN = new Set([
   'map.frontier',
   // MP-14-7a: the fleet data lands before the screen that draws it (next piece).
   'connection.fleet',
+  // MP-14-10a: the graduation data lands before the screens that draw it (P06).
+  'connection.graduation',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
