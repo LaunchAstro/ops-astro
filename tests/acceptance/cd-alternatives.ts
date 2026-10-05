@@ -30,7 +30,7 @@ export const CASE = {
 } as const;
 
 /**
- * The forty-seven operations that name no identifier, each with a minimal valid body.
+ * The forty-eight operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -66,6 +66,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   // Custody (C31): the list and a set of a business-wide key name no row.
   ['secret.list', {}],
   ['secret.set', { name: 'target-free.key', value: 'target-free-value' }],
+  // The connector fleet (MP-14-7a) names no row.
+  ['connection.fleet', {}],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
   // AW-04: a digest names a file's bytes, not a record of any business.
@@ -151,7 +153,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The forty-seven identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The forty-eight identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -160,6 +162,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.restore': ['batchId', 'control'],
   'grant.revoke': ['grantId', 'control'],
   'secret.clear': ['secretId', 'control'],
+  'connector.repair': ['connectionId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.accept_plan': ['gateId', 'gate'],

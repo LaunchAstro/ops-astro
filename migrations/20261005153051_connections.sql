@@ -1,0 +1,159 @@
+-- SPDX-License-Identifier: AGPL-3.0-only
+-- A UTC timestamp ID (docs/local/DATA.md, "What the schema is"): ported from
+-- b0/SL13's 0033 (0252 at its head) after migrations moved to timestamps.
+--
+-- 20261003173525 connections: the connector fleet and its repairs (MP-14-7a, U33).
+--
+-- One `connections` row per connector the business runs: which source, its
+-- status and the class of its last failure, how often it should sync and
+-- when it last did, the scope it was authorised with, and a reference to the
+-- credential it uses in custody (20261005023013). A reference only: the row
+-- holds the secret's id, never any part of a value, and the fleet read shows
+-- whether that secret is set and nothing more.
+--
+-- `failure_class` is a short class from a fixed list, never a provider's
+-- message or body: a provider's error can quote a token or a client's data
+-- back, and this column is drawn on a screen every member can open.
+--
+-- `connection_clients` says which clients a connection serves. Each is a
+-- client of the same business by foreign key (`clients`, 0055), so a
+-- connection can never name another business's client, and the name the
+-- fleet shows is the client's own. The fleet read filters on it, so a holder
+-- whose `connection:read` is scoped to one client sees the connections that
+-- serve that client, and that client alone in each one's list.
+--
+-- Rows are written by the connector's own setup (MP-13-5, `connection:write`)
+-- and the broker's sync (AW-01), neither built yet. Those writers store
+-- `auth_method` only from a fixed set of method names and `scope` only from
+-- the requested or granted scope list, space-separated (a provider that
+-- answers with commas is split first), never a provider's message or token;
+-- a label is stored with soft hyphens and direction marks stripped, which
+-- its check refuses. This migration grants the application role select only
+-- on both tables: nothing here writes them.
+--
+-- `connection_repairs` records `connector repair started` (CS-14.12): who
+-- started a repair of which connection, at which revision. One repair per
+-- connection revision, so starting it twice on the same version is the same
+-- repair. Starting one sends nothing anywhere: re-authorising is the
+-- broker's (AW-01) and passes the approval gate on this exact version first.
+
+create table public.connections (
+  business_id        uuid        not null,
+  id                 uuid        not null,
+  connector_key      text        not null,
+  label              text        not null,
+  auth_method        text        not null default '',
+  status             text        not null,
+  failure_class      text,
+  cadence_minutes    integer     not null default 1440,
+  last_synced_at     timestamptz,
+  last_attempt_at    timestamptz,
+  scope              text        not null default '',
+  read_components    text[]      not null default '{}',
+  execute_components text[]      not null default '{}',
+  secret_id          uuid,
+  revision           bigint      not null default 1,
+  created_at         timestamptz not null default now(),
+  constraint connections_pkey primary key (id),
+  constraint connections_tenant_id_key unique (business_id, id),
+  constraint connections_business_fkey foreign key (business_id, business_id)
+    references public.businesses (business_id, id),
+  constraint connections_secret_fkey foreign key (business_id, secret_id)
+    references public.custody_secrets (business_id, id),
+  constraint connections_connector_key_shape check (connector_key ~ '^[a-z][a-z0-9_.-]{1,63}$'),
+  constraint connections_label_length check (char_length(label) between 1 and 200),
+  -- The text the fleet draws is a closed grammar, each column refused whole
+  -- unless it matches: a label is text with no control, bidi or invisible
+  -- operator character, and no space, filler or joiner at either end (a joiner
+  -- inside, as in an emoji, stays), the code points spelled out so the check
+  -- is the same under any locale; a method is words of letters, digits and
+  -- `._-`; a scope is tokens one space apart; a component is a lower-case
+  -- name. These bound the characters, not the meaning: what the writers may
+  -- put in them is in the header (SEC-P02-PR.3, SEC-P02-RB1.1-3,
+  -- SEC-P02-RB2.1).
+  constraint connections_label_shape check (label ~ '^[^\u0020\u00A0\u034F\u115F\u1160\u1680\u2000-\u200A\u200C\u200D\u202F\u205F\u2800\u3000\u3164\uFFA0\u0001-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B\u200E\u200F\u2028-\u202E\u2060-\u2064\u2066-\u206F\uFEFF\uFFF9-\uFFFB]([^\u0001-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B\u200E\u200F\u2028-\u202E\u2060-\u2064\u2066-\u206F\uFEFF\uFFF9-\uFFFB]*[^\u0020\u00A0\u034F\u115F\u1160\u1680\u2000-\u200A\u200C\u200D\u202F\u205F\u2800\u3000\u3164\uFFA0\u0001-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B\u200E\u200F\u2028-\u202E\u2060-\u2064\u2066-\u206F\uFEFF\uFFF9-\uFFFB])?$'),
+  constraint connections_auth_method_shape check (char_length(auth_method) <= 40
+    and auth_method ~ '^([A-Za-z0-9][A-Za-z0-9._-]*( [A-Za-z0-9._-]+)*)?$'),
+  constraint connections_scope_shape check (char_length(scope) <= 2000
+    and scope ~ '^([A-Za-z0-9_.:/-]+( [A-Za-z0-9_.:/-]+)*)?$'),
+  constraint connections_read_components_shape check (
+    coalesce(array_ndims(read_components), 1) = 1 and cardinality(read_components) <= 64
+    and array_to_string(read_components, ',', '!') ~ '^([a-z][a-z0-9_]{0,63}(,[a-z][a-z0-9_]{0,63})*)?$'
+    and cardinality(read_components)
+      = coalesce(array_length(string_to_array(array_to_string(read_components, ',', '!'), ','), 1), 0)),
+  constraint connections_execute_components_shape check (
+    coalesce(array_ndims(execute_components), 1) = 1 and cardinality(execute_components) <= 64
+    and array_to_string(execute_components, ',', '!') ~ '^([a-z][a-z0-9_]{0,63}(,[a-z][a-z0-9_]{0,63})*)?$'
+    and cardinality(execute_components)
+      = coalesce(array_length(string_to_array(array_to_string(execute_components, ',', '!'), ','), 1), 0)),
+  constraint connections_status_known check (status in ('active', 'degraded', 'broken')),
+  constraint connections_failure_class_known check (failure_class in (
+    'auth_expired', 'auth_revoked', 'quota_exhausted', 'throttled', 'unreachable',
+    'schema_changed')),
+  -- An active connection has no failure; a degraded or broken one names its class.
+  constraint connections_failure_matches_status check ((status = 'active') = (failure_class is null)),
+  constraint connections_cadence_positive check (cadence_minutes > 0),
+  constraint connections_revision_positive check (revision >= 1)
+);
+
+create table public.connection_clients (
+  business_id   uuid not null,
+  connection_id uuid not null,
+  client_id     uuid not null,
+  constraint connection_clients_pkey primary key (business_id, connection_id, client_id),
+  constraint connection_clients_connection_fkey foreign key (business_id, connection_id)
+    references public.connections (business_id, id),
+  constraint connection_clients_client_fkey foreign key (business_id, client_id)
+    references public.clients (business_id, id)
+);
+
+create index connection_clients_client_idx
+  on public.connection_clients (business_id, client_id);
+
+create table public.connection_repairs (
+  business_id         uuid        not null,
+  id                  uuid        not null,
+  connection_id       uuid        not null,
+  connection_revision bigint      not null,
+  started_by_actor_id uuid        not null,
+  started_at          timestamptz not null default now(),
+  constraint connection_repairs_pkey primary key (id),
+  constraint connection_repairs_tenant_id_key unique (business_id, id),
+  constraint connection_repairs_connection_fkey foreign key (business_id, connection_id)
+    references public.connections (business_id, id),
+  constraint connection_repairs_started_by_fkey foreign key (business_id, started_by_actor_id)
+    references public.actors (business_id, id),
+  constraint connection_repairs_one_per_revision unique (business_id, connection_id, connection_revision)
+);
+
+alter table public.connections enable row level security;
+alter table public.connections force row level security;
+alter table public.connection_clients enable row level security;
+alter table public.connection_clients force row level security;
+alter table public.connection_repairs enable row level security;
+alter table public.connection_repairs force row level security;
+
+create policy tenancy_connections on public.connections
+  as restrictive for all
+  using (business_id = (select public.app_business_id()))
+  with check (business_id = (select public.app_business_id()));
+create policy authority_connections on public.connections
+  as permissive for all using (true) with check (true);
+
+create policy tenancy_connection_clients on public.connection_clients
+  as restrictive for all
+  using (business_id = (select public.app_business_id()))
+  with check (business_id = (select public.app_business_id()));
+create policy authority_connection_clients on public.connection_clients
+  as permissive for all using (true) with check (true);
+
+create policy tenancy_connection_repairs on public.connection_repairs
+  as restrictive for all
+  using (business_id = (select public.app_business_id()))
+  with check (business_id = (select public.app_business_id()));
+create policy authority_connection_repairs on public.connection_repairs
+  as permissive for all using (true) with check (true);
+
+grant select on public.connections to ops_astro_app;
+grant select on public.connection_clients to ops_astro_app;
+grant select, insert on public.connection_repairs to ops_astro_app;
