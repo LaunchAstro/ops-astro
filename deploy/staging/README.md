@@ -46,9 +46,11 @@ Staging shares a machine with live services, so it is confined (ticket S0-1,
   logging, which would write it to the daemon's log. A run stopped during a
   create the daemon stalls on for over 20 seconds, then finishes after the
   client has gone, can leave one such container made but never started.
-  The runbook lists any with
-  `docker ps --all --filter status=created --filter name=ops-astro-staging-`
-  and removes each with `docker rm`.
+  The runbook lists any by the run containers' own names, never staging's
+  services, with
+  `docker ps --all --filter status=created --filter 'name=^ops-astro-staging-(store|backup)-[0-9a-f]{16}$'`
+  and removes each with `docker rm --volumes`, as the code does, so the
+  image's empty data volume goes too.
 
 The staging worker and its outbox forwarder (`worker`, `forwarder`) are one
 unit: the same pinned Node image, running the checkout the runbook copies into
