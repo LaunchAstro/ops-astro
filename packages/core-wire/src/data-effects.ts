@@ -5,8 +5,7 @@
 // hand) and the three constructors below are in `data-effects-types.ts`.
 
 import type { CommandName } from './surface.ts';
-import type { DataEffects } from './data-effects-types.ts';
-import { business, client, writing } from './data-effects-types.ts';
+import { business, client, writing, type DataEffects } from './data-effects-types.ts';
 import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 
 export type {
@@ -105,8 +104,6 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // Client access (MP-4-10): a share grant on the task for its client's people.
   'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
-  // A step task moved to another client is no longer anyone's move (C41-A).
-  'task.set_party': writing(client('records', 'record_unique_values', 'inbox_items')),
   'task.set_audience': TASK,
   'task.reparent': TASK,
   'task.move': TASK,

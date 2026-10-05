@@ -88,9 +88,8 @@ describe('the surface as a table', () => {
     // and `privacy` are C55's view and its incident record, and `legal` is C81's
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
-    // `tag` is MP-4-11's: the business's tag vocabulary. `invitation` is C39-T's.
-    // `map` is the wayfinder's (WF-1); `automation` and `activation` C33's;
-    // `record` and `onboarding` C41-A's onboarding.
+    // `tag` is MP-4-11's: the business's tag vocabulary; `invitation` C39-T's; `map` the
+    // wayfinder's (WF-1); `automation` and `activation` C33's; `record`, `onboarding` C41-A's.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
