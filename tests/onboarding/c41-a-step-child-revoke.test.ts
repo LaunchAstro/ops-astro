@@ -212,14 +212,23 @@ describe.skipIf(serverUrl === undefined)('C41-A step result under a child delega
     const helperDb = connect(db.appUrl, { source: 'runtime' });
     const revokerDb = connect(db.appUrl, { source: 'runtime' });
     pools.push(helperDb, revokerDb);
-    // The liveness read's own words (onboarding-authority.ts).
-    const barrier = barred(helperDb, 'as narrowed', released.promise);
+    // The re-check's liveness read under the onboarding's lock, by its own
+    // words (onboarding-authority.ts); the envelope's `resolveDelegation`
+    // also names `narrowed`, unqualified, before that lock.
+    const barrier = barred(
+      helperDb,
+      "d.revocation_cause = 'authority_lost') as narrowed",
+      released.promise,
+    );
     let helper: Promise<Answer> | undefined;
     let revocation: Promise<Answer> | undefined;
     let raced = '';
     try {
       helper = post(serve(barrier.database), helperCall.path, helperCall.body, helperCall.headers);
-      await barrier.reached;
+      const answered = helper.then((early) => {
+        throw new Error(`the helper answered before its re-check: ${JSON.stringify(early.body)}`);
+      });
+      await Promise.race([barrier.reached, answered]);
       const revoke = await byPerson(admin, 'delegation.revoke', {
         delegationId: parent?.delegation_id,
       });
