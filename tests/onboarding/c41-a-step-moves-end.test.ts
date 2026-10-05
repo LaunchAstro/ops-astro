@@ -106,4 +106,75 @@ describe.skipIf(serverUrl === undefined)('C41-A step moves at stop and restore',
       { task: kickoff, recipient: the.admin.personId, work_state: 'open' },
     ]);
   });
+
+  it('C41-A stop crossing: the stop withdraws its own client’s moves and leaves an ordinary assignment on a step task moved to another client open', async () => {
+    const steps = await onboard('Made-up Client Stop Keeps Moved');
+    const on = (key: string): string => String(steps.get(key));
+    await done(steps, 'welcome-email');
+    await done(steps, 'kickoff-call');
+    const moved = on('access-grant');
+    const other = await as(the.admin, 'record.create', {
+      type: 'client',
+      fields: { name: 'Made-up Client Moved Onto' },
+    });
+    expect(other.status, JSON.stringify(other.body)).toBe(200);
+    const set = await as(the.admin, 'task.set_party', {
+      recordId: moved,
+      expectedRevision: await revisionOf(moved),
+      fields: { client: String(detail(other)['recordId']) },
+    });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    const assigned = await assign(the.admin, moved, the.assignee.personId);
+    expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
+    expect(await openOn(moved)).toStrictEqual([the.assignee.personId]);
+    for (const attempt of ['first', 'second']) {
+      // oxlint-disable-next-line no-await-in-loop -- the second failure follows the first
+      const failed = await as(the.admin, 'onboarding.step_result', {
+        recordId: on('site-setup'),
+        outcome: 'failed',
+        result: `${attempt} attempt failed`,
+      });
+      expect(failed.status, JSON.stringify(failed.body)).toBe(200);
+    }
+    expect(await itemsOn([on('site-setup')])).toEqual([
+      { task: on('site-setup'), recipient: the.admin.personId, work_state: 'withdrawn' },
+    ]);
+    expect(await openOn(moved)).toStrictEqual([the.assignee.personId]);
+  });
+
+  it('C41-A races: a restore racing the stop leaves no open move on the stopped onboarding', async () => {
+    const steps = await onboard('Made-up Client Restore Stop Race');
+    const on = (key: string): string => String(steps.get(key));
+    await done(steps, 'welcome-email');
+    const grant = on('access-grant');
+    const trashed = await as(the.admin, 'task.trash', {
+      recordId: grant,
+      expectedRevision: await revisionOf(grant),
+    });
+    expect(trashed.status, JSON.stringify(trashed.body)).toBe(200);
+    await done(steps, 'kickoff-call');
+    expect(await openOn(grant)).toStrictEqual([]);
+    const first = await as(the.admin, 'onboarding.step_result', {
+      recordId: on('site-setup'),
+      outcome: 'failed',
+      result: 'first attempt failed',
+    });
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    // The restore parks the step, uncommitted, while the second failure stops the onboarding.
+    const answers = await race(
+      { name: 'task.restore', body: { batchId: detail(trashed)['batchId'] } },
+      {
+        name: 'onboarding.step_result',
+        body: { recordId: on('site-setup'), outcome: 'failed', result: 'second attempt failed' },
+      },
+    );
+    expect(answers.map((answer) => answer.status)).toStrictEqual([200, 200]);
+    const [onboarding] = await the.controls.fixture.db.admin.execute<{ readonly state: string }>(
+      `select o.state from public.onboardings o
+         join public.onboarding_steps s on s.onboarding_id = o.id where s.task_id = $1`,
+      [grant],
+    );
+    expect(onboarding?.state).toBe('stopped');
+    expect(await openOn(grant)).toStrictEqual([]);
+  });
 });
