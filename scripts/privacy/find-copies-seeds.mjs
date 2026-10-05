@@ -7,25 +7,39 @@
 /** The longest value, in bytes, the parser reads whole: under its 16,383 word positions and its 1 MiB vector. */
 export const PARSED = 16_000;
 
+/** The longest name or text, in bytes, read as a phrase: it nests a level a word, and too deep a phrase exhausts the database's stack. */
+export const PHRASED = 1_000;
+
 /**
  * Whether `value` holds the words of `query` in order: both go through the
  * database's own text-search parser, so the words are its words and its
  * letter folding ("Anna" is in "Anna-Maria Lee", never in "Joanna"). A longer
- * value would overflow the parser or lose its word order, so it holds them
- * when it holds each of `lexemes`, the query's words, anywhere: a looser
- * match, listing more for the owner to judge and never less.
+ * value would overflow the parser or lose its word order, and a null query
+ * is a name too long to be a phrase, so then `value` holds them when it holds
+ * each of `lexemes`, the query's words, anywhere, even inside other words: a
+ * looser match, listing more for the owner to judge and never less.
  */
-export const wholeWords = (value, query, lexemes) => `(cardinality(${lexemes}) > 0 and case
-      when octet_length(${value}) <= ${PARSED} then to_tsvector('simple', ${value}) @@ ${query}
+export const wholeWords = (value, query, lexemes) => `(${value} is not null
+      and cardinality(${lexemes}) > 0 and case
+      when ${query} is not null and octet_length(${value}) <= ${PARSED}
+      then to_tsvector('simple', ${value}) @@ ${query}
       else not exists (select from unnest(${lexemes}) w where strpos(lower(${value}), w) = 0) end)`;
 
-/** Whether `value` holds the text ($2) as whole words, in order. */
+/** Whether `value` holds the text ($2) as whole words, in order, or loosely. */
 const NAMES = (value) =>
   wholeWords(
     value,
-    `phraseto_tsquery('simple', $2)`,
+    `case when octet_length($2::text) <= ${PHRASED} then phraseto_tsquery('simple', $2) end`,
     `tsvector_to_array(to_tsvector('simple', $2))`,
   );
+
+/** Whether `value` holds the text ($2) as whole words read by the parser, not loosely. */
+const EXACTLY = (value) =>
+  `(octet_length(${value}) <= ${PARSED} and octet_length($2::text) <= ${PHRASED} and ${NAMES(value)})`;
+
+/** How a person is found by the text: as whole words, or only loosely. */
+const NAMED = (...values) => `case when ${values.map((value) => EXACTLY(value)).join(' or ')}
+      then 'named by the text' else 'named loosely by the text, its words in a long value' end`;
 
 /**
  * The seeds ($2 the text or null, $3 the given ids, in business $1): each id
@@ -45,10 +59,11 @@ const NAMES = (value) =>
  * closed. Each seed says how its person was found.
  */
 export const SEEDS = `with recursive named(id, root, how) as (
-    select p.id, p.id, 'named by the text' from public.people p
+    select p.id, p.id, ${NAMED('p.display_name')} from public.people p
      where p.business_id = $1 and $2::text is not null and ${NAMES('p.display_name')}
     union
-    select i.person_id, i.person_id, 'named by the text' from public.person_identifiers i
+    select i.person_id, i.person_id, ${NAMED('i.value', 'i.observed_value')}
+      from public.person_identifiers i
      where i.business_id = $1 and $2::text is not null and i.review_state <> 'rejected'
        and (${NAMES('i.value')} or ${NAMES('i.observed_value')})
     union
@@ -137,10 +152,11 @@ export const SEEDS = `with recursive named(id, root, how) as (
 
 /**
  * The stored names of the seeds' people ($2) in business $1, each with its
- * words as a query and as lexemes; null for a name too long to parse.
+ * words as lexemes (null for a name too long to parse) and as a query (null
+ * for a name too long to be a phrase, which is matched loosely).
  */
 export const STORED_NAMES = `select p.id::text as person, p.display_name as name,
-      case when octet_length(p.display_name) <= ${PARSED}
+      case when octet_length(p.display_name) <= ${PHRASED}
            then phraseto_tsquery('simple', p.display_name)::text end as words,
       case when octet_length(p.display_name) <= ${PARSED}
            then tsvector_to_array(to_tsvector('simple', p.display_name)) end as lexemes

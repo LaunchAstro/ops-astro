@@ -22,9 +22,12 @@
 // stored name of one of those people as whole words (when it has four letters
 // or digits, as the text needs), or one of those ids in any letter case; a
 // column's or a JSON field's name never counts ("granted_at" names no Grant).
-// A value over 16,000 bytes, too long for the parser, holds a name's words
-// when it holds each of them anywhere (more listed, never less); a stored
-// name that long is not searched, and the summary says so.
+// A value over 16,000 bytes, too long for the parser, or any value against a
+// name or text over 1,000 bytes, too long to be a phrase, holds it loosely:
+// when it holds each of its words anywhere, even inside other words (more
+// listed, never less; a person found so is 'named loosely by the text'). A
+// stored name over 16,000 bytes, or with no word the parser keeps, is not
+// searched, and the summary says so.
 // Letters are folded by the database, and each run of white space is one
 // space, so the text is matched as the database's locale cases it.
 //
@@ -47,6 +50,7 @@
 // the search has finished; the connection string is never printed. The
 // command line is read in find-copies-arguments.mjs.
 
+import { Buffer } from 'node:buffer';
 import process from 'node:process';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { WHITE, namesSomeone, parse } from './find-copies-arguments.mjs';
@@ -152,7 +156,8 @@ async function scan(admin, { business, text, ids, exportRows }) {
     const shared = found.filter((seed) => seed.shared);
     const sharedIds = new Set(shared.map((seed) => seed.id));
     const names = await execute(STORED_NAMES, [owner.id, seeds.map((seed) => seed.person)]);
-    const searched = names.filter(({ name, words }) => words !== null && namesSomeone(name));
+    const read = names.filter(({ name }) => namesSomeone(name));
+    const searched = read.filter(({ lexemes }) => (lexemes ?? []).length > 0);
     const tables = await execute(TABLES);
     const lines = [];
     for (const { name, kind, scoped } of tables) {
@@ -176,7 +181,7 @@ async function scan(admin, { business, text, ids, exportRows }) {
       for (const copy of rows) lines.push(hitLine(name, copy, exportRows));
     }
     const byPerson = Map.groupBy(seeds, (seed) => seed.person);
-    const unparsed = names.filter(({ words }) => words === null).map(({ person }) => person);
+    const unparsed = read.filter(({ lexemes }) => (lexemes ?? []).length === 0);
     return { lines, byPerson, shared, unparsed };
   });
 }
@@ -192,9 +197,13 @@ function summarise(found) {
       `find-copies: to search again for ${person} (${how}) after an erasure, add: ${flags}\n`,
     );
   }
-  for (const person of found.unparsed) {
+  for (const { person, name } of found.unparsed) {
+    const why =
+      Buffer.byteLength(name) > PARSED
+        ? `is over ${PARSED.toLocaleString('en-AU')} bytes`
+        : 'holds no word the database keeps (each is over 2,047 bytes)';
     stderr.write(
-      `find-copies: ${person}'s stored name is over ${PARSED.toLocaleString('en-AU')} bytes, too long to search for as words; search for it by hand\n`,
+      `find-copies: ${person}'s stored name ${why}, so it is not searched; search for it by hand\n`,
     );
   }
   // A shared agent stands for no one: its rows are listed under `shared`, for the owner to judge.

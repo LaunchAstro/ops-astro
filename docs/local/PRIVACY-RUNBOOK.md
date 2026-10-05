@@ -79,17 +79,20 @@ by kind. A copy not on the list is a copy the reply missed.
   id as shared. It also lists
   every row holding the stored name of one of those people as whole words,
   when that name has four letters or digits. A value over 16,000 bytes is too
-  long for the database to read as words: it holds the text or a name as
-  whole words when it holds each of its words anywhere, so more is listed,
-  never less, and a stored name that long is not searched (the summary names
-  the person; search for it by hand). Each hit
+  long for the database to read as words, and a text or name over 1,000 bytes
+  too long to read as a phrase: then a value holds it loosely, when it holds
+  each of its words anywhere, even inside other words, so more is listed,
+  never less. A person found so is "named loosely by the text": check that
+  the text is theirs before erasing anything of theirs. A stored name over
+  16,000 bytes, or with no word the database keeps, is not searched (the
+  summary names the person; search for it by hand). Each hit
   names the people whose ids it holds, the shared ids it holds (agents acting for others too, and logins given back that an agent not standing for the person holds or held)
   (`shared`), whether a value of it holds the text or
   such a stored name (`text`) and whether it holds an id given with `--id`
   (`given`); a hit naming no one was found by its text, a stored name or a
   shared id alone, so the owner checks whose it is. The list ends with
   one line per person of the `--id` flags that find them, saying every way the
-  person was found (named by the text, given by `--id`, or merged with a named
+  person was found (named by the text, or loosely, given by `--id`, or merged with a named
   person), kept for the erasure's re-search. The text is matched with the
   white space around it dropped and each run of white space inside it, of any
   kind, as one space. An export withholds the credential hashes of agent
