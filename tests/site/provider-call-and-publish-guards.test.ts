@@ -26,13 +26,13 @@ const published = {
   liveUrl: 'https://agency.example/about/',
 };
 
-/** The approved place as the live check left it: calibrated, and seen to change. */
+/** The approved place as the live check left it: seen to change, with the page as it read then. */
 const seenLive = {
   left: 'We are a ',
   right: ' studio.',
   index: 0,
-  observed: ['friendly'],
-  tracked: true as const,
+  observed: ['welcoming'],
+  liveAt: published.liveUrl,
 };
 
 function job(): PublishJob {
@@ -70,7 +70,10 @@ function ports(overrides: Partial<PublishPorts> = {}): PublishPorts {
     }),
     cancellation: async () => 'none',
     raiseTask: async () => {},
-    capture: async () => ({ ok: true, value: { text: 'We are a friendly studio.' } }),
+    capture: async () => ({
+      ok: true,
+      value: { text: 'We are a friendly studio.', url: published.liveUrl },
+    }),
     ...overrides,
     publish: async (input) => {
       attempted = true;
@@ -241,7 +244,11 @@ it('an unknown revert is not dispatched blind on retry', async () => {
       kind: 'ok' as const,
       value: { revision: 'reverted', served: true },
     }),
-    capture: async () => ({ ok: true as const, value: { text: 'We are a friendly studio.' } }),
+    capture: async () => ({
+      ok: true as const,
+      value: { text: 'We are a friendly studio.', url: published.liveUrl },
+    }),
+    raiseTask: async () => {},
   };
   const input = {
     publishedRevision: published.revision,
@@ -270,7 +277,11 @@ it('a pending revert keeps the original decision time until observation', async 
       now += 1_000;
       return { kind: 'ok' as const, value: { revision: 'reverted', served } };
     },
-    capture: async () => ({ ok: true as const, value: { text: 'We are a friendly studio.' } }),
+    capture: async () => ({
+      ok: true as const,
+      value: { text: 'We are a friendly studio.', url: published.liveUrl },
+    }),
+    raiseTask: async () => {},
   };
   const input = {
     publishedRevision: published.revision,
@@ -307,7 +318,10 @@ it('a replacement decoy does not establish that the target word landed', async (
     }),
     capture: async () => ({
       ok: true,
-      value: { text: 'Welcome to our welcoming team. We are a friendly studio.' },
+      value: {
+        text: 'Welcome to our welcoming team. We are a friendly studio.',
+        url: published.liveUrl,
+      },
     }),
   });
   expect(result.state).toBe('accepted');
@@ -332,8 +346,12 @@ it('an unrelated replacement word does not prevent observing a correct revert', 
       readDeployment: async () => ({ kind: 'ok', value: { revision: 'reverted', served: true } }),
       capture: async () => ({
         ok: true,
-        value: { text: 'Welcome to our welcoming team. We are a friendly studio.' },
+        value: {
+          text: 'Welcome to our welcoming team. We are a friendly studio.',
+          url: published.liveUrl,
+        },
       }),
+      raiseTask: async () => {},
     },
   );
   expect(outcome.state).toBe('reverted');

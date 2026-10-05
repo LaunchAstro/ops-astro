@@ -78,7 +78,11 @@ function ports(overrides: Partial<PublishPorts> = {}): PublishPorts & { calls: C
       calls.raised.push(reason);
       return Promise.resolve();
     },
-    capture: () => Promise.resolve({ ok: true, value: { text: 'We walk alongside you.' } }),
+    capture: () =>
+      Promise.resolve({
+        ok: true,
+        value: { text: 'We walk alongside you.', url: 'https://agency.example/throwaway/' },
+      }),
     ...overrides,
   } as PublishPorts & { calls: Calls };
 }
@@ -240,7 +244,9 @@ describe('C80 late cancellation', () => {
 
 const served = () =>
   Promise.resolve({ kind: 'ok' as const, value: { revision: 'def456', served: true } });
-const shows = () => Promise.resolve({ ok: true as const, value: { text: 'We walk beside you.' } });
+const LIVE = 'https://www.example.com/throwaway';
+const shows = () =>
+  Promise.resolve({ ok: true as const, value: { text: 'We walk beside you.', url: LIVE } });
 const notServed = () =>
   Promise.resolve({
     kind: 'ok' as const,
@@ -252,7 +258,7 @@ const otherRevision = () =>
     value: { revision: 'old', served: true },
   });
 const oldWord = () =>
-  Promise.resolve({ ok: true as const, value: { text: 'We walk alongside you.' } });
+  Promise.resolve({ ok: true as const, value: { text: 'We walk alongside you.', url: LIVE } });
 
 describe('C80 accepted not landed', () => {
   it('a successful publish response establishes accepted only', async () => {

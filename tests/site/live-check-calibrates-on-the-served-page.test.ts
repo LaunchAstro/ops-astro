@@ -30,7 +30,7 @@ import {
   type PublishJob,
   type PublishPorts,
 } from '../../packages/core-connectors/src/index.ts';
-import { occurrenceOf, showsAt } from '../../packages/core-connectors/src/site/reconcile.ts';
+import { flipped, occurrenceOf } from '../../packages/core-connectors/src/site/reconcile.ts';
 
 const published = {
   revision: 'approved-revision',
@@ -98,7 +98,7 @@ function ports(source: string, preImage: string, raised: string[] = []) {
     ...base,
     capture: async (url: string) => {
       captured.push(url);
-      return { ok: true as const, value: { text: seen(preImage) } };
+      return { ok: true as const, value: { text: seen(preImage), url } };
     },
   };
   return { ports: withPreImage, captured };
@@ -119,7 +119,7 @@ function observe(accepted: Accepted, target: CorrectionTarget, servedHtml: strin
       kind: 'ok',
       value: { revision: published.revision, served: true },
     }),
-    capture: async () => ({ ok: true, value: { text: seen(servedHtml) } }),
+    capture: async () => ({ ok: true, value: { text: seen(servedHtml), url: published.liveUrl } }),
   });
 }
 
@@ -141,7 +141,8 @@ function revert(approved: PublishJob, placed: Pick<Accepted, 'occurrence'>, serv
       kind: 'ok',
       value: { revision: reverted.revision, served: true },
     }),
-    capture: async () => ({ ok: true, value: { text: seen(servedHtml) } }),
+    capture: async () => ({ ok: true, value: { text: seen(servedHtml), url: published.liveUrl } }),
+    raiseTask: async () => {},
   });
 }
 
@@ -236,7 +237,7 @@ it('an unrendered duplicate and a layout nav never make the unchanged heading re
   const reading = readDocument('<nav>Contact</nav><h1>Contcat</h1>');
   if (typeof reading === 'string') throw new Error(`Capture refused: ${reading}`);
 
-  expect(showsAt(reading.text, where, 'Contact', 'Contcat')).toBe(false);
+  expect(flipped(reading.text, where, 'Contcat', 'Contact')).toBeUndefined();
 
   const accepted: Accepted = {
     state: 'accepted',
@@ -248,7 +249,7 @@ it('an unrendered duplicate and a layout nav never make the unchanged heading re
   };
   const observed = await observeLanded(accepted, target, {
     readDeployment: async () => ({ kind: 'ok', value: { revision: 'rev-1', served: true } }),
-    capture: async () => ({ ok: true, value: { text: reading.text } }),
+    capture: async () => ({ ok: true, value: { text: reading.text, url: accepted.liveUrl } }),
   });
   expect(observed.state).toBe('accepted');
 });

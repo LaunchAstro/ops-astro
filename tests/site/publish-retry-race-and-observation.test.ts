@@ -62,7 +62,7 @@ function ports(overrides: Partial<PublishPorts> = {}, source = before): PublishP
     publish: async () => ({ kind: 'ok', value: published }),
     cancellation: async () => 'none',
     raiseTask: async () => {},
-    capture: async () => ({ ok: true, value: { text: seen(source) } }),
+    capture: async () => ({ ok: true, value: { text: seen(source), url: published.liveUrl } }),
     ...overrides,
   };
 }
@@ -123,8 +123,8 @@ it('concurrent absent reads cannot dispatch the same revert twice', async () => 
       left: 'We walk ',
       right: ' you.',
       index: 0,
-      observed: ['alongside'],
-      tracked: true as const,
+      observed: ['beside'],
+      liveAt: published.liveUrl,
     },
     seam: 'revert-1',
     decidedAt,
@@ -145,6 +145,7 @@ it('concurrent absent reads cannot dispatch the same revert twice', async () => 
       value: { revision: reverted.revision, served: false },
     }),
     capture: async () => ({ ok: false }),
+    raiseTask: async () => {},
   };
   await Promise.all([revertCorrection(input, p), revertCorrection(input, p)]);
   expect(sends).toBe(1);
@@ -165,6 +166,7 @@ it('an isolated text node does not make unrelated words block publish or revert 
       ok: true,
       value: {
         text: 'We walk beside you. Alongside our office is a park. We work alongside friends.',
+        url: published.liveUrl,
       },
     }),
   });
@@ -186,8 +188,12 @@ it('an isolated text node does not make unrelated words block publish or revert 
       }),
       capture: async () => ({
         ok: true,
-        value: { text: 'We walk alongside you. The park is beside our office.' },
+        value: {
+          text: 'We walk alongside you. The park is beside our office.',
+          url: published.liveUrl,
+        },
       }),
+      raiseTask: async () => {},
     },
   );
   expect({ publish: live.state, revert: restored.state }).toEqual({
@@ -205,7 +211,10 @@ it('observation compares rendered entity text rather than source spellings', asy
       kind: 'ok',
       value: { revision: published.revision, served: true },
     }),
-    capture: async () => ({ ok: true, value: { text: 'We & our friends walk beside you.' } }),
+    capture: async () => ({
+      ok: true,
+      value: { text: 'We & our friends walk beside you.', url: published.liveUrl },
+    }),
   });
   expect(observed.state).toBe('live');
 });
@@ -221,7 +230,7 @@ it('an unchanged duplicate sentence does not block the approved occurrence becom
     }),
     capture: async () => ({
       ok: true,
-      value: { text: 'We walk beside you. We walk alongside you.' },
+      value: { text: 'We walk beside you. We walk alongside you.', url: published.liveUrl },
     }),
   });
   expect(observed.state).toBe('live');

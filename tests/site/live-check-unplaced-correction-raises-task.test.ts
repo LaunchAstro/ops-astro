@@ -64,7 +64,7 @@ function observe(accepted: Accepted, target: CorrectionTarget, html: string) {
       kind: 'ok',
       value: { revision: published.revision, served: true },
     }),
-    capture: async () => ({ ok: true, value: { text: seen(html) } }),
+    capture: async () => ({ ok: true, value: { text: seen(html), url: published.liveUrl } }),
   });
 }
 
@@ -91,7 +91,10 @@ async function publishAndObserve(
   };
   const ports = {
     ...base,
-    capture: async () => ({ ok: true as const, value: { text: seen(preImage) } }),
+    capture: async () => ({
+      ok: true as const,
+      value: { text: seen(preImage), url: published.liveUrl },
+    }),
   };
   const outcome = await publishCorrection(job, ports);
   if (outcome.state !== 'accepted') return { outcome: outcome.state, raised: raised.length };
@@ -200,7 +203,10 @@ it('a publish answered with another page as live takes no place and raises a rec
     raiseTask: async (reason) => {
       raised.push(reason);
     },
-    capture: async () => ({ ok: true, value: { text: 'We walk alongside you.' } }),
+    capture: async () => ({
+      ok: true,
+      value: { text: 'We walk alongside you.', url: published.liveUrl },
+    }),
   });
   expect({
     outcome: outcome.state,

@@ -57,6 +57,9 @@ function approvedJob(seam = 'request-17'): PublishJob {
   };
 }
 
+const page = (text: string) => () =>
+  Promise.resolve({ ok: true as const, value: { text, url: PUBLISHED.liveUrl } });
+
 /** Ports whose seam reads back nothing before the first send and the publish after it. */
 function publishPorts(sent: string[], overrides: Partial<PublishPorts> = {}): PublishPorts {
   const ports = {
@@ -74,8 +77,7 @@ function publishPorts(sent: string[], overrides: Partial<PublishPorts> = {}): Pu
       ),
     cancellation: () => Promise.resolve('none' as const),
     raiseTask: () => Promise.resolve(),
-    capture: () =>
-      Promise.resolve({ ok: true as const, value: { text: 'We walk alongside you.' } }),
+    capture: page('We walk alongside you.'),
     ...overrides,
   };
   return ports;
@@ -149,13 +151,12 @@ const revertInput = {
     left: 'We walk ',
     right: ' you.',
     index: 0,
-    observed: ['alongside'],
-    tracked: true as const,
+    observed: ['beside'],
+    liveAt: PUBLISHED.liveUrl,
   },
   seam: 'revert-of-def456',
   decidedAt: T0,
 };
-const page = (text: string) => () => Promise.resolve({ ok: true as const, value: { text } });
 
 /** Ports whose seam reads back nothing before the first send and the revert after it, served. */
 function revertPorts(sent: string[], overrides: Partial<RevertPorts> = {}): RevertPorts {
@@ -174,6 +175,7 @@ function revertPorts(sent: string[], overrides: Partial<RevertPorts> = {}): Reve
     readDeployment: () =>
       Promise.resolve({ kind: 'ok' as const, value: { revision: 'rev789', served: true } }),
     capture: page('We walk alongside you.'),
+    raiseTask: () => Promise.resolve(),
     ...overrides,
   };
   return ports;

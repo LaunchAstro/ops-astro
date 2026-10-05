@@ -66,12 +66,12 @@ export interface Occurrence {
   readonly right: string;
   readonly index?: number;
   /**
-   * The word at each equal match on the served page before the change, in order. Only a place
-   * calibrated on that page has it, and only such a place is ever observed.
+   * The word at each equal match on the served page, in order: before the change, or as read live
+   * once seen live. Only a place calibrated on that page has it, and only such a place is observed.
    */
   readonly observed?: readonly string[];
-  /** Seen live: the page changed at this place when the correction landed, so it tracks the target. */
-  readonly tracked?: true;
+  /** Seen live at this address: the page changed here when the correction landed, so it tracks the target. */
+  readonly liveAt?: string;
 }
 
 const BLOCK =
@@ -166,21 +166,23 @@ export function calibrated(
 }
 
 /**
- * The page holds `shown` at the calibrated place and every other equal match as it was observed
- * before the change; an uncalibrated place never shows.
+ * The place where the page changed from `from` to `to`: exactly one calibrated equal match did,
+ * at any index (the source edit changes one), and every other is as observed. An uncalibrated
+ * place never changes; the result is observed as the page now stands.
  */
-export function showsAt(
+export function flipped(
   text: string,
   where: Occurrence | undefined,
-  shown: string,
-  gone: string,
-): boolean {
+  from: string,
+  to: string,
+): Occurrence | undefined {
   const observed = where?.observed;
-  if (where === undefined || observed === undefined) return false;
-  const index = where.index ?? 0;
-  const found = equalsOf(text, where, [shown, gone]);
-  return (
-    found.length === observed.length &&
-    found.every((word, at) => (at === index ? word === shown : word === observed[at]))
-  );
+  if (where === undefined || observed === undefined) return undefined;
+  const found = equalsOf(text, where, [from, to]);
+  const changed = found.flatMap((word, at) => (word === observed[at] ? [] : [at]));
+  const [index = -1] = changed;
+  const one = found.length === observed.length && changed.length === 1;
+  return one && observed[index] === from && found[index] === to
+    ? { ...where, index, observed: found }
+    : undefined;
 }
