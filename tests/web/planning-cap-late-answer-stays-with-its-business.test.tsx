@@ -70,8 +70,8 @@ function business(businessKey: string) {
   return { state, gate, client };
 }
 
-const page = (client: OperationsClient, session: Session) => (
-  <StepUpProviders on stepUp={stepUp} signInAgain={signInAgain}>
+const page = (client: OperationsClient, session: Session, up = stepUp) => (
+  <StepUpProviders on stepUp={up} signInAgain={signInAgain}>
     <SettingsScreen
       client={client}
       grantKey={grantKeyOf(session)}
@@ -151,6 +151,44 @@ it("Alpha's late scope refusal neither speaks in Bravo nor closes Bravo's cap co
       disabled: false,
       cap: 6000,
     });
+  } finally {
+    await view.unmount();
+  }
+});
+
+it("Ada's cap step-up passing after the tab moved to Ben sends nothing through Ben's sign-in", async () => {
+  window.sessionStorage.clear();
+  const sessions = new SessionStore(window.sessionStorage);
+  const BEN: Session = { businessKey: 'alpha', email: 'ben@example.test' };
+  const ada = business('alpha');
+  const ben = business('alpha');
+  const check: { pass: ((result: StepUpResult) => void) | null } = { pass: null };
+  const held = (): Promise<StepUpResult> =>
+    new Promise((resolve) => {
+      check.pass = resolve;
+    });
+  sessions.set(ALPHA);
+  const view = await mount(page(ada.client(), ALPHA, held));
+  try {
+    await tick();
+    await view.type('#settings-planning-cap', '9999');
+    await view.click('[data-settings="save-planning-cap"]');
+    await tick();
+    const refusal = { refused: true, code: 'STEP_UP_REQUIRED', names: [], fixes: ['Code.'] };
+    ada.gate.answer?.(json(refusal, 403));
+    await tick();
+    await view.type('[data-step-up="code"]', '123456');
+    await view.click('[data-step-up="confirm"]');
+    await tick();
+    expect(check.pass, "Ada's code is not being checked").not.toBeNull();
+
+    // While the code is checked, the tab and the same screen move to Ben.
+    sessions.set(BEN);
+    await view.render(page(ben.client(), BEN, held));
+    await tick();
+    check.pass?.({ ok: true, sessionId: 'ada-stepped-up' });
+    await tick();
+    expect({ ben: ben.state.writes, cap: ben.state.limitMinor }).toEqual({ ben: [], cap: 5000 });
   } finally {
     await view.unmount();
   }
