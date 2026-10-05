@@ -116,3 +116,46 @@ it('finding the changed word in one long line is linear in its length', () => {
   run(1_000);
   expect(run(400_000)).toBeLessThan(5_000);
 });
+
+// Astro reads each of these as frontmatter, so none of its text is on the built page.
+const fenced = {
+  'a byte-order mark': "\uFEFF---\nconst old = 'Contcat';\n---\n",
+  'leading blank lines': "\n\n---\nconst old = 'Contcat';\n---\n",
+  'leading spaces': "  ---\nconst old = 'Contcat';\n---\n",
+  'trailing spaces on the fences': "--- \nconst old = 'Contcat';\n---  \n",
+  'carriage returns': "---\r\nconst old = 'Contcat';\r\n---\r\n",
+};
+
+it.each(Object.entries(fenced))(
+  'frontmatter after %s is never read as page text',
+  (_, frontmatter) => {
+    const before = `${frontmatter}<h1>Contcat</h1>\n`;
+    const after = before.replace('<h1>Contcat', '<h1>Contact');
+    expect(
+      readsLive(before, after, 'Contcat', 'Contact', '<h1>Contcat</h1><footer>Contact</footer>'),
+    ).toBe(false);
+    expect(readsLive(before, after, 'Contcat', 'Contact', '<h1>Contact</h1>')).toBe(true);
+  },
+);
+
+it.each([
+  ['inside a template literal', "---\nconst note = `\n---\n`;\nconst old = 'Contcat';\n---\n"],
+  ['inside a block comment', "---\n/*\n---\n*/\nconst old = 'Contcat';\n---\n"],
+  ['with code before it', "const x = 1;\n---\nconst old = 'Contcat';\n---\n"],
+])('a fence line %s leaves the page with no place', (_, frontmatter) => {
+  const before = `${frontmatter}<h1>Contcat</h1>\n`;
+  const after = before.replace('<h1>Contcat', '<h1>Contact');
+  const where = occurrenceOf(
+    { files: [{ path: target.path, before, after }] },
+    { path: target.path, word: 'Contcat', replacement: 'Contact' },
+  );
+  expect(where).toBeUndefined();
+});
+
+it.each([
+  ['past its words', { left: '', right: '', index: 3, words: ['Contcat'] }],
+  ['before them', { left: '', right: '', index: -1, words: ['Contcat'] }],
+  ['with no words', { left: '', right: '', index: 0, words: [] }],
+])('a place whose rank is %s never reads live', (_, where) => {
+  expect(showsAt('Contact', where, 'Contact', 'Contcat')).toBe(false);
+});

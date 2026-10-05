@@ -266,7 +266,7 @@ describe('C80 accepted not landed', () => {
     deploymentId: 'dpl_1',
     liveUrl: 'https://www.example.com/throwaway',
     dispatchToken: 'x',
-    occurrence: { left: 'We walk ', right: ' you.' },
+    occurrence: { left: 'We walk ', right: ' you.', index: 0, words: ['alongside'] },
   };
 
   it('is live only when the deployment is served for that revision and the fenced capture shows the new word', async () => {

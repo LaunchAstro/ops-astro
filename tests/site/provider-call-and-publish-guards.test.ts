@@ -288,7 +288,7 @@ it('a replacement decoy does not establish that the target word landed', async (
     state: 'accepted' as const,
     ...published,
     dispatchToken: 'publish-token',
-    occurrence: { left: 'We are a ', right: ' studio.' },
+    occurrence: { left: 'We are a ', right: ' studio.', index: 0, words: ['friendly'] },
   };
   const result = await observeLanded(accepted, target, {
     readDeployment: async () => ({
