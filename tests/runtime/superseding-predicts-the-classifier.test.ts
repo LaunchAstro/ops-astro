@@ -236,6 +236,8 @@ it('business to business: a foreign version gives back nothing and moves nothing
   });
 
   const ownBack = a.held - a.spent;
+  // Room to give back, so a leaked foreign hold would show in the mixed total.
+  expect(ownBack).toBeGreaterThan(0n);
   expect(asked.foreignOnly).toStrictEqual({ released: 0n, fromEnvelope: 0n });
   expect(asked.mixed).toStrictEqual({ released: ownBack, fromEnvelope: ownBack });
   expect(asked.own).toStrictEqual({ released: ownBack, fromEnvelope: ownBack });
