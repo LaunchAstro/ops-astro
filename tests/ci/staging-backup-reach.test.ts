@@ -132,6 +132,26 @@ function reachCases3() {
     }
   });
 
+  it('an address the parser would read as another one, by its dot segments, is refused', async () => {
+    const { reachEnv } = await importOps<ReachModule>('backup-store-reach.mjs');
+    for (const address of [
+      'postgres://job:s3cret@backups/store/../other?sslmode=require',
+      'postgres://job:s3cret@backups/store/%2e%2e/other',
+      'postgres://job:s3cret@backups/./other',
+      'postgres://job:s3cret@backups/x/%2E%2E/other',
+    ]) {
+      let env: Record<string, string> | undefined;
+      let message = 'accepted';
+      try {
+        env = reachEnv(address);
+      } catch (error) {
+        message = `${(error as Error).message} ${JSON.stringify(error)}`;
+      }
+      expect(env?.['PGDATABASE'], address).toBeUndefined();
+      expect(message, address).not.toMatch(/s3cret|job|backups/u);
+    }
+  });
+
   it('a bound value goes to psql as hex, so no quoting, newline or meta-command can end it', async () => {
     const { bound, param } = await importOps<ReachModule>('backup-store-reach.mjs');
     const hostile = `x' \\g\n\\! touch /tmp/owned\r`;
