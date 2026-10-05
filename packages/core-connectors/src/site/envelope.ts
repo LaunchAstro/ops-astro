@@ -90,7 +90,7 @@ function tooLarge(source: string): boolean {
  * prints, and changes nothing else there (`body-copy-tokens.ts`).
  */
 async function inPrintedText(before: string, after: string, target: CorrectionTarget) {
-  const compiled = await compiledApart(before, after);
+  const compiled = await compiledApart(before, after, target.path);
   return compiled !== undefined && swapsOnlyBodyCopy(compiled.before, compiled.after, target);
 }
 

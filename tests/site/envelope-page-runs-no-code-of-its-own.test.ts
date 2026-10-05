@@ -132,3 +132,22 @@ describe('a page of content in other Astro files still passes', () => {
     expect(await edit(before)).toMatchObject({ ok: true });
   });
 });
+
+// Stage 1's limit: these pages are body copy, but the page runs code of its
+// own, so the edit goes to a person. A check of the rendered page, built in
+// a sandbox, is the follow-up that would widen this.
+describe('pages with code of their own go to a person, body copy or not', () => {
+  it.each([
+    ['after an attribute expression', '<p class={["a"].join("")}>Hello there</p>\n'],
+    ['after a tag that follows an expression', '<p>{"x"} <b>and</b> Hello there</p>\n'],
+    ['after a closed expression holding a quoted brace', "<p>{'}'}<br />Hello there</p>\n"],
+    [
+      'under typed frontmatter',
+      '---\ninterface Props { a: string }\nconst { a } = Astro.props as Props;\n---\n<p title={a}>Hello there</p>\n',
+    ],
+    ['in an is:raw element', '<pre is:raw>Hello there</pre>\n'],
+    ['beside a style of its own', '<p>Hello there</p>\n<style>p { color: red; }</style>\n'],
+  ])('refuses a word %s', async (_name, before) => {
+    expect(await edit(before)).toMatchObject({ ok: false });
+  });
+});

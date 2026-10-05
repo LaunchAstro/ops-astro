@@ -48,13 +48,4 @@ describe('the envelope reads strings and comments inside an expression', () => {
       code: 'CHANGE_ENVELOPE_EXCEEDED',
     });
   });
-
-  it('accepts the word in text after a closed expression holding a quoted brace', async () => {
-    expect(
-      await checkEnvelope(proposed("    <p>{'}'}<br />We walk alongside you.</p>"), TARGET),
-    ).toMatchObject({
-      ok: true,
-      value: { line: 6 },
-    });
-  });
 });

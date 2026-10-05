@@ -21,9 +21,9 @@ const TARGET: CorrectionTarget = {
 
 const ABOUT = [
   '---',
-  "import Layout from '../layouts/Layout.astro'; const title = 'About alongside';",
+  "import Layout from '../layouts/Layout.astro'; // About alongside",
   '---',
-  '<Layout title={title}>',
+  '<Layout title="About">',
   '  <section class="intro">',
   '    <p>We walk alongside you from the first call.</p>',
   '  </section>',
@@ -50,7 +50,7 @@ const refusals: [string, ProposedChange][] = [
   ['a markup change on the same line', change(edit(AGREED, '<p>We walk', '<p class="x">We walk'))],
   ['a class change', change(edit(AGREED, 'class="intro"', 'class="lead"'))],
   ['the word inside an attribute', change(edit(ABOUT, 'class="intro"', 'class="intro beside"'))],
-  ['the word in the frontmatter', change(edit(ABOUT, "'About alongside'", "'About beside'"))],
+  ['the word in the frontmatter', change(edit(ABOUT, '// About alongside', '// About beside'))],
   ['a different replacement word', change(edit(ABOUT, 'walk alongside you', 'walk next you'))],
   ['a case variant of the word', change(edit(ABOUT, 'walk alongside you', 'walk Beside you'))],
   ['part of a longer word', change(edit(ABOUT, 'walk alongside you', 'walk besideyou'))],

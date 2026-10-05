@@ -34,8 +34,9 @@ describe('the parser is bounded', () => {
   }, 60_000);
 
   it('a page that exhausts the parser ends only its worker, and the host lives on', async () => {
-    const huge = `<p>${'{'.repeat(20_000)}</p>\n`;
-    expect(await compiledApart(huge, huge)).toBeUndefined();
+    // The parser overflows its stack on this nesting, before any check of the tree.
+    const huge = `<p>${'{<b>'.repeat(20_000)}</p>\n`;
+    expect(await compiledApart(huge, huge, 'src/pages/a.astro')).toBeUndefined();
     await new Promise((settled) => {
       setTimeout(settled, 4000);
     });

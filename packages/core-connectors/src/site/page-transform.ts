@@ -27,12 +27,16 @@ function isCompiled(value: unknown): value is CompiledPages {
   );
 }
 
-/** Both pages as the compiler prints them, or `undefined` when it gave no clean answer. */
+/**
+ * Both pages at `path` as the compiler prints them, or `undefined` when
+ * either runs code of its own or the compiler gave no clean answer.
+ */
 export async function compiledApart(
   before: string,
   after: string,
+  path: string,
 ): Promise<CompiledPages | undefined> {
-  const worker = new Worker(COMPILER, { workerData: { before, after }, stderr: true });
+  const worker = new Worker(COMPILER, { workerData: { before, after, path }, stderr: true });
   try {
     return await new Promise<CompiledPages | undefined>((settle) => {
       const end = (read?: unknown) => {

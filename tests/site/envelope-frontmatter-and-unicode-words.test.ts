@@ -26,7 +26,13 @@ const WIDE_LETTER = '\u{1D400}';
 
 describe('the envelope reads frontmatter and Unicode words', () => {
   it('accepts a body word after frontmatter holding an unmatched opening brace', async () => {
-    const page = ['---', "const open = '{';", '---', '<p>We walk alongside you.</p>', ''];
+    const page = [
+      '---',
+      "import Card from './Card.astro'; // {",
+      '---',
+      '<p>We walk alongside you.</p>',
+      '',
+    ];
     expect(await checkEnvelope(proposed(page), TARGET)).toEqual({
       ok: true,
       value: { path: TARGET.path, line: 4, before: 'alongside', after: 'beside' },

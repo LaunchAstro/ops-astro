@@ -23,13 +23,11 @@ export interface WordInTemplate {
   readonly offset: number;
 }
 
-/** Runtime calls that print whole markup in data state; a component's is checked apart. */
-const PRINTS_MARKUP: ReadonlySet<string> = new Set([
-  '$$renderSlot',
-  '$$renderHead',
-  '$$maybeRenderHead',
-  '$$renderScript',
-]);
+/**
+ * Runtime calls that print whole markup in data state; a component's is
+ * checked apart. A slot or script prints what the page's own source steers.
+ */
+const PRINTS_MARKUP: ReadonlySet<string> = new Set(['$$renderHead', '$$maybeRenderHead']);
 const PRINTS_ATTRIBUTES: ReadonlySet<string> = new Set(['$$addAttribute', '$$spreadAttributes']);
 
 function isNode(value: unknown): value is Node {

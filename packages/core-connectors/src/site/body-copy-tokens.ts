@@ -21,6 +21,8 @@
 //   opened closed, and opens no select, svg or math: a browser reads their
 //   contents by rules this grammar does not model.
 //
+// The page's own source runs no code by then (`page-source.ts`, checked in
+// the compile's worker), so this grammar is the printed-output layer.
 // What another file prints is taken as whole markup. An expression counts
 // as text only when it is a literal string or number: the runtime prints
 // any other value that is not a string as raw markup, so it is refused,

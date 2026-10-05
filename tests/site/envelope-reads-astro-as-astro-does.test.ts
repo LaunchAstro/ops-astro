@@ -65,12 +65,10 @@ describe('the envelope still accepts body copy', () => {
   it.each([
     [
       'after CRLF frontmatter',
-      '---\r\nconst x = 1;\r\n---\r\n<p>We walk alongside you.</p>\r\n',
+      '---\r\nimport Card from "./Card.astro";\r\n---\r\n<p>We walk alongside you.</p>\r\n',
       4,
     ],
     ['after a word with an accent', '<p>Café staff walk alongside you.</p>\n', 1],
-    // is:raw prints its text as written: the printed tokens are what a browser reads.
-    ['in an is:raw element', '<pre is:raw>We walk alongside you.</pre>\n', 1],
   ])('accepts the word %s', async (_name, before, line) => {
     expect(await checkEnvelope(proposed(before), TARGET)).toMatchObject({
       ok: true,
