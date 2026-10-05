@@ -98,6 +98,7 @@ it('reads the container count from info as a whole number at or above zero', () 
   expect(readContainerCount(bytes('{"Containers":2}'))).toEqual({ ok: true, containers: 2 });
   expect(readContainerCount(bytes('{"Containers":-1}'))).toMatchObject(internal);
   expect(readContainerCount(bytes('{"Containers":"0"}'))).toMatchObject(internal);
+  expect(readContainerCount(bytes('{'))).toMatchObject(internal);
 });
 
 it.each([
@@ -214,6 +215,9 @@ it('keeps an output refusal when a bad frame follows it', () => {
   const frames = new AttachFrames(1);
   frames.push(frame(1, bytes('ab')), frame(0, bytes('x')), frame(1, bytes('c')));
   expect(frames.end()).toMatchObject({ ok: false, reason: 'output refused' });
+  const after = new AttachFrames(1);
+  after.push(frame(1, bytes('ab')), frame(2, bytes('y')), frame(0, bytes('x')));
+  expect(after.end()).toMatchObject({ ok: false, reason: 'output refused' });
 });
 
 it('treats an id given as a list as a daemon fault', () => {

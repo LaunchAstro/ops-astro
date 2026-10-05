@@ -212,3 +212,11 @@ it('takes tabs and spaces around a header value, and a zero length on a bodiless
     op: { kind: 'start', id: ID },
   });
 });
+
+it.each([';\n\r\n', '\r;\r\n', '\r\n;\n', '\r\n\r;'])(
+  'waits for a real blank line, not %j, before reading the head',
+  (ending) => {
+    const head = text.encode(`GET ${V}/_ping HTTP/1.1\r\nHost: docker${ending}`);
+    expect(read(head)).toEqual({ ok: 'more', need: null });
+  },
+);

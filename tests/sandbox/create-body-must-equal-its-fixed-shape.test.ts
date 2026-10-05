@@ -138,6 +138,10 @@ const mutations: readonly (readonly [string, (body: Mutable) => void])[] = [
   ],
   ['a bind mount', (b) => (b.HostConfig['Binds'] = ['/:/host'])],
   ['network mode bridge', (b) => (b.HostConfig['NetworkMode'] = 'bridge')],
+  ['a string spelt as a list of its characters', (b) => (b['User'] = [...'10001:10001'])],
+  ['an empty object spelt as false', (b) => (b['Labels'] = false)],
+  ['an empty object spelt as an empty string', (b) => (b['Volumes'] = '')],
+  ['an empty object spelt as null', (b) => (b['Labels'] = null)],
   [
     'a string spelt as an object keyed by position',
     (b) => (b.HostConfig['NetworkMode'] = { 0: 'n', 1: 'o', 2: 'n', 3: 'e' }),
