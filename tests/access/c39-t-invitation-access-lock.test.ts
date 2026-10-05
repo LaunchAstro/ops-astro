@@ -15,7 +15,7 @@ import type { CommandResult } from '../../packages/core-commands/src/commands/re
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { lockAccess, revokeGrant } from '../../packages/core-records/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
-import { addressFor, codeOf, invite, noDatabase, useInvitationWorld, w } from './c39-t-world.ts';
+import { addressFor, c, codeOf, invite, noDatabase, useInvitationWorld, w } from './c39-t-world.ts';
 
 useInvitationWorld();
 
@@ -96,6 +96,17 @@ async function underRevocation(
   }
 }
 
+/** One command as Avery Admin on `pool`, its own connection. */
+async function act(
+  pool: ReturnType<typeof connect>,
+  body: Readonly<Record<string, unknown>>,
+): Promise<CommandResult> {
+  return await executeCommand(pool, w.alpha, c.admin.presented, 'api', {
+    operationId: randomUUID(),
+    ...body,
+  } as never);
+}
+
 async function countOf(sql: string, value: string): Promise<number> {
   const [row] = await w.db.admin.execute<{ n: number }>(sql, [value]);
   return row?.n ?? -1;
@@ -151,5 +162,70 @@ describe.skipIf(noDatabase)('C39-T invitation acts wait for a revocation in flig
       [id],
     );
     expect(row?.state).toBe('pending');
+  });
+
+  it("a create locks its address's pending invitations before the access lock, as a revoke does", async () => {
+    // SEC-P3B-5: a create took the access lock before a lapsed invitation's
+    // row, a revoke takes the row first; the two could deadlock.
+    const address = addressFor('lapsed');
+    const id = await invite(c.admin, address);
+    await w.db.admin.execute(
+      "update public.invitations set expires_at = clock_timestamp() - interval '1 second' where id = $1",
+      [id],
+    );
+    const creating = connect(w.db.appUrl, { log: w.db.log });
+    const revoking = connect(w.db.appUrl, { log: w.db.log });
+    const holder = connect(w.db.appUrl);
+    const held = latch();
+    const release = latch();
+    let pid = 0;
+    const holding = holder.withBusiness(w.alpha, async (tx) => {
+      const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
+      pid = row?.pid ?? 0;
+      await lockAccess(tx);
+      held.release();
+      await release.promise;
+    });
+    const waiting = async (sql: string, n: number): Promise<void> => {
+      const until = Date.now() + 5000;
+      for (;;) {
+        const [row] = await w.db.admin.execute<{ n: number }>(sql, [pid]);
+        if (row?.n === n) return;
+        if (Date.now() >= until) throw new Error('Timed out waiting for the database schedule');
+        await delay(20);
+      }
+    };
+    const onHolder =
+      'select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))';
+    const blocked =
+      'select count(*)::int as n from pg_stat_activity where cardinality(pg_blocking_pids(pid)) > 0 and $1 <> pid';
+    const acts: Promise<CommandResult>[] = [];
+    try {
+      await held.promise;
+      const created = act(creating, {
+        command: 'invitation.create',
+        name: 'Ivy Again',
+        email: address,
+        role: 'member',
+      });
+      acts.push(created);
+      await waiting(onHolder, 1);
+      const revoked = act(revoking, { command: 'invitation.revoke', invitationId: id });
+      acts.push(revoked);
+      await waiting(blocked, 2);
+      // The revoke waits on the create's row lock, not beside it on the access lock.
+      const [direct] = await w.db.admin.execute<{ n: number }>(onHolder, [pid]);
+      expect(direct?.n).toBe(1);
+      release.release();
+      expect(codeOf(await created)).toBe('applied');
+      expect(codeOf(await revoked)).toBe('TRANSITION_NOT_PERMITTED');
+    } finally {
+      release.release();
+      await holding;
+      await Promise.allSettled(acts);
+      await holder.close();
+      await revoking.close();
+      await creating.close();
+    }
   });
 });
