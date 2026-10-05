@@ -11,7 +11,8 @@
  * null for a fleet grant; its label is the client's name as `clients` holds
  * it, not the tripwire and step columns' closed grammar, and null when no
  * `clients` row answers its id (`records.uuid_7` has no foreign key). A child
- * grant whose parent ended first carries the parent's end and cause.
+ * grant whose parent ended first carries the time and cause of what ended the
+ * parent first: taken back only when that was a revocation.
  */
 export interface GrantView {
   readonly id: string;
