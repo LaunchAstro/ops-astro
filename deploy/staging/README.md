@@ -275,8 +275,9 @@ only you and root can write: never under `/tmp`, a shared store or a folder
 reached through a link. The check reads owners and mode bits only, so it
 cannot see write granted another way: keep the path free of any ACL that
 grants write, and off network shares and volumes that ignore ownership, and
-set no immutable flag on the link (`chflags uchg`), or its swap fails after
-the migration.
+set no file flag (`uchg`, `uappnd` or their system forms) on the link's
+folder, the link or `<link>.promoting`, or the swap fails after the
+migration.
 
 ## Alerts
 
