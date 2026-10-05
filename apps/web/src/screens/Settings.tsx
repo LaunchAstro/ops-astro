@@ -51,6 +51,7 @@ import {
 import { PlanningCapSection } from './settings/planning-cap.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
 import { KeysPanel } from './settings/keys.tsx';
+import { StepUpPrompt } from '../views/step-up-prompt.tsx';
 import { WindowRow } from './settings/windows.tsx';
 
 export type { StorageLike } from './settings/use-settings.ts';
@@ -138,6 +139,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
 
       <CapabilityBanner state={model.capabilities} />
 
+      {model.stepUp === null ? null : <StepUpPrompt ask={model.stepUp} />}
       {model.because === null ? null : (
         <p className="field__error" role="alert" data-settings="refusal">
           {model.because}
@@ -270,6 +272,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
 
       <PlanningCapSection
         client={props.client}
+        grantKey={props.grantKey}
         read={model.read}
         capabilities={model.capabilities}
         reload={model.reload}

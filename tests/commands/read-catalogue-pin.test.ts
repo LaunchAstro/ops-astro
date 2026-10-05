@@ -25,6 +25,8 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 const PINNED_SHAPE = {
+  'map.frontier': { spine: true, subject: true, authority: 'declared' },
+  'map.view': { spine: true, subject: true, authority: 'declared' },
   'access.read': { spine: false, subject: false, authority: 'declared' },
   'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
@@ -70,6 +72,8 @@ const PINNED_IDENTIFIERS = {
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'map.frontier': ['recordId'],
+  'map.view': ['recordId'],
   'operations.read': [],
   'person.list': [],
   'preference.read': [],
@@ -95,6 +99,8 @@ const PINNED_IDENTIFIERS = {
 
 // MP-7-10: `team.list` is staff only; a client is told NOT_FOUND.
 const PINNED_OUTSIDER_NOT_FOUND = [
+  'map.frontier',
+  'map.view',
   'task.board',
   'task.execution',
   'task.ledger',
@@ -122,6 +128,11 @@ const RECORD_ID = {
   code: 'FIELD_VALUE_INVALID',
   names: ['recordId'],
   fixes: ['Send recordId as the task’s identifier or its key.'],
+};
+const MAP_ID = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['recordId'],
+  fixes: ['Send recordId as the map’s identifier or its key.'],
 };
 const BOARD = {
   code: 'FIELD_VALUE_INVALID',
@@ -158,6 +169,8 @@ const LEDGER_ZONE = {
 
 /** For each read, the refusal each body gets, in `BODIES` order; `null` is no refusal. */
 const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
+  'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
+  'map.frontier': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'task.read': [
     RECORD_ID,
     null,
@@ -242,7 +255,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twenty-nine reads', () => {
+  it('names the same thirty-three reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
