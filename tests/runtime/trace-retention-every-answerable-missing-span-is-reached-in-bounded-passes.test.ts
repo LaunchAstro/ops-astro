@@ -1,18 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Trace retention (#963, Sol PRV-oa-963-R3.1, the class): one owed run's
-// sent spans, newest first, are read pass after pass, each pass from where
-// the last one's read stopped. The store answers `allowance` reads a pass and
-// unknown after, and never answers for a block of spans newer than the
-// missing ones. For every run length, allowance, missing block and such a
-// block, the read must reach a missing span within m + 1 passes (m its
-// place, newest first): each pass moves on at least one span and never past
-// a span the store would answer. With every span answerable it must take no
-// more than ceil((m + 1) / allowance) passes.
+// Trace retention (#963, Sol PRV-oa-963-R3.1, the class; security re-read
+// of 6e6b1b3, M1): owed runs' sent spans, newest first, are read pass after
+// pass in `owedAsks`' order (oldest turn, unanswered, run id), each from
+// where its last read stopped. The store answers `allowance` reads a pass
+// and unknown after, and never answers for some spans. Run R has a missing
+// block at place m, under up to four such spans just newer than it. Alone,
+// R must be found gone within m + 1 passes (each pass moves its read on at
+// least one span and never past a span the store would answer), and within
+// ceil((m + 1) / allowance) when every span answers. With a run B always
+// present, B's id before or after R's and B's reads spending the allowance
+// first, R must be found within 2(m + 1) + 2 passes: a run the pass left
+// with nothing answered keeps its turn and its place, and goes first next.
 
 import { expect, it } from 'vitest';
 import {
+  freshReading,
   readBack,
+  unsettled,
   type ExpiryPorts,
   type Reading,
 } from '../../packages/core-runtime/src/trace-store.ts';
@@ -20,19 +25,36 @@ import { derivedId } from '../../packages/core-runtime/src/index.ts';
 
 const KEY = Buffer.alloc(32, 7);
 const BUSINESS = '00000000-0000-4000-8000-000000000001';
-const RUN = '00000000-0000-4000-8000-000000000002';
+const R = '00000000-0000-4000-8000-00000000000b';
 
-interface World {
+interface Run {
+  readonly id: string;
   readonly length: number;
-  readonly allowance: number;
   readonly missing: readonly number[];
   readonly silent: readonly number[];
 }
 
+interface World {
+  readonly allowance: number;
+  readonly runs: readonly Run[];
+  readonly bound: number;
+}
+
+interface Turn {
+  turn: number;
+  answered: boolean;
+  resume: string | null;
+}
+
+const spansOf = (run: Run): string[] =>
+  Array.from({ length: run.length }, (_, at) => `${run.id}/${String(at)}`);
+
 function store(world: World): { readonly ports: ExpiryPorts; readonly pass: () => void } {
-  const place = new Map<string, number>();
-  for (let at = 0; at < world.length; at += 1) {
-    place.set(derivedId(KEY, ['span', BUSINESS, `e${String(at)}`], 16), at);
+  const place = new Map<string, { run: Run; at: number }>();
+  for (const run of world.runs) {
+    for (const [at, id] of spansOf(run).entries()) {
+      place.set(derivedId(KEY, ['span', BUSINESS, id], 16), { run, at });
+    }
   }
   let used = 0;
   return {
@@ -43,54 +65,91 @@ function store(world: World): { readonly ports: ExpiryPorts; readonly pass: () =
       expire: () => Promise.resolve({ ok: true, status: 200, body: '' }),
       present: (_trace, spanId) => {
         used += 1;
-        const at = place.get(spanId ?? '') ?? -1;
-        if (used > world.allowance || world.silent.includes(at)) return Promise.resolve('unknown');
-        return Promise.resolve(world.missing.includes(at) ? 'absent' : 'present');
+        const span = place.get(spanId ?? '');
+        if (span === undefined || used > world.allowance || span.run.silent.includes(span.at)) {
+          return Promise.resolve('unknown');
+        }
+        return Promise.resolve(span.run.missing.includes(span.at) ? 'absent' : 'present');
       },
     },
   };
 }
 
-/** The pass that finds the run gone, or null within `limit` passes. */
-async function passesToGone(world: World, limit: number): Promise<number | null> {
-  const sent = Array.from({ length: world.length }, (_, at) => `e${String(at)}`);
+/** The runs in `owedAsks`' order: oldest turn, unanswered before answered, run id. */
+const ordered = (turns: Map<string, Turn>): string[] =>
+  [...turns.entries()]
+    .toSorted(
+      ([a, x], [b, y]) =>
+        x.turn - y.turn || Number(x.answered) - Number(y.answered) || a.localeCompare(b),
+    )
+    .map(([id]) => id);
+
+/** Records a pass as its batch row would: the runs it read, and where each unanswered one stopped. */
+function record(turns: Map<string, Turn>, reading: Reading, pass: number): void {
+  if (!unsettled(reading)) return;
+  for (const id of reading.answered) turns.set(id, { turn: pass, answered: true, resume: null });
+  for (const [at, id] of reading.unanswered.entries()) {
+    turns.set(id, { turn: pass, answered: false, resume: reading.resumes[at] ?? null });
+  }
+}
+
+/** The pass that finds R gone, or null within the world's bound. */
+async function passesToGone(world: World): Promise<number | null> {
   const { ports, pass } = store(world);
-  let resume: string | null = null;
-  for (let round = 1; round <= limit; round += 1) {
+  const turns = new Map(
+    world.runs.map((run): [string, Turn] => [run.id, { turn: -1, answered: false, resume: null }]),
+  );
+  for (let round = 1; round <= world.bound; round += 1) {
     pass();
-    const reading: Reading = {
-      sent: new Map([[RUN, sent]]),
-      resume: new Map(resume === null ? [] : [[RUN, resume]]),
-      answered: [],
-      unanswered: [],
-      resumes: [],
-      left: [],
-      reads: 0,
-      quiet: 0,
-    };
+    const reading = freshReading();
+    for (const run of world.runs) reading.sent.set(run.id, spansOf(run));
+    for (const [id, turn] of turns) if (turn.resume !== null) reading.resume.set(id, turn.resume);
     // eslint-disable-next-line no-await-in-loop -- one pass after another
-    if ((await readBack(KEY, BUSINESS, ports, [RUN], reading)).length > 0) return round;
-    resume = reading.resumes[0] ?? null;
+    const gone = await readBack(KEY, BUSINESS, ports, ordered(turns), reading);
+    if (gone.includes(R)) return round;
+    record(turns, reading, round);
   }
   return null;
 }
 
-/** Each missing block of 1..3 spans at place m, under 0..4 silent spans just newer than it. */
-function* blocks(length: number): Generator<Pick<World, 'missing' | 'silent'>> {
-  for (let size = 1; size <= 3; size += 1) {
+/** Each missing block of R's of up to `sizes` spans at place m, under up to `quiet` silent spans just newer. */
+function* targets(length: number, sizes: number, quiet: number): Generator<Run> {
+  for (let size = 1; size <= sizes; size += 1) {
     for (let m = 0; m + size <= length; m += 1) {
       const missing = Array.from({ length: size }, (_, at) => m + at);
-      for (let quiet = 0; quiet <= Math.min(4, m); quiet += 1) {
-        yield { missing, silent: Array.from({ length: quiet }, (_, at) => m - quiet + at) };
+      for (let q = 0; q <= Math.min(quiet, m); q += 1) {
+        yield { id: R, length, missing, silent: Array.from({ length: q }, (_, at) => m - q + at) };
       }
     }
   }
 }
 
+/** B, always present, before or after R by id: `allowance - 1` to `allowance + 2` spans, its last silent or not. */
+function* others(allowance: number): Generator<Run> {
+  for (const id of [
+    '00000000-0000-4000-8000-00000000000a',
+    '00000000-0000-4000-8000-00000000000c',
+  ]) {
+    for (let length = Math.max(1, allowance - 1); length <= allowance + 2; length += 1) {
+      for (const silent of [[], [length - 1]]) yield { id, length, missing: [], silent };
+    }
+  }
+}
+
 function* worlds(): Generator<World> {
-  for (let length = 1; length <= 12; length += 1) {
-    for (let allowance = 1; allowance <= 5; allowance += 1) {
-      for (const block of blocks(length)) yield { length, allowance, ...block };
+  for (let allowance = 1; allowance <= 5; allowance += 1) {
+    for (let length = 1; length <= 12; length += 1) {
+      for (const run of targets(length, 3, 4)) {
+        const m = run.missing[0] ?? 0;
+        const bound = run.silent.length === 0 ? Math.ceil((m + 1) / allowance) : m + 1;
+        yield { allowance, runs: [run], bound };
+      }
+    }
+    for (let length = 1; length <= 8; length += 1) {
+      for (const run of targets(length, 2, 1)) {
+        const bound = 2 * ((run.missing[0] ?? 0) + 1) + 2;
+        for (const other of others(allowance)) yield { allowance, runs: [run, other], bound };
+      }
     }
   }
 }
@@ -98,13 +157,10 @@ function* worlds(): Generator<World> {
 it('Trace retention: every answerable missing span is reached in bounded passes', async () => {
   const late: string[] = [];
   for (const world of worlds()) {
-    const m = world.missing[0] ?? 0;
-    const bound = world.silent.length === 0 ? Math.ceil((m + 1) / world.allowance) : m + 1;
     // eslint-disable-next-line no-await-in-loop -- one world after another
-    const found = await passesToGone(world, bound);
-    if (found === null) late.push(JSON.stringify(world));
+    if ((await passesToGone(world)) === null) late.push(JSON.stringify(world));
   }
   expect(late.slice(0, 5), `${String(late.length)} worlds not found within their bound`).toEqual(
     [],
   );
-});
+}, 60_000);
