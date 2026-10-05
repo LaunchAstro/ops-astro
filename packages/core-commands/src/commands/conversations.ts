@@ -216,10 +216,12 @@ export async function messageConversation(
   if (conversation.owner_actor_id !== context.session.actorId) return refused(NOT_YOURS);
   if (conversation.body_purged_at !== null) return refused(PURGED);
   const messageId = randomUUID();
+  // Stamped on the clock after the row lock, not the transaction's start, so
+  // the body lists messages in the order they were kept (#444).
   await tx.query(
     `insert into conversation_messages
-       (business_id, id, conversation_id, role, author_actor_id, body)
-     values ($1, $2, $3, 'person', $4, $5)`,
+       (business_id, id, conversation_id, role, author_actor_id, body, created_at)
+     values ($1, $2, $3, 'person', $4, $5, clock_timestamp())`,
     [tx.businessId, messageId, fields.conversationId, context.session.actorId, fields.body],
   );
   await tx.query(

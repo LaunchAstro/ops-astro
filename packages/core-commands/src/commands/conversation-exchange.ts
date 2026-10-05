@@ -169,10 +169,13 @@ async function keep(
     return undefined;
   }
   const id = randomUUID();
+  // The reply and the activity are stamped on the clock after the locks, so a
+  // reply that waited behind a message is listed and dated after it (#444).
   const inserted = await tx.query(
     `insert into conversation_messages
-       (business_id, id, conversation_id, role, author_actor_id, body, answers_message_id)
-     values ($1, $2, $3, 'agent', $4, $5, $6)
+       (business_id, id, conversation_id, role, author_actor_id, body, answers_message_id,
+        created_at)
+     values ($1, $2, $3, 'agent', $4, $5, $6, clock_timestamp())
      on conflict (business_id, conversation_id, answers_message_id)
        where answers_message_id is not null
      do nothing
