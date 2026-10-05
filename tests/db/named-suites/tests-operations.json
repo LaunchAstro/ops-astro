@@ -31,6 +31,7 @@
   ],
   "conformance": [
     "tests/operations/audit-proof-956-PRV-oa-956-R2-1.test.ts",
+    "tests/operations/find-copies-long-values.test.ts",
     "tests/operations/find-copies-output-and-refusals.test.ts",
     "tests/operations/find-copies-seeds-and-erasure.test.ts",
     "tests/operations/find-copies-stored-names.test.ts",
