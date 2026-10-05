@@ -16,6 +16,7 @@
     "tests/authority/non-member-grants.test.ts"
   ],
   "conformance": [
+    "tests/authority/a-manager-revoked-during-the-access-lock-wait-cannot-act.test.ts",
     "tests/authority/party-capability-reads.test.ts",
     "tests/authority/readable-scope-within.test.ts",
     "tests/authority/revoke-keeps-a-manager-past-dependent-grants.test.ts",
