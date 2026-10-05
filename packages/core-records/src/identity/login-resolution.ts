@@ -31,6 +31,7 @@ type Refusal = CommandRefusal<IdentityRefusalCode>;
 const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
+import { admitQuota, type QuotaRefusal } from './quota.ts';
 import { loginHasVerifiedFactor } from './second-factor.ts';
 import { sessionEnded } from './sessions.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
@@ -266,10 +267,16 @@ export async function withSession<T>(
   presented: VerifiedSubject,
   run: (tx: TenantQuery, session: Session) => Promise<T>,
   rule: SecondFactorRule = 'required',
-): Promise<T | Refusal> {
+): Promise<T | Refusal | QuotaRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const resolved = await resolveLogin(tx, presented, rule);
     if ('refused' in resolved) return resolved;
+    // Charged only now, once the caller is admitted (`quota.ts`).
+    const overQuota = await admitQuota(tx, 'person_login', presented, {
+      credential: resolved.loginId,
+      person: resolved.personId,
+    });
+    if (overQuota !== undefined) return overQuota;
     return await run(tx, resolved);
   });
 }

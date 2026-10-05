@@ -97,7 +97,8 @@ export {
   recordAuthenticationAttempt,
   recordBodyRefusal,
 } from './identity/authentication-attempts.ts';
-export { QUOTAS, type QuotaLimits, type QuotaOptions } from './identity/quota.ts';
+export { admitQuota, createQuotaGate, QUOTAS, withQuotaScope } from './identity/quota.ts';
+export type { QuotaLimits, QuotaOptions, QuotaRefusal } from './identity/quota.ts';
 export {
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
