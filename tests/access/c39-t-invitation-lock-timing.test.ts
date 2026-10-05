@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* eslint-disable no-await-in-loop -- each wait observes the preceding database state */
 /* eslint-disable max-lines-per-function -- each proof holds its lock schedule in one place */
+import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { advisoryLock, connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { sendInvitation } from '../../packages/core-custody/src/index.ts';
 import { enrol, grantTo } from '../commands/fixture.ts';
@@ -95,6 +97,8 @@ describe.skipIf(noDatabase)(
         return await grantTo(tx, inviter, 'manage', undefined, false, 'access');
       });
       const address = addressFor('promoted');
+      // The create waits on its own connection, so the revoke is not queued behind it.
+      const inviting = connect(w.db.appUrl, { log: w.db.log });
       const blocker = connect(w.db.appUrl);
       const held = latch();
       const release = latch();
@@ -109,11 +113,13 @@ describe.skipIf(noDatabase)(
       let result: Awaited<ReturnType<typeof as>> | undefined;
       try {
         await held.promise;
-        const running = as(inviter, 'invitation.create', {
+        const running = executeCommand(inviting, w.alpha, inviter.presented, 'api', {
+          command: 'invitation.create',
+          operationId: randomUUID(),
           name: 'Ivy Admin',
           email: address,
           role: 'admin',
-        });
+        } as never);
         await waitUntil(async () => {
           const [row] = await w.db.admin.execute<{ ready: boolean }>(
             'select exists (select 1 from pg_stat_activity where $1 = any(pg_blocking_pids(pid))) as ready',
@@ -128,6 +134,7 @@ describe.skipIf(noDatabase)(
         release.release();
         await holding;
         await blocker.close();
+        await inviting.close();
       }
       expect(codeOf(result)).toBe('SCOPE_NOT_GRANTED');
       const [made] = await w.db.admin.execute<{ n: number }>(
