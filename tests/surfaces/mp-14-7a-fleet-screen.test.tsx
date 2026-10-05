@@ -239,6 +239,14 @@ describe('MP-14-7a Connections & signal fleet', () => {
     await page.click('[data-connection="c-00"]');
     expect(page.find('[data-connection-detail="c-00"]')).not.toBeNull();
     expect(page.find('[data-connection-repair="c-00"]')).toBeNull();
+    // Custody shows the credential's state, never its secret's id.
+    for (const row of ROWS) {
+      if (!row.id.endsWith('-11') && !row.id.endsWith('-00')) {
+        await page.click(`[data-connection="${row.id}"]`); // eslint-disable-line no-await-in-loop -- one row at a time
+      }
+    }
+    expect(page.all('[data-connection-detail]')).toHaveLength(14);
+    expect(page.host.outerHTML).not.toContain('s-c-');
     await page.click('[data-connection-repair="c-11"]');
     await tick();
     expect(
@@ -497,6 +505,7 @@ describe('MP-14-7a Connections & signal fleet', () => {
     await tick();
     expect(page.find('[data-outcome="denied"]')?.textContent).toContain('SCOPE_NOT_GRANTED');
     expect(page.all('[data-connection]')).toHaveLength(0);
+    expect(page.find('[data-fleet-marker]')).toBeNull();
     await page.unmount();
   });
 });

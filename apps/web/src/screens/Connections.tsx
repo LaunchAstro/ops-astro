@@ -214,13 +214,15 @@ export function ConnectionsScreen(props: {
     deps: [],
   });
   const repair = useRepair(client, reload);
+  // A denied or unavailable read holds no fleet, so it draws no marker.
   const held = state.outcome === 'loading' ? state.previous : state.value;
-  const rows = held?.connections ?? [];
   return (
     <div className="secs" data-screen="connections">
-      <p className="marker" data-fleet-marker>
-        {lastPass(rows)}
-      </p>
+      {held === null ? null : (
+        <p className="marker" data-fleet-marker>
+          {lastPass(held.connections)}
+        </p>
+      )}
       <RecordState state={state} subject="fleet" onRetry={reload} keep>
         {(fleet) => <Shown fleet={fleet} now={now} repair={repair} />}
       </RecordState>
