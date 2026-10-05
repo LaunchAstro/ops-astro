@@ -97,3 +97,42 @@ it.skipIf(noDatabase)(
     });
   },
 );
+
+it.skipIf(noDatabase)(
+  'Trace retention: owed runs left unanswered together are paged past one by one, each read once',
+  async () => {
+    // Two runs asked, their deletes timing out, then each takes a fresh handback: two owed asks.
+    const works = await agedRuns('trace retention unanswered turn', 2);
+    const timeout: ExpiryPorts = {
+      expire: () => Promise.resolve({ ok: false, fault: 'timeout', status: null }),
+      present: t.target.expiry.present,
+    };
+    await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, timeout);
+    for (const work of works) {
+      // eslint-disable-next-line no-await-in-loop -- one handback after another
+      const answer = await asAgent(
+        t.alpha,
+        handbackBody(work.picked),
+        String(work.picked['credential']),
+      );
+      expect(codeOf(answer)).toBe('applied');
+    }
+    await drain(t.alpha);
+
+    // One pass leaves every owed read unanswered: they share one recorded turn.
+    await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, reading(() => true).ports);
+
+    // Paged one run at a time past that turn, each owed run is read once and the pass ends.
+    const traces: string[] = [];
+    const ports: ExpiryPorts = {
+      expire: (ids) => t.target.expiry.expire(ids),
+      present: (traceId, spanId) => {
+        traces.push(traceId);
+        if (traces.length > 20) throw new Error('the owed pages do not end');
+        return t.target.expiry.present(traceId, spanId);
+      },
+    };
+    await expireOnce(t.alpha.db.app, t.alpha.business, TRACE_KEY, ports, { page: 1 });
+    expect(new Set(traces).size, 'no owed run read twice').toBe(traces.length);
+  },
+);

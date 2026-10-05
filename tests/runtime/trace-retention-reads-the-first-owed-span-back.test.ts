@@ -7,7 +7,8 @@
 // and sends the tail again. That read goes through custody's one observation
 // route: one identifier segment, any other shape refused before a socket. A
 // body the target refuses as too large (413) is a gap with its own code, and
-// goes again as two halves, so no target limit holds the cursor for good.
+// goes again as two halves, so any target that takes a 100-span body never
+// holds the cursor.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
