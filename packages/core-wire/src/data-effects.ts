@@ -7,7 +7,6 @@
 import type { CommandName } from './surface.ts';
 import type { DataEffects } from './data-effects-types.ts';
 import { business, client, writing } from './data-effects-types.ts';
-
 export type {
   ClassedEffects,
   DataClass,
