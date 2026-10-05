@@ -472,9 +472,15 @@ test('after an erasure, an agent and its login given back, now acting for someon
   await world.db.admin.execute('delete from public.delegations where id = $1', [ownDelegation]);
   await world.db.admin.execute('delete from public.actors where id = $1', [a.actor]);
   await world.db.admin.execute('delete from public.people where id = $1', [a.person]);
+  // The agent's sign-in is unlinked too: a login it held still says whose work it did.
+  await world.db.admin.execute(
+    'update public.actor_logins set active = false, deactivated_at = now() where id = $1',
+    [link],
+  );
 
   const after = await findCopies(adminUrl, ['--text', 'Pia Handover', ...flags], 'alpha');
   expect(after.code).toBe(0);
+  expect(after.stderr).toContain(`${login}, given with --id, is shared`);
   for (const id of [grant, b.delegation, login, link]) {
     const hit = after.hits.find((each) => each.id === id);
     expect(hit?.shared.length, `${id} is listed as naming a shared agent`).toBeGreaterThan(0);
