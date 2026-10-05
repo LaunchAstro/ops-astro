@@ -38,8 +38,8 @@ by kind. A copy not on the list is a copy the reply missed.
 - **Records:** the database rows that name the person (people, identifiers,
   memberships, their actors, logins and grants, each delegation acting for
   them, the agent actor of each credential they issued or delegation acting
-  for them and that agent's rows and logins, records and their fields,
-  incidents). Found with
+  for them and that agent's rows and logins unless the agent acts for others
+  too, records and their fields, incidents). Found with
   `node scripts/privacy/find-copies.mjs --business <key> --text <name>`,
   which searches the request's business only and refuses to run without one.
   Run it with `--export` for the person's name, then again for each email and
@@ -58,7 +58,8 @@ by kind. A copy not on the list is a copy the reply missed.
   person's text, is another person's row for the owner to set aside, not a
   copy. A row whose people list names only such other people but that holds
   the person's text is the owner's to judge, and the owner records whose it
-  is. A row naming the person, or anyone merged with them, is a copy; where it
+  is. A row whose only link to the person is a shared agent (below) is the
+  owner's to judge too. A row naming the person, or anyone merged with them, is a copy; where it
   also names another person, the owner decides what of theirs to remove. The
   finder lists every row holding the text in a value, and every row holding an
   id of the people the text names: a person whose name, or an identifier not
@@ -66,14 +67,15 @@ by kind. A copy not on the list is a copy the reply missed.
   anyone a merge not reversed joined them to, their actors, the logins they
   still hold, each delegation acting for them, and the agent of each
   credential they issued or delegation acting for them with the logins it
-  still holds, unless a credential or delegation of anyone else names that
-  agent too: an agent working for several people stands for none of them, so
-  a row naming its delegation for the person is found but a row naming only
-  that agent is not, and the owner checks such an agent's work for the person
-  by hand. It also lists
+  still holds. An agent that a credential or delegation of anyone else names
+  too acts for several people and is shared: it stands for no one, the
+  summary names it, and each row holding its id is listed with it under
+  `shared` and outside the people list, so the owner judges which of them are
+  the person's work. It also lists
   every row holding the stored name of one of those people as whole words,
   when that name has four letters or digits. Each hit
-  names the people whose ids it holds, whether a value of it holds the text or
+  names the people whose ids it holds, the shared agents whose ids it holds
+  (`shared`), whether a value of it holds the text or
   such a stored name (`text`) and whether it holds an id given with `--id`
   (`given`); a hit naming no one was found by its text alone, so the owner
   checks whose it is. The list ends with
@@ -146,8 +148,10 @@ by kind. A copy not on the list is a copy the reply missed.
    (`text` and `given` both false), and whose people list names only another
    person, is that person's row, not a missed copy. A hit that holds an id
    given with `--id` (`given` true) is a missed copy unless it is lawfully
-   kept. A hit that holds the text but no given id is the owner's to judge,
-   and the owner records whose it is. Any other hit outside a lawfully kept
+   kept; an agent id given back that has since come to act for others too is
+   shared, and marks no hit `given`. A hit that holds the text or a shared
+   agent's id but no given id is the owner's to judge, and the owner records
+   whose it is. Any other hit outside a lawfully kept
    copy means the erasure is not done.
 
 ### Export

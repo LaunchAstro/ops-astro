@@ -12,8 +12,9 @@
 // Joanna), anyone a merge not reversed joined them to, and each --id as given.
 // Their ids follow to their actors, the logins they still hold, each
 // delegation acting for them, and the agent of each credential they issued or
-// delegation acting for them, with the logins it still holds, unless a
-// credential or delegation of someone else names that agent too. A row is a
+// delegation acting for them, with the logins it still holds. An agent that a
+// credential or delegation of someone else names too is shared: it stands for
+// no one, and a row holding its id is listed for the owner to judge. A row is a
 // copy when one of its values, at any depth, holds the text anywhere, the
 // stored name of one of those people as whole words (when it has four letters
 // or digits, as the text needs), or one of those ids in any letter case; a
@@ -30,17 +31,20 @@
 //
 // Each hit is one JSON line: the table, the row's id (or its physical address
 // when the table has no id), the columns holding the text, a name or an id,
-// the people whose ids it holds, whether it holds the text or a stored name,
-// and whether it holds an id given with --id. The row itself is printed
+// the people whose ids it holds, the shared agents whose ids it holds, whether
+// it holds the text or a stored name, and whether it holds an id given with
+// --id (never a shared agent's). The row itself is printed
 // only with --export, credential hashes withheld. The summary on stderr ends
 // with a line per person, saying every way they were found, of the --id flags
-// that find them after their own rows are erased. The list is printed once
+// that find them after their own rows are erased, then a line per shared
+// agent. The list is printed once
 // the search has finished; the connection string is never printed. The
 // command line is read in find-copies-arguments.mjs.
 
 import process from 'node:process';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { WHITE, namesSomeone, parse } from './find-copies-arguments.mjs';
+import { SEEDS, STORED_NAMES } from './find-copies-seeds.mjs';
 
 const { argv, env, stderr, stdout } = process;
 const SAFE = /^[a-z_][a-z0-9_]{0,62}$/u;
@@ -61,91 +65,6 @@ function containing(text) {
   return `%${text.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
 }
 
-/**
- * Whether `value` holds the text ($2) as whole words, in order: both go
- * through the database's own text-search parser, so the words are its words
- * and its letter folding ("Anna" is in "Anna-Maria Lee", never in "Joanna").
- */
-const NAMES = (value) => `to_tsvector('simple', ${value}) @@ phraseto_tsquery('simple', $2)`;
-
-/**
- * The seeds ($2 the text or null, $3 the given ids, in business $1): each id
- * standing for a person the request names, with that person. A person is
- * named by their name or an identifier not rejected, and is one person with
- * anyone a merge not reversed joined them to; their actors, the logins they
- * still hold and each delegation acting for them stand for them, and so does
- * the agent actor of each credential they issued or delegation acting for
- * them, with the logins it still holds, when no credential or delegation of
- * anyone else names it (one agent can act for several people). None of these
- * leads to another person, so the set is closed. Each seed says how its
- * person was found.
- */
-const SEEDS = `with recursive named(id, how) as (
-    select p.id, 'named by the text' from public.people p
-     where p.business_id = $1 and $2::text is not null and ${NAMES('p.display_name')}
-    union
-    select i.person_id, 'named by the text' from public.person_identifiers i
-     where i.business_id = $1 and $2::text is not null and i.review_state <> 'rejected'
-       and (${NAMES('i.value')} or ${NAMES('i.observed_value')})
-    union
-    select unnest($3::uuid[]), 'given by --id'),
-  joined(id, how) as (
-    select id, how from named
-    union
-    select case when m.surviving_person_id = j.id
-                then m.absorbed_person_id else m.surviving_person_id end,
-           'merged with ' || j.id::text
-      from joined j
-      join public.person_merges m
-        on m.business_id = $1 and m.reversed_at is null
-       and j.id in (m.surviving_person_id, m.absorbed_person_id)),
-  persons as (
-    select id, string_agg(how, '; ' order by
-             case how when 'named by the text' then 0 when 'given by --id' then 1 else 2 end, how)
-             as how
-      from (select distinct id, how from joined) found
-     group by id),
-  agents(id, person, how) as (
-    select c.agent_actor_id, p.id, p.how from public.agent_credentials c
-      join persons p on p.id = c.issued_by_person_id
-     where c.business_id = $1
-    union
-    select d.agent_actor_id, p.id, p.how from public.delegations d
-      join persons p on p.id = d.delegate_person_id
-     where d.business_id = $1),
-  acting(id, person, how) as (
-    select a.id, p.id, p.how from public.actors a join persons p on p.id = a.person_id
-     where a.business_id = $1
-    union
-    select g.id, g.person, g.how from agents g
-     where not exists (select from public.agent_credentials c
-                        where c.business_id = $1 and c.agent_actor_id = g.id
-                          and c.issued_by_person_id not in (select id from persons))
-       and not exists (select from public.delegations d
-                        where d.business_id = $1 and d.agent_actor_id = g.id
-                          and d.delegate_person_id not in (select id from persons)))
-  select p.id::text as id, p.id::text as person, p.how from persons p
-  union
-  select a.id::text, a.person::text, a.how from acting a
-  union
-  select d.id::text, p.id::text, p.how from public.delegations d
-    join persons p on p.id = d.delegate_person_id
-   where d.business_id = $1
-  union
-  select l.login_id::text, p.id::text, p.how from public.person_logins l
-    join persons p on p.id = l.person_id
-   where l.business_id = $1 and l.active
-  union
-  select l.login_id::text, a.person::text, a.how from public.actor_logins l
-    join acting a on a.id = l.actor_id
-   where l.business_id = $1 and l.active
-  order by 2, 1`;
-
-/** The stored names of the seeds' people ($2) in business $1, each with its words as a query. */
-const STORED_NAMES = `select p.display_name as name, phraseto_tsquery('simple', p.display_name)::text as words
-    from public.people p
-   where p.business_id = $1 and p.id = any($2::uuid[])`;
-
 /** `text` folded, with each run of white space as one space, as `spaced` does here. */
 const folded = (text) => `regexp_replace(lower(${text}), '${WHITE_RUN}', ' ', 'g')`;
 
@@ -158,12 +77,12 @@ const values = (json) => `(select ${folded("v #>> '{}'")} as held
 const TEXT = `(s.held like lower($1::text)
       or cardinality($6::tsquery[]) > 0 and to_tsvector('simple', s.held) @@ any($6::tsquery[]))`;
 
-/** Whether `s.held` holds the text ($1, or null), a stored name ($6) or a seed id ($3). */
-const HOLDS = `(${TEXT} or exists (select from unnest($3::text[]) i where strpos(s.held, i) > 0))`;
+/** Whether `s.held` holds the text ($1, or null), a stored name ($6), a seed id ($3) or a shared agent's ($7). */
+const HOLDS = `(${TEXT} or exists (select from unnest($3::text[] || $7::text[]) i where strpos(s.held, i) > 0))`;
 
 /**
- * Rows of business $2 holding the text, a stored name ($6) or a seed ($3,
- * standing for people $4; $5 the given ids). The table is read first, so the statement's opening
+ * Rows of business $2 holding the text, a stored name ($6), a seed ($3,
+ * standing for people $4; $5 the given ids) or a shared agent's id ($7). The table is read first, so the statement's opening
  * names it, as a lock wait shows it in pg_stat_activity.
  */
 const copies = (table) => `with r as (
@@ -177,6 +96,9 @@ const copies = (table) => `with r as (
       array(select distinct seed.person from unnest($3::text[], $4::text[]) seed(id, person)
              where exists (select from ${values('r.row')} where strpos(s.held, seed.id) > 0)
              order by 1) as people,
+      array(select g from unnest($7::text[]) g
+             where exists (select from ${values('r.row')} where strpos(s.held, g) > 0)
+             order by 1) as shared,
       exists (select from ${values('r.row')} where ${TEXT}) as text,
       exists (select from ${values('r.row')}
                where exists (select from unnest($5::text[]) g where strpos(s.held, g) > 0)) as given
@@ -210,7 +132,10 @@ async function scan(admin, { business, text, ids, exportRows }) {
     await execute('set local row_security = off');
     const [owner] = await execute(`select id from public.businesses where key = $1`, [business]);
     if (owner === undefined) return null;
-    const seeds = await execute(SEEDS, [owner.id, text ?? null, ids]);
+    const found = await execute(SEEDS, [owner.id, text ?? null, ids]);
+    const seeds = found.filter((seed) => !seed.shared);
+    const shared = found.filter((seed) => seed.shared);
+    const sharedIds = new Set(shared.map((seed) => seed.id));
     const names = await execute(STORED_NAMES, [owner.id, seeds.map((seed) => seed.person)]);
     const tables = await execute(TABLES);
     const lines = [];
@@ -228,24 +153,26 @@ async function scan(admin, { business, text, ids, exportRows }) {
         owner.id,
         seeds.map((seed) => seed.id),
         seeds.map((seed) => seed.person),
-        ids,
+        ids.filter((id) => !sharedIds.has(id)),
         names.filter(({ name }) => namesSomeone(name)).map(({ words }) => words),
+        [...sharedIds],
       ]);
-      for (const { address, row, columns, people, text: holdsText, given } of rows) {
-        const found = {
+      for (const { address, row, columns, people, shared: agents, text: holdsText, given } of rows) {
+        const hit = {
           table: name,
           id: row.id ?? address,
           columns,
           people,
+          shared: agents,
           text: holdsText,
           given,
         };
-        if (exportRows) found.row = exported(name, row);
-        lines.push(`${JSON.stringify(found)}\n`);
+        if (exportRows) hit.row = exported(name, row);
+        lines.push(`${JSON.stringify(hit)}\n`);
       }
     }
     const byPerson = Map.groupBy(seeds, (seed) => seed.person);
-    return { lines, byPerson };
+    return { lines, byPerson, shared };
   });
 }
 
@@ -277,6 +204,11 @@ async function main() {
       stderr.write(
         `find-copies: to search again for ${person} (${how}) after an erasure, add: ${flags}\n`,
       );
+    }
+    // A shared agent stands for no one: its rows are listed under `shared`, for the owner to judge.
+    for (const { id, person } of found.shared) {
+      const whose = id === person ? 'given with --id' : `acts for ${person} and for others`;
+      stderr.write(`find-copies: agent ${id} ${whose}, so it stands for no one; see shared\n`);
     }
     return 0;
   } catch (error) {
