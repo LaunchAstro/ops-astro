@@ -39,23 +39,24 @@ by kind. A copy not on the list is a copy the reply missed.
   memberships, their actors, logins and grants, the agent actor of each
   credential they issued and that agent's rows, records and their fields,
   incidents). Found with
-  `node scripts/privacy/find-copies.mjs --business <key> --text <name>`, which
-  searches the request's business only and refuses to run without one. It
-  lists every row holding the text in a value, and every row holding an id of
-  the people the text names: a person whose name, or an identifier not
-  rejected, holds the text as whole words (`--text Anna` names no Joanna),
-  anyone a merge not reversed joined them to, their actors, the logins they
-  still hold and the agent of each credential they issued. Each hit names the
-  people whose ids it holds, whether a value of it holds the text (`text`)
-  and whether it holds an id given with `--id` (`given`);
-  a hit naming no one was found by its text alone, so the owner checks whose
-  it is. The list ends with one line per person of the `--id` flags that find
-  them, saying every way the person was found (named by the text, given by
-  `--id`, or merged with a named person), kept for the erasure's re-search.
-  The text is matched with the white space around it dropped and each run of
-  white space inside it, of any kind, as one space. An export withholds the
-  credential hashes of agent credentials and delegations, which are the
-  business's security material.
+  `node scripts/privacy/find-copies.mjs --business <key> --text <name>`,
+  which searches the request's business only and refuses to run without one.
+  Run it for the person's name, then again for each email and phone the first
+  list shows in their `person_identifiers` rows. It lists every row holding
+  the text in a value, and every row holding an id of the people the text
+  names: a person whose name, or an identifier not rejected, holds the text as
+  whole words (`--text Anna` names no Joanna), anyone a merge not reversed
+  joined them to, their actors, the logins they still hold and the agent of
+  each credential they issued. Each hit names the people whose ids it holds,
+  whether a value of it holds the text (`text`) and whether it holds an id
+  given with `--id` (`given`); a hit naming no one was found by its text
+  alone, so the owner checks whose it is. The list ends with one line per
+  person of the `--id` flags that find them, saying every way the person was
+  found (named by the text, given by `--id`, or merged with a named person),
+  kept for the erasure's re-search. The text is matched with the white space
+  around it dropped and each run of white space inside it, of any kind, as one
+  space. An export withholds the credential hashes of agent credentials and
+  delegations, which are the business's security material.
 - **Sign-in security rows:** three installation-wide `ops` tables keyed by
   the SHA-256 of the login's subject, with no name or email:
   `ops.second_factor_codes` (one row per code sent, and one per code answered
@@ -99,9 +100,11 @@ by kind. A copy not on the list is a copy the reply missed.
 
 ### Erasure
 
-1. Find every copy and export it for the request's file, with the `--id`
-   flags the finder prints for the person being erased (and for anyone merged
-   with them), never another person's line.
+1. Find every copy and export it for the request's file: the finder for the
+   person's name, and again for each email and phone their
+   `person_identifiers` rows hold, since a row can name them by those alone.
+   Keep the `--id` flags the finder prints for the person being erased (and
+   for anyone merged with them), never another person's line.
 2. Delete each copy, or record the lawful reason it is kept (below). By hand,
    in one transaction on the application's connection for that business:
    - a person: their `person_identifiers` rows, then their `people` row;
@@ -111,13 +114,13 @@ by kind. A copy not on the list is a copy the reply missed.
      leases) is refused by the database; keep it, with the reason recorded,
      until the copy register's erasure fan-out (C84) is live.
 3. Search every copy again, and a backup restored from before the erasure, for
-   the person: the finder with the same `--text` and the `--id` flags from
-   step 1, so a row naming the person by id alone is still found once their
-   own rows are gone. A hit that holds neither the text nor an id given with
-   `--id` (`text` and `given` both false), and whose people list names only
-   another person, is that person's row, not a missed copy. A hit that holds the text is the owner's to judge, and the
-   owner records whose it is. Any other hit outside a lawfully kept copy means
-   the erasure is not done.
+   the person: the finder with each `--text` of step 1 and its `--id` flags,
+   so a row naming the person by id alone is still found once their own rows
+   are gone. A hit that holds neither the text nor an id given with `--id`
+   (`text` and `given` both false), and whose people list names only another
+   person, is that person's row, not a missed copy. A hit that holds the text
+   is the owner's to judge, and the owner records whose it is. Any other hit
+   outside a lawfully kept copy means the erasure is not done.
 
 ### Export
 

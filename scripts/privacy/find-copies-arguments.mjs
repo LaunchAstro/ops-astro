@@ -11,8 +11,11 @@ const HEX = '0123456789abcdef';
 export const WHITE =
   '\t\n\v\f\r \u0085\u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF';
 
-/** Whether one character is a letter or a digit, by its Unicode category. */
-const isLetterOrDigit = (character) => /^[\p{L}\p{N}]$/u.test(character);
+/**
+ * Whether one character is a letter, a digit or a mark joined to a letter, by
+ * its Unicode category (सीता writes two of its sounds as marks).
+ */
+const isLetterOrDigit = (character) => /^[\p{L}\p{M}\p{N}]$/u.test(character);
 
 /** The text with each run of white space as one space, and none at its ends. */
 function spaced(text) {
