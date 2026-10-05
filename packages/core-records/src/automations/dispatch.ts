@@ -187,8 +187,8 @@ export async function dispatchOccurrence(
   if (!isUuid(occurrenceId)) return { kind: 'unknown' };
   const claimed = await tx.query<ClaimedDbRow>(
     `select activation_id, version_id, outcome, approval_id
-       from public.activation_occurrences where id = $1`,
-    [occurrenceId],
+       from public.activation_occurrences where business_id = $1 and id = $2`,
+    [tx.businessId, occurrenceId],
   );
   const occurrence = claimed[0];
   if (occurrence === undefined) return { kind: 'unknown' };
@@ -197,8 +197,9 @@ export async function dispatchOccurrence(
   }
   const activation = await lockActivation(tx, occurrence.activation_id);
   const earlier = await tx.query<DispatchDbRow>(
-    'select occurrence_id, outcome, run_id from public.occurrence_dispatches where occurrence_id = $1',
-    [occurrenceId],
+    `select occurrence_id, outcome, run_id from public.occurrence_dispatches
+      where business_id = $1 and occurrence_id = $2`,
+    [tx.businessId, occurrenceId],
   );
   if (earlier[0] !== undefined) return { kind: 'replayed', dispatch: dispatchOf(earlier[0]) };
   const standing = await readStandingApproval(tx, occurrence.activation_id);
