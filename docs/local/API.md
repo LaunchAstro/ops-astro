@@ -3082,7 +3082,7 @@ any field but `name`, is `FIELD_VALUE_INVALID` 422 naming `type` or `fields`.
 template version out as tasks on that client, one per step, each titled with
 its phase, linked to the client (`records.uuid_7`), and recorded with its kind
 (agent-run, needs a person, or waits on the client) and the steps it waits for
-(`onboardings`, `onboarding_steps`, migration 20261005114041). The templates are
+(`onboardings`, `onboarding_steps`, migration 20261005150145). The templates are
 versions in code (`ONBOARDING_TEMPLATES`, `core-records/src/onboarding/template.ts`).
 A client has one onboarding: the start claims it first, so a second start, at
 once or later, is `TRANSITION_NOT_PERMITTED` 409 and writes nothing. It answers

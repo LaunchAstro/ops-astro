@@ -32,9 +32,9 @@ const COLUMN_UPDATES: Readonly<
   },
   'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
   // C41-A: an onboarding's state, stop and revision, a step's state, failures and close.
-  'public.onboardings': { from: '20261005114041', columns: ['revision', 'state', 'stopped_at'] },
+  'public.onboardings': { from: '20261005150145', columns: ['revision', 'state', 'stopped_at'] },
   'public.onboarding_steps': {
-    from: '20261005114041',
+    from: '20261005150145',
     columns: ['closed_at', 'failures', 'state'],
   },
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
