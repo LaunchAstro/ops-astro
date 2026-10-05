@@ -40,12 +40,13 @@ const SERVED = 'served';
  * The validated bytes, copied where production reads them: `served/` beside
  * production's link `link` (absolute and normalised), a folder only the
  * promoting user may write, holds a copy named by their digest. Each promotion
- * copies them whole under a temporary name, gives every folder 0755 and every
- * file 0644 (0755 if it runs), whatever the umask, hashes the copy and renames
- * it into place only if it holds that digest. Whatever was at that name before
- * is replaced, never served: an earlier copy's modes and files are not this
- * copy's. Inside the trust boundary a write to the store, whoever makes it,
- * never changes what is served (#497).
+ * copies them whole under a temporary name that only the promoter can enter,
+ * gives every entry inside its served mode (folders 0755, files 0644, or 0755
+ * if they run) whatever the umask, and only then opens the copy itself. It is
+ * hashed and renamed into place only if it holds that digest. Whatever was at
+ * that name before is replaced, never served: an earlier copy's modes and
+ * files are not this copy's. Inside the trust boundary a write to the store,
+ * whoever makes it, never changes what is served (#497).
  */
 export function frozenCopy(
   selected: { readonly path: string; readonly name: string; readonly digest: string },
@@ -57,25 +58,38 @@ export function frozenCopy(
   if (untrusted !== undefined) return { why: untrusted };
   if (!writable(home)) return { why: `${home} cannot be written by the promoter` };
   const folder = join(home, SERVED);
-  if (!lexists(folder)) {
-    mkdirSync(folder);
-    chmodSync(folder, 0o755);
-  }
+  if (!lexists(folder)) mkdirSync(folder, { mode: 0o700 });
   const why = untrustedFolder(folder, uid);
   if (why !== undefined) return { why: `${folder} ${why}` };
   if (!writable(folder)) return { why: `${folder} cannot be written by the promoter` };
+  // The services read the copies as another user; the promoter owns served/ or is root.
+  chmodSync(folder, 0o755);
   const blocked = swapBlocked(link);
   if (blocked !== undefined) return { why: blocked };
   const path = join(folder, selected.digest.slice('sha256:'.length));
-  const copy = mkdtempSync(join(folder, '.copy-'));
-  const before = mkdtempSync(join(folder, '.before-'));
+  const made: string[] = [];
   try {
+    const copy = mkdtempSync(join(folder, '.copy-'));
+    made.push(copy);
     cpSync(selected.path, copy, { recursive: true, errorOnExist: true, force: false });
-    servedModes(copy);
+    servedModes(copy, uid);
     if (!holds(copy, selected.digest))
       return { why: `${selected.name} changed while it was copied` };
-    if (lexists(path)) renameSync(path, join(before, 'copy'));
-    renameSync(copy, path);
+    const before = mkdtempSync(join(folder, '.before-'));
+    made.push(before);
+    const earlier = join(before, 'copy');
+    if (lexists(path)) {
+      const kept = unmovable(path, uid);
+      if (kept !== undefined) return { why: kept };
+      renameSync(path, earlier);
+    }
+    try {
+      renameSync(copy, path);
+    } catch (error) {
+      // The earlier copy goes back, so a failed promotion changes nothing served.
+      if (lexists(earlier) && !lexists(path)) renameSync(earlier, path);
+      throw error;
+    }
     return { path };
   } catch (error) {
     const failure = error as NodeJS.ErrnoException;
@@ -83,11 +97,7 @@ export function frozenCopy(
       ? { why: `${selected.name} could not be copied: ${failure.code ?? failure.message}` }
       : { why: `${selected.name} changed while it was copied` };
   } finally {
-    // A copy of a folder without owner write cannot be emptied until it has it.
-    for (const left of [copy, before]) {
-      if (lexists(left)) ownerWrites(left);
-      rmSync(left, { recursive: true, force: true });
-    }
+    for (const left of made) removed(left);
   }
 }
 
@@ -134,19 +144,48 @@ function untrustedFolder(path: string, uid: number | undefined): string | undefi
 }
 
 /**
- * Sets the served modes on every folder and file under `root`, and `root`:
- * folders 0755, files 0644, or 0755 for a file with any execute bit. Links are
- * left for the digest check to refuse.
+ * Sets the served modes on every folder and file under `root`, and `root`,
+ * each folder only after everything in it: folders 0755, files 0644, or 0755
+ * for a file with any execute bit. A folder stays as closed as it was made
+ * until its entries are set. Links are left for the digest check to refuse.
+ * Throws for an entry that is not the promoter's.
  */
-function servedModes(root: string): void {
+function servedModes(root: string, uid: number | undefined): void {
   const entry = lstatSync(root);
+  if (uid !== undefined && entry.uid !== uid) throw new Error(`${root} is not the promoter's`);
   if (entry.isSymbolicLink()) return;
   if (!entry.isDirectory()) {
     chmodSync(root, (entry.mode & 0o111) === 0 ? 0o644 : 0o755);
     return;
   }
+  for (const name of readdirSync(root)) servedModes(join(root, name), uid);
   chmodSync(root, 0o755);
-  for (const name of readdirSync(root)) servedModes(join(root, name));
+}
+
+/**
+ * Why the promoter cannot move `path` aside, or undefined. A folder moves only
+ * with write on itself: one the promoter owns (or any, for root) is given it,
+ * in served/, which only the promoter writes; another user's is refused.
+ */
+function unmovable(path: string, uid: number | undefined): string | undefined {
+  const entry = lstatSync(path);
+  if (!entry.isDirectory()) return undefined;
+  if (uid !== undefined && uid !== 0 && entry.uid !== uid) {
+    return `${path} is there and is not the promoter's, so it cannot be replaced`;
+  }
+  chmodSync(path, 0o700);
+  return undefined;
+}
+
+/** Removes the temporary folder `path`; a failure leaves it, said, and changes no answer. */
+function removed(path: string): void {
+  try {
+    // A copy of a folder without owner write cannot be emptied until it has it.
+    if (lexists(path)) ownerWrites(path);
+    rmSync(path, { recursive: true, force: true });
+  } catch (error) {
+    process.stderr.write(`served-copy: left ${path}: ${(error as Error).message}\n`);
+  }
 }
 
 /**
@@ -175,11 +214,11 @@ function writable(path: string): boolean {
   }
 }
 
-/** Gives the owner full rights on every real folder under `root`, and `root`, so it can be removed. */
+/** Gives every real folder under `root`, and `root`, mode 0700, so it can be removed. */
 function ownerWrites(root: string): void {
   const entry = lstatSync(root);
   if (!entry.isDirectory()) return;
-  chmodSync(root, entry.mode | 0o700);
+  chmodSync(root, 0o700);
   for (const name of readdirSync(root)) ownerWrites(join(root, name));
 }
 
