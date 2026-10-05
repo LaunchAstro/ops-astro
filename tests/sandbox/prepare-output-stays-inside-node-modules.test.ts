@@ -11,6 +11,8 @@
 // owner-execute bit is set and 0644 otherwise, directories 0755, owner 0:0,
 // a fixed time, no extended attributes.
 
+import v8 from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { expect, it } from 'vitest';
 import { writeLayer } from '../../packages/core-sandbox/src/layer-writer.ts';
 import {
@@ -18,12 +20,21 @@ import {
   readOutput,
   UstarReader,
 } from '../../packages/core-sandbox/src/ustar-reader.ts';
-import { dir, file, header, symlink, tar } from './ustar-fixture.ts';
+import { dir, END, file, header, symlink, tar } from './ustar-fixture.ts';
 
 const refused = (why: string) => ({ ok: false, reason: 'output refused', why });
 const prepare = (...chunks: Uint8Array[]) => readOutput('prepare', OUTPUT_CAP.S2, ...chunks);
 const ascii = (text: string): Uint8Array => new TextEncoder().encode(text);
 const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
+
+// A collection before each reading, so the reading is what is kept, not garbage.
+v8.setFlagsFromString('--expose_gc');
+const collect = runInNewContext('gc') as () => void;
+/** Heap and array buffers still in use after a collection, in bytes. */
+const used = () => {
+  collect();
+  return process.memoryUsage().heapUsed + process.memoryUsage().arrayBuffers;
+};
 
 const byName = (a: { name: string }, b: { name: string }) =>
   Buffer.compare(Buffer.from(a.name), Buffer.from(b.name));
@@ -271,3 +282,18 @@ it('writes a name past 100 bytes through the prefix, and reads it back whole', (
   expect(text(layer.subarray(512 * 2 + 345, 512 * 2 + 345 + top.length))).toBe(top);
   expect(text(layer.subarray(512 * 3 + 345, 512 * 3 + 345 + deep.length))).toBe(deep);
 });
+
+it('keeps a file sent in one-byte pieces in one buffer, not one object per piece', () => {
+  const size = 1_000_000;
+  const reader = new UstarReader('prepare', OUTPUT_CAP.S2);
+  reader.push(dir('node_modules'), header({ name: 'node_modules/big', size }));
+  const before = used();
+  const byte = Uint8Array.of(0x61);
+  for (let n = 0; n < size; n += 1) reader.push(byte);
+  expect(used() - before).toBeLessThan(16_000_000);
+  reader.push(END);
+  const read = reader.end();
+  expect(read.ok && read.entries[1]?.type === 'file' && read.entries[1].data).toEqual(
+    new Uint8Array(size).fill(0x61),
+  );
+}, 30_000);
