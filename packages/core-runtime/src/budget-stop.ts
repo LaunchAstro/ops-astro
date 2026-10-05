@@ -94,9 +94,11 @@ export async function observedRefusal(
 }
 
 /**
- * A step settled done (`settleAtObserved`) in any transaction but the ask's own: never rerun.
+ * A step settled `completed` in any transaction but the ask's own (a person's `happened` or
+ * `happened_differently`, a worker's observed `completed`): a top-up cannot apply; the end does.
  * Both stamps are now(), each its transaction's start, which can invert across transactions,
- * so only equal stamps mark `happened_differently`'s re-ask, whose top-up reopens the step.
+ * so only equal stamps mark a settle and ask in one transaction, which would still top up;
+ * no path raises that today.
  */
 export async function recordedRefusal(
   tx: TenantQuery,
@@ -109,7 +111,7 @@ export async function recordedRefusal(
     [tx.businessId, stop.reservation_id, stop.ask_id],
   );
   if (done.length === 0) return null;
-  const why = "this step's outcome was recorded after the run stopped, so the step is finished";
+  const why = "this step's outcome was recorded after the run stopped, so a top-up cannot apply";
   return refuse('TRANSITION_NOT_PERMITTED', why, 'End the work instead.');
 }
 

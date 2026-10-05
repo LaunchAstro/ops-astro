@@ -1897,12 +1897,15 @@ or delete.
   counts the spend once. A stop raised because the step's calls spent its
   whole hold (`budget-stop.ts`) has no hold left to raise: completing it holds
   the amount on a fresh reservation for the step (`holdTopUp`). A step
-  settled as done in any transaction but the ask's own is finished, whether a
-  person recorded it as `happened` or a worker's observation settled it
-  `completed` (`settleAtObserved`), so its top-up is refused
-  `TRANSITION_NOT_PERMITTED` with nothing written, and the end answers the
-  stop (`recordedRefusal`). Only `happened_differently` settles and asks in
-  one transaction, and that re-ask still tops up.
+  settled `completed` in any transaction but the ask's own had its outcome
+  recorded after the stop, whether a person recorded `happened` or
+  `happened_differently` or a worker's observation settled it
+  (`settleAtObserved`). Its top-up is refused `TRANSITION_NOT_PERMITTED`
+  with nothing written, saying a top-up cannot apply, and the end answers the
+  stop (`recordedRefusal`). After `happened_differently` the work reopens
+  and resume has already reserved its replacement, which the refusal leaves
+  held. A settle and ask made in one transaction would still top up, but no
+  path raises that today.
 - **The end** (`endAtBudgetStop`, `gate:decide` on the task, a person). One
   call with no confirmation (U7). The hold becomes `abandoned` with the cause
   `budget_stop_ended`; the envelope releases the unspent part and keeps the
