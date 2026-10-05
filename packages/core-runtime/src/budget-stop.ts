@@ -27,18 +27,20 @@ import { raiseBudgetWait, stopWords } from '../../core-custody/src/index.ts';
 import { raiseAlert } from './alerts.ts';
 
 /**
- * SQL: what the classifier's settle of the reservation `r` counts now, its
- * calls as they stand (settled at their actual, still open or unknown at their
- * maximum), never above the figure it settled at. `r` is a query's own alias.
+ * SQL: the reservation `r`'s calls as they stand, as `spentOn` counts them
+ * (settled at their actual, still open or unknown at their maximum). `r` is a
+ * query's own alias.
  */
-export const spentNowOf = (r: string): string =>
-  `least(${r}.actual_minor, (
-     select coalesce(sum(case when c.state = 'settled' then c.actual_minor
-                              when c.state in ('reserved', 'dispatched', 'liability_unknown')
-                                then c.reserved_minor
-                              else 0 end), 0)
-       from public.model_calls c
-      where c.business_id = ${r}.business_id and c.reservation_id = ${r}.id))`;
+export const callsSpentOf = (r: string): string =>
+  `(select coalesce(sum(case when c.state = 'settled' then c.actual_minor
+                             when c.state in ('reserved', 'dispatched', 'liability_unknown')
+                               then c.reserved_minor
+                             else 0 end), 0)
+      from public.model_calls c
+     where c.business_id = ${r}.business_id and c.reservation_id = ${r}.id)`;
+
+/** SQL: what the classifier's settle of `r` counts now, never above the figure it settled at. */
+export const spentNowOf = (r: string): string => `least(${r}.actual_minor, ${callsSpentOf(r)})`;
 
 /** A hold's spend to date, and the calls it counted while still unsent. */
 export interface Spent {

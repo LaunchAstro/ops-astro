@@ -42,7 +42,7 @@ import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } fr
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
-import { remainingOf, stopAtSpentHold } from './budget-stop.ts';
+import { callsSpentOf, remainingOf, stopAtSpentHold } from './budget-stop.ts';
 
 export interface QueueEntry {
   readonly reservationId: string;
@@ -503,9 +503,9 @@ const NO_ROOM = "this run's spend and holds already fill the version's approved 
  * What the run may still hold under its version: the approved ceiling, raised
  * by the run's applied top-ups, less what its reservations of the version
  * committed (a live hold whole, a closed one at its spend). A closed hold's
- * spend is its settled calls when they exceed its actual: a top-up moved the
- * spend to date off a held hold, which then closes at nothing. Read under the run
- * lock. A replacement is held at most this, whatever the newest-hold order
+ * spend is its calls as `spentOn` counts them when they exceed its actual: a
+ * top-up moved that spend off a held hold, which then closes at nothing. Read
+ * under the run lock. A replacement is held at most this, whatever the newest-hold order
  * says of rows written before replacements were stamped at insertion.
  */
 async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
@@ -515,12 +515,8 @@ async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
                           where a.business_id = ver.business_id and a.run_id = $3
                             and a.kind = 'top_up'), 0)
              - coalesce((select sum(case when r.state in ('held', 'quarantined') then r.held_minor
-                                         else greatest(coalesce(r.actual_minor, 0), (
-                                           select coalesce(sum(c.actual_minor), 0)
-                                             from public.model_calls c
-                                            where c.business_id = ver.business_id
-                                              and c.reservation_id = r.id
-                                              and c.state = 'settled')) end)
+                                         else greatest(coalesce(r.actual_minor, 0),
+                                                       ${callsSpentOf('r')}) end)
                            from public.reservations r
                           where r.business_id = ver.business_id and r.version_id = ver.id
                             and r.run_id = $3), 0))::text as room
