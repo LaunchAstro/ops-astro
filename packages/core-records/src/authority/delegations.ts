@@ -541,6 +541,10 @@ async function parentStanding(
  * the row this business, this authenticated agent and this credential digest
  * already bind, and it permits nothing: the refusal is all it changes.
  *
+ * Expiry is judged on the clock as this statement runs, not the
+ * transaction's start: a caller that resolves again after a lock wait sees a
+ * delegation that expired during the wait as expired (#443).
+ *
  * Precedence when more than one terminal fact holds: settled, then expired,
  * then the recorded revocation cause. A settled or naturally expired
  * credential is `DELEGATION_NOT_LIVE` whatever else happened to it, and so is
@@ -556,8 +560,8 @@ export async function resolveDelegation(
     DelegationRow & { readonly live: boolean; readonly narrowed: boolean }
   >(
     `select ${delegationColumns()},
-            (revoked_at is null and settled_at is null and expires_at > now()) as live,
-            (revoked_at is not null and settled_at is null and expires_at > now()
+            (revoked_at is null and settled_at is null and expires_at > clock_timestamp()) as live,
+            (revoked_at is not null and settled_at is null and expires_at > clock_timestamp()
              and revocation_cause = 'authority_lost') as narrowed
        from public.delegations
       where business_id = $1 and agent_actor_id = $2 and credential_hash = $3`,
