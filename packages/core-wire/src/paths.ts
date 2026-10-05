@@ -26,6 +26,9 @@ export const ACCOUNT_AVAILABILITY_PATH = '/account/availability';
  */
 export const PUBLIC_PREFIX = '/api/public/b/';
 
+/** C39-T: where an invitation is accepted on its one-time link, with no sign-in. */
+export const ENROL_PATH = '/api/enrol';
+
 /**
  * The header an agent presents its delegation credential in.
  *

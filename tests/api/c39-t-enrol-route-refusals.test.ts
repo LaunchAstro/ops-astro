@@ -10,7 +10,8 @@ import { Hono } from 'hono';
 import { expect, it } from 'vitest';
 import type { Broker } from '../../packages/core-custody/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
-import { ENROL_API_PATH, mountEnrolment } from '../../apps/api/enrolment.ts';
+import { mountEnrolment } from '../../apps/api/enrolment.ts';
+import { ENROL_PATH } from '../../packages/core-wire/src/index.ts';
 
 /** A token of the shape a send mints: 43 base64url characters. */
 const TOKEN = 'A'.repeat(43);
@@ -38,7 +39,7 @@ function route(reached: string[]): Hono {
 
 const post = async (app: Hono, body: string): Promise<Response> =>
   await app.fetch(
-    new Request(`http://api.test${ENROL_API_PATH}`, {
+    new Request(`http://api.test${ENROL_PATH}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body,

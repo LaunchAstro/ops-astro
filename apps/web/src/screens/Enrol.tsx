@@ -17,11 +17,9 @@
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Banner, Button, FieldError } from '@launchastro/ui';
+import { ENROL_PATH } from '../../../../packages/core-wire/src/index.ts';
 import type { ClientOptions } from '../operations/client.ts';
 import { pathTo } from '../routes.ts';
-
-/** The API's enrolment route (`apps/api/enrolment.ts`). */
-export const ENROL_API = '/api/enrol';
 
 /** The page's password bounds, as the API checks them: 12 to 72 bytes. */
 const LEAST = 12;
@@ -44,7 +42,7 @@ async function enrol(
 ): Promise<Ended | 'password' | 'unavailable'> {
   try {
     // An open route: no business, session or cookie goes.
-    const response = await app.fetch(`${app.apiOrigin}${ENROL_API}`, {
+    const response = await app.fetch(`${app.apiOrigin}${ENROL_PATH}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'omit',

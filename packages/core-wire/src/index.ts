@@ -15,6 +15,7 @@ export {
   EXTERNAL_WRITES,
   admitsSelfWrite,
   DELEGATION_HEADER,
+  ENROL_PATH,
   pathOf,
   ACCOUNT_AVAILABILITY_PATH,
   PREFIX,

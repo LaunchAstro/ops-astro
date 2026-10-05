@@ -15,7 +15,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterAll, beforeAll } from 'vitest';
-import { ENROL_API_PATH, mountEnrolment } from '../../apps/api/enrolment.ts';
+import { mountEnrolment } from '../../apps/api/enrolment.ts';
+import { ENROL_PATH } from '../../packages/core-wire/src/index.ts';
 import {
   AUTH_CREATE_USER,
   AUTH_UPDATE_USER,
@@ -129,7 +130,7 @@ export async function enrolVia(
   app: Hono = e.app,
 ): Promise<Answer> {
   const response = await app.fetch(
-    new Request(`http://api.test${ENROL_API_PATH}`, {
+    new Request(`http://api.test${ENROL_PATH}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ token, password }),

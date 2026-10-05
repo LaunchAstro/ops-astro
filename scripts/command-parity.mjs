@@ -39,6 +39,8 @@ const TRANSPORTS = new Map([
     'session/sign-in.ts',
     ['request.fetch(url, {', 'request.fetch(`${request.apiOrigin}${path}`, {'],
   ],
+  // accepts an invitation on its one-time link, before there is a session: a login, not a record
+  ['screens/Enrol.tsx', ['app.fetch(`${app.apiOrigin}${ENROL_PATH}`, {']],
   // signs out, at the provider, a new session the tab never adopted (C59): a session, not a record
   ['session/sign-in-again.ts', ['fetch: typeof globalThis.fetch,', 'fetch(url, {']],
   // asks where to sign in before there is a session, and hands the app its fetch

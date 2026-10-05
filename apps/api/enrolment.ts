@@ -21,8 +21,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { acceptInvitation } from '../../packages/core-commands/src/index.ts';
 import type { Broker } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
-
-export const ENROL_API_PATH = '/api/enrol';
+import { ENROL_PATH } from '../../packages/core-wire/src/index.ts';
 
 /** A token and a password, and room for their JSON, no more. */
 const ENROL_MAX_BYTES = 2048;
@@ -55,7 +54,7 @@ export function mountEnrolment(server: Hono, database: Database, options: Enrolm
     maxSize: ENROL_MAX_BYTES,
     onError: (context) => context.json({ code: 'ENROL_TOO_LARGE' }, 413),
   });
-  server.post(ENROL_API_PATH, tooLarge, async (context) => {
+  server.post(ENROL_PATH, tooLarge, async (context) => {
     try {
       let body: unknown;
       try {
