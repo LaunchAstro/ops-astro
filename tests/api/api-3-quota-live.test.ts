@@ -27,6 +27,7 @@ import { createLivePresence, type LivePresence } from '../../apps/api/live-prese
 import { testSignIn } from '../support/sign-in.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { enrol, grantTo } from '../commands/fixture.ts';
+import { insertLogin, insertMapping } from '../identity/fixture.ts';
 import { createTask, openSchedules, type Schedules } from '../runtime/schedules-harness.ts';
 import { authorised, ISSUER, tokenFor } from './fixture.ts';
 import { join, sleep, topic, within, type Joined } from './c4-live-support.ts';
@@ -179,6 +180,53 @@ it.skipIf(serverUrl === undefined)(
       );
     } finally {
       await Promise.allSettled(opened.map(async (tab) => await tab.stop()));
+      await topics.close();
+      await pool.close();
+      await s.db.drop();
+    }
+  },
+);
+
+it.skipIf(serverUrl === undefined)(
+  'API-3 quota: an open stream holds its login’s slot alone, never its person’s or business’s',
+  async () => {
+    const s = await openSchedules('api3qheld', 100_000);
+    const pool = connect(s.db.appUrl, { max: 4 });
+    const topics = await startLiveTopics(connectListener(s.db.appUrl));
+    const limits = { ...QUOTAS, concurrent: { credential: 16, person: 1, business: 1 } };
+    const api = quotaApi(s, pool, topics, createLivePresence(), limits);
+    const open: Response[] = [];
+    try {
+      const taskId = await createTask(s, 'Open in a tab');
+      const other = await enrol(s.db.app, s.business, `other-${randomUUID()}`);
+      // The decider's second login: another credential, the same person.
+      const second = await s.db.app.withBusiness(s.business, async (tx) => {
+        const subject = `decider-second-${randomUUID()}`;
+        const { decider } = s;
+        await insertMapping(tx, await insertLogin(tx, subject), decider.personId, decider.actorId);
+        return subject;
+      });
+      const key = await keyOf(s);
+      const stream = await api.fetch(
+        new Request(`http://api.test${PREFIX.person}${key}/live/task/${taskId}`, {
+          headers: authorised(await tokenFor(s.decider.presented.subject)),
+        }),
+      );
+      open.push(stream);
+      expect(stream.status).toBe(200);
+      const board = async (subject: string): Promise<number> => {
+        const response = await api.request(`${PREFIX.person}${key}/task/board`, {
+          method: 'POST',
+          headers: { ...authorised(await tokenFor(subject)), 'content-type': 'application/json' },
+          body: JSON.stringify({ board: null }),
+        });
+        return response.status;
+      };
+      // The same person through another login, and another person: neither is held.
+      expect(await board(second)).toBe(200);
+      expect(await board(other.presented.subject)).toBe(200);
+    } finally {
+      await Promise.allSettled(open.map(async (response) => await response.body?.cancel()));
       await topics.close();
       await pool.close();
       await s.db.drop();
