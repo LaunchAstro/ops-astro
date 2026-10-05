@@ -111,13 +111,14 @@ export async function exportOnce(
 }
 
 /**
- * One body. A body the target refuses as too large goes again as two halves,
- * in order, so no limit of the target's holds the cursor for good, and the
+ * One body. A body larger than a plain export's (`TRACE_BATCH`) that the
+ * target refuses as too large goes again as two halves, in order: an owed
+ * resend then asks no more of the target than a plain export does, and the
  * earliest span still leaves first.
  */
 async function send(deliver: Deliver, spans: readonly TraceSpan[]): Promise<GapCode | null> {
   const code = gapOf(await deliver(otlp(spans)));
-  if (code !== 'target_oversized_body' || spans.length < 2) return code;
+  if (code !== 'target_oversized_body' || spans.length <= TRACE_BATCH) return code;
   const half = Math.ceil(spans.length / 2);
   return (await send(deliver, spans.slice(0, half))) ?? (await send(deliver, spans.slice(half)));
 }
