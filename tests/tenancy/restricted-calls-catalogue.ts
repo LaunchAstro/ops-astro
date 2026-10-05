@@ -16,6 +16,20 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
+  // C33: an activation's setting, pin and switch, each change by a person.
+  'public.activations': {
+    from: '20261005003850',
+    columns: [
+      'changed_at',
+      'changed_by_actor_id',
+      'enabled',
+      'event_kind',
+      'every_minutes',
+      'mode',
+      'revision',
+      'version_id',
+    ],
+  },
   'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
   // C41-A: an onboarding's state, stop and revision, a step's state, failures and close.
   'public.onboardings': { from: '20261005004729', columns: ['revision', 'state', 'stopped_at'] },
@@ -32,7 +46,7 @@ const COLUMN_UPDATES: Readonly<
 
 /**
  * Whether the migration `at` (its version, `0086_bootstrap_pins` or
- * `20261003002216_automations`) is `from` or later. Every four-digit ID sorts
+ * `20261005003850_automations`) is `from` or later. Every four-digit ID sorts
  * before every fourteen-digit timestamp, so both are padded to fourteen.
  */
 const reached = (at: string, from: string): boolean =>

@@ -304,8 +304,11 @@ jobs:
     strategy:
       # Every shard runs to the end, so one red names all of its suites.
       fail-fast: false
+      # 16 since CI-SPEED (owner, 4 October 2026): two merge groups at once hold 32 shard jobs,
+      # inside the 60 jobs the account runs at once. scripts/db-census.ts proves the 8- and
+      # 16-way splits hold the same items and tests.
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     services:
       postgres:
         # Postgres 17, the hosted database's major (S0-7), pinned by digest:
@@ -366,50 +369,6 @@ jobs:
           if [ -z "$added" ]; then echo "upgrade-drill: no migration added; not run"; exit 0; fi
           from=$(git ls-tree --name-only "$BASE_SHA" migrations/ | grep '\.sql$' | sort | tail -1)
           pnpm run verify:upgrade-drill --from "$(basename "$from" .sql)" --base "$BASE_SHA"
-
-  database-lookahead:
-    # S0-7: the same conformance run on Postgres 18, the next major, so a
-    # change that breaks on it shows before the provider moves. It is not a
-    # required check: its failure is reported red on the pull request and
-    # blocks nothing. When the provider offers 18, one ticket moves
-    # production, staging, CI and the restore drill to it together
-    # (docs/supply-chain-pins.md).
-    name: database look-ahead, Postgres 18 (not required)
-    needs: [gate]
-    # Pull requests only (CI-SPEED, ORCH78 LOOKAHEAD). On a merge group or a
-    # push to main nobody reads it, and it held a runner to its 90-minute
-    # timeout there while the group's required checks waited for runners.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    services:
-      postgres:
-        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
-        env:
-          POSTGRES_PASSWORD: conformance-throwaway
-          POSTGRES_DB: conformance
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    steps:
-      # The upgrade drill seeds through an older commit's checkout: full history.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run db:conformance
-        env:
-          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
-          OPS_ASTRO_DB_LOOKAHEAD_MAJOR: '18'
 
   database:
     # The required check (ruleset 23396133, .github/required-checks.json): one

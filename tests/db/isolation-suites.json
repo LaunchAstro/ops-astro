@@ -199,6 +199,7 @@
     "tests/web/mp-3-1-isolation-api.test.tsx",
     "tests/web/dock-door-isolation-api.test.tsx",
     "tests/api/preference-write-client-user.test.ts",
+    "tests/automations/c33-occurrences.test.ts",
     "tests/wayfinder/wf-1.test.ts",
     "tests/db/take-lease-path.test.ts",
     "tests/broker/aw-10-lookup-slot-isolation.test.ts",

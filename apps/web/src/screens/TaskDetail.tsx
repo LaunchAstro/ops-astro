@@ -103,6 +103,7 @@ import { usePresence } from '../data/presence.ts';
 import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
 import { useFreshOnPage } from '../views/freshness.tsx';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
+import { keepsClosure } from '../views/gate-controls.tsx';
 import { ConflictNotice, MovedNotice, UnsavedBar, changedSince } from './task/Notices.tsx';
 import { TaskHeader } from './task/Header.tsx';
 import { TaskFacts } from './task/Facts.tsx';
@@ -220,7 +221,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
   // say nothing about why. It is dropped when the task or the reader changes, as
   // a draft is. The other refusals, a stale press's quote and unsent words (the
   // subtask box's too) are held the same way.
-  const [note, setNote] = useHeld<DecisionNote>(identity, denied);
+  const [note, setNote] = useHeld<DecisionNote>(identity, denied, keepsClosure);
   const [commentRefusal, setCommentRefusal] = useHeld<string>(identity, denied);
   const [proposeRefusal, setProposeRefusal] = useHeld<string>(identity, denied);
   const [moved, setMoved] = useHeld<string>(identity, denied);
@@ -400,14 +401,27 @@ function useKeep(held: Draft | null, identity: string, denied: boolean) {
 function useHeld<T>(
   identity: string,
   denied: boolean,
+  keeps?: (held: T, next: T | null) => boolean,
 ): readonly [T | null, (next: T | null) => void] {
-  const [held, setHeld] = useState<{ readonly identity: string; readonly value: T } | null>(null);
-  if (held !== null && (held.identity !== identity || denied)) {
-    setHeld(null);
+  // The slot always names the task and grant it is for, empty or not, so a
+  // setter from an older task or grant can tell it writes nothing here.
+  const [held, setHeld] = useState<{ readonly identity: string; readonly value: T | null }>({
+    identity,
+    value: null,
+  });
+  if (held.identity !== identity || (denied && held.value !== null)) {
+    setHeld({ identity, value: null });
   }
-  const value = held !== null && held.identity === identity ? held.value : null;
+  const value = held.identity === identity ? held.value : null;
   const set = (next: T | null): void => {
-    setHeld(next === null ? null : { identity, value: next });
+    // Writing what is already held keeps the same slot, so no render follows.
+    setHeld((current) =>
+      current.identity !== identity ||
+      current.value === next ||
+      (current.value !== null && keeps?.(current.value, next) === true)
+        ? current
+        : { identity, value: next },
+    );
   };
   return [value, set];
 }
@@ -901,6 +915,8 @@ function AgentHead({
       people={persons}
       ledger={task.ledger}
       onChanged={props.onChanged}
+      note={props.note}
+      onDecided={props.onDecided}
       onStepUp={props.onStepUp}
     />
   );
