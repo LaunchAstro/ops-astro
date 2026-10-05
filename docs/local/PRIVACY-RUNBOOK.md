@@ -36,9 +36,10 @@ For each request, list every copy of the person that exists at that moment,
 by kind. A copy not on the list is a copy the reply missed.
 
 - **Records:** the database rows that name the person (people, identifiers,
-  memberships, their actors, logins and grants, the agent actor of each
-  credential they issued or delegation acting for them and that agent's rows
-  and logins, records and their fields, incidents). Found with
+  memberships, their actors, logins and grants, each delegation acting for
+  them, the agent actor of each credential they issued or delegation acting
+  for them and that agent's rows and logins, records and their fields,
+  incidents). Found with
   `node scripts/privacy/find-copies.mjs --business <key> --text <name>`,
   which searches the request's business only and refuses to run without one.
   Run it with `--export` for the person's name, then again for each email and
@@ -46,9 +47,11 @@ by kind. A copy not on the list is a copy the reply missed.
   with them, not marked rejected (a rejected one is usually someone else's),
   once for the stored `value` and once for the `observed_value` spelling: a
   row can name a person by those alone. Run it again for the stored name
-  (`people.display_name`) of anyone merged with them that differs from the
-  request's text, so the search after an erasure, once that `people` row is
-  gone, still has the name. A spelling with other spacing or
+  (`people.display_name`) of the person and of anyone merged with them, each
+  that differs from the request's text, so the search after an erasure, once
+  those `people` rows are gone, still has the names; a stored name with fewer
+  than four letters or digits is neither searched by the finder nor accepted
+  as `--text`, so the owner looks for it by hand. A spelling with other spacing or
   punctuation is not found, so search any the owner knows of too. Put every
   run's rows together. A row whose people list names no one but people other
   than the person and anyone merged with them, and that holds none of the
@@ -61,9 +64,15 @@ by kind. A copy not on the list is a copy the reply missed.
   id of the people the text names: a person whose name, or an identifier not
   rejected, holds the text as whole words (`--text Anna` names no Joanna),
   anyone a merge not reversed joined them to, their actors, the logins they
-  still hold, the agent of each credential they issued or delegation acting
-  for them, and the logins those agents still hold. It also lists every row
-  holding the stored name of one of those people as whole words. Each hit
+  still hold, each delegation acting for them, and the agent of each
+  credential they issued or delegation acting for them with the logins it
+  still holds, unless a credential or delegation of anyone else names that
+  agent too: an agent working for several people stands for none of them, so
+  a row naming its delegation for the person is found but a row naming only
+  that agent is not, and the owner checks such an agent's work for the person
+  by hand. It also lists
+  every row holding the stored name of one of those people as whole words,
+  when that name has four letters or digits. Each hit
   names the people whose ids it holds, whether a value of it holds the text or
   such a stored name (`text`) and whether it holds an id given with `--id`
   (`given`); a hit naming no one was found by its text alone, so the owner

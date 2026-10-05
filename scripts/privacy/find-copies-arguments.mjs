@@ -17,6 +17,10 @@ export const WHITE =
  */
 const isLetterOrDigit = (character) => /^[\p{L}\p{M}\p{N}]$/u.test(character);
 
+/** Whether a text or stored name has enough letters or digits to name a person. */
+export const namesSomeone = (text) =>
+  [...text].filter((character) => isLetterOrDigit(character)).length >= 4;
+
 /** The text with each run of white space as one space, and none at its ends. */
 function spaced(text) {
   const words = [];
@@ -69,10 +73,7 @@ export function parse(args) {
       options[key] = key === 'text' ? spaced(value) : value;
     }
   }
-  if (
-    options.text !== undefined &&
-    [...options.text].filter((character) => isLetterOrDigit(character)).length < 4
-  ) {
+  if (options.text !== undefined && !namesSomeone(options.text)) {
     return { error: '--text needs at least 4 letters or digits that name the person' };
   }
   if (options.text === undefined && options.ids.length === 0) {
