@@ -137,6 +137,11 @@ comparing this page with the lockfile should find them agreeing.
 | `parse5`             | 8.0.1   | C80's capture reads a page with it, as a browser does (runtime). `capture/page.ts` overrides its protected `_leaveAttrName` to bound attributes per tag: re-read that bound on any raise. The envelope tokenises the compiled page with its `Tokenizer`, setting `state` from `TokenizerMode` as its own parser does.                    |
 | `yaml`               | 2.9.0   | The parser `tests/ci/merge-group-jobs.test.ts` reads the workflows with (CI-SPEED), so no YAML form is misread. Already in the lockfile through `vite`.                                                                                                                                                                                  |
 
+Node's own `module.stripTypeScriptTypes`, still experimental from Node 24 to
+26, blanks types in place in the envelope's compile worker
+(`site/page-transform-worker.ts`). A missing or changed API throws there,
+and the envelope reads no answer as a refusal. Re-read it on any Node raise.
+
 **The measured behaviour, on 18.4.0, on 23 September 2026.** With `typescript`
 7.0.2 and no alternative parser installed, `depcruise` pointed at a tree of
 three TypeScript modules printed `no dependency violations found (0 modules, 0

@@ -15,8 +15,13 @@
 //   it, and every element open around it is allow-listed. The innermost is
 //   a tag the built page prints where the source has it.
 //
-// What another file or an expression prints is taken as whole markup. A
-// page that prints raw HTML itself (set:html) or holds a select is refused.
+// - Every `$$render` template in the module, the ones its fragments,
+//   component children and expressions nest included, meets its own
+//   expressions the same way and ends in data state with every tag it
+//   opened closed, and opens no select.
+//
+// What another file prints is taken as whole markup. A page that prints
+// raw HTML itself (set:html) is refused.
 
 import type { TemplateLiteral } from 'acorn';
 import { Token, Tokenizer, TokenizerMode, type TokenHandler } from 'parse5';
@@ -121,27 +126,34 @@ function tokensUpTo(template: TemplateLiteral, last: number) {
       return;
     }
   }
+  const ending = tokenizer.state;
   tokenizer.write('', true);
   const placed = template.expressions
     .slice(0, last)
     .every((expression, index) =>
       interpolation(expression) === 'attributes' ? attributes.has(`${STAND_IN}${index}`) : true,
     );
-  return placed ? { seen, stream, resumes } : undefined;
+  return placed ? { seen, stream, resumes, ending } : undefined;
 }
 
-/** Whether the elements open at `before` are all allow-listed, the innermost printed in place. */
-function openAroundCopy(seen: readonly Seen[], before: number): boolean {
+/** The elements open at `before`, or `undefined` when an end tag closes another. */
+function openAt(seen: readonly Seen[], before: number): string[] | undefined {
   const open: string[] = [];
   for (const { token, start } of seen) {
     if (start >= before) break;
     if (token.type === Token.TokenType.START_TAG) {
       if (!VOID.has(token.tagName)) open.push(token.tagName);
     } else if (token.type === Token.TokenType.END_TAG) {
-      if (open.at(-1) !== token.tagName) return false;
+      if (open.at(-1) !== token.tagName) return;
       open.pop();
     }
   }
+  return open;
+}
+
+/** Whether the elements open at `before` are all allow-listed, the innermost printed in place. */
+function openAroundCopy(seen: readonly Seen[], before: number): boolean {
+  const open = openAt(seen, before) ?? [];
   const innermost = open.at(-1);
   return (
     innermost !== undefined &&
@@ -150,19 +162,17 @@ function openAroundCopy(seen: readonly Seen[], before: number): boolean {
   );
 }
 
-/** Whether the template's own text, its expressions left out, opens a select. */
-function holdsSelect(template: TemplateLiteral): boolean {
-  const texts = template.quasis.map(({ value }) => value.cooked);
-  if (texts.some((text) => typeof text !== 'string')) return true;
-  let select = false;
-  const tokenizer = tokenizerFor(
-    () => {},
-    (token) => {
-      if (token.tagName === 'select') select = true;
-    },
+/**
+ * Whether the whole template meets its expressions in known states and
+ * ends as it began: in data state, every tag it opened closed, no select.
+ */
+function closes(template: TemplateLiteral): boolean {
+  const read = tokensUpTo(template, template.quasis.length - 1);
+  if (read?.ending !== TokenizerMode.DATA) return false;
+  const select = read.seen.some(
+    ({ token }) => token.type === Token.TokenType.START_TAG && token.tagName === 'select',
   );
-  tokenizer.write(texts.join(''), true);
-  return select;
+  return !select && openAt(read.seen, Number.POSITIVE_INFINITY)?.length === 0;
 }
 
 /** Whether the word from `from` to `to` is a whole word, alone in a reference-free character token. */
@@ -204,7 +214,7 @@ function resyncedBefore(seen: readonly Seen[], resumes: number, from: number): b
  */
 export function swapsOnlyBodyCopy(before: string, after: string, swap: WordSwap): boolean {
   const found = wordInTemplate(before, after, swap);
-  if (found === undefined || found.templates.some((template) => holdsSelect(template))) {
+  if (found === undefined || !found.templates.every((template) => closes(template))) {
     return false;
   }
   const { template, quasi, offset } = found.word;
