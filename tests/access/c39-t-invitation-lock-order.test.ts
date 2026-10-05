@@ -113,7 +113,7 @@ async function act(
 }
 
 describe.skipIf(noDatabase)('C39-T invitation lock order', () => {
-  it('C39-T rate limit: a resend and a create for the same address, racing at expiry, both finish and the resend wins', async () => {
+  it('C39-T rate limit: a resend and a create for the same address, racing at expiry, both finish: the resend finds it lapsed, the create invites anew', async () => {
     const address = addressFor('Lock-Order');
     const id = await invite(c.admin, address);
     await w.db.admin.execute(
@@ -138,8 +138,10 @@ describe.skipIf(noDatabase)('C39-T invitation lock order', () => {
       });
       await parked(2);
       await letGo();
-      expect(await Promise.all([resend, create])).toEqual(['applied', 'UNIQUE_VALUE_TAKEN']);
-      expect(await invitationRow(id)).toMatchObject({ state: 'pending', revision: 2 });
+      // No deadlock: both answer. The resend is judged on the clock once it holds the row
+      // (#384), past the expiry, so it moves nothing; the create ends the lapsed one.
+      expect(await Promise.all([resend, create])).toEqual(['TRANSITION_NOT_PERMITTED', 'applied']);
+      expect(await invitationRow(id)).toMatchObject({ state: 'expired', revision: 2 });
     } finally {
       await Promise.all([holder, resender, creator].map(async (db) => await db.close()));
     }
