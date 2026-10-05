@@ -94,11 +94,13 @@ it('a page of one repeated word is matched in time linear in its length', () => 
     const before = `<p>${'a '.repeat(2 * count)}</p>\n<p>${'a '.repeat(count)}a</p>\n`;
     const after = before.replace(/a<\/p>\n$/u, 'b</p>\n');
     const started = performance.now();
-    readsLive(before, after, 'a', 'b', after, before);
-    return performance.now() - started;
+    const live = readsLive(before, after, 'a', 'b', after, before);
+    return { live, took: performance.now() - started };
   };
   run(2_000);
-  expect(run(120_000)).toBeLessThan(5_000);
+  // About 240,000 characters of text: inside the search bound, so the page is matched, not refused.
+  expect(run(40_000)).toMatchObject({ live: true, took: expect.any(Number) });
+  expect(run(40_000).took).toBeLessThan(5_000);
 });
 
 // A built page carries text its source file never shows (a layout's title and nav) and drops
