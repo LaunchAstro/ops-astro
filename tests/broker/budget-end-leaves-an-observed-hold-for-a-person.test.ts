@@ -90,7 +90,8 @@ const stateOf = async (runId: string, attemptId: string) => ({
   ])),
 });
 
-it('an end after an observation kept the hold whole is refused, and the hold waits for a person', async () => {
+/** The effect applied, then one call settles and the next stops the run at its ceiling. */
+async function stoppedAfterItsEffect() {
   const w = await personWork();
   const lease = { leaseId: w.picked['leaseId'], fence: w.picked['fence'] };
   appliedDetail(
@@ -119,6 +120,11 @@ it('an end after an observation kept the hold whole is refused, and the hold wai
     `select id from public.budget_asks where run_id = $1`,
     [runId],
   );
+  return { w, lease, runId, askId };
+}
+
+it('an end after an observation kept the hold whole is refused, and the hold waits for a person', async () => {
+  const { w, lease, runId, askId } = await stoppedAfterItsEffect();
 
   // The person observes after the stop: cost and calls are above the hold, so it is kept whole.
   const observed = await asPerson(s, {

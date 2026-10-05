@@ -39,7 +39,7 @@ import {
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
-import { spentOn } from './budget-stop.ts';
+import { observedRefusal, spentOn } from './budget-stop.ts';
 import { giveBackReleased } from '../../core-custody/src/index.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
@@ -256,7 +256,7 @@ export async function endAtBudgetStop(
   const opened = await openAnswer(tx, request, 'gate');
   if (!opened.ok) return opened;
   const { person, locked } = opened.value;
-  const refused = await observedRefusal(tx, locked);
+  const refused = await observedRefusal(tx, locked.reservation_state, locked.reservation_id);
   if (refused !== null) return refused;
   const answerId = randomUUID();
   await tx.query(
@@ -294,27 +294,4 @@ export async function endAtBudgetStop(
     [tx.businessId, request.runId],
   );
   return { ok: true, value: { answerId, releasedMinor, spentMinor } };
-}
-
-/**
- * An observation that kept the hold whole (`settleAtObserved`) priced the step at a cost
- * nothing counts yet, so releasing the hold less its calls would hand that cost back to
- * the cap as unspent. Read under the reservation lock; the hold waits for a person's outcome.
- */
-async function observedRefusal(
-  tx: TenantQuery,
-  locked: Opened['locked'],
-): Promise<BudgetAnswerResult<never> | null> {
-  if (locked.reservation_state !== 'held') return null;
-  const kept = await tx.query(
-    `select 1 from public.attempts
-      where business_id = $1 and reservation_id = $2 and observed and state = 'liability_unknown'`,
-    [tx.businessId, locked.reservation_id],
-  );
-  if (kept.length === 0) return null;
-  return refuse(
-    'TRANSITION_NOT_PERMITTED',
-    'this step was observed at a cost above its hold, and nothing has counted that cost yet',
-    'Record the step’s outcome first, then end the work.',
-  );
 }

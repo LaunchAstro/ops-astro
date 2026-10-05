@@ -25,6 +25,7 @@
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { raiseBudgetWait, stopWords } from '../../core-custody/src/index.ts';
 import { raiseAlert } from './alerts.ts';
+import { refuse, type RuntimeResult } from './refusals.ts';
 
 /**
  * SQL: what the classifier's settle of the reservation `r` counts now, its
@@ -64,6 +65,31 @@ export async function spentOn(tx: TenantQuery, reservationId: string): Promise<S
     [tx.businessId, reservationId],
   );
   return { spent: Number(row?.spent ?? 0), unsent: row?.unsent ?? [] };
+}
+
+/**
+ * An observation that kept the hold whole (`settleAtObserved`) priced the step at a cost
+ * nothing counts yet, so ending the run, releasing the hold less its calls, would hand
+ * that cost back to the cap as unspent. Read under the reservation lock; the hold waits
+ * for a person's outcome.
+ */
+export async function observedRefusal(
+  tx: TenantQuery,
+  reservationState: string,
+  reservationId: string,
+): Promise<RuntimeResult<never> | null> {
+  if (reservationState !== 'held') return null;
+  const kept = await tx.query(
+    `select 1 from public.attempts
+      where business_id = $1 and reservation_id = $2 and observed and state = 'liability_unknown'`,
+    [tx.businessId, reservationId],
+  );
+  if (kept.length === 0) return null;
+  return refuse(
+    'TRANSITION_NOT_PERMITTED',
+    'this step was observed at a cost above its hold, and nothing has counted that cost yet',
+    'Record the step’s outcome first, then end the work.',
+  );
 }
 
 export interface Remaining {
