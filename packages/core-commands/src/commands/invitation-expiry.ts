@@ -14,11 +14,15 @@ import { workerActor } from './conversation-lifecycle.ts';
 
 export const EXPIRE_OPERATION = 'invitation.expire';
 
-/** End the business's lapsed pending invitations, or those of one address. */
+/**
+ * End the business's lapsed pending invitations, or those of one address.
+ * Judged on the clock now, not the transaction's start: a create that waited
+ * at its limiter sees an expiry that passed meanwhile.
+ */
 export async function expireDue(tx: TenantQuery, address?: string): Promise<readonly string[]> {
   const ended = await tx.query<{ id: string }>(
-    `update invitations set state = 'expired', ended_at = now(), revision = revision + 1
-      where business_id = $1 and state = 'pending' and expires_at <= now()
+    `update invitations set state = 'expired', ended_at = clock_timestamp(), revision = revision + 1
+      where business_id = $1 and state = 'pending' and expires_at <= clock_timestamp()
         and ($2::text is null or address = $2)
       returning id`,
     [tx.businessId, address ?? null],
