@@ -131,13 +131,24 @@ function digested(out: string, path: string): Buffer {
   return bytes.equals(written) ? Buffer.from(JSON.stringify(record)) : bytes;
 }
 
-/** One digest over every file's path and bytes, in path order. */
+/**
+ * One digest over every file's path and bytes, in path order. Each path and
+ * each file's bytes go in after their length in eight bytes, so where one ends
+ * is never read from what it holds, and two different trees never share a
+ * digest (#492).
+ */
 export function outputDigest(out: string): string {
   const hash = createHash('sha256');
+  const framed = (bytes: Buffer): void => {
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(bytes.length));
+    hash.update(length).update(bytes);
+  };
   for (const path of filesUnder(out)
     .map((file) => relative(out, file))
     .toSorted()) {
-    hash.update(`${path}\0`).update(digested(out, path)).update('\0');
+    framed(Buffer.from(path, 'utf8'));
+    framed(digested(out, path));
   }
   return `sha256:${hash.digest('hex')}`;
 }
