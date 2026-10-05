@@ -107,13 +107,20 @@ export async function delegationStillHolds(
   const person: readonly Subject[] = [{ kind: 'person', id: delegation.delegatePersonId }];
   await holdCoveringGrants(tx, person, 'task');
   return async ({ taskId }) => {
+    // Held first, then read in a statement of its own: a locking read
+    // computes its columns before it waits, so a row released unchanged would
+    // otherwise answer with the clock from before the wait.
+    await tx.query(
+      'select d.id from public.delegations d where d.business_id = $1 and d.id = $2 for share of d',
+      [tx.businessId, delegation.id],
+    );
     const [row] = await tx.query<{ readonly live: boolean; readonly narrowed: boolean }>(
       `select ${DELEGATION_STANDS_AT_CHECK} as live,
               (d.revoked_at is not null and d.settled_at is null
                and d.expires_at > clock_timestamp()
                and d.revocation_cause = 'authority_lost') as narrowed
          from public.delegations d
-        where d.business_id = $1 and d.id = $2 for share of d`,
+        where d.business_id = $1 and d.id = $2`,
       [tx.businessId, delegation.id],
     );
     if (row?.live !== true) return row?.narrowed === true ? NARROWED : NOT_LIVE;
