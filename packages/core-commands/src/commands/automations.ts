@@ -37,6 +37,7 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { ActivationChangeRequest, DefinitionReleaseRequest } from './automation-requests.ts';
 import type { CommandContext } from './context.ts';
+import { holdAutomationAuthority } from './automation-authority.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 
@@ -123,6 +124,8 @@ export async function changeActivationAsPerson(
   if (changing ? !isRevision(request.expectedRevision) : request.expectedRevision !== undefined) {
     return invalid('expectedRevision');
   }
+  const lost = await holdAutomationAuthority(tx, context);
+  if (lost !== null) return lost;
   if (!isUuid(request.versionId)) return refused(refuseNotFound(['versionId']));
   const version = await readVersion(tx, request.versionId);
   if (version === null) return refused(refuseNotFound(['versionId']));
@@ -250,6 +253,8 @@ export async function releaseDefinitionVersion(
   if (typeof fresh === 'string') return invalid(fresh);
   const values = releaseOf(request);
   if (typeof values === 'string') return invalid(values);
+  const lost = await holdAutomationAuthority(tx, context);
+  if (lost !== null) return lost;
   const actorId = context.session.actorId;
   let definitionId = request.definitionId;
   if (fresh !== null) definitionId = await insertDefinition(tx, { ...fresh, actorId });
