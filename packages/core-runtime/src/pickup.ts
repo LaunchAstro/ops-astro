@@ -55,17 +55,33 @@ export interface QueueEntry {
 }
 
 /**
+ * The reading agent's reach over a queue row (`$2`, null for a person). While
+ * the agent holds a live delegation it is working for that task's client, so
+ * a row stays only when its task's client is a delegated task's client (#169).
+ * It keys on the delegations the agent holds, not on the credential it
+ * presents, so leaving the credential off does not widen it. With no live
+ * delegation the row stays, as it does for a person.
+ */
+const AGENT_REACH = `($2::uuid is null
+   or not exists (select 1 from public.delegations d
+                   where d.business_id = res.business_id and d.agent_actor_id = $2
+                     and ${DELEGATION_STANDS})
+   or exists (select 1 from public.delegations d
+                join public.records purpose on purpose.business_id = d.business_id
+                                           and purpose.id = d.purpose_scope_id
+               where d.business_id = res.business_id and d.agent_actor_id = $2
+                 and ${DELEGATION_STANDS}
+                 and purpose.uuid_7 is not distinct from task.uuid_7))`;
+
+/**
  * Approved, held, unpicked. A reservation bound to a lease is out, a terminal
  * lineage is out, and an attempt carrying a dispatch marker or an observation
  * is out — the last because T5 quarantines it with its hold retained, and a
  * quarantined attempt must not be handed to a worker as ordinary work.
  *
- * `agentActorId` is an agent's own read. While it holds a live delegation it
- * is working for that task's client, so its queue is that client's work only
- * (#169): it never shows another client's task, purpose slug or held amount.
- * The narrowing keys on the delegations the agent holds, not on the credential
- * it presents, so leaving the credential off does not widen it. With no live
- * delegation the agent reads the whole queue, as a person does.
+ * `agentActorId` is an agent's own read: under a live delegation its queue
+ * never shows another client's task, purpose slug or held amount
+ * (`AGENT_REACH`).
  */
 export async function queue(
   tx: TenantQuery,
@@ -100,16 +116,7 @@ export async function queue(
         and att.state = 'reserved'
         and not att.dispatch_marker
         and not att.observed
-        and ($2::uuid is null
-             or not exists (select 1 from public.delegations d
-                             where d.business_id = res.business_id and d.agent_actor_id = $2
-                               and ${DELEGATION_STANDS})
-             or exists (select 1 from public.delegations d
-                          join public.records purpose on purpose.business_id = d.business_id
-                                                     and purpose.id = d.purpose_scope_id
-                         where d.business_id = res.business_id and d.agent_actor_id = $2
-                           and ${DELEGATION_STANDS}
-                           and purpose.uuid_7 is not distinct from task.uuid_7))
+        and ${AGENT_REACH}
       order by res.created_at`,
     [tx.businessId, agentActorId ?? null],
   );
