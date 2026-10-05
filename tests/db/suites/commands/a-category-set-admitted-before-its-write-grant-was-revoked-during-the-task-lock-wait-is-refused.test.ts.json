@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a category set admitted before its write grant was revoked during the task lock wait is refused, and writes nothing"
+}

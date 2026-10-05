@@ -81,6 +81,12 @@
     },
     {
       "files": [
+        "tests/api/a-credential-write-waiting-on-its-task-lock-is-refused-once-its-grant-is-revoked.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
         "tests/db/run-end-stamped-after-lock-wait.test.ts",
         "tests/db/run-supersede-stamped-after-lock-wait.test.ts"
       ],
