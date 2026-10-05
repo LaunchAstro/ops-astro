@@ -296,7 +296,7 @@ interface FoundGate {
  * for share here, before the runtime set, as pickup holds its own. A
  * revocation that locked first is seen by the re-check under the locks, and
  * one that comes second waits for this decision to commit. An escalation
- * holds its recipient's grants and active actor the same way.
+ * holds its recipient's grants the same way.
  */
 async function findGate(
   tx: TenantQuery,

@@ -83,12 +83,19 @@ export async function recheckEscalation(
 
 /**
  * Before the runtime set, in the grant class (`locks.ts`): the decider's
- * covering grants `for share`, and for an escalation the recipient's grants
- * and then their active person actor, the rows `recheckRecipient` rests on. A deactivation or revocation that
- * locked first is seen by that re-check; one that comes second waits for this
- * decision to commit. One statement holds them all in one id order, the order
- * `access.end` locks a person's live grants in, so the two never wait on each
- * other's grants crosswise.
+ * covering grants `for share`, and for an escalation the recipient's grants,
+ * the rows `recheckRecipient` rests on. A revocation that locked first is seen
+ * by that re-check; one that comes second waits for this decision to commit.
+ * One statement holds them all in one id order, the order `access.end` locks
+ * a person's live grants in, so the two never wait on each other's grants
+ * crosswise.
+ *
+ * The recipient's actor is not held. The only writer that deactivates a
+ * person actor is `access.end`, and it locks every live grant of that person
+ * `for update` first, so the recipient's decide grant held here already
+ * serialises it; with no such grant the re-check refuses anyway. Holding the
+ * actor too would take it before the runtime set, where `access.end` updates
+ * it after its own, and the two orders could close a cycle.
  */
 export async function holdDecideAuthority(tx: TenantQuery, request: EscalationAsk): Promise<void> {
   const recipient = request.decision === 'escalate' ? request.recipientPersonId : undefined;
@@ -110,12 +117,6 @@ export async function holdDecideAuthority(tx: TenantQuery, request: EscalationAs
       ...actors.map((actor) => ({ kind: 'actor' as const, id: actor.id })),
     ],
     request.collection,
-  );
-  await tx.query(
-    `select 1 from public.actors
-      where business_id = $1 and person_id = $2 and kind = 'person' and active
-      order by id for share`,
-    [tx.businessId, recipient],
   );
 }
 
