@@ -29,6 +29,7 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  type Stats,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { outputDigest } from './build-output.ts';
@@ -163,8 +164,9 @@ function replaced(
   const before = mkdtempSync(join(dirname(path), '.before-'));
   made.push(before);
   const earlier = join(before, 'copy');
-  if (lexists(path)) {
-    const kept = unmovable(path, uid);
+  const entry = lexists(path) ? lstatSync(path) : undefined;
+  if (entry !== undefined) {
+    const kept = unmovable(path, entry, uid);
     if (kept !== undefined) return kept;
     renameSync(path, earlier);
   }
@@ -173,7 +175,11 @@ function replaced(
   } catch (error) {
     // If the put-back fails too, the earlier copy goes with the temporary
     // folder; one promotion at a time (the runbook) leaves no one to take the name.
-    if (lexists(earlier) && !lexists(path)) renameSync(earlier, path);
+    if (lexists(earlier) && !lexists(path)) {
+      renameSync(earlier, path);
+      // Its own modes again, so the release production still points at reads as before.
+      if (entry?.isDirectory() === true) chmodSync(path, entry.mode & 0o7777);
+    }
     throw error;
   }
   return undefined;
@@ -184,8 +190,7 @@ function replaced(
  * with write on itself: one the promoter owns (or any, for root) is given it,
  * in served/, which only the promoter writes; another user's is refused.
  */
-function unmovable(path: string, uid: number | undefined): string | undefined {
-  const entry = lstatSync(path);
+function unmovable(path: string, entry: Stats, uid: number | undefined): string | undefined {
   if (!entry.isDirectory()) return undefined;
   if (uid !== undefined && uid !== 0 && entry.uid !== uid) {
     return `${path} is there and is not the promoter's, so it cannot be replaced`;
