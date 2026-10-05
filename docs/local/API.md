@@ -2407,13 +2407,25 @@ counted from the applied audit events (`RATE_LIMITED` naming `email` or
 Each create and each resend allows one email: `sendInvitation`
 (`core-custody`) sends through the broker's `email.send` only while the
 invitation is pending and has an applied act no send has answered, mints a
-fresh enrolment token, keeps its SHA-256 alone and records the attempt
-against it. It shares the inbox email's ceiling: one limit, `email.send`'s
-catalogued concurrency, counts inbox and invitation emails in flight
-together, each ask until custody's timeout and a minute's grace have passed
-(`EMAIL_AT_CEILING` at it, writing nothing). Not here yet: the send mounted
-after the command, Auth's Send Email hook, the enrolment page and the Access
-screen (C39-T P2 and P3).
+fresh enrolment token (32 random bytes of its own), keeps its SHA-256 alone
+and records the attempt against it. It shares the inbox email's ceiling: one
+limit, `email.send`'s catalogued concurrency, counts inbox and invitation
+emails in flight together, each ask until custody's timeout and a minute's
+grace have passed (`EMAIL_AT_CEILING` at it, writing nothing). The login
+provider is never asked for a token, and an address holding a login in
+another business is invited as a new one is.
+
+`POST /api/hooks/auth-email` is the login provider's Send Email hook, mounted
+by `composeApi` when it is given the hook's secret (`AUTH_EMAIL_HOOK_SECRET`,
+`v1,whsec_...`) and a mail broker. It verifies the Standard Webhooks
+signature over the raw body before parsing (401), refuses a stale timestamp
+(401) and a replayed message id (409, held in the attempt's `hook:<id>`
+evidence), and answers every verified message 200 `{}`, sent or not. An
+invitation message is sent through `sendInvitation` when exactly one business
+holds a pending invitation for the address with an unanswered act; other
+Auth mail (a reset among it) has no attempt yet and is not sent (C40). Not
+here yet: the send mounted after the command, the hook wired in `main`, the
+enrolment page and the Access screen (C39-T P3).
 
 ## Tags
 
