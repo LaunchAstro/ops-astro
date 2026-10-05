@@ -4,7 +4,7 @@
 // event, written once. The database's uniqueness on the activation and its
 // due time or event id holds that, so a claimer that races another commits
 // one row and learns the other's, never a second. An occurrence under a
-// standing approval (C52-A, migration 20261005184526) names it.
+// standing approval (C52-A, migration 20261005193201) names it.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';

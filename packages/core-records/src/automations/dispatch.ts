@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Dispatch (C52-A; migration 20261005184526): the worker's step after the
+// Dispatch (C52-A; migration 20261005193201): the worker's step after the
 // claim. It rechecks, under the activation's lock, that the activation is on
 // and that the approval the occurrence recorded is still the one standing and
 // unrevoked, and writes the result once. Only then is the run asked for,
