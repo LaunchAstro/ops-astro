@@ -2226,8 +2226,9 @@ answers today's refusal (for example `DELEGATION_NARROWED` or
 `DELEGATION_NOT_LIVE`), with no stored detail, once the grant, delegation or
 expiry has changed. Those rows of `AGENT_OPERATIONS` replay as `reauthorise`,
 and `releaseReplay` (`commands/agent-replay.ts`) runs `authorise` again. A
-capabilities replay is projected again for the credential presented now
-(`replayCapabilities`). A pickup replay is checked against the delegation it
+`session.capabilities` or `task.queue` replay is served again for the rights
+held now (`serveAgain`), so a queue read before a pickup and repeated under a
+delegation answers the narrowed queue (#169). A pickup replay is checked against the delegation it
 minted (`replayPickup`). A handback settles its own delegation, so its receipt
 is returned only to the credential that settled it (`replaySettledHandback`).
 All three are in `commands/agent-replay.ts`. The register row is left as it
@@ -2608,7 +2609,7 @@ agent answer keeps its payload under `detail`.
 The agent answer's `grants` is read on every call and on every replay: a
 replay is authorised as a fresh call and projected again for the credential
 presented now, so a replay under another delegation answers that delegation's
-scope and never the first one's (`replayCapabilities`).
+scope and never the first one's (`serveAgain`).
 `tests/commands/agent-capabilities-intersection.test.ts` holds both over HTTP.
 `tests/api/capabilities-shape.test.ts` asserts the one shape on both prefixes
 and on a replay ("answers flattened beside ok on both, and on a replay").
