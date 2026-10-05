@@ -26,11 +26,50 @@ export type Why =
   | 'image slot'
   | 'create body'
   | 'reply status'
-  | 'reply body';
+  | 'reply body'
+  | 'tar block'
+  | 'tar type'
+  | 'tar magic'
+  | 'tar checksum'
+  | 'tar size'
+  | 'tar mode'
+  | 'tar name'
+  | 'tar parent'
+  | 'tar duplicate'
+  | 'tar link'
+  | 'tar end'
+  | 'too many entries';
+
+/** R1's reasons (section 9). */
+export const REASONS: readonly string[] = [];
+
+export type Reason =
+  | 'unavailable'
+  | 'preflight failed'
+  | 'drift'
+  | 'unknown site'
+  | 'no pin'
+  | 'pin mismatch'
+  | 'input refused'
+  | 'lockfile refused'
+  | 'fetch failed'
+  | 'integrity mismatch'
+  | 'image load failed'
+  | 'proxy refused'
+  | 'queue full'
+  | 'deadline'
+  | 'memory'
+  | 'process limit'
+  | 'output refused'
+  | 'non-zero exit'
+  | 'internal';
+
+/** A caller's reading of the reason in an answer: anything not in R1 is `unavailable`. */
+export const readReason = (value: unknown): Reason => value as Reason;
 
 export type Refused = {
   readonly ok: false;
-  readonly reason: 'proxy refused' | 'internal';
+  readonly reason: 'proxy refused' | 'output refused' | 'internal';
   readonly why: Why;
 };
 
