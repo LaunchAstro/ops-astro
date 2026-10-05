@@ -48,16 +48,18 @@ Staging shares a machine with live services, so it is confined (ticket S0-1,
   over 20 seconds under a stop, or one whose answer docker lost) can leave
   one such container made but never started. A run whose container docker
   will not remove fails, naming it (the backup records stage `container`).
-  The runbook lists any by the run containers' own names, never staging's
-  services, with
-  `docker ps --all --filter status=created --filter 'name=^ops-astro-staging-(store|backup)-[0-9a-f]{16}$'`
-  and removes each with `docker rm --volumes`, as the code does, so the
-  image's empty data volume goes too.
+  A removal docker answers is already in progress counts as gone; if the
+  daemon's own removal then fails, docker keeps the container, dead, with its
+  login. The runbook lists any of these, in any state, by the run containers'
+  own names, never staging's services, with
+  `docker ps --all --filter 'name=^ops-astro-staging-(store|backup)-[0-9a-f]{16}$'`
+  and removes each with `docker rm --force --volumes`, as the code does, so
+  the image's empty data volume goes too.
 - The store logins (`BACKUP_STORE_URL`, `BACKUP_RETENTION_URL`,
   `RESTORE_STORE_URL`) are read as exactly
   `postgres://user:password@host[:port]/database[?sslmode=...]`, and must
-  read back from the URL parser as written: percent-encode the password and
-  the database name (`encodeURIComponent`), or the reach refuses the address.
+  read back from the URL parser as written: percent-encode the user, the
+  password and the database name (`encodeURIComponent`), or the reach refuses the address.
 
 The staging worker and its outbox forwarder (`worker`, `forwarder`) are one
 unit: the same pinned Node image, running the checkout the runbook copies into

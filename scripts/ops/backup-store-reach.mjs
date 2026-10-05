@@ -149,7 +149,12 @@ export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
   };
 }
 
-/** Stops `run` without waiting; a container left behind reaches the reach through `run.exited`. */
+/**
+ * Stops `run` without waiting. A container left behind before the client
+ * closed reaches the reach through `run.exited`; a late removal by name the
+ * stop makes after that (a create still under way when the stop came) is not
+ * answered here, and the runbook's sweep finds that container.
+ */
 function stopQuietly(run) {
   run.stop().catch(() => {});
 }
