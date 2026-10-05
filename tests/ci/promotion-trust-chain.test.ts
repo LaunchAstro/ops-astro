@@ -239,6 +239,10 @@ it('a folder at the link swap name, or a link folder the promoter cannot write, 
     ['a folder at current.promoting', (prod: string) => mkdirSync(join(prod, 'current.promoting'))],
     ['a link folder without owner write', (prod: string) => chmodSync(prod, 0o555)],
     [
+      'a link folder the promoter can write but not search',
+      (prod: string) => chmodSync(prod, 0o600),
+    ],
+    [
       'a served/ without owner write',
       (prod: string) => mkdirSync(join(prod, 'served'), { mode: 0o555 }),
     ],
