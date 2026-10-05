@@ -518,7 +518,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
   });
 
   it('MP-14-10a core: expiry is judged on the database clock after the lock wait', async () => {
-    const mandateId = await seedMandate({ classes: ['email.send'], expires: '2 seconds' });
+    const mandateId = await seedMandate({ classes: ['email.send'], expires: '4 seconds' });
     const locked = deferred();
     const release = deferred();
     let holder = 0;
@@ -539,14 +539,18 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a graduation region and mandat
           where id = $1 and expires_at > clock_timestamp()`,
         [mandateId],
       );
-    // The check is parked on the lock while the mandate is still live ...
-    await blockedBy(holder, 'standing_mandates');
-    expect(await liveNow()).toBe(1);
-    // ... and is let go only once it has expired.
-    await pause(2000);
-    expect(await liveNow()).toBe(0);
-    release.resolve();
-    await held;
+    try {
+      // The check is parked on the lock while the mandate is still live ...
+      await blockedBy(holder, 'standing_mandates');
+      expect(await liveNow()).toBe(1);
+      // ... and is let go only once it has expired.
+      await pause(4000);
+      expect(await liveNow()).toBe(0);
+    } finally {
+      // A failed step still lets the check go, so the case fails rather than hangs.
+      release.resolve();
+      await held;
+    }
     // The check began while the mandate was live and waited on the lock
     // past its expiry: it is judged expired, not covered.
     expect(await checking).toStrictEqual({ covered: false, reason: 'expired', mandateId });
