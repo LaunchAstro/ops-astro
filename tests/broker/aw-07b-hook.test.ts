@@ -8,11 +8,17 @@
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it as vitestIt } from 'vitest';
 import { landEmailEvent, sendInboxEmail } from '../../packages/core-custody/src/index.ts';
-import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { insertActor, insertPerson } from '../identity/fixture.ts';
 import { attemptsOf, itemFor, MAIL, noDatabase, useEmailWorld, w } from './email-world.ts';
-import { eventBody, hook, mountHook, post, sentItem, sign } from './email-hook-world.ts';
+import {
+  eventBody,
+  hook,
+  mountHook,
+  post,
+  secondPerson,
+  sentItem,
+  sign,
+} from './email-hook-world.ts';
 import { heldOpen, stillWaiting } from './email-timing-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -24,32 +30,6 @@ beforeAll(() => {
 
 const states = async (item: string): Promise<readonly string[]> =>
   (await attemptsOf(item)).map((row) => row.state);
-
-let cleo = '';
-/** A second person in the first business, reading its every task, with a confirmed address. */
-async function secondPerson(): Promise<string> {
-  if (cleo !== '') return cleo;
-  cleo = await w.db.app.withBusiness(w.alpha, async (tx) => {
-    const person = await insertPerson(tx, 'Cleo');
-    const granted = await issueGrant(tx, [], {
-      subject: { kind: 'person', id: person },
-      scope: { kind: 'business', id: null },
-      collection: 'task',
-      action: 'read',
-      parentGrantId: null,
-      grantedByActorId: await insertActor(tx, person),
-    });
-    if (!granted.ok) throw new Error('hook isolation: the read grant was refused');
-    await tx.query(
-      `insert into public.person_identifiers
-         (business_id, id, person_id, kind, value, observed_value, source_system, review_state)
-       values ($1, gen_random_uuid(), $2, 'email', $3, $3, 'test', 'confirmed')`,
-      [tx.businessId, person, `cleo-${w.canary}`],
-    );
-    return person;
-  });
-  return cleo;
-}
 
 it('AW-07b hook signature: a signed delivered event moves an accepted attempt; sent alone never shows delivered, an open never sets seen', async () => {
   const { item, messageId } = await sentItem();
