@@ -66,7 +66,7 @@ grant select, insert on public.trace_expiry_asks to ops_astro_app;
 -- of what is already gone, and confirmed at a place. The owed check looks a
 -- run up in the batches' runs, so they get an index. A pass whose owed reads
 -- leave a run unanswered records the runs the store answered and those it
--- did not, each with the span its read did not reach (aligned); the next
+-- did not, each with where its read stopped (aligned); the next
 -- pass, from the rows inside the window, reads the
 -- runs it read longest ago first, a run left unanswered before one answered
 -- in the same pass, and an unanswered run from where its read stopped.

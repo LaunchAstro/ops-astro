@@ -2001,7 +2001,7 @@ and codes, never a sentence, to a trace target an operator reads.
   it read on a batch row (code `expiry_unconfirmed`, nothing confirmed;
   rows older than the window are not read again): those answered
   (`read_run_ids`), and those not (`unanswered_run_ids`), each with the span
-  its read did not reach (`resume_ids`). The next pass reads the runs it read
+  where its read stopped (`resume_ids`: the first span it did not reach, or after a whole round its first unanswered span). The next pass reads the runs it read
   longest ago first, never-read ones before all, and of one pass's, those it
   left unanswered first, each from where its read stopped and round to it. So
   neither a few traces that never answer nor runs that always answer can

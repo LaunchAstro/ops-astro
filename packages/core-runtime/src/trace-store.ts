@@ -11,7 +11,7 @@
 // not answer does not stop the run's: an older span may answer absent.
 // Reads the store does not answer, three in a row, end a pass's owed
 // read-back. A pass that leaves a run unanswered records the runs it read,
-// those it had no answer for with the span their read did not reach, and the
+// those it had no answer for with where their read stopped, and the
 // next pass reads the runs it reached least lately first, an unanswered run
 // from where it stopped
 // (`owedAsks` in `trace-owed.ts`).
