@@ -87,7 +87,8 @@ export async function observedRefusal(
   if (kept.length === 0) return null;
   return refuse(
     'TRANSITION_NOT_PERMITTED',
-    'this step was observed at a cost above its hold, and nothing has counted that cost yet',
+    'this step was observed and its cost is not counted yet, ' +
+      'whether the cost ran above the hold or a call on it is still open',
     'Record the step’s outcome first, then end the work.',
   );
 }
