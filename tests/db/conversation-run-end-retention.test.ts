@@ -85,3 +85,34 @@ it('a run ending now keeps the conversation body for the retention window', asyn
   expect(ended).toMatchObject({ state: 'cancelled', recent: true });
   expect(await purge(conversationId)).toEqual({ ok: false, code: 'NOT_DUE' });
 });
+
+it('a run cancelled while its plan stays live has ended, so the body is held only for the window after', async () => {
+  const taskId = await plannedTask(w, signed(w.ada));
+  const conversationId = await openConversation();
+  const [run] = await w.db.admin.execute<{ id: string; lineage_id: string }>(
+    'select id, lineage_id from public.planned_runs where business_id = $1 and task_id = $2',
+    [w.alpha, taskId],
+  );
+  if (run === undefined) throw new Error('approved task has no run');
+  await w.db.admin.execute(
+    'update public.planned_runs set origin_conversation_id = $2 where id = $1',
+    [run.id, conversationId],
+  );
+  await ageAndWrap(conversationId);
+  expect(await purge(conversationId)).toEqual({ ok: false, code: 'WORK_OPEN' });
+  // The budget stop's own end (endAtBudgetStop, and the last ask spent in
+  // stopAtSpentHold): the run is cancelled as the application role writes it,
+  // and the plan's lineage is left live.
+  await w.db.app.withBusiness(w.alpha, async (tx) => {
+    await tx.query(
+      `update public.planned_runs set state = 'cancelled' where business_id = $1 and id = $2`,
+      [tx.businessId, run.id],
+    );
+  });
+  const [lineage] = await w.db.admin.execute<{ terminal_at: Date | null }>(
+    'select terminal_at from public.proposal_lineages where id = $1',
+    [run.lineage_id],
+  );
+  expect(lineage).toEqual({ terminal_at: null });
+  expect(await purge(conversationId)).toEqual({ ok: false, code: 'NOT_DUE' });
+});

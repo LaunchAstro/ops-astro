@@ -158,6 +158,24 @@ describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
     expect(await messages(conversationId)).toBe(0);
   });
 
+  it('a task created from a conversation racing its purge waits on the conversation lock and is refused; no task names a purged conversation', async () => {
+    const conversationId = await dueForPurge('create-race');
+    const race = await whileHeld(
+      async (tx) => await purgeConversation(tx, { conversationId, operationId: randomUUID() }),
+      async (): Promise<Answer> =>
+        await w.as(w.owner, 'task.create', { fields: { title: 'Raced work' }, conversationId }),
+    );
+    expect(race.first).toMatchObject({ ok: true, replayed: false, messagesPurged: 1 });
+    expect((race.racer.body as { code?: string }).code).toBe('NOT_FOUND');
+    expect(
+      await w.count(
+        `select count(*) as n from public.audit_events
+          where origin_conversation_id = $1 and command = 'task.create'`,
+        [conversationId],
+      ),
+    ).toBe(0);
+  });
+
   it('MP-7-11 page scope replaces: a pointer racing the purge waits on the conversation lock and is refused; nothing lands on a purged conversation', async () => {
     const conversationId = await dueForPurge('pointer-race');
     const race = await whileHeld(

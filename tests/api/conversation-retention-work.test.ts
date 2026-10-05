@@ -134,3 +134,29 @@ it('a gate decided today restarts the conversation retention window', async () =
     messages: 1,
   });
 });
+
+it('a gate left pending past its expiry has ended at its expiry and no longer holds the body', async () => {
+  const created = await c.createTask('gate past expiry');
+  const proposal = await c.propose(created.id, created.revision, 'gate_past_expiry');
+  const conversationId = await started(w, w.owner, {
+    body: 'The undecided gate is conversation work',
+  });
+  await w.fixture.db.admin.execute(
+    "update public.gates set origin_conversation_id = $2, expires_at = now() - interval '8 days' where id = $1",
+    [proposal['gateId'], conversationId],
+  );
+  const [gate] = await w.fixture.db.admin.execute<{ state: string }>(
+    'select state from public.gates where id = $1',
+    [proposal['gateId']],
+  );
+  expect(gate).toEqual({ state: 'pending' });
+  await w.age(conversationId, 8);
+  expect(await wrap(conversationId)).toMatchObject({ ok: true, written: true });
+  expect({
+    outcome: await purge(conversationId),
+    messages: await messages(conversationId),
+  }).toMatchObject({
+    outcome: { ok: true },
+    messages: 0,
+  });
+});
