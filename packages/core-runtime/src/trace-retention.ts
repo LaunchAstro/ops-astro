@@ -9,7 +9,14 @@
 //    the newest event older than the window, and no batch confirming it
 //    since that event. At most one page of the endpoint's cap.
 // 2. Their trace ids, derived as the exporter derives them; no listing.
-// 3. One delete for the page, through the port (custody's egress).
+// 3. One delete for the page, through the port (custody's egress). An event
+//    of a page's run can be written and exported between the selection and
+//    the delete, and the delete takes it too. So after the delete, answered
+//    or not, when a page's run has an event past the selection's cursor, the
+//    export's cursor goes back to where the selection read it (if it moved
+//    past) and takes a new version, which an export read before then cannot
+//    advance from. The export sends those events again (their ids are
+//    derived, so a re-send is the same span), starting the trace afresh.
 // 4. Each id read back: the endpoint may answer success for work its guard
 //    skipped, so only a read that finds nothing confirms a run.
 // 5. One batch row, append only (0103): the window, the runs asked, the runs
@@ -56,13 +63,25 @@ export async function expireOnce(
   const batches: RetentionBatch[] = [];
   for (;;) {
     // eslint-disable-next-line no-await-in-loop -- one page after another
-    const runs = await database.withBusiness(
+    const selected = await database.withBusiness(
       businessId,
       async (tx) => await due(tx, windowDays, page),
     );
+    const { runs } = selected;
     if (runs.length === 0) break;
+    const ids = runs.map((runId) => derivedId(key, ['trace', businessId, runId], 32));
     // eslint-disable-next-line no-await-in-loop -- one page after another
-    const batch = await expireBatch(database, businessId, key, ports, runs, windowDays);
+    const answer = await ports.expire(ids);
+    // eslint-disable-next-line no-await-in-loop -- one page after another
+    await database.withBusiness(businessId, async (tx) => await resend(tx, selected));
+    // eslint-disable-next-line no-await-in-loop -- one page after another
+    const batch = await confirmBatch(
+      database,
+      businessId,
+      ports,
+      { runs, ids, answer },
+      windowDays,
+    );
     batches.push(batch);
     // A finished batch confirmed every run it asked, so the next page is new runs.
     if (batch.code !== null || runs.length < page) break;
@@ -70,8 +89,19 @@ export async function expireOnce(
   return batches;
 }
 
-async function due(tx: TenantQuery, windowDays: number, page: number): Promise<readonly string[]> {
-  const rows = await tx.query<{ readonly run_id: string }>(
+/** The due runs, and the export's cursor as the selection read it. */
+interface Selected {
+  readonly runs: readonly string[];
+  readonly afterTx: string | null;
+  readonly afterId: string | null;
+}
+
+async function due(tx: TenantQuery, windowDays: number, page: number): Promise<Selected> {
+  const rows = await tx.query<{
+    readonly run_id: string;
+    readonly after_tx: string | null;
+    readonly after_id: string | null;
+  }>(
     `with last as (
        select run_id, max(created_at) as last_at from public.run_events
         where business_id = $1 group by run_id
@@ -80,7 +110,7 @@ async function due(tx: TenantQuery, windowDays: number, page: number): Promise<r
          from public.trace_expiry_batches b, unnest(b.expired_run_ids) as run_id
         where b.business_id = $1 group by run_id
      )
-     select l.run_id from last l
+     select l.run_id, cur.after_tx::text as after_tx, cur.after_id from last l
        join public.copy_registrations c
          on c.business_id = $1 and c.copy_class = 'diagnostic_trace'
         and c.copy_key = 'run:' || l.run_id::text
@@ -95,19 +125,53 @@ async function due(tx: TenantQuery, windowDays: number, page: number): Promise<r
       limit $3`,
     [tx.businessId, windowDays, page],
   );
-  return rows.map((row) => row.run_id);
+  return {
+    runs: rows.map((row) => row.run_id),
+    afterTx: rows[0]?.after_tx ?? null,
+    afterId: rows[0]?.after_id ?? null,
+  };
 }
 
-async function expireBatch(
+/**
+ * When a run just deleted has an event past the selection's cursor (exported,
+ * in flight or still to go): the cursor back to the selection's if it moved
+ * past it, and a new version either way, so the export sends those events
+ * again. No such event, the cursor is left alone.
+ */
+async function resend(tx: TenantQuery, { runs, afterTx, afterId }: Selected): Promise<void> {
+  await tx.query(
+    `update public.trace_export_cursors c
+        set (after_tx, after_id) = (
+              select case when moved then $2::text::xid8 else c.after_tx end,
+                     case when moved then $3::uuid else c.after_id end
+                from (select c.after_tx is not null
+                         and ($2::text is null
+                              or (c.after_tx, c.after_id) > ($2::text::xid8, $3::uuid)) as moved) m),
+            updated_at = clock_timestamp()
+      where c.business_id = $1
+        and exists (select 1 from public.run_events ev
+                     where ev.business_id = $1 and ev.run_id = any($4::uuid[])
+                       and ($2::text is null or (ev.tx, ev.id) > ($2::text::xid8, $3::uuid)))`,
+    [tx.businessId, afterTx, afterId, runs],
+  );
+}
+
+async function confirmBatch(
   database: TraceDatabase,
   businessId: string,
-  key: Buffer,
   ports: ExpiryPorts,
-  runs: readonly string[],
+  {
+    runs,
+    ids,
+    answer,
+  }: {
+    readonly runs: readonly string[];
+    readonly ids: readonly string[];
+    readonly answer: Delivered;
+  },
   windowDays: number,
 ): Promise<RetentionBatch> {
-  const ids = runs.map((runId) => derivedId(key, ['trace', businessId, runId], 32));
-  let code: ExpiryCode | null = gapOf(await ports.expire(ids));
+  let code: ExpiryCode | null = gapOf(answer);
   const confirmed: string[] = [];
   if (code === null) {
     for (const [at, runId] of runs.entries()) {
