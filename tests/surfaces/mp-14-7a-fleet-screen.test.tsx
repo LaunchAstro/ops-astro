@@ -137,6 +137,8 @@ interface Stub {
   readonly nextRepair: (answer: 'lost' | 'stale') => void;
   /** Hold the next repair's answer until `release` is called. */
   readonly holdRepair: () => () => void;
+  /** Refuse every fleet read from now on, as a revoked `connection:read` would. */
+  readonly refuseFleet: () => void;
 }
 
 function fleetOf(rows: readonly ConnectionView[], repaired: ReadonlySet<string>): unknown {
@@ -165,6 +167,7 @@ function server(fleets: Fleets = FLEETS): Stub {
   const held = new Map<string, Promise<void>>();
   let repairHeld: Promise<void> | undefined;
   const queued: ('lost' | 'stale')[] = [];
+  let refusing = false;
   const answer = async (url: string | URL, init?: RequestInit): Promise<Response> => {
     const at = String(url);
     sent.push(`${at} ${String(init?.body ?? '')}`);
@@ -173,6 +176,8 @@ function server(fleets: Fleets = FLEETS): Stub {
       const wait = held.get(business);
       held.delete(business);
       await wait;
+      if (refusing)
+        return json({ refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] }, 403);
       return json(fleetOf(fleets[business] ?? [], repaired));
     }
     if (at.endsWith('/connector/repair')) {
@@ -215,6 +220,9 @@ function server(fleets: Fleets = FLEETS): Stub {
     },
     nextRepair: (outcome) => {
       queued.push(outcome);
+    },
+    refuseFleet: () => {
+      refusing = true;
     },
   };
 }
@@ -652,40 +660,61 @@ describe('MP-14-7a Connections & signal fleet', () => {
     const reads = (): number =>
       stub.sent.filter((call) => call.includes('/connection/fleet')).length;
     const page = await mount(SCREENS['agency:connections'](alphaContext(stub)));
-    await pass(1);
-    expect(reads()).toBe(1);
-    await page.click('[data-fleet-facet="broken"]');
-    await page.click('[data-connection="c-11"]');
-    expect(page.find('[data-connection-repair="c-11"]')).not.toBeNull();
-    // Another person starts c-11's repair; the open page shows it within 30 s.
-    await someoneElseRepairs(stub, 'c-11');
-    await pass(FLOOR_MS);
-    expect(reads()).toBe(2);
-    expect(page.find('[data-connection-detail="c-11"]')?.textContent).toContain('Repair started');
-    expect(page.find('[data-fleet-facet="broken"]')?.getAttribute('aria-pressed')).toBe('true');
-    // Hidden, the page reads nothing; shown again, it reads at once.
-    shown = 'hidden';
-    act(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
-    await someoneElseRepairs(stub, 'c-12');
-    await pass(FLOOR_MS * 3);
-    expect(reads()).toBe(2);
-    shown = 'visible';
-    act(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
-    await pass(1);
-    expect(reads()).toBe(3);
-    await page.click('[data-connection="c-12"]');
-    expect(page.find('[data-connection-detail="c-12"]')?.textContent).toContain('Repair started');
-    // Back online, it reads at once.
-    act(() => {
-      window.dispatchEvent(new Event('online'));
-    });
-    await pass(1);
-    expect(reads()).toBe(4);
-    await page.unmount();
+    try {
+      await pass(1);
+      expect(reads()).toBe(1);
+      await page.click('[data-fleet-facet="broken"]');
+      await page.click('[data-connection="c-11"]');
+      expect(page.find('[data-connection-repair="c-11"]')).not.toBeNull();
+      // Another person starts c-11's repair; the open page shows it within 30 s.
+      await someoneElseRepairs(stub, 'c-11');
+      await pass(FLOOR_MS);
+      expect(reads()).toBe(2);
+      expect(page.find('[data-connection-detail="c-11"]')?.textContent).toContain('Repair started');
+      expect(page.find('[data-fleet-facet="broken"]')?.getAttribute('aria-pressed')).toBe('true');
+      // Hidden, the page reads nothing; shown again, it reads at once.
+      shown = 'hidden';
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await someoneElseRepairs(stub, 'c-12');
+      await pass(FLOOR_MS * 3);
+      expect(reads()).toBe(2);
+      shown = 'visible';
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await pass(1);
+      expect(reads()).toBe(3);
+      await page.click('[data-connection="c-12"]');
+      expect(page.find('[data-connection-detail="c-12"]')?.textContent).toContain('Repair started');
+      // Back online, it reads at once.
+      act(() => {
+        window.dispatchEvent(new Event('online'));
+      });
+      await pass(1);
+      expect(reads()).toBe(4);
+    } finally {
+      await page.unmount();
+    }
+  });
+
+  it('MP-14-7a a re-read on the floor that is refused drops the drawn fleet', async () => {
+    vi.useFakeTimers({ now: NOW });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const stub = server();
+    const page = await mount(SCREENS['agency:connections'](alphaContext(stub)));
+    try {
+      await pass(1);
+      expect(shownIds(page)).toHaveLength(10);
+      stub.refuseFleet();
+      await pass(FLOOR_MS);
+      expect(page.find('[data-outcome="denied"]')?.textContent).toContain('SCOPE_NOT_GRANTED');
+      expect(page.all('[data-connection]')).toHaveLength(0);
+      expect(page.find('[data-fleet-marker]')).toBeNull();
+    } finally {
+      await page.unmount();
+    }
   });
 
   it('MP-14-7a a refused fleet read says so, and draws no rows', async () => {
