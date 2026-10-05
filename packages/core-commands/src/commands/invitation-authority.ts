@@ -3,7 +3,12 @@
 // C39-T: what an invitation act asks of its caller beyond the envelope's
 // `access:share`, and the same asked again once the act holds its locks.
 
-import { checkAuthority, subjectsOf, type TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  lockAccess,
+  subjectsOf,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
 import { refused, type HandlerOutcome } from './outcome.ts';
@@ -34,7 +39,9 @@ export async function notManager(
 /**
  * Asked again once every lock is held: a grant revoked while the act waited
  * (at the limiter or the invitation's row) refuses it, writing nothing. The
- * envelope asked `access:share` before the wait; an administrator's
+ * business's access lock comes first: every revocation holds it until it
+ * commits, so one written but not yet committed is waited for, not read past.
+ * The envelope asked `access:share` before the wait; an administrator's
  * invitation asks `access:manage` too.
  */
 export async function noLongerHeld(
@@ -42,15 +49,12 @@ export async function noLongerHeld(
   context: CommandContext,
   role: string,
 ): Promise<HandlerOutcome | undefined> {
+  await lockAccess(tx);
   const shares = await checkAuthority(tx, subjectsOf(context.session), {
     collection: 'access',
     action: 'share',
     scope: { kind: 'business', id: null },
   });
-  if (!shares.ok) {
-    return refused(
-      refuseCommand('SCOPE_NOT_GRANTED', [], ['no live grant of access:share covers it']),
-    );
-  }
+  if (!shares.ok) return refused(shares.refusal);
   return role === ADMIN_ROLE ? await notManager(tx, context) : undefined;
 }
