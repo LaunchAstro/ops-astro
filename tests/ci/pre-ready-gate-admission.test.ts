@@ -97,7 +97,7 @@ const SEES_NO_CALLER_ENV = [
   '',
 ].join('\n');
 
-describe('the checks the gate runs see none of the caller’s tokens', () => {
+describe('pnpm check, run by the gate, sees none of the caller’s tokens', () => {
   it(
     'keeps GH_TOKEN and CHECK_SCOPE from pnpm check',
     () => {
@@ -124,17 +124,25 @@ describe('the checks the gate runs see none of the caller’s tokens', () => {
     },
     SLOW,
   );
+});
 
+describe('the test files the gate runs see none of the caller’s tokens', () => {
   it(
-    'keeps GH_TOKEN and the database address from the test files it runs',
+    'keeps GH_TOKEN and the database address from them',
     () => {
       const dir = mkdtempSync(join(tmpdir(), 'pre-ready-env-'));
       try {
         symlinkSync(join(root, 'node_modules'), join(dir, 'node_modules'));
         mkdirSync(join(dir, 'tests', 'db'), { recursive: true });
+        mkdirSync(join(dir, 'tmp'));
         writeFileSync(join(dir, 'tests', 'db', 'named-suite-manifest.test.ts'), SEES_NO_CALLER_ENV);
         const result = withEnv(
-          { GH_TOKEN: 'caller-token-marker', DATABASE_URL: 'postgres://caller.invalid/db' },
+          // The nested run's own temp files stay in this case's folder.
+          {
+            GH_TOKEN: 'caller-token-marker',
+            DATABASE_URL: 'postgres://caller.invalid/db',
+            TMPDIR: join(dir, 'tmp'),
+          },
           () => suiteRegistration({ cwd: dir, tools: root }),
         );
         expect(result.ok, result.message).toBe(true);
