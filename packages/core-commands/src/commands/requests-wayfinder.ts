@@ -9,4 +9,12 @@ import type { Targeted } from './request-envelope.ts';
 
 export type WayfinderRequest =
   | ({ readonly command: 'task.set_type'; readonly taskType: unknown } & Targeted)
+  | ({
+      readonly command: 'map.revise';
+      readonly destination?: unknown;
+      readonly notes?: unknown;
+      readonly addFog?: unknown;
+      readonly addOutOfScope?: unknown;
+      readonly retire?: unknown;
+    } & Targeted)
   | ({ readonly command: 'map.scope'; readonly client: unknown } & Targeted);
