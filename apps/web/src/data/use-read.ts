@@ -156,7 +156,10 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the dependency list is the caller's, plus the grant.
   }, [grantKey, ...options.deps]);
 
-  useFollow(options.live, state, reread, options.deps);
+  // The last answer belongs to its grant as well as its record: a business or
+  // person change is a new reader, whose first answer the old topic must not
+  // hold back from recovery (#397).
+  useFollow(options.live, state, reread, [grantKey, ...options.deps]);
 
   const { rollup } = options;
   useEffect(() => rollup?.follow(reload), [rollup, reload]);
@@ -186,13 +189,13 @@ function useFollow<T>(
   deps: readonly unknown[],
 ): void {
   const topicRef = useRef<string | null>(null);
-  // Whether that answer is this record's: the last record's holds off no first-answer recovery.
+  // Whether that answer is this reader's and this record's: the last one's holds off no recovery.
   const ownRef = useRef(false);
   if (state.outcome === 'ready' || state.outcome === 'empty') {
     topicRef.current = live?.topic(state.value) ?? null;
     ownRef.current = true;
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- the caller's dependency list.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the grant and the caller's dependency list.
   useEffect(
     () => () => {
       ownRef.current = false;

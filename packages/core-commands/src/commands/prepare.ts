@@ -251,16 +251,20 @@ function refuseMalformedIdentifier(
  * field key it does not know is `FIELD_UNKNOWN`, as before.
  */
 const FREE_OPERANDS: readonly string[] = [
+  'addFog',
+  'addOutOfScope',
   'affected',
   'body',
   'contract',
   'currency',
   'dataClass',
   'deletion',
+  'destination',
   'disclosures',
   'foundBy',
   'name',
   'note',
+  'notes',
   'payload',
   'purpose',
   'reason',

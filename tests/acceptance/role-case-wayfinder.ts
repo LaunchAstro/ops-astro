@@ -36,6 +36,13 @@ const WAYFINDER_BODIES: Partial<Record<CommandName, Recipe>> = {
     ...(await freshMap(context)),
     client: await madeClient(context),
   }),
+  // A map's revision writes its version and components (P15).
+  'map.revise': async (context) => ({
+    ...(await freshMap(context)),
+    notes: 'the admin revises it',
+  }),
+  'map.view': async (context) => ({ recordId: (await freshMap(context)).recordId }),
+  'map.frontier': async (context) => ({ recordId: (await freshMap(context)).recordId }),
 };
 
 /** The recipe's body for `name`; a name with no recipe fails the matrix. */

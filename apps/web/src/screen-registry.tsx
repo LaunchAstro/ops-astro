@@ -9,7 +9,7 @@
 // instead of falling through to whichever screen a bare `else` happened to
 // draw.
 
-import type { ReactElement, ReactNode } from 'react';
+import { Fragment, type ReactElement, type ReactNode } from 'react';
 import { Gallery } from '@launchastro/ui';
 import { clientNamedIn } from './client-address.ts';
 import {
@@ -166,12 +166,21 @@ export const SCREENS: {
   ),
 };
 
-/** The screen a matched address draws, handed that route's own parameters. */
+/**
+ * The screen a matched address draws, handed that route's own parameters.
+ * Keyed on the grant: a screen's own state (a typed proposal, an outcome line)
+ * was made under one business and person, so a switch that keeps the same
+ * address, in the page or a dock panel, draws the screen afresh (#487).
+ */
 export function drawScreen<Id extends AuthenticatedRouteId>(
   match: RouteMatch<Id>,
   context: Omit<ScreenContext<Id>, 'params'>,
 ): ReactElement {
-  return SCREENS[match.id]({ ...context, params: match.params });
+  return (
+    <Fragment key={context.grantKey}>
+      {SCREENS[match.id]({ ...context, params: match.params })}
+    </Fragment>
+  );
 }
 
 /** What an open route's screen is handed: the public reads only, never the session's client. */

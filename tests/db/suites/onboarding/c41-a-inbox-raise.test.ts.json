@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C41-A: a person or client-wait step parked with an inbox item to whoever owns its move, closed with the step, and never raised or shown across a business, a client or an agent"
+}

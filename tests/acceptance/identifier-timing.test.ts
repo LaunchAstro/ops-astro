@@ -247,6 +247,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.rank': { afterId: w.h.alphaTask.id },
       'task.set_type': { taskType: 'build' },
       'map.scope': { client: randomUUID() },
+      'map.revise': { notes: NOBODY },
     };
     // Named by `recordId` (`targetKeyOf`): task.receipt names its task by
     // `attemptId` and has its own cell below.
@@ -485,11 +486,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 77 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 80 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(77);
-    expect(names).toHaveLength(77);
+    expect(new Set(names).size, 'distinct operations').toBe(80);
+    expect(names).toHaveLength(80);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
