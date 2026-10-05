@@ -61,6 +61,14 @@ jobs:
       # after the gate runs on a head sent back for fixes (scripts/sent-back-hold.mjs).
       - name: A pull request sent back for fixes waits for its fix head
         run: node scripts/sent-back-hold.mjs
+      # CI-SPEED (#724): a pull request whose head is a merge-queue commit (the
+      # tip of a gh-readonly-queue/ branch, under any branch name) fails here:
+      # every job that waits on the gate is skipped, and `database conformance`,
+      # which runs always(), fails. review-evidence.yml runs the same check, as
+      # it waits on no gate. It fails closed on a pull request it cannot read;
+      # other events pass (scripts/queue-head-check.mjs).
+      - name: A pull request never runs its checks on a merge-queue commit
+        run: node scripts/queue-head-check.mjs
       - name: Required scanner runtime
         run: python3 -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11 or newer is required'"
       - name: Self-test, before anything is believed
@@ -190,8 +198,8 @@ jobs:
         run: pnpm exec playwright install --with-deps --only-shell chromium
       # CI-SPEED, light pull requests: CHECK_SCOPE names this check, and
       # scripts/check.mjs asks scripts/ci-scope.ts. On a pull request it runs
-      # the light set: every step but the build, with the tests the change
-      # reaches in place of the full test run; the full run and the build run in the
+      # the light set: every step, the build before the tests, with the tests
+      # the change reaches in place of the full test run; the full run is in the
       # merge queue, the only way into main. On a merge group or a push it
       # runs every step, as before. No step here carries a condition.
       - run: pnpm check
@@ -223,8 +231,10 @@ jobs:
       # re-plan), stored the way staging keeps it, under the name the staging
       # definition gives it; the promotion step must select it by the stamp
       # it carries, check its bytes against the digest it records, and record
-      # it. It touches no service and no database. A pull request makes no
-      # build, so this runs in the merge queue.
+      # it. It touches no service and no database. A pull request's light set
+      # builds too, but this dry run is queue-only: on a pull request
+      # `scripts/ci-scope.ts --decide` says skip and it passes, so it runs in
+      # the merge queue.
       - name: S0-1 promotion same artefact, a dry run over the build output just made
         run: |
           set -euo pipefail
@@ -597,6 +607,17 @@ jobs:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+      # The seed's boundary proof is a node:test file, so no manifest runs it: it
+      # makes and drops its own migrated databases on this service.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node --test tests/review/seed-boundaries-proof.test.mjs
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+      # So is the proof that an HTTPS redirect cannot carry the seed's key to plaintext HTTP.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node --test tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
 
   parity:
     # API-1: every app action has its API and CLI equivalent; no database.

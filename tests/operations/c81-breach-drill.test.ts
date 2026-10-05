@@ -42,6 +42,7 @@ import {
   view,
   writes,
 } from './c81-breach-drill-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/c81-breach-drill: DATABASE_URL is unset, so nothing below ran.');
@@ -261,7 +262,7 @@ describe.skipIf(serverUrl === undefined)('C81 the breach drill', () => {
   it('C81 isolation canary: a recipient reaches no log, audit row, operation register row or refusal', async () => {
     const incidentId = await record(incident(4));
     const logged: string[] = [];
-    const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+    const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(capture),
     );

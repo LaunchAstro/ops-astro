@@ -6,13 +6,14 @@
 // as; a context that cannot write one gets a fabricated identifier, which the
 // recipe survives. Every client takes a name of its own (one name per
 // business). Reached from `role-case-positive-body.ts`'s last case, so that
-// file stays under the per-file cap.
+// file stays under the per-file cap; any other name goes on to `wayfinderBody`.
 //
 // A harness, not a suite: nothing here runs on its own.
 
 import { randomUUID } from 'node:crypto';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { BodyContext, Prepared } from './role-case-bodies.ts';
+import { wayfinderBody, type Target } from './role-case-wayfinder.ts';
 import type { Answer } from './world.ts';
 
 const detailOf = (answer: Answer): Readonly<Record<string, unknown>> =>
@@ -40,7 +41,11 @@ async function readyStep(context: BodyContext): Promise<string> {
 }
 
 /** The recipe for an onboarding operation; any other name has no recipe. */
-export async function onboardingBody(name: CommandName, context: BodyContext): Promise<Prepared> {
+export async function onboardingBody(
+  name: CommandName,
+  context: BodyContext,
+  target: Target,
+): Promise<Prepared> {
   switch (name) {
     case 'record.create':
       return { body: { type: 'client', fields: { name: clientName() } } };
@@ -55,6 +60,6 @@ export async function onboardingBody(name: CommandName, context: BodyContext): P
         },
       };
     default:
-      throw new Error(`matrix: no positive control recipe for ${String(name)}`);
+      return { body: await wayfinderBody(name, context, target) };
   }
 }

@@ -30,6 +30,7 @@
 import {
   effectiveGrants,
   issueShare,
+  isWayfinderRecord,
   withdrawShares,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
@@ -56,6 +57,8 @@ export async function shareWithClient(
   const target = targetOf(context);
   // A trashed task is not shared anew (`shareRecord` refuses it the same way).
   if (target.deleted_at !== null) return refused(refuseNotFound());
+  // A map, its tickets and their threads never reach a client surface (WF-1).
+  if (await isWayfinderRecord(tx, target.id)) return refused(refuseNotFound());
   const client = await clientOf(tx, context.spine.taskTypeId, target.id);
   if (client === null)
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['client'], NO_CLIENT_FIXES));

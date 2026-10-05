@@ -7,9 +7,12 @@
     "tests/web/duplicate-form-retry-after-lost-answer-creates-one-task.test.tsx",
     "tests/web/duplicate-seam-retry-after-lost-answer-creates-one-task.test.tsx",
     "tests/web/layout-preferences-api.test.tsx",
+    "tests/web/layout-save-order.test.tsx",
     "tests/web/mp-2-1-isolation-api.test.tsx",
     "tests/web/mp-3-1-isolation-api.test.tsx",
     "tests/web/operations-incident-retry-after-lost-answer-records-once.test.tsx",
+    "tests/web/preferences-save-order-api.test.tsx",
+    "tests/web/saved-flag-save-order.test.tsx",
     "tests/web/sign-in-code-after-enrolment.test.tsx",
     "tests/web/time-log-retry-after-lost-answer-stores-once.test.tsx"
   ],

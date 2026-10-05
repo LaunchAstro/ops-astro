@@ -1,0 +1,9 @@
+{
+  "invariant": [
+    "tests/site/covered-correction-authority.test.ts",
+    "tests/site/delegated-worker-grant-expiry.test.ts",
+    "tests/site/live-correction-boundaries.test.ts",
+    "tests/site/worker-receipt-holds-grants-against-revocation.test.ts",
+    "tests/site/worker-receipt-holds-only-the-grants-it-reads.test.ts"
+  ]
+}

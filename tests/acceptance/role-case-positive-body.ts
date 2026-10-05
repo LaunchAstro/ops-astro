@@ -294,7 +294,7 @@ export function createPositiveBody(
         // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
         return await conversationBody(declaration.name, context);
       default:
-        return await onboardingBody(declaration.name, context);
+        return await onboardingBody(declaration.name, context, target);
     }
   };
 }

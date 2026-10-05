@@ -32,6 +32,7 @@ const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
 import { loginHasVerifiedFactor } from './second-factor.ts';
+import { sessionEnded } from './sessions.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
@@ -234,28 +235,6 @@ export async function standsOnShares(tx: TenantQuery, personId: string): Promise
   ]);
   const row = rows[0];
   return row !== undefined && row.shares > 0 && row.business === 0;
-}
-
-/**
- * Whether the session the token belongs to has ended (C58): signed out, in any
- * business the login reaches (0061), or one of the login's other sessions
- * ended from any business (0063): not the kept one, first signed in at or
- * before that ending. A token naming no session has none to end.
- */
-async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
-  if (presented.sessionId === undefined) return false;
-  const rows = await tx.query<{ readonly ended: boolean }>(
-    `select exists (
-       select 1 from ops.ended_provider_sessions where session_id = $1::uuid
-     ) or exists (
-       select 1 from ops.ended_subject_sessions s
-        where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
-          and s.kept_session is distinct from $1::uuid
-          and to_timestamp($3::bigint) <= s.ended_before
-     ) as ended`,
-    [presented.sessionId, presented.subject, presented.assurance?.signedInAt ?? null],
-  );
-  return rows[0]?.ended === true;
 }
 
 /** A refusal and its record commit together, so nobody is turned away unrecorded. */
