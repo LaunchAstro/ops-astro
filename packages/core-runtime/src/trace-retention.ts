@@ -46,7 +46,7 @@ import {
   type GapCode,
   type TraceDatabase,
 } from './trace-export.ts';
-import { byPlace, owedAsks } from './trace-owed.ts';
+import { byPlace, owedAsks, type Owed } from './trace-owed.ts';
 import { derivedId } from './trace-span.ts';
 
 /** The deletion endpoint's cap on ids per call. */
@@ -100,9 +100,9 @@ export async function expireOnce(
   const silence = { reads: 0 };
   let after: string | null = null;
   while (silence.reads < UNANSWERED) {
-    const from = after;
+    const from: string | null = after;
     // eslint-disable-next-line no-await-in-loop -- one page after another
-    const owed = await database.withBusiness(
+    const owed: readonly Owed[] = await database.withBusiness(
       businessId,
       async (tx) => await owedAsks(tx, windowDays, from, page),
     );

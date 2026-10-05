@@ -33,7 +33,8 @@ interface Place {
   readonly id: string | null;
 }
 
-type Owed = { readonly runId: string } & Place;
+/** One owed ask: its run and its place. */
+export type Owed = { readonly runId: string } & Place;
 
 /** One page of the owed asks, one per run at its latest place, the runs after `after`. */
 export async function owedAsks(
