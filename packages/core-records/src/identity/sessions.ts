@@ -16,6 +16,8 @@
 // subject, then each session, the ending exclusively and the ask shared. An
 // ending through another business so either commits before the ask reads the
 // endings, or waits for the asking write to commit (C52-A, PRV-oa-984-R2.1).
+// A reset's window (C40) is an ending of the subject: its open takes the
+// subject's key alone, as it writes no audit event.
 
 import { randomUUID } from 'node:crypto';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
@@ -165,6 +167,9 @@ export async function endSeenSessions(
  * ended even when the reset's last transaction never commits. Answers its id.
  */
 export async function openResetWindow(tx: TenantQuery, subject: string): Promise<string> {
+  // The subject's ending key: a write that read the login's sessions live
+  // commits first. Not the audit chain: the token's spend writes no event.
+  await advisoryLock(tx, subjectKey(subject));
   const id = randomUUID();
   await tx.query(
     `insert into ops.subject_resets (id, subject_digest)
@@ -300,8 +305,7 @@ export async function sessionEndedHeld(
   presented: VerifiedSubject,
 ): Promise<boolean> {
   if (presented.sessionId === undefined) return false;
-  const shared = 'select pg_advisory_xact_lock_shared(hashtextextended($1, 0))';
-  await tx.query(shared, [subjectKey(presented.subject)]);
-  await tx.query(shared, [sessionKey(presented.sessionId)]);
+  await advisoryLock(tx, subjectKey(presented.subject), 'shared');
+  await advisoryLock(tx, sessionKey(presented.sessionId), 'shared');
   return await sessionEnded(tx, presented);
 }

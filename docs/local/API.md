@@ -2952,7 +2952,9 @@ row lock, the token is read again at that moment: spent or past its life is
 401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403
 `RESET_NEEDS_SUPPORT` with nothing spent. Otherwise every live token of the
 login is spent and the reset's window opens (`ops.subject_resets`,
-20261005144947): every session of the login, in every business, is ended up to
+20261005144947), under the login's session-ending key, so a write that read
+one of its sessions live commits first (C52-A): every session of the login, in
+every business, is ended up to
 the moment the window settles, and until then up to five minutes on. The
 password is set at the provider through custody under the catalogued
 `auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key

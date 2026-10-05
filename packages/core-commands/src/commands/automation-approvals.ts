@@ -101,7 +101,8 @@ async function lockedAuthority(
  * either committed before this lock and refuses the change, or waits for it;
  * one through another business takes the session's ending keys, which the
  * read below holds shared until commit, so it either committed before that
- * read or waits for the change (`sessionEndedHeld`).
+ * read or waits for the change (`sessionEndedHeld`). So does a password
+ * reset's window, which takes the login's subject key as it opens.
  * A refusal rolls the change's rows back with the handler's savepoint. The
  * register keeps it as a scope refusal: the same attempt sent again from a
  * later sign-in is not told that its own session ended.
