@@ -55,6 +55,10 @@ const files = () =>
       .map((f) => [`${WORKFLOWS}/${f}`, read(`${WORKFLOWS}/${f}`)]),
   );
 
+/** Each workflow from which no event can be read: a `%YAML 1.1` header reads `on` as `true`. */
+const eventless = (texts: Map<string, string>) =>
+  [...texts].filter(([f, t]) => workflowEvents(new Map([[f, t]])).size === 0).map(([f]) => f);
+
 /** The workflows with each `[file, from, to]` swap made once; a swap that does not match fails. */
 function planted(...swaps: [string, string, string][]) {
   const texts = files();
@@ -106,6 +110,11 @@ const PLANTS: [string, [string, string, string][], string][] = [
     'a comparison of an empty string with null',
     [gate(routeWith("'' == null"))],
     'compares a non-string',
+  ],
+  [
+    'a number read as truthy where GitHub reads it as false',
+    [gate(routeWith("!fromJSON('0')"))],
+    'contamination gate: reaches the M5 on pull_request,',
   ],
   [
     'a comparison of two arrays',
@@ -202,6 +211,16 @@ describe('merge group: the M5 takes the merge queue alone, behind OPS_CI_LOCAL',
     const missing = [...workflowEvents(files())].filter((e) => !EVENTS.includes(e));
     expect(missing).toStrictEqual([]);
     expect(EVENTS).toContain('an_unlisted_event');
+  });
+
+  it('reads at least one event from every workflow, so none hides its triggers', () => {
+    expect(eventless(files())).toStrictEqual([]);
+    const hidden = planted([
+      `${WORKFLOWS}/structural.yml`,
+      'name: structural\n',
+      '%YAML 1.1\n---\nname: structural\n',
+    ]);
+    expect(eventless(hidden)).toStrictEqual([`${WORKFLOWS}/structural.yml`]);
   });
 
   it('keeps every run on hosted runners while OPS_CI_LOCAL is unset', () => {
