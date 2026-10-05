@@ -73,16 +73,28 @@ export default defineConfig({
     // asks for), Sol's six F2 lost-answer retry proofs and Sol's two F3
     // save-order proofs open their worlds with no skip, as do Sol's three
     // template lock and clone catalogue proofs and the cases written beside
-    // them; without a database they are left out here, and the manifests run
-    // them where there is one.
+    // them, and C31's Sol proof files; without a database they are left out
+    // here, and the manifests run them where there is one. C31's corrupted
+    // audit chain fails by design: only the proof that spawns it from inside a
+    // test worker collects it.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
+      ...(process.env['VITEST_WORKER_ID'] === undefined
+        ? ['tests/custody/c31-audit-chain-corrupted.test.ts']
+        : []),
       ...(database
         ? []
         : [
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
+            'tests/api/server-entry-hosted-sign-in-key.test.ts',
+            'tests/review/forwarder-replay-time-order.test.ts',
             'tests/automations/c33-registry-snapshot-and-claim-races.test.ts',
+            'tests/custody/c31-audit-chain-test-catches-corruption.test.ts',
+            'tests/custody/c31-last-used-moves-forward.test.ts',
+            'tests/custody/c31-revoked-list-and-revision-range.test.ts',
+            'tests/custody/c31-secret-set-guards.test.ts',
+            'tests/custody/c31-two-setters-overlap.test.ts',
             'tests/api/end-others-provider-clock-skew.test.ts',
             'tests/api/end-others-delayed-ending.test.ts',
             'tests/api/end-others-ended-session-leaves-live-list.test.ts',
