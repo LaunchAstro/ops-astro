@@ -77,6 +77,7 @@
     "tests/runtime/person-replay-current-rights.test.ts",
     "tests/runtime/person-work-http.test.ts",
     "tests/runtime/person-work-schedules.test.ts",
+    "tests/runtime/plan-record-cannot-borrow-decision-time.test.ts",
     "tests/runtime/receipt-link-column-refuses-credential-run.test.ts",
     "tests/runtime/recovery-entry.test.ts",
     "tests/runtime/resume-sizing-stop.test.ts",
@@ -120,6 +121,10 @@
     "tests/runtime/t3f-expired-lease.test.ts",
     "tests/runtime/t3f-lease-edges.test.ts",
     "tests/runtime/top-up-session-ended-during-the-settings-wait.test.ts",
+    "tests/runtime/trace-export-gap-records-the-cursor-its-batch-read.test.ts",
+    "tests/runtime/trace-retention-fresh-export-test-rejects-a-lost-fresh-span.test.ts",
+    "tests/runtime/trace-retention-keeps-an-event-exported-after-its-due-check.test.ts",
+    "tests/runtime/trace-retention-step-back-cannot-bring-back-a-confirmed-run.test.ts",
     "tests/runtime/upgrade-guards.test.ts"
   ],
   "conformance": [
@@ -130,6 +135,7 @@
     "tests/runtime/mp-6-2-placement.test.ts",
     "tests/runtime/mp-6-2-plan-record-isolation.test.ts",
     "tests/runtime/mp-6-2-plan-record-stored.test.ts",
+    "tests/runtime/pinned-read-needs-standing-delegation.test.ts",
     "tests/runtime/propose-open-envelope-and-lineage.test.ts",
     "tests/runtime/propose-operands-and-authority.test.ts",
     "tests/runtime/recovery-replay-pin.test.ts",

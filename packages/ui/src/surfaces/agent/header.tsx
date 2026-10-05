@@ -11,6 +11,8 @@ import type { GateRef } from './gate.tsx';
 export function ProposalHeader(props: {
   readonly story: RunStory;
   readonly busy: boolean;
+  /** A refused decision closed the decide controls, Reject among them. */
+  readonly decideClosed: boolean;
   readonly onReject: (gate: GateRef) => void;
   readonly onCancel: (lineageId: string) => void;
 }): ReactElement {
@@ -28,7 +30,7 @@ export function ProposalHeader(props: {
             className="btn btn--sm btn--secondary"
             type="button"
             data-agent="reject"
-            disabled={props.busy}
+            disabled={props.busy || props.decideClosed}
             onClick={() => {
               props.onReject({ gateId: box.gateId, versionId: box.versionId });
             }}

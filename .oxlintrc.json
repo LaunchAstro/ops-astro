@@ -19,6 +19,14 @@
     },
     { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } },
     {
+      "files": ["tests/automations/c33-registry-snapshot-and-claim-races.test.ts"],
+      "rules": {
+        "consistent-function-scoping": "off",
+        "max-lines-per-function": "off",
+        "no-await-in-loop": "off"
+      }
+    },
+    {
       "files": ["tests/surfaces/select-arrow-up-after-open-shrink.test.tsx"],
       "rules": { "no-await-in-loop": "off" }
     },

@@ -4,6 +4,7 @@
 // and records handed out a minute, each held per credential, per person and
 // per business; and the made-up or dead bearers a business key is sent a
 // minute, past which a not-live one is answered as limited and not recorded.
+// A key nobody holds has the same door, so the two answer alike.
 //
 // Past a full door each bearer costs one unlocked read and writes nothing
 // (`executeCredentialCommand`); nothing here holds a bearer, its digest or a
@@ -39,37 +40,53 @@ export const DEFAULT_AGENT_LIMITS: AgentLimits = {
 };
 
 const WINDOW_MS = 60_000;
+const SWEEP_MS = 1000;
 const LEVELS = ['credential', 'person', 'business'] as const;
 
-interface Window {
+export interface Window {
   start: number;
   requests: number;
   exports: number;
 }
 
-/** This key's window at `at`: the one running, or a fresh one. */
-function currentWindow(windows: Map<string, Window>, key: string, at: number): Window {
-  const held = windows.get(key);
-  if (held !== undefined && at - held.start < WINDOW_MS) return held;
-  // A new window; stale ones go when the map grows, so it cannot grow without end.
-  if (windows.size > 10_000) {
-    for (const [old, window] of windows) if (at - window.start >= WINDOW_MS) windows.delete(old);
-  }
-  const fresh = { start: at, requests: 0, exports: 0 };
-  windows.set(key, fresh);
-  return fresh;
+/**
+ * Windows by key, each the one running or a fresh one. A new window goes to
+ * the back, so the map runs oldest first, and at most once a second the lapsed
+ * ones go from the front, the pass stopping at the first live one: a flood of
+ * new keys (a made-up business key each) costs each one the same. The map
+ * may be handed in, so a test can watch the lapsed ones go.
+ */
+export function windowsOf(
+  windows: Map<string, Window> = new Map(),
+): (key: string, at: number) => Window {
+  let swept = Number.NEGATIVE_INFINITY;
+  return (key, at) => {
+    const held = windows.get(key);
+    if (held !== undefined && at - held.start < WINDOW_MS) return held;
+    if (Math.abs(at - swept) >= SWEEP_MS) {
+      swept = at;
+      for (const [old, window] of windows) {
+        if (at - window.start < WINDOW_MS) break;
+        windows.delete(old);
+      }
+    }
+    windows.delete(key);
+    const fresh = { start: at, requests: 0, exports: 0 };
+    windows.set(key, fresh);
+    return fresh;
+  };
 }
 
 /**
- * A business's door: its not-live bearers a minute, counted in its own
- * window's `requests`. A knock takes a place at once; a released one is given
- * back to the window it was taken from.
+ * A door: the not-live bearers a business, or a key nobody holds, is sent a
+ * minute, counted in its own window's `requests`. A knock takes a place at
+ * once; a released one is given back to the window it was taken from.
  */
 function doorOf(refused: number, now: () => Date): Pick<CredentialQuota, 'knock'> {
-  const windows = new Map<string, Window>();
+  const windowOf = windowsOf();
   return {
-    knock(businessId) {
-      const window = currentWindow(windows, businessId, now().getTime());
+    knock(door) {
+      const window = windowOf(door, now().getTime());
       if (window.requests >= refused) return;
       window.requests += 1;
       let released = false;
@@ -121,9 +138,8 @@ function callsOf(
   now: () => Date,
   handedOut: (answer: object) => number,
 ): Pick<CredentialQuota, 'enter'> {
-  const windows = new Map<string, Window>();
   const inFlight = new Map<string, number>();
-  const windowOf = (key: string, at: number): Window => currentWindow(windows, key, at);
+  const windowOf = windowsOf();
   return {
     enter(keys) {
       const at = now().getTime();
