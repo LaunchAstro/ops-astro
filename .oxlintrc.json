@@ -31,7 +31,10 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
-      "files": ["tests/db/run-end-stamped-after-lock-wait.test.ts"],
+      "files": [
+        "tests/db/run-end-stamped-after-lock-wait.test.ts",
+        "tests/db/run-supersede-stamped-after-lock-wait.test.ts"
+      ],
       "rules": { "max-lines-per-function": "off" }
     },
     {
