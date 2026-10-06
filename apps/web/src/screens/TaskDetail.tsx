@@ -87,6 +87,7 @@
 // revoked share empties the page the same way a revoked grant does.
 
 import { useRef, useState, type FormEvent, type ReactElement, type RefObject } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type { CallResult, OperationsClient, WireRefusal } from '../operations/client.ts';
 import type {
   InternalTaskDetail as Task,
@@ -285,49 +286,7 @@ function TaskPage(props: TaskDetailProps): ReactElement {
                   stepTitle={stepTitle}
                   onStepTitle={setStepTitle}
                   onOpenPanel={props.onOpenPanel}
-                  onAttempt={(attempt) => {
-                    setDraft((current) =>
-                      current !== null && current.identity === identity
-                        ? { ...current, attempt }
-                        : current,
-                    );
-                  }}
-                  onDraft={(next, base) => {
-                    if (next === null) {
-                      setDraft(null);
-                      return;
-                    }
-                    setDraft((current) =>
-                      current !== null && current.identity === identity
-                        ? {
-                            ...current,
-                            title: next.title,
-                            due: next.due,
-                            generation: current.generation + 1,
-                          }
-                        : {
-                            identity,
-                            generation: 1,
-                            base,
-                            title: next.title,
-                            due: next.due,
-                            attempt: null,
-                          },
-                    );
-                  }}
-                  onSaved={(generation) => {
-                    // Only the generation that was submitted. A save that settles
-                    // after further typing has answered a question nobody is asking
-                    // any more, and clearing the newer draft here would make the
-                    // person's newer text disappear.
-                    setDraft((current) =>
-                      current !== null &&
-                      current.identity === identity &&
-                      current.generation === generation
-                        ? null
-                        : current,
-                    );
-                  }}
+                  {...draftCallbacks(identity, setDraft)}
                   onDiscard={() => {
                     setDraft(null);
                     reload();
@@ -342,6 +301,54 @@ function TaskPage(props: TaskDetailProps): ReactElement {
       )}
     </div>
   );
+}
+
+/** The draft's callbacks for `Loaded`, bound to one task under one grant. */
+function draftCallbacks(
+  identity: string,
+  setDraft: Dispatch<SetStateAction<Draft | null>>,
+): Pick<LoadedProps, 'onAttempt' | 'onDraft' | 'onSaved'> {
+  return {
+    onAttempt: (attempt) => {
+      setDraft((current) =>
+        current !== null && current.identity === identity ? { ...current, attempt } : current,
+      );
+    },
+    onDraft: (next, base) => {
+      if (next === null) {
+        setDraft(null);
+        return;
+      }
+      setDraft((current) =>
+        current !== null && current.identity === identity
+          ? {
+              ...current,
+              title: next.title,
+              due: next.due,
+              generation: current.generation + 1,
+            }
+          : {
+              identity,
+              generation: 1,
+              base,
+              title: next.title,
+              due: next.due,
+              attempt: null,
+            },
+      );
+    },
+    onSaved: (generation) => {
+      // Only the generation that was submitted. A save that settles
+      // after further typing has answered a question nobody is asking
+      // any more, and clearing the newer draft here would make the
+      // person's newer text disappear.
+      setDraft((current) =>
+        current !== null && current.identity === identity && current.generation === generation
+          ? null
+          : current,
+      );
+    },
+  };
 }
 
 /**
