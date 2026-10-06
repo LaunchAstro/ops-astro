@@ -369,13 +369,20 @@ editable fields; the subtasks and time without their doors; the conversation
 on the tab the reply door named; and the folded trail. The Agent tab says it
 is not connected until the assistant is. Its head names the task, links to
 its page and opens a new-task draft (MP-4-13, `screens/task/DraftPanel.tsx`)
-in the same panel: name, due, estimate, tags, subtasks, time spent and a note,
-kept in this browser under the business and the person until Create or Cancel
-(X and Escape keep it). Create sends `task.create`, then the client from the
-page's scope (none from the panel yet: the task's client is not on the wire),
+in the same panel: name, due, estimate, category, the owner the page named,
+tags, subtasks, time spent and a note, kept in this browser under the business
+and the person until Create or Cancel (X and Escape keep it). Signed in, the
+dock's Task tab is on the rail with nothing open and opens a draft filed from
+the page; any `[data-new-task]` control opens one prefilled from the door
+(`screens/task/task-prefill.ts`: category from the door, its board or Admin,
+the category's usual estimate, due in 7 days or 3 when urgent, client and
+owner only when named), with one sentence saying what was guessed. Create
+sends `task.create`, then the client from the page's scope (none from the
+panel yet: the task's client is not on the wire), the category, the owner,
 the note, the tags, the subtasks and the time, each by its own command
-(`screens/task/task-draft.ts`); a part refused after the task exists is named,
-never retried as a second task. Closing the panel, or opening another task or
+(`screens/task/draft-parts.ts`); a part refused after the task exists is named,
+never retried as a second task. The task open in the panel is kept in the
+tab's storage under its owner and opens again after a reload. Closing the panel, or opening another task or
 a draft, while the reader's timer runs on the task stops it through
 `time.stop`, also when the panel closes before its reread lands or while a
 reread has failed: the panel holds the running timer's stop and its unsent
