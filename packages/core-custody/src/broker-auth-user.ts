@@ -14,15 +14,15 @@
 // under that id, read from the refusal's code (custody passes on nothing
 // else of it), since 422 is also `weak_password`, the provider's no to the
 // password itself: `password`. Any other answer, one that names another user, one
-// that carries the password, or one oversized, redirected, malformed or slow,
-// is a fault, and the caller spends nothing and binds nothing.
+// with a field for a password, or one oversized, redirected, malformed or
+// slow, is a fault, and the caller spends nothing and binds nothing.
 
 import {
   AUTH_CREATE_USER,
   AUTH_UPDATE_USER,
   AUTH_WEAK_PASSWORD,
 } from '../../core-connectors/src/index.ts';
-import { answerOf, routed } from './broker-email-route.ts';
+import { answerOf, routed, type Routed } from './broker-email-route.ts';
 import type { Broker } from './broker-types.ts';
 
 /** The login asked for: the provider user's id (ours), the address and the password. */
@@ -37,6 +37,24 @@ export type LoginMade =
   | { readonly ok: false; readonly kind: 'refused' | 'password' | 'fault' | 'not_catalogued' };
 
 const FAULT = { ok: false, kind: 'fault' } as const;
+
+/**
+ * Whether an answer has a field named for a password, at any depth. Its
+ * names, not its values: an honest user object's `aud` and `role` are
+ * `authenticated`, which a password may be too.
+ */
+function namesPassword(text: string): boolean {
+  let named = false;
+  try {
+    JSON.parse(text, (key, value: unknown) => {
+      named ||= /password/iu.test(key);
+      return value;
+    });
+  } catch {
+    // Malformed: the answer's own reading refuses it.
+  }
+  return named;
+}
 
 /** One catalogued call for one login: its subject, or why there is none. */
 async function ask(broker: Broker, key: string, login: LoginAsked): Promise<LoginMade> {
@@ -63,7 +81,7 @@ async function ask(broker: Broker, key: string, login: LoginAsked): Promise<Logi
       return refused ? { ok: false, kind: 'refused' } : FAULT;
     }
     // An answer is the user's id, never a place the password is kept.
-    if (outbound.body.includes(login.password)) return FAULT;
+    if (namesPassword(outbound.body)) return FAULT;
   }
   const answer = answerOf(outcome, operation);
   return answer.ok && answer.text === login.id ? { ok: true, subject: answer.text } : FAULT;
@@ -77,4 +95,26 @@ export async function createLogin(broker: Broker, login: LoginAsked): Promise<Lo
 /** Set the login under our id to this address and password: refused when there is none, or the address is another's. */
 export async function updateLogin(broker: Broker, login: LoginAsked): Promise<LoginMade> {
   return await ask(broker, AUTH_UPDATE_USER.key, login);
+}
+
+/** What an accept's provider calls may hold: how many per business, the route's ceiling, how long. */
+export interface LoginLimits {
+  readonly concurrency: number;
+  readonly ceiling: number;
+  readonly boundMs: number;
+}
+
+/** A claim outlives both calls' timeouts by this much, then lapses. */
+const CLAIM_GRACE_MS = 5_000;
+
+/** The limits `createLogin` and `updateLogin` share, or nothing when either is not catalogued. */
+export function loginLimits(broker: Broker): LoginLimits | undefined {
+  const both = [AUTH_CREATE_USER.key, AUTH_UPDATE_USER.key].map((key) => routed(broker, key));
+  if (both.includes(undefined)) return undefined;
+  const found = both as Routed[];
+  return {
+    concurrency: Math.min(...found.map(({ operation }) => operation.concurrency)),
+    ceiling: Math.min(...found.map(({ route }) => route.ceiling)),
+    boundMs: found.reduce((sum, { operation }) => sum + operation.timeoutMs, CLAIM_GRACE_MS),
+  };
 }

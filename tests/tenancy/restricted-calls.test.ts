@@ -594,6 +594,7 @@ async function roleClasses(
  * the application only reads them.
  */
 const DEFINERS: readonly string[] = [
+  'enrolment_route_room(integer)',
   'enrolment_token_find(text)',
   'handback_reports_append_only()',
   'map_summary_on_link()',
@@ -836,7 +837,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted six run', async () => {
+  it('calls every function as every caller, and only the granted seven run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -857,7 +858,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Twelve, each for a named reason. The map read models' four (WF-1) and the
+  // Thirteen, each for a named reason. The map read models' four (WF-1) and the
   // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
@@ -876,12 +877,14 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // The token lookup (20261005214435, SEC27 F6) is the accept's one
   // read across businesses, made with no business: three ids for a hash exactly one business
   // holds, nulls otherwise, and only the application group runs it (c39-t-review-proofs-p3).
+  // The accepts' route share (20261005214435) counts every business's live accept claims for a
+  // route's ceiling, as the fair share does, answering 1 or 0 (c39-t-enrolment-races).
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly twelve, each with its search path pinned', () => {
+    it('are exactly thirteen, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -960,6 +963,14 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(lookup?.argumentTypes).toStrictEqual(['text']);
     expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
     expect(lookup?.firedBy).toStrictEqual([]);
+  });
+
+  it("the accepts' route share is a definer taking the ceiling alone, pinned to read every business", () => {
+    const share = functions.find((fn) => fn.signature === 'enrolment_route_room(integer)');
+    expect(share?.definer).toBe(true);
+    expect(share?.trigger).toBe(false);
+    expect(share?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
+    expect(share?.firedBy).toStrictEqual([]);
   });
 
   it('the token lookup is a definer taking the hash alone, pinned to read every business', () => {

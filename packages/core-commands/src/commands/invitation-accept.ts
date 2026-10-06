@@ -1,51 +1,43 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C39-T, piece P3: `invitation accepted` and `login created (person,
-// business)`, on the one-time enrolment token alone. No one is signed in yet,
-// so no person's grant is asked: the token is the authority, and the writes
-// are the system's, as the business's worker, under that token.
+// business)` on the one-time enrolment token alone: no one is signed in, the
+// token is the authority, and the writes are the business's worker's.
 //
-// 1. Find the token. A hash is unique in its business only, and the accept
-//    arrives with none, so its SHA-256 is looked up once, by one narrow
-//    security definer function that answers the business, the invitation and
-//    the token ids, and only for a hash exactly one business holds (SEC27 F6,
-//    `enrolment_token_find`). The token is then read in its own business: it
-//    is live only while it is unspent (a resend or a revoke spends every token
-//    before it, SEC27 F5), inside its lifetime, the newest its invitation has,
-//    and its invitation is pending and inside its own lifetime. Every other
-//    token, an unknown one among them, is one answer: `ENROLMENT_LINK_INVALID`.
-// 2. Make the login at the login provider, through custody, for the invited
-//    address, with the password the page set and the address confirmed,
-//    under a provider user id that is ours: the same every time for one
-//    address in one business (`loginSubject`). A login this business has
-//    bound under that id already is never set again: the answer is
-//    `sign_in`. Otherwise it is made (`auth.create_user`); when the address
-//    already holds a login, that login is set again under our id
-//    (`auth.update_user`), which adopts one an earlier accept made and never
-//    bound (its answer came too late, or its link died before the bind),
-//    with the password set now. When there is no user under our id, the
-//    address's login is someone else's (another business's, or made
-//    elsewhere): it gets none and its password is not touched, the answer is
-//    `sign_in`, and nothing is spent, so its holder may accept once signed in
-//    (that binding is a follow-up). A password the provider's rules refuse
-//    is `PASSWORD_INVALID`, nothing made or set. A fault spends nothing and
-//    binds nothing; a login it stranded is adopted by the next accept.
-// 3. In one transaction, under the invitation's lock and every check again,
-//    on the clock once the lock is held (pending, the token unspent and
-//    newest, this business, and the address the login was made for, SEC27 F5): spend every unspent token of the invitation, mark it accepted, give its
-//    one enduring person an acting identity, a membership in the invited
-//    role and the confirmed address, map the new login to that person, and
-//    write both audit events. The link then does nothing, and nothing here
-//    opens a session: the person signs in with the login, as anyone does.
+// 1. Find the token: its SHA-256 looked up once, with no business, by
+//    `enrolment_token_find` (SEC27 F6), then read in its own business: live
+//    while unspent (a resend or revoke spends those before it, SEC27 F5), in
+//    its lifetime, its invitation's newest and pending. Else
+//    `ENROLMENT_LINK_INVALID`.
+// 2. Claim the invitation under its lock, every check again. A login bound
+//    here under our id already: `sign_in`. A live claim, or no room under the
+//    provider calls' limits: `ENROLMENT_UNAVAILABLE`, nothing asked.
+// 3. Through custody, make the login under our id (`loginSubject`), or set
+//    the address's login again under it (`auth.update_user`), adopting one an
+//    earlier accept stranded. No user under our id: someone else's login,
+//    untouched, `sign_in`. A refused password is `PASSWORD_INVALID`; a fault
+//    binds nothing. Either lets the claim go; a lost one lapses.
+// 4. Under the lock and this accept's claim, every check again: spend the
+//    tokens, accept, seat the person, map the login, audit both events. An
+//    adopted login's sessions all end (C40's reset window). No session opens.
 
 import { createHash } from 'node:crypto';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
-import type { Database, TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  openResetWindow,
+  settleResetWindow,
+  waitForNextSecond,
+  type Database,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
 import {
   createLogin,
+  loginLimits,
   updateLogin,
   type Broker,
   type LoginAsked,
+  type LoginLimits,
 } from '../../../core-custody/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
 import { workerActor } from './conversation-lifecycle.ts';
@@ -74,6 +66,10 @@ export type AcceptResult =
       readonly code: 'ENROLMENT_LINK_INVALID' | 'PASSWORD_INVALID' | 'ENROLMENT_UNAVAILABLE';
     };
 
+const UNAVAILABLE = { ok: false, code: 'ENROLMENT_UNAVAILABLE' } as const;
+const LINK_INVALID = { ok: false, code: 'ENROLMENT_LINK_INVALID' } as const;
+const SIGN_IN = { ok: true, state: 'sign_in' } as const;
+
 interface Found {
   readonly business: string;
   readonly tokenId: string;
@@ -84,10 +80,8 @@ interface Found {
 }
 
 /**
- * The provider user id for one address in one business: a UUID (version 8,
- * RFC 9562) from SHA-256 of a fixed label, the business and the address. The
- * address, not the person: each invitation makes a new person, and a login an
- * earlier invitation stranded must be found by the next one for the address.
+ * Our provider user id for one address in one business, a UUID (v8, RFC 9562) from SHA-256: by
+ * address, not person, so the next invitation for the address finds a login one stranded.
  */
 function loginSubject(business: string, address: string): string {
   const hex = createHash('sha256').update(`ops-astro login|${business}|${address}`).digest('hex');
@@ -99,17 +93,6 @@ function loginSubject(business: string, address: string): string {
     `${variant}${hex.slice(17, 20)}`,
     hex.slice(20, 32),
   ].join('-');
-}
-
-/** Whether this business has bound a login under the subject already. */
-async function loginBound(database: Database, business: string, subject: string): Promise<boolean> {
-  return await database.withBusiness(business, async (tx) => {
-    const rows = await tx.query(
-      'select 1 from logins where business_id = $1 and provider = $2 and subject = $3',
-      [tx.businessId, LOGIN_PROVIDER, subject],
-    );
-    return rows.length > 0;
-  });
 }
 
 /** A business-less transaction's business: the lookup below reads no tenant's rows. */
@@ -161,6 +144,44 @@ async function find(
   return row === undefined ? undefined : { business, ...row };
 }
 
+/** The invitation locked, with its address (and claim, when named); then its token live again. */
+async function heldLive(tx: TenantQuery, asked: Found, claimId: string | null = null) {
+  const held = await tx.query(
+    `select 1 from invitations where business_id = $1 and id = $2 and address = $3
+        and ($4::uuid is null or accept_claim = $4) for update`,
+    [tx.businessId, asked.invitationId, asked.address, claimId],
+  );
+  const found = held.length === 1 ? await liveToken(tx, asked.tokenId) : undefined;
+  return found?.invitationId === asked.invitationId ? found : undefined;
+}
+
+/** Step 2: the claim's id, or why none; one lock over every business's claims, for the limits. */
+async function claim(tx: TenantQuery, asked: Found, subject: string, limits: LoginLimits) {
+  if ((await heldLive(tx, asked)) === undefined) return 'invalid';
+  const bound = await tx.query(
+    'select 1 from logins where business_id = $1 and provider = $2 and subject = $3',
+    [tx.businessId, LOGIN_PROVIDER, subject],
+  );
+  if (bound.length > 0) return 'bound';
+  await advisoryLock(tx, 'enrolment_claims');
+  const [taken] = await tx.query<{ id: string }>(
+    `update invitations i set accept_claim = gen_random_uuid(),
+            accept_claimed_until = clock_timestamp() + make_interval(secs => $5::float8 / 1000)
+      where i.business_id = $1 and i.id = $2
+        and coalesce(i.accept_claimed_until <= clock_timestamp(), true)
+        and (select count(*) from invitations n where n.business_id = $1
+               and n.accept_claimed_until > clock_timestamp()) < $3
+        and public.enrolment_route_room($4) = 1
+      returning accept_claim as id`,
+    [tx.businessId, asked.invitationId, limits.concurrency, limits.ceiling, limits.boundMs],
+  );
+  return taken?.id ?? 'busy';
+}
+
+/** A claim let go when nothing was bound under it; a claim no one lets go lapses. */
+const RELEASE = `update invitations set accept_claim = null, accept_claimed_until = null
+  where business_id = $1 and id = $2 and accept_claim = $3`;
+
 /** The invitation's person seated: an actor, a membership, the address, and the login mapped. */
 async function seat(
   tx: TenantQuery,
@@ -194,16 +215,14 @@ async function seat(
   return login?.id ?? null;
 }
 
-/** Step 3: everything the acceptance changes, in one transaction; false when the link died. */
-async function bind(tx: TenantQuery, asked: Found, subject: string): Promise<boolean> {
-  // The invitation's lock first, held to commit, with the address the login was made for; then
-  // every check again in a statement of its own, so a resend or revoke committed meanwhile shows.
-  const held = await tx.query(
-    `select 1 from invitations where business_id = $1 and id = $2 and address = $3 for update`,
-    [tx.businessId, asked.invitationId, asked.address],
-  );
-  const found = held.length === 1 ? await liveToken(tx, asked.tokenId) : undefined;
-  if (found?.invitationId !== asked.invitationId) return false;
+/** Step 4: everything the acceptance changes, in one transaction; false when the link died. */
+async function bind(
+  tx: TenantQuery,
+  asked: Found,
+  { subject, claimId, adopted }: { subject: string; claimId: string; adopted: boolean },
+): Promise<boolean> {
+  const found = await heldLive(tx, asked, claimId);
+  if (found === undefined) return false;
   const { invitationId, personId, tokenId } = found;
   await tx.query(
     `update enrolment_tokens set spent_at = now()
@@ -211,12 +230,18 @@ async function bind(tx: TenantQuery, asked: Found, subject: string): Promise<boo
     [tx.businessId, invitationId],
   );
   await tx.query(
-    `update invitations set state = 'accepted', ended_at = now(), revision = revision + 1
+    `update invitations set state = 'accepted', ended_at = now(), revision = revision + 1,
+            accept_claim = null, accept_claimed_until = null
       where business_id = $1 and id = $2`,
     [tx.businessId, invitationId],
   );
   const worker = await workerActor(tx);
   const loginId = await seat(tx, found, subject, worker);
+  if (adopted) {
+    const window = await openResetWindow(tx, subject);
+    await waitForNextSecond(tx);
+    await settleResetWindow(tx, window);
+  }
   const event = { actorId: worker, outcome: 'applied' } as const;
   await writeAuditEvent(tx, {
     ...event,
@@ -248,21 +273,28 @@ export async function acceptInvitation(
   }
   const hash = createHash('sha256').update(request.token).digest('hex');
   const found = TOKEN.test(request.token) ? await find(database, businesses, hash) : undefined;
-  if (found === undefined) return { ok: false, code: 'ENROLMENT_LINK_INVALID' };
+  if (found === undefined) return LINK_INVALID;
   const id = loginSubject(found.business, found.address);
-  if (await loginBound(database, found.business, id)) return { ok: true, state: 'sign_in' };
+  const limits = loginLimits(broker);
+  if (limits === undefined) return UNAVAILABLE;
+  const claimId = await database.withBusiness(found.business, (tx) => claim(tx, found, id, limits));
+  if (claimId === 'invalid' || claimId === 'bound' || claimId === 'busy') {
+    return { invalid: LINK_INVALID, bound: SIGN_IN, busy: UNAVAILABLE }[claimId];
+  }
   const asked: LoginAsked = { id, email: found.address, password: request.password };
   let login = await createLogin(broker, asked);
-  if (!login.ok && login.kind === 'refused') login = await updateLogin(broker, asked);
-  if (!login.ok && login.kind === 'password') return { ok: false, code: 'PASSWORD_INVALID' };
-  if (!login.ok) {
-    return login.kind === 'refused'
-      ? { ok: true, state: 'sign_in' }
-      : { ok: false, code: 'ENROLMENT_UNAVAILABLE' };
+  const adopted = !login.ok && login.kind === 'refused';
+  if (adopted) login = await updateLogin(broker, asked);
+  const made = login.ok ? { subject: login.subject, claimId, adopted } : undefined;
+  const bound =
+    made !== undefined &&
+    (await database.withBusiness(found.business, (tx) => bind(tx, found, made)));
+  if (!bound) {
+    await database.withBusiness(found.business, (tx) =>
+      tx.query(RELEASE, [tx.businessId, found.invitationId, claimId]),
+    );
   }
-  const bound = await database.withBusiness(
-    found.business,
-    async (tx) => await bind(tx, found, login.subject),
-  );
-  return bound ? { ok: true, state: 'enrolled' } : { ok: false, code: 'ENROLMENT_LINK_INVALID' };
+  if (login.ok) return bound ? { ok: true, state: 'enrolled' } : LINK_INVALID;
+  if (login.kind === 'password') return { ok: false, code: 'PASSWORD_INVALID' };
+  return login.kind === 'refused' ? SIGN_IN : UNAVAILABLE;
 }

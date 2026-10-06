@@ -231,6 +231,8 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.take_lease',
   // 20261005214435 (C39-T, SEC27 F6): the accept's token lookup, three ids for one hash.
   'public.enrolment_token_find',
+  // 20261005214435 (C39-T): the accepts' route share, 1 or 0 for the caller's business.
+  'public.enrolment_route_room',
 ];
 
 /** What the server said, reduced to what a contract can name. */

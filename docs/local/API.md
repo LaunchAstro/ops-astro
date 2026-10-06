@@ -2435,17 +2435,20 @@ grant: the one-time token is the authority, its SHA-256 looked up once by
 business, an invitation and a token id for a hash exactly one business holds
 (SEC27 F6). It is live while it is unspent (a resend or a revoke spends every
 token before it, SEC27 F5), in its lifetime, its invitation's newest and its
-invitation pending; the bind checks all of it again, and the address, under
-the invitation's lock. The login provider makes a
-login for the invited address, confirmed, through custody (the service key
-stays there), under a user id that is ours, the same for one address in one
-business; when the address holds a login already, the login under our id is
-set again with this password, which adopts one an earlier accept made and
-never bound. Then, in one transaction, every token of the invitation is
-spent, it is accepted, its person gets an actor, a membership in the invited
-role and the confirmed address, the login is mapped to that person, and
-`invitation.accept` and `login.create` are audited as the business's
-worker. The answer is 200 `{ state: 'enrolled' }` and opens no session. An
+invitation pending. Before the provider is asked, the accept claims the
+invitation under its lock, all of that checked again; a live claim on it, or
+no room under the calls' limits (the operations' concurrency per business,
+the route's ceiling shared fairly, `enrolment_route_room`), is 503
+`ENROLMENT_UNAVAILABLE` with nothing asked. The provider makes a login for
+the invited address, confirmed, through custody, under a user id that is
+ours, the same for one address in one business; when the address holds one,
+the login under our id is set again with this password, adopting one an
+earlier accept stranded, and every session it had ends (C40's reset window).
+Then, under the lock and the claim, every token of the invitation is spent,
+it is accepted, its person gets an actor, a membership and the confirmed
+address, the login is mapped to them, and `invitation.accept` and
+`login.create` are audited as the business's worker. The answer is 200
+`{ state: 'enrolled' }` and opens no session. An
 address whose login is someone else's (no user under our id), or one this
 business has bound under our id already, gets none and no password is set:
 200 `{ state: 'sign_in' }`, nothing spent. Every other token is 404

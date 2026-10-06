@@ -186,7 +186,7 @@ export function linkIn(body: string | undefined): { link: string; token: string 
   return { link, token: link.slice(`${MAIL.appOrigin}/enrol/`.length) };
 }
 
-/** Every row that could carry a value, as text, from the tables an invitation touches. */
+/** Every row that could carry a value, as text, from the tables an invitation and its accept touch. */
 export async function storedText(): Promise<string> {
   const tables = [
     'audit_events',
@@ -194,6 +194,12 @@ export async function storedText(): Promise<string> {
     'invitations',
     'enrolment_tokens',
     'invitation_delivery_attempts',
+    'people',
+    'actors',
+    'memberships',
+    'person_identifiers',
+    'logins',
+    'person_logins',
   ];
   const parts = await Promise.all(
     tables.map(

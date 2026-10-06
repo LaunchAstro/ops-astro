@@ -39,3 +39,42 @@ $$;
 
 revoke all on function public.enrolment_token_find(text) from public;
 grant execute on function public.enrolment_token_find(text) to ops_astro_app;
+
+-- An accept claims its invitation before it asks the login provider anything,
+-- and binds only under its own claim, so two accepts of one link never both
+-- set a password. A live claim is a provider call in flight: per business no
+-- more than the operations' concurrency, and on the route no more than its
+-- ceiling, shared fairly between businesses as `model_route_room` (0085)
+-- shares a model route. That share reads every business's claims, so it is
+-- one narrow function answering 1 (room) or 0, for the caller's business only.
+alter table public.invitations
+  add column accept_claim         uuid,
+  add column accept_claimed_until timestamptz;
+
+create function public.enrolment_route_room(route_ceiling integer)
+  returns integer
+  language sql
+  stable
+  security definer
+  set search_path = pg_catalog, public
+  set row_security = off
+as $$
+  with flight as (
+    select count(*)::integer as total,
+           count(distinct i.business_id)::integer as holding,
+           (count(*) filter (where i.business_id = public.app_business_id()))::integer as mine
+      from public.invitations i
+     where i.accept_claimed_until > clock_timestamp()
+  )
+  select case
+           when public.app_business_id() is null or route_ceiling is null or route_ceiling < 1 then 0
+           when f.total >= route_ceiling then 0
+           when f.mine >= greatest(1, route_ceiling
+                  / (f.holding + case when f.mine = 0 then 1 else 0 end)) then 0
+           else 1
+         end
+    from flight f
+$$;
+
+revoke all on function public.enrolment_route_room(integer) from public;
+grant execute on function public.enrolment_route_room(integer) to ops_astro_app;
