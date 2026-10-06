@@ -109,6 +109,10 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // C52-A: a change's last ask after its session takes the business's audit
   // chain key before `sessionEndedSince`, so no ending commits between them.
   'packages/core-commands/src/commands/automation-approvals.ts',
+  // #1088 (Sol PRV-oa-1088-SC1, SEC1-1): a question's keep takes the audit
+  // chain's key after its page task's share lock, as tasks-agent.ts does, so
+  // its grant and page-read re-asks come after every wait.
+  'packages/core-commands/src/commands/conversation-context.ts',
   'packages/core-commands/src/commands/conversation-lifecycle.ts',
   // #932: the operation identity's key, first in every identified call.
   'packages/core-commands/src/commands/envelope.ts',
