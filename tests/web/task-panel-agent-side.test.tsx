@@ -13,12 +13,11 @@
 
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { useAsks } from '../../apps/web/src/assistant/asks.ts';
-import type { AskEntry } from '../../apps/web/src/assistant/chats.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { StepUpContext } from '../../apps/web/src/records/use-money-command.ts';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { TaskPanel } from '../../apps/web/src/screens/task/Panel.tsx';
+import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import type { RunScope } from '../../packages/ui/src/index.ts';
 import { DIGEST, lineage, running, version } from '../surfaces/mp-6-1-agent-fixtures.tsx';
 import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
@@ -43,12 +42,19 @@ interface Sent {
 type TopUp = 'ok' | 'STEP_UP_REQUIRED';
 
 /** A server answering one task with `over`, recording every command by its path. */
-function serving(over: Readonly<Record<string, unknown>>, topUp: TopUp = 'ok') {
+function serving(
+  over: Readonly<Record<string, unknown>>,
+  topUp: TopUp = 'ok',
+  persons: readonly { readonly personId: string; readonly name: string }[] = [],
+) {
   const sent: Sent[] = [];
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const where = String(url);
     if (where.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: task(over) }));
-    if (where.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
+    if (where.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons }));
+    // The drawer's planning allowance (AW-04): none to show here.
+    if (where.endsWith('/conversation/allowance'))
+      return Promise.resolve(json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404));
     if (where.endsWith('/task/queue')) {
       return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
     }
@@ -199,6 +205,46 @@ describe('S3 the dock panel Agent side', () => {
     ).toStrictEqual(['/settings/access/', '/settings/access/']);
   });
 
+  it('DA-07 a second formal round of changes is requested from the panel on the exact gate it read', async () => {
+    const gate = { id: 'g-2', state: 'pending', round: 2, expiresAt: null, expired: false };
+    const proposals = [
+      lineage({
+        versions: [version({ versionId: 'v-2', gate: { ...gate, payloadDigest: DIGEST } })],
+      }),
+    ];
+    const { client, sent } = serving({ proposals });
+    const { view } = await agentSide(client);
+    await view.click(`${PANE} [data-gate-action="request_changes"]`);
+    await tick();
+    expect(sent.map((call) => [call.to, call.body['decision']])).toStrictEqual([
+      ['/task/decide', 'request_changes'],
+    ]);
+    expect(sent[0]?.body).toMatchObject({ gateId: 'g-2', versionId: 'v-2' });
+  });
+
+  it('DA-07 past the rounds of changes, the panel escalates to the person chosen, at the exact gate', async () => {
+    const gate = { id: 'g-3', state: 'pending', round: 3, expiresAt: null, expired: false };
+    const proposals = [
+      lineage({
+        versions: [version({ versionId: 'v-3', gate: { ...gate, payloadDigest: DIGEST } })],
+      }),
+    ];
+    const people = [{ personId: 'p-grace', name: 'Grace' }];
+    const { client, sent } = serving({ proposals }, 'ok', people);
+    const { view } = await agentSide(client);
+    expect(view.find(`${PANE} [data-gate-action="request_changes"]`)).toBeNull();
+    await view.choose(`${PANE} [data-gate-escalate="recipient"]`, 'p-grace');
+    await view.click(`${PANE} [data-gate-action="escalate"]`);
+    await tick();
+    expect(sent.map((call) => call.to)).toStrictEqual(['/task/decide']);
+    expect(sent[0]?.body).toMatchObject({
+      gateId: 'g-3',
+      versionId: 'v-3',
+      decision: 'escalate',
+      recipientPersonId: 'p-grace',
+    });
+  });
+
   it('S3 beside the task page, the two Agent panes repeat no id', async () => {
     const { client } = serving({
       proposals: [unknown],
@@ -217,36 +263,37 @@ describe('S3 the dock panel Agent side', () => {
   });
 });
 
-/** The drawer's half of the ask seam, under `grantKey`, keeping what it takes. */
-function Drawer(props: { readonly grantKey: string; readonly took: AskEntry[] }): null {
-  useAsks(props.grantKey, (entry) => {
-    props.took.push(entry);
-  });
-  return null;
-}
+/** The dock's drawer as it ships, under `grantKey`: what it drafts is in its input. */
+const drawer = (client: OperationsClient, grantKey: string): ReactElement => (
+  <AssistantView
+    client={client}
+    grantKey={grantKey}
+    route="agency:projects-board"
+    here="/projects"
+    entry={null}
+  />
+);
 
 describe('DP-09 Ask about this task', () => {
-  it('DP-09 the head’s Ask drafts the task-scoped question for the panel’s own session', async () => {
-    const took: AskEntry[] = [];
+  it('DP-09 the head’s Ask drafts the task-scoped question in the session’s drawer, and sends nothing', async () => {
     const { client, sent } = serving({ clientSet: true, client: 'client-a' });
-    const { view } = await agentSide(client, <Drawer grantKey="alpha:member" took={took} />);
+    const { view } = await agentSide(client, drawer(client, 'alpha:member'));
     await view.click('[data-panel-head="ask"]');
     await tick();
-    expect(took).toHaveLength(1);
-    expect(took[0]?.question).toBe(
+    expect((view.find('[data-assistant="input"]') as HTMLInputElement | null)?.value).toBe(
       'Where is the task “Budget pacing fix” up to, and what should happen next?',
     );
-    expect(took[0]?.scope.task).toMatchObject({ id: TASK_ID, clientId: 'client-a' });
-    // Drafted only: the drawer sends nothing until the person does.
+    expect(view.find('[data-assistant="citation"]')?.textContent).toContain('Ask about this task');
+    // Drafted only: the shipped drawer sends nothing until the person does.
     expect(sent).toStrictEqual([]);
   });
 
   it('DP-09 a drawer under another session takes no ask the panel made', async () => {
-    const took: AskEntry[] = [];
-    const { client } = serving({});
-    const { view } = await agentSide(client, <Drawer grantKey="bravo:member" took={took} />);
+    const { client, sent } = serving({});
+    const { view } = await agentSide(client, drawer(client, 'bravo:member'));
     await view.click('[data-panel-head="ask"]');
     await tick();
-    expect(took).toStrictEqual([]);
+    expect((view.find('[data-assistant="input"]') as HTMLInputElement | null)?.value).toBe('');
+    expect(sent).toStrictEqual([]);
   });
 });
