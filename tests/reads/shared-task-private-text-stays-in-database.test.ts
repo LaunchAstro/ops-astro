@@ -31,6 +31,7 @@ const UNSLOTTED = `private-description-${randomUUID()}`;
 const INTERNAL = `internal-note-${randomUUID()}`;
 const TITLE = `shared-title-${randomUUID()}`;
 const CLIENT = `client-message-${randomUUID()}`;
+const SOURCE = `client-comment-source-${randomUUID()}`;
 
 let db: FreshDatabase;
 let alpha: BusinessId;
@@ -91,7 +92,7 @@ async function seed(): Promise<void> {
         commentType: audience === 'client' ? 'client' : 'note',
         audience,
         body,
-        source: 'app',
+        source: audience === 'client' ? SOURCE : 'app',
       });
     }
   });
@@ -119,6 +120,7 @@ describe.skipIf(serverUrl === undefined)('a shared task read from outside the bu
       ['a private slotted field', SLOTTED],
       ['a private unslotted field', UNSLOTTED],
       ['an internal comment', INTERNAL],
+      ["a client comment's private field", SOURCE],
     ] as const) {
       expect.soft(answer, `${what} reached the answer`).not.toContain(marker);
       expect.soft(received, `${what} was returned to the serving process`).not.toContain(marker);
