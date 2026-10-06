@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "an outside reader's shared task read fetches only the shared fields and the client comments: no private field value or internal comment body reaches the serving process"
+}
