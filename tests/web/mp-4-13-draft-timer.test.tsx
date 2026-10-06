@@ -7,7 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { typeInto, unmountAll } from './perspective-support.tsx';
-import { create, draft, server, store } from './draft-support.tsx';
+import { NEW_ID, create, draft, server, store } from './draft-support.tsx';
 
 const START = new Date('2026-10-07T01:00:00Z');
 const at = (minutes: number): void => {
@@ -68,7 +68,7 @@ describe('MP-4-13 DN-05 Create logs the draft’s timed minutes', () => {
     at(25);
     await create(view);
     expect(sent.map((one) => one.to)).toStrictEqual(['/task/create', '/time/log']);
-    expect(sent[1]?.body).toMatchObject({ duration: '25m' });
+    expect(sent[1]?.body).toMatchObject({ taskId: NEW_ID, duration: '25m' });
   });
 
   it('a timer started and stopped at once logs nothing', async () => {

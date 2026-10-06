@@ -46,7 +46,8 @@ import { Inbox } from '../views/inbox.tsx';
 import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
-import { TABS, tabInAddress, writeTab } from './projects/tab-address.ts';
+import { TABS, pageAddress, tabInAddress, writeTab } from './projects/tab-address.ts';
+import { NO_CLIENTS, clientNamesOf } from './projects/client-names.ts';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
@@ -68,13 +69,24 @@ const queryOf = (address: string | undefined): string =>
 type ProjectsTab = 'board' | 'worklog';
 
 export function Projects(props: ProjectsProps): ReactElement {
-  const [tab, setTab] = useState<ProjectsTab>(tabInAddress);
-  const [workLogOpened, setWorkLogOpened] = useState(tab === 'worklog');
+  // The tab is its address's: a panel's own place, never the page's fragment,
+  // or the page's. A chosen tab holds while that address does; a new address
+  // opens on its own tab, and the Work log, once drawn, stays drawn.
+  const here = (): string => (props.inPanel === true ? (props.address ?? '') : pageAddress());
+  const address = here();
+  const [held, setHeld] = useState(() => ({ address, tab: tabInAddress(address) }));
+  const [workLogOpened, setWorkLogOpened] = useState(held.tab === 'worklog');
+  if (held.address !== address) {
+    const next = tabInAddress(address);
+    setHeld({ address, tab: next });
+    if (next === 'worklog') setWorkLogOpened(true);
+  }
+  const tab: ProjectsTab = held.address === address ? held.tab : tabInAddress(address);
   const select = (id: string): void => {
     const next: ProjectsTab = id === 'worklog' ? 'worklog' : 'board';
-    setTab(next);
-    if (next === 'worklog') setWorkLogOpened(true);
     if (props.inPanel !== true) writeTab(next);
+    setHeld({ address: here(), tab: next });
+    if (next === 'worklog') setWorkLogOpened(true);
   };
   return (
     <div className="stack">
@@ -114,10 +126,8 @@ function ProjectBoard(
   });
   // A change made in the panel is the board's next read, as it is the task page's.
   useRereadOn(panel?.changes ?? 0, reload);
-  // Once the board has drawn this grant's rows it stays drawn through an
-  // empty reread, so a filter the person has on stays on and removable (#902);
-  // with none on, the board draws the page's empty state in its place. What
-  // one grant drew is forgotten under another: its first read is its own.
+  // A grant's drawn board stays drawn through an empty reread, so a filter on stays removable
+  // (#902); with none on, the board draws the empty state. Another grant's first read is its own.
   const [drew, setDrew] = useState<string | null>(null);
   useEffect(() => {
     if (state.outcome === 'ready') setDrew(state.grantKey);
@@ -148,7 +158,8 @@ function ProjectBoard(
   const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
   // At a client filter (a Clients row door) every client the reader reaches (C32)
   // is a Client filter even with no row, and the board waits for them, so a door
-  // to a quiet client keeps its filter. At none, nothing more is read.
+  // to a quiet client keeps its filter. At none, nothing more is read. A failed
+  // read keeps the filters the address asks for, and says it failed.
   const query = queryOf(props.address);
   const named = clientFiltersIn(query) > 0;
   const reached = useRead<ClientListResult>({
@@ -159,7 +170,7 @@ function ProjectBoard(
         : { ok: true as const, value: { ok: true as const, clients: [] } },
     deps: [named],
   });
-  const clients = useMemo(() => clientNamesOf(reached.state), [reached.state]);
+  const clients = useMemo(() => clientNamesOf(reached.state, query), [reached.state, query]);
   // INB-1f: one stream for the tab, shared by the board and the inbox panels.
   const followInbox = useBoardLive(client, props.grantKey, reload);
 
@@ -175,6 +186,11 @@ function ProjectBoard(
           {said}
         </p>
       )}
+      {reached.state.outcome === 'denied' || reached.state.outcome === 'unavailable' ? (
+        <RecordState state={reached.state} subject="client list" onRetry={reached.reload}>
+          {() => null}
+        </RecordState>
+      ) : null}
       {/*
         Kept drawn while it reads again: a re-read after an edit or a live
         change leaves the filters, an open editor and focus where they were.
@@ -223,8 +239,6 @@ function ProjectBoard(
   );
 }
 
-const NO_CLIENTS: readonly string[] = [];
-
 const NO_TASKS = (
   <Empty
     title="No tasks on this board yet."
@@ -232,16 +246,6 @@ const NO_TASKS = (
     hint="Create one with the form above."
   />
 );
-
-/** The reached clients' names; null while the read is out, none when it is refused or fails. */
-function clientNamesOf(state: ReadState<ClientListResult>): readonly string[] | null {
-  if (state.outcome === 'loading') return null;
-  const answered = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
-  // An answer without its list offers none, rather than breaking the board.
-  return Array.isArray(answered?.clients) && answered.clients.length > 0
-    ? answered.clients.map((one) => one.name)
-    : NO_CLIENTS;
-}
 
 /** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
 const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);

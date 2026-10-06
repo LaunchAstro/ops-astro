@@ -46,6 +46,8 @@ export interface ConversationCallRequest {
   readonly conversation: ConversationScope;
   readonly operation: string;
   readonly fields: readonly ClaimedField[];
+  /** The conversation's model (CS-7.30), checked as offered by the command layer; absent, the default. */
+  readonly model?: string;
 }
 
 export const refused = (code: BrokerRefusal): ModelCallResult => ({
@@ -154,13 +156,14 @@ async function sendAndSettle(
   called: ReservedCall,
   fields: readonly ResolvedField[],
   broker: Broker,
+  model: string | undefined,
 ): Promise<ModelCallResult> {
   const { callId, operation, route } = called;
   const adapter = broker.providers.get(operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${operation.provider}`);
   const values = Object.fromEntries(fields.map((field) => [field.name, field.value]));
   // AW-10: the call names itself to the provider, so a lookup can ask about it.
-  const built = adapter.build(values, callId);
+  const built = adapter.build(values, callId, model);
   const outcome = await broker.custody.dispatch(route.credentialRef, {
     destination: operation.destination,
     path: built.path,
@@ -220,5 +223,6 @@ export async function callModelInConversation(
     { callId, operation, route, reservedMinor: 0 },
     fields,
     broker,
+    request.model,
   );
 }

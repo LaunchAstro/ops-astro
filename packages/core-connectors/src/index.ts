@@ -194,3 +194,9 @@ export {
   localGptCostMinor,
   readLocalGptAnswer,
 } from './local-gpt.ts';
+export {
+  CONVERSATION_MODELS,
+  conversationModelsOf,
+  conversationProviderOf,
+  type ConversationModel,
+} from './conversation-models.ts';
