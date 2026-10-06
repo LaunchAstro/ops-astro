@@ -11,7 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { markRefusedForPage } from '../../packages/core-commands/src/commands/conversation-context.ts';
-import { slotOf, TASK_SPINE, withSession } from '../../packages/core-records/src/index.ts';
+import { executeCommand } from '../../packages/core-commands/src/index.ts';
+import { withSession } from '../../packages/core-records/src/index.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { addClient, grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -142,8 +143,12 @@ describe.skipIf(serverUrl === undefined)('a question kept on a client’s task',
       await Promise.allSettled([holder, reader].map(async (one) => await one.close()));
     }
   });
-  it('a client link committed while a message is kept marks it: refused once the client is cleared', async () => {
+  /** A task in a conversation, and a client the owner may link it to. */
+  async function linkable() {
     const { db, business } = w.fixture;
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, w.owner, 'share');
+    });
     const made = await w.as(w.owner, 'task.create', {
       fields: { title: `Linked ${randomUUID()}` },
     });
@@ -152,42 +157,55 @@ describe.skipIf(serverUrl === undefined)('a question kept on a client’s task',
       body: 'before any client',
       scope: { kind: 'task', id: taskId },
     });
-    const conversationId = String(detail(opened)['conversationId']);
     const clientId = randomUUID();
     await addClient(db.app, business, clientId, w.owner);
+    return { made, taskId, conversationId: String(detail(opened)['conversationId']), clientId };
+  }
+
+  it('a client link committed while a message is kept marks it: refused once the client is cleared', async () => {
+    const { db, business } = w.fixture;
+    const { made, taskId, conversationId, clientId } = await linkable();
+    // The holder stands where `task.set_party` takes the task's row lock: the
+    // link waits behind it, and the message's keep waits behind the link.
     const holder = connect(db.appUrl, { source: 'runtime' });
-    let keeping: Promise<Answer> | undefined;
+    // The keep on its own connection, so it waits on the row and not on the API's pool.
+    const keeper = connect(db.appUrl, { source: 'runtime' });
+    let linking: Promise<Answer> | undefined;
+    let keeping: Promise<unknown> | undefined;
     try {
-      // The holder stands where `task.set_party` links the client, uncommitted while the message is kept.
       await holder.withBusiness(business, async (tx) => {
         await tx.query(`select id from records where business_id = $1 and id = $2 for update`, [
           business,
           taskId,
         ]);
-        await tx.query(
-          `update records set ${slotOf(TASK_SPINE, 'client')} = $3 where business_id = $1 and id = $2`,
-          [business, taskId, clientId],
-        );
-        keeping = w.as(w.owner, 'conversation.message', {
+        linking = w.as(w.owner, 'task.set_party', {
+          operationId: randomUUID(),
+          recordId: taskId,
+          expectedRevision: made.body['revision'],
+          fields: { client: clientId },
+        });
+        await waitingOnLocks(1);
+        keeping = executeCommand(keeper, business, w.owner.presented, 'api', {
+          command: 'conversation.message',
+          operationId: randomUUID(),
           conversationId,
           body: `CANARY-${randomUUID()} about the client`,
         });
-        await waitingOnLocks(1);
+        await waitingOnLocks(2);
       });
-      const kept = await keeping;
-      expect(kept?.status).toBe(200);
-      await db.admin.execute(
-        `update public.records set ${slotOf(TASK_SPINE, 'client')} = null where id = $1`,
-        [taskId],
-      );
-      const asked = { conversationId, messageId: String(detail(kept as Answer)['messageId']) };
+      const linked = (await linking) as Answer;
+      expect(linked.status).toBe(200);
+      const kept = (await keeping) as { readonly detail: Record<string, unknown> };
+      await unlink(taskId, linked);
+      const asked = { conversationId, messageId: String(kept.detail['messageId']) };
       const before = model.provider.seen.length;
       const answer = await model.exchange(db.app, business, w.owner.presented, asked);
       expect(answer).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
       expect(model.provider.seen.length).toBe(before);
     } finally {
+      await linking?.catch(() => null);
       await keeping?.catch(() => null);
-      await holder.close();
+      await Promise.allSettled([holder, keeper].map(async (one) => await one.close()));
     }
   });
 });
