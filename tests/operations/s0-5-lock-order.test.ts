@@ -62,6 +62,14 @@ const BEFORE_LOCK: readonly (readonly [RegExp, string])[] = [
     /^select pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)$/u,
     "the operation identity's door (#932), or a declared subtree's lock",
   ],
+  [
+    /^select r\.data ->> 'type' as type, r\.data ->> 'map_owner' as owner, /u,
+    "a map write's ticket's map, read only to name the row held next; nothing is written",
+  ],
+  [
+    /^select 1 from records where business_id = \$1 and id = \$2 for no key update$/u,
+    "a map write's map row, held before its ticket, the order an update of the map takes",
+  ],
 ];
 
 const flat = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim().toLowerCase();
