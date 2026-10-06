@@ -16,7 +16,8 @@
 // authority asks it to (`DELEGATION_STANDS`). A child whose parent ended
 // first is taken back or ran out by what ended the parent first, at that
 // time and for that cause, whatever its own row did later (AW-11); its calls
-// count only until the earlier of the two ends.
+// count only until the earlier of the two ends, and its expiry is the earlier
+// of the two expiries.
 // Its client is its purpose task's client
 // (`uuid_7`, the slot a party-scoped grant resolves against), named from
 // `clients`. Its redemptions are the applied calls its agent made on that
@@ -114,7 +115,8 @@ interface GrantDbRow {
 
 const GRANTS_SQL = `with visible as (
      select d.business_id, d.id, d.agent_actor_id, d.purpose, d.collections, d.actions,
-            d.purpose_scope_id, d.granted_at, d.expires_at, t.uuid_7 as client_id,
+            d.purpose_scope_id, d.granted_at, least(d.expires_at, p.expires_at) as expires_at,
+            t.uuid_7 as client_id,
             least(e.own_end, e.parent_end) as window_end,
             case when o.stands then null
                  when o.by_parent then e.parent_end

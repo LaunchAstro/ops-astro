@@ -160,6 +160,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
   ['si', 'tags'],
   ['sid', 'task_tags'],
+  // 20261006074341: a conversation member's row; a member leaves by a mark, never a delete.
+  ['siu', 'team_conversation_members'],
   // C80: a live correction takes updates (a decision is one); its receipts
   // are append only.
   ['siu', 'live_corrections'],
