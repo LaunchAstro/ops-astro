@@ -125,7 +125,9 @@ function crossingCases() {
       for (const words of [TITLE, QUESTION, REPLY])
         expect(JSON.stringify(answer)).not.toContain(words);
     }
-    expect(await tabsOf(mia)).toEqual([]);
+    // Mia holds no conversation grant: her tab row is refused or empty, never Ada's.
+    const listed = await read(world, mia, { read: 'conversation.list' });
+    expect(JSON.stringify(listed)).not.toContain(id);
   });
 
   it('names no client: no scope, or a task without one', async () => {
