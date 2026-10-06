@@ -96,7 +96,9 @@ describe('what the stack refuses before writing anything', () => {
     expect(await start(w, overrides)).toMatchObject({ ok: false, code });
     expect(tree(w.agentHome)).toEqual(before);
   });
+});
 
+describe('what the stack refuses once signed in, before it files the key', () => {
   it('refuses a home gone by the time the login answers, and makes none to file the key in', async () => {
     const w = fresh();
     w.knobs({ login: 'vanish' });
