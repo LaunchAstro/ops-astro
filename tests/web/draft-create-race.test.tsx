@@ -121,6 +121,12 @@ async function createInFlight(api: ReturnType<typeof server>, storage: Storage):
   return view;
 }
 
+/** The kept drafts left in the store; the open task's own key (S1) is not a draft. */
+const draftKeys = (storage: Storage): readonly (string | null)[] =>
+  Array.from({ length: storage.length }, (_, index) => storage.key(index)).filter(
+    (key) => key?.startsWith('ops-astro.task-draft.') === true,
+  );
+
 describe('A11-1 the draft cannot be left while Create is in flight', () => {
   it('Close, Escape, Cancel and a door on the page wait for Create; one create, one operation id', async () => {
     const api = server();
@@ -137,7 +143,7 @@ describe('A11-1 the draft cannot be left while Create is in flight', () => {
     await api.land();
     expect(api.creates).toHaveLength(1);
     expect(panelTitle(view)).toBe(`Title of ${NEW_KEY}`);
-    expect(storage.length).toBe(0);
+    expect(draftKeys(storage)).toStrictEqual([]);
   });
 });
 
@@ -156,6 +162,6 @@ describe('A11-1 a Create that lands after the session changed opens nothing', ()
     await api.land();
     expect(panelTitle(view)).toBe('Title of Proj-Other');
     expect(view.find('[data-draft-panel]')).toBeNull();
-    expect(storage.length).toBe(0);
+    expect(draftKeys(storage)).toStrictEqual([]);
   });
 });

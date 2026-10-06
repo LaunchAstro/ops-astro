@@ -7,7 +7,8 @@
 // date) are `PanelFields.tsx`. It mounts the pieces built for it: the
 // handling ticks (MP-4-10), the description and agent brief fields (MP-4-7),
 // the subtasks and time (MP-4-4, MP-4-6), the conversation (MP-4-5,
-// `PanelConversation.tsx`) and the folded trail (MP-4-16), under the same
+// `PanelConversation.tsx`), the folded trail (MP-4-16) and the task page's
+// Agent pane (`PanelAgent.tsx`, S3), under the same
 // Team and Agent counts and the same facts as the task page (MP-4-3, MP-4-9,
 // MP-4-2).
 //
@@ -51,6 +52,7 @@ import {
   type Perspective,
 } from './Perspectives.tsx';
 import { PageLink, pageLinkDoor } from './PageLink.tsx';
+import { AskDoor, PanelAgent } from './PanelAgent.tsx';
 import { PanelConversation, useConversationHeld } from './PanelConversation.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
 import type { ClientSeams } from './client-seam.ts';
@@ -59,7 +61,7 @@ import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { useRereadOn } from './reread-on.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { HandlingTicks } from './Ticks.tsx';
-import { BriefField, DescriptionField } from './Writing.tsx';
+import { DescriptionField } from './Writing.tsx';
 
 /** What opened the panel: the task, the door pressed, and the conversation tab it was pressed on. */
 export interface PanelOpening {
@@ -228,29 +230,10 @@ function PanelWork(props: SideProps): ReactElement {
   );
 }
 
-/** The Agent side: the brief, and the rest drawn not connected until the assistant is. */
-function PanelAgent(props: SideProps): ReactElement {
-  const { task } = props;
-  return (
-    <>
-      <BriefField
-        client={props.client}
-        recordId={task.id}
-        revision={task.revision}
-        value={task.agentBrief}
-        onSaved={props.onChanged}
-      />
-      <p className="card__sub" data-not-connected="agent">
-        Not connected yet: the agent’s proposals, gates and runs show here once the assistant is
-        connected.
-      </p>
-    </>
-  );
-}
-
 /**
- * The head: the task's name, New task (a draft filed from here), its own page,
- * and close, which the dock draws instead where it hosts the panel.
+ * The head: the task's name, New task (a draft filed from here), Ask about
+ * it (DP-09), its own page, and close, which the dock draws instead where it
+ * hosts the panel.
  */
 function PanelHead(props: SideProps): ReactElement {
   const { task, onNewTask } = props;
@@ -270,6 +253,7 @@ function PanelHead(props: SideProps): ReactElement {
       >
         New task
       </button>
+      <AskDoor grantKey={props.grantKey} task={task} />
       <a
         className="btn"
         data-panel-head="page"

@@ -15,7 +15,10 @@
 //
 // Each row carries its tags (MP-4-11) and the count of top-level client
 // messages owed a reply by the team (DT-19 `owed`), derived from the thread as
-// `task.read` derives it, so the list and the page cannot disagree.
+// `task.read` derives it, so the list and the page cannot disagree. It also
+// carries its category and whose move it is (DP-14), read from the same
+// gates and leases `task.read`'s proposals answer, asked only of the rows
+// served.
 
 import { commentSignals, readTaskComments, tagsOfTask } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -43,12 +46,64 @@ export async function readTodos(
       order by r.ts_1 nulls last, r.created_at, r.id`,
     [tx.businessId, spine.taskTypeId, person, client],
   );
+  const moves = await movesOf(
+    tx,
+    rows.map((row) => row.id),
+  );
   const todos: TodoView[] = [];
   for (const row of rows) {
-    // eslint-disable-next-line no-await-in-loop -- one task's tags and thread at a time, in order
-    todos.push({ ...summaryOf(row), ...(await extrasOf(tx, spine, row.id)) });
+    todos.push({
+      ...summaryOf(row),
+      // eslint-disable-next-line no-await-in-loop -- one task's tags and thread at a time, in order
+      ...(await extrasOf(tx, spine, row.id)),
+      category: row.category,
+      whoseMove: moves.get(row.id) ?? 'Team',
+    });
   }
   return todos;
+}
+
+/**
+ * Whose move each served task is, by the task page's rule (DP-14): Review
+ * while a gate on one of its versions is pending and not expired, Agent while
+ * a reservation on one of its runs holds a live lease; a task with neither is
+ * absent, so Team.
+ */
+async function movesOf(
+  tx: TenantQuery,
+  taskIds: readonly string[],
+): Promise<ReadonlyMap<string, TodoView['whoseMove']>> {
+  if (taskIds.length === 0) return new Map();
+  const rows = await tx.query<{
+    readonly task_id: string;
+    readonly gated: boolean;
+    readonly leased: boolean;
+  }>(
+    `select lin.task_id::text as task_id,
+            bool_or(exists (
+              select 1 from public.proposal_versions ver
+                join public.gates g on g.business_id = ver.business_id and g.version_id = ver.id
+               where ver.business_id = lin.business_id and ver.lineage_id = lin.id
+                 and g.state = 'pending' and g.expires_at > now())) as gated,
+            bool_or(exists (
+              select 1 from public.planned_runs run
+                join public.reservations res
+                  on res.business_id = run.business_id and res.run_id = run.id
+                join public.leases lease
+                  on lease.business_id = res.business_id and lease.id = res.lease_id
+               where run.business_id = lin.business_id and run.lineage_id = lin.id
+                 and lease.state = 'live')) as leased
+       from public.proposal_lineages lin
+      where lin.business_id = $1 and lin.task_id = any($2::uuid[])
+      group by lin.task_id`,
+    [tx.businessId, taskIds],
+  );
+  const moves = new Map<string, TodoView['whoseMove']>();
+  for (const row of rows) {
+    if (row.gated) moves.set(row.task_id, 'Review');
+    else if (row.leased) moves.set(row.task_id, 'Agent');
+  }
+  return moves;
 }
 
 /** One task's tags and the client messages owed a reply by the team. */
