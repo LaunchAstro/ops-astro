@@ -50,6 +50,7 @@ import {
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
+import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import type { Store } from '../assistant/store.ts';
@@ -95,7 +96,7 @@ interface Opening {
 function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
   if (reply === undefined) store.line(key, 'note', KEPT);
   else if (reply.answered && reply.plan !== undefined) store.plan(key, reply.body, reply.plan);
-  else if (reply.answered) store.line(key, 'ai', reply.body);
+  else if (reply.answered) store.line(key, 'ai', reply.body, undefined, citesOf(reply.cites));
   else store.line(key, 'failed', reply.words);
 }
 
@@ -146,7 +147,7 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const question = store.line(key, 'user', body);
     const on: Store = {
       ...store,
-      line: (k, role, words) => store.line(k, role, words, question),
+      line: (k, role, words, _after, cites) => store.line(k, role, words, question, cites),
       plan: (k, words, offer) => store.plan(k, words, offer, question),
     };
     let known = chat.conversationId;
