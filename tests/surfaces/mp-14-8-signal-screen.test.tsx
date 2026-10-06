@@ -589,6 +589,54 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
     }
   });
 
+  it('MP-14-8 the countdown keeps time while the signal re-read is held too', async () => {
+    // SEC-1046-R2 L-1: with both reads held after the first answer, the
+    // sections still redraw on their own, so the countdown cannot hold.
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(NOW);
+    try {
+      const held = gate();
+      let answered = 0;
+      const scripted = (async (url: string | URL): Promise<Response> => {
+        if (String(url).endsWith('/connection/signal') && answered === 0) {
+          answered += 1;
+          return json(signalBody([grant('soon', 'live', 61)]));
+        }
+        await held.hold;
+        return json({ ok: true, connections: [], counts: {} });
+      }) as typeof fetch;
+      const refreshers: (() => void)[] = [];
+      const rollup: RollupFloor = {
+        follow: (onRefresh) => {
+          refreshers.push(onRefresh);
+          return () => null;
+        },
+      };
+      const page = await mount(
+        <ConnectionsScreen
+          client={clientOf('alpha', scripted)}
+          grantKey="alpha:a@x:0"
+          rollup={rollup}
+        />,
+      );
+      opened.push(page);
+      await tick();
+      const ttl = (): HTMLElement | null =>
+        page.find('[data-grant="soon"] [data-grant-ttl]') as HTMLElement | null;
+      expect(ttl()?.textContent).toBe('1h 1m left');
+      await act(() => {
+        for (const refresh of refreshers) refresh();
+      });
+      await act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
+      await tick();
+      expect([ttl()?.textContent, ttl()?.dataset['tone']]).toStrictEqual(['59m left', 'warn']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('MP-14-8 SEC-P04B.6 a live grant under a minute from its end never reads Ran out', async () => {
     const closing: GrantView = {
       ...grant('closing', 'live', 0),
