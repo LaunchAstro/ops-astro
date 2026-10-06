@@ -9,7 +9,9 @@
 //   field of the record. A task with a client, a task gone, or one the
 //   caller holds no `task:read` on is `refused`: owner line 72 asks no model.
 // - Earlier: this conversation's messages before the asked one, oldest
-//   first, each labelled by role. At most the last ten, and at most
+//   first, each labelled by role, and only what a model already had: the
+//   agent's replies and the questions they answer. A question refused (a
+//   client's task among them) never rides in later. At most the last ten, and at most
 //   `EARLIER_LIMIT` characters in all, the oldest dropped first.
 // - Cites: the page task, by its own key, when the page is sent. Never a
 //   string the model wrote.
@@ -97,6 +99,10 @@ export async function contextOf(
            on a.business_id = m.business_id and a.conversation_id = m.conversation_id
         where m.business_id = $1 and m.conversation_id = $2 and a.id = $3
           and m.role in ('person', 'agent') and m.created_at < a.created_at
+          and (m.role = 'agent' or exists (
+            select 1 from conversation_messages r
+             where r.business_id = m.business_id and r.conversation_id = m.conversation_id
+               and r.answers_message_id = m.id))
         order by m.created_at desc, m.id desc
         limit $4) last
       order by created_at, id`,
