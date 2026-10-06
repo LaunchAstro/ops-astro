@@ -131,32 +131,31 @@ describe.skipIf(serverUrl === undefined)('an agent answer’s context and cites'
     });
     const clientId = randomUUID();
     await addClient(db.app, business, clientId, w.owner);
-    const made = await w.as(w.owner, 'task.create', { fields: { title: 'for a client' } });
+    const made = await w.as(w.owner, 'task.create', { fields: { title: 'for a client soon' } });
     const taskId = String(made.body['recordId']);
-    const linked = await w.as(w.owner, 'task.set_party', {
-      operationId: randomUUID(),
-      recordId: taskId,
-      expectedRevision: made.body['revision'],
-      fields: { client: clientId },
-    });
-    expect(linked.status).toBe(200);
-    const canary = `CANARY-${randomUUID()}`;
     const opened = await w.as(w.owner, 'conversation.start', {
-      body: `${canary} about this client`,
+      body: 'before any client',
       scope: { kind: 'task', id: taskId },
     });
-    expect(replyOf(opened)).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
-    const cleared = await w.as(w.owner, 'task.set_party', {
-      operationId: randomUUID(),
-      recordId: taskId,
-      expectedRevision: linked.body['revision'],
-      fields: { client: null },
-    });
-    expect(cleared.status).toBe(200);
+    expect(replyOf(opened)).toMatchObject({ answered: true });
+    const conversationId = String(detail(opened)['conversationId']);
+    const party = async (client: string | null, revision: unknown): Promise<Answer> =>
+      await w.as(w.owner, 'task.set_party', {
+        operationId: randomUUID(),
+        recordId: taskId,
+        expectedRevision: revision,
+        fields: { client },
+      });
+    const linked = await party(clientId, made.body['revision']);
+    expect(linked.status).toBe(200);
+    const canary = `CANARY-${randomUUID()}`;
+    const refused = await say(conversationId, `${canary} about this client`);
+    expect(replyOf(refused)).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+    expect((await party(null, linked.body['revision'])).status).toBe(200);
     const seen = model.provider.seen.length;
-    const next = await say(String(detail(opened)['conversationId']), 'and now?');
-    expect(replyOf(next)).toMatchObject({ answered: true });
+    expect(replyOf(await say(conversationId, 'and now?'))).toMatchObject({ answered: true });
     expect(model.provider.seen.length).toBe(seen + 1);
+    expect(lastFields()['earlier']).toContain('before any client');
     expect(model.provider.seen.map((request) => request.body).join('')).not.toContain(canary);
   }, 60_000);
 
