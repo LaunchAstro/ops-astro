@@ -46,7 +46,7 @@ import { Inbox } from '../views/inbox.tsx';
 import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
-import { TABS, tabInAddress, writeTab } from './projects/tab-address.ts';
+import { TABS, pageAddress, tabInAddress, writeTab } from './projects/tab-address.ts';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
@@ -68,13 +68,24 @@ const queryOf = (address: string | undefined): string =>
 type ProjectsTab = 'board' | 'worklog';
 
 export function Projects(props: ProjectsProps): ReactElement {
-  const [tab, setTab] = useState<ProjectsTab>(tabInAddress);
-  const [workLogOpened, setWorkLogOpened] = useState(tab === 'worklog');
+  // The tab is its address's: a panel's own place, never the page's fragment,
+  // or the page's. A chosen tab holds while that address does; a new address
+  // opens on its own tab, and the Work log, once drawn, stays drawn.
+  const here = (): string => (props.inPanel === true ? (props.address ?? '') : pageAddress());
+  const address = here();
+  const [held, setHeld] = useState(() => ({ address, tab: tabInAddress(address) }));
+  const [workLogOpened, setWorkLogOpened] = useState(held.tab === 'worklog');
+  if (held.address !== address) {
+    const next = tabInAddress(address);
+    setHeld({ address, tab: next });
+    if (next === 'worklog') setWorkLogOpened(true);
+  }
+  const tab: ProjectsTab = held.address === address ? held.tab : tabInAddress(address);
   const select = (id: string): void => {
     const next: ProjectsTab = id === 'worklog' ? 'worklog' : 'board';
-    setTab(next);
-    if (next === 'worklog') setWorkLogOpened(true);
     if (props.inPanel !== true) writeTab(next);
+    setHeld({ address: here(), tab: next });
+    if (next === 'worklog') setWorkLogOpened(true);
   };
   return (
     <div className="stack">
