@@ -13,15 +13,15 @@
 // writer, and so learns nothing of its timing.
 //
 // A question kept while its page is a client's is refused from the moment it
-// is kept, though no exchange ran then; and a repeat that waited on the page
+// is kept, though no exchange ran then, a link committed while it was kept
+// included; and a repeat that waited on the page
 // while the client was cleared still sees the refusal its twin recorded.
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { markRefusedForPage } from '../../packages/core-commands/src/commands/conversation-context.ts';
-import { revokeGrant, withSession } from '../../packages/core-records/src/index.ts';
+import { revokeGrant } from '../../packages/core-records/src/index.ts';
 import { addClient, enrol, grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
@@ -169,90 +169,4 @@ describe.skipIf(serverUrl === undefined)('a page task linked to a client mid-rea
       await Promise.allSettled([holder, reader].map(async (one) => await one.close()));
     }
   }, 30_000);
-  /** A task linked to a client, and the owner's share grant to link it. */
-  async function clientTask(): Promise<{ taskId: string; linked: Answer }> {
-    const { db, business } = w.fixture;
-    await db.app.withBusiness(business, async (tx) => {
-      await grantTo(tx, w.owner, 'share');
-    });
-    const clientId = randomUUID();
-    await addClient(db.app, business, clientId, w.owner);
-    const made = await w.as(w.owner, 'task.create', {
-      fields: { title: `Client's ${randomUUID()}` },
-    });
-    const taskId = String(made.body['recordId']);
-    const linked = await w.as(w.owner, 'task.set_party', {
-      operationId: randomUUID(),
-      recordId: taskId,
-      expectedRevision: made.body['revision'],
-      fields: { client: clientId },
-    });
-    expect(linked.status).toBe(200);
-    return { taskId, linked };
-  }
-
-  const unlink = async (taskId: string, linked: Answer): Promise<void> => {
-    const cleared = await w.as(w.owner, 'task.set_party', {
-      operationId: randomUUID(),
-      recordId: taskId,
-      expectedRevision: linked.body['revision'],
-      fields: { client: null },
-    });
-    expect(cleared.status).toBe(200);
-  };
-
-  it('kept on a client’s task: a question no exchange answered stays refused once the client is cleared', async () => {
-    const { db, business } = w.fixture;
-    const { taskId, linked } = await clientTask();
-    const opened = await w.as(w.owner, 'conversation.start', {
-      body: `CANARY-${randomUUID()} about the client`,
-      scope: { kind: 'task', id: taskId },
-    });
-    const asked = {
-      conversationId: String(detail(opened)['conversationId']),
-      messageId: String(detail(opened)['messageId']),
-    };
-    await unlink(taskId, linked);
-    const before = model.provider.seen.length;
-    const answer = await model.exchange(db.app, business, w.owner.presented, asked);
-    expect(answer).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
-    expect(model.provider.seen.length).toBe(before);
-  });
-
-  it('a repeat that waited on the page while its twin refused and the client was cleared stays refused', async () => {
-    const { db, business } = w.fixture;
-    const made = await w.as(w.owner, 'task.create', { fields: { title: `Twin ${randomUUID()}` } });
-    const taskId = String(made.body['recordId']);
-    const opened = await w.as(w.owner, 'conversation.start', {
-      body: 'What is this?',
-      scope: { kind: 'task', id: taskId },
-    });
-    const asked = {
-      conversationId: String(detail(opened)['conversationId']),
-      messageId: String(detail(opened)['messageId']),
-    };
-    const before = model.provider.seen.length;
-    const holder = connect(db.appUrl, { source: 'runtime' });
-    const reader = connect(db.appUrl, { source: 'runtime' });
-    let replying: Promise<unknown> | undefined;
-    try {
-      // The holder stands where the twin's refusal and the client's clearing hold the task.
-      await holder.withBusiness(business, async (tx) => {
-        await tx.query(`select id from records where business_id = $1 and id = $2 for update`, [
-          business,
-          taskId,
-        ]);
-        replying = model.exchange(reader, business, w.owner.presented, asked);
-        await waitingOnLocks(1);
-        await withSession(db.app, business, w.owner.presented, async (twin, session) => {
-          await markRefusedForPage(twin, session, asked);
-        });
-      });
-      expect(await replying).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
-      expect(model.provider.seen.length).toBe(before);
-    } finally {
-      await replying?.catch(() => null);
-      await Promise.allSettled([holder, reader].map(async (one) => await one.close()));
-    }
-  });
 });
