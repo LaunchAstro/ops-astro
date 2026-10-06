@@ -61,7 +61,7 @@ import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
-import { boardPage, isRefusal, parsePaging, readerBlockers, sharedRead, taskAt } from './detail.ts';
+import { boardPage, readerBlockers, sharedRead, taskAt, withPaging } from './detail.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -363,14 +363,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   'task.read': {
     identifiers: ['recordId'],
-    parse: (body) => {
-      if (typeof body['recordId'] !== 'string') {
-        return rejected('recordId', 'Send recordId as the task’s identifier or its key.');
-      }
-      const paging = parsePaging(body);
-      if (isRefusal(paging)) return { ok: false, refusal: paging };
-      return parsed({ recordId: body['recordId'], ...paging });
-    },
+    parse: (body) =>
+      typeof body['recordId'] === 'string'
+        ? withPaging(body, { recordId: body['recordId'] })
+        : rejected('recordId', 'Send recordId as the task’s identifier or its key.'),
     spine: true,
     // The lookup answers nobody: a caller with no grant is refused after it
     // and learns nothing from it either way, and an unresolved name is checked
@@ -436,18 +432,13 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     // not, and answering it with that list gave a body that asked nothing
     // the answer to a question it never put. A string is
     // looked up, and refused `NOT_FOUND` there if it names nothing here.
-    parse: (body) => {
-      const { board } = body;
-      if (typeof board !== 'string' && board !== null) {
-        return rejected(
-          'board',
-          'Send board as a board task’s identifier, or null for tasks on no board.',
-        );
-      }
-      const paging = parsePaging(body);
-      if (isRefusal(paging)) return { ok: false, refusal: paging };
-      return parsed({ board, ...paging });
-    },
+    parse: (body) =>
+      typeof body['board'] === 'string' || body['board'] === null
+        ? withPaging(body, { board: body['board'] })
+        : rejected(
+            'board',
+            'Send board as a board task’s identifier, or null for tasks on no board.',
+          ),
     spine: true,
     authority: 'declared-within',
     outsiderNotFound: true,

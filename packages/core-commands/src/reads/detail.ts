@@ -58,6 +58,19 @@ export function isRefusal(value: Paging | CommandRefusal): value is CommandRefus
   return 'refused' in value;
 }
 
+/** A read's own operands with its paging, or the refusal the paging earned. */
+export function withPaging<T extends object>(
+  body: View,
+  operands: T,
+):
+  | { readonly ok: true; readonly operands: T & Paging }
+  | { readonly ok: false; readonly refusal: CommandRefusal } {
+  const paging = parsePaging(body);
+  return isRefusal(paging)
+    ? { ok: false, refusal: paging }
+    : { ok: true, operands: { ...operands, ...paging } };
+}
+
 /** A task's blockers as a reader is shown them: the ones it may read, and how many it may not. */
 export interface Blockers {
   readonly blockedBy: readonly string[];
