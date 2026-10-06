@@ -130,7 +130,11 @@ async function markedRefused(tx: TenantQuery, asked: Asked): Promise<boolean> {
 }
 
 /** Marks the message refused for its page, in the transaction that judged it so. */
-async function markRefused(tx: TenantQuery, session: Session, asked: Asked): Promise<Context> {
+export async function markRefusedForPage(
+  tx: TenantQuery,
+  session: Session,
+  asked: Asked,
+): Promise<Context> {
   const { conversationId, messageId } = asked;
   const detail = {
     operation: CONVERSATION_ANSWER.key,
@@ -158,7 +162,7 @@ export async function contextOf(
 ): Promise<Context> {
   if (await markedRefused(tx, asked)) return REFUSED;
   const page = scopeRecordId === null ? null : await pageOf(tx, session, scopeRecordId);
-  if (page === 'refused') return await markRefused(tx, session, asked);
+  if (page === 'refused') return await markRefusedForPage(tx, session, asked);
   const rows = await tx.query<{ readonly role: string; readonly body: string }>(
     `select role, body from (
        select m.role, m.body, m.created_at, m.id
