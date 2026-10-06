@@ -96,8 +96,8 @@ export async function topUpAtBudgetStop(
   await tx.query(
     `insert into public.budget_answers
        (business_id, id, ask_id, run_id, kind, amount_minor, currency, threshold_minor,
-        first_person_id, second_person_id)
-     values ($1, $2, $3, $4, 'top_up', $5, $6, $7, $8, $9)`,
+        first_person_id, second_person_id, hold_state)
+     values ($1, $2, $3, $4, 'top_up', $5, $6, $7, $8, $9, $10)`,
     [
       tx.businessId,
       answerId,
@@ -108,6 +108,8 @@ export async function topUpAtBudgetStop(
       threshold?.minor ?? null,
       other?.person_id ?? opened.value.person.personId,
       other === undefined ? null : opened.value.person.personId,
+      // The stopped hold's state, read under its lock: the version room counts by it.
+      opened.value.locked.reservation_state,
     ],
   );
   const heldMinor = await raiseHold(tx, request, opened.value);

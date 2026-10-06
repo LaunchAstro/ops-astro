@@ -44,6 +44,13 @@ export const callsSpentOf = (r: string): string =>
       from public.model_calls c
      where c.business_id = ${r}.business_id and c.reservation_id = ${r}.id)`;
 
+/** SQL: the reservation `r` had a top-up while it was still held (`budget_answers.hold_state`). */
+export const toppedUpHeld = (r: string): string =>
+  `exists (select 1 from public.budget_answers ba
+             join public.budget_asks k on k.business_id = ba.business_id and k.id = ba.ask_id
+            where ba.business_id = ${r}.business_id and k.reservation_id = ${r}.id
+              and ba.kind = 'top_up' and ba.hold_state = 'held')`;
+
 /** SQL: what the classifier's settle of `r` counts now, never above the figure it settled at. */
 export const spentNowOf = (r: string): string => `least(${r}.actual_minor, ${callsSpentOf(r)})`;
 

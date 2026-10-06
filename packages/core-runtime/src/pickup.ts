@@ -42,7 +42,7 @@ import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } fr
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
-import { callsSpentOf, remainingOf, stopAtSpentHold } from './budget-stop.ts';
+import { callsSpentOf, remainingOf, stopAtSpentHold, toppedUpHeld } from './budget-stop.ts';
 import { COUNTED_CAUSES, countedHold } from '../../core-custody/src/index.ts';
 
 export interface QueueEntry {
@@ -505,11 +505,12 @@ const NO_ROOM = "this run's spend and holds already fill the version's approved 
  * by the run's applied top-ups, less what its reservations of the version
  * committed (a live hold whole, a closed one at its spend). A closed hold
  * custody counted (`countedHold`: a top-up moved its spend, or the end) is at
- * its calls plus its actual: a later close charges only what it adds
- * (`modelCallsOn`). One the classifier settled at its calls (`actual`, with
- * its cause) before the top-up is at the greater, counted once. Any other is
- * at its actual, its unsent calls never counted. Read under the run lock. A
- * replacement is held at most this, whatever the newest-hold order says.
+ * its calls plus its actual when its top-up found it held: a later close
+ * charges only what it adds (`modelCallsOn`). One settled (`actual`) before
+ * its top-up, or whose top-up predates `hold_state`, is at the greater, counted
+ * once. Any other is at its actual, its unsent calls never counted. Read under
+ * the run lock. A replacement is held at most this, whatever the newest-hold
+ * order says.
  */
 async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
   const [row] = await tx.query<{ readonly room: string }>(
@@ -519,7 +520,7 @@ async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
                             and a.kind = 'top_up'), 0)
              - coalesce((select sum(case when r.state in ('held', 'quarantined') then r.held_minor
                                          when ${countedHold('$4')}
-                                           then case when r.state = 'actual' and r.classified_cause is not null
+                                           then case when r.state = 'actual' and not ${toppedUpHeld('r')}
                                                      then greatest(r.actual_minor, ${callsSpentOf('r')})
                                                      else coalesce(r.actual_minor, 0) + ${callsSpentOf('r')} end
                                          else coalesce(r.actual_minor, 0) end)
