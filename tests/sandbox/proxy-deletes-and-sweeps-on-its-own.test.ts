@@ -179,8 +179,9 @@ it('clears the record on a launcher delete answered "no such container", and kee
   const state = await opened(w);
   await state.handle(create(P, s1('p')));
   w.held.clear();
+  w.calls.length = 0;
   expect(await state.handle(op('delete', ID))).toEqual({ ok: true, reply: expect.anything() });
-  expect(heldId(w)).toBeNull();
+  expect([heldId(w), w.calls]).toEqual([null, ['delete']]);
   await state.handle(create(P, s1('p')));
   const second = containerId(2);
   w.answer.delete = 409;

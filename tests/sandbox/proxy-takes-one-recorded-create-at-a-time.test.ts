@@ -72,6 +72,9 @@ it('takes a create only for an image the pin list holds for its class and entry'
   expect(await state.handle(create(P, s1('s')))).toEqual(refused('candidate'));
   expect(await state.handle(create(P, S2))).toEqual(refused('image id'));
   expect(await state.handle(create(BASE, s1('p')))).toEqual(refused('candidate'));
+  // The base with its own Env in an S1 body is still not an S1 image.
+  const crossed = { runClass: 'site.build', env: S2.env } as const;
+  expect(await state.handle(create(BASE, crossed))).toEqual(refused('candidate'));
   expect(
     await state.handle(create(P, { runClass: 'probe', probed: 'site.build', env: [] })),
   ).toEqual(refused('image id'));
