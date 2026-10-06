@@ -133,7 +133,8 @@ describe('the comparison is linear', () => {
       decoyAfter: page({ ...decoy, text: 'We work a your team.' }),
       target: { ...TARGET, word: 'a', replacement: 'b' },
     });
-    expect(performance.now() - start).toBeLessThan(150);
+    // Linear runs in ~20 ms (153 ms on a loaded runner); the quadratic rebuild took 1.1 s.
+    expect(performance.now() - start).toBeLessThan(500);
     expect(result.ok).toBe(true);
   });
 });

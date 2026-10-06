@@ -27,6 +27,7 @@ import { grantTo, type Member } from '../commands/fixture.ts';
 import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
+import { enrolCaller } from './cast.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { foreignInvitation } from './foreign-invitation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
@@ -228,21 +229,26 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** A direct conversation of bravo's, opened by bravo's admin writing to bea. */
+  /** A group conversation of bravo's, started by bravo's admin through the command. */
   async function bravoConversation(): Promise<string> {
     const { world } = w.h;
     const bram = w.foreign.admin;
+    const bix = await enrolCaller(world.db, world.bravo, 'bravo', 'bix', {
+      membership: true,
+      actions: [],
+      collections: [],
+    });
     await world.db.app.withBusiness(world.bravo, async (tx) => {
       await grantTo(tx, bram as unknown as Member, 'comment', undefined, false, 'chat');
     });
-    const sent = await w.person(
+    const started = await w.person(
       bram,
-      'chat.send_direct',
-      { teammateId: world.bea.personId, body: 'bravo timing' },
+      'chat.start_group',
+      { name: 'bravo timing', members: [world.bea.personId, bix.personId] },
       'bravo',
     );
-    const id = (sent.body['detail'] as Body | undefined)?.['conversationId'];
-    if (typeof id !== 'string') throw new Error(`bravo opened no conversation: ${sent.text}`);
+    const id = (started.body['detail'] as Body | undefined)?.['conversationId'];
+    if (typeof id !== 'string') throw new Error(`bravo started no group: ${started.text}`);
     return id;
   }
 
@@ -542,15 +548,23 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     );
     if (bravoItem === undefined) throw new Error('bravo raised no inbox item to aim at');
     byAda('inbox.seen', 'itemId', bravoItem.id, (itemId) => ({ itemId }));
-    // C71-D: bravo's admin and bravo's conversation, named from alpha.
-    const bravoDirect = await bravoConversation();
+    // C71-D and C71-G: bravo's people and bravo's group, named from alpha.
+    const bravoGroup = await bravoConversation();
+    const mia = w.h.world.mia.personId;
     const bram = f.admin.personId as string;
     byAda('chat.send_direct', 'teammateId', bram, (teammateId) => ({ teammateId, body: NOBODY }));
-    byAda('chat.messages', 'conversationId', bravoDirect, (conversationId) => ({ conversationId }));
-    byAda('chat.mark_read', 'conversationId', bravoDirect, (conversationId) => ({
-      conversationId,
-      upTo: new Date().toISOString(),
-    }));
+    byAda('chat.start_group', 'members', bram, (id) => ({ name: 'timing', members: [mia, id] }));
+    const inGroup: readonly [CommandName, Body][] = [
+      ['chat.messages', {}],
+      ['chat.mark_read', { upTo: new Date().toISOString() }],
+      ['chat.send_group', { body: NOBODY }],
+      ['chat.rename_group', { name: 'timing' }],
+      ['chat.change_members', { add: [mia] }],
+      ['chat.leave', {}],
+    ];
+    for (const [op, extra] of inGroup) {
+      byAda(op, 'conversationId', bravoGroup, (conversationId) => ({ conversationId, ...extra }));
+    }
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',
@@ -603,11 +617,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 103 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 108 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(103);
-    expect(names).toHaveLength(103);
+    expect(new Set(names).size, 'distinct operations').toBe(108);
+    expect(names).toHaveLength(108);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

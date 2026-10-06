@@ -5,6 +5,7 @@
 
 import type { CommandName } from './command-names.ts';
 import { CONVERSATION_OPERANDS } from './write-operands-conversation.ts';
+import { CHAT_OPERANDS } from './write-operands-chat.ts';
 import { LIVE_CORRECTION_OPERANDS } from './surface-live-correction.ts';
 import { SETUP_OPERANDS } from './surface-setup.ts';
 import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
@@ -261,8 +262,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
   'inbox.seen': { itemId: 'id' },
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
-  'chat.send_direct': { teammateId: 'id', body: 'any' },
-  'chat.mark_read': { conversationId: 'id', upTo: 'any' },
+  ...CHAT_OPERANDS,
   'invitation.create': { name: 'text', email: 'text', role: 'text' },
   'invitation.resend': { invitationId: 'id' },
   'invitation.revoke': { invitationId: 'id' },

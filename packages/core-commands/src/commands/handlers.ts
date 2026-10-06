@@ -73,7 +73,7 @@ import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { decideLiveCorrection, requestLiveCorrection, setApprover } from './live-corrections.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
-import { markOwnRead, sendDirect } from './chat.ts';
+import { CHAT_HANDLERS } from './chat-handlers.ts';
 import { invitationAct } from './invitations.ts';
 import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
 import {
@@ -241,9 +241,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
-  // C71-D: the sender and reader are the session's; a body names only the teammate or conversation.
-  'chat.send_direct': (tx, context, chat) => sendDirect(tx, context, chat.teammateId, chat.body),
-  'chat.mark_read': (tx, context, chat) => markOwnRead(tx, context, chat.conversationId, chat.upTo),
+  // C71-D and C71-G: team chat, in `chat-handlers.ts` (moved whole for the line cap).
+  ...CHAT_HANDLERS,
   // C39-T: a person's acts on a team invitation, under `access:share`.
   'invitation.create': invitationAct,
   'invitation.resend': invitationAct,

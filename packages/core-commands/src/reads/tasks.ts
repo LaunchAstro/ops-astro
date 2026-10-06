@@ -28,8 +28,9 @@ import {
   isUuid,
   readTaskTime,
   tagsOfTask,
-  isWayfinderRecord,
+  wayfinderCondition,
   INTERNAL_ROLE_KEYS,
+  EFFECTIVE_GRANTS,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
@@ -213,10 +214,17 @@ async function commentsFor(
   // A business with no comment type has no comments, which is an empty list
   // and not a fault: the task detail is still the task detail.
   if (commentTypeId === undefined) return [];
-  const comments = await readTaskComments(tx, commentTypeId, taskId);
   if (!reader.internal) {
-    return externalCommentProjection(comments, await readFieldDefinitions(tx, commentTypeId));
+    const fields = await readFieldDefinitions(tx, commentTypeId);
+    const keys = fields
+      .filter((field) => isLive(field) && field.visibilityClass === 'shared')
+      .map((field) => field.key);
+    return externalCommentProjection(
+      await readTaskComments(tx, commentTypeId, taskId, keys),
+      fields,
+    );
   }
+  const comments = await readTaskComments(tx, commentTypeId, taskId);
   // The times as the ISO strings they are sent as, so the type this builds is
   // the one a client parses (`views.ts`).
   const signals = commentSignals(comments);
@@ -340,21 +348,33 @@ export async function readSharedTask(
   commentTypeId: string | undefined,
 ): Promise<SharedTaskView | undefined> {
   if (!isUuid(recordId)) return undefined;
+  const shared = (await readFieldDefinitions(tx, taskTypeId)).filter(
+    (field) => isLive(field) && field.visibilityClass === 'shared',
+  );
+  // Only the shared slots and `data` keys are selected: a private value is
+  // not fetched and then dropped, it is never fetched.
+  const slots = shared.flatMap((field) =>
+    field.key === 'state' || field.slot === null ? [] : [slotColumn(field.slot)],
+  );
+  const keys = shared.filter((field) => field.slot === null).map((field) => field.key);
   const rows = await tx.query<Readonly<Record<string, unknown>>>(
-    `select r.*, s.data ->> 'label' as shared_state_label from public.records r${STATE_JOIN}
+    `select r.revision::text as revision, ${slots.map((slot) => `r.${slot}, `).join('')}
+            (select coalesce(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
+               from jsonb_each(r.data) e where e.key = any($4::text[])) as data,
+            s.data ->> 'label' as shared_state_label, ${wayfinderCondition('r')} as wayfinder
+       from public.records r${STATE_JOIN}
       where r.business_id = $1 and r.record_type_id = $2 and r.id = $3
         and r.deleted_at is null`,
-    [tx.businessId, taskTypeId, recordId],
+    [tx.businessId, taskTypeId, recordId, keys],
   );
   const row = rows[0];
   if (row === undefined) return undefined;
-  // A map, its tickets and their threads never reach a client surface (WF-1),
-  // even under a read grant written behind the share path's back.
-  if (await isWayfinderRecord(tx, recordId)) return undefined;
+  // A map, its tickets and their threads never reach a client surface (WF-1), even
+  // under a grant written behind the share path's back; asked in the query above.
+  if (row['wayfinder'] === true) return undefined;
   const data = (row['data'] ?? {}) as Readonly<Record<string, unknown>>;
   const fields: Record<string, unknown> = {};
-  for (const field of await readFieldDefinitions(tx, taskTypeId)) {
-    if (!isLive(field) || field.visibilityClass !== 'shared') continue;
+  for (const field of shared) {
     // A shared state is its label, the word the member's read shows: the state
     // record's identifier tells a reader who cannot read state records nothing (I09).
     if (field.key === 'state') {
@@ -370,6 +390,14 @@ export async function readSharedTask(
     fields,
     comments: await commentsFor(tx, commentTypeId, recordId, { internal: false }),
   };
+}
+
+/** A slot named by the catalogue, checked before it is written into a statement. */
+function slotColumn(slot: string): string {
+  if (!/^(?:uuid|txt|ts|num|bool)_[0-9]+$/u.test(slot)) {
+    throw new Error(`readSharedTask: ${slot} is not a slot column`);
+  }
+  return slot;
 }
 
 /**
@@ -482,19 +510,21 @@ export async function adHocDefault(
  * Everyone outside the business's membership holding a live read share on
  * this task. Client access (MP-4-10, R45) is on exactly when this is not
  * empty: the tick on the task read and the withdrawal in
- * `commands/tasks-client-access.ts` read this one list.
+ * `commands/tasks-client-access.ts` read this one list. Live is the grant
+ * check's own walk (`EFFECTIVE_GRANTS`), so a share whose parent was revoked or
+ * lapsed counts for nothing here, as it counts for nothing to its holder.
  */
 export async function outsideHolders(
   tx: TenantQuery,
   recordId: string,
 ): Promise<readonly string[]> {
   const rows = await tx.query<{ readonly person_id: string }>(
-    `select distinct g.subject_id as person_id
-       from public.grants g
+    `${EFFECTIVE_GRANTS}
+     select distinct g.subject_id as person_id
+       from effective g
       where g.business_id = $1 and g.subject_kind = 'person'
         and g.scope_kind = 'record' and g.scope_id = $2
         and g.collection = 'task' and g.action = 'read'
-        and g.revoked_at is null and (g.expires_at is null or g.expires_at > now())
         and not exists (select 1 from public.memberships m
                          where m.business_id = g.business_id and m.person_id = g.subject_id
                            and m.active)

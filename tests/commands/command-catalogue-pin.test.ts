@@ -349,6 +349,14 @@ vi.mock('../../packages/core-commands/src/commands/chat.ts', async (original) =>
   sendDirect: recorder('sendDirect'),
   markOwnRead: recorder('markOwnRead'),
 }));
+vi.mock('../../packages/core-commands/src/commands/chat-groups.ts', async (original) => ({
+  ...(await original<object>()),
+  startGroupConversation: recorder('startGroupConversation'),
+  sendGroupMessage: recorder('sendGroupMessage'),
+  renameGroupConversation: recorder('renameGroupConversation'),
+  changeGroupConversationMembers: recorder('changeGroupConversationMembers'),
+  leaveGroupConversation: recorder('leaveGroupConversation'),
+}));
 vi.mock('../../packages/core-commands/src/commands/invitations.ts', async (original) => ({
   ...(await original<object>()),
   invitationAct: recorder('invitationAct'),
@@ -466,6 +474,11 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'notifications.set_channel': [],
   'chat.send_direct': ['teammateId'],
   'chat.mark_read': ['conversationId'],
+  'chat.start_group': [],
+  'chat.send_group': ['conversationId'],
+  'chat.rename_group': ['conversationId'],
+  'chat.change_members': ['conversationId'],
+  'chat.leave': ['conversationId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'settings.set_money_step_up': [],
@@ -512,10 +525,15 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.set_planning_cap',
   'budget.top_up',
   'budget.write_off',
+  'chat.change_members',
   'chat.conversations',
+  'chat.leave',
   'chat.mark_read',
   'chat.messages',
+  'chat.rename_group',
   'chat.send_direct',
+  'chat.send_group',
+  'chat.start_group',
   'client.create',
   'client.list',
   'client.set_privacy',
@@ -957,6 +975,11 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
   { command: 'chat.send_direct', operationId: 'op', teammateId: 'mate', body: 'hello' },
   { command: 'chat.mark_read', operationId: 'op', conversationId: 'talk', upTo: 'then' },
+  { command: 'chat.start_group', operationId: 'op', name: 'crew', members: ['m1', 'm2'] },
+  { command: 'chat.send_group', operationId: 'op', conversationId: 'group', body: 'hi all' },
+  { command: 'chat.rename_group', operationId: 'op', conversationId: 'group', name: 'crew 2' },
+  { command: 'chat.change_members', operationId: 'op', conversationId: 'group', add: ['m3'] },
+  { command: 'chat.leave', operationId: 'op', conversationId: 'group' },
   { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
   { command: 'invitation.create', operationId: 'op', name: 'N', email: 'e', role: 'member' },
   { command: 'invitation.resend', operationId: 'op', invitationId: 'i' },
@@ -1116,6 +1139,11 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.seen': ['stampOwnSeen', 'item'],
   'chat.send_direct': ['sendDirect', 'mate', 'hello'],
   'chat.mark_read': ['markOwnRead', 'talk', 'then'],
+  'chat.start_group': ['startGroupConversation', 'crew', ['m1', 'm2']],
+  'chat.send_group': ['sendGroupMessage', 'group', 'hi all'],
+  'chat.rename_group': ['renameGroupConversation', 'group', 'crew 2'],
+  'chat.change_members': ['changeGroupConversationMembers', 'group', 'request'],
+  'chat.leave': ['leaveGroupConversation', 'group'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
   'invitation.create': ['invitationAct', 'request'],
   'invitation.resend': ['invitationAct', 'request'],
@@ -1159,7 +1187,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and twenty-five from an expected revision', () => {
+  it('exempts the same one hundred and thirty from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

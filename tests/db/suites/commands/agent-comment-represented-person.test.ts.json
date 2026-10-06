@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an agent's comment records the person its delegation acts for, never a payload's, and an agent edit or delete must match that person as well as its own actor (catalogue #414, OW-036.1)"
+}

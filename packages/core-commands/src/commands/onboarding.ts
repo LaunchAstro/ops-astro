@@ -28,6 +28,7 @@ import type { CommandContext } from './context.ts';
 import { grantsStillHold, type StillHolds } from './onboarding-authority.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { textOf } from './record-create.ts';
+import { representedPerson } from './tasks-comment.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 
 const FIXES: Readonly<Record<string, string>> = {
@@ -169,7 +170,12 @@ function parseResult(
   return { outcome, text, commentTypeId };
 }
 
-/** A step's result on its own task, authority asked again under the lock; agents record agent steps only (ORCH79). */
+/**
+ * A step's result on its own task, authority asked again under the lock;
+ * agents record agent steps only (ORCH79). The result and any stop report
+ * record `onBehalfOfPersonId`, the person an agent's result is written for
+ * (catalogue #414); null for a person's own.
+ */
 export async function writeStepResult(
   tx: TenantQuery,
   author: {
@@ -178,6 +184,7 @@ export async function writeStepResult(
     readonly entryPoint: EntryPoint;
     readonly commentTypeId: string | undefined;
     readonly stillHolds: StillHolds;
+    readonly onBehalfOfPersonId: string | null;
   },
   request: { readonly recordId: string; readonly outcome?: unknown; readonly result?: unknown },
 ): Promise<HandlerOutcome> {
@@ -199,6 +206,7 @@ export async function writeStepResult(
     commentType: 'system' as const,
     audience: 'internal' as const,
     source: deriveSource(author.actorKind, author.entryPoint),
+    onBehalfOfPersonId: author.onBehalfOfPersonId,
   };
   await writeComment(tx, commentTypeId, { ...comment, body: text });
   let stopped = false;
@@ -232,6 +240,7 @@ export async function recordStepResult(
       entryPoint: context.entryPoint,
       commentTypeId: context.spine.taskCommentTypeId,
       stillHolds: await grantsStillHold(tx, context.session),
+      onBehalfOfPersonId: representedPerson(context.session),
     },
     request,
   );

@@ -168,6 +168,7 @@ async function comment(
       audiences: new Set(['internal', 'client']),
       operationId: randomUUID(),
       delegationId: null,
+      onBehalfOfPersonId: null,
     },
     'Please have a look.',
     audience,

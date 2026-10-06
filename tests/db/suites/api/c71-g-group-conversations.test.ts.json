@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a group conversation is started by chat.start_group with two or more staff teammates and a name, its messages sent by chat.send_group on the one comment record with audience group, each command audited, and a non-member, a client and an agent refused"
+}
