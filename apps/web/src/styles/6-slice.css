@@ -372,6 +372,8 @@
   background: var(--surface);
   color: var(--text);
   font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 
 .todos .tsearch__tag:hover {
@@ -380,9 +382,9 @@
 
 .todos .tsearch__kind {
   color: var(--ink-faint);
-  font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: uppercase;
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
 }
 
 .todos .tsearch__x {
