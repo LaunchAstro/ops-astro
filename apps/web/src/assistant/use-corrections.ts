@@ -6,7 +6,8 @@
 // is said in plain words (`refusalWords`). An asked correction is then read
 // with `live_correction.read`, which answers its state, its approver and the
 // version a decision names. A decision is a person's approve or decline
-// through `live_correction.decide` on that version, then read again.
+// through `live_correction.decide` on that version, then read again; its
+// refusal is said in the same plain words.
 //
 // **Keyed on business.** Everything is held under the business it was asked
 // in (`client.businessKey`), and every answer lands under the business its
@@ -16,7 +17,7 @@
 import { useState } from 'react';
 import type { LiveCorrectionReadResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
-import { settle } from '../records/use-command.ts';
+import { settle, type Failure } from '../records/use-command.ts';
 import { cardState, refusalWords, type CorrectionAsk, type ProposePort } from './correction.ts';
 import type { Correction } from './correction-desks.ts';
 
@@ -55,6 +56,10 @@ function useHeld(): { readonly held: ReadonlyMap<string, Held>; change: Change; 
   return { held, change, amend };
 }
 
+/** A read's or decision's failure in plain words, never its code. */
+const failureWords = (failed: Failure): string =>
+  refusalWords(failed.kind === 'unknown' ? 'UNAVAILABLE' : failed.refusal.code);
+
 /** The correction's decision as `live_correction.read` answers it now, under `key`. */
 async function readInto(
   client: OperationsClient,
@@ -66,7 +71,7 @@ async function readInto(
     await client.read<LiveCorrectionReadResult>('live_correction.read', { correctionId }),
   );
   if (settled.kind !== 'ok') {
-    amend(key, correctionId, { refusal: settled.because });
+    amend(key, correctionId, { refusal: failureWords(settled) });
     return;
   }
   const { state, approver, versionId } = settled.value.correction;
@@ -103,7 +108,7 @@ export function useCorrections(client: OperationsClient, propose: ProposePort): 
       await client.mutate('live_correction.decide', { correctionId: id, versionId, decision }),
     );
     if (settled.kind === 'ok') await read(key, id);
-    else amend(key, id, { refusal: settled.because });
+    else amend(key, id, { refusal: failureWords(settled) });
   };
   const run = (work: Promise<void>): void => {
     change(business, (desk) => ({ ...desk, busy: desk.busy + 1 }));

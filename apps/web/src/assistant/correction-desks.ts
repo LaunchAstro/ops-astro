@@ -4,8 +4,16 @@
 // waiting on a person's decision; the other holds the rest, decided or
 // carried on from a decision. The desks are drawn from the hook's list, which
 // is the active business's alone (`use-corrections.ts`).
+//
+// **The request port.** `requestPort` sends `live_correction.request` through
+// the web's command client. Beside the two words the command takes the party,
+// the task, the file's path, the page's address, the base revision and the
+// whole file as it reads now, none of which the sidebar knows: the host hands
+// them in through `Locate`, the site read. Without one no door is drawn.
 
-import type { CardState, CorrectionAsk } from './correction.ts';
+import type { OperationsClient } from '../operations/client.ts';
+import { settle } from '../records/use-command.ts';
+import { replaced, type CardState, type CorrectionAsk, type ProposePort } from './correction.ts';
 
 /** One correction as the sidebar holds it: what was asked, and its decision as last read. */
 export interface Correction {
@@ -36,3 +44,36 @@ export function desksOf(corrections: readonly Correction[]): readonly Desk[] {
   ];
   return desks.filter((desk) => desk.corrections.length > 0);
 }
+
+/** Where the word sits on the site: what `live_correction.request` takes beside the words. */
+export interface CorrectionTarget {
+  readonly partyId: string;
+  readonly taskId: string;
+  readonly path: string;
+  readonly pageUrl: string;
+  readonly baseRevision: string;
+  /** The whole file as it reads at `baseRevision`. */
+  readonly before: string;
+}
+
+/** The site read that finds a named page's file, or null where the site has no such page. */
+export type Locate = (ask: CorrectionAsk) => Promise<CorrectionTarget | null>;
+
+/** The door's port, bound to `live_correction.request` through the command client. */
+export const requestPort =
+  (client: OperationsClient, locate: Locate): ProposePort =>
+  async (ask) => {
+    const target = await locate(ask);
+    if (target === null) return { ok: false, code: 'NOT_FOUND' };
+    const after = replaced(target.before, ask.word, ask.replacement);
+    if (after === null) return { ok: false, code: 'WORD_NOT_FOUND' };
+    const { word, replacement } = ask;
+    const operands = { ...target, word, replacement, after };
+    const settled = settle(await client.mutate('live_correction.request', operands));
+    if (settled.kind === 'unknown') return { ok: false, code: 'UNAVAILABLE' };
+    if (settled.kind !== 'ok') return { ok: false, code: settled.refusal.code };
+    const id = settled.value.detail?.['correctionId'];
+    return typeof id === 'string'
+      ? { ok: true, correctionId: id }
+      : { ok: false, code: 'UNAVAILABLE' };
+  };

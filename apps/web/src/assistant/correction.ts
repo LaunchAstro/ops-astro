@@ -13,7 +13,7 @@
 // words, through an explicit table: a state the table does not name is
 // `unknown`, never guessed at.
 //
-// **The refusal.** The port refuses with a code. The door says it in plain
+// **The refusal.** The port and the decision refuse with a code. The door says it in plain
 // words from an explicit table; a code the table does not name gets one
 // fixed sentence, so no code reaches the person as it came.
 
@@ -65,16 +65,42 @@ const REFUSALS: Readonly<Record<string, string>> = {
   CHANGE_ENVELOPE_EXCEEDED:
     'Only one word for one word, on one line of one page, can be asked for.',
   FIELD_VALUE_INVALID: 'Name the page, the word and the word it becomes.',
-  NOT_FOUND: 'That page is not one this site can change.',
-  SCOPE_NOT_GRANTED: 'You do not hold the grant to ask for a change to this site.',
+  NOT_FOUND: 'That page, task or correction is not one you can reach here.',
+  SCOPE_NOT_GRANTED: 'You do not hold the grant to ask for or decide a change to this site.',
+  CORRECTION_PARTY_MISMATCH:
+    'That page belongs to another client than the task it was asked under.',
   APPROVER_NOT_CONFIGURED: 'No approver is named for site changes yet. An administrator names one.',
+  APPROVER_NOT_CONFIGURED_ONE: 'Only the configured approver decides a site change.',
+  SELF_APPROVAL_REFUSED: 'A second person decides a change you asked for.',
+  GATE_ALREADY_DECIDED: 'This change is decided already.',
+  VERSION_STALE: 'The change moved since it was read. It is read again; decide once more.',
+  DELEGATION_NARROWED: 'This agent may no longer ask for site changes.',
+  DELEGATION_NOT_LIVE: 'This agent may no longer ask for site changes.',
+  DELEGATION_OUT_OF_PURPOSE: 'This agent may not ask for site changes.',
   CONTENT_DRIFTED: 'The page changed since it was read. Ask again.',
   PROPOSAL_INCOMPLETE: 'The change was only partly prepared. Nothing was published.',
-  DELEGATION_OUT_OF_PURPOSE: 'This agent may not ask for site changes.',
+  WORD_NOT_FOUND: 'That word is not on that page.',
+  UNAVAILABLE:
+    'No answer came back, so whether it went through is not known. Look before asking again.',
 };
 
-const NOT_ASKED = 'The change was not asked for. Nothing was sent to the site.';
+const REFUSED = 'Refused: nothing was sent to the site.';
 
-/** The refusal in plain words: the table's, or one fixed sentence. */
+/** A refusal's code in plain words: the table's, or one fixed sentence. */
 export const refusalWords = (code: string): string =>
-  Object.hasOwn(REFUSALS, code) ? (REFUSALS[code] ?? NOT_ASKED) : NOT_ASKED;
+  Object.hasOwn(REFUSALS, code) ? (REFUSALS[code] ?? REFUSED) : REFUSED;
+
+const isLetter = (char: string | undefined): boolean =>
+  char !== undefined && /^[\p{L}\p{N}'’-]$/u.test(char);
+
+/** The text with the first whole `word` replaced, or null where it is not there. */
+export function replaced(text: string, word: string, replacement: string): string | null {
+  let at = word === '' ? -1 : text.indexOf(word);
+  while (at !== -1) {
+    if (!isLetter(text[at - 1]) && !isLetter(text[at + word.length])) {
+      return `${text.slice(0, at)}${replacement}${text.slice(at + word.length)}`;
+    }
+    at = text.indexOf(word, at + 1);
+  }
+  return null;
+}

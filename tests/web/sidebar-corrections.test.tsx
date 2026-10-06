@@ -10,6 +10,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import type { CorrectionAsk, ProposePort } from '../../apps/web/src/assistant/correction.ts';
+import {
+  requestPort,
+  type CorrectionTarget,
+} from '../../apps/web/src/assistant/correction-desks.ts';
 import { SidebarCorrections } from '../../apps/web/src/views/correction-card.tsx';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { json, mount, unmountAll } from './perspective-support.tsx';
@@ -30,13 +34,27 @@ function business(businessKey: string, state: string) {
       const correctionId = String(body['correctionId']);
       const approver = state === 'requested' ? null : 'Grace Hopper';
       return Promise.resolve(
-        json({ ok: true, correction: { correctionId, state, approver, versionId: 'v-1' } }),
+        json({
+          ok: true,
+          correction: { correctionId, state, approver, versionId: `v-${correctionId}` },
+        }),
+      );
+    }
+    if (path === '/live_correction/request') {
+      if (state === 'refuse-request') {
+        return Promise.resolve(
+          json({ refused: true, code: 'CORRECTION_PARTY_MISMATCH', names: [], fixes: [] }, 409),
+        );
+      }
+      const correctionId = `c-${String(calls.length)}`;
+      return Promise.resolve(
+        json({ recordId: correctionId, revision: 1, detail: { correctionId, state: 'requested' } }),
       );
     }
     if (path === '/live_correction/decide') {
       return Promise.resolve(json({ recordId: String(body['correctionId']), revision: 2 }));
     }
-    return Promise.resolve(json({ ok: false, code: 'NOT_FOUND', fields: [], fixes: [] }, 404));
+    return Promise.resolve(json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404));
   }) as unknown as typeof globalThis.fetch;
   const client = new OperationsClient({ origin: '', businessKey, signedIn: true, fetch });
   return { client, calls };
@@ -123,7 +141,7 @@ describe('the card never publishes; a person decides through the decision path',
     await tick();
     const decided = calls.filter((call) => call.path === '/live_correction/decide');
     expect(decided.map((call) => call.body)).toMatchObject([
-      { correctionId: 'mock-correction-1', versionId: 'v-1', decision: 'approve' },
+      { correctionId: 'mock-correction-1', versionId: 'v-mock-correction-1', decision: 'approve' },
     ]);
     const paths = new Set(calls.map((call) => call.path));
     expect([...paths].toSorted()).toStrictEqual([
@@ -183,21 +201,84 @@ describe('the desks hold the active business’s corrections only', () => {
   });
 });
 
+/** MOCK: the site read that finds the About page's file, until one is on main. */
+const ABOUT_FILE: CorrectionTarget = {
+  partyId: '11111111-1111-4111-8111-111111111111',
+  taskId: '22222222-2222-4222-8222-222222222222',
+  path: 'src/pages/about.md',
+  pageUrl: 'https://client.example.test/about',
+  baseRevision: 'abc123',
+  before: '# About\n\nWe work alongside the teams who run your website.\n',
+};
+const aboutPage = (ask: CorrectionAsk): Promise<CorrectionTarget | null> =>
+  Promise.resolve(ask.page === 'About' ? ABOUT_FILE : null);
+
+describe('the door on the real command client', () => {
+  it('sends live_correction.request with the located file and the one word changed', async () => {
+    const { client, calls } = business('alpha', 'requested');
+    const view = await mount(
+      <SidebarCorrections client={client} propose={requestPort(client, aboutPage)} />,
+    );
+    await askFor(view, ABOUT);
+    const sent = calls.filter((call) => call.path === '/live_correction/request');
+    expect(sent).toHaveLength(1);
+    const { operationId: _id, ...operands } = sent[0]?.body ?? {};
+    expect(operands).toStrictEqual({
+      ...ABOUT_FILE,
+      word: 'alongside',
+      replacement: 'beside',
+      after: '# About\n\nWe work beside the teams who run your website.\n',
+    });
+    expect(
+      (view.find('[data-correction-card]') as HTMLElement | null)?.dataset['correctionState'],
+    ).toBe('requested');
+  });
+
+  it('says the command’s refusal in plain words, never its code', async () => {
+    const { client } = business('alpha', 'refuse-request');
+    const view = await mount(
+      <SidebarCorrections client={client} propose={requestPort(client, aboutPage)} />,
+    );
+    await askFor(view, ABOUT);
+    expect(view.find('[data-correction-refusal]')?.textContent).toMatch(/another client/iu);
+    expect(view.text()).not.toContain('CORRECTION_PARTY_MISMATCH');
+  });
+
+  it('decide sends for the correction whose card was pressed, and no other', async () => {
+    const { client, calls } = business('alpha', 'requested');
+    const view = await mount(
+      <SidebarCorrections client={client} propose={requestPort(client, aboutPage)} />,
+    );
+    await askFor(view, ABOUT);
+    await askFor(view, { ...ABOUT, word: 'teams', replacement: 'people' });
+    const ids = calls.filter((call) => call.path === '/live_correction/read');
+    const second = String(ids[1]?.body['correctionId']);
+    await view.click(`[data-correction-card]:nth-of-type(2) [data-correction-decide="reject"]`);
+    await tick();
+    const decided = calls.filter((call) => call.path === '/live_correction/decide');
+    expect(decided.map(({ body: { operationId: _o, ...rest } }) => rest)).toStrictEqual([
+      { correctionId: second, versionId: `v-${second}`, decision: 'reject' },
+    ]);
+  });
+});
+
 describe('the assistant sidebar', () => {
-  it('draws the correction door beside the allowance line when handed the port, and none without', async () => {
-    const { client } = business('alpha', 'requested');
-    const drawer = (propose?: ProposePort) => (
+  it('sends the door’s ask as live_correction.request when handed the site read, and draws no door without', async () => {
+    const { client, calls } = business('alpha', 'requested');
+    const drawer = (locate?: typeof aboutPage) => (
       <AssistantView
         client={client}
         route="agency:projects-board"
         here="/projects"
         entry={null}
-        {...(propose === undefined ? {} : { propose })}
+        {...(locate === undefined ? {} : { locate })}
       />
     );
-    const view = await mount(drawer(mockPropose().port));
+    const view = await mount(drawer(aboutPage));
     await tick();
     expect(view.find('[data-assistant="corrections"] [data-correction-door]')).not.toBeNull();
+    await askFor(view, ABOUT);
+    expect(calls.filter((call) => call.path === '/live_correction/request')).toHaveLength(1);
     await view.render(drawer());
     await tick();
     expect(view.find('[data-assistant="corrections"]')).toBeNull();
