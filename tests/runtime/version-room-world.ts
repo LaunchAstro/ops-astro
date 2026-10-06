@@ -268,14 +268,10 @@ export async function holdStateOf(s: Schedules, reservationId: unknown): Promise
   );
 }
 
-/**
- * The database as an upgrade from before `hold_state` finds it: the column
- * dropped, then its migration applied again over the rows already there.
- */
+/** An upgrade from before `hold_state`: the column dropped, its migration applied again. */
 export async function asBeforeHoldState(s: Schedules): Promise<void> {
-  const migration = readMigrations('migrations').find((m) =>
-    m.version.endsWith('_budget_answer_hold_state'),
-  );
+  const name = '_budget_answer_hold_state';
+  const migration = readMigrations('migrations').find((m) => m.version.endsWith(name));
   if (migration === undefined) throw new Error('asBeforeHoldState: no hold_state migration');
   await s.db.admin.execute('alter table public.budget_answers drop column hold_state');
   for (const statement of migration.statements) {
