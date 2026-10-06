@@ -164,6 +164,7 @@ const CREATE_UI = [
   'agency:projects-board (screens/projects/CreateTask.tsx)',
   'agency:task-detail (screens/task/History.tsx)',
   'agency:task-detail (screens/task/Subtasks.tsx)',
+  'app shell (screens/task/draft-parts.ts)',
   'app shell (screens/task/task-draft.ts)',
 ];
 const START_UI = [

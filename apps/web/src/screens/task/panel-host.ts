@@ -47,6 +47,8 @@ export interface TaskPanelState {
   readonly opening: PanelOpening | null;
   /** The new-task draft's scope while the panel shows the draft (MP-4-13), else null. */
   readonly draft: DraftScope | null;
+  /** Counts draft openings: each door's draft mounts afresh, with its own guesses. */
+  readonly draftKey: number;
   readonly changed: () => void;
   /** Closes the panel; false, closing nothing, while the draft's Create is out. */
   readonly close: () => boolean;
@@ -153,19 +155,30 @@ function useKeptOpening(owner: PanelOwner) {
   return [opening, setOpening] as const;
 }
 
-export function useTaskPanel(owner: PanelOwner): TaskPanelState {
-  const [opening, setOpening] = useKeptOpening(owner);
-  const [draft, setDraft] = useState<DraftScope | null>(null);
-  const { creating, hold } = useOwner(owner, setOpening, setDraft);
-  const [changes, setChanges] = useState(0);
-  // Leaving the task (X, Escape, another task, a draft) stops its running
-  // timer through MP-4-6's one stop-and-log step, once.
+/**
+ * Leaving the task (X, Escape, another task, a draft) stops its running timer
+ * through MP-4-6's one stop-and-log step, once; `leaving` arms that stop.
+ */
+function useLeave() {
   const stop = useRef<(() => void) | null>(null);
   const leave = useCallback((): void => {
     const pending = stop.current;
     stop.current = null;
     pending?.();
   }, []);
+  const leaving = useCallback((next: (() => void) | null) => {
+    stop.current = next;
+  }, []);
+  return { leave, leaving };
+}
+
+export function useTaskPanel(owner: PanelOwner): TaskPanelState {
+  const [opening, setOpening] = useKeptOpening(owner);
+  const [draft, setDraft] = useState<DraftScope | null>(null);
+  const [draftKey, setDraftKey] = useState(0);
+  const { creating, hold } = useOwner(owner, setOpening, setDraft);
+  const [changes, setChanges] = useState(0);
+  const { leave, leaving } = useLeave();
   const open = useCallback(
     (taskKey: string, door: PanelDoor, tab?: ConversationTab) => {
       if (creating.current !== null) return;
@@ -177,15 +190,14 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
   );
   const openDraft = useCallback(
     (scope: DraftScope) => {
+      if (creating.current !== null) return;
       leave();
       setOpening(null);
       setDraft(scope);
+      setDraftKey((count) => count + 1);
     },
-    [leave],
+    [leave, creating],
   );
-  const leaving = useCallback((next: (() => void) | null) => {
-    stop.current = next;
-  }, []);
   const changed = useCallback(() => {
     setChanges((count) => count + 1);
   }, []);
@@ -201,5 +213,5 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
     return true;
   }, [opening, leave, creating]);
   const host = useMemo(() => ({ open, changes }), [open, changes]);
-  return { host, opening, draft, changed, close, openDraft, leaving, hold };
+  return { host, opening, draft, draftKey, changed, close, openDraft, leaving, hold };
 }

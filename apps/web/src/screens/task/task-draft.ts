@@ -51,6 +51,8 @@ export interface TaskDraft {
   readonly owner: { readonly id: string; readonly name: string } | null;
   /** The sentence admitting what the page's guesses came from (DN-02), or null. */
   readonly why: string | null;
+  /** The page it was filed from, kept with it so a reopened draft still names its own. */
+  readonly from: string | null;
   /** When the draft's running timer started, ISO, or null (DN-05). */
   readonly timerFrom: string | null;
   /** Whole minutes the draft's timer has timed, logged on the task at Create. */
@@ -69,6 +71,7 @@ export const emptyDraft = (clientId: string | null): TaskDraft => ({
   category: null,
   owner: null,
   why: null,
+  from: null,
   timerFrom: null,
   timed: 0,
 });
