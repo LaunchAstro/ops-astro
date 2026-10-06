@@ -17,11 +17,12 @@ import {
 import type { Broker } from '../../packages/core-custody/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { e, invited, lapseClaims, passwordFor, useEnrolWorld } from './c39-t-enrol-world.ts';
-import { addressFor, c, noDatabase, w } from './c39-t-world.ts';
+import { addressFor, as, c, codeOf, noDatabase, w } from './c39-t-world.ts';
 
 useEnrolWorld();
 
 const UNAVAILABLE = { ok: false, code: 'ENROLMENT_UNAVAILABLE' } as const;
+const ENROLLED = { ok: true, state: 'enrolled' } as const;
 
 const delay = async (ms: number): Promise<void> =>
   await new Promise((resolve) => {
@@ -37,6 +38,39 @@ async function acceptOwn(token: string, password: string, broker: Broker = w.bro
     await database.close();
   }
 }
+
+/**
+ * A broker whose first provider call waits, after its accept's claim has committed and before
+ * the call leaves, until `resume`; `reached` settles when it is waiting.
+ */
+function pausedBeforeCall(): { broker: Broker; reached: Promise<void>; resume: () => void } {
+  let resume!: () => void;
+  let reach!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const reached = new Promise<void>((resolve) => {
+    reach = resolve;
+  });
+  let first = true;
+  const { custody } = w.broker;
+  const paused = {
+    ...custody,
+    dispatch: async (...call: Parameters<typeof custody.dispatch>) => {
+      if (first) {
+        first = false;
+        reach();
+        await gate;
+      }
+      return await custody.dispatch(...call);
+    },
+  };
+  return { broker: { ...w.broker, custody: paused }, reached, resume };
+}
+
+/** The PUTs the provider has been sent since `from`. */
+const putsSince = (from: number): number =>
+  e.users.received.slice(from).filter((one) => one.method === 'PUT').length;
 
 /** The POSTs the provider has been sent since `from`. */
 const postsSince = (from: number): number =>
@@ -155,6 +189,53 @@ describe.skipIf(noDatabase)('C39-T enrolment races', () => {
     expect(one, 'the lapsed claim binds nothing').toMatchObject({ ok: false });
     expect(two).toStrictEqual({ ok: true, state: 'enrolled' });
     expect(e.users.passwords.get(String(e.users.users.get(address)))).toBe(second);
+  }, 30_000);
+
+  it('C39-T enrolment: an accept resumed after its claim lapsed and another accept enrolled sets no password (Sol R2 F1)', async () => {
+    e.users.mode('accept');
+    const address = addressFor('resumed-late');
+    const { id, token } = await invited(c.admin, address);
+    const [pa, pb] = [passwordFor(), passwordFor()];
+    // B claims, then waits before its create leaves; its claim passes its bound meanwhile.
+    const paused = pausedBeforeCall();
+    const b = acceptOwn(token, pb, paused.broker);
+    await paused.reached;
+    await w.db.admin.execute(
+      `update public.invitations set accept_claimed_until = clock_timestamp() - interval '1 second'
+        where id = $1`,
+      [id],
+    );
+    expect(await acceptOwn(token, pa)).toStrictEqual(ENROLLED);
+    const from = e.users.received.length;
+    paused.resume();
+    expect(await b, 'the superseded accept enrols nothing').toMatchObject({ ok: false });
+    expect(putsSince(from), 'the superseded accept sets no password').toBe(0);
+    expect(e.users.passwords.get(String(e.users.users.get(address)))).toBe(pa);
+  }, 30_000);
+
+  it('C39-T enrolment: a paused accept of a revoked invitation changes no password once its replacement enrols (Sol R2 F7)', async () => {
+    e.users.mode('accept');
+    const address = addressFor('revoked-replaced');
+    const old = await invited(c.admin, address);
+    const [p1, p2] = [passwordFor(), passwordFor()];
+    const paused = pausedBeforeCall();
+    const first = acceptOwn(old.token, p1, paused.broker);
+    await paused.reached;
+    expect(codeOf(await as(c.admin, 'invitation.revoke', { invitationId: old.id }))).toBe(
+      'applied',
+    );
+    const fresh = await invited(c.admin, address);
+    const asked = e.users.received.length;
+    const early = await acceptOwn(fresh.token, p2);
+    const askedEarly = e.users.received.length - asked;
+    paused.resume();
+    expect(await first).toMatchObject({ ok: false });
+    const enrolled = early.ok ? early : await acceptOwn(fresh.token, p2);
+    expect(enrolled).toStrictEqual(ENROLLED);
+    expect(e.users.passwords.get(String(e.users.users.get(address)))).toBe(p2);
+    // The login the two invitations share was the old accept's to claim: the new one asked nothing.
+    expect(early).toStrictEqual(UNAVAILABLE);
+    expect(askedEarly).toBe(0);
   }, 30_000);
 
   it('C39-T enrolment: five accepts at once in one business send no more creates than auth.create_user allows in flight', async () => {

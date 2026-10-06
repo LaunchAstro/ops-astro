@@ -10,7 +10,10 @@
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { standingOf } from '../../packages/core-records/src/identity/index.ts';
+import {
+  SIGN_IN_CLOCK_SKEW_SECONDS,
+  standingOf,
+} from '../../packages/core-records/src/identity/index.ts';
 import {
   e,
   enrolVia,
@@ -66,16 +69,21 @@ describe.skipIf(noDatabase)('C39-T enrolment login safety', () => {
     await lapseClaims();
     e.users.mode('accept');
     const made = String(e.users.users.get(address));
-    // Someone signed in to the stranded login before it was adopted.
-    const earlier = (await dbSeconds()) - 5;
+    // Someone signed in to the stranded login before it was adopted: on a provider clock in step,
+    // and on one 30 seconds ahead, which the door allows a sign-in time (Sol R2 F2).
+    const before = await dbSeconds();
+    const [inStep, ahead] = [before - 5, before + 30];
     expect(codeOf(await as(c.admin, 'invitation.revoke', { invitationId: stranded.id }))).toBe(
       'applied',
     );
     const fresh = await invited(c.admin, address);
     expect(await enrolVia(fresh.token, passwordFor())).toStrictEqual(ENROLLED);
-    expect(await standingAt(made, earlier)).toBe('AUTH_SESSION_EXPIRED');
-    // The person the fresh invitation admits signs in afresh, and stands as themselves.
-    expect(await standingAt(made, (await dbSeconds()) + 1)).toBe(await personOf(fresh.id));
+    expect(await standingAt(made, inStep)).toBe('AUTH_SESSION_EXPIRED');
+    expect(await standingAt(made, ahead)).toBe('AUTH_SESSION_EXPIRED');
+    // The person the fresh invitation admits signs in afresh, past the clock the door allows,
+    // and stands as themselves.
+    const afresh = (await dbSeconds()) + SIGN_IN_CLOCK_SKEW_SECONDS + 1;
+    expect(await standingAt(made, afresh)).toBe(await personOf(fresh.id));
   }, 30_000);
 
   it('C39-T enrolment: a password that spells an ordinary field of the honest answer still enrols', async () => {
