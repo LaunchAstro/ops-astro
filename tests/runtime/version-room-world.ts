@@ -6,6 +6,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { raiseBudgetWait, sweepModelCalls } from '../../packages/core-custody/src/index.ts';
+import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
 import {
   appliedDetail,
   asPerson,
@@ -267,16 +268,20 @@ export async function holdStateOf(s: Schedules, reservationId: unknown): Promise
   );
 }
 
-/** The hold's top-up as one written before the answer recorded the hold's state. */
-export async function forgetHoldState(s: Schedules, reservationId: unknown): Promise<unknown> {
-  return await s.db.admin.execute(
-    `update public.budget_answers a set hold_state = null
-       from public.budget_asks k
-      where k.business_id = a.business_id and k.id = a.ask_id
-        and a.business_id = $1 and k.reservation_id = $2 and a.kind = 'top_up'
-      returning a.id`,
-    [s.business, reservationId],
+/**
+ * The database as an upgrade from before `hold_state` finds it: the column
+ * dropped, then its migration applied again over the rows already there.
+ */
+export async function asBeforeHoldState(s: Schedules): Promise<void> {
+  const migration = readMigrations('migrations').find((m) =>
+    m.version.endsWith('_budget_answer_hold_state'),
   );
+  if (migration === undefined) throw new Error('asBeforeHoldState: no hold_state migration');
+  await s.db.admin.execute('alter table public.budget_answers drop column hold_state');
+  for (const statement of migration.statements) {
+    // eslint-disable-next-line no-await-in-loop -- one statement at a time, in the migration's order
+    await s.db.admin.execute(statement);
+  }
 }
 
 /** The money a refusal must leave alone: every hold, the envelope and the cap. */

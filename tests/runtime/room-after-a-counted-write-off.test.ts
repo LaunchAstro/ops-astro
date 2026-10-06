@@ -23,6 +23,7 @@ import {
 } from './schedules-harness.ts';
 import { writeOffBody } from './t3c-harness.ts';
 import {
+  asBeforeHoldState,
   callState,
   dispatchedCall,
   envelopeOf,
@@ -140,6 +141,38 @@ describe.skipIf(serverUrl === undefined)(
         actual: envelope?.actual,
         live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
       }).toEqual({ code: 'BUDGET_UNAVAILABLE', actual: '600', live: [] });
+    });
+  },
+);
+
+describe.skipIf(serverUrl === undefined)(
+  'the version room after an upgrade from before the hold state',
+  () => {
+    it('counts a hold topped up while held before the hold state, then written off above zero, at the moved calls and the charge', async () => {
+      // Sol's SC1 Scenario: the top-up predates the column, so only the upgrade
+      // can say the hold was still held when it answered.
+      const { work, versionId, first, r1 } = await countedWriteOff(100);
+      await stampBefore(s, first, r1);
+      await asBeforeHoldState(s);
+      const again = await asAgent(s, {
+        command: 'task.pickup',
+        operationId: randomUUID(),
+        reservationId: first,
+        leaseSeconds: 600,
+      });
+      const holds = await holdsOf(s, versionId);
+      const [envelope] = (await envelopeOf(s, work)) as readonly { actual: string }[];
+      expect({
+        code: codeOf(again),
+        recorded: await holdStateOf(s, r1),
+        actual: envelope?.actual,
+        live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
+      }).toEqual({
+        code: 'BUDGET_UNAVAILABLE',
+        recorded: [{ hold_state: 'held' }],
+        actual: '600',
+        live: [],
+      });
     });
   },
 );

@@ -17,7 +17,7 @@ import {
   callState,
   envelopeOf,
   expireLease,
-  forgetHoldState,
+  asBeforeHoldState,
   holdStateOf,
   holdsOf,
   roomyWork,
@@ -180,33 +180,37 @@ describe.skipIf(serverUrl === undefined)('a pickup after a top-up on a causeless
   });
 });
 
-describe.skipIf(serverUrl === undefined)('a pickup after a top-up with no hold state', () => {
-  it('counts a closed hold once when its top-up was written before the answer recorded the hold state', async () => {
-    // As above, the top-up's hold_state also null, as a top-up written before
-    // the column was: the room counts it closed first, at the greater.
-    const { work, versionId, first } = await roomyWork(s);
-    await spend(s, first, 300);
-    await unsentCall(s, first, 200);
-    expect(await stopForRoom(work, first, 200)).toBe('BUDGET_UNAVAILABLE');
-    await s.db.admin.execute(
-      `update public.reservations set classified_cause = null, classified_cause_id = null
+describe.skipIf(serverUrl === undefined)(
+  'a pickup after an upgrade from before the hold state',
+  () => {
+    it('counts a hold closed before a top-up written before the hold state once, as the upgrade records it', async () => {
+      // As above, but the top-up predates the column: the upgrade finds the step's
+      // fresh hold made in the answer's transaction and records the hold closed.
+      const { work, versionId, first } = await roomyWork(s);
+      await spend(s, first, 300);
+      await unsentCall(s, first, 200);
+      expect(await stopForRoom(work, first, 200)).toBe('BUDGET_UNAVAILABLE');
+      await s.db.admin.execute(
+        `update public.reservations set classified_cause = null, classified_cause_id = null
         where business_id = $1 and id = $2 and state = 'actual'`,
-      [s.business, first],
-    );
-    expect(codeOf(await topUp(s, work, first, 100))).toBe('applied');
-    expect(await forgetHoldState(s, first), 'the top-up row, its state dropped').toHaveLength(1);
-    const fresh = (await holdsOf(s, versionId)).find((hold) => hold.state === 'held');
-    const third = await pickup(s, fresh?.id);
-    await spend(s, third['reservationId'], 40);
-    await stopWorker(s, third);
+        [s.business, first],
+      );
+      expect(codeOf(await topUp(s, work, first, 100))).toBe('applied');
+      await asBeforeHoldState(s);
+      const fresh = (await holdsOf(s, versionId)).find((hold) => hold.state === 'held');
+      const third = await pickup(s, fresh?.id);
+      await spend(s, third['reservationId'], 40);
+      await stopWorker(s, third);
 
-    const again = await claim(fresh?.id);
-    expect({ code: codeOf(again), live: await liveOf(versionId) }).toEqual({
-      code: 'applied',
-      live: ['60'],
+      const again = await claim(fresh?.id);
+      expect({
+        code: codeOf(again),
+        live: await liveOf(versionId),
+        recorded: await holdStateOf(s, first),
+      }).toEqual({ code: 'applied', live: ['60'], recorded: [{ hold_state: 'actual' }] });
     });
-  });
-});
+  },
+);
 
 describe.skipIf(serverUrl === undefined)('a top-up on an abandoned hold with a call unsent', () => {
   it('releases the unsent call uncounted when a top-up answers a no-room stop on a hold its lease left unspent, so the sweep gives nothing back', async () => {
