@@ -12,6 +12,7 @@ import {
 } from '../authority/grants.ts';
 import { grantedScopes } from '../authority/grant-reach.ts';
 import { isWayfinderRecord, wayfinderFacts } from '../tasks/wayfinder.ts';
+import { mapTicketCondition, wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /**
@@ -39,13 +40,16 @@ export const IS_CONVERSATION = `exists (select 1 from public.record_types ct
    where ct.business_id = r.business_id and ct.id = r.record_type_id
      and ct.key = 'team_conversation')`;
 
+/** Whether `person` (SQL) is staff of `r`'s business: shown a task's internal projection. */
+const staff = (person: string): string => `exists (select 1 from public.memberships ms
+     where ms.business_id = r.business_id and ms.person_id = ${person} and ms.active
+       and ms.role_key in ('owner', 'admin', 'member'))`;
+
 /**
  * Whether `person` (SQL) may chat in `r`'s business now: staff holding a live
  * business-wide `chat:comment`, its expiry read on the statement's clock.
  */
-export const chatsNow = (person: string): string => `(exists (select 1 from public.memberships ms
-     where ms.business_id = r.business_id and ms.person_id = ${person} and ms.active
-       and ms.role_key in ('owner', 'admin', 'member'))
+export const chatsNow = (person: string): string => `(${staff(person)}
    and exists (${EFFECTIVE}
      select 1 from effective e
       where e.business_id = r.business_id and e.collection = 'chat' and e.action = 'comment'
@@ -69,15 +73,16 @@ export const inConversation = (person: string, since?: string): string =>
        since === undefined ? '' : ` and cm.joined_at <= ${since}`
      }) and ${chatsNow(person)})`;
 
-/** Whether `person` reads live record `r` now, asked in the statement that acts on it. */
+/** Whether `person` reads live record `r` now as `taskAccess` does, in the statement acting on it. */
 export const readableNow = (person: string, since: string): string => `(r.deleted_at is null
   and case when ${IS_CONVERSATION} then ${inConversation(person, since)}
    else exists (${EFFECTIVE}
      select 1 from effective e
       where e.business_id = r.business_id and e.collection = 'task' and e.action = 'read'
         and (e.scope_kind = 'business' or (e.scope_kind = 'record' and e.scope_id = r.id)
-             or (e.scope_kind = 'party' and e.scope_id = r.uuid_7))
-        and ${heldBy(person)}) end)`;
+             or (e.scope_kind = 'party' and e.scope_id = r.uuid_7)
+             or (e.scope_kind = 'record' and e.scope_id = r.uuid_4 and ${mapTicketCondition('r')}))
+        and ${heldBy(person)}) and (${staff(person)} or not ${wayfinderCondition('r')}) end)`;
 
 /** One person's access to one task or conversation; given `raisedAt`, a member since then. */
 export async function taskAccess(
