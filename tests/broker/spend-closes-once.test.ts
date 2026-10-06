@@ -86,14 +86,13 @@ const topUp = async (on: Schedules, work: Work) =>
 const cameTo = async (work: Work): Promise<number> =>
   (await calls(work)).reduce((sum, one) => sum + Number(one.came_to), 0);
 
-it("a call closed by the provider's proof ignores its own late answer: one give-back", async () => {
+it('a call whose request has not reached the provider is not closed by its lookup, and stays held after its late answer', async () => {
   const work = await liveWork(s, `closes once proved ${randomUUID()}`, 2_000);
   world.provider.mode('answer');
   world.provider.lookupMode('honest');
   const { broker: slow, open } = gated(faultBroker());
   const late = callIn(s, work, slow);
   await dispatched(work);
-  const before = await envelopeActual(work);
   // Its worker is lost: the sweep holds the call unknown while custody still waits on it.
   await s.db.admin.execute(
     `update public.leases set expires_at = clock_timestamp() - interval '1 second' where id = $1`,
@@ -101,15 +100,14 @@ it("a call closed by the provider's proof ignores its own late answer: one give-
   );
   await s.db.app.withBusiness(s.business, async (tx) => await sweepLostWorkers(tx));
   await pass();
-  expect(await calls(work)).toMatchObject([{ state: 'released' }]);
+  // The request may still reach the provider, so the lookup proves nothing and the call stays held.
+  expect(await calls(work)).toMatchObject([{ state: 'liability_unknown' }]);
 
   open();
 
-  expect(await late).toMatchObject({ ok: false });
-  expect(await calls(work)).toMatchObject([{ state: 'released', came_to: '0' }]);
-  expect(await envelopeActual(work), 'counted as the call came to').toBe(
-    before + (await cameTo(work)),
-  );
+  await late;
+  expect(world.provider.processed.size).toBeGreaterThan(0);
+  expect(await calls(work)).not.toMatchObject([{ state: 'released' }]);
 });
 
 // The late answer and the provider's proof race on a call a top-up counted at
