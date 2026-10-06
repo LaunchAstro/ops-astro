@@ -13,7 +13,12 @@
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { STATE_WORDS, type CorrectionAsk, type ProposePort } from '../assistant/correction.ts';
-import { desksOf, type Correction } from '../assistant/correction-desks.ts';
+import {
+  desksOf,
+  requestPort,
+  type Correction,
+  type Locate,
+} from '../assistant/correction-desks.ts';
 import { useCorrections, type Corrections } from '../assistant/use-corrections.ts';
 import type { OperationsClient } from '../operations/client.ts';
 
@@ -160,3 +165,22 @@ export function SidebarCorrections(props: {
     </div>
   );
 }
+
+/** What the agent sidebar's host hands in for corrections (`assistant.tsx`). */
+export interface CorrectionHost {
+  /** The site read that finds a correction's file (`Locate`); without it no door is drawn. */
+  readonly locate?: Locate;
+}
+
+/** The allowance line, and the correction door and desks where the host hands in the site read. */
+export const besideAllowance = (
+  allowance: ReactElement,
+  host: CorrectionHost & { readonly client: OperationsClient },
+): ReactElement => (
+  <>
+    {allowance}
+    {host.locate === undefined ? null : (
+      <SidebarCorrections client={host.client} propose={requestPort(host.client, host.locate)} />
+    )}
+  </>
+);
