@@ -362,6 +362,37 @@
   outline: none;
 }
 
+/* A chip (PJ-03): its kind in mono capitals above the value, and its cross. */
+.todos .tsearch__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.2rem 0.1rem 0.4rem;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font: var(--type-small);
+}
+
+.todos .tsearch__tag:hover {
+  border-color: var(--ink);
+}
+
+.todos .tsearch__kind {
+  color: var(--ink-faint);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: uppercase;
+}
+
+.todos .tsearch__x {
+  padding: 0 0.2rem;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+
 .todos .tsearch__read {
   margin: 0;
   padding-top: var(--s-2);

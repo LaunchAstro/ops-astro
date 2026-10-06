@@ -695,6 +695,13 @@ export interface BoardComments {
 export interface TodoView extends TaskSummary {
   readonly tags: readonly TagView[];
   readonly waitingComments: number;
+  /** The work label's id (CS-4.16), as `task.read` answers it; null for none. */
+  readonly category: string | null;
+  /**
+   * Whose move it is (DP-14), as the task page derives it: Review while a gate
+   * waits on a person, Agent while an agent holds a live lease, Team otherwise.
+   */
+  readonly whoseMove: 'Review' | 'Agent' | 'Team';
 }
 
 /** `task.todos`: the reader's own open tasks, whatever board they sit on. */
