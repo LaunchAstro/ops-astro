@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { executeCredentialCommand } from '../../packages/core-commands/src/commands/credential-envelope.ts';
 import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
 import { addClient, grantTo } from '../commands/fixture.ts';
 import {
@@ -642,6 +643,87 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     expect(JSON.stringify(back)).toContain('map owner');
     expect(await dataOf(loose.id, 'parent')).toBeNull();
     must(await reparent(owner, loose.id, map.id), "the owner files it on the owner's map");
+  });
+
+  it('WF-1 files a grilling or prototype ticket on a map by its owner alone (#959)', async () => {
+    // Bea owns the map. Ada holds task:write but neither owns it nor holds
+    // task:decide; the teammate holds decide but does not own it.
+    const bea = owner;
+    const map = await newMap(bea, "Bea's map");
+    const ada = await w.member('ada', ['read', 'write']);
+    await w.db.app.withBusiness(w.business, async (tx) => {
+      await grantTo(tx, ada, 'write', undefined, false, 'credential');
+    });
+    const issued = await w.as(ada, {
+      command: 'credential.issue',
+      scope: [
+        { collection: 'task', action: 'read' },
+        { collection: 'task', action: 'write' },
+      ],
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      purpose: 'files tickets for Ada',
+    });
+    expect(codeOf(issued)).toBe('applied');
+    const credential = String(
+      (issued as unknown as { readonly detail: Record<string, unknown> }).detail['credential'],
+    );
+    const NEEDS_DECIDE = 'Filing a grilling or prototype ticket on a map needs task:decide.';
+    const OWNER_ONLY = "Only the map's owner files a grilling or prototype ticket on the map.";
+    const body = (taskType: string, title: string) => ({
+      command: 'task.create' as const,
+      operationId: randomUUID(),
+      fields: { title },
+      taskType,
+      parentId: map.id,
+    });
+    const asPerson = async (who: Member, taskType: string, title: string) =>
+      await w.as(who, body(taskType, title));
+    const asAgent = async (taskType: string, title: string) =>
+      await executeCredentialCommand(
+        w.db.app,
+        w.business,
+        { credential, now: new Date() },
+        body(taskType, title),
+      );
+    const titled = async (title: string) =>
+      Number(
+        (
+          await w.db.admin.execute<{ readonly n: string }>(
+            `select count(*)::text as n from public.records
+              where business_id = $1 and data->>'title' = $2`,
+            [w.business, title],
+          )
+        )[0]?.n,
+      );
+
+    for (const taskType of ['grilling', 'prototype']) {
+      const byAda = `Ada's ${taskType}`;
+      expect(await asPerson(ada, taskType, byAda)).toMatchObject({
+        code: 'SCOPE_NOT_GRANTED',
+        fixes: [NEEDS_DECIDE],
+      });
+      const byAgent = `Ada's agent's ${taskType}`;
+      expect(await asAgent(taskType, byAgent)).toMatchObject({
+        code: 'SCOPE_NOT_GRANTED',
+        fixes: [NEEDS_DECIDE],
+      });
+      const byTeammate = `the teammate's ${taskType}`;
+      expect(await asPerson(teammate, taskType, byTeammate)).toMatchObject({
+        code: 'SCOPE_NOT_GRANTED',
+        fixes: [OWNER_ONLY],
+      });
+      for (const title of [byAda, byAgent, byTeammate]) expect(await titled(title)).toBe(0);
+      // The map's owner still files one.
+      const byBea = `Bea's ${taskType}`;
+      const filed = must(await asPerson(bea, taskType, byBea), `Bea files a ${taskType}`);
+      expect(await dataOf(filed.id, 'parent')).toBe(map.id);
+      expect(await dataOf(filed.id, 'type')).toBe(taskType);
+    }
+    // Research, task and build tickets stay any task:write holder's to file.
+    for (const taskType of ['research', 'task', 'build']) {
+      const filed = must(await asPerson(ada, taskType, `Ada's ${taskType}`), `Ada's ${taskType}`);
+      expect(await dataOf(filed.id, 'type')).toBe(taskType);
+    }
   });
 
   it('WF-1 map scoped follows the client rules of task.set_party', async () => {
