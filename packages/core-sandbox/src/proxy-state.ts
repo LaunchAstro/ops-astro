@@ -16,7 +16,7 @@
 // check and on a failed delete of its recorded container. While no sweep
 // has passed every request is `unavailable`, and the sweep repeats every
 // 30 s; a run whose container a sweep removed stays `unavailable`. A throw
-// fails a sweep or delete and answers the launcher `internal`. A wait counts
+// fails a sweep or delete and answers the launcher `internal`, a create's too. A wait counts
 // only if sent after a start answered 204 (a created container's wait
 // answers at once), and a start at the deadline is refused. `tick` is the
 // caller's timer: it kills at every tick from the deadline until the record
@@ -124,7 +124,8 @@ export class ProxyState {
   }
 
   async handle(op: StateOp): Promise<SandboxResult<{ reply: Reply }>> {
-    if (op.kind === 'create') return this.#exclusive(() => this.#create(op));
+    if (op.kind === 'create')
+      return this.#exclusive(() => this.#create(op)).catch(() => fault('reply status'));
     if (this.#retryAt !== null) return UNAVAILABLE;
     if ('id' in op) {
       if (this.#swept.has(op.id)) return UNAVAILABLE;

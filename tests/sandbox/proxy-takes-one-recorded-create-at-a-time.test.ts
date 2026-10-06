@@ -113,7 +113,11 @@ it('leaves creates left unchanged when the store dies between the daemon create 
   const w = world();
   const state = await opened(w);
   w.crashAfterCreate = true;
-  await expect(state.handle(create(C))).rejects.toThrow('the store died');
+  expect(await state.handle(create(C))).toEqual({
+    ok: false,
+    reason: 'internal',
+    why: 'reply status',
+  });
   expect(w.held.size).toBe(1);
   w.crash = false;
   w.crashAfterCreate = false;
