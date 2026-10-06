@@ -170,15 +170,15 @@ async function claim(tx: TenantQuery, asked: Found, subject: string, limits: Log
   return taken?.id ?? 'busy';
 }
 
-/** Our claim, never taken over, and its link both live: held one more bound; false when not. */
+/** Our claim, still live (so counted in the limits), and its link: held one more bound. */
 async function renew(tx: TenantQuery, asked: Found, claimId: string, boundMs: number) {
   if ((await heldLive(tx, asked, claimId)) === undefined) return false;
-  await tx.query(
+  const held = await tx.query(
     `update invitations set accept_claimed_until = clock_timestamp() + $3::float8 * interval '1ms'
-      where business_id = $1 and id = $2`,
+      where business_id = $1 and id = $2 and accept_claimed_until > clock_timestamp() returning 1`,
     [tx.businessId, asked.invitationId, boundMs],
   );
-  return true;
+  return held.length === 1;
 }
 
 const RELEASE = `update invitations set accept_claim = null, accept_claimed_until = null
