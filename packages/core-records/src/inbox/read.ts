@@ -59,8 +59,8 @@ export const HELD: string = `(((select business from reach) or i.subject_record_
 
 /**
  * `HELD`, but a conversation's item (C71) is held by its current members
- * alone, each from their latest join: an item raised before a re-join stays
- * held. Without `chats`, an agent key that does not tick `chat:comment`
+ * alone, each from their latest join: an item raised before a re-join is
+ * withheld. Without `chats`, an agent key that does not tick `chat:comment`
  * (API-2), none is.
  */
 const heldOf = (chats: boolean): string => `(case when ${IS_CONVERSATION}
