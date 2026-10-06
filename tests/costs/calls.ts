@@ -19,7 +19,9 @@ export type Call =
       readonly model?: string;
       readonly units?: readonly [number, number];
     }
-  | { readonly state: 'liability_unknown' };
+  | { readonly state: 'liability_unknown' }
+  /** Released on positive proof that nothing happened: a known zero. */
+  | { readonly state: 'released' };
 
 /** Where a seeded call sits: the run's own step, lease, version, reservation and delegation. */
 interface CallPlace {
@@ -49,9 +51,9 @@ async function insertCall(db: FreshDatabase, call: Call, at: CallPlace): Promise
              now() - make_interval(hours => $12::int) + make_interval(mins => $13::int),
              case when $14::boolean then now() - make_interval(hours => $12::int)
                     + make_interval(mins => $13::int + 1) end,
-             case when $14::boolean then now() - make_interval(hours => $12::int)
+             case when $14::boolean or $18::boolean then now() - make_interval(hours => $12::int)
                     + make_interval(mins => $13::int + 1) end,
-             $15, $16, $17, case when $14::boolean then null else now() end)`,
+             $15, $16, $17, case when $14::boolean or $18::boolean then null else now() end)`,
     [
       at.business,
       randomUUID(),
@@ -71,6 +73,7 @@ async function insertCall(db: FreshDatabase, call: Call, at: CallPlace): Promise
       settled ? (call.model ?? null) : null,
       settled ? (call.units?.[0] ?? null) : null,
       settled ? (call.units?.[1] ?? null) : null,
+      call.state === 'released',
     ],
   );
 }

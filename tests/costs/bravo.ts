@@ -39,6 +39,8 @@ async function installBravo(
       // eslint-disable-next-line no-await-in-loop -- a grant reads the granter's own rows
       await grantTo(tx, manager, action);
     }
+    await grantTo(tx, manager, 'write', { kind: 'business', id: null }, false, 'record');
+    await grantTo(tx, manager, 'share', { kind: 'business', id: null }, false, 'task');
     await tx.query(
       `insert into public.budget_caps (business_id, id, key, limit_minor, currency)
        values ($1, $2, 'local', 500000, 'AUD')`,
@@ -73,20 +75,26 @@ async function callerOf(controls: Controls, member: Member) {
     );
 }
 
-/** One picked-up run in bravo through bravo's routes, its calls seeded by `seed`. */
+/** One picked-up run in bravo on `client`, through bravo's routes, its calls seeded by `seed`. */
 export async function runInBravo(
   controls: Controls,
   bravo: string,
   canary: string,
+  client: string,
   seed: (ran: Ran, picked: Record<string, unknown>) => Promise<void>,
 ): Promise<Ran> {
   const { manager, agent } = await installBravo(controls, bravo);
   const asManager = await callerOf(controls, manager);
   const task = await asManager('task.create', { fields: { title: `bravo ${canary}` } });
+  const linked = await asManager('task.set_party', {
+    recordId: task['recordId'],
+    expectedRevision: task['revision'],
+    fields: { client },
+  });
   const proposal = detail(
     await asManager('task.propose', {
       recordId: task['recordId'],
-      expectedRevision: task['revision'],
+      expectedRevision: linked['revision'],
       ...PROPOSAL,
     }),
   );

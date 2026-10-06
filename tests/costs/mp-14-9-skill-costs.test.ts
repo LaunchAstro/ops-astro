@@ -16,6 +16,7 @@ import type { SkillCostsResult, SkillCostView } from '../../packages/core-wire/s
 import {
   BRAVO_CANARY,
   BRAVO_MINOR,
+  BRAVO_NAME,
   createCostWorld,
   RECORD_CANARY,
   type CostWorld,
@@ -210,29 +211,33 @@ describe.skipIf(serverUrl === undefined)('skill costing', () => {
 
   it('isolation: two businesses with settled calls each read only their own runs and totals', async () => {
     const theirs = await costs(w.bravoFinance, 'bravo');
-    // Bravo's one run names no skill: its own split, and no skill of alpha's.
-    expect(theirs.costing).toStrictEqual({
-      skills: [],
-      split: [
-        {
-          currency: 'AUD',
-          runs: 1,
-          total: String(BRAVO_MINOR),
-          solo: { runs: 0, total: '0' },
-          shared: { runs: 0, total: '0' },
-          unattributed: { runs: 1, total: String(BRAVO_MINOR) },
-          unpricedRuns: 0,
-        },
-      ],
-    });
+    // Bravo's one run is pinned to bravo's own skill: its own row and split.
+    expect(theirs.costing?.skills.map((one) => [one.skillId, one.name])).toStrictEqual([
+      [w.bravoSkill, `Bravo skill ${BRAVO_NAME}`],
+    ]);
+    expect(theirs.costing?.split).toStrictEqual([
+      {
+        currency: 'AUD',
+        runs: 1,
+        total: String(BRAVO_MINOR),
+        solo: { runs: 1, total: String(BRAVO_MINOR) },
+        shared: { runs: 0, total: '0' },
+        unattributed: { runs: 0, total: '0' },
+        unpricedRuns: 0,
+      },
+    ]);
     const text = JSON.stringify(theirs);
     for (const id of [...runs, ...Object.values(skills), clientA, clientB]) {
       expect(text).not.toContain(id);
     }
-    expect(text).not.toContain('Monthly report');
+    for (const name of ['Monthly report', 'Landing page copy', 'Schema markup']) {
+      expect(text).not.toContain(name);
+    }
     const ours = await costs();
     expect(ours.costing?.split[0]).toMatchObject({ runs: 7, total: '1220' });
-    expect(JSON.stringify(ours)).not.toContain(BRAVO_CANARY);
+    for (const id of [BRAVO_CANARY, BRAVO_NAME, w.bravoSkill, w.bravoClient]) {
+      expect(JSON.stringify(ours)).not.toContain(id);
+    }
   });
 
   it('isolation: a client-scoped reader sees only that client’s runs, in rows and in the split', async () => {
@@ -245,8 +250,9 @@ describe.skipIf(serverUrl === undefined)('skill costing', () => {
       unattributed: { runs: 0, total: '0' },
     });
     const text = JSON.stringify(result);
-    expect(text).not.toContain(clientB);
-    expect(text).not.toContain('Monthly report');
+    for (const id of [clientB, 'Monthly report', w.bravoSkill, BRAVO_NAME]) {
+      expect(text).not.toContain(id);
+    }
   });
 
   it('canary: no client name, task title or foreign skill reaches any body, refusals included', () => {

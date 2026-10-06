@@ -14,6 +14,7 @@ import type { AgentCostsResult } from '../../packages/core-wire/src/index.ts';
 import {
   BRAVO_CANARY,
   BRAVO_MINOR,
+  BRAVO_NAME,
   createCostWorld,
   RECORD_CANARY,
   type CostWorld,
@@ -193,7 +194,7 @@ describe.skipIf(serverUrl === undefined)('what our agents cost us', () => {
     });
     expect(bravo.byAttachment).toStrictEqual([
       {
-        attachment: { kind: 'agency' },
+        attachment: { kind: 'client', id: w.bravoClient, name: `Bravo client ${BRAVO_NAME}` },
         currency: 'AUD',
         runs: 1,
         unpricedRuns: 0,
@@ -201,7 +202,7 @@ describe.skipIf(serverUrl === undefined)('what our agents cost us', () => {
       },
     ]);
     const text = JSON.stringify(theirs.body);
-    for (const id of [...Object.values(runs), clientA, clientB, w.agentActorId]) {
+    for (const id of [...Object.values(runs), clientA, clientB, w.agentActorId, RECORD_CANARY]) {
       expect(text).not.toContain(id);
     }
     const ours = await costs();
@@ -209,7 +210,9 @@ describe.skipIf(serverUrl === undefined)('what our agents cost us', () => {
     expect(ours.byAgent.map((one) => one.agentActorId)).toStrictEqual([w.agentActorId]);
     expect(ours.byAgent[0]?.total).toBe('245');
     expect(JSON.stringify(ours)).not.toContain(w.bravoRun.runId);
-    expect(JSON.stringify(ours)).not.toContain(BRAVO_CANARY);
+    for (const id of [BRAVO_CANARY, BRAVO_NAME, w.bravoClient]) {
+      expect(JSON.stringify(ours)).not.toContain(id);
+    }
   });
 
   it('isolation: a client-scoped reader sees only that client’s runs, in rows and totals', async () => {
@@ -222,8 +225,9 @@ describe.skipIf(serverUrl === undefined)('what our agents cost us', () => {
     ]);
     expect(result.byAgent[0]).toMatchObject({ runs: 2, unpricedRuns: 1, total: '120' });
     const text = JSON.stringify(result);
-    expect(text).not.toContain(clientB);
-    expect(text).not.toContain(runs.agency);
+    for (const id of [clientB, runs.agency, w.bravoClient, BRAVO_NAME]) {
+      expect(text).not.toContain(id);
+    }
   });
 
   it('canary: no client name or task title reaches a refusal, and no foreign one any body', () => {
