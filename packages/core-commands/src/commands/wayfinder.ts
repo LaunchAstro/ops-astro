@@ -7,15 +7,13 @@
 // that belongs to the type; a map's revisions and WF-2's commands sit beside it.
 
 import {
-  checkAuthority,
   isTaskType,
   isUuid,
   OWNER_TYPES,
-  subjectsOf,
   TASK_TYPES,
   wayfinderFacts,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery, TaskType, WayfinderFacts } from '../../../core-records/src/index.ts';
+import type { TenantQuery, TaskType } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
@@ -23,6 +21,7 @@ import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
 import { outsideHolders } from '../reads/tasks.ts';
 import type { CommandRequest } from './requests.ts';
 import { setPartyWhileEmpty } from './task-client-lock.ts';
+import { refuseUnlessOwner } from './wayfinder-owner.ts';
 
 export type RequestOf<K extends CommandRequest['command']> = Extract<
   CommandRequest,
@@ -69,55 +68,6 @@ export async function wayfinderDataOnCreate(
     if (parent?.type === 'map' && parent.client !== null) data['client'] = parent.client;
   }
   return data;
-}
-
-export async function holdsDecide(
-  tx: TenantQuery,
-  context: CommandContext,
-  facts: WayfinderFacts,
-): Promise<boolean> {
-  const subjects = subjectsOf(context.session);
-  const target = context.target?.id ?? '';
-  for (const id of [target, facts.mapId].filter((x): x is string => x !== null)) {
-    // At most two: the ticket, then its map.
-    // oxlint-disable-next-line no-await-in-loop
-    const held = await checkAuthority(tx, subjects, {
-      collection: context.declaration.collection,
-      action: 'decide',
-      scope: { kind: 'record', id },
-    });
-    if (held.ok) return true;
-  }
-  return false;
-}
-
-/** What the owner rule says when it refuses: the decide line, then the owner line. */
-export interface OwnerRuleFixes {
-  readonly decide: string;
-  readonly owner: string;
-}
-
-/**
- * The owner rule on a grilling, prototype or map ticket: `task:decide` at the
- * ticket or its map, and the map's owner. A map with no owner recorded passes
- * the owner half unless `ownerless` says to refuse it.
- */
-export async function refuseUnlessOwner(
-  tx: TenantQuery,
-  context: CommandContext,
-  facts: WayfinderFacts,
-  fixes: OwnerRuleFixes,
-  ownerless: 'pass' | 'refuse' = 'pass',
-): Promise<CommandRefusal | undefined> {
-  if (!(await holdsDecide(tx, context, facts))) {
-    return refuseCommand('SCOPE_NOT_GRANTED', ['task:decide'], [fixes.decide]);
-  }
-  const owner = facts.mapOwner;
-  if (owner === null && ownerless === 'pass') return undefined;
-  if (owner !== context.session.personId) {
-    return refuseCommand('SCOPE_NOT_GRANTED', ['map owner'], [fixes.owner]);
-  }
-  return undefined;
 }
 
 /**
