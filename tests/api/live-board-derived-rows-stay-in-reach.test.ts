@@ -26,37 +26,14 @@ import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import { authorised, BUSINESS_KEY, ISSUER, post, tokenFor } from './fixture.ts';
 import { createControls, PROPOSAL, type Controls } from './controls-fixture.ts';
+import {
+  sleep,
+  type Hidden,
+  type Row,
+  type Tab,
+} from './live-board-derived-rows-stay-in-reach-support.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
-interface Row {
-  readonly id: string;
-  readonly actualMinutes: number;
-  readonly waitReason: string | null;
-  readonly state: { readonly id: string; readonly label: string } | null;
-  readonly assignee: { readonly personId: string; readonly name: string } | null;
-}
-
-interface Tab {
-  resyncs(): number;
-  stop(): Promise<void>;
-}
-
-/** A task in `businessKey`, worked by `owner`, assigned to `assignee`, started, and waiting at a gate. */
-interface Hidden {
-  readonly businessKey: string;
-  readonly business: BusinessId;
-  readonly owner: Member;
-  readonly assignee: Member;
-  readonly taskId: string;
-  readonly gateId: string;
-}
-
-const sleep = async (ms: number): Promise<void> => {
-  await new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-};
 
 // eslint-disable-next-line max-lines-per-function -- one database world and its open tabs, and the cases that share them
 describe.skipIf(serverUrl === undefined)('an open board hears nothing of a hidden task', () => {
@@ -176,18 +153,27 @@ describe.skipIf(serverUrl === undefined)('an open board hears nothing of a hidde
     expect(before?.assignee?.personId).not.toBe(mine?.assignee?.personId);
   };
 
-  /** The hidden task stirred under `reader`'s quiet board, which hears nothing while its owner reads it all. */
+  /**
+   * The hidden task stirred under `reader`'s quiet board, which hears nothing while its owner reads it all.
+   * The gate's short deadline is set only once the board is quiet and the gate is seen still waiting,
+   * so its expiry falls inside the watch and cannot hide in the opening resyncs.
+   */
   const stirUnheard = async (reader: Member, readerTask: string, hidden: Hidden): Promise<void> => {
     await expectApart(reader, readerTask, hidden);
-    await c.fixture.db.admin.execute(
-      `update public.gates set expires_at = clock_timestamp() + interval '2 seconds'
-        where id = $1`,
-      [hidden.gateId],
-    );
-    const expires = Date.now() + 2_000;
     const tab = await openQuiet(reader);
     try {
       const heard = tab.resyncs();
+      const waiting = (await rowsOf(hidden.business, hidden.owner)).find(
+        (row) => row.id === hidden.taskId,
+      );
+      expect(waiting?.waitReason).toBe('needs_approval');
+      const armed = await c.fixture.db.admin.execute<{ readonly id: string }>(
+        `update public.gates set expires_at = clock_timestamp() + interval '2 seconds'
+          where id = $1 and state = 'pending' and expires_at > clock_timestamp() returning id`,
+        [hidden.gateId],
+      );
+      expect(armed).toHaveLength(1);
+      const expires = Date.now() + 2_000;
       await as(hidden.businessKey, hidden.owner, 'time.log', {
         taskId: hidden.taskId,
         duration: '45m',
