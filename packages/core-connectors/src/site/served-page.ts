@@ -72,12 +72,23 @@ const FENCE_LIKE = /---|\+\+\+/u;
  * fence, or one after other text leaves no page.
  */
 export function served(source: string): string[] | undefined {
-  const text = source.replace(/^\uFEFF/u, '').replaceAll('\r\n', '\n');
-  const lines = text.split('\n');
+  const lines = source
+    .replace(/^\uFEFF/u, '')
+    .replaceAll('\r\n', '\n')
+    .split('\n');
+  const close = closingFence(lines);
+  return close === undefined ? undefined : rendered(lines.slice(close + 1).join('\n'));
+}
+
+/**
+ * The line index of the frontmatter's closing fence by the grammar above, over lines without
+ * their byte-order mark or `\r\n` endings: `-1` when the source has no frontmatter, `undefined`
+ * when it leaves no page.
+ */
+export function closingFence(lines: readonly string[]): number | undefined {
   if (lines.some((line) => FENCE_LIKE.test(line) && !FENCE.test(line))) return undefined;
   const fences = lines.flatMap((line, at) => (FENCE.test(line) ? [at] : []));
-  if (fences.length === 0) return rendered(text);
+  if (fences.length === 0) return -1;
   const opens = lines.findIndex((line) => !BLANK.test(line));
-  if (fences.length !== 2 || fences[0] !== opens) return undefined;
-  return rendered(lines.slice((fences[1] ?? 0) + 1).join('\n'));
+  return fences.length === 2 && fences[0] === opens ? fences[1] : undefined;
 }
