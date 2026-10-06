@@ -139,27 +139,42 @@ async function ready(
     };
   }
   // Nothing is made before the login is checked; a home not there yet holds no login.
-  const home = statSync(settings.home, { throwIfNoEntry: false });
+  const before = homeRefusal(settings.home, false);
+  if (before !== null) return before;
+  if (!(await codexLogin(settings))) {
+    return {
+      ok: false,
+      code: 'CODEX_NOT_SIGNED_IN',
+      message: `sign the runner's Codex home in to ChatGPT once: mkdir -p -m 700 '${settings.home}' '${settings.codexHome}' && CODEX_HOME='${settings.codexHome}' codex login`,
+    };
+  }
+  // Checked again once signed in: the key is filed in this home next, as it stands now.
+  const after = homeRefusal(settings.home, true);
+  if (after !== null) return after;
+  return { ok: true, settings, port };
+}
+
+/** Why the runner's home cannot hold the key, or null; a home not there passes only before the login. */
+function homeRefusal(path: string, mustExist: boolean): Refusal | null {
+  const home = statSync(path, { throwIfNoEntry: false });
+  if (home === undefined) {
+    return mustExist
+      ? { ok: false, code: 'HOME_NOT_OWNED', message: 'OPS_LOCAL_AGENT_HOME is not there' }
+      : null;
+  }
   // A home someone else owns could hold their symlinks or read the key.
-  if (home !== undefined && home.uid !== process.getuid?.()) {
+  if (home.uid !== process.getuid?.()) {
     return { ok: false, code: 'HOME_NOT_OWNED', message: 'OPS_LOCAL_AGENT_HOME is not yours' };
   }
   // In a home others can write to, they could rename their own api.env over the one the owner sources.
-  if (home !== undefined && (home.mode & 0o022) !== 0) {
+  if ((home.mode & 0o022) !== 0) {
     return {
       ok: false,
       code: 'HOME_NOT_PRIVATE',
       message: 'others can write to OPS_LOCAL_AGENT_HOME: chmod 700 it',
     };
   }
-  if (!(await codexLogin(settings))) {
-    return {
-      ok: false,
-      code: 'CODEX_NOT_SIGNED_IN',
-      message: `sign the runner's Codex home in to ChatGPT once: mkdir -p -m 700 ${settings.home} ${settings.codexHome} && CODEX_HOME=${settings.codexHome} codex login`,
-    };
-  }
-  return { ok: true, settings, port };
+  return null;
 }
 
 export async function startStack(

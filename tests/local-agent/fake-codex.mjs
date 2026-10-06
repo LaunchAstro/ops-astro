@@ -7,11 +7,12 @@
 // fake.json says: a reply, extra event lines, a tool item, a failed turn, the
 // plan's usage limit, raw output, the tokens used, an exit code or a wait.
 // The login answers as its `login` knob says; `wrapper` is a wrapper whose
-// descendant holds its output open and never answers. It never reaches a model.
+// descendant holds its output open and never answers (`escaped`: from a
+// process group of its own); `loosen` opens the home while it answers. It never reaches a model.
 
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 const home = process.env.CODEX_HOME ?? '';
 const knobsFile = join(home, 'fake.json');
@@ -27,7 +28,18 @@ if (process.argv[2] === 'login') {
     writeFileSync(join(home, 'descendant.pid'), String(descendant.pid));
     await new Promise(() => {});
   }
-  if (login === 'chatgpt') process.stdout.write('Logged in using ChatGPT\n');
+  if (login === 'escaped') {
+    // A descendant in a process group of its own, so no kill of the wrapper's group reaches it.
+    const descendant = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], {
+      stdio: ['ignore', 'inherit', 'inherit'],
+      detached: true,
+    });
+    writeFileSync(join(home, 'descendant.pid'), String(descendant.pid));
+    await new Promise(() => {});
+  }
+  // `loosen`: signed in, but the runner's home is opened to others while the check runs.
+  if (login === 'loosen') chmodSync(dirname(home), 0o777);
+  if (login === 'chatgpt' || login === 'loosen') process.stdout.write('Logged in using ChatGPT\n');
   else if (login === 'apikey') process.stdout.write('Logged in using an API key - sk-proj-***\n');
   else process.stdout.write('Not logged in\n');
   process.exit(login === 'none' ? 1 : 0);

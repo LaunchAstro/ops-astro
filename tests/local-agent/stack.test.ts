@@ -96,6 +96,14 @@ describe('what the stack refuses before writing anything', () => {
     expect(await start(w, overrides)).toMatchObject({ ok: false, code });
     expect(tree(w.agentHome)).toEqual(before);
   });
+
+  it('refuses a home opened to others while the login was checked, and files no key there', async () => {
+    const w = fresh();
+    w.knobs({ login: 'loosen' });
+    const before = tree(w.agentHome);
+    expect(await start(w)).toMatchObject({ ok: false, code: 'HOME_NOT_PRIVATE' });
+    expect(tree(w.agentHome)).toEqual(before);
+  });
 });
 
 /** A loopback port nothing listens on now. */

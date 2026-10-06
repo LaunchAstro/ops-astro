@@ -188,12 +188,31 @@ describe('the login check', () => {
     const pending = new Promise((resolve) => {
       timer = setTimeout(() => {
         resolve('still pending');
-      }, 3_000);
+      }, 5_000);
     });
     try {
-      expect(await Promise.race([codexLogin(settings, 500), pending])).toBe(false);
+      expect(await Promise.race([codexLogin(settings, 2_000), pending])).toBe(false);
       const descendant = Number(readFileSync(pidFile, 'utf8'));
       await expect.poll(() => alive(descendant)).toBe(false);
+    } finally {
+      clearTimeout(timer);
+      if (existsSync(pidFile)) {
+        const descendant = Number(readFileSync(pidFile, 'utf8'));
+        if (alive(descendant)) process.kill(descendant, 'SIGKILL');
+      }
+    }
+  });
+  it('the deadline itself settles the check, though a descendant outside its group holds the output', async () => {
+    const { w, settings } = setUp({ login: 'escaped' });
+    const pidFile = join(w.codexHome, 'descendant.pid');
+    let timer: NodeJS.Timeout | undefined;
+    const pending = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        resolve('still pending');
+      }, 5_000);
+    });
+    try {
+      expect(await Promise.race([codexLogin(settings, 2_000), pending])).toBe(false);
     } finally {
       clearTimeout(timer);
       if (existsSync(pidFile)) {
