@@ -37,7 +37,6 @@ import {
   isInProductLink,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
-import type { ReadState } from '../data/authorised-read.ts';
 import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useRereadOn } from './task/reread-on.ts';
@@ -47,6 +46,7 @@ import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 import { TABS, pageAddress, tabInAddress, writeTab } from './projects/tab-address.ts';
+import { NO_CLIENTS, clientNamesOf } from './projects/client-names.ts';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
@@ -238,34 +238,6 @@ function ProjectBoard(
       </RecordState>
     </div>
   );
-}
-
-const NO_CLIENTS: readonly string[] = [];
-
-/**
- * The reached clients' names; null while the read is out. A refused or failed
- * read reaches no answer, so the address's own client filters are kept: the
- * board then shows only rows of those clients, never every client's work.
- */
-function clientNamesOf(
-  state: ReadState<ClientListResult>,
-  query: string,
-): readonly string[] | null {
-  if (state.outcome === 'loading') return null;
-  if (state.outcome === 'denied' || state.outcome === 'unavailable') return requestedIn(query);
-  const answered = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
-  // An answer without its list offers none, rather than breaking the board.
-  return Array.isArray(answered?.clients) && answered.clients.length > 0
-    ? answered.clients.map((one) => one.name)
-    : NO_CLIENTS;
-}
-
-/** The client names an address's filters ask for (`client:"<name>"`, the facet id's escapes undone). */
-function requestedIn(query: string): readonly string[] {
-  return (new URLSearchParams(query).get('f') ?? '').split(',').flatMap((id) => {
-    const name = /^client:"(?<name>.*)"$/u.exec(id)?.groups?.['name'];
-    return name === undefined ? [] : [name.replaceAll('%2C', ',').replaceAll('%25', '%')];
-  });
 }
 
 /** The Stage column's vocabulary and the stage editor's choices, in the list's order. */

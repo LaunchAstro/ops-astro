@@ -67,7 +67,9 @@ describe('Projects tab in a dock panel', () => {
     expect(api.asked).toHaveLength(0);
     await view.unmount();
   });
+});
 
+describe('Projects Work log opened by its address', () => {
   it('a Work log its address opened stays drawn when the tab is left and taken again', async () => {
     window.history.replaceState(null, '', '/clients/');
     const api = server([{ body: FIRST }]);
