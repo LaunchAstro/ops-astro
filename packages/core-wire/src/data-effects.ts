@@ -7,6 +7,7 @@ import type { CommandName } from './surface.ts';
 import { business, client, writing, type DataEffects } from './data-effects-types.ts';
 import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
+import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
 import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 export type {
   ClassedEffects,
@@ -22,8 +23,6 @@ export { classOf } from './data-effects-types.ts';
 const READ = writing([]);
 // A task is a row of `records`, with its unique values beside it.
 const TASK = writing(client('records', 'record_unique_values'));
-// A map or its ticket: the task, and the map's derived summary and frontier.
-const MAP_TASK = writing(TASK.writes.concat(client('map_summaries', 'map_frontier')));
 // A proposal raises the decision's inbox items (INB-1b).
 const PROPOSAL = writing(
   client(
@@ -283,17 +282,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...business('delegations'),
   ]),
   'budget.write_off': writing(client('attempts', 'model_calls', 'reservations', 'task_envelopes')),
-  // Wayfinder (WF-1): a retype writes the task, and a grilling or prototype ticket newly on its
-  // map's frontier raises the owner's decision item. A write to a map or its ticket refreshes the
-  // map's summary and frontier (the records trigger, map_summary_on_record).
-  'task.set_type': writing(MAP_TASK.writes.concat(client('inbox_items'))),
-  // The map and every ticket under it carry the client.
-  'map.scope': MAP_TASK,
-  // One numbered version: its components and the map's own version number,
-  // which refresh the map's summary and frontier as any write to the map does.
-  'map.revise': writing(MAP_TASK.writes.concat(client('map_components', 'map_versions'))),
-  'map.view': READ,
-  'map.frontier': READ,
+  // Wayfinder (WF-1, WF-2), in their own file.
+  ...WAYFINDER_EFFECTS,
   // Settings ▸ Workflow triggers (C33, C52-A), in their own file.
   ...AUTOMATION_EFFECTS,
 };

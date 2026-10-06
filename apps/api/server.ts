@@ -97,6 +97,7 @@ import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
 import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
+import { startConversationSweeper } from './conversation-sweeper.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -440,6 +441,8 @@ export async function shutDown(
 export interface ServerParts {
   readonly topics: Stopping;
   readonly mail: Stopping;
+  /** R7: the conversation sweep's running pass. */
+  readonly conversations: Stopping;
   readonly database: Stopping;
   readonly admin: Stopping;
   readonly broker: Stopping;
@@ -447,14 +450,14 @@ export interface ServerParts {
 }
 
 /**
- * The two stages `main` hands `shutDown`: the live streams and the mail worker's running pass
- * first, then the pools and processes they use.
+ * The two stages `main` hands `shutDown`: the live streams, the mail worker's and the
+ * conversation sweep's running passes first, then the pools and processes they use.
  */
 export function shutdownStages(
   parts: ServerParts,
 ): readonly [readonly Stopping[], readonly Stopping[]] {
   return [
-    [parts.topics, parts.mail],
+    [parts.topics, parts.mail, parts.conversations],
     [parts.database, parts.admin, parts.broker, parts.tracer],
   ];
 }
@@ -578,8 +581,9 @@ async function main(): Promise<void> {
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
   // keys through the same resolver the requests will.
+  const identity = readIdentity(ROOT);
   const { app, resolveBusiness } = composeApi({
-    identity: readIdentity(ROOT),
+    identity,
     database,
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
@@ -667,6 +671,13 @@ async function main(): Promise<void> {
       }),
   );
 
+  // R7: the conversation sweep (AW-03) over the same businesses, hourly, as
+  // system work once the port is bound; each wrap-up names this commit.
+  const conversations = startConversationSweeper(database, {
+    businesses: async () => await Promise.resolve(traced),
+    codeRevision: identity.commit,
+  });
+
   // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
   const stop = (): void => {
@@ -674,6 +685,7 @@ async function main(): Promise<void> {
     const stages = shutdownStages({
       topics: async () => await topics.close(),
       mail: mail?.stop,
+      conversations: conversations.stop,
       database: async () => await database.close(),
       admin: async () => await admin.close(),
       broker: broker?.stop,

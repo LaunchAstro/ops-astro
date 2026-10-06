@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The new-task draft's fields (MP-4-13, DN-01, DN-05): the name, due,
-// estimate, tags, subtasks, time spent and a note. Each change goes straight
+// The new-task draft's fields (MP-4-13, DN-01, DN-02, DN-05): the name, due,
+// estimate, category, the owner the page named, tags, subtasks, time spent and a note. Each change goes straight
 // to `put`, which keeps the draft for its person; nothing here writes to the
 // server. While Create is out every field is read-only, so the draft its
 // answer settles is the one it sent.
@@ -13,6 +13,8 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import { TASK_CATEGORIES } from '../../../../../packages/core-wire/src/index.ts';
+import { DraftTime } from './DraftTimer.tsx';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import type { TaskDraft } from './task-draft.ts';
 
@@ -29,6 +31,7 @@ export function DraftFields(props: DraftFieldsProps): ReactElement {
   return (
     <div className="dtp__fields">
       <DraftFacts {...props} />
+      <DraftGuesses {...props} />
       <DraftParts {...props} />
     </div>
   );
@@ -101,6 +104,48 @@ function DraftFacts({ draft, put, name, locked }: DraftFieldsProps): ReactElemen
   );
 }
 
+/** The category and the owner, written after the task at Create; the owner only as the page named it. */
+function DraftGuesses({ draft, put, locked }: Omit<DraftFieldsProps, 'name'>): ReactElement {
+  return (
+    <>
+      <Field id="panel-draft-category" label="Category">
+        <select
+          id="panel-draft-category"
+          className="input"
+          disabled={locked}
+          value={draft.category ?? ''}
+          onChange={(event) => {
+            put({ category: event.target.value === '' ? null : event.target.value });
+          }}
+        >
+          <option value="">Not set</option>
+          {TASK_CATEGORIES.list().map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {draft.owner === null ? null : (
+        <p className="card__sub" data-draft-owner>
+          Owner: {draft.owner.name}{' '}
+          <button
+            className="btn"
+            type="button"
+            data-draft="clear-owner"
+            disabled={locked}
+            onClick={() => {
+              put({ owner: null });
+            }}
+          >
+            Clear
+          </button>
+        </p>
+      )}
+    </>
+  );
+}
+
 /** What is written after the task at Create, each by its own command (DN-05). */
 function DraftParts({ draft, put, locked }: DraftFieldsProps): ReactElement {
   return (
@@ -125,19 +170,7 @@ function DraftParts({ draft, put, locked }: DraftFieldsProps): ReactElement {
           put({ steps });
         }}
       />
-      <Field id="panel-draft-time" label="Time spent">
-        <input
-          id="panel-draft-time"
-          className="input"
-          type="text"
-          placeholder="30m"
-          readOnly={locked}
-          value={draft.time}
-          onChange={(event) => {
-            put({ time: event.target.value });
-          }}
-        />
-      </Field>
+      <DraftTime draft={draft} put={put} locked={locked} />
       <Field id="panel-draft-note" label="Note">
         <textarea
           id="panel-draft-note"
@@ -214,5 +247,30 @@ function ListItem(props: ListFieldProps & { readonly item: string }): ReactEleme
         ×
       </button>
     </li>
+  );
+}
+
+/** A task created with parts refused after it: named, and a door to the task (never a second create). */
+export function Missed(props: {
+  readonly taskKey: string;
+  readonly parts: readonly string[];
+  readonly onOpen: (key: string) => void;
+}): ReactElement {
+  return (
+    <>
+      <p className="card__sub" role="status" data-draft-missed>
+        Created {props.taskKey}; not added: {props.parts.join(', ')}. Add them on the task.
+      </p>
+      <button
+        className="btn btn--primary"
+        type="button"
+        data-draft="open-created"
+        onClick={() => {
+          props.onOpen(props.taskKey);
+        }}
+      >
+        Open the task
+      </button>
+    </>
   );
 }

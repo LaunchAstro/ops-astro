@@ -20,8 +20,9 @@
 // has already taken the panel out and put it back, which mounts the draft
 // again: the new mount finds the Create still out (`flights`) and waits too.
 //
-// **Timer on the draft.** DN-05's running timer on a draft waits on the dock
-// frame's timer (MP-3-1); time spent is logged here and written at Create.
+// **Timer on the draft (DN-05).** The draft's own timer (`DraftTimer.tsx`) is
+// kept with it; Create stops a running one first, so its minutes go with the
+// task as a new request, and they are written with the time typed here.
 
 import {
   useEffect,
@@ -32,25 +33,29 @@ import {
   type ReactElement,
 } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
-import { DraftFields } from './DraftFields.tsx';
+import { DraftFields, Missed } from './DraftFields.tsx';
+import type { Prefill } from './task-prefill.ts';
 import {
-  createFromDraft,
   dropDraft,
   emptyDraft,
   keepDraft,
   newAttempt,
+  prefilledDraft,
+  stopTimer,
   readAttempt,
   readDraft,
   saveAttempt,
   type Attempt,
-  type CreateOutcome,
   type TaskDraft,
 } from './task-draft.ts';
+import { createFromDraft, type CreateOutcome } from './draft-parts.ts';
 
 /** Where the draft was filed from: the page's client, if it has one, and its name for the admission line. */
 export interface DraftScope {
   readonly clientId: string | null;
   readonly from: string;
+  /** The page's guesses for a fresh draft (DN-02); a kept draft comes back as left. */
+  readonly prefill?: Prefill;
 }
 
 export interface DraftPanelProps {
@@ -112,7 +117,9 @@ function DraftBody(
     <>
       <DraftHead busy={creating.busy} docked={props.docked === true} onClose={props.onClose} />
       <p className="card__sub" data-draft-admission>
-        New task, filed from {props.scope.from}. Nothing is stored until Create.
+        New task, filed from {kept.draft.from ?? props.scope.from}.{' '}
+        {kept.draft.why === null ? '' : `${kept.draft.why} `}
+        Nothing is stored until Create.
       </p>
       <DraftFields draft={kept.draft} put={kept.put} name={kept.name} locked={creating.busy} />
       {creating.refusal === null ? null : (
@@ -177,7 +184,13 @@ function DraftHead(props: {
 function useKeptDraft(props: DraftPanelProps) {
   const { storage, person } = props;
   const [draft, setDraft] = useState<TaskDraft>(
-    () => readDraft(storage, person) ?? emptyDraft(props.scope.clientId),
+    () =>
+      readDraft(storage, person) ?? {
+        ...(props.scope.prefill === undefined
+          ? emptyDraft(props.scope.clientId)
+          : prefilledDraft(props.scope.prefill)),
+        from: props.scope.from,
+      },
   );
   // The create's identity, kept across an unknown outcome and a remount, and
   // dropped by any edit.
@@ -194,9 +207,9 @@ function useKeptDraft(props: DraftPanelProps) {
   };
   // Stored before Create goes out, with each part's id and count as it goes;
   // cleared once its outcome is known.
-  const begin = (next: Attempt): void => {
+  const begin = (next: Attempt, sent: TaskDraft = draft): void => {
     setAttempt(next);
-    keepDraft(storage, person, draft, next);
+    keepDraft(storage, person, sent, next);
   };
   const progress = (next: Attempt): void => {
     setAttempt((held) => (held?.id === next.id ? next : held));
@@ -255,15 +268,19 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
       kept.name.current?.focus();
       return;
     }
-    const attempt = kept.attempt ?? newAttempt(props.client.newOperationId());
-    kept.begin(attempt);
+    // A running timer stops at Create: its minutes go with the task (DN-05), a new request.
+    const sent = stopTimer(kept.draft, Date.now());
+    if (sent !== kept.draft) kept.put(sent);
+    const held = sent === kept.draft ? kept.attempt : null;
+    const attempt = held ?? newAttempt(props.client.newOperationId());
+    kept.begin(attempt, sent);
     const release = props.hold();
     const flight = { person: props.person, show };
     flights.set(props.hold, flight);
     setView({ busy: true, refusal: null, missed: null });
     let outcome: CreateOutcome | null = null;
     try {
-      outcome = await createFromDraft(props.client, kept.draft, attempt, kept.progress);
+      outcome = await createFromDraft(props.client, sent, attempt, kept.progress);
     } finally {
       // The session changed while it was out: the draft and the panel went with it.
       if (!release()) outcome = null;
@@ -272,29 +289,4 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     if (outcome !== null) flight.show(land(props, kept, outcome, attempt));
   };
   return { ...view, create };
-}
-
-/** A task created with parts refused after it: named, and a door to the task (never a second create). */
-function Missed(props: {
-  readonly taskKey: string;
-  readonly parts: readonly string[];
-  readonly onOpen: (key: string) => void;
-}): ReactElement {
-  return (
-    <>
-      <p className="card__sub" role="status" data-draft-missed>
-        Created {props.taskKey}; not added: {props.parts.join(', ')}. Add them on the task.
-      </p>
-      <button
-        className="btn btn--primary"
-        type="button"
-        data-draft="open-created"
-        onClick={() => {
-          props.onOpen(props.taskKey);
-        }}
-      >
-        Open the task
-      </button>
-    </>
-  );
 }

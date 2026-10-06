@@ -18,6 +18,8 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'task.set_party': 'a client change, which the lock allows while the task is empty',
   // WF-1: `task-content.ts` excludes it from content alongside `task.set_party`.
   'map.scope': "a map's client change, which the lock allows while the map is empty",
+  // WF-2: a chart files a new map and its tickets; it names no existing task.
+  'map.chart': 'the creation of a map and its tickets, as task.create',
   'client.create': 'writes a client, not a task',
   'record.create': 'writes a client, not a task',
   'onboarding.start': "lays a template out as new tasks on the client, each one's creation",

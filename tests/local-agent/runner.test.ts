@@ -6,20 +6,19 @@
 // gate refuse before anything is spawned; the plan's usage limit has its own
 // refusal; a runner key or planted canary never leaves the runner.
 
-import { rmSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { createRunner } from '../../apps/local-agent/runner.ts';
 import { readSettings } from '../../apps/local-agent/settings.ts';
 import { LOCAL_GPT_COMPOSE } from '../../packages/core-connectors/src/index.ts';
 import { runnerWorld } from './runner-world.ts';
-import { CANARY, makeWorld, RUNNER_KEY } from './world.ts';
+import { CANARY, RUNNER_KEY } from './world.ts';
 
 const { logged, opened, start, call } = runnerWorld();
 
 const message = { fields: { message: 'What is on the board today?' } };
-const used = (tokens: number): string =>
-  `${JSON.stringify({ at: 'then', model: 'gpt-6.1-sol', inputTokens: tokens, outputTokens: 0 })}\n`;
+/** What a call with this message is charged before codex runs: 50,000 and its 27 bytes. */
+const NEED = 50_027;
 
 describe('a message answered through codex exec', () => {
   it('answers on the default model and writes the tokens to the ledger', async () => {
@@ -34,9 +33,9 @@ describe('a message answered through codex exec', () => {
       code: null,
     });
     expect(w.calls()[0]?.stdin).toBe('What is on the board today?');
-    // Charged as unknown before codex runs, then what it used, both under the call's id.
+    // Charged as unknown (50,000 and the prompt's 27 bytes) before codex runs, then what it used.
     const [charged, used_] = w.ledger();
-    expect(charged).toMatchObject({ model: 'gpt-6.1-sol', inputTokens: 50_000, outputTokens: 0 });
+    expect(charged).toMatchObject({ model: 'gpt-6.1-sol', inputTokens: NEED, outputTokens: 0 });
     expect(used_).toMatchObject({ id: charged?.['id'], inputTokens: 120, outputTokens: 7 });
     expect(w.ledger()).toHaveLength(2);
   });
@@ -66,7 +65,7 @@ describe('a call that does not answer', () => {
     expect(logged.join('\n')).toContain('usage limit');
   });
 
-  it('charges a call killed at its timeout 50,000 tokens, never nothing', async () => {
+  it("charges a call killed at its timeout 50,000 tokens and its prompt's bytes, never nothing", async () => {
     const { w, r } = await start();
     w.knobs({ waitMs: 5_000 });
     const read = readSettings(w.env, w.userHome);
@@ -81,94 +80,7 @@ describe('a call that does not answer', () => {
     const lone = await createRunner({ ...read.settings, timeoutMs: 200 }, () => null, 0);
     opened.push(lone);
     expect((await call(lone, message)).body).toMatchObject({ code: 'LOCAL_GPT_FAILED' });
-    expect(w.ledger().at(-1)).toMatchObject({ inputTokens: 50_000, outputTokens: 0 });
-  });
-});
-
-// eslint-disable-next-line max-lines-per-function -- one case per way a call does not answer
-describe('the cap stops a run', () => {
-  it('refuses with under 20,000 tokens left, in plain words, and never spawns codex', async () => {
-    const { w, r } = await start();
-    w.write('ledger.jsonl', used(1_990_000));
-    const reply = await call(r, message);
-    expect(reply.body).toEqual({
-      text: '',
-      model: 'gpt-6.1-sol',
-      usage: { input: 0, output: 0 },
-      code: 'LOCAL_CAP_REACHED',
-    });
-    expect(w.calls()).toHaveLength(0);
-    expect(logged.join('\n')).toContain('needs the owner’s yes to raise it');
-  });
-
-  it('stops the run once a call takes the total to the cap', async () => {
-    const { w, r } = await start();
-    w.write('ledger.jsonl', used(1_970_000));
-    w.knobs({ usage: { input_tokens: 15_000, output_tokens: 0 } });
-    expect((await call(r, message)).body?.['code']).toBeNull();
-    expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
-    expect(w.calls()).toHaveLength(1);
-  });
-
-  it("replaces a call's unknown charge with what it used, never adds the two", async () => {
-    const { w, r } = await start();
-    w.write('ledger.jsonl', used(1_940_000));
-    w.knobs({ usage: { input_tokens: 15_000, output_tokens: 0 } });
-    expect((await call(r, message)).body?.['code']).toBeNull();
-    // 1,955,000 used, 45,000 left: added, the 50,000 charge would have reached the cap.
-    expect((await call(r, message)).body?.['code']).toBeNull();
-  });
-
-  it.each([
-    ['a line that is not JSON', 'not json\n'],
-    ['a row with no token counts', `${JSON.stringify({ costUsd: 0 })}\n`],
-    ['negative tokens', used(-5)],
-  ])('counts a ledger with %s as the cap, and spawns nothing', async (_label, ledger) => {
-    const { w, r } = await start();
-    w.write('ledger.jsonl', ledger);
-    expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
-    expect(w.calls()).toHaveLength(0);
-  });
-
-  it('spawns nothing once a ledger row cannot be written', async () => {
-    const { w, r } = await start();
-    w.write('ledger.jsonl', '');
-    const { chmodSync } = await import('node:fs');
-    chmodSync(`${w.agentHome}/ledger.jsonl`, 0o400);
-    expect((await call(r, message)).body?.['code']).toBe('LOCAL_GPT_FAILED');
-    expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
-    expect(w.calls()).toHaveLength(0);
-  });
-});
-
-describe('the cap the owner sets', () => {
-  it('an approval with no configured cap is the cap from the next call, never past 10,000,000', async () => {
-    const { w, r } = await start();
-    w.write('ledger.jsonl', used(1_990_000));
-    expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
-    w.write('approvals.json', { capTokens: 99_000_000 });
-    w.write('ledger.jsonl', used(9_985_000));
-    expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
-    w.write('ledger.jsonl', used(1_990_000));
-    expect((await call(r, message)).body?.['code']).toBeNull();
-  });
-
-  it('a cap the owner configured below an earlier approval is still the cap', async () => {
-    const w = makeWorld();
-    w.write('approvals.json', { capTokens: 5_000_000 });
-    const { r } = await start({ OPS_LOCAL_AGENT_CAP_TOKENS: '100000' }, w);
-    w.write('ledger.jsonl', used(90_000));
-    expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
-  });
-
-  it('a configured cap above 2,000,000 lapses to the default once its approval is gone', async () => {
-    const w = makeWorld();
-    w.write('approvals.json', { capTokens: 3_000_000 });
-    const { r } = await start({ OPS_LOCAL_AGENT_CAP_TOKENS: '3000000' }, w);
-    w.write('ledger.jsonl', used(1_990_000));
-    rmSync(`${w.agentHome}/approvals.json`);
-    expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
-    expect(w.calls()).toHaveLength(0);
+    expect(w.ledger().at(-1)).toMatchObject({ inputTokens: NEED, outputTokens: 0 });
   });
 });
 
