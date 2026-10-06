@@ -150,6 +150,7 @@ const config: ViteUserConfig = defineConfig({
             'tests/db/run-end-stamped-after-lock-wait.test.ts',
             'tests/db/run-supersede-stamped-after-lock-wait.test.ts',
             'tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts',
+            'tests/api/live-presence-remap-before-seat-shows-no-unadmitted-person.test.ts',
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
             'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
