@@ -8,9 +8,11 @@
 // The revert rides the effect register as the publish does: the revision it
 // reverts is the publish the register holds, the page must return to the place
 // the publish was seen live at (its live receipt), and the provider's
-// acceptance is registered the moment it answers, with the time it was decided. A revert the
-// register holds is observed again and timed from that decision, never sent
-// again; an unknown revert the register does not hold waits on a person. So
+// acceptance is registered the moment it answers, with the time the runner
+// first took the revert up (the job carries no decision time, so the interval
+// runs from there, not from a person's decision). A revert the register holds
+// is observed again and timed from that instant, never sent again; an unknown
+// revert the register does not hold waits on a person, asked once. So
 // that a revert whose answer never reached the register is never sent blind
 // again, its receipt says unknown under the lease before it is sent.
 
@@ -27,6 +29,7 @@ import {
   observedIn,
   occurrenceFrom,
   seen,
+  targetOf,
   type Observations,
 } from './live-correction-observations.ts';
 import { capturePort } from './live-correction-capture.ts';
@@ -34,7 +37,7 @@ import {
   correctionEffectId,
   readCorrectionEffect,
   registerCorrectionEffect,
-  revertLeftUnknown,
+  latestRevert,
   type RegisteredEffect,
 } from './live-correction-effect.ts';
 import {
@@ -42,7 +45,7 @@ import {
   pageRefused,
   record,
   refused,
-  targetOf,
+  unknownWaits,
   type CorrectionRun,
   type RunnerPorts,
   type RunResult,
@@ -61,6 +64,8 @@ function revertObservations(outcome: RevertOutcome, operationId: string): Observ
   if ('code' in outcome)
     return {
       refusals_raised: seen(outcome.code),
+      // An unknown raised its task: later runs do not ask again.
+      ...(outcome.state === 'unknown' ? { waits_on: seen('person') } : {}),
       decided_at: seen(outcome.decidedAt),
       effect_operation_id: seen(operationId),
     };
@@ -89,7 +94,7 @@ async function readForRevert(tx: TenantQuery, run: CorrectionRun) {
     occurrence: live === undefined ? undefined : occurrenceFrom(parsed(live)),
     published: await readCorrectionEffect(tx, correction, 'publish'),
     reverted: await readCorrectionEffect(tx, correction, 'revert'),
-    leftUnknown: await revertLeftUnknown(tx, correction.id),
+    last: await latestRevert(tx, correction.id),
   };
 }
 
@@ -102,7 +107,7 @@ function parsed(text: string): unknown {
 }
 
 /**
- * The provider's revert, registered the moment it answers with the time it was decided;
+ * The provider's revert, registered the moment it answers with the time it was first taken up;
  * or, when the register already holds it, read back as landed, so it is observed and
  * timed and never sent twice.
  */
@@ -167,7 +172,10 @@ export async function runLiveRevert(
   if (!held.ok) return await leaseRefused(held.code, ports);
   const { correction, published, reverted } = held;
   if (correction.state !== 'live' || published === undefined) return refused('GATE_NOT_APPROVED');
-  if (reverted === undefined && held.leftUnknown) return refused('OUTCOME_UNKNOWN');
+  if (reverted === undefined && held.last?.outcome === 'unknown') {
+    const asked = observedIn(held.last.observations, 'waits_on') === 'person';
+    return await unknownWaits(db, run, { step: 'revert', outcome: 'unknown' }, asked, ports);
+  }
   const unfenced = await pageRefused(correction, ports);
   if (unfenced !== undefined) return unfenced;
   if (reverted === undefined) {
