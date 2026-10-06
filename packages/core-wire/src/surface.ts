@@ -534,6 +534,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // repair touches the credential's custody, so `custody:manage` business-wide, never an agent.
   read('connection.fleet', 'connection'),
   read('connection.signal', 'connection'),
+  // The per-client graduation region (MP-14-10a): the same page's key, asked per client by the
+  // scopes the caller holds it at, never an agent.
+  read('connection.graduation', 'connection'),
   declare('connector.repair', 'manage', {
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,

@@ -46,6 +46,7 @@ import { readSettings } from './settings.ts';
 import { listCustodySecrets } from './custody.ts';
 import { readConnectionFleet } from './connections.ts';
 import { readConnectionSignal } from './signal.ts';
+import { readConnectionGraduation } from './graduation.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
@@ -650,6 +651,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'holds-any-grant',
     outsiderNotFound: false,
     serve: async (tx, session) => await readConnectionSignal(tx, session),
+  },
+  // Every client the caller's `connection:read` scopes reach at once, so the
+  // scope bar asks nothing (MP-14-10a); held nowhere is refused, not empty.
+  'connection.graduation': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionGraduation(tx, session),
   },
   // No subject record, for the reason `task.queue` gives: the settings are
   // the business's own configuration rather than one record, and there is no

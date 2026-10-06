@@ -177,10 +177,14 @@ export type {
   StandingApprovalView,
 } from './views-automations.ts';
 // Custody's secrets as Settings ▸ Keys reads them (C31), and the connector
-// fleet as Connections & signal reads it (MP-14-7a).
+// fleet and the per-client graduation region as Connections & signal reads
+// them (MP-14-7a, MP-14-10a).
 export type {
   ConnectionFleetResult,
+  ConnectionGraduationResult,
   ConnectionView,
+  GraduationRowView,
+  MandateView,
   SecretListResult,
   SecretView,
 } from './connection-views.ts';
