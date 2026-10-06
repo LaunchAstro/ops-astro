@@ -123,7 +123,7 @@ export type World = {
   waitCode: number;
   /** Daemon calls (`list`, `info` or a forwarded kind) that throw, as a reset socket does. */
   readonly throws: Set<string>;
-  /** Holds the next forwarded operation of each kind until the test releases it. */
+  /** Holds the next forwarded operation of each kind, or the next store `write`, until released. */
   readonly holds: Map<string, Promise<void>>;
 };
 
@@ -200,10 +200,12 @@ export function ports(w: World): ProxyPorts {
   return {
     store: {
       read: () => Promise.resolve(w.stored),
-      write: (bytes) => {
-        if (w.crash) return Promise.reject(new Error('the store died'));
+      write: async (bytes) => {
+        const held = w.holds.get('write');
+        w.holds.delete('write');
+        await held;
+        if (w.crash) throw new Error('the store died');
         w.stored = bytes;
-        return Promise.resolve();
       },
     },
     pins: () => Promise.resolve(w.pins),
@@ -226,7 +228,7 @@ export function record(w: World): ProxyRecord {
 }
 export const candidateOf = (w: World): Candidate | undefined =>
   record(w).candidates.candidates.at(-1);
-/** Holds the next forwarded `kind` until the returned function is called. */
+/** Holds the next forwarded `kind` (or store `write`) until the returned function is called. */
 export function hold(w: World, kind: string): () => void {
   const gate = { open: (): void => undefined };
   w.holds.set(
@@ -237,4 +239,9 @@ export function hold(w: World, kind: string): () => void {
   );
   return () => gate.open();
 }
+/** Lets every pending promise step run: no clock, so a race's order is the test's. */
+export const settle = (): Promise<void> =>
+  new Promise((resolve) => {
+    setImmediate(resolve);
+  });
 export const heldId = (w: World): string | null => record(w).containers.container?.id ?? null;

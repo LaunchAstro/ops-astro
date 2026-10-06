@@ -35,6 +35,7 @@ import {
   S1_WALL,
   s1,
   seeded,
+  settle,
   SITES,
   T0,
   UNAVAILABLE,
@@ -296,4 +297,24 @@ it('does not accept C when a run exits non-zero or its wait returns at the deadl
     (await ran).state.handle(create(C, s1('s'))),
   );
   expect(await Promise.all(runs)).toEqual([refused('candidate'), refused('candidate')]);
+});
+
+it('judges a wait in time when it returned, not when its write took the lock', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(C));
+  await state.handle(op('start', ID));
+  const deadline = T0 + S1_WALL;
+  w.now = deadline - 10;
+  const release = hold(w, 'write');
+  const ended = state.attachEnded(ID);
+  await settle();
+  w.now = deadline - 1;
+  const waited = state.handle(op('wait', ID));
+  await settle();
+  w.now = deadline + 1;
+  release();
+  await Promise.all([ended, waited]);
+  expect(candidateOf(w)?.runs).toEqual([{ statusCode: 0, inTime: true }]);
+  expect(record(w).containers.container?.waitAt).toBe(deadline - 1);
 });
