@@ -189,10 +189,20 @@ export async function stampSeen(
   if (subject === undefined || (await taskAccess(tx, personId, subject)) !== 'readable') {
     return false;
   }
+  // The insert can wait on another stamp of the same item, so read access is
+  // asked again after it, and a grant revoked meanwhile undoes this stamp
+  // (#443). The app role cannot delete an attention row: a savepoint holds it.
+  await tx.query('savepoint inbox_seen');
   await tx.query(
     `insert into public.inbox_attention (business_id, item_id, person_id)
      values ($1, $2, $3) on conflict (business_id, item_id) do nothing`,
     [tx.businessId, itemId, personId],
   );
+  if ((await taskAccess(tx, personId, subject)) !== 'readable') {
+    await tx.query('rollback to savepoint inbox_seen');
+    await tx.query('release savepoint inbox_seen');
+    return false;
+  }
+  await tx.query('release savepoint inbox_seen');
   return true;
 }

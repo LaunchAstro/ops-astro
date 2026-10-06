@@ -45,7 +45,13 @@ import {
   wayfinderFacts,
   isUuid,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-records/src/index.ts';
+import type {
+  TenantQuery,
+  Session,
+  Scope,
+  ScopeRequest,
+  EntryPoint,
+} from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
@@ -431,6 +437,20 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
     'client',
     (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
   ],
+  // C41-A: a step result is asked at its task's client while that is the onboarding's client, else the business.
+  'onboarding.step_result': [
+    'recordId',
+    (tx, id) =>
+      firstRow(
+        tx,
+        `select 'party' as kind, r.uuid_7 as id
+           from public.onboarding_steps s
+           join public.onboardings o on o.business_id = s.business_id and o.id = s.onboarding_id
+           join public.records r on r.business_id = s.business_id and r.id = s.task_id
+          where s.business_id = $1 and s.task_id = $2 and r.uuid_7 = o.client_id`,
+        id,
+      ),
+  ],
   // C60: a client's privacy settings are asked of that client, at party scope.
   'client.set_privacy': [
     'clientId',
@@ -450,7 +470,9 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
 /**
  * The target field of another revoke, on a `target` command. Refused and not
  * ignored, for the reason `refuseIrrelevantTarget` gives: a field the server
- * drops is a field the caller believes was honoured.
+ * drops is a field the caller believes was honoured. A field the command
+ * names as one of its own identifiers is its own, not another's: the task
+ * `task.duplicate` copies is its `recordId`, which a step result's target is.
  */
 function refuseOtherTarget(
   request: UncheckedRequest,
@@ -461,7 +483,8 @@ function refuseOtherTarget(
   const own = TARGET_LOOKUPS[declaration.name]?.[0];
   const other = Object.values(TARGET_LOOKUPS)
     .map(([field]) => field)
-    .filter((field) => field !== own && named[field] !== undefined);
+    .filter((field) => field !== own && named[field] !== undefined)
+    .filter((field) => !(declaration.untargetedIdentifiers ?? []).includes(field));
   if (other.length === 0) return undefined;
   return refused(refuseCommand('COMMAND_BODY_INVALID', other, BODY_FIXES));
 }
@@ -501,7 +524,8 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  *   its gate is on (the runtime asks decide again). A grant is asked about at the
  *   scope it was issued on and a delegation at its purpose scope, so a manager
  *   whose `manage` covers exactly that scope reaches the handler, which then
- *   asks the full ceiling (`authority-controls.ts`).
+ *   asks the full ceiling (`authority-controls.ts`). An onboarding step's
+ *   result is asked at its task's client.
  * - `claim`: the task the body's reservation or lease belongs to, asked at
  *   record scope as the runtime asks it under its locks.
  */
@@ -524,6 +548,51 @@ const SCOPE_OF: Readonly<
   },
   claim: (tx, request) => firstScope(tx, request, CLAIM_LOOKUPS),
 };
+
+/**
+ * The grant asked at its own scope and, refused there, at the covering map's
+ * (W12): the first refusal stands when that fails too. `viaMap` is the map
+ * whose grant admitted it, with the refusal that stands if the target leaves it.
+ */
+async function askCovered(
+  tx: TenantQuery,
+  session: Session,
+  request: UncheckedRequest,
+  declaration: CommandDeclaration,
+  asked: ScopeRequest,
+): Promise<Refused | { readonly viaMap?: { readonly id: string; readonly refusal: Refused } }> {
+  const authorised = await checkAuthority(tx, subjectsOf(session), asked);
+  if (authorised.ok) return {};
+  const map = await coveringMap(tx, request, declaration);
+  const again =
+    map === undefined
+      ? authorised
+      : await checkAuthority(tx, subjectsOf(session), {
+          ...asked,
+          scope: { kind: 'record', id: map },
+        });
+  if (map === undefined || !again.ok) return refused(authorised.refusal);
+  return { viaMap: { id: map, refusal: refused(authorised.refusal) } };
+}
+
+/**
+ * A command on this task asks its write grant again under the locks its
+ * handler has taken since `prepareCommand` asked (#443): the refusal, or nothing.
+ */
+export async function askedAgain(
+  tx: TenantQuery,
+  context: CommandContext,
+  recordId: string,
+): Promise<Refused | undefined> {
+  const { declaration } = context;
+  const request = { command: declaration.name, recordId };
+  const still = await askCovered(tx, context.session, request, declaration, {
+    collection: declaration.collection,
+    action: declaration.action,
+    scope: { kind: 'record', id: recordId },
+  });
+  return 'refusal' in still ? still : undefined;
+}
 
 /**
  * The map whose record-scoped grant also covers this request: the map a
@@ -589,31 +658,18 @@ export async function prepareCommand(
   // The map whose grant admitted this, and the refusal that stands if the
   // target has left it by the time it is locked.
   let viaMap: { readonly id: string; readonly refusal: Refused } | undefined;
+  let asked: ScopeRequest | undefined;
   // A `self` row asks no grant: its handler reaches the caller's own rows only.
   if (declaration.authorisedOn !== 'self') {
-    const asked = {
+    asked = {
       // From the declaration, never written in here: see `CommandDeclaration`.
       collection: declaration.collection,
       action: declaration.action,
       scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
     };
-    let authorised = await checkAuthority(tx, subjectsOf(session), asked);
-    // A grant scoped to a map covers the map and its tickets (W12): asked again
-    // at the map's scope, and the first refusal stands when that fails too.
-    if (!authorised.ok) {
-      const map = await coveringMap(tx, request, declaration);
-      if (map !== undefined) {
-        const again = await checkAuthority(tx, subjectsOf(session), {
-          ...asked,
-          scope: { kind: 'record', id: map },
-        });
-        if (again.ok) {
-          viaMap = { id: map, refusal: refused(authorised.refusal) };
-          authorised = again;
-        }
-      }
-    }
-    if (!authorised.ok) return refused(authorised.refusal);
+    const authorised = await askCovered(tx, session, request, declaration, asked);
+    if ('refusal' in authorised) return authorised;
+    viaMap = authorised.viaMap;
   }
   // The one step-up (C59), inside the grant check and straight after it: only
   // a key in the money set, and the switch when switching it off, is asked, so
@@ -660,6 +716,13 @@ export async function prepareCommand(
     // runtime-locked target is asked again at record scope under those locks.
     if (viaMap !== undefined && (await coveringMap(tx, request, declaration)) !== viaMap.id) {
       return viaMap.refusal;
+    }
+    // The grant was asked before the wait for the row: asked again, map and
+    // all, now it is held, so a revocation that committed meanwhile refuses
+    // the write (#443).
+    if (asked !== undefined && declaration.targetLock === 'command') {
+      const still = await askCovered(tx, session, request, declaration, asked);
+      if ('refusal' in still) return still;
     }
     // A comment on a trashed task is answered as one on a missing task, before
     // the revision: the trash bumped it, and naming the current revision would

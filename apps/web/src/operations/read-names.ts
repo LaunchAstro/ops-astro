@@ -46,8 +46,10 @@ export const READ_NAMES = [
   'task.receipt',
   // Custody's rows as set or not set (C31).
   'secret.list',
-  // The connector fleet on Connections & signal (MP-14-7a).
+  // Connections & signal: the fleet (MP-14-7a), then grants, tripwires and
+  // the night round (MP-14-8).
   'connection.fleet',
+  'connection.signal',
   // The per-client graduation region on the same page (MP-14-10a).
   'connection.graduation',
   // The gates waiting on the caller's decision (MP-6-1).
@@ -83,6 +85,10 @@ export const READ_NAMES = [
   // the command line serve; the working minimum draws them in INB-1g.
   'inbox.read',
   'inbox.count',
+  // The caller's team conversations and one conversation's messages (C71-D),
+  // membership-filtered on the server; the Team panel draws them in C71's web piece.
+  'chat.conversations',
+  'chat.messages',
   // Items no path reaches (INB-1e), for `operations:read`; the operations view
   // (C55) draws them.
   'inbox.unattended',

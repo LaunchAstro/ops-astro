@@ -156,6 +156,10 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
   'operations.change_installation_mode': { mode: 'any' },
   'client.create': { name: 'any' },
+  // Type and outcome are checked by value in the command; `recordId` is `any` so a missing one is refused by name.
+  'record.create': { type: 'any', fields: 'map' },
+  'onboarding.start': { clientId: 'id', templateKey: 'any' },
+  'onboarding.step_result': { recordId: 'any', outcome: 'any', result: 'any' },
   'client.set_privacy': {
     clientId: 'id',
     modelEgress: 'any',
@@ -169,6 +173,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
   'access.revoke': { grantId: 'id' },
   'access.end': { holderId: 'id' },
+  'access.reset_factor': { holderId: 'id' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -260,6 +265,8 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
   'inbox.seen': { itemId: 'id' },
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
+  'chat.send_direct': { teammateId: 'id', body: 'any' },
+  'chat.mark_read': { conversationId: 'id', upTo: 'any' },
   'invitation.create': { name: 'text', email: 'text', role: 'text' },
   'invitation.resend': { invitationId: 'id' },
   'invitation.revoke': { invitationId: 'id' },
@@ -284,5 +291,10 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     operations: 'any',
     modes: 'any',
   },
+  // C52-A: the revision is checked in the command, which names it when refused.
+  'activation.adopt': { activationId: 'id', versionId: 'id', expectedRevision: 'any' },
+  'activation.roll_back': { activationId: 'id', expectedRevision: 'any' },
+  'activation.turn_off': { activationId: 'id', expectedRevision: 'any' },
+  'approval.revoke': { approvalId: 'id' },
   ...SETUP_OPERANDS,
 };

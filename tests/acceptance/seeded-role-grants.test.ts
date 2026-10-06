@@ -84,6 +84,7 @@ describe('the seeded roles', () => {
 
   it('gives the seeded member exactly what docs/local/PROOFS.md says it holds', () => {
     expect(held('member')).toStrictEqual([
+      'chat:comment',
       'person:read',
       'settings:read',
       'task:assign',
@@ -101,10 +102,11 @@ describe('the seeded roles', () => {
 describe('the acceptance cast against the seed', () => {
   // cast.ts names the difference and PROOFS.md records it; this pins it, so
   // the next difference is a red case rather than a sentence nobody reread.
-  it('differs from the seeded member only by task:comment added and the two reads left out', () => {
+  it('differs from the seeded member only by task:comment added and chat:comment and the two reads left out', () => {
     const cast = MEMBER_ACTIONS.map((action) => `task:${action}`).toSorted();
     expect(cast.filter((pair) => !held('member').includes(pair))).toStrictEqual(['task:comment']);
     expect(held('member').filter((pair) => !cast.includes(pair))).toStrictEqual([
+      'chat:comment',
       'person:read',
       'settings:read',
     ]);

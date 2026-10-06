@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "MP-14-10a mandate commands: races on two connections and crossings into another business's client, class and mandate"
+}

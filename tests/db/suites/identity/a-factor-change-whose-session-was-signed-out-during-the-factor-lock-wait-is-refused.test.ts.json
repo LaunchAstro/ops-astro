@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a factor change whose session was signed out during the factor lock wait is refused, and changes nothing"
+}

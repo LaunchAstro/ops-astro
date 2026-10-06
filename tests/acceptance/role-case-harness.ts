@@ -30,6 +30,7 @@ import { enrolCaller, type Caller } from './cast.ts';
 import { isInvitation } from './role-case-invitation-bodies.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { factorMember } from './role-case-access-bodies.ts';
 import { gateContext } from './role-case-gate-bodies.ts';
 import { probeOperands } from './role-case-fixed-bodies.ts';
 import { ownTaskRecipes } from './role-case-own-tasks.ts';
@@ -255,6 +256,7 @@ export async function createHarness(part: string): Promise<Harness> {
       freshInviter,
       freshMember: async () =>
         (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+      freshFactorMember: async () => await factorMember(world.db.app, world.alpha),
       ...gateContext(world.db.admin, world.alpha),
       brokenConnection: async () => await seedBrokenConnection(world.db.admin, world.alpha),
       readyClass: async () =>

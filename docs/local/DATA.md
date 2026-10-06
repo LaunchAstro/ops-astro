@@ -547,6 +547,14 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 - `team.list {}` → the staff with an active membership and each one's
   availability (`person_availability`, 0066, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`
+- `chat.conversations {}` → the reader's own team conversations (C71-D), each
+  with its members and its unread, derived from the reader's own marker
+  (`team_conversation_members.last_read_at`, 20261006074341, set only by that person);
+  the reader's member row is the query's filter, so nobody else's is listed
+- `chat.messages { conversationId }` → one of the reader's conversations'
+  messages: `task_comment` records with audience `direct`, anchored by their
+  `conversation` field, written while the reader was a member; any other is
+  `NOT_FOUND`
 
 The other six, `task.queue`, `task.ledger`, `preset.plan`, `settings.read`,
 `session.capabilities` and `access.read` (Settings ▸ Access, C32, under
@@ -868,8 +876,45 @@ each due time or event once (`activation_occurrences_due_once`,
 `activation_occurrences_event_once`), with its outcome and a version of its
 activation's own definition (`activation_occurrences_version_of_definition`),
 and names a run only when it started one, at most one occurrence per run. Nothing here starts a run:
-every occurrence is `activation_off` or `no_standing_approval` until C52-A's
-standing approval lands. The application may select and insert all four, and
-update an activation's setting, pin, switch and revision by column grant;
-nothing deletes a row. Tenancy-keyed with the restrictive policy. The records
-are `packages/core-records/src/automations/`.
+an occurrence is `activation_off` or `no_standing_approval` unless C52-A's
+standing approval (below) lets it through as `approved`. The application may
+select and insert all four, and update an activation's setting, pin, switch and
+revision by column grant; nothing deletes a row. Tenancy-keyed with the
+restrictive policy. The records are `packages/core-records/src/automations/`.
+
+## Standing approvals (20261005193201, C52-A)
+
+`standing_approvals` holds each adoption of an exact released version on an
+activation (`adopted`, or `rolled_back` for a rollback), its definition, the
+version pinned before it, the activation revision it wrote (`sequence`, unique
+per activation) and the person who decided it. The version and the previous
+one are of the activation's own definition (`standing_approvals_version_fkey`,
+`standing_approvals_previous_fkey`). `activations.approval_id` names the
+adoption that stands, which must be of the activation's own pin
+(`activations_approval_fkey`); a before-update trigger
+(`activations_approval_stands`) clears it when the pin, mode, schedule or
+event changes or the activation is switched off, unless the same write names
+the adoption that wrote this very revision, and refuses any other. A
+revocation is its own row (`standing_approval_revocations`, once per
+approval), and the approval stays. An occurrence that is `approved` names the
+approval it saw (`activation_occurrences_approved_names_approval`, of the same
+activation and version), and `occurrence_dispatches` records once per
+occurrence what dispatch found under the activation's lock: `started` with its
+run (unique per run), or `activation_off`, `approval_revoked` or
+`approval_ended`. The application may select and insert the three tables and
+update `activations.approval_id` by column grant; nothing changes or deletes an
+approval, revocation or dispatch. Tenancy-keyed with the restrictive policy.
+
+## Tripwires and the night round (20261005201200, MP-14-8)
+
+`tripwires` holds each stated check a business runs: what it watches, whether
+it is armed or cannot be armed (and why), how often it fired and what the last
+firing filed. One that cannot be armed carries no firing history
+(`tripwires_unarmed_never_fired`). `night_round_steps` holds each step of a
+night round, by the morning it hands over, with where the fact it reports
+lives (a section of the page, or a task by its key). Both may name a client of
+their own business by foreign key. Every column drawn as words is the
+`signal_text` domain, an explicit allow-list of characters refused whole. The
+application may only select both; the checks and the round write them (not
+built). Tenancy-keyed with the restrictive policy. The records are
+`packages/core-records/src/connections/signal.ts`.

@@ -24,11 +24,8 @@ import {
   Rollback,
   asRole,
 } from './restricted-calls-cases.ts';
-import {
-  INSERT_COLUMNS,
-  type CatalogueTable,
-  type CatalogueFunction,
-} from './restricted-calls-catalogue.ts';
+import { type CatalogueTable, type CatalogueFunction } from './restricted-calls-catalogue.ts';
+import { INSERT_COLUMNS } from './restricted-calls-mandates.ts';
 
 /**
  * The callers. Every refusal position commits, so a write that should have

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C58's endings loop, one pass and its settings (ORCH46 ruling B, ORCH47).
+// C58's endings loop, one pass and its settings (ORCH46 ruling B, ORCH47),
+// and C59's factor resets beside the endings (ORCH65-Q3).
 // It runs on the environment's machine, beside the forwarder, and is the only
 // hosted process that holds the provider's admin key. The owner's login reads
 // across businesses (business ids with an owed ending, and whether a login is
@@ -13,7 +14,11 @@ import {
   type AdminConnection,
   type Database,
 } from '../../packages/core-records/src/index.ts';
-import { settleAccessEndings, type LoginProvider } from '../../packages/core-commands/src/index.ts';
+import {
+  settleAccessEndings,
+  settleFactorResets,
+  type LoginProvider,
+} from '../../packages/core-commands/src/index.ts';
 import { providerAdminKey } from '../api/auth/provider-logins.ts';
 
 /** How often the loop retries the provider steps an access ending owes. */
@@ -76,4 +81,40 @@ export async function retryAccessEndings(
     owed += (await settle).owed;
   }
   return owed;
+}
+
+/**
+ * One retry pass over C59's factor resets (ORCH65-Q3), as over the endings:
+ * the owner's connection reads the business ids with a reset owed and
+ * nothing else; each business's resets are claimed, sent and stamped on the
+ * application connection, inside the business. Answers how many still owe.
+ */
+export async function retryFactorResets(
+  admin: AdminConnection,
+  database: Database,
+  logins: LoginProvider,
+  claimSeconds?: number,
+): Promise<number> {
+  const rows = await admin.execute<{ readonly business_id: string }>(
+    'select distinct business_id from public.factor_resets where done_at is null',
+  );
+  let owed = 0;
+  for (const row of rows) {
+    if (!isBusinessId(row.business_id)) continue;
+    const options = claimSeconds === undefined ? {} : { claimSeconds };
+    // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own tenancy
+    owed += (await settleFactorResets(database, row.business_id, logins, options)).owed;
+  }
+  return owed;
+}
+
+/** The endings loop's pass: the access endings, then the factor resets. */
+export async function retryOwedSteps(
+  admin: AdminConnection,
+  database: Database,
+  logins: LoginProvider,
+  claimSeconds?: number,
+): Promise<number> {
+  const endings = await retryAccessEndings(admin, database, logins, claimSeconds);
+  return endings + (await retryFactorResets(admin, database, logins, claimSeconds));
 }

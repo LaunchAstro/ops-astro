@@ -30,7 +30,8 @@ import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { tableBody } from './role-case-setup.ts';
 import { moneyBody } from './role-case-money-bodies.ts';
 import { lineageBody } from './role-case-lineage-bodies.ts';
-import { laterBody } from './role-case-automations.ts';
+import { chatBody, isChatName } from './role-case-chat-bodies.ts';
+import { onboardingBody } from './role-case-onboarding.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -49,9 +50,8 @@ export function createPositiveBody(
     };
     const tabled = await tableBody(declaration.name, context);
     if (tabled !== undefined) return tabled;
+    if (isChatName(declaration.name)) return await chatBody(declaration.name, context);
     switch (declaration.name) {
-      case 'task.create':
-        return { body: { fields: { title: 'the admin creates a task' } } };
       case 'task.update':
         return { body: { ...(await target()), fields: { title: 'edited by the admin' } } };
       case 'task.start':
@@ -180,8 +180,7 @@ export function createPositiveBody(
         // The person's own lease, handed back by that person. The agent's
         // own-lease handback is case (h), `k-handback` rows.
         return { body: { ...(await ownLease(context)), outcome: 'completed' } };
-      // `trace.read` (AW-13 readers) asks `operations:read`, which the seed
-      // grants the admin (C55).
+      // `trace.read` (AW-13 readers) asks `operations:read`, which the seed grants the admin (C55).
       case 'task.read':
       case 'task.execution':
       case 'trace.read':
@@ -191,6 +190,7 @@ export function createPositiveBody(
       case 'access.grant':
       case 'access.revoke':
       case 'access.end':
+      case 'access.reset_factor':
         return await accessBody(declaration.name, context);
       case 'inbox.seen': {
         // The caller's own item: a proposal raises a decision item for every
@@ -294,7 +294,7 @@ export function createPositiveBody(
         // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
         return await conversationBody(declaration.name, context);
       default:
-        return { body: await laterBody(declaration.name, context, target) };
+        return await onboardingBody(declaration.name, context, target);
     }
   };
 }

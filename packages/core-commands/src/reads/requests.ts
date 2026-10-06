@@ -29,6 +29,8 @@ import type { BreachNoticeOperands } from './operations.ts';
 import type {
   AttributionResult,
   AccessReadResult,
+  ChatConversationsResult,
+  ChatMessagesResult,
   BreachNoticesResult,
   ClientListResult,
   CapabilitiesResult,
@@ -49,6 +51,7 @@ import type {
   SettingsReadResult,
   SecretListResult,
   ConnectionFleetResult,
+  ConnectionSignalResult,
   ConnectionGraduationResult,
   SharedTaskRead,
   TaskBoardResult,
@@ -148,6 +151,8 @@ export interface ReadOperands {
   readonly 'secret.list': NoOperands;
   /** The connections at the scopes the caller holds `connection:read` (MP-14-7a). */
   readonly 'connection.fleet': NoOperands;
+  /** Grants, tripwires and the night round at the same scopes (MP-14-8). */
+  readonly 'connection.signal': NoOperands;
   /** The graduation region of the clients `connection:read` reaches (MP-14-10a). */
   readonly 'connection.graduation': NoOperands;
   /**
@@ -193,6 +198,10 @@ export interface ReadOperands {
   readonly 'inbox.count': NoOperands;
   /** The business's items no path reaches, for `operations:read` (INB-1e). */
   readonly 'inbox.unattended': NoOperands;
+  /** The reader's team conversations, each with its unread (C71-D). */
+  readonly 'chat.conversations': NoOperands;
+  /** One conversation's messages, the reader's own member row the filter. */
+  readonly 'chat.messages': { readonly conversationId: string };
   /** The task whose runs' trace is read (AW-13 readers). */
   readonly 'trace.read': { readonly recordId: string };
   /** The run whose harness test result is read (AW-12). */
@@ -230,6 +239,7 @@ export type ReadResult =
   | SettingsReadResult
   | SecretListResult
   | ConnectionFleetResult
+  | ConnectionSignalResult
   | ConnectionGraduationResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
@@ -249,6 +259,8 @@ export type ReadResult =
   | MapViewResult
   | MapFrontierResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
+  | ChatConversationsResult
+  | ChatMessagesResult
   | {
       readonly ok: true;
       readonly trace: {

@@ -12,10 +12,12 @@ export {
 } from './agent-login.ts';
 export { recordAuthenticationAttempt, recordBodyRefusal } from './authentication-attempts.ts';
 export {
+  ENDED_FIXES,
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
   standingOf,
   resolveLogin,
+  sessionEndedSince,
   withSession,
   type SecondFactorRule,
   type Session,
@@ -46,8 +48,10 @@ export {
   endOwnSession,
   listSeenSessions,
   openResetWindow,
+  sessionEnded,
   settleResetWindow,
   waitForNextSecond,
   type SeenSession,
   type SessionEndReason,
 } from './sessions.ts';
+export { holdSubjectEnding } from './ending-keys.ts';

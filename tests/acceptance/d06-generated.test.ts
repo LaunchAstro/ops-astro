@@ -161,7 +161,9 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
       for (const cell of TOP_LEVEL_CELLS) {
         if (cell.key !== SYSTEM_OWNED_FIELDS[0] || cell.surface !== 'api') continue;
         // A plan's `fields` is not a record's, and the two revokes are this file's own recipes.
-        if (['preset.plan', 'grant.revoke', 'delegation.revoke'].includes(cell.operation)) continue;
+        // A client's `fields` (C41-A's `record.create`) holds `name` alone and no derived field.
+        const own = ['preset.plan', 'grant.revoke', 'delegation.revoke', 'record.create'];
+        if (own.includes(cell.operation)) continue;
         // eslint-disable-next-line no-await-in-loop -- one recipe at a time, as a person would
         const body = await positive(cell.operation);
         const fields = body['fields'];

@@ -116,6 +116,21 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     connection_revision: 1,
     started_by_actor_id: randomUUID(),
   },
+  // Tripwires and the night round (MP-14-8): nothing the journey does writes one.
+  'public.tripwires': {
+    what: 'restricted calls',
+    rule: 'restricted calls',
+    watching: 'restricted calls',
+    state: 'armed',
+  },
+  'public.night_round_steps': {
+    round_on: '2026-09-29',
+    at: '2026-09-28T23:00:00Z',
+    tone: 'plain',
+    what: 'restricted calls',
+    who: 'restricted calls',
+    say: 'restricted calls',
+  },
   'public.outage_runs': {
     outage_id: randomUUID(),
     attempt_id: randomUUID(),
@@ -356,6 +371,22 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     name: `restricted calls seed ${randomUUID()}`,
     created_by_actor_id: randomUUID(),
   },
+  // C41-A (20261005200007): no journey starts an onboarding.
+  'public.onboardings': {
+    client_id: randomUUID(),
+    template_key: 'restricted-calls',
+    template_version: 1,
+    started_by_actor_id: randomUUID(),
+  },
+  'public.onboarding_steps': {
+    onboarding_id: randomUUID(),
+    step_key: 'restricted-calls',
+    task_id: randomUUID(),
+    position: 0,
+    phase: 'restricted calls',
+    kind: 'agent',
+    state: 'ready',
+  },
   // C60: no journey records a client's written request.
   'public.client_model_requests': {
     client_id: randomUUID(),
@@ -366,7 +397,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     outcome: 'applied',
     recorded_by_actor: randomUUID(),
   },
-  // 20261005222000 (MP-14-10a): no journey graduates a class or files a mandate.
+  // 20261006080000 (MP-14-10a): no journey graduates a class or files a mandate.
   'public.graduation_classes': {
     client_id: randomUUID(),
     action_class: 'social.post',
@@ -386,6 +417,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     person_id: randomUUID(),
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
+  },
+  // 20261005235557 (C59): no journey resets a factor.
+  'public.factor_resets': {
+    person_id: randomUUID(),
+    login_id: randomUUID(),
+    reset_by_actor_id: randomUUID(),
+    provider_factor_id: 'restricted-calls-seed',
   },
   // 0057 (C58): no journey here signs out.
   'public.ended_sessions': {
@@ -428,6 +466,26 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     due_at: '2026-09-29T00:00:00Z',
     outcome: 'activation_off',
   },
+  // Standing approvals (C52-A, 20261005193201): the journey adopts, revokes and dispatches none.
+  'public.standing_approvals': {
+    activation_id: randomUUID(),
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    previous_version_id: randomUUID(),
+    act: 'adopted',
+    sequence: 2,
+    decided_by_actor_id: randomUUID(),
+  },
+  'public.standing_approval_revocations': {
+    approval_id: randomUUID(),
+    revoked_by_actor_id: randomUUID(),
+  },
+  'public.occurrence_dispatches': {
+    occurrence_id: randomUUID(),
+    outcome: 'activation_off',
+  },
+  // 20261006074341: nothing in the journey opens a team conversation (C71-D).
+  'public.team_conversation_members': { conversation_id: randomUUID(), person_id: randomUUID() },
   // WF-1: the journey charts no map.
   'public.map_components': {
     map_id: randomUUID(),

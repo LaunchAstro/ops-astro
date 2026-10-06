@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a top-up on a stop whose step was recorded as happened differently after the stop is refused with words saying the outcome was recorded after the stop, nothing written and the reopened work's replacement still held, and the end still answers the stop"
+}

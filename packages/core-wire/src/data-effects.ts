@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S0-5: what each command does to data, declared beside its permission key.
-// Its shapes, the class the gate reads (derived from it and never set by
-// hand) and the three constructors below are in `data-effects-types.ts`.
+// S0-5: each command's effect on data, declared beside its permission key. Its shapes, the class
+// the gate reads (derived, never set by hand) and its constructors are in `data-effects-types.ts`.
 
 import type { CommandName } from './surface.ts';
 import type { DataEffects } from './data-effects-types.ts';
@@ -18,6 +17,8 @@ import {
   SHARE,
   TASK,
 } from './data-effects-shapes.ts';
+import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
+import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -30,11 +31,10 @@ export type {
 export { classOf } from './data-effects-types.ts';
 
 /**
- * Every command's effects, one entry each: the type is keyed by every command
- * name, so a command added without an entry does not compile. Record kinds
- * are tables. Each is proved against the rows its fixture actually changes
- * (`tests/operations/s0-5-effect-metadata.test.ts`); reads write only the
- * act's audit, which is no record kind.
+ * Every command's effects, one entry each: the type is keyed by every command name, so a command
+ * added without an entry does not compile. Record kinds are tables. Each is proved against the rows
+ * its fixture actually changes (`tests/operations/s0-5-effect-metadata.test.ts`); reads write only
+ * the act's audit, which is no record kind.
  */
 export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = {
   'task.create': TASK,
@@ -51,9 +51,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.decide': writing(
     client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'reservations', 'task_envelopes'),
   ),
-  // An agent's pickup also mints its delegation. A step whose calls spent its
-  // whole hold stops at its budget instead (AW-05): the ask, and after the
-  // run's last ask a person told on the task.
+  // An agent's pickup also mints its delegation. A step whose calls spent its whole hold stops at
+  // its budget instead (AW-05): the ask, and after the run's last ask a person told on the task.
   'task.pickup': writing([
     ...client('alerts', 'attempts', 'budget_asks', 'leases', 'planned_runs', 'reservations'),
     ...client('run_events'),
@@ -71,8 +70,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
   'task.triage': TASK,
   'task.set_stage': TASK,
-  // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10) and
-  // the category (MP-4-8).
+  // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10), the category (MP-4-8).
   'task.set_state': TASK,
   'task.set_scores': TASK,
   'task.set_adhoc': TASK,
@@ -82,13 +80,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // Client access (MP-4-10): a share grant on the task for its client's people.
   'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
-  'task.set_party': TASK,
   'task.set_audience': TASK,
   'task.reparent': TASK,
   'task.move': TASK,
   'task.rank': TASK,
   'task.trash': TASK,
-  'task.restore': TASK,
   'task.purge': TASK,
   'task.read': READ,
   'task.board': READ,
@@ -137,6 +133,13 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'inbox.seen': writing(client('inbox_attention')),
   // Validated only: in-app is always on, and nothing is stored (INB-1e).
   'notifications.set_channel': READ,
+  // C71-D: the message is a comment record, its conversation a record beside
+  // it with its two members; the marker is the reader's own member row. Both
+  // tables are the records table's scope, as a task comment's is.
+  'chat.send_direct': writing(client('records', 'team_conversation_members')),
+  'chat.conversations': READ,
+  'chat.messages': READ,
+  'chat.mark_read': writing(client('team_conversation_members')),
   'settings.set_four_eyes_threshold': SETTINGS,
   'settings.set_client_sign_off': SETTINGS,
   'settings.set_money_step_up': SETTINGS,
@@ -161,12 +164,14 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.clear': writing(business('custody_secrets')),
   'connection.fleet': READ,
   'connection.graduation': READ,
+  'connection.signal': READ,
   'connector.repair': writing(business('connection_repairs')),
   'mandate.file': writing(client('standing_mandates')),
   'mandate.revoke': writing(client('standing_mandates', 'graduation_classes')),
   'graduation.promote': writing(client('standing_mandates', 'graduation_classes')),
   'graduation.demote': writing(client('standing_mandates', 'graduation_classes')),
   'client.create': writing(client('clients')),
+  ...ONBOARDING_EFFECTS,
   'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
   // content once scoped to it, so its rows count as client-scoped.
@@ -177,11 +182,10 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'conversation.message': writing(client('conversations', 'conversation_messages')),
   'conversation.rename': writing(client('conversations')),
   'conversation.set_scope': writing(client('conversations')),
-  // AW-01: the broker's hold on the lease's run and its prompt copy's
-  // registration. At the approved ceiling the refusal commits the stop instead
-  // (AW-05): the ask, the lease released, the delegation retired, the run
-  // waiting. The provider call goes through the credential broker; a client's
-  // task never reaches a route (C60), so it is the business's own.
+  // AW-01: the broker's hold on the lease's run and its prompt copy's registration. At the approved
+  // ceiling the refusal commits the stop instead (AW-05): the ask, the lease released, the
+  // delegation retired, the run waiting. The provider call goes through the credential broker; a
+  // client's task never reaches a route (C60), so it is the business's own.
   'model.call': writing(
     [
       ...client('model_calls', 'budget_asks', 'leases', 'planned_runs'),
@@ -197,7 +201,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...client('task_envelopes'),
   ]),
   'run.end_at_budget_stop': writing(
-    client('budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
+    client('attempts', 'budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
   ),
   'run.revise_state': writing(client('run_states')),
   // MP-6-1's check on a task's run.
@@ -215,19 +219,10 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
   'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
   'run.child_handback': writing([...client('run_events'), ...business('delegations')]),
-  'task.accept_plan': writing(
-    client(
-      'attempts',
-      'gate_decisions',
-      'gates',
-      'inbox_items',
-      'plan_records',
-      'reservations',
-      'run_definition_pins',
-      'run_events',
-      'task_envelopes',
-    ),
-  ),
+  'task.accept_plan': writing([
+    ...client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'plan_records'),
+    ...client('reservations', 'run_definition_pins', 'run_events', 'task_envelopes'),
+  ]),
   'access.grant': GRANTS,
   'access.revoke': GRANTS,
   // C58: the team member signed out and deactivated at the identity provider.
@@ -242,6 +237,15 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ),
     [{ provider: 'identity', forClient: false }],
   ),
+  // C59: a factor cleared here and at the provider, kept by subject and session (0061, 0063, 0064).
+  'access.reset_factor': writing(
+    [
+      ...business('factor_resets', 'second_factors', 'people', 'ended_sessions'),
+      ...business('ops.second_factor_subjects', 'ops.ended_subject_sessions'),
+      ...business('ops.ended_provider_sessions'),
+    ],
+    [{ provider: 'identity', forClient: false }],
+  ),
   'grant.revoke': GRANTS,
   'delegation.revoke': writing([
     ...client('attempts', 'leases', 'planned_runs', 'reservations', 'task_envelopes'),
@@ -254,30 +258,25 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.observe': writing(client('attempts')),
   'task.receipt': READ,
   'budget.top_up': writing(client('task_envelopes')),
-  // AW-10: the step's held calls take the outcome. A replacement stopped, or a
-  // resume at a hold its calls spent whole, ends the lease and the delegation
-  // and stops the run at its budget (AW-05).
+  // AW-10: the step's held calls take the outcome. A replacement stopped, or a resume at a hold its
+  // calls spent whole, ends the lease and the delegation and stops the run at its budget (AW-05).
   'budget.record_outcome': writing([
     ...client('alerts', 'attempts', 'budget_asks', 'leases', 'model_calls', 'planned_runs'),
     ...client('reservations', 'task_envelopes'),
     ...business('delegations'),
   ]),
   'budget.write_off': writing(client('attempts', 'model_calls', 'reservations', 'task_envelopes')),
-  // Wayfinder (WF-1): a retype writes the task, and a grilling or prototype
-  // ticket newly on its map's frontier raises the owner's decision item. A
-  // write to a map or its ticket refreshes the map's summary and frontier
-  // (the records trigger, map_summary_on_record).
+  // Wayfinder (WF-1): a retype writes the task, and a grilling or prototype ticket newly on its
+  // map's frontier raises the owner's decision item. A write to a map or its ticket refreshes the
+  // map's summary and frontier (the records trigger, map_summary_on_record).
   'task.set_type': writing(MAP_TASK.writes.concat(client('inbox_items'))),
   // The map and every ticket under it carry the client.
   'map.scope': MAP_TASK,
-  // Settings ▸ Workflow triggers (C33): a definition carries no client, so its
-  // versions and activations are the business's own rows.
-  'automation.registry': READ,
-  'activation.change': writing(business('activations')),
-  'definition.release': writing(business('automation_definitions', 'definition_versions')),
   // One numbered version: its components and the map's own version number,
   // which refresh the map's summary and frontier as any write to the map does.
   'map.revise': writing(MAP_TASK.writes.concat(client('map_components', 'map_versions'))),
   'map.view': READ,
   'map.frontier': READ,
+  // Settings ▸ Workflow triggers (C33, C52-A), in their own file.
+  ...AUTOMATION_EFFECTS,
 };

@@ -61,6 +61,9 @@
 // untargeted person writes no agent reaches, one row each in the tables that
 // list every write, every untargeted one or every operation with no expected
 // revision, beside the `automation.registry` read.
+// The sixteenth is C52-A's `activation.adopt`, `activation.roll_back`,
+// `activation.turn_off` and `approval.revoke`: untargeted person writes no
+// agent reaches, one row each in the same three tables and the handler map.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -237,6 +240,13 @@ vi.mock('../../packages/core-commands/src/commands/automations.ts', async (origi
   changeActivationAsPerson: recorder('changeActivationAsPerson'),
   releaseDefinitionVersion: recorder('releaseDefinitionVersion'),
 }));
+vi.mock('../../packages/core-commands/src/commands/automation-approvals.ts', async (original) => ({
+  ...(await original<object>()),
+  adoptActivationVersion: recorder('adoptActivationVersion'),
+  rollBackActivation: recorder('rollBackActivation'),
+  turnOffActivationAsPerson: recorder('turnOffActivationAsPerson'),
+  revokeStandingApproval: recorder('revokeStandingApproval'),
+}));
 vi.mock('../../packages/core-commands/src/commands/wayfinder.ts', async (original) => ({
   ...(await original<object>()),
   setTaskType: recorder('setTaskType'),
@@ -277,6 +287,15 @@ vi.mock('../../packages/core-commands/src/commands/access-write.ts', async (orig
   createClientRecord: recorder('createClientRecord'),
   grantOnAccess: recorder('grantOnAccess'),
 }));
+vi.mock('../../packages/core-commands/src/commands/record-create.ts', async (original) => ({
+  ...(await original<object>()),
+  createRecord: recorder('createRecord'),
+}));
+vi.mock('../../packages/core-commands/src/commands/onboarding.ts', async (original) => ({
+  ...(await original<object>()),
+  startOnboarding: recorder('startOnboarding'),
+  recordStepResult: recorder('recordStepResult'),
+}));
 vi.mock('../../packages/core-commands/src/commands/client-privacy-write.ts', async (original) => ({
   ...(await original<object>()),
   setClientPrivacy: recorder('setClientPrivacy'),
@@ -284,6 +303,10 @@ vi.mock('../../packages/core-commands/src/commands/client-privacy-write.ts', asy
 vi.mock('../../packages/core-commands/src/commands/access-end.ts', async (original) => ({
   ...(await original<object>()),
   endAccessOnSettings: recorder('endAccessOnSettings'),
+}));
+vi.mock('../../packages/core-commands/src/commands/factor-reset.ts', async (original) => ({
+  ...(await original<object>()),
+  resetFactorOnSettings: recorder('resetFactorOnSettings'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-time.ts', async (original) => ({
   ...(await original<object>()),
@@ -298,6 +321,11 @@ vi.mock('../../packages/core-commands/src/commands/tasks-tags.ts', async (origin
   createTagNamed: recorder('createTagNamed'),
   addTagToTask: recorder('addTagToTask'),
   removeTagFromTask: recorder('removeTagFromTask'),
+}));
+vi.mock('../../packages/core-commands/src/commands/chat.ts', async (original) => ({
+  ...(await original<object>()),
+  sendDirect: recorder('sendDirect'),
+  markOwnRead: recorder('markOwnRead'),
 }));
 vi.mock('../../packages/core-commands/src/commands/invitations.ts', async (original) => ({
   ...(await original<object>()),
@@ -360,14 +388,22 @@ const PINNED_RUNTIME_SHAPED = {
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'activation.change': ['activationId', 'versionId'],
   'definition.release': ['definitionId'],
+  'activation.adopt': ['activationId', 'versionId'],
+  'activation.roll_back': ['activationId'],
+  'activation.turn_off': ['activationId'],
+  'approval.revoke': ['approvalId'],
   'budget.record_outcome': ['recordId', 'attemptId'],
   'budget.set_planning_cap': [],
   'budget.top_up': ['recordId'],
   'budget.write_off': ['recordId', 'attemptId'],
   'access.end': ['holderId'],
+  'access.reset_factor': ['holderId'],
   'access.grant': ['holderId', 'clientId'],
   'access.revoke': ['grantId'],
   'client.create': [],
+  'record.create': [],
+  'onboarding.start': ['clientId'],
+  'onboarding.step_result': ['recordId'],
   'client.set_privacy': ['clientId'],
   'conversation.message': ['conversationId'],
   'conversation.rename': ['conversationId'],
@@ -406,6 +442,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'invitation.resend': ['invitationId'],
   'invitation.revoke': ['invitationId'],
   'notifications.set_channel': [],
+  'chat.send_direct': ['teammateId'],
+  'chat.mark_read': ['conversationId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'settings.set_money_step_up': [],
@@ -439,18 +477,28 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'access.end',
   'access.grant',
   'access.read',
+  'access.reset_factor',
   'access.revoke',
+  'activation.adopt',
   'activation.change',
+  'activation.roll_back',
+  'activation.turn_off',
+  'approval.revoke',
   'automation.registry',
   'budget.record_outcome',
   'budget.set_planning_cap',
   'budget.top_up',
   'budget.write_off',
+  'chat.conversations',
+  'chat.mark_read',
+  'chat.messages',
+  'chat.send_direct',
   'client.create',
   'client.list',
   'client.set_privacy',
   'connection.fleet',
   'connection.graduation',
+  'connection.signal',
   'connector.repair',
   'conversation.allowance',
   'conversation.list',
@@ -485,6 +533,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'map.view',
   'model.call',
   'notifications.set_channel',
+  'onboarding.start',
+  'onboarding.step_result',
   'operations.change_installation_mode',
   'operations.read',
   'operations.record_gate_item',
@@ -497,6 +547,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'privacy.record_incident',
   'privacy.set_data_class',
   'privacy.set_overseas_service',
+  'record.create',
   'run.child_handback',
   'run.delegate_child',
   'run.end_at_budget_stop',
@@ -551,6 +602,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 
 const PINNED_AGENT_SURFACE = [
   'model.call',
+  'onboarding.step_result',
   'run.child_handback',
   'run.delegate_child',
   'run.revise_state',
@@ -719,6 +771,9 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'operations.record_gate_item', operationId: 'op', item: 'i', evidence: 'e' },
   { command: 'operations.change_installation_mode', operationId: 'op', mode: 'm' },
   { command: 'client.create', operationId: 'op', name: 'n' },
+  { command: 'record.create', operationId: 'op', type: 'client', fields: { name: 'n' } },
+  { command: 'onboarding.start', operationId: 'op', clientId: 'c', templateKey: 'standard' },
+  { command: 'onboarding.step_result', operationId: 'op', recordId: 'r', outcome: 'done' },
   {
     command: 'client.set_privacy',
     operationId: 'op',
@@ -740,6 +795,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'access.end', operationId: 'op', holderId: 'person' },
   { command: 'secret.set', operationId: 'op', name: 'n', value: 'v' },
   { command: 'secret.clear', operationId: 'op', secretId: 's' },
+  { command: 'access.reset_factor', operationId: 'op', holderId: 'person' },
   { command: 'connector.repair', operationId: 'op', connectionId: 'c' },
   { command: 'mandate.file', operationId: 'op', clientId: 'c' },
   { command: 'mandate.revoke', operationId: 'op', mandateId: 'm' },
@@ -779,6 +835,10 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'map.scope', operationId: 'op', recordId: 'r', client: 'c' },
   { command: 'activation.change', operationId: 'op', versionId: 'v', mode: 'manual' },
   { command: 'definition.release', operationId: 'op', name: 'n', modes: ['manual'] },
+  { command: 'activation.adopt', operationId: 'op', activationId: 'a', versionId: 'v' },
+  { command: 'activation.roll_back', operationId: 'op', activationId: 'a' },
+  { command: 'activation.turn_off', operationId: 'op', activationId: 'a' },
+  { command: 'approval.revoke', operationId: 'op', approvalId: 'p' },
   {
     command: 'budget.set_planning_cap',
     operationId: 'op',
@@ -844,6 +904,8 @@ const REQUESTS: readonly CommandRequest[] = [
     version: 1,
   },
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
+  { command: 'chat.send_direct', operationId: 'op', teammateId: 'mate', body: 'hello' },
+  { command: 'chat.mark_read', operationId: 'op', conversationId: 'talk', upTo: 'then' },
   { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
   { command: 'invitation.create', operationId: 'op', name: 'N', email: 'e', role: 'member' },
   { command: 'invitation.resend', operationId: 'op', invitationId: 'i' },
@@ -932,12 +994,16 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'operations.record_gate_item': ['recordGateItem', 'request'],
   'operations.change_installation_mode': ['changeInstallationMode', 'request'],
   'client.create': ['createClientRecord', 'request'],
+  'record.create': ['createRecord', 'request'],
+  'onboarding.start': ['startOnboarding', 'request'],
+  'onboarding.step_result': ['recordStepResult', 'request'],
   'client.set_privacy': ['setClientPrivacy', 'request'],
   'access.grant': ['grantOnAccess', 'request'],
   'access.revoke': ['revokeGrantOnAccess', 'grant'],
   'access.end': ['endAccessOnSettings', 'request'],
   'secret.set': ['setCustodySecret', 'request'],
   'secret.clear': ['clearCustodySecret', 'request'],
+  'access.reset_factor': ['resetFactorOnSettings', 'request'],
   'connector.repair': ['startConnectorRepair', 'request'],
   'mandate.file': ['fileMandate', 'request'],
   'mandate.revoke': ['revokeStandingMandate', 'request'],
@@ -958,6 +1024,10 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'map.scope': ['scopeMap', 'request'],
   'activation.change': ['changeActivationAsPerson', 'request'],
   'definition.release': ['releaseDefinitionVersion', 'request'],
+  'activation.adopt': ['adoptActivationVersion', 'request'],
+  'activation.roll_back': ['rollBackActivation', 'request'],
+  'activation.turn_off': ['turnOffActivationAsPerson', 'request'],
+  'approval.revoke': ['revokeStandingApproval', 'request'],
   'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
@@ -982,6 +1052,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
   'preference.dismiss_tip': ['dismissOwnTip', 'request'],
   'inbox.seen': ['stampOwnSeen', 'item'],
+  'chat.send_direct': ['sendDirect', 'mate', 'hello'],
+  'chat.mark_read': ['markOwnRead', 'talk', 'then'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
   'invitation.create': ['invitationAct', 'request'],
   'invitation.resend': ['invitationAct', 'request'],
@@ -1025,13 +1097,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and six from an expected revision', () => {
+  it('exempts the same one hundred and nineteen from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same twenty-four, two of them before a pickup', () => {
+  it('lets an agent reach the same twenty-five, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

@@ -43,6 +43,9 @@ export type SetupCommandName =
   // started by `custody:manage`, which records it and sends nothing.
   | 'connection.fleet'
   | 'connector.repair'
+  // Grants, tripwires and the night round (MP-14-8): one read by
+  // `connection:read`, the same page's key. The sections change nothing.
+  | 'connection.signal'
   // Graduation and standing mandates (MP-14-10a): the per-client region is one
   // read by `connection:read`, the same page's key.
   | 'connection.graduation'

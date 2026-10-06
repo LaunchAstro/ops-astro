@@ -12,6 +12,8 @@
 // contract does not name fails rather than being skipped. Nothing here asserts.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
+import { MANDATE_EXECUTES, MANDATE_GROUPS } from './restricted-calls-mandates.ts';
+export { MANDATE_GRANTS, MANDATE_UPDATES } from './restricted-calls-mandates.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
 /** The broker's role (AW-01): it executes the fair share's one count, and holds nothing else. */
@@ -133,6 +135,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0055 (C32): a client is written once and never deleted; C60 updates its
   // four privacy settings alone, by the column grant in COLUMN_UPDATES.
   ['si', 'clients'],
+  // 20261005200007 (C41-A): an onboarding and its steps are laid out once and
+  // never deleted; each moves on by the column grants in COLUMN_UPDATES.
+  ['si', 'onboarding_steps onboardings'],
   // C60: a client's written request for model use is kept as written.
   ['si', 'client_model_requests'],
   // 0056 (C58): an access ending is written, then its provider steps are
@@ -140,6 +145,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'access_endings'],
   // 0057 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
+  // 20261005235557 (C59): a factor reset is written, then its provider step is stamped by
+  // update; never deleted.
+  ['siu', 'factor_resets'],
   // 0065: the live change record, stamped by the writes' own triggers (C4);
   // the trash purge deletes a purged task's row.
   ['siud', 'live_changes'],
@@ -153,6 +161,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
   ['si', 'tags'],
   ['sid', 'task_tags'],
+  // 20261006074341: a conversation member's row; a member leaves by a mark, never a delete.
+  ['siu', 'team_conversation_members'],
   // C80: a live correction takes updates (a decision is one); its receipts
   // are append only.
   ['siu', 'live_corrections'],
@@ -161,6 +171,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // are written once and never changed; an activation's setting moves by the
   // column grant in COLUMN_UPDATES.
   ['si', 'activation_occurrences activations automation_definitions definition_versions'],
+  // 20261005193201 (C52-A): an adoption, a revocation and a dispatch are
+  // written once and never changed; an activation names its standing adoption
+  // by the column grant in COLUMN_UPDATES.
+  ['si', 'occurrence_dispatches standing_approval_revocations standing_approvals'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
@@ -173,11 +187,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // the broker, and a repair is recorded once and never changed.
   ['s', 'connection_clients connections'],
   ['si', 'connection_repairs'],
-  // 20261005222000 (MP-14-10a): a class's record is read and its revision
-  // bumped by column grant; a mandate is filed by its own columns and revoked by
-  // column grant, never edited (COLUMN_UPDATES, ROLE_COLUMN_GRANTS).
-  ['s', 'graduation_classes'],
-  ['si', 'standing_mandates'],
+  // 20261005201200 (MP-14-8): tripwires and night round steps are written by the
+  // checks and the round (not built) and read here.
+  ['s', 'night_round_steps tripwires'],
+  ...MANDATE_GROUPS,
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(
@@ -233,8 +246,10 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
-  // 20261005222000 (MP-14-10a): a mandate's word list checked whole, in its check constraint.
-  'public.standing_mandate_words_known',
+  // 20261005235557 (C59): a definer answering one boolean for a login of the caller's own
+  // business; PUBLIC may not execute it.
+  'public.factor_login_live_elsewhere',
+  ...MANDATE_EXECUTES,
 ];
 
 /** What the server said, reduced to what a contract can name. */
