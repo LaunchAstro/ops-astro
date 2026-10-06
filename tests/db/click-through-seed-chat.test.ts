@@ -108,13 +108,27 @@ function readCases() {
 }
 
 function crossingCases() {
-  it("lets neither Mia nor bravo's Bea read Ada's conversation by its id", async () => {
+  // After the snapshot cases: Ada gives Mia a conversation grant of her own,
+  // through the product, so Mia is refused by the owner rule, not for holding none.
+  it("lets neither Mia, holding conversation:write, nor bravo's Bea read Ada's conversation", async () => {
     const [tab] = await tabsOf(ada(world));
     const id = tab!.id;
     expect(id).toMatch(/^[0-9a-f-]{36}$/u);
     const mia = person(world, 'mia@alpha.local');
     const bea = person(world, 'bea@bravo.local');
     const bravo = await businessOf(world.db, 'bravo');
+    const [held] = await world.db.admin.execute<{ id: string }>(
+      `select id from public.people where business_id = $1 and display_name = 'Mia Alpha'`,
+      [world.business],
+    );
+    const granted = await executeCommand(world.db.app, world.business, ada(world), 'api', {
+      command: 'access.grant',
+      operationId: `made-up:${randomUUID()}`,
+      holderId: held!.id,
+      collection: 'conversation',
+      action: 'write',
+    } as never);
+    expect('code' in granted, JSON.stringify(granted)).toBe(false);
     const answers = [
       await read(world, mia, { read: 'conversation.read', conversationId: id }),
       await read(world, bea, { read: 'conversation.read', conversationId: id }, bravo),
@@ -125,9 +139,8 @@ function crossingCases() {
       for (const words of [TITLE, QUESTION, REPLY])
         expect(JSON.stringify(answer)).not.toContain(words);
     }
-    // Mia holds no conversation grant: her tab row is refused or empty, never Ada's.
-    const listed = await read(world, mia, { read: 'conversation.list' });
-    expect(JSON.stringify(listed)).not.toContain(id);
+    expect(answers[0]).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
+    expect(await tabsOf(mia)).toEqual([]);
   });
 
   it('names no client: no scope, or a task without one', async () => {
