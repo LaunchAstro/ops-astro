@@ -3223,7 +3223,10 @@ credential, whose call runs as its agent, so its comment's source is the
 agent's (`agent:api`), never its person's. A person or client-wait step is a
 person's checkpoint, so an agent's result on one is
 `DELEGATION_EXCLUDES_OPERATION` 403 naming `kind`, asked under the locks before
-anything is written (ORCH79 P12STEPACTOR). A person records a step of any kind.
+anything is written (ORCH79 P12STEPACTOR). A person records a step of any kind. A person's result clears the step's open
+item (`closeStepMove`); an agent's withdraws it, naming nobody, which is
+reached only by an agent step's task carrying an ordinary `task.assign` item,
+since the step's own items are raised on person and client-wait steps alone.
 It answers `{ step, outcome, opened, stopped }`;
 `FIELD_VALUE_INVALID` 422 names `recordId`, `outcome` or `result`; a task that
 is no step here, or is in the trash, is `NOT_FOUND` 404, as `task.comment`
@@ -3231,8 +3234,9 @@ answers a trashed task; a step of a stopped or finished onboarding is
 `TRANSITION_NOT_PERMITTED` 409 naming `state=stopped` or `state=done`, and a
 step still waiting, already closed or stopped is that 409 naming its own state.
 A result is content on its task (S0-5): it locks the onboarding, then its
-steps, then the step's task, and asks again under the task's lock whether the
-task is still on the onboarding's client and out of the trash. A task moved to
+steps, then every step's task in id order (`lockStepTasks`), then reads its own
+task again under that lock and asks whether it is still on the onboarding's
+client and out of the trash. A task moved to
 another client or trashed meanwhile is `NOT_FOUND` 404 and nothing is written;
 a move after a result is `CLIENT_LOCKED` 409. The result waits on the
 onboarding's lock after its authority was asked, so it asks again once the lock
@@ -3244,9 +3248,20 @@ clock under the lock, so a grant revoked or lapsed during the wait is
 under the lock, and one revoked or lapsed during the wait is
 `DELEGATION_NOT_LIVE` 403. Either refusal writes nothing.
 
-The owner-rule moves (U38: an inbox item parking a person or client-wait step
-with whoever owns its move) are not built here; they follow in their own pull
-request. The agent step's run and its gate, and the
+A person or client-wait step that opens is parked with an inbox item
+(`assignment`, on the step's task) to whoever owns its move: the task's
+assignee, else the person who started the onboarding. Assigning or unassigning
+the task parks it again under that rule and withdraws any open `assignment`
+item held by someone other than its owner or assignee (`reparkStepMove`, from `task.assign`
+and `task.set_party`); moving the task to another client parks nobody and
+withdraws every open `assignment` item on it but the assignee's. A done result closes the
+item (`closeStepMove`); a first failure leaves it open, since the step is still
+ready. A step that opens while its task is in the
+trash is parked with nobody, and is parked under that rule when `task.restore`
+brings the task back (`parkRestoredSteps`). The second failure, which stops the
+onboarding, withdraws the open `assignment` item on the task of each ready or
+stopped step still on the onboarding's client (`withdrawStepMoves`), since no
+step of a stopped onboarding takes a result. The agent step's run and its gate, and the
 client email's draft and its one send path, are not built here;
 `tests/onboarding/c41-a-held.test.ts` holds each by name. S0-5's first-client
 gate runs on all three commands, each classed `client-data`: after authority on
