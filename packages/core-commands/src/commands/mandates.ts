@@ -38,6 +38,7 @@ import {
   lockClientForWrite,
   lockGraduationClass,
   lockMandate,
+  promotingMandate,
   revokeMandate,
   scopeChoices,
   subjectsOf,
@@ -249,10 +250,12 @@ export async function demoteClass(
     return stale(row.revision);
   }
   const mandates = await lockClientMandates(tx, row.clientId);
-  // A promoted class a refusal is holding is demoted too: otherwise its
-  // promotion runs unattended again the moment the refusal ends.
-  const { state, promotedBy } = deriveGraduation(row, mandates);
+  // A promoted class a refusal is holding, or whose record turned `never`, is
+  // demoted too: otherwise its promotion runs unattended again the moment the
+  // refusal ends or the record recovers.
+  const promotedBy = promotingMandate(row, mandates);
   if (promotedBy === null) {
+    const { state } = deriveGraduation(row, mandates);
     return notPermitted(state, 'Only a class promoted to run unattended is demoted.');
   }
   await revokeMandate(tx, promotedBy.id, context.session.actorId);

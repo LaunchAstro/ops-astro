@@ -185,27 +185,27 @@ const READABLE: readonly Span[] = [
 ];
 
 // What a label also leaves out of READABLE: the default-ignorable code points
-// (Unicode's DerivedCoreProperties), which draw as nothing, and the interlinear
-// annotation controls, but not the joiners (U+200C-200D), the variation
-// selectors (U+180B-180D, U+180F, U+FE00-FE0F, U+E0100-E01EF) and the tag
-// characters (U+E0020-E007F) that emoji and scripts need.
+// (Unicode's DerivedCoreProperties), which draw as nothing, the interlinear
+// annotation and hieroglyph format controls, and so the non-joiner, the tag
+// characters and the supplementary selectors, which can carry text no one sees.
+// The joiner (U+200D) and the variation selectors (U+180B-180D, U+180F,
+// U+FE00-FE0F) stay, only where `labelText` places them.
 const UNSEEN: readonly Span[] = [
   [0xad, 0xad],
   [0x3_4f, 0x3_4f],
   [0x11_5f, 0x11_60],
   [0x17_b4, 0x17_b5],
   [0x18_0e, 0x18_0e],
-  [0x20_0b, 0x20_0b],
+  [0x20_0b, 0x20_0c],
   [0x20_60, 0x20_6f],
   [0x31_64, 0x31_64],
   [0xfe_ff, 0xfe_ff],
   [0xff_a0, 0xff_a0],
   [0xff_f0, 0xff_fb],
+  [0x1_34_30, 0x1_34_3f],
   [0x1_bc_a0, 0x1_bc_a3],
   [0x1_d1_73, 0x1_d1_7a],
-  [0xe_00_00, 0xe_00_1f],
-  [0xe_00_80, 0xe_00_ff],
-  [0xe_01_f0, 0xe_0f_ff],
+  [0xe_00_00, 0xe_0f_ff],
 ];
 
 /** The spans of `spans` with every code point of `holes` taken out. */
@@ -240,14 +240,47 @@ export function readableText(value: string): boolean {
   return within(READABLE, value);
 }
 
-// A letter, a number, punctuation or a symbol: something that draws.
-const VISIBLE = /[\p{L}\p{N}\p{P}\p{S}]/u;
+// A letter, a number, punctuation or a symbol draws, but for two symbols drawn blank.
+const DRAWS = /^[\p{L}\p{N}\p{P}\p{S}]$/u;
+const BLANK: ReadonlySet<string> = new Set(['\u{2800}', '\u{1D159}']);
+const draws = (one: string | undefined): boolean =>
+  one !== undefined && DRAWS.test(one) && !BLANK.has(one);
+const MARK = /^\p{M}$/u;
+const SELECTORS: readonly Span[] = [
+  [0x18_0b, 0x18_0d],
+  [0x18_0f, 0x18_0f],
+  [0xfe_00, 0xfe_0f],
+];
+const MOST_MARKS = 4;
+// The joiner only inside an emoji sequence: after a pictograph, a skin tone or
+// U+FE0F, and before a pictograph.
+const BEFORE_JOINER = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}\u{FE0F}]$/u;
+const AFTER_JOINER = /^\p{Extended_Pictographic}$/u;
 
 /**
- * A label a person reads beside an approval: readable text with nothing that
- * draws as nothing, and at least one character that draws, so what another
- * person is shown is the statement that was filed.
+ * A label a person reads beside an approval, read one code point at a time:
+ * readable text with nothing that draws as nothing (UNSEEN), one variation
+ * selector at most and straight after a character that draws, the joiner only
+ * inside an emoji sequence, at most four combining marks on one character and
+ * none before the first, and at least one character that draws. So what
+ * another person is shown is the whole statement that was filed.
  */
 export function labelText(value: string): boolean {
-  return within(LABEL, value) && VISIBLE.test(value);
+  const points = [...value];
+  if (!within(LABEL, value) || !points.some((one) => draws(one))) return false;
+  // Combining marks on the current character; -1 before the first character.
+  let marks = -1;
+  for (const [at, one] of points.entries()) {
+    if (one === '\u{200D}') {
+      if (!BEFORE_JOINER.test(points[at - 1] ?? '') || !AFTER_JOINER.test(points[at + 1] ?? '')) {
+        return false;
+      }
+      marks = -1;
+    } else if (MARK.test(one)) {
+      if (marks < 0 || marks >= MOST_MARKS) return false;
+      if (within(SELECTORS, one) && (marks > 0 || !draws(points[at - 1]))) return false;
+      marks += 1;
+    } else marks = 0;
+  }
+  return true;
 }
