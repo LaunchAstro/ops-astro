@@ -10,7 +10,7 @@
 // agent credential they issued here is revoked with its agent actor, and one
 // access ending is written per login mapped to them, owing the provider two
 // steps. From that commit login resolution refuses the person
-// (`AUTH_NO_MEMBERSHIP`), whatever the provider has or has not done
+// (`AUTH_ACCESS_ENDED`), whatever the provider has or has not done
 // (TR-SEC5-4).
 //
 // The provider steps are never taken inside a database transaction. They are

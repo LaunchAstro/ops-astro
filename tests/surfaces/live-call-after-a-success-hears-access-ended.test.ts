@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 
 // Sol F1-FIX2 criterion 3, retitled by what it proves; its body is Sol's.
-it('a successful live call establishes membership for later revocation', async () => {
+it('a live call refused for access ended after a live success ends the session', async () => {
   const ended: string[] = [];
   let revoked = false;
   const client = new OperationsClient({
@@ -15,7 +15,7 @@ it('a successful live call establishes membership for later revocation', async (
       Promise.resolve(
         revoked
           ? Response.json(
-              { refused: true, code: 'AUTH_NO_MEMBERSHIP', names: [], fixes: [] },
+              { refused: true, code: 'AUTH_ACCESS_ENDED', names: [], fixes: [] },
               { status: 403 },
             )
           : Response.json({ present: true }),
@@ -27,8 +27,5 @@ it('a successful live call establishes membership for later revocation', async (
   });
   revoked = true;
   expect(await client.live('presence?seat=own-seat&topic=task%3Aown-task', {})).toBeNull();
-  expect(
-    ended,
-    'Successful live access must count as membership just as a successful read does.',
-  ).toEqual(['AUTH_NO_MEMBERSHIP']);
+  expect(ended, 'A live call hears access ended as a read does.').toEqual(['AUTH_ACCESS_ENDED']);
 });

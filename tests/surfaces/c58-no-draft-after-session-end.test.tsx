@@ -12,10 +12,10 @@
 //
 // Access ended is the one the server does not answer 401. The person's bearer
 // still verifies (the provider's token lives out its hour), so the API finds a
-// login with no membership left and answers 403 `AUTH_NO_MEMBERSHIP`, the same
-// answer a login that never had one gets. The last case keeps the two apart: a
-// login that was never a member is shown the denial and is not signed out
-// (the browser's N2 row).
+// login whose access here was ended and answers 403 `AUTH_ACCESS_ENDED`. A login
+// that never had a membership gets 403 `AUTH_NO_MEMBERSHIP`, and the last case
+// keeps the two apart: it is shown the denial and is not signed out (the
+// browser's N2 row).
 //
 // It is a stub for the API and the identity provider, like
 // `session-ended.test.tsx`; the refusals are the bodies C58's own suites pin.
@@ -72,7 +72,7 @@ const refusal = (code: string, status: number): Response =>
 /** How the API answers once the session is over, per ending. */
 const ENDINGS = {
   // C58: the login is deactivated and the memberships ended; the bearer still verifies.
-  'access ended': () => refusal('AUTH_NO_MEMBERSHIP', 403),
+  'access ended': () => refusal('AUTH_ACCESS_ENDED', 403),
   // C58's absolute limit: a bearer past it is answered as expired.
   'the 12-hour limit': () => refusal('AUTH_SESSION_EXPIRED', 401),
 } as const;
@@ -81,12 +81,13 @@ type Ending = keyof typeof ENDINGS;
 
 /** A stand-in API: ordinary answers until `end` is called, then the ending's, for every call. */
 function server(options: { readonly neverAMember?: boolean } = {}) {
-  let ended: Ending | null = options.neverAMember === true ? 'access ended' : null;
+  let ended: Ending | null = null;
   const answer = (at: string): Response => {
     if (at.startsWith('http://identity.invalid/token')) {
       ended = null;
       return json({ access_token: 'a-fresh-token' });
     }
+    if (options.neverAMember === true) return refusal('AUTH_NO_MEMBERSHIP', 403);
     if (ended !== null) return ENDINGS[ended]();
     if (at.endsWith('/task/execution'))
       return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });

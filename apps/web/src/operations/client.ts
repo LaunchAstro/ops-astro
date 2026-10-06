@@ -32,11 +32,10 @@
 //
 // **Access ended is the third way a session ends (C58).** Ending a person's access deactivates
 // their login and ends their memberships, but the bearer in the tab still verifies until its hour
-// is up, so the API answers their next call 403 `AUTH_NO_MEMBERSHIP`. A login that was never a
-// member gets the same answer on its first call, and that one is a denial to draw, not a session
-// to end. So the client remembers whether its bearer has been answered as a member, by a success
-// (a live call's too) or by a refusal decided past login resolution (a scope not granted), and only
-// a bearer that has been ends its session on it.
+// is up, so the API answers their calls 403 `AUTH_ACCESS_ENDED`, its own code for this login and
+// business. That one answer ends the session, whichever client hears it: one built after a reload
+// has heard nothing before it and needs nothing. A 403 `AUTH_NO_MEMBERSHIP` is a login that is not
+// a member here, a denial to draw; it never ends the session.
 //
 // The wire spells the envelope `operationId` and `expectedRevision`, camelCase,
 // matching `commands/requests.ts`, though the slice contract's prose writes
@@ -108,8 +107,6 @@ export interface MutationOptions {
 
 export class OperationsClient {
   readonly #options: ClientOptions;
-  /** Whether this bearer has had an answer only a member here gets. */
-  #answered = false;
 
   constructor(options: ClientOptions) {
     this.#options = options;
@@ -208,7 +205,6 @@ export class OperationsClient {
     if (sessionId !== undefined) headers.set(SESSION_HEADER, sessionId);
     try {
       const response = await this.#options.fetch(url, { ...init, headers });
-      this.#answered ||= response.ok;
       if (response.ok) return response;
       const parsed: unknown = await response.json().catch(() => {});
       if (isWireRefusal(parsed)) this.#heard(response.status, parsed);
@@ -256,15 +252,15 @@ export class OperationsClient {
     if (parsed === undefined) {
       return { unavailable: true, because: 'The API answered with something that was not JSON.' };
     }
-    this.#answered = true;
     return { ok: true, value: parsed as T };
   }
 
   #heard(status: number, refusal: WireRefusal): void {
-    const revoked = status === 403 && refusal.code === 'AUTH_NO_MEMBERSHIP' && this.#answered;
-    const ends = status === 401 ? SESSION_ENDED.has(refusal.code) : revoked;
+    const ends =
+      status === 401
+        ? SESSION_ENDED.has(refusal.code)
+        : status === 403 && refusal.code === ACCESS_ENDED;
     if (ends && this.#options.signedIn) this.#options.onSessionEnded?.(refusal);
-    if (status !== 401 && !BEFORE_LOGIN.has(refusal.code)) this.#answered = true;
   }
 }
 
@@ -281,14 +277,8 @@ export class OperationsClient {
  */
 const SESSION_ENDED = new Set(['AUTH_UNKNOWN_LOGIN', 'AUTH_SESSION_EXPIRED']);
 
-/** Refusals besides the 401s that can come before login resolution places a member. */
-const BEFORE_LOGIN = new Set([
-  'AUTH_NO_MEMBERSHIP',
-  'ACTOR_INACTIVE',
-  'AUTH_CROSS_SITE',
-  'AUTH_SESSION_MISMATCH',
-  'COMMAND_BODY_INVALID',
-]);
+/** The API's 403 for a login whose access to this business was ended (C58): matched whole. */
+const ACCESS_ENDED = 'AUTH_ACCESS_ENDED';
 
 function isWireRefusal(value: unknown): value is WireRefusal {
   if (typeof value !== 'object' || value === null) return false;

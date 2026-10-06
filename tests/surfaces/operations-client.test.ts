@@ -236,7 +236,7 @@ const refused = (code: string) => ({ refused: true, code, names: [], fixes: [] }
 async function endedAfter(first: string, status: number): Promise<readonly string[]> {
   const answers = [
     new Response(JSON.stringify(refused(first)), { status }),
-    new Response(JSON.stringify(refused('AUTH_NO_MEMBERSHIP')), { status: 403 }),
+    new Response(JSON.stringify(refused('AUTH_ACCESS_ENDED')), { status: 403 }),
   ];
   const fetch = (() => Promise.resolve(answers.shift())) as unknown as typeof globalThis.fetch;
   const ended: string[] = [];
@@ -253,13 +253,12 @@ async function endedAfter(first: string, status: number): Promise<readonly strin
 }
 
 describe('what comes back', () => {
-  it('ends the session on access ended once a refusal has shown the login was a member', async () => {
-    // Ending access answers the next call 403 `AUTH_NO_MEMBERSHIP`, the answer a
-    // login that never had a membership gets too. A refusal decided after login
-    // resolution (a scope not granted) proves the bearer was a member, as a
-    // success does; a refusal the door or resolution gives first proves nothing.
-    expect(await endedAfter('SCOPE_NOT_GRANTED', 403)).toEqual(['AUTH_NO_MEMBERSHIP']);
+  it('ends the session on access ended whatever the call before it was answered', async () => {
+    // Ending access answers the next call 403 `AUTH_ACCESS_ENDED`, its own code,
+    // so no earlier answer is needed to tell it from a login that was never a
+    // member (403 `AUTH_NO_MEMBERSHIP`, a denial).
     const before = [
+      ['SCOPE_NOT_GRANTED', 403],
       ['AUTH_NO_MEMBERSHIP', 403],
       ['ACTOR_INACTIVE', 403],
       ['AUTH_SESSION_MISMATCH', 403],
@@ -270,7 +269,7 @@ describe('what comes back', () => {
     const heard = await Promise.all(
       before.map(async ([code, status]) => await endedAfter(code, status)),
     );
-    expect(heard).toEqual(before.map(() => []));
+    expect(heard).toEqual(before.map(() => ['AUTH_ACCESS_ENDED']));
   });
 });
 
