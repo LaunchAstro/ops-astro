@@ -39,7 +39,7 @@ import {
   planTaskPlacement,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.ts';
-import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { isCommandRefusal, refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { isInProductLink } from '../../../core-wire/src/index.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -162,6 +162,10 @@ export async function createTask(
   });
   if (isRecordsRefusal(placement)) return refused(placement);
 
+  // The type's own data, or the map owner's refusal, before anything is written.
+  const wayfinder = await wayfinderDataOnCreate(tx, context, taskType, parentId);
+  if (isCommandRefusal(wayfinder)) return refused(wayfinder);
+
   const named =
     request.stateKey === undefined
       ? undefined
@@ -198,7 +202,7 @@ export async function createTask(
   const id = randomUUID();
   const data: Record<string, unknown> = {
     ...request.fields,
-    ...(await wayfinderDataOnCreate(tx, context, taskType, parentId)),
+    ...wayfinder,
     key: await nextTaskKey(tx, context.spine.taskTypeId),
     // An agent credential's create is the agent's (API-2), never its person's.
     source: deriveSource(

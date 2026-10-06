@@ -17,7 +17,7 @@ async function holdsDecide(
   facts: WayfinderFacts,
 ): Promise<boolean> {
   const subjects = subjectsOf(context.session);
-  const target = context.target?.id ?? '';
+  const target = context.target?.id ?? null;
   for (const id of [target, facts.mapId].filter((x): x is string => x !== null)) {
     // At most two: the ticket, then its map.
     // oxlint-disable-next-line no-await-in-loop
