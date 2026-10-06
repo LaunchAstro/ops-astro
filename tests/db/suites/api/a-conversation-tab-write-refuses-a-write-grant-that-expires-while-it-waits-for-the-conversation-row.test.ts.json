@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a conversation tab write (model, title, page) refuses a write grant that expires while it waits for the conversation row"
+}
