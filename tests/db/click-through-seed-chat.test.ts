@@ -38,6 +38,11 @@ const REPLY =
 
 let world: World;
 let stranded: Cast | undefined;
+let revoked: Cast | undefined;
+
+/** The seed's chat part, untyped JavaScript, called as the seed calls it. */
+const CHAT = new URL('../../scripts/ops/click-through-chat.mjs', import.meta.url).href;
+const chatPart = async () => (await import(CHAT)) as { askTheAgent: (w: object) => Promise<void> };
 
 interface Read {
   readonly conversation: { readonly id: string; readonly scope: { readonly id: string } | null };
@@ -75,11 +80,13 @@ describe.skipIf(serverUrl === undefined)('SR-1 click-through seed conversation',
   afterAll(async () => {
     await closeWorld(world);
     await closeWorld(stranded);
+    await closeWorld(revoked);
   });
 
   readCases();
   crossingCases();
   strandedCase();
+  revokedCase();
 });
 
 function readCases() {
@@ -170,6 +177,67 @@ function strandedCase() {
     expect(ran.out).toMatch(/click-through-seed: REFUSED, 'Newsletter ideas' .*reset/u);
     expect([await snapshot(stranded.db), await guardState(stranded.db)]).toEqual(was);
   }, 300_000);
+}
+
+function revokedCase() {
+  // Sol PRV-oa-1093-R2: the reply is the seed's own write, so it asks what
+  // keep() asks. Ada's sole conversation:write grant is revoked, and the
+  // revocation committed, after her question and before the reply.
+  it('keeps no reply once Ada loses conversation:write between her question and its reply', async () => {
+    revoked = await openCast('sr1clickrevoke');
+    const { w, asked } = await revokingWorld(revoked);
+    const { askTheAgent } = await chatPart();
+    const ran = await askTheAgent(w).then(() => 'kept', String);
+    expect(ran).toMatch(/'Newsletter ideas'.*conversation:write/u);
+    const [after] = await revoked.db.admin.execute<{ roles: string[]; moved: boolean }>(
+      `select array_agg(m.role order by m.created_at) as roles,
+              c.last_activity_at > min(m.created_at) as moved
+         from public.conversations c
+         join public.conversation_messages m on m.conversation_id = c.id
+        where c.id = $1 group by c.id, c.last_activity_at`,
+      [asked().conversationId],
+    );
+    expect(after).toEqual({ roles: ['person'], moved: false });
+  }, 300_000);
+}
+
+/**
+ * The seed's world for the chat part alone, as Ada, whose `as` revokes her
+ * one conversation:write grant through the product once her question commits.
+ */
+async function revokingWorld(cast: Cast) {
+  const [held] = await cast.db.admin.execute<{ actor: string; grant: string }>(
+    `select a.id as actor, g.id as grant from public.people p
+       join public.actors a on a.business_id = p.business_id and a.person_id = p.id
+       join public.grants g on g.business_id = p.business_id and g.subject_kind = 'person'
+        and g.subject_id = p.id and g.collection = 'conversation' and g.action = 'write'
+      where p.business_id = $1 and p.display_name = 'Ada Alpha'`,
+    [cast.business],
+  );
+  const command = (body: object) =>
+    executeCommand(cast.db.app, cast.business, ada(cast), 'api', {
+      operationId: `made-up:${randomUUID()}`,
+      ...body,
+    } as never);
+  let asked: { conversationId: string; messageId: string } | undefined;
+  const w = {
+    admin: 'Ada Alpha',
+    database: cast.db.app,
+    cast: {
+      businessId: cast.business,
+      adminActorId: held!.actor,
+      people: { 'Ada Alpha': ada(cast) },
+    },
+    as: async (_name: string, body: object) => {
+      const started = await command(body);
+      if (isCommandRefusal(started)) throw new Error(JSON.stringify(started));
+      asked = started.detail as unknown as { conversationId: string; messageId: string };
+      const gone = await command({ command: 'access.revoke', grantId: held!.grant });
+      expect('code' in gone, JSON.stringify(gone)).toBe(false);
+      return asked;
+    },
+  };
+  return { w, asked: () => asked! };
 }
 
 /** Ada gives Mia conversation:write through the product. */
