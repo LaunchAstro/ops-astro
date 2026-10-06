@@ -72,8 +72,18 @@ function useWrites(client: OperationsClient, reload: () => void) {
   const [graduating, setGraduating] = useState<Drafts['graduating']>(null);
   const [conflict, setConflict] = useState<string | null>(null);
   const [shut, setShut] = useState<ReadonlySet<string>>(new Set());
+  // Words dropped unsaved (Cancel, Dismiss, an emptied line) take their
+  // conflict with them: nothing is kept, so nothing is offered to save again.
+  const unconflict = (slot: string) => {
+    setConflict((now) => (now === slot ? null : now));
+  };
   const setText = (slot: string, text: string | null) => {
+    if (text === null) unconflict(slot);
     setTexts(({ [slot]: _dropped, ...rest }) => (text === null ? rest : { ...rest, [slot]: text }));
+  };
+  const setForm = (form: Drafts['graduating']) => {
+    if (form === null) unconflict('graduate');
+    setGraduating(form);
   };
   const send: Send = (name, recordId, revision, body, slot) => {
     const sentText = slot === undefined ? undefined : texts[slot];
@@ -104,14 +114,14 @@ function useWrites(client: OperationsClient, reload: () => void) {
   };
   const locked: Locked = (name, recordId) => command.busy || shut.has(latch(name, recordId));
   const text = (slot: string) => texts[slot] ?? null;
-  const drafts: Drafts = { text, setText, graduating, setGraduating, conflict };
+  const drafts: Drafts = { text, setText, graduating, setGraduating: setForm, conflict };
   const open = graduating !== null || Object.keys(texts).length > 0;
   return { command, sent, send, locked, drafts, open };
 }
 
 /**
- * The graduate form's patch is not on the map as last read: someone else
- * graduated or removed it. The form is then kept to copy or dismiss, and no
+ * The graduate form's patch is not on the map as last read: it was graduated
+ * or removed. The form is then kept to copy or dismiss, and no
  * second save is offered (`Frontier.tsx`).
  */
 function patchGone(state: ReadState<MapViewResult>, drafts: Drafts): boolean {

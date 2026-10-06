@@ -126,7 +126,8 @@ function PatchRow(
 }
 
 /**
- * A graduate form whose patch someone else graduated or removed. There is no
+ * A graduate form whose patch is no longer in the fog: graduated (perhaps by
+ * this reader, with words typed after sending) or removed. There is no
  * patch to send it against, so it offers no save: the typed titles stay
  * here, to copy into another patch's form or a ticket, until dismissed.
  */
@@ -138,8 +139,8 @@ function GoneForm(props: {
   return (
     <div className="stack" data-graduate-gone="">
       <p className="field__error">
-        The fog patch you were graduating no longer exists: someone else graduated or removed it.
-        Your ticket titles are kept below to copy; they cannot be graduated from it.
+        This patch is no longer in the fog. The titles below were not graduated from it; they are
+        kept here to copy.
       </p>
       <ul>
         {typed.map((line, index) => (
