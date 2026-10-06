@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
-// The command parity check and report (API-1), from source files only.
-// `--check` exits 1 on any failure; `--json` prints the catalogue.
+// The command parity check and report (API-1), from sources: `--check` exits 1; `--json` prints it.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
