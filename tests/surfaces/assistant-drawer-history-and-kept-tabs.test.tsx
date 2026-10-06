@@ -128,7 +128,15 @@ describe('MP-7-11 CS-7.33 drawer history', () => {
     const { client, calls } = serving(STORED);
     const page = await drawerFor(client);
     expect(tabTitles(page)).toStrictEqual(['Chat 1']);
-    expect(calls.filter((call) => call.name !== 'conversation.allowance')).toStrictEqual([]);
+    // The empty drawer asks which models it may offer, naming no conversation (CS-7.30).
+    const offer = calls.filter((call) => call.name === 'conversation.models');
+    expect(offer).toStrictEqual([{ kind: 'read', name: 'conversation.models', body: {} }]);
+    expect(
+      calls.filter((call) => call.name !== 'conversation.allowance' && !offer.includes(call)),
+    ).toStrictEqual([]);
+    expect(calls.filter((call) => JSON.stringify(call.body).includes('../account'))).toStrictEqual(
+      [],
+    );
   });
 
   it('MP-7-11 an answering line shows while a question is out, and goes when its answer lands', async () => {
