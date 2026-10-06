@@ -59,7 +59,7 @@ export async function recordApplied(
     operationId: request.operationId,
     payloadDigest: digest,
     outcome: 'applied',
-    subjectRecordId: outcome.recordId,
+    subjectRecordId: outcome.auditSubjectId ?? outcome.recordId,
   });
   return handle;
 }

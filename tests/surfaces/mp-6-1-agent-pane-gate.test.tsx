@@ -32,11 +32,18 @@ describe('MP-6-1 agent pane', () => {
     expect(page.find('[data-gate-action="approve"]')?.textContent).toBe('Approve exact v1');
     expect(page.find('[data-gate="digest"]')?.getAttribute('title')).toBe(DIGEST);
 
-    const rounds = await pane({
+    // Two formal rounds of changes (DA-07): the second is still requested;
+    // past them, escalate to a person takes its place.
+    const second = await pane({
       lineages: [lineage({ versions: [version({ gate: { ...version().gate!, round: 2 } })] })],
     });
-    expect(rounds.find('[data-gate-action="request_changes"]')).toBeNull();
-    expect(rounds.find('[data-gate-action="escalate"]')).not.toBeNull();
+    expect(second.find('[data-gate-action="request_changes"]')).not.toBeNull();
+    expect(second.find('[data-gate-action="escalate"]')).toBeNull();
+    const past = await pane({
+      lineages: [lineage({ versions: [version({ gate: { ...version().gate!, round: 3 } })] })],
+    });
+    expect(past.find('[data-gate-action="request_changes"]')).toBeNull();
+    expect(past.find('[data-gate-action="escalate"]')).not.toBeNull();
 
     const decided = await pane({
       lineages: [
@@ -95,8 +102,14 @@ describe('MP-6-1 agent pane', () => {
     );
     // A hold the classifier settled at its calls' spend stopped; a hand-back that spent finished.
     const spent = { ...running, state: 'actual', actualMinor: 100, lease: null };
-    expect(word({ reservations: [{ ...spent, attempt: { state: 'abandoned' } }] })).toBe('Dropped');
-    expect(word({ reservations: [{ ...spent, attempt: { state: 'handed_back' } }] })).toBe('Done');
+    expect(
+      word({ reservations: [{ ...spent, attempt: { state: 'abandoned', outcome: null } }] }),
+    ).toBe('Dropped');
+    expect(
+      word({
+        reservations: [{ ...spent, attempt: { state: 'handed_back', outcome: 'completed' } }],
+      }),
+    ).toBe('Done');
     expect(word({ state: 'cancelled' })).toBe('Cancelled');
     // A completed hand-back as the server leaves it: the lineage live, the
     // reservation abandoned under `handback_completed`, the attempt abandoned.
@@ -105,12 +118,12 @@ describe('MP-6-1 agent pane', () => {
       state: 'abandoned',
       classifiedCause: 'handback_completed',
       lease: { state: 'released' },
-      attempt: { state: 'abandoned' },
+      attempt: { state: 'abandoned', outcome: 'completed' },
     };
     expect(word({ reservations: [handedBack] })).toBe('Done');
-    expect(word({ reservations: [{ ...handedBack, attempt: { state: 'dropped' } }] })).toBe(
-      'Dropped',
-    );
+    expect(
+      word({ reservations: [{ ...handedBack, attempt: { state: 'dropped', outcome: null } }] }),
+    ).toBe('Dropped');
   });
 
   it('MP-6-1 one story', () => {

@@ -28,7 +28,8 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isLive, type FieldDefinition } from '../records/fields.ts';
-import type { SpineField } from './spine.ts';
+
+export { COMMENT_SPINE } from './comment-spine.ts';
 
 /** The comment type's key, beside `task` and `task_state`. */
 export const COMMENT_TYPE_KEY = 'task_comment';
@@ -39,125 +40,12 @@ export const COMMENT_TYPE_KEY = 'task_comment';
  */
 export type CommentType = 'note' | 'client' | 'system';
 
-/** Who it is for. The projection reads this and nothing else to decide. */
-export type CommentAudience = 'internal' | 'client';
-
 /**
- * The comment spine.
- *
- * `comment_type` and `audience` are two fields rather than one because they
- * answer two questions: a `system` comment can be addressed to a client, and a
- * `client` comment written in error can be re-addressed internally without
- * rewriting what it is. Collapsing them would make "who sees this" a property
- * of "what this is", which is the coupling that produces a leak when a new
- * kind arrives.
+ * Who it is for. The projection reads this and nothing else to decide. A
+ * team conversation's message (C71) is `direct` (its two members) or `group`
+ * (its members): never a task's, and never shown outside.
  */
-export const COMMENT_SPINE: readonly SpineField[] = [
-  {
-    key: 'task',
-    label: 'Task',
-    valueType: 'uuid',
-    slot: 'uuid_1',
-    // The parent is established when the comment is written and never edited:
-    // moving a comment between tasks is a different operation with a different
-    // audit meaning, not a field edit.
-    writeMode: 'system',
-    owningOperations: [],
-    escalatingOperation: null,
-  },
-  {
-    key: 'author',
-    label: 'Author',
-    valueType: 'uuid',
-    slot: 'uuid_2',
-    // Derived from the acting identity. Never a payload field, because a
-    // comment whose author a caller can set is not evidence of anything.
-    writeMode: 'system',
-    owningOperations: [],
-    escalatingOperation: null,
-    visibilityClass: 'shared',
-  },
-  {
-    key: 'comment_type',
-    label: 'Kind',
-    valueType: 'text',
-    slot: 'txt_1',
-    writeMode: 'operation',
-    owningOperations: ['task.comment'],
-    escalatingOperation: null,
-    visibilityClass: 'shared',
-  },
-  {
-    key: 'audience',
-    label: 'Audience',
-    valueType: 'text',
-    slot: 'txt_2',
-    // Two operations: the one that writes the comment, and the one that
-    // changes who a task's correspondence is addressed to. A generic edit to
-    // this field is the access change that looks like ordinary content, which
-    // is exactly what `write_mode` exists to catch.
-    writeMode: 'operation',
-    owningOperations: ['task.comment', 'task.set_audience'],
-    escalatingOperation: null,
-    visibilityClass: 'shared',
-  },
-  {
-    key: 'body',
-    label: 'Comment',
-    valueType: 'text',
-    slot: 'txt_3',
-    writeMode: 'operation',
-    // Its author rewrites it (CS-4.34); nobody else does, which is the
-    // handler's check, not the field's.
-    owningOperations: ['task.comment', 'task.edit_comment'],
-    escalatingOperation: null,
-    visibilityClass: 'shared',
-  },
-  {
-    key: 'posted_at',
-    label: 'Posted',
-    valueType: 'timestamptz',
-    slot: 'ts_1',
-    writeMode: 'system',
-    owningOperations: [],
-    escalatingOperation: null,
-    visibilityClass: 'shared',
-  },
-  {
-    key: 'edited_at',
-    label: 'Edited',
-    valueType: 'timestamptz',
-    slot: 'ts_2',
-    writeMode: 'system',
-    owningOperations: [],
-    escalatingOperation: null,
-  },
-  {
-    key: 'parent',
-    label: 'Reply to',
-    valueType: 'uuid',
-    slot: 'uuid_3',
-    // The top-level message a reply sits under, one level deep (R42), set
-    // when the reply is written and never edited. Shared: a reply goes to
-    // its message's audience, so a client is only ever shown the id of a
-    // client message.
-    writeMode: 'operation',
-    owningOperations: ['task.comment'],
-    escalatingOperation: null,
-    visibilityClass: 'shared',
-  },
-  {
-    key: 'source',
-    label: 'Source',
-    valueType: 'text',
-    slot: 'txt_4',
-    // Which surface it arrived through. Internal: it tells an outside reader
-    // about the shape of the system rather than about the work.
-    writeMode: 'system',
-    owningOperations: [],
-    escalatingOperation: null,
-  },
-];
+export type CommentAudience = 'internal' | 'client' | 'direct' | 'group';
 
 export interface StoredComment {
   readonly id: string;
@@ -171,6 +59,8 @@ export interface StoredComment {
   readonly source: string;
   /** The top-level message this replies to, or null for a message. */
   readonly parentId: string | null;
+  /** The person an agent wrote it for; null when a person wrote their own. */
+  readonly onBehalfOfPersonId: string | null;
   /**
    * Written by a person outside the business (no active membership): one of
    * the client's people. Read from the author's actor at read time, never
@@ -180,7 +70,10 @@ export interface StoredComment {
 }
 
 export interface NewComment {
-  readonly taskId: string;
+  /** The task it is on, or null for a team conversation's message. */
+  readonly taskId: string | null;
+  /** The team conversation it is in (C71); absent on a task's comment. */
+  readonly conversationId?: string;
   readonly authorActorId: string;
   readonly commentType: CommentType;
   readonly audience: CommentAudience;
@@ -188,10 +81,21 @@ export interface NewComment {
   readonly source: string;
   /** The top-level message a reply sits under; absent or null for a message. */
   readonly parentId?: string | null;
+  /** The person an agent writes it for; absent or null for a person. */
+  readonly onBehalfOfPersonId?: string | null;
 }
 
 /** The server's now, as the ISO text a comment's times are stored in. */
 export const NOW_TEXT: string = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
+
+/**
+ * A conversation message's time and place, read under its lock (conversations.ts):
+ * the wall clock, so a send that waited is stamped after the one before, and
+ * `created_at`, a strict order of writes that ranks one millisecond's messages.
+ */
+const CLOCK_TEXT = `to_char(clock_timestamp() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
+const CONVERSATION_ORDER = `(select greatest(clock_timestamp(), max(c.created_at) + interval '1 microsecond')
+  from records c where c.business_id = $1 and c.record_type_id = $3 and c.uuid_4 = ($11::text)::uuid and c.deleted_at is null)`;
 
 /**
  * Write one comment, inside the caller's transaction.
@@ -208,13 +112,11 @@ export async function writeComment(
 ): Promise<string> {
   const id = randomUUID();
   await tx.query(
-    `insert into records (business_id, id, record_type_id, data)
-     values ($1, $2, $3, jsonb_build_object(
+    `insert into records (business_id, id, record_type_id, data, created_at)
+     values ($1, $2, $3, jsonb_strip_nulls(jsonb_build_object(
        'task', $4::text, 'author', $5::text, 'comment_type', $6::text,
        'audience', $7::text, 'body', $8::text, 'source', $9::text,
-       'posted_at', ${NOW_TEXT})
-       || case when $10::text is null then '{}'::jsonb
-               else jsonb_build_object('parent', $10::text) end)`,
+       'posted_at', ${comment.conversationId === undefined ? NOW_TEXT : CLOCK_TEXT}, 'parent', $10::text, 'conversation', $11::text, 'on_behalf_of', $12::text)), ${comment.conversationId === undefined ? 'now()' : CONVERSATION_ORDER})`,
     [
       tx.businessId,
       id,
@@ -226,6 +128,8 @@ export async function writeComment(
       comment.body,
       comment.source,
       comment.parentId ?? null,
+      comment.conversationId ?? null,
+      comment.onBehalfOfPersonId ?? null,
     ],
   );
   return id;
@@ -242,6 +146,7 @@ const VALUE_OF: Readonly<Record<string, (comment: StoredComment) => unknown>> = 
   edited_at: (comment) => comment.editedAt,
   source: (comment) => comment.source,
   parent: (comment) => comment.parentId,
+  on_behalf_of: (comment) => comment.onBehalfOfPersonId,
 };
 
 /**

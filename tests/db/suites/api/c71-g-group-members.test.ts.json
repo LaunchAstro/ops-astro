@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a member added later reads from joining, a removed or departed member reads nothing after, and chat.rename_group and chat.change_members are the creator's or a chat:manage member's"
+}

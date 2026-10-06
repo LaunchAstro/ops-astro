@@ -17,7 +17,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
-import { createCli, isRefusal, type CliAnswer, type Transport } from '../cli/client.ts';
+import type { Transport } from '../cli/client.ts';
+import { agentCall, type Unanswered } from './agent-call.ts';
 import { handedBackFrom, reviewBody, type HandedBack } from './review.ts';
 import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
 
@@ -52,42 +53,15 @@ export type WorkerOutcome =
     }
   /** The plan's work, handed back for review (AW-08, `review.ts`); its launch applies next. */
   | { readonly handedBack: HandedBack }
-  /** The provider dropped the step before it acted; handed back, and the work comes back (T3e1). */
+  /** The provider call dropped after the step was marked, and may have acted; handed back (T3e1). */
   | { readonly dropped: { readonly taskId: string; readonly cause: string } }
   /** Nothing approved and unpicked on the task: done already, or not yet approved. */
   | { readonly idle: { readonly taskId: string } }
-  | { readonly refused: { readonly code: string; readonly names: readonly string[] } }
-  | { readonly fault: { readonly status: number } };
-
-interface Answered {
-  readonly body: Record<string, unknown>;
-  readonly detail: Record<string, unknown>;
-}
+  | Unanswered;
 
 /** The effect's text: a note to the team, and nothing leaves the app. */
 export const EFFECT_BODY =
   'Synthetic change applied: a team-only comment. This demonstration changes nothing outside the app.';
-
-type Call = (verb: string, body: object) => Promise<Answered | WorkerOutcome>;
-
-/**
- * One agent call, under `delegation` when there is one. Every call carries an
- * operation id, reads included (`agent-envelope.ts`), and an answer lost in
- * transit is asked for once more under the same id, so it replays.
- */
-function agentCall(options: WorkerOptions, delegation?: string): Call {
-  const cli = createCli({
-    entry: 'agent',
-    businessKey: encodeURIComponent(options.businessKey),
-    credential: options.credential,
-    ...(delegation === undefined ? {} : { delegation }),
-    transport: options.transport,
-  });
-  return async (verb, body) => {
-    const sent = { operationId: randomUUID(), ...body };
-    return settle(await cli.run(verb, sent).catch(async () => await cli.run(verb, sent)));
-  };
-}
 
 /** Work this worker picked up and has not yet seen observed: what a later pass resumes. */
 interface Held {
@@ -101,7 +75,11 @@ interface Held {
   };
   /** Set once the plan's lease went back for review: the hand-back is asked again under it. */
   readonly review?: { readonly operationId: string };
+  /** Set once the provider answered (`commentId`, the comment): only what is left is sent again. */
+  readonly effected?: { readonly link: Link; readonly commentId?: string };
 }
+
+type Link = { readonly receiptLink?: string };
 
 /** A pickup asked for and not yet answered: asked again under its identity, it replays. */
 interface Asked {
@@ -115,7 +93,8 @@ interface Asked {
  * arrives, so a pickup with no answer is kept and asked again under its own
  * identity, which replays it with its credential; work picked up and not yet
  * observed is kept too, and the next pass resumes it. Dispatch, the effect
- * and observe each replay.
+ * and observe each replay; the provider is called once per attempt, and its
+ * answer is kept with the work for the comment and observe a resume sends.
  */
 async function applyOnce(
   options: WorkerOptions,
@@ -142,8 +121,10 @@ async function applyOnce(
   const outcome = await effectOnce(options, taskId, work, (dropped) => {
     kept.set(taskId, dropped);
   });
-  // A fault may be a lost answer, so the work is kept; anything else ends it here.
-  if (!('fault' in outcome)) kept.delete(taskId);
+  // A fault may be a lost answer, and a resume refused until sign-off clears
+  // keeps its provider answer for a later pass: anything else ends it here.
+  const signOff = 'refused' in outcome && outcome.refused.code === 'CLIENT_SIGNOFF_REQUIRED';
+  if (!('fault' in outcome) && !(signOff && work.effected !== undefined)) kept.delete(taskId);
   return outcome;
 }
 
@@ -178,7 +159,7 @@ async function effectOnce(
   options: WorkerOptions,
   taskId: string,
   held: Held,
-  keep: (dropped: Held) => void,
+  keep: (next: Held) => void,
 ): Promise<WorkerOutcome> {
   const { lease, attemptId, credential } = held;
   const call = agentCall(options, credential);
@@ -203,6 +184,36 @@ async function effectOnce(
     return 'body' in back ? handedBackFrom(taskId, back.detail) : back;
   };
   if (held.review !== undefined) return await handBackForReview(held.review.operationId);
+  const commentAndObserve = async (effected: NonNullable<Held['effected']>) => {
+    let commentId = effected.commentId;
+    if (commentId === undefined) {
+      const effect = await call('task.comment', {
+        operationId: effectOperationId(attemptId),
+        recordId: taskId,
+        body: EFFECT_BODY,
+        audience: 'internal',
+      });
+      if (!('body' in effect)) return effect;
+      commentId = String(effect.detail['commentId']);
+      keep({ ...held, effected: { ...effected, commentId } });
+    }
+    const usage = options.reporter.observe(SYNTHETIC_STEP);
+    // The link rides as the provider gave it; observe keeps it only on the declared host.
+    const observed = await call('task.observe', { ...lease, attemptId, usage, ...effected.link });
+    if (!('body' in observed)) return observed;
+    return { applied: { taskId, attemptId, commentId } };
+  };
+  // The provider answered and a later answer was lost: send only what is left,
+  // never the provider again. Before the comment, dispatch answers its checks
+  // again (a sign-off required since refuses it); once the comment applied,
+  // observe alone accounts for the effect already made.
+  if (held.effected !== undefined) {
+    if (held.effected.commentId === undefined) {
+      const again = await call('task.dispatch', lease);
+      if (!('body' in again)) return again;
+    }
+    return await commentAndObserve(held.effected);
+  }
   // The mark first: a provider call may act and then
   // lose its answer, so it is made only once the step is marked. A fault is
   // then handed back as a drop, and the step's whole hold stays unknown until
@@ -223,27 +234,20 @@ async function effectOnce(
   // fault, and the provider is not called until the start is recorded.
   const starting = await call('task.heartbeat', { ...lease, providerStarting: true });
   if (!('body' in starting)) return starting;
-  let link: { readonly receiptLink?: string };
+  let link: Link;
   try {
     link = await callProvider(SYNTHETIC_STEP, options.provider);
   } catch (fault) {
-    if (!(fault instanceof ProviderFault)) throw fault;
-    const drop = { cause: fault.dropCause, operationId: randomUUID() };
+    const cause = fault instanceof ProviderFault ? fault.dropCause : 'connection_lost';
+    const drop = { cause, operationId: randomUUID() };
     keep({ ...held, drop });
+    // Any other rejection still ends this pass, and the provider may have acted:
+    // the next pass hands the drop back and never calls it again.
+    if (!(fault instanceof ProviderFault)) throw fault;
     return await handBackDrop(drop);
   }
-  const effect = await call('task.comment', {
-    operationId: effectOperationId(attemptId),
-    recordId: taskId,
-    body: EFFECT_BODY,
-    audience: 'internal',
-  });
-  if (!('body' in effect)) return effect;
-  const usage = options.reporter.observe(SYNTHETIC_STEP);
-  // The link rides as the provider gave it; observe keeps it only on the declared host.
-  const observed = await call('task.observe', { ...lease, attemptId, usage, ...link });
-  if (!('body' in observed)) return observed;
-  return { applied: { taskId, attemptId, commentId: String(effect.detail['commentId']) } };
+  keep({ ...held, effected: { link } });
+  return await commentAndObserve({ link });
 }
 
 export function createWorker(options: WorkerOptions): {
@@ -252,8 +256,17 @@ export function createWorker(options: WorkerOptions): {
 } {
   const call = agentCall(options, options.delegation);
   const kept = new Map<string, Held | Asked>();
+  // A pass on a task already being applied joins that pass: two at once would
+  // resume one held attempt twice, and call its provider twice.
+  const running = new Map<string, Promise<WorkerOutcome>>();
   return {
-    applyOnce: async (taskId) => await applyOnce(options, kept, taskId),
+    applyOnce: async (taskId) => {
+      const pass =
+        running.get(taskId) ??
+        applyOnce(options, kept, taskId).finally(() => running.delete(taskId));
+      running.set(taskId, pass);
+      return await pass;
+    },
     proposeOnce: async () => {
       const capabilities = await call('session.capabilities', {});
       if (!('body' in capabilities)) return capabilities;
@@ -283,17 +296,4 @@ export function createWorker(options: WorkerOptions): {
       };
     },
   };
-}
-
-/** A success's body, or the outcome that ends this attempt. No credential is ever in either. */
-function settle(answer: CliAnswer): Answered | WorkerOutcome {
-  const body = answer.body as Record<string, unknown> | undefined;
-  if (answer.status >= 200 && answer.status < 300 && body !== undefined) {
-    return { body, detail: (body['detail'] as Record<string, unknown> | undefined) ?? {} };
-  }
-  if (isRefusal(answer)) {
-    const refusal = body as { code: string; names?: readonly string[] };
-    return { refused: { code: refusal.code, names: refusal.names ?? [] } };
-  }
-  return { fault: { status: answer.status } };
 }

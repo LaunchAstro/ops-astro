@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#963): after a gap whose body may have been stored, the next export waits out the lease; after a refusal it goes at once."
+}

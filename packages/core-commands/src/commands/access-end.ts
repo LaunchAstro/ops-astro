@@ -24,7 +24,6 @@ import {
   factorLoginLiveElsewhere,
   isUuid,
   lastManager,
-  lockAccess,
   lockAgentCredential,
   otherManagers,
   revokeAgentCredential,
@@ -32,7 +31,7 @@ import {
 import type { BusinessId, Database, TenantQuery } from '../../../core-records/src/index.ts';
 import { claimNextEnding, endingsOwed, lockEnding, type OwedEnding } from './access-end-claim.ts';
 import type { ProviderAnswer, ProviderFault } from './account-factor-provider.ts';
-import { endPersonAuthority } from './authority-controls.ts';
+import { endPersonAuthority, lockAccessAsManager } from './authority-controls.ts';
 import type { CommandContext } from './context.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
@@ -92,9 +91,11 @@ export async function endAccessOnSettings(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['holderId'], HOLDER_FIXES));
   }
   const personId = holderId.toLowerCase();
-  // The access lock first, as every change to who may do what takes it; then
-  // the membership row, so two endings of one person serialise here.
-  await lockAccess(tx);
+  // The access lock first, as every change to who may do what takes it, with
+  // the caller's own right asked again under it; then the membership row, so
+  // two endings of one person serialise here.
+  const lost = await lockAccessAsManager(tx, context);
+  if (lost !== undefined) return lost;
   const member = await tx.query<{ readonly id: string }>(
     `select id from public.memberships
       where business_id = $1 and person_id = $2::uuid and active
@@ -184,7 +185,7 @@ async function endStanding(
  * refuse to sign out a login it has already deactivated), stopping at the
  * first fault, then the stamp. A login another business maps is either seen by
  * the second check or its mapping waits on the lock for the stamp
- * (20261004044057). `coalesce` keeps a step's first stamp, so a step done is
+ * (20261006213000). `coalesce` keeps a step's first stamp, so a step done is
  * never undone or re-dated.
  */
 export async function settleAccessEndings(

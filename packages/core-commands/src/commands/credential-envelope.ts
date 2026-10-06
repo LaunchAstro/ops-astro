@@ -21,13 +21,16 @@
 //
 // **What it reaches.** The surface rows an agent may reach under a delegation
 // that need no lease: not a lease's own work (a claim) and not a person-only
-// row. So `task.create`, under the ticked `task:write`, and
-// `session.capabilities`, whose answer is the ticked keys the person's grants
-// still cover (`readCapabilities` asks within them) and the agent actor as the
-// acting identity. `run.revise_state` is excluded by name (`OUTSIDE_REACH`).
+// row (`CREDENTIAL_REACH`: the task reads and writes an agent makes, comment
+// changes, `run.child_handback`). Among them `task.create`, under the ticked
+// `task:write`, and `session.capabilities`, whose answer is the ticked keys the
+// person's grants still cover (`readCapabilities` asks within them) and the
+// agent actor as the acting identity. A shared person handler holds the agent's
+// limits itself (`updateTask`, `assignTask`, `commentOnTask`, #420). `run.revise_state` is excluded by name (`OUTSIDE_REACH`).
 // Anything else is refused `DELEGATION_EXCLUDES_OPERATION`, recorded against
 // the agent.
 
+import { createHash } from 'node:crypto';
 import {
   isAgentCredentialLive,
   NO_ASSURANCE,
@@ -53,12 +56,15 @@ import {
   type CommandRefusal,
 } from './refusal.ts';
 import type { CommandResult } from './register-store.ts';
+import { credentialNotLive } from './credential-not-live.ts';
 import type { UncheckedRequest } from './requests.ts';
 
 /** Rows the rule below would admit that a credential still never reaches. */
 const OUTSIDE_REACH: ReadonlySet<CommandName> = new Set<CommandName>([
   // A run's state is revised only inside a run's delegation; refused until proved (ORCH60).
   'run.revise_state',
+  // A live correction is an agent's only inside a pickup's delegation for its own task (C80).
+  'live_correction.request',
 ]);
 
 /** The rows an agent credential's call may reach. */
@@ -79,9 +85,16 @@ export interface QuotaKeys {
   readonly businessId: string;
 }
 
-/** A call's place in the quota, given back with what it handed out. */
+/** A call's place in the quota. */
 export interface QuotaSlot {
-  leave(answer: object | undefined): void;
+  /**
+   * Count the records `answer` hands out, at the moment it is decided: false,
+   * with nothing counted, when that would take a level past its limit. Asked
+   * again (a retried transaction), it first gives back what it counted before.
+   */
+  handOut(answer: object): boolean;
+  /** Give the place back, and what was counted too when the answer never reached the caller. */
+  leave(delivered: boolean): void;
 }
 
 /** The app's limits (`apps/api/auth/agent-quota.ts`): a slot, or undefined when one is reached. */
@@ -90,9 +103,10 @@ export interface CredentialQuota {
   /**
    * A place at the business's door, taken at once before the bearer is
    * resolved, or undefined when the door is full. A bearer turned away as not
-   * live keeps it; any other answer gives it back.
+   * live keeps it; any other answer gives it back. A key nobody holds has a
+   * door of its own (`atUnheldKey`).
    */
-  knock(businessId: string): DoorPlace | undefined;
+  knock(door: string): DoorPlace | undefined;
 }
 
 /** A place held at a business's door. */
@@ -107,11 +121,6 @@ export interface CredentialCall {
   readonly quota?: CredentialQuota;
 }
 
-const NOT_LIVE_FIXES: readonly string[] = [
-  'This agent credential is not live: it was revoked, it has expired, or it was never issued here.',
-  'Ask the person it acts for to issue a new one on Settings ▸ Access.',
-];
-
 const OUTSIDE_FIXES: readonly string[] = [
   'An agent credential reads, adds and comments on tasks, proposes changes and asks what it may do, within the keys it was issued for.',
   'Every other operation belongs to a person.',
@@ -124,9 +133,19 @@ const LIMITED_FIXES: readonly string[] = [
 
 const limited = (): CommandRefusal => refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES);
 
-/** The one answer for a credential not served: unknown, revoked, expired, or a key nobody holds. */
-export const credentialNotLive = (): CommandRefusal =>
-  refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
+/**
+ * A credential at a business key nobody holds. It takes a place at that key's
+ * own door and keeps it, as a bearer not live at a business does, so past the
+ * door's count it is limited there too: its answers do not tell a key that
+ * exists from one that does not (response time aside: catalogue #784).
+ */
+export function atUnheldKey(businessKey: string, quota?: CredentialQuota): CommandRefusal {
+  // The caller chose the key, so the door holds its digest, never the key, and
+  // is prefixed so that no key's door is a business's (whose door is its id).
+  const door = `unheld:${createHash('sha256').update(businessKey).digest('hex')}`;
+  if (quota !== undefined && quota.knock(door) === undefined) return limited();
+  return credentialNotLive();
+}
 
 export async function executeCredentialCommand(
   database: Database,
@@ -161,44 +180,76 @@ async function resolvedAndRun(
   doorFull: boolean,
 ): Promise<CommandResult | ReadResult> {
   // Entered once per request, outside `retryOnce`, so a retry is not a second call.
-  let slot: QuotaSlot | undefined;
-  let answer: CommandResult | ReadResult | undefined;
+  const held: Held = {};
+  let answer: CommandResult | ReadResult;
   try {
     answer = await retryOnce(
       async () =>
-        await database.withBusiness(businessId, async (tx) => {
-          const standing = await resolveAgentCredential(tx, call.credential, call.now);
-          if (standing === 'not-live') return await notLive(tx, call.credential, doorFull);
-          const keys = {
-            credentialId: standing.credentialId,
-            personId: standing.personId,
-            businessId,
-          };
-          // Before the reach, so a call outside it counts too.
-          slot ??= call.quota?.enter(keys);
-          if (call.quota !== undefined && slot === undefined) {
-            return limited();
-          }
-          const session = sessionOf(standing, tx.businessId);
-          if (!CREDENTIAL_REACH.has(request.command)) {
-            const outside = refuseCommand(
-              'DELEGATION_EXCLUDES_OPERATION',
-              [request.command],
-              OUTSIDE_FIXES,
-            );
-            return await enter(tx, session, request, { outside });
-          }
-          return declarationOf(request.command).kind === 'read'
-            ? await runRead(tx, session, readOf(request))
-            : await runCommand(tx, session, 'api', request);
-        }),
+        await database.withBusiness(
+          businessId,
+          async (tx) => await attempt(tx, call, request, doorFull, held),
+        ),
     );
-    if (!isCommandRefusal(answer)) return answer;
-    return asCallerVisible(answer);
-  } finally {
-    slot?.leave(answer === undefined || isCommandRefusal(answer) ? undefined : answer);
+  } catch (cause) {
+    if (!(cause instanceof ExportLimitReached)) {
+      held.slot?.leave(false);
+      throw cause;
+    }
+    answer = limited();
   }
+  held.slot?.leave(!isCommandRefusal(answer));
+  if (!isCommandRefusal(answer)) return answer;
+  return asCallerVisible(answer);
 }
+
+/** The call's place in the quota, once it is let in. */
+interface Held {
+  slot?: QuotaSlot | undefined;
+}
+
+/** One try of the call, inside its transaction. */
+async function attempt(
+  tx: TenantQuery,
+  call: CredentialCall,
+  request: UncheckedRequest,
+  doorFull: boolean,
+  held: Held,
+): Promise<CommandResult | ReadResult> {
+  const standing = await resolveAgentCredential(tx, call.credential, call.now);
+  if (standing === 'not-live') return await notLive(tx, call.credential, doorFull);
+  const keys = {
+    credentialId: standing.credentialId,
+    personId: standing.personId,
+    businessId: tx.businessId,
+  };
+  // Before the reach, so a call outside it counts too.
+  held.slot ??= call.quota?.enter(keys);
+  if (call.quota !== undefined && held.slot === undefined) {
+    return limited();
+  }
+  const session = sessionOf(standing, tx.businessId);
+  if (!CREDENTIAL_REACH.has(request.command)) {
+    const outside = refuseCommand(
+      'DELEGATION_EXCLUDES_OPERATION',
+      [request.command],
+      OUTSIDE_FIXES,
+    );
+    return await enter(tx, session, request, { outside });
+  }
+  const ran =
+    declarationOf(request.command).kind === 'read'
+      ? await runRead(tx, session, readOf(request))
+      : await runCommand(tx, session, 'api', request);
+  // Counted here, before the commit: calls let in at once all saw room at the
+  // door, and the one that would pass the limit rolls back.
+  if (held.slot !== undefined && !isCommandRefusal(ran) && !held.slot.handOut(ran)) {
+    throw new ExportLimitReached();
+  }
+  return ran;
+}
+
+/** Thrown inside the transaction so an answer over the export limit applies nothing. */
+class ExportLimitReached extends Error {}
 
 const live = async (tx: TenantQuery, call: CredentialCall): Promise<boolean> =>
   await isAgentCredentialLive(tx, call.credential, call.now);

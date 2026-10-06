@@ -36,7 +36,9 @@ import { serverUrl, tokenFor } from '../acceptance/world.ts';
  * The money commands this sweep proves. A money command declared later joins here:
  * the four-eyes threshold is `spend:decide` (MP-2-11, owner line 71), and a
  * run's top-up at its budget stop is `billing:decide` (AW-05), and so is the
- * business's planning cap (AW-04, U10). The switch
+ * business's planning cap (AW-04, U10). Standing mandates and graduation
+ * are `mandate:manage` (MP-14-10a): the harness's `readyClass` gives each its
+ * client and class, and revoke and demote file or promote first. The switch
  * asks the step-up too, so a stale sign-in cannot turn it off (C59).
  */
 const SWEPT: readonly string[] = [
@@ -46,6 +48,10 @@ const SWEPT: readonly string[] = [
   'settings.set_four_eyes_threshold',
   'run.top_up',
   'budget.set_planning_cap',
+  'mandate.file',
+  'mandate.revoke',
+  'graduation.promote',
+  'graduation.demote',
   'settings.set_money_step_up',
 ];
 

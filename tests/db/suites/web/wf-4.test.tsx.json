@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the WF-4 tickets, frontier and fog views mounted over the composed API: graduating a fog patch and blocking one ticket by another through map.graduate and task.set_blocking, the frontier view in the read model's order, the view and filters kept across the four tabs, both writes audited, a refusal per key, and CLI parity"
+}

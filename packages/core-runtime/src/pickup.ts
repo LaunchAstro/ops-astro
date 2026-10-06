@@ -31,10 +31,10 @@
 // the agent's.
 
 import { randomUUID } from 'node:crypto';
-import { mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
+import { DELEGATION_STANDS, mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
-import { leaseReason, nextFence, personWriteLive } from './lease-ownership.ts';
+import { leaseReason, personWriteLive } from './lease-ownership.ts';
 import type { LockRequest, LockSet } from './locks.ts';
 import { only } from './only.ts';
 import { reserve } from './decide.ts';
@@ -55,12 +55,38 @@ export interface QueueEntry {
 }
 
 /**
+ * The reading agent's reach over a queue row (`$2`, null for a person). While
+ * the agent holds a live delegation it is working for that task's client, so
+ * a row stays only when its task's client is a delegated task's client (#169).
+ * It keys on the delegations the agent holds, not on the credential it
+ * presents, so leaving the credential off does not widen it. With no live
+ * delegation the row stays, as it does for a person.
+ */
+const AGENT_REACH = `($2::uuid is null
+   or not exists (select 1 from public.delegations d
+                   where d.business_id = res.business_id and d.agent_actor_id = $2
+                     and ${DELEGATION_STANDS})
+   or exists (select 1 from public.delegations d
+                join public.records purpose on purpose.business_id = d.business_id
+                                           and purpose.id = d.purpose_scope_id
+               where d.business_id = res.business_id and d.agent_actor_id = $2
+                 and ${DELEGATION_STANDS}
+                 and purpose.uuid_7 is not distinct from task.uuid_7))`;
+
+/**
  * Approved, held, unpicked. A reservation bound to a lease is out, a terminal
  * lineage is out, and an attempt carrying a dispatch marker or an observation
  * is out — the last because T5 quarantines it with its hold retained, and a
  * quarantined attempt must not be handed to a worker as ordinary work.
+ *
+ * `agentActorId` is an agent's own read: under a live delegation its queue
+ * never shows another client's task, purpose slug or held amount
+ * (`AGENT_REACH`).
  */
-export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
+export async function queue(
+  tx: TenantQuery,
+  agentActorId?: string,
+): Promise<readonly QueueEntry[]> {
   const rows = await tx.query<{
     readonly reservation_id: string;
     readonly task_id: string;
@@ -90,8 +116,9 @@ export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
         and att.state = 'reserved'
         and not att.dispatch_marker
         and not att.observed
+        and ${AGENT_REACH}
       order by res.created_at`,
-    [tx.businessId],
+    [tx.businessId, agentActorId ?? null],
   );
   return rows.map((row) => ({
     reservationId: row.reservation_id,
@@ -256,14 +283,16 @@ export async function pickup(
   const { state, plan } = rechecked.value;
 
   const claimed = await claimHold(tx, request.reservationId, found, state, plan, locks);
+  if (!claimed.ok && claimed.retains !== true) return claimed;
+  // A stop at a spent hold meets the task's lease as a pickup does: another
+  // holder's live lease refuses it, and that refusal takes the stop back.
+  const fenced = await fenceLiveLease(tx, found.task_id, taskLeases, locks, lockedAt);
+  if (fenced !== null) return fenced;
   if (!claimed.ok) {
     // A stop at a spent hold keeps its ask, so only a claimant with the authority makes it.
-    if (claimed.retains !== true) return claimed;
     const may = await claimantMayWork(tx, request, found, lockedAt);
     return may.ok ? claimed : may;
   }
-  const fenced = await fenceLiveLease(tx, found.task_id, taskLeases, locks, lockedAt);
-  if (fenced !== null) return fenced;
 
   // From the database instant above, not the process clock. Whole
   // milliseconds, so the `Date` the delegation is minted with and the lease
@@ -648,8 +677,11 @@ interface NewLease {
 }
 
 /**
- * Write the lease at the task's next fence, bind the hold, attempt and run to
- * it once, and record the claim as the run's progress (T2a).
+ * Take the lease through the pickup path, bind the hold, attempt and run to it
+ * once, and record the claim as the run's progress (T2a). The application role
+ * inserts no lease: `take_lease` (migration 20261004040200) checks the business, the
+ * reservation and the claimant's authority again as its definer, and writes
+ * the lease at the task's next fence.
  */
 async function writeLease(
   tx: TenantQuery,
@@ -660,27 +692,21 @@ async function writeLease(
   expiresAt: Date,
   locks: LockSet,
 ): Promise<NewLease> {
-  const fence = await nextFence(tx, found.task_id);
   const holderActorId = request.claimant === 'person' ? request.actorId : request.agentActorId;
   const leaseId = randomUUID();
-  await tx.query(
-    `insert into public.leases
-       (business_id, id, task_id, run_id, reservation_id, delegation_id, holder_actor_id,
-        authorised_by_person_id, fence, expires_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+  const taken = await tx.query<{ readonly fence: string }>(
+    `select public.take_lease($1, $2, $3, $4, $5, $6, $7)::text as fence`,
     [
-      tx.businessId,
       leaseId,
-      found.task_id,
-      found.run_id,
       claimed.reservationId,
       delegation?.delegation.id ?? null,
       holderActorId,
       request.authorisedByPersonId,
-      fence,
       expiresAt,
+      request.collection,
     ],
   );
+  const fence = Number(only(taken, 'pickup: the lease the pickup path took').fence);
   // Bound once. The reservation stays `held`; binding is a claim, not a spend.
   await tx.query(
     `update public.reservations set lease_id = $3

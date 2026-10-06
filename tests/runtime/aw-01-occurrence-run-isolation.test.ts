@@ -20,6 +20,7 @@ import {
   footprint,
   insertWorker,
   noDatabase,
+  occurrence,
   start,
   useOccurrenceWorld,
   w,
@@ -75,7 +76,7 @@ it('AW-01 occurrence run: only an active worker of this business writes it, neve
 });
 
 it('AW-01 occurrence run: the application role cannot write an occurrence run itself', async () => {
-  const started = await start(w.s, randomUUID(), authorityFor(w.s), w.worker);
+  const started = await start(w.s, await occurrence(w.s), authorityFor(w.s), w.worker);
   if (!started.ok) throw new Error(`refused ${started.refusal.code}`);
   await expect(
     asApp(
@@ -115,7 +116,7 @@ it('AW-01 occurrence run: the application role cannot write an occurrence run it
 });
 
 it('AW-01 occurrence run: pickup can never reach one', async () => {
-  const started = await start(w.s, randomUUID(), authorityFor(w.s), w.worker);
+  const started = await start(w.s, await occurrence(w.s), authorityFor(w.s), w.worker);
   if (!started.ok) throw new Error(`refused ${started.refusal.code}`);
   // Pickup works from a reservation on an approved plan version; an
   // occurrence run has none, and the database refuses one naming it.
@@ -135,11 +136,17 @@ it('AW-01 occurrence run: pickup can never reach one', async () => {
 });
 
 it('AW-01 occurrence run isolation: another business', async () => {
-  // Bravo's worker starts its own run for the same occurrence id; neither
-  // business sees or answers the other's.
-  const occurrenceId = randomUUID();
-  const alpha = await start(w.s, occurrenceId, authorityFor(w.s), w.worker);
-  const other = await start(w.bravo, occurrenceId, authorityFor(w.bravo), w.bravoWorker);
+  // Bravo's worker starts its own occurrence's run; neither business sees or
+  // answers the other's. An occurrence is one business's (its id is the
+  // table's key), so a run naming another business's occurrence is refused
+  // by the database: `aw-01-occurrence-run-origin-keys`.
+  const alpha = await start(w.s, await occurrence(w.s), authorityFor(w.s), w.worker);
+  const other = await start(
+    w.bravo,
+    await occurrence(w.bravo),
+    authorityFor(w.bravo),
+    w.bravoWorker,
+  );
   if (!alpha.ok || !other.ok) throw new Error('an occurrence run was refused');
   expect(other.value.runId).not.toBe(alpha.value.runId);
   expect(other.value.replayed).toBe(false);
@@ -163,8 +170,18 @@ it('AW-01 occurrence run isolation: another client in the same business', async 
   // Each definition's task lands on its own client; a client of the other
   // reads nothing of it.
   const [clientOne, clientTwo] = [randomUUID(), randomUUID()];
-  const one = await start(w.s, randomUUID(), authorityFor(w.s, { clientId: clientOne }), w.worker);
-  const two = await start(w.s, randomUUID(), authorityFor(w.s, { clientId: clientTwo }), w.worker);
+  const one = await start(
+    w.s,
+    await occurrence(w.s),
+    authorityFor(w.s, { clientId: clientOne }),
+    w.worker,
+  );
+  const two = await start(
+    w.s,
+    await occurrence(w.s),
+    authorityFor(w.s, { clientId: clientTwo }),
+    w.worker,
+  );
   if (!one.ok || !two.ok) throw new Error('an occurrence run was refused');
   expect([await clientOf(one.value.taskId), await clientOf(two.value.taskId)]).toStrictEqual([
     clientOne,
@@ -193,7 +210,7 @@ it('AW-01 occurrence run isolation: another client in the same business', async 
 it('AW-01 occurrence run isolation: another person under a live delegation', async () => {
   // The agent acts for the decider under a live delegation for its own task:
   // it can neither start an occurrence run nor reach the task one landed on.
-  const started = await start(w.s, randomUUID(), authorityFor(w.s), w.worker);
+  const started = await start(w.s, await occurrence(w.s), authorityFor(w.s), w.worker);
   if (!started.ok) throw new Error(`refused ${started.refusal.code}`);
   expect(codeOf(await start(w.s, randomUUID(), authorityFor(w.s), w.s.agentActorId))).toBe(
     'WORKER_REQUIRED',

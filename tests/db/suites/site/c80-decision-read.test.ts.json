@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C80's decision read gives the state, the deciding approver by name and the version, and answers another business's correction, another party's, a delegated agent and a client's record share exactly as an id that names nothing."
+}

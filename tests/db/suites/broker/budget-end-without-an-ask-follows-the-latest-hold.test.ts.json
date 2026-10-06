@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an end or top-up with no askId whose run stopped again since discovery rolls back and is retried against the new ask's own hold, never holding twice"
+}

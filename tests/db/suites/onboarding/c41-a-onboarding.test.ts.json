@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C41-A: record.create making a client, onboarding.start laying the standard template out as tasks on it in phases, onboarding.step_result writing each step's result onto its own task, the two-failure stop, refusals per key, the crossings between businesses and clients, a step moved to another client, two starts at once and the canary"
+}

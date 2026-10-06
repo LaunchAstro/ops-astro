@@ -5,7 +5,7 @@
 // login's lock with its stamps read again under it, and the count of endings a
 // business still owes.
 
-import { lockLoginSubject } from '../../../core-records/src/index.ts';
+import { lockLoginFactors } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, TenantQuery } from '../../../core-records/src/index.ts';
 
 /**
@@ -65,7 +65,7 @@ export async function claimNextEnding(
 }
 
 /**
- * The claimed ending's login lock (`lockLoginSubject`), waiting at most
+ * The claimed ending's login lock (`lockLoginFactors`), waiting at most
  * `lockWaitMs` (a timeout throws 55P03), then its stamps as they are now, its
  * row locked to the end of the transaction. Read under the lock, so a step
  * another retry stamped while this one waited (its claim lapsed meanwhile) is
@@ -77,7 +77,7 @@ export async function lockEnding(
   lockWaitMs: number = ACCESS_ENDING_LOCK_WAIT_MS,
 ): Promise<OwedEnding> {
   await tx.query(`select set_config('lock_timeout', $1, true)`, [`${String(lockWaitMs)}ms`]);
-  await lockLoginSubject(tx, row.subject);
+  await lockLoginFactors(tx, row.subject);
   const [now] = await tx.query<Pick<OwedEnding, 'sessions_done' | 'login_done'>>(
     `select sessions_ended_at is not null as sessions_done,
             login_deactivated_at is not null as login_done

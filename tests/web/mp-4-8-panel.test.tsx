@@ -125,17 +125,6 @@ describe('MP-4-8 panel conversation', () => {
   });
 });
 
-describe('MP-4-8 agent tab placeholder', () => {
-  it('the Agent tab is there, not connected, and says why', async () => {
-    const view = await panel(serving().client);
-    expect(view.find('#panel-perspective-tab-agent')?.textContent).toContain('Agent');
-    const pane = view.find('#panel-perspective-panel-agent [data-not-connected="agent"]');
-    expect(pane?.textContent).toContain('Not connected yet');
-    expect(pane?.textContent).toContain('assistant');
-    await view.unmount();
-  });
-});
-
 describe('MP-4-8 same facts as the task page', () => {
   it('rank, calc line, facts and the perspective counts read the same in both', async () => {
     const { client } = serving({ proposals: [open('a')], adHoc: true });

@@ -6,7 +6,7 @@
 // oldest PASS_LIMIT (100) wrapped, unpurged conversations past the floor,
 // held ones included, and a held conversation stays a candidate on every
 // pass. So once 100 older conversations are held (open work), no pass ever
-// reaches a younger one that is due. And taskWork in conversation-contents.ts
+// reaches a younger one that is due. And taskWork in conversation-work.ts
 // reads a conversation's scoped task without looking at deleted_at, so a task
 // that is trashed (not completed) reads as open work and holds the purge with
 // WORK_OPEN for ever.

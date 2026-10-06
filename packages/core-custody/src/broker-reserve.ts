@@ -15,7 +15,7 @@ import {
   LOCAL_MODEL_REQUIRED_WORDS,
   type ModelOperation,
 } from '../../core-connectors/src/index.ts';
-import { mayCarry } from './credentials.ts';
+import { carriesLocally, mayCarry } from './credentials.ts';
 import { heldUnknown } from './broker-holds.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
 import { resolveFields } from './broker-sources.ts';
@@ -207,16 +207,16 @@ function routeFor(
     workForPersonId: facts.workForPersonId,
     tenantInstallation: broker.installation,
     credentialInstallation: route.installation,
+    localOwnerTesting: carriesLocally(broker, route),
   });
   if (!carry.ok) return { ok: false, code: carry.code };
   return { ok: true, route };
 }
 
 /**
- * The durable ceilings. A call is in flight from its hold until it ends, so a
- * hold not yet sent counts. First the business's own ceiling per operation, a
- * durable limit (`hasRoom`); then the route's, which is the installation's,
- * under one lock per route.
+ * The durable ceilings, counting a call from its hold until it ends and a
+ * lookup's unexpired slot as one (AW-10, 20261004040000): first the business's own per
+ * operation (`hasRoom`), then the route's, the installation's, locked per route.
  */
 export async function atCeiling(
   tx: TenantQuery,
@@ -226,7 +226,8 @@ export async function atCeiling(
   const inFlight = async (q: TenantQuery): Promise<number> => {
     const [flight] = await q.query<{ n: string }>(
       `select count(*)::text as n from public.model_calls
-        where business_id = $1 and operation_key = $2 and state in ('reserved', 'dispatched')`,
+        where business_id = $1 and operation_key = $2
+          and (state in ('reserved', 'dispatched') or lookup_until > clock_timestamp())`,
       [q.businessId, operation.key],
     );
     return Number(flight?.n ?? 0);

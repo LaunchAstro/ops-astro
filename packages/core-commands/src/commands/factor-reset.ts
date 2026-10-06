@@ -8,10 +8,11 @@
 // below `aal2`, so a member who has lost theirs cannot clear it alone. The act
 // asks the caller's own fresh step-up whatever the money setting, and refuses
 // the caller's own person (their own removal is theirs, with a code). Then, in
-// one transaction under the business's access lock: the member's live factor
-// is recorded removed (here and by subject, 0064), every session of theirs is
-// ended (0057, 0063), and one reset row owes the provider its admin removal of
-// that factor (20261003003537). The removal is never sent inside the transaction: the
+// one transaction under the business's access lock, where the caller's grant
+// is asked again: the member's live factor is recorded removed (here and by
+// subject, 0064), one reset row owes the provider its admin removal of that
+// factor (20261004091551), and every session of theirs is ended (0057, 0063).
+// The removal is never sent inside the transaction: the
 // local server tries it once the act commits, and the endings loop retries it
 // (`settleFactorResets`).
 //
@@ -24,6 +25,7 @@
 // holder of `settings:manage` the owner.
 
 import {
+  checkAuthority,
   endOtherSeenSessions,
   factorLoginLiveElsewhere,
   heldPermissions,
@@ -32,6 +34,7 @@ import {
   liveFactor,
   lockAccess,
   recordFactorRemoved,
+  subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { SecondFactor, TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
@@ -60,6 +63,8 @@ const REFUSED_FIXES: readonly string[] = [
   'They can remove or replace it themselves from their own account settings.',
 ];
 
+const WHOLE_BUSINESS = { kind: 'business', id: null } as const;
+
 const resetRefused = () => refused(refuseCommand('FACTOR_RESET_REFUSED', [], REFUSED_FIXES));
 
 export async function resetFactorOnSettings(
@@ -78,6 +83,8 @@ export async function resetFactorOnSettings(
   if (personId === context.session.personId) return resetRefused();
 
   await lockAccess(tx);
+  const revoked = await grantRevoked(tx, context);
+  if (revoked !== undefined) return revoked;
   const member = await tx.query<{ readonly id: string }>(
     `select id from public.memberships
       where business_id = $1 and person_id = $2::uuid and active
@@ -93,7 +100,6 @@ export async function resetFactorOnSettings(
   const { login, factor } = held;
 
   await recordFactorRemoved(tx, { personId, factorId: factor.id, subject: login.subject });
-  await endOtherSeenSessions(tx, personId, undefined, 'factor_change', login.subject);
   const written = await tx.query<{ readonly id: string }>(
     `insert into public.factor_resets
        (business_id, person_id, login_id, reset_by_actor_id, provider_factor_id)
@@ -101,7 +107,41 @@ export async function resetFactorOnSettings(
      returning id`,
     [tx.businessId, personId, login.id, context.session.actorId, factor.providerFactorId],
   );
+  // Last, so its cutoff (the clock when the row is written, 20261004091551)
+  // is as close to the commit as this act can put it.
+  await endOtherSeenSessions(tx, personId, undefined, 'factor_change', login.subject);
   return applied(personId, null, { resetId: written[0]?.id, providerStep: 'owed' });
+}
+
+/**
+ * The caller's grant, asked again under the access lock: the envelope asked
+ * it before the lock, so a revocation committed while the reset waited for
+ * the lock is seen only here. Expiry is judged on `clock_timestamp()`, not
+ * `now()`, the transaction's start, which a grant lapsing during the wait
+ * would still be live at (as `delegations.ts` judges a lease's).
+ */
+async function grantRevoked(
+  tx: TenantQuery,
+  context: CommandContext,
+): Promise<Refused | undefined> {
+  const held = await checkAuthority(tx, subjectsOf(context.session), {
+    collection: context.declaration.collection,
+    action: context.declaration.action,
+    scope: WHOLE_BUSINESS,
+  });
+  if (!held.ok) return refused(held.refusal);
+  const [clock] = await tx.query<{ readonly at: Date }>('select clock_timestamp() as at');
+  const at = clock?.at ?? new Date(Number.POSITIVE_INFINITY);
+  if (held.value.some((grant) => grant.expires_at === null || grant.expires_at > at)) {
+    return undefined;
+  }
+  return refused(
+    refuseCommand(
+      'SCOPE_NOT_GRANTED',
+      [],
+      ['no live grant covers it', 'ask a holder who may delegate'],
+    ),
+  );
 }
 
 /**
@@ -116,9 +156,20 @@ async function steppedUp(tx: TenantQuery, context: CommandContext): Promise<bool
   return judgeStepUp(context.session, now) === 'fresh';
 }
 
-/** Whether the member holds a business-wide grant the caller does not. */
+/**
+ * Whether the member holds a business-wide grant the caller does not, each
+ * grant's expiry judged on the clock under the lock, as `grantRevoked` judges
+ * the caller's own: one lapsed during the wait counts for nobody.
+ */
 async function outranks(tx: TenantQuery, personId: string, callerId: string): Promise<boolean> {
-  const wide = (await heldPermissions(tx)).filter((each) => each.scope.kind === 'business');
+  const held = (await heldPermissions(tx)).filter((each) => each.scope.kind === 'business');
+  const lapsed = await tx.query<{ readonly id: string }>(
+    `select id from public.grants
+      where business_id = $1 and id = any($2::uuid[]) and expires_at <= clock_timestamp()`,
+    [tx.businessId, held.map((each) => each.grantId)],
+  );
+  const gone = new Set(lapsed.map((row) => row.id));
+  const wide = held.filter((each) => !gone.has(each.grantId));
   const keys = (id: string) =>
     new Set(
       wide

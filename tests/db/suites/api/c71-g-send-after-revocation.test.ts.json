@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Sol's proof: a group send queued on the conversation's lock while access.revoke takes the sender's chat:comment writes no message"
+}

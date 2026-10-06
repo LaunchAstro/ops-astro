@@ -16,7 +16,7 @@
 // stream has started and ends, so the harness does see an end.
 //
 // Real node-server, real Hono stream, real `follow`; the door is a gate.
-// The route now takes app.ts's first step, `endsWithRequest` (FIX-2B1), so
+// The route now takes the live routes' first step, `endsWithRequest` (FIX-2B1), so
 // the door case passes; without that step it fails as described above.
 // fix-2b1-rs2-left-at-door-real-routes proves app.ts's own routes take it.
 
@@ -52,7 +52,7 @@ async function topicsNow(): Promise<LiveTopics> {
 const asks: Watching = {
   businessId: business,
   atDoor: (taskIds) => Promise.resolve(taskIds.map(() => task)),
-  again: () => Promise.resolve(task),
+  again: () => Promise.resolve(person),
 };
 
 async function bounded(running: Promise<unknown>): Promise<'resolved' | 'hung'> {
@@ -109,7 +109,7 @@ describe('FIX-2B1 RS proof 1: a tab that leaves before the stream is built', () 
             { topics, recheckMs: 60_000 },
             [{ label: `task:${task}`, taskId: task }],
             asks,
-            { session, presence },
+            { session, presence, sitter: async () => await Promise.resolve(session) },
           );
           started();
           await running;

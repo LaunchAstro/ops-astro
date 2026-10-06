@@ -13,8 +13,9 @@
 import { useState, type ReactElement } from 'react';
 import { runStories, type RunStory } from '../state/agent-run.ts';
 import type { RunLineage } from '../state/run-projection.ts';
+import { Activity, type RunActivity } from './agent/activity.tsx';
 import { Attempts } from './agent/attempts.tsx';
-import { Gate, type GateDecision, type GateRef } from './agent/gate.tsx';
+import { Gate, type GatePerson, type GateRef, type OnDecide } from './agent/gate.tsx';
 import { RunKnowledge } from './agent/knowledge.tsx';
 import { ProposalHeader, Summary, Workflow } from './agent/header.tsx';
 import { Evidence } from './agent/evidence.tsx';
@@ -27,8 +28,9 @@ import { StopAnswer } from './agent/stops.tsx';
 import { TokenTracked } from './agent/tokens.tsx';
 import { UnknownOutcome, type RecordedOutcome } from './agent/unknown.tsx';
 
-export type { GateDecision } from './agent/gate.tsx';
+export type { GateDecision, GatePerson } from './agent/gate.tsx';
 export type { RecordedOutcome } from './agent/unknown.tsx';
+export type { RunActivity } from './agent/activity.tsx';
 
 export interface AgentPaneProps {
   /** `task.read`'s proposals; absent on a read that carries none. */
@@ -43,7 +45,14 @@ export interface AgentPaneProps {
   readonly busy: boolean;
   /** The server's refusal of the last action, quoted as it came. */
   readonly refusal: string | null;
-  readonly onDecide: (gate: GateRef, decision: GateDecision) => void;
+  /**
+   * The server refused a decision of this reader's on the task for want of the
+   * grant. Every decide control is drawn closed rather than asking again.
+   */
+  readonly decideClosed: boolean;
+  readonly onDecide: OnDecide;
+  /** Who a gate past its rounds of changes may be escalated to; none, no one can be chosen. */
+  readonly people?: readonly GatePerson[];
   readonly onReject: (gate: GateRef) => void;
   readonly onCancel: (lineageId: string) => void;
   /** The access ledger's address for one grant, or null while the ledger has no screen. */
@@ -69,6 +78,10 @@ export interface AgentPaneProps {
   readonly onEndAtStop?: (runId: string, askId: string) => void;
   /** The server's word that the last top-up at a stop waits on a second person, or null. */
   readonly stopAwaiting?: string | null;
+  /** AW-04: Start a new attempt asks the drawer to plan one; absent, it is drawn unavailable. */
+  readonly onStartAttempt?: () => void;
+  /** The operational log (MP-6-2): `task.execution`'s events and bound plan; absent, no log. */
+  readonly activity?: RunActivity;
 }
 
 export function AgentPane(props: AgentPaneProps): ReactElement {
@@ -89,7 +102,7 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
   return (
     <section className="agent" data-agent="pane" data-agent-lineage={shown.lineageId}>
       <RunView {...props} shown={shown} />
-      <Attempts stories={stories} shown={shown} onOpen={setOpened} />
+      <Attempts stories={stories} shown={shown} onOpen={setOpened} onStart={props.onStartAttempt} />
     </section>
   );
 }
@@ -104,6 +117,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         <ProposalHeader
           story={shown}
           busy={props.busy}
+          decideClosed={props.decideClosed}
           onReject={props.onReject}
           onCancel={props.onCancel}
         />
@@ -128,11 +142,16 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
           story={shown}
           effect={props.effect}
           busy={props.busy}
+          closed={props.decideClosed}
           nameOf={props.nameOf}
           decisions={lineage?.decisions ?? []}
+          people={props.people ?? []}
           onDecide={props.onDecide}
         />
         <Evidence story={shown} versions={lineage?.versions ?? [shown.head]} />
+        {props.activity === undefined ? null : (
+          <Activity activity={props.activity} hasRun={shown.head.runId !== null} />
+        )}
       </div>
       <RunSide {...props} shown={shown} />
     </div>

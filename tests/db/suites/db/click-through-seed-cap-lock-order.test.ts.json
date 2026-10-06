@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "SR-1: the click-through seed's stop at the cap holds the task before it waits for the run, the product's lock order, so it cannot deadlock with cancellation"
+}

@@ -3,7 +3,7 @@
 // The refusal code each protected task field earns on the generic editor,
 // for `task-fields.test.ts`.
 //
-// The code each of the nineteen earns, asserted by name rather than by rule,
+// The code each of the twenty-seven earns, asserted by name rather than by rule,
 // so relaxing one is a visible diff (minimum contract 5.3 assertion 2).
 // Three kinds, and the difference between them is the point: a field an
 // operation owns names that operation, a derived field names nobody
@@ -13,21 +13,31 @@
 export const PROTECTED_FIELD_CODES: Readonly<Record<string, string>> = {
   ad_hoc: 'TRANSITION_PROTECTED',
   agent: 'TRANSITION_PROTECTED',
+  // WF-2: the answer and gist are task.resolve's; the blockers and the close the system's.
+  answer: 'TRANSITION_PROTECTED',
   archived_at: 'FIELD_NOT_WRITABLE',
   archived_why: 'FIELD_NOT_WRITABLE',
   assignee: 'TRANSITION_PROTECTED',
+  blocked_by: 'FIELD_NOT_WRITABLE',
   category: 'TRANSITION_PROTECTED',
   client: 'TRANSITION_PROTECTED',
   client_visible: 'TRANSITION_PROTECTED',
+  closed_as: 'FIELD_NOT_WRITABLE',
   completed_at: 'FIELD_NOT_WRITABLE',
   confidence: 'TRANSITION_PROTECTED',
   delegate: 'TRANSITION_PROTECTED',
   ease: 'TRANSITION_PROTECTED',
+  gist: 'TRANSITION_PROTECTED',
   impact: 'TRANSITION_PROTECTED',
   intake_state: 'TRANSITION_PROTECTED',
   key: 'FIELD_NOT_WRITABLE',
+  map_owner: 'FIELD_NOT_WRITABLE',
+  map_version: 'FIELD_NOT_WRITABLE',
   parent: 'TRANSITION_PROTECTED',
   source: 'SOURCE_SPOOFED',
   stage: 'TRANSITION_PROTECTED',
   state: 'TRANSITION_PROTECTED',
+  // WF-1: the type is task.set_type's; the owner and the history are the system's.
+  type: 'TRANSITION_PROTECTED',
+  type_history: 'FIELD_NOT_WRITABLE',
 };

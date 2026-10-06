@@ -57,6 +57,13 @@
 // The fourteenth is AW-11's hand-over and handback: untargeted writes on
 // `run` an agent reaches under its delegation, and a person is refused both
 // by name.
+// The fifteenth is C33's `activation.change` and `definition.release`:
+// untargeted person writes no agent reaches, one row each in the tables that
+// list every write, every untargeted one or every operation with no expected
+// revision, beside the `automation.registry` read.
+// The sixteenth is C52-A's `activation.adopt`, `activation.roll_back`,
+// `activation.turn_off` and `approval.revoke`: untargeted person writes no
+// agent reaches, one row each in the same three tables and the handler map.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -168,6 +175,14 @@ vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (or
   setBusinessSetting: recorder('setBusinessSetting'),
   setNotificationChannel: recorder('setNotificationChannel'),
 }));
+// C80's approver setting reads its writer's key again after the write (a database read).
+vi.mock(
+  '../../packages/core-commands/src/commands/live-correction-standing.ts',
+  async (original) => ({
+    ...(await original()),
+    writerStillHolds: () => Promise.resolve('stands'),
+  }),
+);
 vi.mock('../../packages/core-commands/src/commands/privacy-write.ts', async (original) => ({
   ...(await original<object>()),
   recordIncident: recorder('recordIncident'),
@@ -196,6 +211,22 @@ vi.mock('../../packages/core-commands/src/commands/legal-write.ts', async (origi
   approveVersion: recorder('approveVersion'),
   publishVersion: recorder('publishVersion'),
 }));
+vi.mock('../../packages/core-commands/src/commands/custody-secrets.ts', async (original) => ({
+  ...(await original<object>()),
+  setCustodySecret: recorder('setCustodySecret'),
+  clearCustodySecret: recorder('clearCustodySecret'),
+}));
+vi.mock('../../packages/core-commands/src/commands/connector-repair.ts', async (original) => ({
+  ...(await original<object>()),
+  startConnectorRepair: recorder('startConnectorRepair'),
+}));
+vi.mock('../../packages/core-commands/src/commands/mandates.ts', async (original) => ({
+  ...(await original<object>()),
+  fileMandate: recorder('fileMandate'),
+  revokeStandingMandate: recorder('revokeStandingMandate'),
+  promoteClass: recorder('promoteClass'),
+  demoteClass: recorder('demoteClass'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -211,6 +242,42 @@ vi.mock('../../packages/core-commands/src/commands/plan-accept.ts', async (origi
 vi.mock('../../packages/core-commands/src/commands/tasks-pickup.ts', async (original) => ({
   ...(await original<object>()),
   pickupAsPerson: recorder('pickupAsPerson'),
+}));
+vi.mock('../../packages/core-commands/src/commands/automations.ts', async (original) => ({
+  ...(await original<object>()),
+  changeActivationAsPerson: recorder('changeActivationAsPerson'),
+  releaseDefinitionVersion: recorder('releaseDefinitionVersion'),
+}));
+vi.mock('../../packages/core-commands/src/commands/automation-approvals.ts', async (original) => ({
+  ...(await original<object>()),
+  adoptActivationVersion: recorder('adoptActivationVersion'),
+  rollBackActivation: recorder('rollBackActivation'),
+  turnOffActivationAsPerson: recorder('turnOffActivationAsPerson'),
+  revokeStandingApproval: recorder('revokeStandingApproval'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder.ts', async (original) => ({
+  ...(await original<object>()),
+  setTaskType: recorder('setTaskType'),
+  scopeMap: recorder('scopeMap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-revision.ts', async (original) => ({
+  ...(await original<object>()),
+  reviseMap: recorder('reviseMap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-chart.ts', async (original) => ({
+  ...(await original<object>()),
+  chartMap: recorder('chartMap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-blocking.ts', async (original) => ({
+  ...(await original<object>()),
+  setBlocking: recorder('setBlocking'),
+  claimTicket: recorder('claimTicket'),
+  graduateFog: recorder('graduateFog'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-resolve.ts', async (original) => ({
+  ...(await original<object>()),
+  resolveTicket: recorder('resolveTicket'),
+  closeOutOfScope: recorder('closeOutOfScope'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-handback.ts', async (original) => ({
   ...(await original<object>()),
@@ -243,6 +310,15 @@ vi.mock('../../packages/core-commands/src/commands/access-write.ts', async (orig
   createClientRecord: recorder('createClientRecord'),
   grantOnAccess: recorder('grantOnAccess'),
 }));
+vi.mock('../../packages/core-commands/src/commands/record-create.ts', async (original) => ({
+  ...(await original<object>()),
+  createRecord: recorder('createRecord'),
+}));
+vi.mock('../../packages/core-commands/src/commands/onboarding.ts', async (original) => ({
+  ...(await original<object>()),
+  startOnboarding: recorder('startOnboarding'),
+  recordStepResult: recorder('recordStepResult'),
+}));
 vi.mock('../../packages/core-commands/src/commands/client-privacy-write.ts', async (original) => ({
   ...(await original<object>()),
   setClientPrivacy: recorder('setClientPrivacy'),
@@ -268,6 +344,28 @@ vi.mock('../../packages/core-commands/src/commands/tasks-tags.ts', async (origin
   createTagNamed: recorder('createTagNamed'),
   addTagToTask: recorder('addTagToTask'),
   removeTagFromTask: recorder('removeTagFromTask'),
+}));
+vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (original) => ({
+  ...(await original<object>()),
+  decideLiveCorrection: recorder('decideLiveCorrection'),
+  requestLiveCorrection: recorder('requestLiveCorrection'),
+}));
+vi.mock('../../packages/core-commands/src/commands/chat.ts', async (original) => ({
+  ...(await original<object>()),
+  sendDirect: recorder('sendDirect'),
+  markOwnRead: recorder('markOwnRead'),
+}));
+vi.mock('../../packages/core-commands/src/commands/chat-groups.ts', async (original) => ({
+  ...(await original<object>()),
+  startGroupConversation: recorder('startGroupConversation'),
+  sendGroupMessage: recorder('sendGroupMessage'),
+  renameGroupConversation: recorder('renameGroupConversation'),
+  changeGroupConversationMembers: recorder('changeGroupConversationMembers'),
+  leaveGroupConversation: recorder('leaveGroupConversation'),
+}));
+vi.mock('../../packages/core-commands/src/commands/invitations.ts', async (original) => ({
+  ...(await original<object>()),
+  invitationAct: recorder('invitationAct'),
 }));
 vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (original) => ({
   ...(await original<object>()),
@@ -324,6 +422,12 @@ const PINNED_RUNTIME_SHAPED = {
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
+  'activation.change': ['activationId', 'versionId'],
+  'definition.release': ['definitionId'],
+  'activation.adopt': ['activationId', 'versionId'],
+  'activation.roll_back': ['activationId'],
+  'activation.turn_off': ['activationId'],
+  'approval.revoke': ['approvalId'],
   'budget.record_outcome': ['recordId', 'attemptId'],
   'budget.set_planning_cap': [],
   'budget.top_up': ['recordId'],
@@ -333,6 +437,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'access.grant': ['holderId', 'clientId'],
   'access.revoke': ['grantId'],
   'client.create': [],
+  'record.create': [],
+  'onboarding.start': ['clientId'],
+  'onboarding.step_result': ['recordId'],
   'client.set_privacy': ['clientId'],
   'conversation.message': ['conversationId'],
   'conversation.rename': ['conversationId'],
@@ -342,12 +449,22 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'credential.issue': [],
   'credential.revoke': ['credentialId'],
   'grant.revoke': [],
+  'secret.clear': ['secretId'],
+  'secret.set': ['clientId'],
+  'connector.repair': ['connectionId'],
+  'mandate.file': ['clientId'],
+  'mandate.revoke': ['mandateId'],
+  'graduation.promote': ['classId'],
+  'graduation.demote': ['classId'],
   'preference.save': [],
   'preference.dismiss_tip': [],
   'session.end': [],
   'legal.approve_version': ['versionId'],
   'legal.draft_version': [],
   'legal.publish_version': ['versionId'],
+  'live_correction.decide': ['correctionId', 'versionId'],
+  'live_correction.request': ['partyId', 'taskId'],
+  'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
   'operations.record_gate_item': [],
@@ -360,12 +477,23 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'run.revise_state': ['recordId', 'runId'],
   'run.top_up': ['recordId', 'runId'],
   'inbox.seen': ['itemId'],
+  'invitation.create': [],
+  'invitation.resend': ['invitationId'],
+  'invitation.revoke': ['invitationId'],
   'notifications.set_channel': [],
+  'chat.send_direct': ['teammateId'],
+  'chat.mark_read': ['conversationId'],
+  'chat.start_group': [],
+  'chat.send_group': ['conversationId'],
+  'chat.rename_group': ['conversationId'],
+  'chat.change_members': ['conversationId'],
+  'chat.leave': ['conversationId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'settings.set_money_step_up': [],
   'settings.set_conversation_window': [],
   'settings.set_retention_window': [],
+  'settings.set_live_correction_approver': [],
   'task.accept_plan': ['gateId', 'versionId', 'conversationId'],
   'task.cancel': ['recordId', 'lineageId'],
   'task.check': ['leaseId'],
@@ -396,13 +524,32 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'access.read',
   'access.reset_factor',
   'access.revoke',
+  'activation.adopt',
+  'activation.change',
+  'activation.roll_back',
+  'activation.turn_off',
+  'approval.revoke',
+  'automation.registry',
   'budget.record_outcome',
   'budget.set_planning_cap',
   'budget.top_up',
   'budget.write_off',
+  'chat.change_members',
+  'chat.conversations',
+  'chat.leave',
+  'chat.mark_read',
+  'chat.messages',
+  'chat.rename_group',
+  'chat.send_direct',
+  'chat.send_group',
+  'chat.start_group',
   'client.create',
   'client.list',
   'client.set_privacy',
+  'connection.fleet',
+  'connection.graduation',
+  'connection.signal',
+  'connector.repair',
   'conversation.allowance',
   'conversation.list',
   'conversation.message',
@@ -413,19 +560,35 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'credential.issue',
   'credential.revoke',
   'definition.attribution',
+  'definition.release',
   'delegation.revoke',
   'gate.pending',
+  'graduation.demote',
+  'graduation.promote',
   'grant.revoke',
   'harness.read',
   'inbox.count',
   'inbox.read',
   'inbox.seen',
   'inbox.unattended',
+  'invitation.create',
+  'invitation.resend',
+  'invitation.revoke',
   'legal.approve_version',
   'legal.draft_version',
   'legal.publish_version',
+  'live_correction.decide',
+  'live_correction.read',
+  'live_correction.request',
+  'mandate.file',
+  'mandate.revoke',
+  'map.chart',
+  'map.frontier',
+  'map.view',
   'model.call',
   'notifications.set_channel',
+  'onboarding.start',
+  'onboarding.step_result',
   'operations.change_installation_mode',
   'operations.read',
   'operations.record_gate_item',
@@ -438,11 +601,15 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'privacy.record_incident',
   'privacy.set_data_class',
   'privacy.set_overseas_service',
+  'record.create',
   'run.child_handback',
   'run.delegate_child',
   'run.end_at_budget_stop',
   'run.revise_state',
   'run.top_up',
+  'secret.clear',
+  'secret.list',
+  'secret.set',
   'session.capabilities',
   'session.end',
   'session.person',
@@ -450,6 +617,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'settings.set_client_sign_off',
   'settings.set_conversation_window',
   'settings.set_four_eyes_threshold',
+  'settings.set_live_correction_approver',
   'settings.set_money_step_up',
   'settings.set_retention_window',
   'tag.create',
@@ -488,7 +656,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  'live_correction.request',
   'model.call',
+  'onboarding.step_result',
   'run.child_handback',
   'run.delegate_child',
   'run.revise_state',
@@ -657,6 +827,9 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'operations.record_gate_item', operationId: 'op', item: 'i', evidence: 'e' },
   { command: 'operations.change_installation_mode', operationId: 'op', mode: 'm' },
   { command: 'client.create', operationId: 'op', name: 'n' },
+  { command: 'record.create', operationId: 'op', type: 'client', fields: { name: 'n' } },
+  { command: 'onboarding.start', operationId: 'op', clientId: 'c', templateKey: 'standard' },
+  { command: 'onboarding.step_result', operationId: 'op', recordId: 'r', outcome: 'done' },
   {
     command: 'client.set_privacy',
     operationId: 'op',
@@ -676,7 +849,14 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'access.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'access.end', operationId: 'op', holderId: 'person' },
+  { command: 'secret.set', operationId: 'op', name: 'n', value: 'v' },
+  { command: 'secret.clear', operationId: 'op', secretId: 's' },
   { command: 'access.reset_factor', operationId: 'op', holderId: 'person' },
+  { command: 'connector.repair', operationId: 'op', connectionId: 'c' },
+  { command: 'mandate.file', operationId: 'op', clientId: 'c' },
+  { command: 'mandate.revoke', operationId: 'op', mandateId: 'm' },
+  { command: 'graduation.promote', operationId: 'op', classId: 'g' },
+  { command: 'graduation.demote', operationId: 'op', classId: 'g' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -706,6 +886,42 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  { command: 'task.set_type', operationId: 'op', recordId: 'r', taskType: 'research' },
+  { command: 'map.revise', operationId: 'op', recordId: 'r', notes: 'n' },
+  { command: 'map.scope', operationId: 'op', recordId: 'r', client: 'c' },
+  { command: 'activation.change', operationId: 'op', versionId: 'v', mode: 'manual' },
+  { command: 'definition.release', operationId: 'op', name: 'n', modes: ['manual'] },
+  { command: 'activation.adopt', operationId: 'op', activationId: 'a', versionId: 'v' },
+  { command: 'activation.roll_back', operationId: 'op', activationId: 'a' },
+  { command: 'activation.turn_off', operationId: 'op', activationId: 'a' },
+  { command: 'approval.revoke', operationId: 'op', approvalId: 'p' },
+  { command: 'map.chart', operationId: 'op', title: 't' },
+  { command: 'task.set_blocking', operationId: 'op', recordId: 'r', blockedBy: [] },
+  { command: 'task.claim', operationId: 'op', recordId: 'r' },
+  { command: 'map.graduate', operationId: 'op', recordId: 'r', patchId: 'p', tickets: [] },
+  { command: 'task.resolve', operationId: 'op', recordId: 'r', answer: 'a', gist: 'g' },
+  { command: 'task.close_out_of_scope', operationId: 'op', recordId: 'r', reason: 'x' },
+  {
+    command: 'live_correction.request',
+    operationId: 'op',
+    partyId: 'party',
+    taskId: 'task',
+    path: 'p',
+    word: 'w',
+    replacement: 'x',
+    pageUrl: 'u',
+    baseRevision: 'b',
+    before: 'before',
+    after: 'after',
+  },
+  {
+    command: 'live_correction.decide',
+    operationId: 'op',
+    correctionId: 'c',
+    versionId: 'v',
+    decision: 'approve',
+  },
+  { command: 'settings.set_live_correction_approver', operationId: 'op', value: null },
   {
     command: 'budget.set_planning_cap',
     operationId: 'op',
@@ -771,7 +987,17 @@ const REQUESTS: readonly CommandRequest[] = [
     version: 1,
   },
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
+  { command: 'chat.send_direct', operationId: 'op', teammateId: 'mate', body: 'hello' },
+  { command: 'chat.mark_read', operationId: 'op', conversationId: 'talk', upTo: 'then' },
+  { command: 'chat.start_group', operationId: 'op', name: 'crew', members: ['m1', 'm2'] },
+  { command: 'chat.send_group', operationId: 'op', conversationId: 'group', body: 'hi all' },
+  { command: 'chat.rename_group', operationId: 'op', conversationId: 'group', name: 'crew 2' },
+  { command: 'chat.change_members', operationId: 'op', conversationId: 'group', add: ['m3'] },
+  { command: 'chat.leave', operationId: 'op', conversationId: 'group' },
   { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
+  { command: 'invitation.create', operationId: 'op', name: 'N', email: 'e', role: 'member' },
+  { command: 'invitation.resend', operationId: 'op', invitationId: 'i' },
+  { command: 'invitation.revoke', operationId: 'op', invitationId: 'i' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -856,11 +1082,21 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'operations.record_gate_item': ['recordGateItem', 'request'],
   'operations.change_installation_mode': ['changeInstallationMode', 'request'],
   'client.create': ['createClientRecord', 'request'],
+  'record.create': ['createRecord', 'request'],
+  'onboarding.start': ['startOnboarding', 'request'],
+  'onboarding.step_result': ['recordStepResult', 'request'],
   'client.set_privacy': ['setClientPrivacy', 'request'],
   'access.grant': ['grantOnAccess', 'request'],
   'access.revoke': ['revokeGrantOnAccess', 'grant'],
   'access.end': ['endAccessOnSettings', 'request'],
+  'secret.set': ['setCustodySecret', 'request'],
+  'secret.clear': ['clearCustodySecret', 'request'],
   'access.reset_factor': ['resetFactorOnSettings', 'request'],
+  'connector.repair': ['startConnectorRepair', 'request'],
+  'mandate.file': ['fileMandate', 'request'],
+  'mandate.revoke': ['revokeStandingMandate', 'request'],
+  'graduation.promote': ['promoteClass', 'request'],
+  'graduation.demote': ['demoteClass', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -871,6 +1107,29 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'live_correction.request': ['requestLiveCorrection', 'request'],
+  'live_correction.decide': ['decideLiveCorrection', 'request'],
+  'settings.set_live_correction_approver': [
+    'setBusinessSetting',
+    'settings.set_live_correction_approver',
+    null,
+    undefined,
+  ],
+  'task.set_type': ['setTaskType', 'request'],
+  'map.revise': ['reviseMap', 'request'],
+  'map.scope': ['scopeMap', 'request'],
+  'activation.change': ['changeActivationAsPerson', 'request'],
+  'definition.release': ['releaseDefinitionVersion', 'request'],
+  'activation.adopt': ['adoptActivationVersion', 'request'],
+  'activation.roll_back': ['rollBackActivation', 'request'],
+  'activation.turn_off': ['turnOffActivationAsPerson', 'request'],
+  'approval.revoke': ['revokeStandingApproval', 'request'],
+  'map.chart': ['chartMap', 'request'],
+  'task.set_blocking': ['setBlocking', 'request'],
+  'task.claim': ['claimTicket'],
+  'map.graduate': ['graduateFog', 'request'],
+  'task.resolve': ['resolveTicket', 'request'],
+  'task.close_out_of_scope': ['closeOutOfScope', 'request'],
   'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
@@ -895,7 +1154,17 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
   'preference.dismiss_tip': ['dismissOwnTip', 'request'],
   'inbox.seen': ['stampOwnSeen', 'item'],
+  'chat.send_direct': ['sendDirect', 'mate', 'hello'],
+  'chat.mark_read': ['markOwnRead', 'talk', 'then'],
+  'chat.start_group': ['startGroupConversation', 'crew', ['m1', 'm2']],
+  'chat.send_group': ['sendGroupMessage', 'group', 'hi all'],
+  'chat.rename_group': ['renameGroupConversation', 'group', 'crew 2'],
+  'chat.change_members': ['changeGroupConversationMembers', 'group', 'request'],
+  'chat.leave': ['leaveGroupConversation', 'group'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
+  'invitation.create': ['invitationAct', 'request'],
+  'invitation.resend': ['invitationAct', 'request'],
+  'invitation.revoke': ['invitationAct', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -935,13 +1204,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same ninety-four from an expected revision', () => {
+  it('exempts the same one hundred and thirty-four from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same twenty-four, two of them before a pickup', () => {
+  it('lets an agent reach the same twenty-five, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

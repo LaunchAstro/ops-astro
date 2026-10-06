@@ -49,3 +49,31 @@ export async function free(on: Schedules, key: string): Promise<void> {
 /** How many lookups the provider stand-in has been sent. */
 export const lookups = (): number =>
   world.provider.seen.filter((one) => one.path === REPLAY_LOOKUP_PATH).length;
+
+/**
+ * `base` with custody holding each lookup until `end` lets it go on or makes
+ * it throw; a lookup never ended is a worker lost while asking.
+ */
+export function heldLookups(base: Broker): {
+  readonly broker: Broker;
+  readonly arrived: () => number;
+  readonly end: (how: 'go' | 'throw') => void;
+} {
+  let arrived = 0;
+  let end: ((how: 'go' | 'throw') => void) | undefined;
+  const gate = new Promise<'go' | 'throw'>((resolve) => {
+    end = resolve;
+  });
+  const dispatch: Broker['custody']['dispatch'] = async (credentialRef, request) => {
+    arrived += 1;
+    if ((await gate) === 'throw') throw new Error('custody could not be reached');
+    return await base.custody.dispatch(credentialRef, request);
+  };
+  return {
+    broker: { ...base, custody: { ...base.custody, dispatch } },
+    arrived: () => arrived,
+    end: (how) => {
+      end?.(how);
+    },
+  };
+}

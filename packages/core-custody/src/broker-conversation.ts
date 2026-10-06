@@ -4,13 +4,15 @@
 // their own conversation, which has no task lease, run, step or approved
 // version. Local routes only and unpriced: no money moves, so nothing is
 // reserved, and a cloud route is refused before anything is written (AW-03
-// egress off). A priced planning reply takes the same checks and holds
+// egress off), save LA-1's laptop carve-out: the owner's own GPT session
+// (`carriesLocally`), for the owner's own typed message. A priced planning reply takes the same checks and holds
 // against the planning budget (`broker-planning.ts`, AW-04's U10).
 
 import { randomUUID } from 'node:crypto';
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
-import { mayCarry } from './credentials.ts';
+import { carriesLocally, mayCarry } from './credentials.ts';
+import { sendingAccount } from './broker-carrier.ts';
 import {
   atCeiling,
   registerPromptCopy,
@@ -84,12 +86,23 @@ export function localRoute(
 ):
   | { readonly ok: true; readonly route: BrokerRoute }
   | { readonly ok: false; readonly code: BrokerRefusal } {
+  // LA-1's laptop carve-out: the owner's GPT session is a cloud route, taken here only for
+  // the person's own typed message in their own conversation, and only where the broker
+  // carries the carve-out (`carriesLocally`). Every other cloud route stays refused.
   const local = broker.routes.filter(
-    (route) => route.reach === 'local' && route.provider === operation.provider,
+    (route) =>
+      (route.reach === 'local' || carriesLocally(broker, route)) &&
+      route.provider === operation.provider,
   );
-  const choice = eligibleRoutes(operation.fields, fields, local);
+  // The carve-out's route counts as local for the data classes, and is recorded as admitted:
+  // the conversation row's reach is `local` by AW-03's own constraint (0107), and its
+  // provider `local_gpt` says the answer came from the owner's GPT session.
+  const candidates = local.map((route): BrokerRoute =>
+    carriesLocally(broker, route) ? Object.assign({}, route, { reach: 'local' as const }) : route,
+  );
+  const choice = eligibleRoutes(operation.fields, fields, candidates);
   const route = choice.ok
-    ? local.find((candidate) => choice.routes.includes(candidate))
+    ? candidates.find((candidate) => choice.routes.includes(candidate))
     : undefined;
   if (route === undefined) return { ok: false, code: 'LOCAL_MODEL_REQUIRED' };
   const carry = mayCarry(route.credentialKind, {
@@ -98,6 +111,7 @@ export function localRoute(
     workForPersonId: caller.attendedByPersonId,
     tenantInstallation: broker.installation,
     credentialInstallation: route.installation,
+    localOwnerTesting: carriesLocally(broker, route),
   });
   return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
 }
@@ -108,13 +122,14 @@ async function insertStarted(
   conversationId: string,
   operation: ModelOperation,
   route: BrokerRoute,
+  account: string | null,
 ): Promise<string> {
   const callId = randomUUID();
   await tx.query(
     `insert into public.model_calls
        (business_id, id, conversation_id, operation_key, state, reserved_minor,
-        route_key, route_reach, credential_kind, started_at)
-     values ($1, $2, $3, $4, 'dispatched', 0, $5, $6, $7, clock_timestamp())`,
+        route_key, route_reach, credential_kind, provider, credential_ref, account, started_at)
+     values ($1, $2, $3, $4, 'dispatched', 0, $5, $6, $7, $8, $9, $10, clock_timestamp())`,
     [
       tx.businessId,
       callId,
@@ -123,6 +138,9 @@ async function insertStarted(
       route.key,
       route.reach,
       route.credentialKind,
+      route.provider,
+      route.credentialRef,
+      account,
     ],
   );
   await registerPromptCopy(tx, callId);
@@ -187,10 +205,11 @@ export async function callModelInConversation(
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
   const { route } = chosen;
+  const account = await sendingAccount(broker, route, operation.destination);
   const callId = await database.withBusiness(businessId, async (tx) =>
     (await atCeiling(tx, operation, route))
       ? null
-      : await insertStarted(tx, request.conversation.id, operation, route),
+      : await insertStarted(tx, request.conversation.id, operation, route, account),
   );
   if (callId === null) {
     return { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: WAIT_SECONDS };

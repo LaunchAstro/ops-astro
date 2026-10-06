@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the Client access tick counts only read shares that stand along their whole grant chain: a derived share whose parent is revoked leaves it off, as its holder is refused"
+}

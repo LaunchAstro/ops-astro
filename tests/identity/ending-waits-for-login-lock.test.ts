@@ -20,7 +20,7 @@ import {
   settleAccessEndings,
   type LoginProvider,
 } from '../../packages/core-commands/src/commands/access-end.ts';
-import { lockLoginSubject } from '../../packages/core-records/src/index.ts';
+import { lockLoginFactors } from '../../packages/core-records/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   createFreshDatabase,
@@ -70,7 +70,7 @@ async function holdSubjectLock(subject: string) {
     taken = resolve;
   });
   const done = wide.withBusiness(bravo, async (tx) => {
-    await lockLoginSubject(tx, subject);
+    await lockLoginFactors(tx, subject);
     taken();
     await released;
   });

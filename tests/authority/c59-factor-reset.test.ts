@@ -38,6 +38,7 @@ import {
   resetState,
   served,
   sessionToken,
+  signInsAfterEnding,
   withFactor,
 } from './c59-factor-reset-world.ts';
 
@@ -94,13 +95,11 @@ async function ownerResetsAMember(): Promise<void> {
       factor: member.factorId,
     },
   ]);
-  // The old session is refused from the commit; a new sign-in needs no factor.
-  expect(await served(member.token)).toEqual({ status: 401, code: 'AUTH_SESSION_EXPIRED' });
-  const fresh = await sessionToken(member.person.presented.subject, {
-    signedInAt: nowSeconds() + 1,
-    factorAt: null,
-  });
-  expect(await served(fresh)).toEqual(OK);
+  // The old session is refused from the commit; a new sign-in needs no factor,
+  // once past the clock allowance after the ending.
+  const expired = { status: 401, code: 'AUTH_SESSION_EXPIRED' };
+  expect(await served(member.token)).toEqual(expired);
+  expect(await signInsAfterEnding(member.person.presented.subject)).toEqual([expired, OK]);
 
   const audit = await lastAudit();
   expect(audit).toMatchObject({

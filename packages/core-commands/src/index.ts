@@ -18,8 +18,8 @@ export {
 } from './commands/conversation-exchange.ts';
 export {
   CREDENTIAL_REACH,
-  credentialNotLive,
   executeCredentialCommand,
+  atUnheldKey,
   type CredentialQuota,
   type QuotaSlot,
 } from './commands/credential-envelope.ts';
@@ -38,6 +38,8 @@ export {
   type OccurrenceRun,
   type ReadOccurrenceAuthority,
 } from './commands/occurrence-run.ts';
+// C52-A's dispatch hands the worker's occurrence to AW-01 J's write.
+export { occurrenceRunStarter } from './commands/automation-run.ts';
 export {
   GATE_ITEMS,
   gateDecision,
@@ -109,6 +111,16 @@ export {
   type ProviderFault,
   type SessionsEnded,
 } from './commands/account-factor-provider.ts';
+export {
+  PASSWORD_BYTES,
+  RESET_COMMAND,
+  RESET_TOKEN_MINUTES,
+  setPasswordByToken,
+  type PasswordReset,
+  type PasswordResetCode,
+  type PasswordResetResult,
+  type ResetDependencies,
+} from './commands/account-password.ts';
 export {
   endOtherSessions,
   listOwnSessions,

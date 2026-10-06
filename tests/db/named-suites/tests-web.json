@@ -1,9 +1,0 @@
-{
-  "invariant": [
-    "tests/web/dock-door-isolation-api.test.tsx",
-    "tests/web/layout-preferences-api.test.tsx",
-    "tests/web/mp-2-1-isolation-api.test.tsx",
-    "tests/web/mp-3-1-isolation-api.test.tsx"
-  ],
-  "conformance": []
-}

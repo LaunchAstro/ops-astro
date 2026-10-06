@@ -16,6 +16,7 @@
 
 import { useState, type ReactElement } from 'react';
 import { Button, Card, Table } from '@launchastro/ui';
+import { ownerOf, useDesk, type Tag } from '../../data/owned.ts';
 import { useRead } from '../../data/use-read.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { describeFailure } from '../../records/submit.ts';
@@ -87,21 +88,34 @@ const endedInWords = (result: SessionsEnded): string =>
   `Signed out ${String(result.ended)} other session${result.ended === 1 ? '' : 's'}.` +
   (result.signedOutAtProvider ? '' : ' The sign-in provider has not confirmed it yet.');
 
-/** "Sign out other sessions": confirmed first, then one end-others, then the list again. */
-function useEndOthers(client: OperationsClient, reload: () => void) {
+/**
+ * "Sign out other sessions": confirmed first, then one end-others, then the
+ * list again. The press is tagged for its business and person
+ * (`data/owned.ts`): an answer for an owner the screen has since left is that
+ * owner's alone, and reloads nothing here (#547).
+ */
+function useEndOthers(client: OperationsClient, grantKey: string, reload: () => void) {
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<string | null>(null);
+  // The press in flight and the last outcome, each for the owner it was made for.
+  const [pressed, setPressed] = useState<Tag | null>(null);
+  const [told, setTold] = useState<{ readonly tag: Tag; readonly text: string | null } | null>(
+    null,
+  );
+  const desk = useDesk(ownerOf(client, grantKey));
   const endOthers = (): void => {
     setConfirming(false);
-    setBusy(true);
+    const tag = desk.save();
+    setPressed(tag);
     void (async () => {
       const result = await client.account<SessionsEnded>('sessions/end-others');
-      setBusy(false);
-      setOutcome('ok' in result ? endedInWords(result.value) : describeFailure(result));
+      setPressed((now) => (now === tag ? null : now));
+      if (!desk.owns(tag)) return;
+      setTold({ tag, text: 'ok' in result ? endedInWords(result.value) : describeFailure(result) });
       if ('ok' in result) reload();
     })();
   };
+  const busy = pressed !== null && desk.owns(pressed);
+  const outcome = told !== null && desk.owns(told.tag) ? told.text : null;
   return { confirming, setConfirming, busy, outcome, endOthers };
 }
 
@@ -115,7 +129,11 @@ export function OwnSessions(props: {
     run: () => client.account<SessionsList>('sessions/list'),
     deps: [client],
   });
-  const { confirming, setConfirming, busy, outcome, endOthers } = useEndOthers(client, reload);
+  const { confirming, setConfirming, busy, outcome, endOthers } = useEndOthers(
+    client,
+    grantKey,
+    reload,
+  );
   return (
     <section className="sb__sect" data-sessions="panel">
       <Card title="Your sessions" sub="Where you are signed in now, newest first.">

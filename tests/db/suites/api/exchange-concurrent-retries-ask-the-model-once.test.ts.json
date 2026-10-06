@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a retry while the answer is with the model, or whose read came back after it was kept, asks the model once"
+}

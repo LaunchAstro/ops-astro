@@ -2,7 +2,7 @@
 //
 // The positive control's fixed recipes: the declarations whose minimal valid
 // body is the same literal every time. `role-case-positive-body.ts` answers
-// these before its switch; every body that needs a record made first stays
+// these (through `role-case-setup.ts`) before its switch; every body that needs a record made first stays
 // there. The probe body's operands are here too.
 
 import { randomUUID } from 'node:crypto';
@@ -38,10 +38,13 @@ const EMPTY: readonly CommandName[] = [
   'inbox.unattended',
   // The reader's own to-dos (MP-7-1): no operand.
   'task.todos',
+  // The reader's own team conversations (C71-D): no operand.
+  'chat.conversations',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
   ...Object.fromEntries(EMPTY.map((name) => [name, {}])),
+  'task.create': { fields: { title: 'the admin creates a task' } },
   'task.board': { board: null },
   'task.ledger': { timeZone: 'UTC' },
   'preference.save': { preference: 'appearance', value: 'dark' },
@@ -80,6 +83,7 @@ export function probeOperands(name: CommandName): Body {
   if (READ_OPERANDS.has(name)) return FIXED_BODIES[name] ?? {};
   if (name === 'task.receipt') return { attemptId: randomUUID() };
   if (name === 'harness.read') return { runId: randomUUID() };
+  if (name === 'live_correction.read') return { correctionId: randomUUID() };
   if (name === 'task.set_state') return { stateId: randomUUID() };
   if (name === 'task.duplicate') return { client: null, title: 'a copy', stepNames: [] };
   // Well formed, so what answers is authority: the call's operands are read
@@ -91,6 +95,7 @@ export function probeOperands(name: CommandName): Body {
     return { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) };
   }
   if (name === 'run.child_handback') return { outcome: 'completed' };
+  if (name === 'chat.messages') return { conversationId: randomUUID() };
   if (name === 'privacy.draft_breach_notices') return breachDrillBody();
   return {};
 }

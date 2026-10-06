@@ -92,6 +92,13 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
    `identity/agent-login.ts`.
 5. Anything else reaches the executor, and login resolution runs there,
    inside the serving transaction.
+6. Once login resolution admits the caller, the call is charged to its quotas
+   (API-3, `identity/quota.ts`, `QUOTAS` or `composeApi`'s `quota`): requests
+   in a window and calls at once, per credential, person and business. One over
+   is `QUOTA_EXCEEDED` 429, recorded in `authentication_attempts`; a refused
+   call is not charged, a request once (`withQuotaScope`), a live stream holds
+   its slot until it ends (`liveStream`), presence routes via `withStanding`.
+   Agent credentials have their own (`agent-quota.ts`, `AGENT_QUOTA_EXCEEDED`).
 
 `tests/api/boundary-body-admission.test.ts` holds the body refusal and what it
 writes. `tests/api/admission-enumeration.test.ts` compares the raw bytes for a
@@ -142,7 +149,7 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 privacy incident's `whatHappened`, `foundBy` and `affected`, a legal
 document version's `body`, an overseas service's `service`, `receives`,
 `where`, `trainsOnIt` and `contract`, a data class's `dataClass`,
-`purpose`, `disclosures`, `retention` and `deletion`, a client's `name`, and a client's written request's `requestedBy` and `requestLink` (C60), holding U+0000 or an unpaired surrogate, in any string or key, are
+`purpose`, `disclosures`, `retention` and `deletion`, a client's `name`, a client's written request's `requestedBy` and `requestLink` (C60), and a map revision's `destination`, `notes`, `addFog` and `addOutOfScope`, holding U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
@@ -150,7 +157,7 @@ is read, and nothing is written (`FREE_OPERANDS` and
 in `commands/values.ts`). The agent prefix does not pass that door: the
 comment body is checked in `writeTaskComment` (`commands/tasks-comment.ts`),
 and a handback's `report` and `successor` among its operands, before authority
-(`handbackOperands`, `commands/agent-operations.ts`).
+(`handbackOperands`, `commands/agent-operands.ts`).
 
 **`task.purge` takes no window.** It reads the business's own
 `retention_window_days` setting inside the transaction the command is served in
@@ -292,9 +299,12 @@ whichever route asked (`ops.ended_provider_sessions`, 0061; each business's
 own record is `ended_sessions`, 0057). Ending the other sessions, or a factor
 change, also ends every session of the login but the kept one in every
 business, seen here or not: a token whose first sign-in (`amr`) is at or
-before that ending is refused; a sign-in after it is served
-(`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest of the
-subject). The provider's sign-out, which revokes
+before that ending, or within the minute the provider's clock may run ahead
+of the database's (`SIGN_IN_CLOCK_SKEW_SECONDS`), is refused; a sign-in after
+that is served (`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest
+of the subject). So a sign-in in the minute after the ending is refused once.
+An agent login's bearer is refused by these endings too, whichever business
+ended them (C40). The provider's sign-out, which revokes
 the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
 longer admits the person) still ends the verified token's own session in
 every business and at the provider, and answers the refusal.
@@ -479,9 +489,18 @@ and the agent's one-task check (`namedTaskId`), and `task.rank` its
 | `task.board`                                                                          | `/task/board`                                          | `board`, required: a board id, or `null` for the unboarded tasks                                                                                                     | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 for a board not live here and for an external party, `FIELD_VALUE_INVALID` 422, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, tasks, changedAt, viewer, owed }`, with `withheld` for a collection-wide reader                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `person.list`                                                                         | `/person/list`                                         | `{}`; it takes no fields                                                                                                                                             | `SCOPE_NOT_GRANTED` 403 without `read` on `person`, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, persons: [{ personId, name }] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `tag.list`                                                                            | `/tag/list`                                            | `{}`; it takes no fields                                                                                                                                             | `SCOPE_NOT_GRANTED` 403 without `read` on `task` across the business (a reader held to one client's records included); answers `{ ok: true, tags: [{ id, name }] }`, by name (MP-4-11)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `task.todos`                                                                          | `/task/todos`                                          | `{}`, or one scope: `{ person }` or `{ client }`, each a uuid (MP-7-2)                                                                                               | `SCOPE_NOT_GRANTED` 403 without `read` on `task` across the business (a reader held to one client's records included); `FIELD_VALUE_INVALID` 400 for both scopes or a malformed id; `NOT_FOUND` 404 for a person who is no active member here or a client that is not one of this business's (another business's and a made-up id alike); answers `{ ok: true, todos: [...] }`: the reader's own open tasks on any board, a teammate's (`person`) or every one under a client (`client`), each a task summary with `tags` and `waitingComments` (MP-7-1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `task.todos`                                                                          | `/task/todos`                                          | `{}`, or one scope: `{ person }` or `{ client }`, each a uuid (MP-7-2)                                                                                               | `SCOPE_NOT_GRANTED` 403 without `read` on `task` across the business (a reader held to one client's records included); `FIELD_VALUE_INVALID` 400 for both scopes or a malformed id; `NOT_FOUND` 404 for a person who is no active member here or a client that is not one of this business's (another business's and a made-up id alike); answers `{ ok: true, todos: [...] }`: the reader's own open tasks on any board, a teammate's (`person`) or every one under a client (`client`), each a task summary with `tags`, `waitingComments`, `category` and `whoseMove` (MP-7-1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `task.ledger`                                                                         | `/task/ledger`                                         | `timeZone`, `before?`, `query?`                                                                                                                                      | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 for an external party and for a member who is not internal (the shared view carries no history), `FIELD_VALUE_INVALID` 422 naming `timeZone`, `before` or `query`, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, days, earlier }`: up to seven days in the reader's zone, newest first, each with its applied task writes newest first (reads, refusals, replays, `task.heartbeat` and trashed tasks left out), and whether an earlier day has any; with `query`, only the events of the tasks C1's `searchTasks` finds, up to its bound of 500 best, and `more` when the reader's own matches go past it (MP-8-4, `reads/ledger.ts`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `team.list`                                                                           | `/team/list`                                           | `{}`; it takes no fields                                                                                                                                             | `SCOPE_NOT_GRANTED` 403 without `read` on `person`, `NOT_FOUND` 404 for a client of the business (the Team panel is staff only, MP-7-10); answers `{ ok: true, you, people: [{ personId, name, availability }] }`, `you` the reader's own person, staff only, `availability` null or `{ state, reason }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `chat.send_direct`                                                                    | `/chat/send_direct`                                    | `operationId`, `teammateId`, `body`                                                                                                                                  | C71-D: a direct message to a teammate, written as a `task_comment` record with audience `direct` anchored to the pair's one `team_conversation` (found or started under a lock on the pair); `SCOPE_NOT_GRANTED` 403 without `comment` on `chat`, or for a person with no membership; `NOT_FOUND` 404 for a teammate who is not staff here (a client's person, the sender, another business's person); `FIELD_VALUE_INVALID` 422 naming `body` for an empty one; audited as the tracked action `comment created (audience: direct)` with ids and no body; the send moves the sender's own read marker; answers `{ recordId: conversationId, detail: { conversationId, commentId } }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `chat.mark_read`                                                                      | `/chat/mark_read`                                      | `operationId`, `conversationId`, `upTo`                                                                                                                              | C71-D: the reader's own read marker on a conversation they are a current member of, moved to `upTo` (ISO time of the newest message they saw), never back and never past now; self-scoped like `inbox.seen`, no grant asked, not audited (CS-7.25); `NOT_FOUND` 404 for anyone else's conversation; `FIELD_VALUE_INVALID` 422 naming `upTo` when it is not a time                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `chat.start_group`                                                                    | `/chat/start_group`                                    | `operationId`, `name`, `members`                                                                                                                                     | C71-G: a group conversation, a `team_conversation` record of kind `group` with its name and creator, and a member row for the creator and each teammate; `SCOPE_NOT_GRANTED` 403 without `comment` on `chat`, or for a person with no membership; `FIELD_VALUE_INVALID` 422 naming `name` (1 to 80 characters, no control character) or `members` (a list of two or more distinct person ids, at most 100, the creator not among them); `NOT_FOUND` 404 when any of them is not staff here (a client's person, an agent, another business's person); audited as `conversation started (audience: group)` with ids and no name; answers `{ recordId: conversationId, detail: { conversationId } }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `chat.send_group`                                                                     | `/chat/send_group`                                     | `operationId`, `conversationId`, `body`                                                                                                                              | C71-G: a message into a group the sender is a current member of, through the same path as `chat.send_direct`, with audience `group`; `SCOPE_NOT_GRANTED` 403 without `comment` on `chat`; `NOT_FOUND` 404 for any other conversation (not a member, a direct one, another business's); `FIELD_VALUE_INVALID` 422 naming `body` for an empty one; audited as `comment created (audience: group)` with ids and no body; the send moves the sender's own read marker; answers `{ recordId: conversationId, detail: { conversationId, commentId } }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `chat.rename_group`                                                                   | `/chat/rename_group`                                   | `operationId`, `conversationId`, `name`                                                                                                                              | C71-G: a group's new name, by a current member who started it or anyone holding `manage` on `chat` (the owner and administrators), in it or not, which tells them who is in it and never a message; no grant asked at the door, the handler asks; `NOT_FOUND` 404 for a group the caller is not in and does not hold the key over; `SCOPE_NOT_GRANTED` 403 for a member who neither started it nor holds the key; `FIELD_VALUE_INVALID` 422 naming `name`; audited as `conversation renamed` with no name                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `chat.change_members`                                                                 | `/chat/change_members`                                 | `operationId`, `conversationId`, `add?`, `remove?`                                                                                                                   | C71-G: people added to or removed from a group, by the same people and with the same refusals as `chat.rename_group`; `FIELD_VALUE_INVALID` 422 naming `add` or `remove` when neither names anyone, one names someone twice or in both, `add` names a current member or the caller, or `remove` names the caller (who leaves instead); `NOT_FOUND` 404 when `add` names someone not staff here or `remove` someone not in it; an added member reads from the change on, a re-added one from the new join only, a removed one nothing written after; audited as `conversation members changed`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `chat.leave`                                                                          | `/chat/leave`                                          | `operationId`, `conversationId`                                                                                                                                      | C71-G: the caller's own membership of a group ends; self-scoped, no grant asked; `NOT_FOUND` 404 for a conversation they are not a current member of, or a direct one; they read nothing written after; audited as `conversation members changed`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `chat.conversations`                                                                  | `/chat/conversations`                                  | `{}`; it takes no fields                                                                                                                                             | C71-D: `SCOPE_NOT_GRANTED` 403 without `comment` on `chat`, `NOT_FOUND` 404 for a client of the business; answers `{ ok: true, conversations: [{ conversationId, kind, name, members, lastRead, lastMessageAt, unread }] }`, the reader's own conversations only (their membership is the query's filter, the owner's and administrators' included), `unread` the others' messages after the reader's marker                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `chat.messages`                                                                       | `/chat/messages`                                       | `conversationId`                                                                                                                                                     | C71-D: one conversation's messages, `{ ok: true, conversationId, lastRead, messages: [{ id, authorId, author, at, body }] }`, oldest first, written while the reader was a member; `NOT_FOUND` 404 for a conversation the reader is not in, another business's included                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `account/availability` (person prefix only; not a surface command)                    | `/account/availability`                                | `state`, `'available'` or `'away'`; `reason`, 1 to 140 characters, away only                                                                                         | the person's own row, named by the session and never the body; `COMMAND_BODY_INVALID` 400 for any other field, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404 for a client; no agent route; audited as `availability.set` with its row in one transaction, and a refusal of a signed-in person audited refused; answers `{ availability }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 `task.assign` takes the `assign` action, `task.set_party` and
@@ -542,7 +561,8 @@ task.update names task.triage; task.create keeps SOURCE_SPOOFED".
 **A top-level key naming a system field is `FIELD_NOT_WRITABLE` 422**, by name.
 The list is the envelope's own (`SYSTEM_OWNED_FIELDS`) plus every installed
 field whose `field_defs.write_mode` is `system`, which today adds
-`completed_at`, `key`, `task`, `edited_at` and `machine_category`
+`completed_at`, `key`, `task`, `edited_at`, `on_behalf_of` and
+`machine_category`
 (`SYSTEM_OWNED_FIELDS` and `claimedSystemFields`, `commands/prepare.ts`). It
 applies on the person prefix, on the agent prefix and on every read. A nested
 key is the operation's own question: `fields.completed_at` is the field engine's
@@ -681,7 +701,7 @@ no route written by hand.
 
 | Operation                                  | Route                                        | Body                                                                                                        | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.comment`                             | `/task/comment`                              | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?`, `parentId?`, `mentions?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience`, `comment_type` or `mentions`; naming `parentId` for a parent that is not a live top-level message on this task, or `audience` for a reply outside its message's audience), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `MENTION_NOT_READABLE` 422 (naming each person mentioned who cannot read the comment; nothing saves), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
+| `task.comment`                             | `/task/comment`                              | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?`, `parentId?`, `mentions?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience`, `comment_type` or `mentions`; naming `parentId` for a parent that is not a live top-level message on this task, or `audience` for a reply outside its message's audience), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `MENTION_NOT_READABLE` 422 (per unreadable mention, named only where its author sees it; none saved), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
 | `task.edit_comment`, `task.delete_comment` | `/task/edit_comment`, `/task/delete_comment` | `operationId`, `recordId`, `expectedRevision`, `commentId`, `body` (edit only)                              | `SCOPE_NOT_GRANTED` 403 without `task:comment` on the task, or naming `commentId` when the caller did not write it; `NOT_FOUND` 404 for a comment not live on this task; `FIELD_VALUE_INVALID` 422 naming `body` (edit only) (MP-4-5)                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `preset.plan`                              | `/preset/plan`                               | `recordTypeKey`, `presetKey`, `fields[]`                                                                    | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `settings.set_four_eyes_threshold`         | `/settings/set_four_eyes_threshold`          | `operationId`, `value` (number or `null`), `expectedRevision?`                                              | `SCOPE_NOT_GRANTED` 403 (it asks `spend:decide`), `STEP_UP_REQUIRED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -701,7 +721,9 @@ hold. The author is the acting actor and the posting time is the server's;
 neither is a payload field. `mentions` lists person ids. Each person
 mentioned is raised an inbox item in the same transaction (INB-1). If one of
 them cannot read the task, or is an outside party named in an `internal`
-comment, the whole comment is refused before it saves.
+comment, the whole comment is refused before it saves. The register keeps
+that refusal naming each person by the identifier as sent, so a replay names
+nobody the author may no longer see.
 
 `preset.plan` is declared `kind: 'read'` because it writes nothing, even on
 success. It is the one read that does not take the `read` action, which is why
@@ -762,13 +784,13 @@ Every operation in `COMMAND_SURFACE` is built. The one `DEPENDENCY_NOT_LANDED`
 a command answers for a missing part is `task.comment` on a business with no
 comment record type.
 
-| Operation       | Route            | Body                                                                                                                                                                                                                                                                                                                   | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?`                                                                                                                                                                             | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_SCOPE_EXCEEDED` 422 (also a `currency` other than the task's cap's, which is its envelope's cap or else the business cap, or a ceiling past the cap's remaining room, or past the task's open envelope's remaining room, each less the hold the superseded version releases), `GATE_NOT_FOUND` 404, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404 (also a trashed task, in the same bytes as a missing one, before the handler's operand checks and the revision), `FIELD_VALUE_INVALID` 422 (naming `purpose` when absent, not a string or out of shape; `currency` when absent, not a string or empty; `payload` when not a JSON object; `step`; `expiresInSeconds`; `lineageId` when neither a string nor `null`) |
-| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision` (`approve`, `reject`, `request_changes`, or `escalate` at the revision bound), `note`, `recipientPersonId` (escalate's only: a holder of `decide` at business scope, not the assignee; the gate stays open and from then on only a business-scope decider decides it) | `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (escalate before the bound), `SCOPE_NOT_GRANTED` 403 naming `recipientPersonId` (a recipient outside the escalation role), `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `PROPOSAL_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `CLIENT_SIGNOFF_REQUIRED` 409 (approving a reviewed output while the business requires the client's sign-off, AW-08; nothing written), `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 naming `gateId` or `versionId` when it is absent or not a string, `recipientPersonId` when escalate lacks one or another decision carries one, or `note` when the note is not a string or carries a NUL or an unpaired surrogate                  |
-| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                                                                                                                                                                                                        | `RESERVATION_NOT_CLAIMABLE` 409, `LEASE_HELD` 409, `BUDGET_UNAVAILABLE` 409 (a hold its spend used whole: the run stops at its budget and asks the person), `SCOPE_NOT_GRANTED` 403 (person), `DELEGATION_ALREADY_LIVE` 409 (agent), `DELEGATION_WIDENS` 403, `DEPENDENCY_NOT_LANDED` 501 (agent, no delegation key), `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400 (person)                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                                                                                                                                                                                                  | `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422 (also naming `report` or `successor.<key>` when it holds a NUL or an unpaired surrogate, on both prefixes)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Operation       | Route            | Body                                                                                                                                                                                                                                                                                                                   | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?`                                                                                                                                                                             | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_SCOPE_EXCEEDED` 422 (also a `currency` other than the task's cap's, which is its envelope's cap or else the business cap, or a ceiling past the cap's remaining room, or past the task's open envelope's remaining room, each less what superseding the live versions gives back: a settled model call's spend stays committed, and a marked hold or one with a call still open gives back nothing), `GATE_NOT_FOUND` 404, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404 (also a trashed task, in the same bytes as a missing one, before the handler's operand checks and the revision), `FIELD_VALUE_INVALID` 422 (naming `purpose` when absent, not a string or out of shape; `currency` when absent, not a string or empty; `payload` when not a JSON object; `step`; `expiresInSeconds`; `lineageId` when neither a string nor `null`) |
+| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision` (`approve`, `reject`, `request_changes`, or `escalate` at the revision bound), `note`, `recipientPersonId` (escalate's only: a holder of `decide` at business scope, not the assignee; the gate stays open and from then on only a business-scope decider decides it) | `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (escalate before the bound), `SCOPE_NOT_GRANTED` 403 naming `recipientPersonId` (a recipient outside the escalation role), `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `PROPOSAL_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `CLIENT_SIGNOFF_REQUIRED` 409 (approving a reviewed output while the business requires the client's sign-off, AW-08; nothing written), `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 naming `gateId` or `versionId` when it is absent or not a string, `recipientPersonId` when escalate lacks one or another decision carries one, or `note` when the note is not a string or carries a NUL or an unpaired surrogate                                                                                                                                         |
+| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                                                                                                                                                                                                        | `RESERVATION_NOT_CLAIMABLE` 409, `LEASE_HELD` 409, `BUDGET_UNAVAILABLE` 409 (a hold its spend used whole: the run stops at its budget and asks the person), `SCOPE_NOT_GRANTED` 403 (person), `DELEGATION_ALREADY_LIVE` 409 (agent), `DELEGATION_WIDENS` 403, `DEPENDENCY_NOT_LANDED` 501 (agent, no delegation key), `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400 (person)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                                                                                                                                                                                                  | `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422 (also naming `report` or `successor.<key>` when it holds a NUL or an unpaired surrogate, on both prefixes)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 **A trashed task's work is not handed out.** `task.queue` leaves it out, and
 `task.pickup` of its reservation answers exactly as an unknown reservation
@@ -1083,7 +1105,7 @@ it.
 authority.** A `reservationId` that is not a string is `COMMAND_BODY_INVALID`
 400, an `outcome` that is not a string or a `fence` that is not a number is
 `FIELD_VALUE_INVALID` 422, and nothing is claimed, settled or retained
-(`pickupOperands` and `handbackOperands`, `commands/agent-operations.ts`).
+(`pickupOperands` and `handbackOperands`, `commands/agent-operands.ts`).
 `tests/runtime/agent-operand-types.test.ts` holds it.
 
 **A payload naming a fact the server owns is refused** `FIELD_NOT_WRITABLE`
@@ -1248,21 +1270,28 @@ deployment started a broker, `composeApi` mounts `answerConversation` beside
 `executeModelCall`, and after `conversation.start` or `conversation.message`
 is applied on the person path the API asks it for the agent's answer, after
 the command has committed: the message stays kept whatever the answer is. It
-resolves the caller again, finds the message as the caller's own person
-message in a conversation of this business whose body is kept, and sends its
+resolves the caller again, asks that they still hold `conversation:write` (as
+`conversation.read` asks of an owner), finds the message as the caller's own
+person message in a conversation of this business whose body is kept, and
+sends its
 words through AW-01's conversation seam (`callModelInConversation`,
 `model.conversation_answer`, the owner's own session, local routes only,
 nothing held). The answer is kept as an `agent` message whose
 `answers_message_id` names the question (0099: one reply per message, in the
 same conversation), in a second transaction under the conversation's row
-lock. The HTTP answer then carries `reply` beside the command's own fields:
+lock, which then holds the caller's conversation grants for share without
+waiting (a revocation either is seen there or waits for the reply to commit; a
+grant being changed at that moment, even by a revocation then refused, keeps
+nothing, and the person asks again) and asks the grant again at
+the clock after the locks, so a grant that lapsed while it waited no longer
+counts. The HTTP answer then carries `reply` beside the command's own fields:
 `{ answered: true, messageId, body }`, or `{ answered: false, code, words }`
 in fixed words (`LOCAL_MODEL_REQUIRED`: models are off for this material and
 nothing was sent, AW-03 egress off; `RATE_LIMITED`; anything else, an answer
 that could not be used and nothing kept). No `reply` means nothing answers: no
-broker, or the message is not the caller's to have answered. A repeat of the
-same operation finds the reply kept and answers with it; the model is not
-asked again. The register stores the command's answer only, so the model's
+broker, the grant revoked, or the message is not the caller's to have
+answered. A repeat of the same operation finds the reply kept and answers with
+it while the grant holds; the model is not asked again. The register stores the command's answer only, so the model's
 words are in the reply's row and nowhere else.
 
 Two system operations, the worker's and no person's command
@@ -1329,11 +1358,14 @@ Its serve is the broker's reserve (`reserveModelCall`,
 operation's priced maximum, the prompt copy's registration, the register row
 and the audit event commit together. A repeat of the operation id replays the
 register row and sends nothing; two at once cannot both hold, because the
-second loses the register's identity key and replays. After that commit the
-broker starts the call, sends it through custody and settles it
+second waits at `enter`'s door (#932) and replays, the register's identity key
+the backstop. After that commit the broker starts the call, sends it through
+custody and settles it
 (`sendReservedCall`), re-reading the task's client link, the lease, the
 delegation and the reservation under their locks, so authority lost in between refuses the call when its
-effect applies.
+effect applies. The start sends only a call it moves from `reserved` to
+`dispatched` itself: a second send of the same hold, at once or later, or a
+hold the sweep released meanwhile, sends nothing (`EFFECT_NOT_RECONCILABLE`).
 
 The answer is the call as its ledger row stands: `callId`, `state`,
 `reservedMinor`, `actualMinor`, `observedMinor`, `drop`, and `text`, the
@@ -1355,7 +1387,8 @@ with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
 run stops and asks in the same transaction (AW-05, the budget wait in
 [RUNTIME.md](RUNTIME.md)), its lease ends, and every later call on that lease
 is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
-each counting a call from its hold until it ends: the business's own per
+each counting a call from its hold until it ends, and a reconciliation pass's
+provider lookup while its slot lasts (AW-10, [RUNTIME.md](RUNTIME.md)): the business's own per
 operation, and its fair share of the route's, which is the installation's.
 The business's own is a durable limit (`hasRoom`, `core-records/src/tenancy/limit.ts`):
 a count read back from the records under a lock keyed by the business, against
@@ -1445,9 +1478,9 @@ file pinned in the same transaction. The command line and the app's client
 post it to the same route. No agent reaches it: an agent may propose a plan,
 never activate one.
 
-| Operation          | Route                          | Body                                                                                                                | Authority                                                                                          |
-| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `task.accept_plan` | `/api/b/:key/task/accept_plan` | `operationId`, `gateId`, `versionId`, `note`, `planText`, `plan`, `entryPath`, `paths`, `conversationId` (optional) | `decide`, asked of the gate's own task as `task.decide` is; `decide` asks it again under its locks |
+| Operation          | Route                          | Body                                                                                                                                                          | Authority                                                                                          |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `task.accept_plan` | `/api/b/:key/task/accept_plan` | `operationId`, `gateId`, `versionId`, `note`, `planText`, `plan`, `entryPath`, `paths`, `ceilingMinor` and `currency` (optional), `conversationId` (optional) | `decide`, asked of the gate's own task as `task.decide` is; `decide` asks it again under its locks |
 
 `versionId` is the plan version shown beside the button; a newer reply makes
 it stale and the accept is `PROPOSAL_SUPERSEDED` 409. `planText` is the exact
@@ -1459,7 +1492,11 @@ references, no cycle; anything else is `FIELD_VALUE_INVALID` 422 naming `plan`
 files in the server's instruction root (`OPS_ASTRO_INSTRUCTION_ROOT`); an odd
 path, a symlink, a name outside the root, a directory or a missing file is
 `DEFINITION_UNAVAILABLE`. With no root configured the accept is
-`DEPENDENCY_NOT_LANDED`. `conversationId` is the caller's own conversation
+`DEPENDENCY_NOT_LANDED`. `ceilingMinor` and `currency` are the rough cost the
+card drew, sent together or not at all (half of one, or a fraction of a minor
+unit, is `FIELD_VALUE_INVALID` 422); under the locks, a ceiling other than the
+version's maximum and currency is `VERSION_STALE` 409 and nothing is approved
+or held. Callers that draw no ceiling send neither. `conversationId` is the caller's own conversation
 or `NOT_FOUND` 404, and becomes the audit event's origin. Every other refusal
 is `task.decide`'s. It answers the approval's detail with `runId`, `pin`,
 `manifestDigest`, `planRecordId`, `textDigest` and `recordDigest`. A repeat of
@@ -1516,9 +1553,12 @@ releasedMinor, spentMinor }`. The task stays open for a person. It reaches a
   an earlier stop never applies to a later one). A refusal writes nothing.
 - **No agent answers.** Neither row is in `AGENT_SURFACE`: the agent prefix
   answers `DELEGATION_EXCLUDES_OPERATION` 403 with or without a delegation.
+- **Recent sign-in.** `run.top_up` holds `billing:decide`, so C59's step-up
+  asks it in the envelope: `STEP_UP_REQUIRED` 403 past 60 minutes while the
+  business's money step-up setting is on (`C54 recent sign-in`). The end holds
+  `gate:decide`, which the step-up does not ask.
 - **Not here yet.** The question and its two buttons in the conversation where
-  the plan was approved (AW-04), and the recent sign-in a money answer asks
-  for (C59).
+  the plan was approved (AW-04).
 
 ## The launch and its receipt
 
@@ -1606,7 +1646,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.complete`                            | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.reopen`                              | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.comment`                             | `commentOnTask` (`commands/tasks-comment.ts`)                                             | served under a live delegation, `internal` audience only (the row's `serve`, `AGENT_AUDIENCES`)                                                                                        |
-| `task.edit_comment`, `task.delete_comment` | `editTaskComment`, `deleteTaskComment` (`commands/tasks-comment-edit.ts`)                 | served under a live delegation, on its own task, on its own actor's comments only (`serveCommentChange`)                                                                               |
+| `task.edit_comment`, `task.delete_comment` | `editTaskComment`, `deleteTaskComment` (`commands/tasks-comment-edit.ts`)                 | served under a live delegation, on its own task, on comments its own actor wrote for the person this delegation acts for (`on_behalf_of`, `serveCommentChange`)                        |
 | `task.propose`                             | `proposeOnTask` (`commands/tasks-propose.ts`)                                             | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.decide`                              | `decideOnGate` (`commands/tasks-decide.ts`)                                               | refused `DELEGATION_EXCLUDES_DECISION` (`authorise`, `decideAsAgent`)                                                                                                                  |
 | `task.accept_plan`                         | `acceptPlanOnGate` (`commands/plan-accept.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -1625,6 +1665,9 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.set_category`                        | `setCategory` (`commands/tasks-category.ts`)                                              | served under a live delegation, on its own task (`serve`)                                                                                                                              |
 | `task.share_with_client`                   | `shareWithClient` (`commands/tasks-client-access.ts`)                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.revoke_client_share`                 | `revokeClientShare` (`commands/tasks-client-access.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `record.create`                            | `createRecord` (`commands/record-create.ts`)                                              | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `onboarding.start`                         | `startOnboarding` (`commands/onboarding.ts`)                                              | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `onboarding.step_result`                   | `recordStepResult` (`commands/onboarding.ts`)                                             | served under a live delegation on the step's task (the row's `serve`, `writeStepResult`)                                                                                               |
 | `task.reparent`                            | `reparentTask` (`commands/tasks-place.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.move`                                | `moveTask` (`commands/tasks-place.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.rank`                                | `rankTask` (`commands/tasks-place.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -1640,6 +1683,17 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `session.capabilities`                     | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                                                                                                                         |
 | `settings.set_four_eyes_threshold`         | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `settings.set_client_sign_off`             | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `secret.list`                              | `listCustodySecrets` (`reads/custody.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `secret.set`                               | `setCustodySecret` (`commands/custody-secrets.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.graduation`                    | `readConnectionGraduation` (`reads/graduation.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `mandate.file`                             | `fileMandate` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `mandate.revoke`                           | `revokeStandingMandate` (`commands/mandates.ts`)                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `graduation.promote`                       | `promoteClass` (`commands/mandates.ts`)                                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `graduation.demote`                        | `demoteClass` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.signal`                        | `readConnectionSignal` (`reads/signal.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.log`                                 | `logTimeEntry` (`commands/tasks-time.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -1654,12 +1708,28 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.ledger`                              | `readLedger` (`reads/ledger.ts`)                                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.search`                              | `searchTasks` (`reads/search.ts`)                                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `team.list`                                | `listTeam` (`reads/people.ts`)                                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `chat.send_direct`                         | `sendDirect` (`commands/chat.ts`)                                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `chat.mark_read`                           | `markOwnRead` (`commands/chat.ts`)                                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `chat.start_group`                         | `startGroupConversation` (`commands/chat-groups.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `chat.send_group`                          | `sendGroupMessage` (`commands/chat-groups.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `chat.rename_group`                        | `renameGroupConversation` (`commands/chat-groups.ts`)                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `chat.change_members`                      | `changeGroupConversationMembers` (`commands/chat-groups.ts`)                              | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `chat.leave`                               | `leaveGroupConversation` (`commands/chat-groups.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `chat.conversations`                       | `readChatConversations` (`reads/chat.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `chat.messages`                            | `readChatMessages` (`reads/chat.ts`)                                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `session.person`                           | `readOwnName` (`reads/people.ts`)                                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `session.end`                              | `endOwnSession` (`commands/session-end.ts`)                                               | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `settings.set_money_step_up`               | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `settings.set_conversation_window`         | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `settings.set_retention_window`            | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 
+| `automation.registry` | `readAutomationRegistry` (`reads/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.change` | `changeActivationAsPerson` (`commands/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `definition.release` | `releaseDefinitionVersion` (`commands/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.adopt` | `adoptActivationVersion` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.roll_back` | `rollBackActivation` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.turn_off` | `turnOffActivationAsPerson` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `approval.revoke` | `revokeStandingApproval` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
 
@@ -1788,7 +1858,9 @@ their own messages and replies through `task.edit_comment` and
 `task.delete_comment`; a deleted comment leaves every read and its replies
 stay. An internal reader's comments also carry `own`, true where the
 reader's own actor wrote it, so the page draws the edit and delete controls
-on those rows only; the two commands check the author again. An @ in a comment notifies nobody yet: there is no notification model.
+on those rows only; the two commands check the author again, and an agent's
+change asks its delegation and covering grant again once the comment is
+locked. An @ in a comment notifies nobody yet: there is no notification model.
 
 For the agent bundles, `readConversation` (`reads/task-conversation.ts`) reads a
 task's thread at three detail levels in one statement each: `brief` (the
@@ -1992,7 +2064,7 @@ proposals: {
     runId;                             // the run it holds for: one per-run row
     state; heldMinor; actualMinor; classifiedCause; leaseId;
     lease: { id; fence; state; expiresAt; holderActorId } | null;
-    attempt: { id; state; dispatchMarker; observed } | null;
+    attempt: { id; state; dispatchMarker; observed; dropCause; outcome } | null;
   }[];
 }[]
 ```
@@ -2212,8 +2284,9 @@ answers today's refusal (for example `DELEGATION_NARROWED` or
 `DELEGATION_NOT_LIVE`), with no stored detail, once the grant, delegation or
 expiry has changed. Those rows of `AGENT_OPERATIONS` replay as `reauthorise`,
 and `releaseReplay` (`commands/agent-replay.ts`) runs `authorise` again. A
-capabilities replay is projected again for the credential presented now
-(`replayCapabilities`). A pickup replay is checked against the delegation it
+`session.capabilities` or `task.queue` replay is served again for the rights
+held now (`serveAgain`), so a queue read before a pickup and repeated under a
+delegation answers the narrowed queue (#169). A pickup replay is checked against the delegation it
 minted (`replayPickup`). A handback settles its own delegation, so its receipt
 is returned only to the credential that settled it (`replaySettledHandback`).
 All three are in `commands/agent-replay.ts`. The register row is left as it
@@ -2347,8 +2420,52 @@ revision, and two setters at once from one limit leave one applied. The answer i
 and `{ key: 'planning', limitMinor, currency }`. A lower limit is taken even
 below what is committed: the next planning reply that no longer fits is
 refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). Until a person moves
-it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. Not here
-yet: the recent sign-in a money action asks (C59).
+it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. It holds
+`billing:decide`, so C59's step-up asks it in the envelope: `STEP_UP_REQUIRED`
+403 past 60 minutes while the business's money step-up setting is on.
+
+### Team invitations (C39-T)
+
+`POST /api/b/<key>/invitation/create` with `name`, `email` and `role`
+(`member` or `admin`); `invitation/resend` and `invitation/revoke` with
+`invitationId`. Each asks `share` on `access` for the whole business
+(`access:share`: owners and administrators), and no agent route serves them
+(`DELEGATION_EXCLUDES_OPERATION`). A create or resend of an `admin`
+invitation also asks `access:manage` for the whole business, and without it
+is `SCOPE_NOT_GRANTED` 403 naming `role`, writing nothing; a revoke asks
+`access:share` alone. A create writes a new person and the
+invitation, pending for seven days; a resend moves that on by seven days; a
+revoke ends it. An ended invitation is `TRANSITION_NOT_PERMITTED` 409 naming
+`state`, another business's or an unissued id `NOT_FOUND`, an address already
+pending or confirmed on a member `UNIQUE_VALUE_TAKEN` naming `email`. Creates
+and resends are limited to 3 an hour per address and 30 an hour per person,
+counted from the applied audit events (`RATE_LIMITED` naming `email` or
+`account`). The answer is the invitation's id, its revision and
+`{ invitationId, state }`. The business's worker expires lapsed invitations
+(`expireInvitations`, audited `invitation.expire`).
+
+Each create and each resend allows one email: `sendInvitation`
+(`core-custody`) sends through the broker's `email.send` only while the
+invitation is pending and has an applied act no send has answered, mints a
+fresh enrolment token (32 random bytes of its own), keeps its SHA-256 alone
+and records the attempt against it. It shares the inbox email's ceiling: one
+limit, `email.send`'s catalogued concurrency, counts inbox and invitation
+emails in flight together, each ask until custody's timeout and a minute's
+grace have passed (`EMAIL_AT_CEILING` at it, writing nothing). The login
+provider is never asked for a token, and an address holding a login in
+another business is invited as a new one is.
+
+`POST /api/hooks/auth-email` is the login provider's Send Email hook, mounted
+by `composeApi` when it is given the hook's secret (`AUTH_EMAIL_HOOK_SECRET`,
+`v1,whsec_...`) and a mail broker. It verifies the Standard Webhooks
+signature over the raw body before parsing (401), refuses a stale timestamp
+(401) and a replayed message id (409, held in the attempt's `hook:<id>`
+evidence), and answers every verified message 200 `{}`, sent or not. An
+invitation message is sent through `sendInvitation` when exactly one business
+holds a pending invitation for the address with an unanswered act; other
+Auth mail (a reset among it) has no attempt yet and is not sent (C40). Not
+here yet: the send mounted after the command, the hook wired in `main`, the
+enrolment page and the Access screen (C39-T P3).
 
 ## Tags
 
@@ -2362,7 +2479,11 @@ the reader's person, on any board, soonest due first. Open is the rank's rule
 (not completed, cancelled or archived). It is asked as `task:read` of the
 business, the reader is a filter of the query, and each row carries its `tags`
 and `waitingComments`, the client messages owed a reply by the team, derived
-as `task.read` derives each message's signal. No agent reaches it.
+as `task.read` derives each message's signal. It also carries its `category`
+and `whoseMove` (DP-14, as the task page derives it): `Review` while a gate on
+the task is pending and not expired, `Agent` while a reservation on one of its
+runs holds a live lease, `Team` otherwise. The to-do chips filter on both. No
+agent reaches it.
 
 Scoped (MP-7-2), it takes one of `person` (a teammate's open tasks) or
 `client` (every open task under that client, whoever holds it), under the
@@ -2390,7 +2511,7 @@ delegation.
 `person.list`, `team.list`, `tag.list`, `task.todos`, `preset.plan`, `settings.read`,
 `session.capabilities`, `access.read`, `inbox.read`, `inbox.count`, `inbox.unattended`,
 `conversation.read`, `conversation.list`, `conversation.allowance`, `definition.attribution`,
-`trace.read` and `harness.read` are declared in `COMMAND_SURFACE` with
+`trace.read`, `harness.read`, `chat.conversations` and `chat.messages` are declared in `COMMAND_SURFACE` with
 `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
@@ -2593,7 +2714,7 @@ agent answer keeps its payload under `detail`.
 The agent answer's `grants` is read on every call and on every replay: a
 replay is authorised as a fresh call and projected again for the credential
 presented now, so a replay under another delegation answers that delegation's
-scope and never the first one's (`replayCapabilities`).
+scope and never the first one's (`serveAgain`).
 `tests/commands/agent-capabilities-intersection.test.ts` holds both over HTTP.
 `tests/api/capabilities-shape.test.ts` asserts the one shape on both prefixes
 and on a replay ("answers flattened beside ok on both, and on a replay").
@@ -2615,8 +2736,8 @@ believed it had set `actor_id` got a success and no correction, so the mistake
 lived in the client and the server looked fine. The attempted values go to
 the audit row's `attempted` column and never to the response.
 
-**A read takes only its own identifier.** `task.read` takes `recordId` and
-`task.board` takes `board`; `task.todos` takes `person` or `client`;
+**A read takes only its own identifier.** `task.read` takes `recordId`,
+`chat.messages` takes `conversationId` and `task.board` takes `board`; `task.todos` takes `person` or `client`;
 `task.queue`, `task.ledger`, `task.search`, `person.list`, `team.list`,
 `tag.list`, `preset.plan`, `settings.read`, `session.capabilities` and
 `access.read` take none. Any other identifier field, a `recordId` on any of
@@ -2720,10 +2841,10 @@ Named so they are not read as settled:
   verifies; only the gate and lineage checks stand against it. The key
   resolver holds one key: rows under an earlier key id fail the read.
 - **An agent comments in the `internal` audience only.** The `task.comment` row
-  passes `AGENT_AUDIENCES` (`commands/agent-operations.ts`) to
-  `writeTaskComment` (`commands/tasks-comment.ts`), which refuses `client` as
-  `AUDIENCE_NOT_PERMITTED`. This is Nathan's ruling (OWNER-CARD section 6), not
-  an open item.
+  passes `AGENT_AUDIENCES` (`commands/tasks-comment.ts`) to `writeTaskComment`,
+  which refuses `client` as `AUDIENCE_NOT_PERMITTED`. An agent credential
+  (API-2) reaches `commentOnTask` as its agent and gets the same set. This is
+  Nathan's ruling (OWNER-CARD section 6), not an open item.
 - **One lane choice awaits root or owner confirmation.** The heartbeat bounds are 1 hour a beat and 8 hours in total
   (`MAXIMUM_RENEWAL_SECONDS` and `MAXIMUM_LEASE_LIFETIME_SECONDS`,
   `core-runtime/src/heartbeat.ts`). Root ruling 6 at dd30aa8 covers bare agent
@@ -2792,7 +2913,7 @@ the removal when `enrol` answers `FACTOR_ALREADY_ENROLLED` (`WEB.md`).
 
 | Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                                                      |
 | ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                                                       |
+| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `VERSION_STALE` 409 (a newer enrolment recorded first), `PROVIDER_ANSWER_INVALID` 502               |
 | `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `FACTOR_ALREADY_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
 | `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                                                 |
 
@@ -2814,12 +2935,14 @@ call, beside the record it changes, and carries the sent code's id as its
 too, so it stops counting, and a provider fault on the code leaves it counted. GoTrue served under a path (`/auth/v1`) is called
 under that path. The record step locks the login (a transaction-scoped
 advisory lock, `second-factor-subject:` and its subject's digest), then the
-person's own row (`for no key update`), so two tabs enrolling at once queue: the
-later enrolment replaces the earlier unverified one, and one live factor
-remains. Two businesses completing enrolments for one login at once queue too:
-the later is refused `FACTOR_ALREADY_ENROLLED`, and the factor the provider has
-just verified for it is removed there, best effort, so the login holds one
-verified factor.
+person's own row (`for no key update`), so two tabs enrolling at once queue.
+An enrolment replaces only the unverified factor it started from: one recorded
+after it started (another tab's) stays the factor the first code completes, and
+this one is refused `VERSION_STALE`, its provider factor reported as an
+`account.factor_orphaned` event. One live factor remains. Two businesses
+completing enrolments for one login at once queue too: the later is refused
+`FACTOR_ALREADY_ENROLLED`, and the factor the provider has just verified for it
+is removed there, best effort, so the login holds one verified factor.
 
 `PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.
@@ -2857,6 +2980,66 @@ local end stands, and asking again is safe. The provider's words go nowhere.
 In the web app, Settings ▸ General's "Your sessions" panel calls the first two,
 ending the others only once confirmed, then listing again; it draws no session
 id (`apps/web/src/screens/settings/sessions.tsx`).
+
+`POST /api/password/set` with `{ token, password }` sets a new
+password with a reset link's one-time token (C40, ORCH77-C40B,
+`setPasswordByToken`, mounted by `mountPasswordSet` with the deployment's
+businesses and the broker; `main()` does not mount it yet). No provider
+session is read, trusted, opened or answered: the token is the authority, and
+no cookie or bearer is read or set. A token is 32 random bytes, base64url,
+kept only as its SHA-256 in `password_reset_tokens` (20261005144947), for one
+login of one business, good for 30 minutes and spent once. The reset asks
+for one is C40 P2. The token is found by `password_reset_token_find`, a
+narrow security definer function the application group alone runs (the
+business and the token's id for a hash exactly one business holds), then
+read in its own business. A login with a live verified second factor in any
+business is 403 `RESET_NEEDS_SUPPORT` (ORCH77-C40MFA), whatever code the body
+carries: refused before anything is spent, so the token stays live and the
+password and every session stay as they were; support resets it. A fault
+reading where the login stands is 503 `RESET_UNAVAILABLE`, never a set, and a
+login the token's own business no longer admits is 401 `RESET_LINK_INVALID`
+(read before the locks and not again, a decided risk: a person deactivated
+there in that moment still resets). Then,
+under C59's login lock (the one a factor's verification takes) and the token's
+row lock, the token is read again at that moment: spent or past its life is
+401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403
+`RESET_NEEDS_SUPPORT` with nothing spent. Otherwise every live token of the
+login is spent and the reset's window opens (`ops.subject_resets`,
+20261005144947), under the login's session-ending key, so a write that read
+one of its sessions live commits first (C52-A): every session of the login, in
+every business, is ended up to
+the moment the window settles, and until then up to five minutes on. The
+password is set at the provider through custody under the catalogued
+`auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
+held by custody alone, whose `auth` destination lists that route and takes no
+POST, `post: false`; the answer must name the same user). In each business
+the login is mapped in, one transaction, holding the login's session-ending
+keys first, ends the sessions seen there, so a factor change there that holds
+them commits first (C52-A). Last,
+whatever happened, one transaction in the token's business, holding the login's
+session-ending keys first, settles the window
+(`clock_timestamp()`; a sign-in after it is served) and, only when the
+password was set and every business's ending committed, audits
+`account.password_changed` there, once, as the person that business maps. The
+other businesses keep their ended sessions (`ended_sessions`) and no audit
+row, so a failure anywhere, in any business's ending, at the provider or in
+that last transaction, audits nothing anywhere (ORCH81 C40AUDIT).
+
+The answer is 200 `{ passwordSet: true }`. A token that is not live
+(unknown, out of shape, spent, past its 30 minutes, of a login no business
+maps) is 401 `RESET_LINK_INVALID`. A password outside 12 to 72 bytes is
+400 `PASSWORD_INVALID`, a body that is not a JSON object holding the token and
+password as strings 400 `RESET_MALFORMED`, and one over 1 KiB 413
+`RESET_TOO_LARGE`. Of two requests on one token at once, one sets the
+password and the other is 401. A password the provider refuses itself (its
+422: weak, leaked, the same as before) is 422 `RESET_PASSWORD_REFUSED`: the
+token is spent, so choose a different password and ask for a new link. Any
+other provider fault or wrong answer is 503 `RESET_UNAVAILABLE`; anything else
+failing is 503 `RESET_FAULT`. A reset that fails after the token is spent
+ends every session of the login again, a sign-in made while the provider was
+asked included, even when the database fails before the window settles, and
+audits nothing. Answers carry a code alone; nothing is
+logged. No limit holds the route's rate yet.
 
 ## The operations view and privacy incidents (C55)
 
@@ -3034,6 +3217,87 @@ this route and on `grant.revoke`.
 `task.set_party`'s `client` must name a client of this business: another
 business's or a made-up one is `NOT_FOUND` 404 naming `client`.
 
+### New client onboarding (C41-A)
+
+Three writes, none of them a send, a run or a spend. `record.create` is the one
+record-create command (RC-13): it takes `{ operationId, type: 'client', fields:
+{ name } }` under `record:write`, never an agent's, makes the client as
+`client.create` does (0055's `clients`, the same name rule and
+`CLIENT_NAME_TAKEN` 409), and answers `{ recordId, type }`. Any other type, or
+any field but `name`, is `FIELD_VALUE_INVALID` 422 naming `type` or `fields`.
+
+`onboarding.start` takes `{ operationId, clientId, templateKey }` under
+`record:write` and, in the handler, `task:write` across the business. It lays a
+template version out as tasks on that client, one per step, each titled with
+its phase, linked to the client (`records.uuid_7`), and recorded with its kind
+(agent-run, needs a person, or waits on the client) and the steps it waits for
+(`onboardings`, `onboarding_steps`, migration 20261005200007). The templates are
+versions in code (`ONBOARDING_TEMPLATES`, `core-records/src/onboarding/template.ts`).
+A client has one onboarding: the start claims it first, so a second start, at
+once or later, is `TRANSITION_NOT_PERMITTED` 409 and writes nothing. It answers
+`{ onboardingId, templateKey, templateVersion, steps: [{ key, phase, kind,
+taskId, dependsOn, state }] }`; an unknown template is `FIELD_VALUE_INVALID` 422
+naming `templateKey`, and a client not of this business `NOT_FOUND` 404.
+
+`onboarding.step_result` takes `{ operationId, recordId, outcome: 'done' |
+'failed', result }` and writes the result onto the step's own task as an
+internal system comment, so reading the task shows it. A done step opens the
+steps waiting on it; a second failure stops the onboarding and says so on the
+task. `task:write` is asked at the step task's own client (`prepare.ts`, the
+`target` lookup), and only while the task is still on the onboarding's client,
+so a holder scoped to one client writes that client's steps and no other's; an
+agent writes the step on the task it is delegated on. An agent records agent
+steps only, on both agent paths: under a delegation, and by an API-2 agent
+credential, whose call runs as its agent, so its comment's source is the
+agent's (`agent:api`), never its person's. A person or client-wait step is a
+person's checkpoint, so an agent's result on one is
+`DELEGATION_EXCLUDES_OPERATION` 403 naming `kind`, asked under the locks before
+anything is written (ORCH79 P12STEPACTOR). A person records a step of any kind. A person's result clears the step's open
+item (`closeStepMove`); an agent's withdraws it, naming nobody, which is
+reached only by an agent step's task carrying an ordinary `task.assign` item,
+since the step's own items are raised on person and client-wait steps alone.
+It answers `{ step, outcome, opened, stopped }`;
+`FIELD_VALUE_INVALID` 422 names `recordId`, `outcome` or `result`; a task that
+is no step here, or is in the trash, is `NOT_FOUND` 404, as `task.comment`
+answers a trashed task; a step of a stopped or finished onboarding is
+`TRANSITION_NOT_PERMITTED` 409 naming `state=stopped` or `state=done`, and a
+step still waiting, already closed or stopped is that 409 naming its own state.
+A result is content on its task (S0-5): it locks the onboarding, then its
+steps, then every step's task in id order (`lockStepTasks`), then reads its own
+task again under that lock and asks whether it is still on the onboarding's
+client and out of the trash. A task moved to
+another client or trashed meanwhile is `NOT_FOUND` 404 and nothing is written;
+a move after a result is `CLIENT_LOCKED` 409. The result waits on the
+onboarding's lock after its authority was asked, so it asks again once the lock
+is held (`onboarding-authority.ts`): a person's or an API-2 credential's task
+grants are held for share before the lock, so a revocation that comes after
+waits for the result, and `task:write` at the step's client is asked at the
+clock under the lock, so a grant revoked or lapsed during the wait is
+`SCOPE_NOT_GRANTED` 403; a delegated agent's delegation is read `for share`
+under the lock, and one revoked or lapsed during the wait is
+`DELEGATION_NOT_LIVE` 403. Either refusal writes nothing.
+
+A person or client-wait step that opens is parked with an inbox item
+(`assignment`, on the step's task) to whoever owns its move: the task's
+assignee, else the person who started the onboarding. Assigning or unassigning
+the task parks it again under that rule and withdraws any open `assignment`
+item held by someone other than its owner or assignee (`reparkStepMove`, from `task.assign`
+and `task.set_party`); moving the task to another client parks nobody and
+withdraws every open `assignment` item on it but the assignee's. A done result closes the
+item (`closeStepMove`); a first failure leaves it open, since the step is still
+ready. A step that opens while its task is in the
+trash is parked with nobody, and is parked under that rule when `task.restore`
+brings the task back (`parkRestoredSteps`). The second failure, which stops the
+onboarding, withdraws the open `assignment` item on the task of each ready or
+stopped step still on the onboarding's client (`withdrawStepMoves`), since no
+step of a stopped onboarding takes a result. The agent step's run and its gate, and the
+client email's draft and its one send path, are not built here;
+`tests/onboarding/c41-a-held.test.ts` holds each by name. S0-5's first-client
+gate runs on all three commands, each classed `client-data`: after authority on
+the person path (`envelope.ts`) and after the delegation's answers on the agent
+path (`agent-envelope.ts`), before any write. Its named `C41-A gate refusal`
+case is held there too.
+
 ### A client's privacy settings (C60)
 
 `client.set_privacy` takes `{ operationId, clientId, modelEgress, providers,
@@ -3094,7 +3358,7 @@ ended there), both steps are stamped done with the reason `shared` and nothing
 is sent, so ending access here never ends it there; the business that ends it
 last bans (`loginLiveElsewhere`, on the owner's connection, answers yes or no).
 The check is asked again under the login's subject lock
-(`second-factor-subject:<digest>`, `lockLoginSubject`), through
+(`second-factor-subject:<digest>`, `lockLoginFactors`), through
 `public.factor_login_live_elsewhere`, and the lock is held until the steps are
 stamped, so a login another business maps under that lock is either seen or
 mapped after the stamp. The wait for that lock is bounded
@@ -3150,7 +3414,7 @@ say where else the login is; nothing is written or sent.
 In one transaction, under the access lock, the member's live factor is
 recorded removed (here and by subject, 0064), every session of theirs is ended
 (0057, 0063), and one reset row owes the provider GoTrue's admin removal of
-that factor (`DELETE /admin/users/<subject>/factors/<factor id>`, 20261003003537). It
+that factor (`DELETE /admin/users/<subject>/factors/<factor id>`, 20261004091551). It
 answers `{ resetId, providerStep }`: `owed` from the act, `done` when the local
 server, holding the admin key, sent the removal as soon as the act committed.
 Hosted, the endings loop sends it each `ACCESS_ENDING_RETRY_SECONDS`
@@ -3315,3 +3579,277 @@ line alike. The check runs under the task's row lock, so a content write
 holding that lock lands wholly before it (the change is refused) or wholly
 after it (the write is stale against the change's revision and retried). A
 trashed task still answers `NOT_FOUND`.
+
+## Workflow triggers (C33)
+
+Settings ▸ Workflow triggers: one read on `settings:read`, and two changes,
+each held business-wide and never an agent's. `activation.change` is
+`settings:manage`; `definition.release` is `automation:manage` (the key
+catalogue: owner and administrators). Definitions carry no client, so the
+registry is the business's; a holder at one client's scope is refused all
+three (`tests/automations/c33-authority.test.ts`).
+
+A person releases a definition version: the first release names a new
+definition by `name` and `kind`, a later one names it by `definitionId`. The
+version takes the next number, pins its bytes by digest and size, and lists
+its inputs, its operations and the activation modes it permits. It never
+changes after release (`definition_versions`, migration 20261005003850). Two
+releases at once on one definition both land, on distinct numbers: the one
+that finds its number taken asks again in its own transaction. The digest and
+size are the caller's until AW-02's pinned read computes them from the bytes.
+
+An activation is pinned to one version of its own definition, in a mode that
+version permits (checked by the command and again by the database). Without an
+`activationId` the change writes a new activation; with one it changes that
+activation at the revision the caller read, compared in the update itself, so
+two changes sent at one revision apply once. Changing a mode starts nothing:
+no occurrence and no planned run, since a run needs an occurrence and C52-A's
+standing approval (below). A change of the pin, mode, schedule or event, or a
+switch off, ends the approval that stood.
+
+Every value is checked against a closed grammar before anything is written,
+and refused `FIELD_VALUE_INVALID` naming its field: a digest is 64 lower-case
+hex digits, a mode, kind or mode list comes from its fixed set, an operation
+or event kind is a dotted lower-case name, and a name or an input's key or
+value is at most 200 characters of storable text (an allow-list of code points:
+no control character, line break, bidi mark or override, or lone surrogate).
+Another business's definition, version or activation answers exactly as a
+fabricated identifier does.
+
+| Operation             | Route                  | Body                                                                                        | Answer or refusals                                                                                                                                                                                                                                                                                   |
+| --------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `automation.registry` | `/automation/registry` | `{}`                                                                                        | `{ ok: true, definitions: [{ id, kind, name, versions: [{ id, number, contentDigest, contentSize, modes, releasedBy, releasedAt }], activations: [{ id, versionId, versionNumber, mode, everyMinutes, eventKind, enabled, changedBy, changedAt, revision, approval }] }] }`; `SCOPE_NOT_GRANTED` 403 |
+| `activation.change`   | `/activation/change`   | `{ activationId?, versionId, mode, everyMinutes?, eventKind?, enabled, expectedRevision? }` | `{ activationId, versionId, mode, enabled }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for a mode the version does not permit or another definition's version; `VERSION_STALE` 409                                                                |
+| `definition.release`  | `/definition/release`  | `{ definitionId? \| name, kind, contentDigest, contentSize, inputs, operations, modes }`    | `{ definitionId, versionId, number }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404 for a definition not in the business; `VERSION_STALE` 409 when three releases in a row find their number taken                                                                                    |
+
+## Standing approvals (C52-A)
+
+Adopting a version, rolling back, revoking an approval and turning an
+automation off are each `automation:manage`, held business-wide and never an
+agent's; a holder at one client's scope is refused all four
+(`tests/automations/c52a-authority.test.ts`). An adoption pins an exact
+released version of the activation's own definition, in a mode that version
+permits, and is the standing approval for every later occurrence on that pin.
+A rollback adopts again the highest-numbered version below the pin that this
+activation adopted before under an approval nobody revoked, recorded as
+`rolled_back`; a version never adopted, or adopted and revoked, is never its
+target. The newer version and every earlier adoption stay in history.
+Revoking an approval is its own act and leaves the pin; turning an automation
+off ends its approval with it, and so does any `activation.change` of the pin,
+mode, schedule or event, or a switch off (the database's
+`activations_approval_stands`). Only an automation that is on is approved:
+adopting or rolling back one that is off is refused `TRANSITION_NOT_PERMITTED`
+naming `enabled=false`. Each change is compared with the revision the caller
+read, again under the activation's lock, so two sent at one revision apply
+once. The caller's `automation:manage` grants are held from before any
+automation row, so a revocation of one waits for the change; under the
+activation's lock the key is asked again at the clock after the wait, so a
+grant that ran out meanwhile refuses it, and a rollback picks its target
+there, after any revocation of an approval that held the lock. Once its rows
+are written, the change takes the audit chain's lock and asks the key a last
+time at that clock: a grant that ran out while it waited there, or a session
+signed out while it waited (`AUTH_SESSION_EXPIRED`), refuses it and nothing
+applies. A repeat is
+refused: a revoked approval, or an automation already off, answers
+`TRANSITION_NOT_PERMITTED`; the same `operationId` sent again is replayed. The
+registry shows each activation's
+`approval: { id, versionId, act, decidedBy, revoked }`, or null.
+
+An occurrence claimed while its activation is on under an unrevoked standing
+approval is `approved` and names it. Dispatch rechecks, holding the
+activation's lock, that the activation is on and that the approval is still
+the one standing and unrevoked, and records once what it found
+(`occurrence_dispatches`): a run started, or `activation_off`,
+`approval_revoked` or `approval_ended`. An approved occurrence reaches no
+route: the worker dispatches it with
+`dispatchOccurrence(tx, id, occurrenceRunStarter(workerActorId))`, and AW-01 J
+writes the run (RUNTIME.md, "An automation occurrence's run") from the facts
+`readOccurrenceFacts` reads from these rows, refusing again an approval
+revoked, ended or superseded since. A start J refuses writes nothing and
+records no dispatch (`{ kind: 'refused', code }`), so the worker may try again.
+
+C33's limits (`FIRING_LIMITS`, `automations/occurrences.ts`) are AW-01's
+durable limits keyed by the business, so one business at a limit never delays
+another. An occurrence past its activation's 60 an hour or its business's 600
+is recorded `over_activation_rate` or `over_business_rate` and starts no run.
+The business's activation runs in flight (not handed back or cancelled) are at
+most 5: at the ceiling dispatch answers `{ kind: 'waiting' }` and writes
+nothing. Its event intake holds at most 1,000 approved events not yet
+dispatched: past that, the claim records the event `over_intake_bound`
+(migration 20261006092531) and starts nothing. `waitingOccurrences` lists the
+approved occurrences with no dispatch, oldest first: the queued events and the
+runs waiting, which the worker dispatches again as runs finish, one
+transaction per occurrence. A transaction claims and dispatches for one
+activation only: each takes the activation's row, then these business-wide
+locks, so a second activation's row after them is refused (`lockActivation`)
+rather than left to deadlock with that activation's own writer.
+
+| Operation              | Route                   | Body                                            | Answer or refusals                                                                                                                                                                                                                                                 |
+| ---------------------- | ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `activation.adopt`     | `/activation/adopt`     | `{ activationId, versionId, expectedRevision }` | `{ activationId, versionId, approvalId, act }`; `FIELD_VALUE_INVALID` 422 naming `expectedRevision`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for another definition's version, a mode it does not permit or an automation that is off; `VERSION_STALE` 409 |
+| `activation.roll_back` | `/activation/roll_back` | `{ activationId, expectedRevision }`            | as `activation.adopt`, with `act: 'rolled_back'`; `TRANSITION_NOT_PERMITTED` 409 when no earlier version was adopted and left unrevoked                                                                                                                            |
+| `activation.turn_off`  | `/activation/turn_off`  | `{ activationId, expectedRevision }`            | `{ activationId, enabled: false }`; `FIELD_VALUE_INVALID` 422 naming `expectedRevision`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already off; `VERSION_STALE` 409                                                                                     |
+| `approval.revoke`      | `/approval/revoke`      | `{ approvalId }`                                | `{ approvalId, revoked: true }`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already revoked                                                                                                                                                              |
+
+## Custody (C31)
+
+Three rows, `custody:manage` each and never an agent. [CUSTODY.md](CUSTODY.md)
+has the table, the sealing and the compromise runbook.
+
+| Operation      | Route           | Body                                                                                                | Answer or refusals                                                                                                                                                                                                                                         |
+| -------------- | --------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `secret.list`  | `/secret/list`  | `{}`                                                                                                | `{ ok: true, secrets: [{ id, name, clientId, state, setAt, lastUsedAt, revision }], canChange }` (`canChange`: the key is held business-wide); `SCOPE_NOT_GRANTED` 403                                                                                     |
+| `secret.set`   | `/secret/set`   | `operationId`, `name`, `value` (one line of 8 to 8192 characters), `clientId?`, `expectedRevision?` | `detail: { secretId, name, clientId, state }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (`clientId` not this business's), `VERSION_STALE` 409, `GATE_SHUT` 409 (real data, first-client gate open), `FIELD_VALUE_INVALID` 422, `DEPENDENCY_NOT_LANDED` 501 |
+| `secret.clear` | `/secret/clear` | `operationId`, `secretId`, `expectedRevision?`                                                      | `detail: { secretId, state }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `VERSION_STALE` 409                                                                                                                                                               |
+
+No answer carries a value, and a refusal names the field, never what was sent.
+No audit row holds a set's value either, a refusal's attempted values included.
+A set's `expectedRevision` is the revision `secret.list` showed, or `0` for a
+name the list did not hold: `0` is refused `VERSION_STALE` when the name exists.
+
+## Connections (MP-14-7a)
+
+The connector fleet on Connections & signal. The fleet is `connection:read`,
+filtered in its statement by the scopes the caller holds it at: a client-scoped
+reader sees the connections serving that client, and only that client in each
+list. A client in a list is a client of this business by foreign key, shown by
+its name. The repair is `custody:manage`, business-wide, never an agent. It
+records `connector repair started` on a broken connection of this business at
+its current revision and sends nothing: re-authorising is the broker's (AW-01),
+behind the approval gate on that revision. The insert checks again that the
+connection is still broken at that revision; one that healed or moved on since
+the read is refused `TRANSITION_NOT_PERMITTED` or `VERSION_STALE` and records
+nothing. Connection rows are written by MP-13-5 and the broker; this build only
+reads them.
+
+| Operation          | Route               | Body                                               | Answer or refusals                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.fleet` | `/connection/fleet` | `{}`                                               | `{ ok: true, connections: [{ id, connectorKey, label, authMethod, status, failureClass, cadenceMinutes, lastSyncedAt, lastAttemptAt, scope, readComponents, executeComponents, custody: { secretId, state }, clients: [{ id, label }], repairStartedAt, revision }], counts: { all, active, degraded, broken, clientConnections } }`; `SCOPE_NOT_GRANTED` 403 |
+| `connector.repair` | `/connector/repair` | `operationId`, `connectionId`, `expectedRevision?` | `detail: { repairId, connectionId, connectionRevision, state: 'awaiting approval' }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (another business's, made-up or malformed alike), `TRANSITION_NOT_PERMITTED` 409 (not broken), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                                                  |
+
+The custody field is a reference: the secret's id and whether custody holds a
+value, never any part of one. No sealed column is read. It is shown only for a
+secret the caller's scopes reach (a business-wide reader, a business-wide
+secret, or one of the caller's clients'); a secret scoped to another client the
+connection serves shows as `{ secretId: null, state: 'not set' }`.
+
+### Graduation and standing mandates (MP-14-10a)
+
+The per-client region of the same page. `connection.graduation` is
+`connection:read`, filtered in each of its statements by the scopes the caller
+holds it at, and answers every client those scopes reach at once, one with no
+graduation row included, so choosing a client on the scope bar asks the server
+nothing. Each client is a client of this
+business by foreign key, shown by its name, with the scope list a mandate picks
+from: the whole-account word `*`, one family word per class family
+(`social.*`), then each class. A row's `state` is what its class earned
+(`ready`, `short`, `mixed`, `never`, `none`) unless a live mandate changes it:
+a live mandate filed by promoting that class shows `promoted`, and a live
+refusal whose words cover the class holds a `ready` or `promoted` class as
+`held`, naming the refusal in `heldBy`. Live is not revoked and not past
+`expiresAt` on the database's clock. Graduation rows are written by the agent
+loops (AW-01); mandates are filed and revoked by the four commands below.
+
+| Operation               | Route                    | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------- | ------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.graduation` | `/connection/graduation` | `{}` | `{ ok: true, clients: [{ id, label, scopes }], rows: [{ id, clientId, actionClass, classLabel, clearance, state, heldBy, neverWhy, promotedAt, approved, edited, rejected, since, note, revision }], mandates: [{ id, clientId, classes, refuses, ceiling: { amountMinor, currency } \| null, expiresAt, expired, label, graduationClass, authoredBy, createdAt, revision }] }`; `SCOPE_NOT_GRANTED` 403 |
+
+Core's check at an effect (`standingMandateVerdict`, core-runtime) share-locks
+the client's row, the class's graduation row and the client's not-revoked
+mandates, in that order. Every mandate's insert takes the client's row `for no
+key update` (`standing_mandates_lock_client`), and the mandate writers take it
+first, so a revoke or a refusal being filed waits for an effect already past its
+check, and the next check sees it. Its place in the global lock order is in
+`core-runtime/src/locks.ts`. Expiry is judged on the database's clock
+after that lock wait. A mandate word is `*`, a family word or an action class,
+compared whole; the database refuses any other word
+(`standing_mandate_words_known`). A live matching refusal wins
+(`refused`); an approval covers only a class on the client's own list whose
+record is not `never` (otherwise `not-graduable`), and only a value within its
+ceiling in the same currency (`over-ceiling`, `other-currency`); anything else
+is left to the ordinary gate (`none`). A malformed class, currency, client or
+value throws before anything is read. A mandate is written once: the
+application role may revoke it, never edit, backdate or revive it; each update
+must move the revision by exactly one, and the database stamps the revocation's
+time (`standing_mandates_written_once`). A graduation row's revision moves by one
+or not at all. A class whose record is `never` shows
+`never` in the region whatever is filed, as core treats it. No effect names an action class yet
+(AW-01/AW-02), so today no mandate pre-approves anything.
+
+Filing, revoking, promoting and demoting are `mandate:manage` business-wide, a
+person's act and never an agent's, and in C59's money set, so a sign-in without
+a second factor inside sixty minutes is refused `STEP_UP_REQUIRED`. Each command
+locks the client's row, then the class's graduation row, then the mandate
+(core's order), then asks `mandate:manage` again with the caller's grants held,
+so a grant revoked before it refuses it. Once its rows are written, each takes
+the business's audit chain lock, its last wait, and asks once more at that
+clock: a grant that ran out meanwhile refuses `SCOPE_NOT_GRANTED`, and a session
+signed out by then through any business its login reaches refuses
+`AUTH_SESSION_EXPIRED`, holding the session's ending keys to commit, so a later
+sign-out waits for it. Nothing is kept. A mandate is never edited: filed at
+revision 1, revoked once at revision 2. Promoting files a one-class mandate for
+a class that shows `ready`; demoting revokes the mandate that promoted it, also
+while a refusal holds the class or its record has since turned `never`, so the
+class does not run unattended again when the refusal ends or the record
+recovers; each steps the graduation row's revision by one, as does revoking a
+promoting mandate. A promote's or demote's audit event names the mandate it
+filed or revoked, and so does its replay. Another business's client, class or
+mandate answers exactly as a made-up or malformed identifier does. Classes are 1
+to 20 picked from the client's own scope list, the ceiling is whole minor units
+of a three-letter currency, `expiresAt` is `toISOString()`'s form for a year
+from 0001 to 9999 and must be at least a minute past the database's clock, and
+the label, trimmed, is 1 to 500 characters with no control character, line
+break, bidi control or character that draws as nothing or as a blank (no
+non-joiner, tag character, variation selector but U+FE0E-FE0F, space but U+0020,
+unassigned or private-use code point; U+FE0E-FE0F only on a pictograph or
+keycap, the joiner only inside an emoji sequence, at most four combining marks
+on one character, and at least one character that draws); each refusal names its
+field. A promote's label shows the class and client by name, or by identifier
+where a name would not pass that rule.
+
+| Operation            | Route                 | Body                                                                                                  | Answer or refusals                                                                                                                                                                                                                                                  |
+| -------------------- | --------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mandate.file`       | `/mandate/file`       | `operationId`, `clientId`, `classes`, `refuses?`, `ceiling` (none on a refusal), `expiresAt`, `label` | `detail: { mandateId, refuses }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                                                                                                       |
+| `mandate.revoke`     | `/mandate/revoke`     | `operationId`, `mandateId`, `expectedRevision?`                                                       | `detail: { mandateId, state: 'revoked' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                       |
+| `graduation.promote` | `/graduation/promote` | `operationId`, `classId`, `ceiling`, `expiresAt`, `expectedRevision?`                                 | `detail: { classId, mandateId, state: 'promoted' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not `ready`), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                 |
+| `graduation.demote`  | `/graduation/demote`  | `operationId`, `classId`, `expectedRevision?`                                                         | `detail: { classId, mandateId, state }`, `state` the class's derived state after the revoke; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (nothing promotes it), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 |
+
+## Grants, tripwires and the night round (MP-14-8)
+
+Connections & signal sections 006 to 008, one read on `connection:read`, never
+an agent. Each list is filtered in its statement by the scopes the caller holds
+the key at. A business-wide reader sees every row; a client-scoped reader sees
+only the rows bound to one of their clients (a grant whose task carries that
+client, a tripwire or a night round step naming it), never a fleet row nor a
+grant on a trashed task, a map or a map's ticket, and a roster of only the
+agents holding a grant it can see. The night round is the
+latest round among the steps the caller can see. Every count is derived from
+the rows beside it, and every row handed out counts toward the export-volume
+signal.
+
+A grant is a delegation, live while it stands as a call through it would: a
+child whose parent ended first is taken back or ran out by what ended the
+parent first, at that time and for that cause, and counts calls only until
+then; a child's `expiresAt` is the earlier of its own expiry and its
+parent's. `expiresAt` is when a grant was due to end. `endedAt` is when its
+parent ended it, or when it was taken back or settled: handed back, or settled
+when its agent was next minted a grant for the same purpose after it ran out.
+It is null for a live grant and for one that ran out at its own expiry and was
+never settled, and can fall before or after `expiresAt`. Its
+client is its
+purpose task's client, shown by its name (`label` null when no client row
+answers the id); its `redemptions` are the applied calls its agent made on that task while
+it held it, less the pickup that minted it. Nothing records what each call
+reached, and the credential is never read. Tripwires and night round steps are
+written by the checks and the round itself (`tripwires`, `night_round_steps`,
+migration 20261005201200); the application role only reads them. Every
+tripwire and step column drawn as words is `signal_text`, an explicit
+allow-list (printable ASCII, Latin letters and signs, visible punctuation,
+currency signs and arrows; a space only inside); a task cite is a task key
+and a filed item a display id; a client named is a client of the same
+business by foreign key. A grant's client label is the client's name as
+`clients` holds it, outside that grammar.
+
+| Operation           | Route                | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------- | -------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.signal` | `/connection/signal` | `{}` | `{ ok: true, grants: [{ id, agentId, purpose, collections, access: 'read' \| 'exec', client: { id, label \| null } \| null, grantedAt, expiresAt, endedAt, revocationCause, state: 'live' \| 'ran_out' \| 'taken_back', redemptions }], grantCounts: { live, ranOut, takenBack, liveExec }, tripwires: [{ id, what, rule, watching, state, blockedReason, firedCount, lastFiredAt, filedItem, filedNothing, note }], tripwireCounts: { armed, cannotBeArmed }, nightRound: { roundOn, steps: [{ id, at, tone, what, who, say, cite: { kind, ref, label } \| null }], notClean } \| null, roster: [{ agentId, active, liveGrants }] }`; `SCOPE_NOT_GRANTED` 403 |

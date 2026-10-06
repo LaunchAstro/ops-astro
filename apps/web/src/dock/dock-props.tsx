@@ -21,6 +21,7 @@ import { useDock, type DockModel } from './use-dock.ts';
 import { useDockLayout, type DockLayoutModel } from './use-layout.ts';
 import { taskPanelOf, useTaskDock, withTaskTab, type TaskDock } from './task-dock.ts';
 import { agentPanelOf, withAgentTab } from './agent-dock.ts';
+import { pageName } from '../screens/task/task-prefill.ts';
 
 /** The person's dock, rail and the layout they make together, for one signed-in tab. */
 interface DockShell {
@@ -149,6 +150,13 @@ export function dockProps(input: DockInput): DockProps {
   };
 }
 
+/** The To-dos panel's head New (DP-02): a new-task draft filed from the page (MP-4-13). */
+const newTaskOn = (id: PanelId, task: TaskDock | null): Pick<DockPanel, 'onNew'> => {
+  const file = task?.file ?? null;
+  if (id !== 'todos' || file === null) return {};
+  return { onNew: { label: 'New task', press: () => file({ from: pageName() }) } };
+};
+
 function dockPanels(input: DockInput): readonly DockPanel[] {
   const { registry, dock, layout } = input;
   const agent = input.agent ?? null;
@@ -180,6 +188,7 @@ function dockPanels(input: DockInput): readonly DockPanel[] {
         door,
         icon: panel.icon,
         ...walked,
+        ...newTaskOn(id, input.task),
         body:
           view === null
             ? null

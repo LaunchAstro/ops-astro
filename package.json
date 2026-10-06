@@ -58,17 +58,19 @@
     "deps:cruise": "node scripts/deps-cruise.mjs",
     "deps:cases": "node --test tests/ci/deps-cruise-cases.mjs tests/ci/db-shard-declaration-cruise.test.mjs",
     "db:conformance": "node scripts/db-conformance.mjs",
-    "local:cases": "node --test tests/ci/s0-7-auth-up-replaces-18.test.mjs tests/ci/s0-7-auth-up-cases.mjs tests/ci/s0-7-auth-up-restarts-gotrue.test.mjs tests/ci/s0-7-db-up-then-auth-up-remigrates.test.mjs",
+    "local:cases": "node --test tests/ci/s0-7-auth-up-replaces-18.test.mjs tests/ci/s0-7-auth-up-cases.mjs tests/ci/s0-7-auth-up-restarts-gotrue.test.mjs tests/ci/s0-7-db-up-then-auth-up-remigrates.test.mjs tests/ci/restore-check-barrier-and-logs.proof.test.mjs tests/ci/restore-refuses-permissive-barrier.proof.test.mjs tests/ci/restore-refuses-permissive-partitioned-barrier.proof.test.mjs",
     "db:cases": "node --test tests/ci/db-conformance-cases.mjs tests/ci/docker-leak-cases.mjs",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "db:up": "bash scripts/local/db-up.sh",
     "db:down": "bash scripts/local/db-down.sh",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:seed": "node scripts/local-seed.mjs",
+    "seed:click-through": "node scripts/ops/click-through-seed.mjs",
     "fixture:snapshot": "bash scripts/local/fixture-snapshot.sh build",
     "fixture:clone": "bash scripts/local/fixture-snapshot.sh clone",
     "auth:up": "bash scripts/local/auth-up.sh",
     "auth:seed": "node scripts/local/auth-seed.mjs",
+    "local-agent": "node apps/local-agent/stack.ts",
     "api:up": "bash scripts/local/api-up.sh",
     "web:up": "bash scripts/local/web-up.sh",
     "verify:slice": "node scripts/local/verify-slice.mjs",
@@ -90,7 +92,8 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
-    "hono": "4.13.9"
+    "hono": "4.13.9",
+    "parse5": "8.0.1"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
@@ -116,7 +119,8 @@
     "react-dom": "19.3.0",
     "typescript": "7.0.2",
     "vite": "8.3.0",
-    "vitest": "5.0.0"
+    "vitest": "5.0.0",
+    "yaml": "2.9.0"
   },
   "lint-staged": {
     "*.{ts,tsx,mts,cts}": [

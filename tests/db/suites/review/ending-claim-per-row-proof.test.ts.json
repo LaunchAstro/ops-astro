@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a bulk ending claim prevents overlapping provider calls after 30 seconds"
+}

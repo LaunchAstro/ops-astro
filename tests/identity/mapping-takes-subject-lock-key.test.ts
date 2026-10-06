@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C58 (OW-028.2): the mapping trigger's subject lock is the key
-// `lockLoginSubject` takes, the SHA-256 hex of the subject's UTF-8 bytes. A
+// `lockLoginFactors` takes, the SHA-256 hex of the subject's UTF-8 bytes. A
 // subject outside ASCII shows SQL and TypeScript digest the same bytes: while
 // a live mapping of it is uncommitted, the TypeScript lock cannot be taken.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { lockLoginSubject } from '../../packages/core-records/src/index.ts';
+import { lockLoginFactors } from '../../packages/core-records/src/index.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { createFreshDatabase, databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
@@ -19,7 +19,7 @@ import {
 } from './fixture.ts';
 
 it.skipIf(databaseUrlFromEnvironment() === undefined)(
-  'a live mapping holds the subject lock lockLoginSubject names, for a subject outside ASCII',
+  'a live mapping holds the subject lock lockLoginFactors names, for a subject outside ASCII',
   async () => {
     const db = await createFreshDatabase({ part: 'mappingkey' });
     const wide = connect(db.appUrl, { max: 3 });
@@ -51,7 +51,7 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
       const take = async () =>
         await wide.withBusiness(other, async (tx) => {
           await tx.query(`select set_config('lock_timeout', '300ms', true)`);
-          await lockLoginSubject(tx, subject);
+          await lockLoginFactors(tx, subject);
         });
       await expect(take(), 'the mapping holds the same key').rejects.toMatchObject({
         code: '55P03',

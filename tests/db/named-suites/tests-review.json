@@ -1,8 +1,0 @@
-{
-  "invariant": [],
-  "conformance": [
-    "tests/review/column-grants-name-batch-1.test.ts",
-    "tests/review/sl01-rel-g2-health-proof.test.ts",
-    "tests/review/ending-claim-per-row-proof.test.ts"
-  ]
-}

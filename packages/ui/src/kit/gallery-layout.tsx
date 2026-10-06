@@ -32,7 +32,8 @@ export const BLOCKS: readonly GalleryEntry[] = [
                 onSort: () => {},
               },
             ]}
-            rows={SAMPLE_ROWS}
+            // Drawn in the order the header announces: most hours first.
+            rows={SAMPLE_ROWS.toSorted((a, b) => Number(b.hours) - Number(a.hours))}
             exportControl={
               <Button disabled reason="Export is not built yet">
                 Export CSV

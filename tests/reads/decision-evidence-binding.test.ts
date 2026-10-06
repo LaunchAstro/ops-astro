@@ -197,6 +197,39 @@ describe.skipIf(serverUrl === undefined)('a decision is bound to what the read s
     await expectIntegrityFault(world, taskId, /seq 1: version .* maximum_minor is not/u);
   }, 60_000);
 
+  // The signed pack carries the purpose and payload the approver read, and
+  // the version's payload digest is a digest of those and the pack's other
+  // fields, so a version rewritten under an intact decision and pack fails.
+  const rewrites = [
+    ['purpose', `set purpose = 'wire_the_funds'`],
+    ['payload', `set payload = '{"instruction":"wire the funds"}'::jsonb`],
+    ['payload_digest', `set payload_digest = repeat('0', 64)`],
+  ] as const;
+  it.each(rewrites)(
+    "fails a read whose version's %s was rewritten under its decision and pack",
+    async (column, assignment) => {
+      world = await createWorld('r2fr2');
+      const taskId = await createTask(world);
+      const on = await propose(world, taskId);
+      await decide(world, on, 'approve');
+      await world.db.admin.execute('alter table public.proposal_versions disable trigger all');
+      try {
+        await world.db.admin.execute(
+          `update public.proposal_versions ${assignment} where business_id = $1 and id = $2`,
+          [world.alpha, on.versionId],
+        );
+      } finally {
+        await world.db.admin.execute('alter table public.proposal_versions enable trigger all');
+      }
+      await expectIntegrityFault(
+        world,
+        taskId,
+        new RegExp(`seq 1: version .*'s ${column} is not`, 'u'),
+      );
+    },
+    60_000,
+  );
+
   // Since 0030 storage refuses (c) as the application role
   // (`gates_version_fixed_once_decided`), so the app-role case asserts that
   // refusal, and the read check is proved with the same move made by the

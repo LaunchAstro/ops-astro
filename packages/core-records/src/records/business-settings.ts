@@ -61,7 +61,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
-import type { TenantQuery } from '../tenancy/database.ts';
+import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import type { WriteMode, VisibilityClass } from './fields.ts';
 
 export type SettingValueType = 'numeric' | 'boolean' | 'text';
@@ -120,6 +120,18 @@ export const BUSINESS_SETTINGS: readonly SettingDefinition[] = [
     value: true,
     writeMode: 'operation',
     owningOperations: ['settings.set_money_step_up'],
+  },
+  {
+    // C80: the one staff account that approves a live website correction, as
+    // a person id. Unset by default, so no correction is approvable until an
+    // administrator names someone through the owning command; owned by an
+    // operation because it decides who must agree before a live effect.
+    key: 'live_correction_approver',
+    label: 'Live correction approver',
+    valueType: 'text',
+    value: null,
+    writeMode: 'operation',
+    owningOperations: ['settings.set_live_correction_approver'],
   },
   {
     key: 'retention_window_days',
@@ -190,13 +202,30 @@ function settingFrom(row: SettingRow): BusinessSetting {
 }
 
 /**
+ * The business's settings install lock, the advisory key
+ * `<business id>:business_settings`. A reader that must not miss a setting's
+ * first row holds it `shared` before reading (the launch gate's
+ * `holdSignOffSetting`, the four-eyes band's `fourEyesBandMinor`); the install holds it exclusive, so a row a reader
+ * found absent cannot appear and commit until that reader's transaction ends.
+ * A row that exists is held by its own row lock instead (`writeBusinessSetting`).
+ */
+export async function lockSettingsInstall(
+  tx: TenantQuery,
+  mode: 'exclusive' | 'shared',
+): Promise<void> {
+  await advisoryLock(tx, `${tx.businessId}:business_settings`, mode);
+}
+
+/**
  * Put the named settings into this business, inside the caller's transaction.
  *
  * `on conflict do nothing` rather than an upsert: the key is unique per
  * business, so a second install adds what a later release named and leaves
- * every existing value where the business put it.
+ * every existing value where the business put it. The install lock is taken
+ * first, before any row is added.
  */
 export async function installBusinessSettings(tx: TenantQuery): Promise<void> {
+  await lockSettingsInstall(tx, 'exclusive');
   for (const setting of BUSINESS_SETTINGS) {
     // Sequential: one transaction, one connection, and a partial install is
     // worse than a slow one.

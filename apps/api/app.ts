@@ -30,10 +30,8 @@
 // subject and a missing login do: telling them apart tells an outsider which
 // businesses exist.
 
-import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { createAgentQuota, DEFAULT_AGENT_LIMITS, type AgentLimits } from './auth/agent-quota.ts';
 import {
@@ -46,12 +44,12 @@ import {
 import type { Database, VerifiedSubject } from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
-  credentialNotLive,
   isCommandRefusal,
   isReadName,
   boardReach,
   joinLiveBoard,
   shownInbox,
+  atUnheldKey,
   refuseCommand,
   refuseNotFound,
   setOwnAvailability,
@@ -90,9 +88,9 @@ import type { LiveSignal, LiveTopics } from './live.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
 import {
   BOARD,
-  endsWithRequest,
   follow as followTopics,
   RECHECK_MS,
+  seatFor,
   sharesOf,
   topicsOf,
   TOPICS,
@@ -101,6 +99,8 @@ import {
   type Watching,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
+import { liveStream } from './live-stream.ts';
+import { recordsIn } from './records-in.ts';
 import { settleAfterCommit } from './settle-after-commit.ts';
 import { mountFactorRoutes, mountPublicLegal } from './account-routes.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
@@ -283,15 +283,16 @@ interface Admitted {
  * An expired bearer is the re-login answer before the key or the body is
  * looked at. A malformed body is refused the same way whether the key names a
  * business or not, and the attempt is recorded only in a business that
- * resolved. A key that names no business answers exactly as the prefix's own
- * login resolution answers a caller the business does not know, so a key that
- * exists and one that does not cannot be told apart.
+ * resolved. A key that names no business answers as the prefix's own login
+ * resolution answers a stranger, and a credential as one not live at that key's
+ * own door (`atUnheldKey`), so a held key and an unheld one answer the same bytes.
  */
 async function admit(
   options: ApiOptions,
   context: Context,
   entry: Entry,
   readsBody = true,
+  quota?: ReturnType<typeof createAgentQuota>,
 ): Promise<Admitted | Response> {
   // A session cookie from another site's page stops here, before the
   // verifier reads it (`auth/session.ts`).
@@ -322,7 +323,8 @@ async function admit(
 
   // The key comes from the path and is resolved by the server.
   const body = readsBody ? await readObject(context) : {};
-  const businessId = await options.resolveBusiness(context.req.param('businessKey') ?? '');
+  const key = context.req.param('businessKey') ?? '';
+  const businessId = await options.resolveBusiness(key);
   if (body === undefined) {
     // An admission refusal: the resolved business, the verified subject (ruling 4).
     if (businessId !== undefined && credential === undefined) {
@@ -330,10 +332,8 @@ async function admit(
     }
     return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
   }
-  // A credential at a key nobody holds answers as one not live, so its answer
-  // cannot tell a key that exists from one that does not.
   if (businessId === undefined) {
-    return refuse(context, credential === undefined ? entry.unresolved() : credentialNotLive());
+    return refuse(context, credential === undefined ? entry.unresolved() : atUnheldKey(key, quota));
   }
   return { presented, businessId, body, ...(credential === undefined ? {} : { credential }) };
 }
@@ -403,7 +403,7 @@ export function createApi(options: ApiOptions): Hono {
     const routes = new Hono();
     for (const declaration of COMMAND_SURFACE) {
       routes.post(pathOf(declaration.name), async (context) => {
-        const admitted = await admit(options, context, entry);
+        const admitted = await admit(options, context, entry, true, quota);
         const response =
           admitted instanceof Response ? admitted : await run(context, declaration, admitted);
         const outcome = outcomeOf(context, declaration);
@@ -515,8 +515,7 @@ export function createApi(options: ApiOptions): Hono {
       if (taskId === undefined) throw new Error('the door answered no topic');
       if (typeof taskId !== 'string') return refuse(context, taskId);
       // Batch 1's dedicated task stream: its frames carry no identifier (REVB1ENDFIXAPID).
-      return streamSSE(context, async (stream) => {
-        endsWithRequest(stream, context.req.raw.signal);
+      return liveStream(context, async (stream) => {
         await follow(
           stream,
           live,
@@ -554,8 +553,7 @@ export function createApi(options: ApiOptions): Hono {
       const none = watched.length === 0 && joined === undefined;
       if (none && refused !== undefined && isCommandRefusal(refused))
         return refuse(context, refused);
-      return streamSSE(context, async (stream) => {
-        endsWithRequest(stream, context.req.raw.signal);
+      return liveStream(context, async (stream) => {
         for (const watch of tasks.filter((each) => !watched.includes(each))) {
           // eslint-disable-next-line no-await-in-loop -- written in the order named.
           await stream.writeSSE({ event: 'closed', data: watch.label });
@@ -671,13 +669,13 @@ async function seatOf(
   asks: Watching,
 ): Promise<Seated | undefined> {
   const { presence } = live;
-  const presented = await options.verify(context.req);
-  if (presence === undefined || typeof presented !== 'object') return undefined;
-  const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
-  if (isCommandRefusal(viewer)) return undefined;
-  const { personId, name, staff } = viewer;
-  const session = { sessionId: randomUUID(), personId, name, side: staff ? 'staff' : 'client' };
-  return { presence, session: session as Seated['session'] };
+  if (presence === undefined) return undefined;
+  return await seatFor(presence, async () => {
+    const presented = await options.verify(context.req);
+    if (typeof presented !== 'object') return;
+    const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
+    return isCommandRefusal(viewer) ? undefined : viewer;
+  });
 }
 
 function watching(
@@ -706,8 +704,9 @@ function watching(
  * again, of `task.execution`'s own admission, the internal activity the channel
  * reports: expiry, a lost membership, a revoked grant, a trashed or foreign
  * task and any external reader all refuse. It serves and audits nothing, since
- * the channel shows the person no content (C4 live-sync 6). Each answer is the
- * task's identifier, the topic, or its refusal.
+ * the channel shows the person no content (C4 live-sync 6). Each answer is its
+ * refusal, or at the door the task's identifier, the topic, and on a recheck
+ * the person admitted.
  */
 async function mayWatch(
   options: ApiOptions,
@@ -727,7 +726,7 @@ async function mayWatch(
   return admitted.map((answer) => {
     if (isCommandRefusal(answer)) return answer;
     if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
-    return answer.recordId;
+    return at === 'door' ? answer.recordId : answer.personId;
   });
 }
 
@@ -744,8 +743,7 @@ async function boardStream(
 ): Promise<Response> {
   const joined = await mayJoinBoard(options, context, businessId);
   if (isCommandRefusal(joined)) return refuse(context, joined);
-  return streamSSE(context, async (stream) => {
-    endsWithRequest(stream, context.req.raw.signal);
+  return liveStream(context, async (stream) => {
     await followBoardOn(stream, options, live, context, businessId, joined);
   });
 }
@@ -910,13 +908,6 @@ const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
 const NO_CREDENTIAL = 'no-credential';
 
-/** How many records a read handed out: a task is one, a list is its length. */
-function recordsIn(read: object): number {
-  const lists = ['tasks', 'persons', 'queue'].map((key) => (read as Record<string, unknown>)[key]);
-  const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
-  if (listed !== undefined) return listed.length;
-  return 'task' in read || 'sharedTask' in read ? 1 : 0;
-}
 /** The answer's outcome, as the detector reads it: no content, only scopes and a code. */
 function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
   const presented = context.get(PRESENTED) as VerifiedSubject | undefined;
