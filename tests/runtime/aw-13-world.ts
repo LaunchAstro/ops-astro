@@ -36,8 +36,11 @@ export interface TraceTarget {
   /** Each request's method and fixed ingestion header, in order. */
   readonly methods: string[];
   readonly ingestion: (string | undefined)[];
-  /** Trace ids the target holds: stored by an export, gone by a delete it did not skip. */
+  /** Trace ids the target holds, and their span ids: an export adds, a delete not skipped drops. */
   readonly stored: Set<string>;
+  readonly spans: Map<string, Set<string>>;
+  /** A case's stand-in for what the target receives: the body it stores and records instead. */
+  tamper?: ((method: string, body: string) => Promise<string>) | undefined;
   readonly origin: string;
   readonly custody: Custody;
   readonly canary: string;
@@ -49,18 +52,26 @@ export interface TraceTarget {
 export const TRACE_KEY: Buffer = Buffer.from('aw13-test-trace-key-not-a-secret');
 
 /**
- * The trace store's side: an export stores its trace ids; a delete removes
- * them unless the target is `skipping` (a success reply for work its guard
- * skipped); a read of one trace answers 404 once it is gone.
+ * The trace store's side: an export stores spans by trace id; a delete drops whole traces unless
+ * the target is `skipping` (success for work its guard skipped); a read of a trace or one of
+ * its spans 404s once it is gone.
  */
 function store(target: TraceTarget, method: string, url: string, body: string): number {
   if (method === 'POST') {
-    for (const [, id] of body.matchAll(/"traceId":"([0-9a-f]{32})"/gu)) target.stored.add(id ?? '');
+    const spans = /"traceId":"([0-9a-f]{32})","spanId":"([0-9a-f]{16})"/gu;
+    for (const [, traceId = '', spanId = ''] of body.matchAll(spans)) {
+      target.stored.add(traceId);
+      target.spans.set(traceId, (target.spans.get(traceId) ?? new Set<string>()).add(spanId));
+    }
   } else if (method === 'DELETE' && target.mode !== 'skipping') {
-    for (const id of (JSON.parse(body) as { traceIds: string[] }).traceIds)
+    for (const id of (JSON.parse(body) as { traceIds: string[] }).traceIds) {
       target.stored.delete(id);
+      target.spans.delete(id);
+    }
   } else if (method === 'GET') {
-    return target.stored.has(url.split('/').at(-1) ?? '') ? 200 : 404;
+    const id = url.split('/').at(-1) ?? '';
+    const held = url.includes('/observations/') ? [...target.spans.values()] : [target.stored];
+    return held.some((ids) => ids.has(id)) ? 200 : 404;
   }
   return 200;
 }
@@ -103,25 +114,30 @@ async function listen(
     const parts: Buffer[] = [];
     request.on('data', (chunk: Buffer) => parts.push(chunk));
     request.on('end', () => {
-      const body = Buffer.concat(parts).toString('utf8');
-      received.push(body);
-      target.paths.push(request.url ?? '');
-      target.authorizations.push(request.headers.authorization);
-      target.methods.push(request.method ?? '');
-      target.ingestion.push(request.headers['x-langfuse-ingestion-version'] as string | undefined);
-      const status =
-        target.mode === 'ok' || target.mode === 'skipping'
-          ? store(target, request.method ?? '', request.url ?? '', body)
-          : 200;
-      if (target.mode === 'slow') {
-        void sleep(2_000).then(() => answer(target, response, status));
-        return;
-      }
-      if (target.mode === 'down') {
-        request.socket.destroy();
-        return;
-      }
-      answer(target, response, status);
+      const sent = Buffer.concat(parts).toString('utf8');
+      void (async () => {
+        const body = (await target.tamper?.(request.method ?? '', sent)) ?? sent;
+        received.push(body);
+        target.paths.push(request.url ?? '');
+        target.authorizations.push(request.headers.authorization);
+        target.methods.push(request.method ?? '');
+        target.ingestion.push(
+          request.headers['x-langfuse-ingestion-version'] as string | undefined,
+        );
+        const status =
+          target.mode === 'ok' || target.mode === 'skipping'
+            ? store(target, request.method ?? '', request.url ?? '', body)
+            : 200;
+        if (target.mode === 'slow') {
+          void sleep(2_000).then(() => answer(target, response, status));
+          return;
+        }
+        if (target.mode === 'down') {
+          request.socket.destroy();
+          return;
+        }
+        answer(target, response, status);
+      })();
     });
   });
   await new Promise<void>((resolve) => {
@@ -167,6 +183,7 @@ export async function openTraceTarget(): Promise<TraceTarget> {
     methods: [],
     ingestion: [],
     stored: new Set<string>(),
+    spans: new Map<string, Set<string>>(),
   } as unknown as TraceTarget;
   const { server, port } = await listen(target, received);
   const custody = await custodyFor(folder, port, canary);
@@ -241,6 +258,10 @@ export async function awaitDue(s: Schedules): Promise<void> {
   throw new Error('no event became due');
 }
 
+/** The gaps whose body the target may have stored all the same (`trace-lease.ts`). */
+const MAYBE_STORED_GAP =
+  'target_timeout,target_unreachable,target_malformed_reply,target_oversized_reply';
+
 /**
  * Export until every event of the business is behind the cursor, so each
  * case starts from a clean one. An idle export with events still ahead is
@@ -249,6 +270,7 @@ export async function awaitDue(s: Schedules): Promise<void> {
  */
 export async function drain(s: Schedules): Promise<void> {
   t.target.mode = 'ok';
+  await ageLease(s, MAYBE_STORED_GAP);
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     // eslint-disable-next-line no-await-in-loop -- one batch after another
@@ -257,6 +279,31 @@ export async function drain(s: Schedules): Promise<void> {
     await sleep(50);
   }
   throw new Error('the export did not catch up');
+}
+
+/**
+ * Runs out the business's export lease now, as time would (#963). The drain
+ * runs out the hold a gap whose body may have landed keeps: the business's
+ * last gap has such a code, and the lease ends 60 to 65 s after that gap's
+ * transaction began, as the hold its own transaction wrote does (60 s from a
+ * clock read just after the gap). A lease written before the gap still fails
+ * it; one written within those 5 s after the gap's start passes too.
+ */
+export async function ageLease(s: Schedules, onlyAfter?: string): Promise<void> {
+  await rows(
+    s,
+    `update public.trace_export_cursors c
+        set lease_until = clock_timestamp() - interval '1 second'
+      where c.business_id = $1 and c.lease_holder is not null
+        and ($2::text[] is null or exists (
+              select 1 from (select g.code, g.recorded_at from public.trace_export_gaps g
+                              where g.business_id = $1
+                              order by g.recorded_at desc limit 1) last
+               where last.code = any($2::text[])
+                 and c.lease_until >= last.recorded_at + interval '60 seconds'
+                 and c.lease_until < last.recorded_at + interval '65 seconds'))`,
+    [s.business, onlyAfter === undefined ? null : `{${onlyAfter}}`],
+  );
 }
 
 async function ahead(s: Schedules, due = ''): Promise<number> {

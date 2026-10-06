@@ -60,6 +60,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.subject_resets'],
   // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
   ['si', 'ops.second_factor_codes'],
+  // 20261005190651 (C39-T): a Send Email hook message claimed by its send, by
+  // id digest, for every business; the application inserts and reads it only.
+  ['si', 'ops.auth_hook_messages'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // A map's versions are history; its components are retired by version, never deleted.
@@ -96,6 +99,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'trace_export_gaps'],
   // AW-13: a retention batch is a fact, never rewritten.
   ['si', 'trace_expiry_batches'],
+  // #475: a retention ask is a fact, never rewritten.
+  ['si', 'trace_expiry_asks'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
   // 20261005144947 (C40B): a reset token is written once, then spent by its column grant alone.
   ['si', 'inbox_attention inbox_delivery_attempts password_reset_tokens'],
@@ -128,6 +133,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0055 (C32): a client is written once and never deleted; C60 updates its
   // four privacy settings alone, by the column grant in COLUMN_UPDATES.
   ['si', 'clients'],
+  // 20261005200007 (C41-A): an onboarding and its steps are laid out once and
+  // never deleted; each moves on by the column grants in COLUMN_UPDATES.
+  ['si', 'onboarding_steps onboardings'],
   // C60: a client's written request for model use is kept as written.
   ['si', 'client_model_requests'],
   // 0056 (C58): an access ending is written, then its provider steps are
@@ -135,6 +143,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'access_endings'],
   // 0057 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
+  // 20261005235557 (C59): a factor reset is written, then its provider step is stamped by
+  // update; never deleted.
+  ['siu', 'factor_resets'],
   // 0065: the live change record, stamped by the writes' own triggers (C4);
   // the trash purge deletes a purged task's row.
   ['siud', 'live_changes'],
@@ -172,6 +183,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // the broker, and a repair is recorded once and never changed.
   ['s', 'connection_clients connections'],
   ['si', 'connection_repairs'],
+  // 20261005201200 (MP-14-8): tripwires and night round steps are written by the
+  // checks and the round (not built) and read here.
+  ['s', 'night_round_steps tripwires'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(
@@ -227,6 +241,9 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
+  // 20261005235557 (C59): a definer answering one boolean for a login of the caller's own
+  // business; PUBLIC may not execute it.
+  'public.factor_login_live_elsewhere',
 ];
 
 /** What the server said, reduced to what a contract can name. */
