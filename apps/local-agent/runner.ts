@@ -46,6 +46,8 @@ export interface LocalAnswer {
 
 export interface Runner {
   readonly origin: string;
+  /** The address the listener is bound to, as its socket reports it. */
+  readonly host: string;
   readonly port: number;
   close(): Promise<void>;
 }
@@ -266,6 +268,7 @@ export async function createRunner(
   };
   return {
     origin: `http://127.0.0.1:${String(address.port)}`,
+    host: address.address,
     port: address.port,
     close: async () => {
       closed ??= close();

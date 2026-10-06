@@ -223,6 +223,7 @@ describe('the runner’s door', () => {
 
   it('listens on loopback only', async () => {
     const { r } = await start();
+    expect(r.host).toBe('127.0.0.1');
     expect(new URL(r.origin).hostname).toBe('127.0.0.1');
   });
 
