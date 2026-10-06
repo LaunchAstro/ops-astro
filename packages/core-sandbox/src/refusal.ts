@@ -71,7 +71,9 @@ export type Why =
   | 'pin list'
   | 'site record'
   | 'record env'
-  | 'base env';
+  | 'base env'
+  | 'candidate'
+  | 'candidate record';
 
 /** R1's reasons (section 9), in the contract's order, `internal` last. */
 export const REASONS = [
