@@ -252,9 +252,7 @@ const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string,
     'chat.leave': ['conversationId', 'c71-g'],
   };
 
-/**
- * The named row for one the (c) and (d) cells miss; `undefined` if unknown (the matrix throws).
- */
+/** The named row for one the (c) and (d) cells miss; `undefined` if unknown (the matrix throws). */
 export function alternativeFor(name: CommandName): string | undefined {
   const bearing = IDENTIFIER_BEARING[name];
   if (bearing !== undefined) {
