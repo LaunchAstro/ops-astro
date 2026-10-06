@@ -6,6 +6,7 @@
 // trash is parked with its owner when the task is restored.
 
 import { describe, expect, it } from 'vitest';
+import { pathFaults } from '../operations/s0-5-effect-diff.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { detail, useMoveWorld } from './c41-a-move-world.ts';
 
@@ -83,6 +84,27 @@ describe.skipIf(serverUrl === undefined)('C41-A step moves at stop and restore',
     expect(await itemsOn([kickoff])).toEqual([
       { task: kickoff, recipient: the.admin.personId, work_state: 'open' },
     ]);
+  });
+
+  it('C41-A restore effect: the restore that parks a step writes the inbox item its command declares (S0-5)', async () => {
+    const steps = await onboard('Made-up Client Restore Effect');
+    const kickoff = String(steps.get('kickoff-call'));
+    const faults = await pathFaults(the.controls.fixture.db.admin, {
+      name: 'task.restore',
+      code: '200',
+      drives: ['records', 'inbox_items'],
+      prepare: async () => {
+        const trashed = await as(the.admin, 'task.trash', {
+          recordId: kickoff,
+          expectedRevision: await revisionOf(kickoff),
+        });
+        expect(trashed.status, JSON.stringify(trashed.body)).toBe(200);
+        await done(steps, 'welcome-email');
+        const batchId = detail(trashed)['batchId'];
+        return async () => String((await as(the.admin, 'task.restore', { batchId })).status);
+      },
+    });
+    expect(faults).toStrictEqual([]);
   });
 
   it('C41-A races: a restore racing the result that opens its task’s step leaves the step parked with its owner', async () => {
