@@ -220,6 +220,13 @@ vi.mock('../../packages/core-commands/src/commands/connector-repair.ts', async (
   ...(await original<object>()),
   startConnectorRepair: recorder('startConnectorRepair'),
 }));
+vi.mock('../../packages/core-commands/src/commands/mandates.ts', async (original) => ({
+  ...(await original<object>()),
+  fileMandate: recorder('fileMandate'),
+  revokeStandingMandate: recorder('revokeStandingMandate'),
+  promoteClass: recorder('promoteClass'),
+  demoteClass: recorder('demoteClass'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -256,6 +263,21 @@ vi.mock('../../packages/core-commands/src/commands/wayfinder.ts', async (origina
 vi.mock('../../packages/core-commands/src/commands/wayfinder-revision.ts', async (original) => ({
   ...(await original<object>()),
   reviseMap: recorder('reviseMap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-chart.ts', async (original) => ({
+  ...(await original<object>()),
+  chartMap: recorder('chartMap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-blocking.ts', async (original) => ({
+  ...(await original<object>()),
+  setBlocking: recorder('setBlocking'),
+  claimTicket: recorder('claimTicket'),
+  graduateFog: recorder('graduateFog'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-resolve.ts', async (original) => ({
+  ...(await original<object>()),
+  resolveTicket: recorder('resolveTicket'),
+  closeOutOfScope: recorder('closeOutOfScope'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-handback.ts', async (original) => ({
   ...(await original<object>()),
@@ -332,6 +354,14 @@ vi.mock('../../packages/core-commands/src/commands/chat.ts', async (original) =>
   ...(await original<object>()),
   sendDirect: recorder('sendDirect'),
   markOwnRead: recorder('markOwnRead'),
+}));
+vi.mock('../../packages/core-commands/src/commands/chat-groups.ts', async (original) => ({
+  ...(await original<object>()),
+  startGroupConversation: recorder('startGroupConversation'),
+  sendGroupMessage: recorder('sendGroupMessage'),
+  renameGroupConversation: recorder('renameGroupConversation'),
+  changeGroupConversationMembers: recorder('changeGroupConversationMembers'),
+  leaveGroupConversation: recorder('leaveGroupConversation'),
 }));
 vi.mock('../../packages/core-commands/src/commands/invitations.ts', async (original) => ({
   ...(await original<object>()),
@@ -422,6 +452,10 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'secret.clear': ['secretId'],
   'secret.set': ['clientId'],
   'connector.repair': ['connectionId'],
+  'mandate.file': ['clientId'],
+  'mandate.revoke': ['mandateId'],
+  'graduation.promote': ['classId'],
+  'graduation.demote': ['classId'],
   'preference.save': [],
   'preference.dismiss_tip': [],
   'session.end': [],
@@ -430,6 +464,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'legal.publish_version': ['versionId'],
   'live_correction.decide': ['correctionId', 'versionId'],
   'live_correction.request': ['partyId', 'taskId'],
+  'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
   'operations.record_gate_item': [],
@@ -448,6 +483,11 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'notifications.set_channel': [],
   'chat.send_direct': ['teammateId'],
   'chat.mark_read': ['conversationId'],
+  'chat.start_group': [],
+  'chat.send_group': ['conversationId'],
+  'chat.rename_group': ['conversationId'],
+  'chat.change_members': ['conversationId'],
+  'chat.leave': ['conversationId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'settings.set_money_step_up': [],
@@ -494,10 +534,15 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.set_planning_cap',
   'budget.top_up',
   'budget.write_off',
+  'chat.change_members',
   'chat.conversations',
+  'chat.leave',
   'chat.mark_read',
   'chat.messages',
+  'chat.rename_group',
   'chat.send_direct',
+  'chat.send_group',
+  'chat.start_group',
   'client.create',
   'client.list',
   'client.set_privacy',
@@ -518,6 +563,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'definition.release',
   'delegation.revoke',
   'gate.pending',
+  'graduation.demote',
+  'graduation.promote',
   'grant.revoke',
   'harness.read',
   'inbox.count',
@@ -533,6 +580,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'live_correction.decide',
   'live_correction.read',
   'live_correction.request',
+  'mandate.file',
+  'mandate.revoke',
+  'map.chart',
   'map.frontier',
   'map.view',
   'model.call',
@@ -803,6 +853,10 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'secret.clear', operationId: 'op', secretId: 's' },
   { command: 'access.reset_factor', operationId: 'op', holderId: 'person' },
   { command: 'connector.repair', operationId: 'op', connectionId: 'c' },
+  { command: 'mandate.file', operationId: 'op', clientId: 'c' },
+  { command: 'mandate.revoke', operationId: 'op', mandateId: 'm' },
+  { command: 'graduation.promote', operationId: 'op', classId: 'g' },
+  { command: 'graduation.demote', operationId: 'op', classId: 'g' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -841,6 +895,12 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'activation.roll_back', operationId: 'op', activationId: 'a' },
   { command: 'activation.turn_off', operationId: 'op', activationId: 'a' },
   { command: 'approval.revoke', operationId: 'op', approvalId: 'p' },
+  { command: 'map.chart', operationId: 'op', title: 't' },
+  { command: 'task.set_blocking', operationId: 'op', recordId: 'r', blockedBy: [] },
+  { command: 'task.claim', operationId: 'op', recordId: 'r' },
+  { command: 'map.graduate', operationId: 'op', recordId: 'r', patchId: 'p', tickets: [] },
+  { command: 'task.resolve', operationId: 'op', recordId: 'r', answer: 'a', gist: 'g' },
+  { command: 'task.close_out_of_scope', operationId: 'op', recordId: 'r', reason: 'x' },
   {
     command: 'live_correction.request',
     operationId: 'op',
@@ -929,6 +989,11 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
   { command: 'chat.send_direct', operationId: 'op', teammateId: 'mate', body: 'hello' },
   { command: 'chat.mark_read', operationId: 'op', conversationId: 'talk', upTo: 'then' },
+  { command: 'chat.start_group', operationId: 'op', name: 'crew', members: ['m1', 'm2'] },
+  { command: 'chat.send_group', operationId: 'op', conversationId: 'group', body: 'hi all' },
+  { command: 'chat.rename_group', operationId: 'op', conversationId: 'group', name: 'crew 2' },
+  { command: 'chat.change_members', operationId: 'op', conversationId: 'group', add: ['m3'] },
+  { command: 'chat.leave', operationId: 'op', conversationId: 'group' },
   { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
   { command: 'invitation.create', operationId: 'op', name: 'N', email: 'e', role: 'member' },
   { command: 'invitation.resend', operationId: 'op', invitationId: 'i' },
@@ -1028,6 +1093,10 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'secret.clear': ['clearCustodySecret', 'request'],
   'access.reset_factor': ['resetFactorOnSettings', 'request'],
   'connector.repair': ['startConnectorRepair', 'request'],
+  'mandate.file': ['fileMandate', 'request'],
+  'mandate.revoke': ['revokeStandingMandate', 'request'],
+  'graduation.promote': ['promoteClass', 'request'],
+  'graduation.demote': ['demoteClass', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -1055,6 +1124,12 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'activation.roll_back': ['rollBackActivation', 'request'],
   'activation.turn_off': ['turnOffActivationAsPerson', 'request'],
   'approval.revoke': ['revokeStandingApproval', 'request'],
+  'map.chart': ['chartMap', 'request'],
+  'task.set_blocking': ['setBlocking', 'request'],
+  'task.claim': ['claimTicket'],
+  'map.graduate': ['graduateFog', 'request'],
+  'task.resolve': ['resolveTicket', 'request'],
+  'task.close_out_of_scope': ['closeOutOfScope', 'request'],
   'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
@@ -1081,6 +1156,11 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.seen': ['stampOwnSeen', 'item'],
   'chat.send_direct': ['sendDirect', 'mate', 'hello'],
   'chat.mark_read': ['markOwnRead', 'talk', 'then'],
+  'chat.start_group': ['startGroupConversation', 'crew', ['m1', 'm2']],
+  'chat.send_group': ['sendGroupMessage', 'group', 'hi all'],
+  'chat.rename_group': ['renameGroupConversation', 'group', 'crew 2'],
+  'chat.change_members': ['changeGroupConversationMembers', 'group', 'request'],
+  'chat.leave': ['leaveGroupConversation', 'group'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
   'invitation.create': ['invitationAct', 'request'],
   'invitation.resend': ['invitationAct', 'request'],
@@ -1124,7 +1204,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and twenty-four from an expected revision', () => {
+  it('exempts the same one hundred and thirty-four from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

@@ -40,6 +40,8 @@ export const CASE = {
  */
 export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['task.create', { fields: { title: 'a task made while bravo is watched' } }],
+  // WF-2: a chart files a new map and its tickets, naming no existing record.
+  ['map.chart', { title: 'a map charted while bravo is watched' }],
   ['task.purge', {}],
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
@@ -164,7 +166,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The fifty-eight identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The sixty-two identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -174,6 +176,10 @@ export const IDENTIFIER_BEARING: Readonly<
   'grant.revoke': ['grantId', 'control'],
   'secret.clear': ['secretId', 'control'],
   'connector.repair': ['connectionId', 'control'],
+  'mandate.file': ['clientId', 'control'],
+  'mandate.revoke': ['mandateId', 'control'],
+  'graduation.promote': ['classId', 'control'],
+  'graduation.demote': ['classId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.accept_plan': ['gateId', 'gate'],
@@ -233,20 +239,20 @@ export const IDENTIFIER_BEARING: Readonly<
   'approval.revoke': ['approvalId', 'control'],
 };
 
-/**
- * Identifier-bearing operations whose foreign-against-fabricated comparison is
- * in their own isolation suite rather than in identifier-negatives.
- */
-const OWN_SUITE: Readonly<Partial<Record<CommandName, string>>> = {
-  'chat.send_direct': 'teammateId',
-  'chat.messages': 'conversationId',
-  'chat.mark_read': 'conversationId',
-};
+/** Identifier-bearing operations compared in their own isolation suite, not identifier-negatives. */
+const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string, suite: string]>>> =
+  {
+    'chat.send_direct': ['teammateId', 'c71-d'],
+    'chat.messages': ['conversationId', 'c71-d'],
+    'chat.mark_read': ['conversationId', 'c71-d'],
+    'chat.start_group': ['members', 'c71-g'],
+    'chat.send_group': ['conversationId', 'c71-g'],
+    'chat.rename_group': ['conversationId', 'c71-g'],
+    'chat.change_members': ['conversationId', 'c71-g'],
+    'chat.leave': ['conversationId', 'c71-g'],
+  };
 
-/**
- * The named row for an operation the (c) and (d) cells do not reach, or
- * `undefined` for one this file does not know, which the matrix throws on.
- */
+/** The named row for one the (c) and (d) cells miss; `undefined` if unknown (the matrix throws). */
 export function alternativeFor(name: CommandName): string | undefined {
   const bearing = IDENTIFIER_BEARING[name];
   if (bearing !== undefined) {
@@ -256,9 +262,15 @@ export function alternativeFor(name: CommandName): string | undefined {
       `and a fabricated ${operand} by status and raw bytes, audited at home (ledger I03)`
     );
   }
+  const own = OWN_SUITE[name];
+  if (own !== undefined) {
+    return (
+      `executed alternative: ${own[1]}-isolation.test.ts compares a foreign and a fabricated ` +
+      `${own[0]} by status and raw bytes, audited at home`
+    );
+  }
   if (name === 'run.child_handback') {
-    // AW-11: the body names nothing; the helper's own child credential is the
-    // target, so a foreign one and a made-up one are the operand compared.
+    // AW-11: the body names nothing; the target is the helper's own child credential.
     return (
       'executed alternative: aw-11-child-commands-isolation.test.ts "another business" ' +
       "compares another business's child credential and a fabricated one by status and bytes"
@@ -276,13 +288,6 @@ export function alternativeFor(name: CommandName): string | undefined {
     return (
       'executed alternative: c39-t-invitation-refusals.test.ts "C39-T isolation" compares ' +
       "another business's invitation and a fabricated one by code and raw bytes"
-    );
-  }
-  const own = OWN_SUITE[name];
-  if (own !== undefined) {
-    return (
-      `executed alternative: c71-d-isolation.test.ts compares a foreign and a fabricated ` +
-      `${own} by status and raw bytes, audited at home`
     );
   }
   if (TARGET_FREE.some(([op]) => op === name)) {

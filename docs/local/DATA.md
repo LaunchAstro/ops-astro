@@ -372,6 +372,13 @@ its one insert as the application's; its search path is `pg_catalog, pg_temp`, P
 nothing answers null. `tests/db/take-lease-path.test.ts` and
 `tests/db/lease-holder-guard.test.ts` prove it.
 
+The map read models' four writers (`map_summary_refresh` and its three
+triggers, WF-1) follow the same pattern (migration 20261006181500): they belong
+to `ops_astro_map_path` (no login, no bypass, not the owner), which reads what
+they count and writes `map_summaries` and `map_frontier` under row security, so
+the made-up guard judges a map edit on staging as the application's.
+`tests/db/click-through-seed-map.test.ts` proves it.
+
 `ops_astro_occurrence` (migration 0097, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's
 `business_id`, `id` and `revision` (for 0032's trigger), the columns of
@@ -547,14 +554,18 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 - `team.list {}` → the staff with an active membership and each one's
   availability (`person_availability`, 0066, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`
-- `chat.conversations {}` → the reader's own team conversations (C71-D), each
-  with its members and its unread, derived from the reader's own marker
+- `chat.conversations {}` → the reader's own team conversations, direct
+  (C71-D) and group (C71-G), each with its kind, a group's name, its current
+  members and its unread, derived from the reader's own marker
   (`team_conversation_members.last_read_at`, 20261006074341, set only by that person);
-  the reader's member row is the query's filter, so nobody else's is listed
+  the reader's member row is the query's filter, so nobody else's is listed.
+  To a member who has left or been removed, a group shows no name and no
+  members: nothing of it changed after they left
 - `chat.messages { conversationId }` → one of the reader's conversations'
-  messages: `task_comment` records with audience `direct`, anchored by their
-  `conversation` field, written while the reader was a member; any other is
-  `NOT_FOUND`
+  messages: `task_comment` records with audience `direct` or `group`, anchored
+  by their `conversation` field, written while the reader was a member (from
+  `joined_at` to `left_at`; a re-added member's window starts again at the new
+  join); any other is `NOT_FOUND`
 
 The other six, `task.queue`, `task.ledger`, `preset.plan`, `settings.read`,
 `session.capabilities` and `access.read` (Settings ▸ Access, C32, under

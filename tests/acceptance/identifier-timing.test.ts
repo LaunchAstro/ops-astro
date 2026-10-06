@@ -27,6 +27,7 @@ import { grantTo, type Member } from '../commands/fixture.ts';
 import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
+import { enrolCaller } from './cast.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { foreignInvitation } from './foreign-invitation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
@@ -228,21 +229,26 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** A direct conversation of bravo's, opened by bravo's admin writing to bea. */
+  /** A group conversation of bravo's, started by bravo's admin through the command. */
   async function bravoConversation(): Promise<string> {
     const { world } = w.h;
     const bram = w.foreign.admin;
+    const bix = await enrolCaller(world.db, world.bravo, 'bravo', 'bix', {
+      membership: true,
+      actions: [],
+      collections: [],
+    });
     await world.db.app.withBusiness(world.bravo, async (tx) => {
       await grantTo(tx, bram as unknown as Member, 'comment', undefined, false, 'chat');
     });
-    const sent = await w.person(
+    const started = await w.person(
       bram,
-      'chat.send_direct',
-      { teammateId: world.bea.personId, body: 'bravo timing' },
+      'chat.start_group',
+      { name: 'bravo timing', members: [world.bea.personId, bix.personId] },
       'bravo',
     );
-    const id = (sent.body['detail'] as Body | undefined)?.['conversationId'];
-    if (typeof id !== 'string') throw new Error(`bravo opened no conversation: ${sent.text}`);
+    const id = (started.body['detail'] as Body | undefined)?.['conversationId'];
+    if (typeof id !== 'string') throw new Error(`bravo started no group: ${started.text}`);
     return id;
   }
 
@@ -275,6 +281,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.set_type': { taskType: 'build' },
       'map.scope': { client: randomUUID() },
       'map.revise': { notes: NOBODY },
+      'task.set_blocking': { blockedBy: [] },
+      'map.graduate': { patchId: randomUUID(), tickets: [{ title: NOBODY, type: 'task' }] },
+      'task.resolve': { answer: NOBODY, gist: 'a gist nobody should find' },
+      'task.close_out_of_scope': { reason: NOBODY },
     };
     // Named by `recordId` (`targetKeyOf`): task.receipt names its task by
     // `attemptId` and has its own cell below.
@@ -405,6 +415,23 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('connector.repair', 'connectionId', f.connectionId, (connectionId) => ({
       connectionId,
     }));
+    // MP-14-10a: bravo's mandate, class and client named in an alpha change.
+    const ceiling = { amountMinor: 100, currency: 'AUD' };
+    const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+    byAda('mandate.revoke', 'mandateId', f.mandateId, (mandateId) => ({ mandateId }));
+    byAda('graduation.promote', 'classId', f.classId, (classId) => ({
+      classId,
+      ceiling,
+      expiresAt,
+    }));
+    byAda('graduation.demote', 'classId', f.classId, (classId) => ({ classId }));
+    byAda('mandate.file', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      classes: ['social.post'],
+      ceiling,
+      expiresAt,
+      label: NOBODY,
+    }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
       holderId,
@@ -531,15 +558,23 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     );
     if (bravoItem === undefined) throw new Error('bravo raised no inbox item to aim at');
     byAda('inbox.seen', 'itemId', bravoItem.id, (itemId) => ({ itemId }));
-    // C71-D: bravo's admin and bravo's conversation, named from alpha.
-    const bravoDirect = await bravoConversation();
+    // C71-D and C71-G: bravo's people and bravo's group, named from alpha.
+    const bravoGroup = await bravoConversation();
+    const mia = w.h.world.mia.personId;
     const bram = f.admin.personId as string;
     byAda('chat.send_direct', 'teammateId', bram, (teammateId) => ({ teammateId, body: NOBODY }));
-    byAda('chat.messages', 'conversationId', bravoDirect, (conversationId) => ({ conversationId }));
-    byAda('chat.mark_read', 'conversationId', bravoDirect, (conversationId) => ({
-      conversationId,
-      upTo: new Date().toISOString(),
-    }));
+    byAda('chat.start_group', 'members', bram, (id) => ({ name: 'timing', members: [mia, id] }));
+    const inGroup: readonly [CommandName, Body][] = [
+      ['chat.messages', {}],
+      ['chat.mark_read', { upTo: new Date().toISOString() }],
+      ['chat.send_group', { body: NOBODY }],
+      ['chat.rename_group', { name: 'timing' }],
+      ['chat.change_members', { add: [mia] }],
+      ['chat.leave', {}],
+    ];
+    for (const [op, extra] of inGroup) {
+      byAda(op, 'conversationId', bravoGroup, (conversationId) => ({ conversationId, ...extra }));
+    }
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',
@@ -592,11 +627,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 96 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 110 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(96);
-    expect(names).toHaveLength(96);
+    expect(new Set(names).size, 'distinct operations').toBe(110);
+    expect(names).toHaveLength(110);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

@@ -108,6 +108,13 @@ export const DECLARED: Readonly<
   // neither; it ends untyped, so the share planted below still applies.
   'task.set_type': { carry: 'not carried', plant: retypedAndBack },
   'map.revise': { carry: 'not carried', plant: 'revises a map; the duplicated task is none' },
+  // WF-2: the shell is a new task, so none of a ticket's chart, claim, blocking or close.
+  'map.chart': { carry: 'not carried', plant: 'charts a new map; the duplicated task is none' },
+  'map.graduate': { carry: 'not carried', plant: 'graduates a map’s fog; the task is no map' },
+  'task.claim': { carry: 'not carried', plant: 'the assignee, planted by task.assign' },
+  'task.set_blocking': { carry: 'not carried', plant: 'blocks links: needs a second task' },
+  'task.resolve': { carry: 'not carried', plant: 'ends the old task; task.start plants state' },
+  'task.close_out_of_scope': { carry: 'not carried', plant: 'a ticket of a map only' },
   'task.start': {
     carry: 'not carried',
     plant: async (taskId) =>
@@ -207,6 +214,11 @@ export const DECLARED: Readonly<
   'run.child_handback': { carry: 'not carried', plant: 'needs a child run' },
   'chat.send_direct': { carry: 'not carried', plant: 'a team conversation’s, never on a task' },
   'chat.mark_read': { carry: 'not carried', plant: 'the reader’s own marker, not the task' },
+  'chat.start_group': { carry: 'not carried', plant: 'a team group and its members, no task' },
+  'chat.send_group': { carry: 'not carried', plant: 'a team group’s message, never on a task' },
+  'chat.rename_group': { carry: 'not carried', plant: 'a team group’s own name' },
+  'chat.change_members': { carry: 'not carried', plant: 'a team group’s member rows' },
+  'chat.leave': { carry: 'not carried', plant: 'the caller’s own member row' },
   // C33: an automation of the business, carrying no task.
   'activation.change': { carry: 'not carried', plant: 'an automation, not task content' },
   'definition.release': { carry: 'not carried', plant: 'an automation, not task content' },
@@ -220,6 +232,11 @@ export const DECLARED: Readonly<
   'approval.revoke': { carry: 'not carried', plant: 'an automation, not task content' },
   // MP-14-7a: a repair names a connection, never task content.
   'connector.repair': { carry: 'not carried', plant: 'a connection, not task content' },
+  // MP-14-10a: a standing mandate or a graduation row of a client, never task content.
+  'mandate.file': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  'mandate.revoke': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  'graduation.promote': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  'graduation.demote': { carry: 'not carried', plant: 'a client mandate, not task content' },
   // C80: a live correction is the site's, decided by its approver; a duplicate carries none.
   'live_correction.request': { carry: 'not carried', plant: 'needs a live site page' },
   'live_correction.decide': { carry: 'not carried', plant: 'needs a requested correction' },

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the WF-3 map view's three isolation crossings: another business, another client (both maps client-scoped, a grant on map A only, map A read as the positive control) and a live delegation (its own comment applied, then the exact delegation refusals), with canaries absent from every page and answer"
+}

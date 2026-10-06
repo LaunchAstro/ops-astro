@@ -113,6 +113,10 @@ const GRANTS_BY_ROLE = {
     ['custody', 'manage'],
     // The connector fleet on Connections & signal (MP-14-7a).
     ['connection', 'read'],
+    // Standing mandates and graduation (MP-14-10a): filing, revoking,
+    // promoting and demoting are `mandate:manage`, the owner's and
+    // administrators' and never an agent's; a money key, so C59's step-up.
+    ['mandate', 'manage'],
     // A person's own conversations with the agent (AW-03): the owner and
     // administrators hold `conversation:write` (the permission key catalogue).
     // `conversation:read`, the read-any grant, is seeded to nobody: it is given
@@ -151,6 +155,9 @@ const GRANTS_BY_ROLE = {
     // Team conversations (C71-D): `chat:comment`, an agency member's key;
     // within a conversation the query holds it to its members.
     ['chat', 'comment'],
+    // Group conversations (C71-G): `chat:manage`, a group's creator's and the
+    // owner's and administrators', renames one and changes its members.
+    ['chat', 'manage'],
     // Settings ▸ Workflow triggers (C33): releasing a definition version is
     // `automation:manage`, the owner's and administrators' and never an agent's.
     ['automation', 'manage'],

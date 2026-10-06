@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A stand-in for `codex exec --json` (LA-1). It records what it was given
-// (argv, stdin, environment, working folder) and its pid in its CODEX_HOME's calls.jsonl
-// and answers as that folder's fake.json says: a reply, extra event lines,
-// a tool item, a failed turn, the plan's usage limit, raw output, the
-// tokens used, an exit code or a wait. It never
-// reaches a model.
+// A stand-in for `codex exec --json` and `codex login status` (LA-1). An
+// exec records what it was given (argv, stdin, environment, working folder)
+// and its pid in its CODEX_HOME's calls.jsonl and answers as that folder's
+// fake.json says: a reply, extra event lines, a tool item, a failed turn, the
+// plan's usage limit, raw output, the tokens used, an exit code or a wait.
+// The login answers as its `login` knob says. It never reaches a model.
 
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,6 +14,15 @@ import { join } from 'node:path';
 const home = process.env.CODEX_HOME ?? '';
 const knobsFile = join(home, 'fake.json');
 const knobs = existsSync(knobsFile) ? JSON.parse(readFileSync(knobsFile, 'utf8')) : {};
+
+// `codex login status`: the login fake.json names (ChatGPT unless it says otherwise).
+if (process.argv[2] === 'login') {
+  const login = knobs.login ?? 'chatgpt';
+  if (login === 'chatgpt') process.stdout.write('Logged in using ChatGPT\n');
+  else if (login === 'apikey') process.stdout.write('Logged in using an API key - sk-proj-***\n');
+  else process.stdout.write('Not logged in\n');
+  process.exit(login === 'none' ? 1 : 0);
+}
 
 let stdin = '';
 process.stdin.setEncoding('utf8');

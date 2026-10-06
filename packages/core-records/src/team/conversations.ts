@@ -64,21 +64,6 @@ export async function readConversationTypes(
     : { conversationTypeId, commentTypeId };
 }
 
-/**
- * Whether a person is staff here: an active membership as owner, administrator
- * or member. A client's person and an agent are never one, so never a member.
- */
-export async function isStaff(tx: TenantQuery, personId: string): Promise<boolean> {
-  if (!isUuid(personId)) return false;
-  const rows = await tx.query(
-    `select 1 from public.memberships
-      where business_id = $1 and person_id = $2 and active
-        and role_key in ('owner', 'admin', 'member')`,
-    [tx.businessId, personId],
-  );
-  return rows.length > 0;
-}
-
 /** The server's now, to the millisecond a comment's `posted_at` carries. */
 const NOW_MS = `date_trunc('milliseconds', now())`;
 
@@ -90,10 +75,11 @@ const CLOCK_MS = `date_trunc('milliseconds', clock_timestamp())`;
  * transaction ends. A message is stamped and placed (`created_at`, strictly
  * after the one before) and a marker set under this lock, so a message that
  * commits later is always placed after any marker moved before it, and never
- * hides behind one, even in the same millisecond.
+ * hides behind one, even in the same millisecond. The key takes the id in
+ * lower case, so every spelling of one conversation's id takes the same lock.
  */
 export async function lockConversation(tx: TenantQuery, conversationId: string): Promise<void> {
-  await advisoryLock(tx, `chat.conversation:${tx.businessId}:${conversationId}`);
+  await advisoryLock(tx, `chat.conversation:${tx.businessId}:${conversationId.toLowerCase()}`);
 }
 
 /**
@@ -186,8 +172,9 @@ const MEMBER_READS = `
 export interface ConversationSummary {
   readonly conversationId: string;
   readonly kind: ConversationKind;
+  /** A group's name; null on a direct conversation, and to a member who has left. */
   readonly name: string | null;
-  /** Every current member's person id, the reader included. */
+  /** Every current member's person id, the reader included; none to one who has left. */
   readonly members: readonly string[];
   readonly lastRead: string | null;
   readonly lastMessageAt: string | null;
@@ -210,10 +197,13 @@ export async function listConversations(
     readonly last_message_at: Date | null;
     readonly unread: string;
   }>(
-    `select m.conversation_id as id, r.txt_1 as kind, r.txt_2 as name, m.last_read_at,
-            array(select o.person_id::text from public.team_conversation_members o
-                   where o.business_id = m.business_id and o.conversation_id = m.conversation_id
-                     and o.left_at is null order by o.joined_at, o.person_id) as members,
+    `select m.conversation_id as id, r.txt_1 as kind, m.last_read_at,
+            case when m.left_at is null then r.txt_2 end as name,
+            case when m.left_at is null then array(
+              select o.person_id::text from public.team_conversation_members o
+               where o.business_id = m.business_id and o.conversation_id = m.conversation_id
+                 and o.left_at is null order by o.joined_at, o.person_id)
+            else '{}' end as members,
             (select max(c.ts_1) from public.records c where ${MEMBER_READS}) as last_message_at,
             (select count(*) from public.records c
                join public.actors a on a.business_id = c.business_id and a.id = c.uuid_2

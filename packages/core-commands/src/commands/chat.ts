@@ -40,6 +40,7 @@ import {
   shareAccessLock,
   subjectsOf,
   writeComment,
+  type ConversationTypes,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
 import { isInternalReader } from '../reads/tasks.ts';
@@ -62,16 +63,8 @@ export async function sendDirect(
   if (!isInternalReader(session.roleKey)) return refused(refuseNotFound());
   const words = commentBodyOf(body);
   if (typeof words !== 'string') return words;
-  const types = await readConversationTypes(tx);
-  if (types === undefined) {
-    return refused(
-      refuseCommand(
-        'DEPENDENCY_NOT_LANDED',
-        [context.declaration.name, 'team_conversation'],
-        NO_COMMENT_TYPE_FIXES,
-      ),
-    );
-  }
+  const types = await conversationTypesFor(tx, context);
+  if (!('conversationTypeId' in types)) return types;
   if (teammateId.toLowerCase() === session.personId || !(await isStaff(tx, teammateId))) {
     return refused(refuseNotFound());
   }
@@ -83,17 +76,51 @@ export async function sendDirect(
   );
   const lost = await standsNow(tx, context, teammateId.toLowerCase());
   if (lost !== undefined) return refused(lost);
+  return await writeMessage(tx, context, types, conversationId, 'direct', words);
+}
+
+/**
+ * A message into a conversation whose lock the caller holds: a comment on the
+ * one comment record with the conversation's audience, then the sender's own
+ * marker past it (R36). The one path for a direct and a group message.
+ */
+export async function writeMessage(
+  tx: TenantQuery,
+  context: CommandContext,
+  types: ConversationTypes,
+  conversationId: string,
+  audience: 'direct' | 'group',
+  words: string,
+): Promise<HandlerOutcome> {
   const commentId = await writeComment(tx, types.commentTypeId, {
     taskId: null,
     conversationId,
-    authorActorId: session.actorId,
+    authorActorId: context.session.actorId,
     commentType: 'note',
-    audience: 'direct',
+    audience,
     body: words,
     source: context.entryPoint,
   });
-  await moveReadMarker(tx, conversationId, session.personId, 'now');
+  await moveReadMarker(tx, conversationId, context.session.personId, 'now');
   return applied(conversationId, null, { conversationId, commentId });
+}
+
+/** The conversation types, or the refusal a business without them is owed. */
+export async function conversationTypesFor(
+  tx: TenantQuery,
+  context: CommandContext,
+): Promise<ConversationTypes | HandlerOutcome> {
+  const types = await readConversationTypes(tx);
+  return (
+    types ??
+    refused(
+      refuseCommand(
+        'DEPENDENCY_NOT_LANDED',
+        [context.declaration.name, 'team_conversation'],
+        NO_COMMENT_TYPE_FIXES,
+      ),
+    )
+  );
 }
 
 export async function markOwnRead(
@@ -123,7 +150,7 @@ export async function markOwnRead(
  * then the declaration's grant (none for the reader's own marker), then the
  * recipient is still staff. Nothing, or the refusal the next call would get.
  */
-async function standsNow(
+export async function standsNow(
   tx: TenantQuery,
   context: CommandContext,
   recipientId: string | null,

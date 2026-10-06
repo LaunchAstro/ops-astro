@@ -65,6 +65,27 @@ const INBOX_SELF: ReadonlySet<string> = new Set([
   'notifications.set_channel',
 ]);
 
+/**
+ * The team conversation rows that ask the caller's own membership first: the
+ * read marker (C71-D) and a group's rename, members and leave (C71-G). Each
+ * with where its refusals are proved.
+ */
+const CHAT_SELF: ReadonlyMap<string, string> = new Map([
+  [
+    'chat.mark_read',
+    'not applicable: the reader’s own read marker; a conversation they are not ' +
+      'in is NOT_FOUND in tests/api/c71-d-direct-messages.test.ts',
+  ],
+  ...['chat.rename_group', 'chat.change_members', 'chat.leave'].map(
+    (name) =>
+      [
+        name,
+        'not applicable: a group they are not in is NOT_FOUND, and chat:manage is asked ' +
+          'of a member who did not start it, in tests/api/c71-g-group-conversations.test.ts',
+      ] as const,
+  ),
+]);
+
 if (serverUrl === undefined) {
   console.warn('acceptance/matrix: DATABASE_URL is unset, so nothing below ran.');
 }
@@ -306,15 +327,11 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           continue;
         }
-        if (declaration.name === 'chat.mark_read' && grants !== undefined) {
-          // C71-D: the reader's own marker, no grant asked, so nobody is R2 for it.
-          except(
-            caller.name,
-            'e-no-grant',
-            declaration.name,
-            'not applicable: the reader’s own read marker; a conversation they are not ' +
-              'in is NOT_FOUND in tests/api/c71-d-direct-messages.test.ts',
-          );
+        const chatOwn = CHAT_SELF.get(declaration.name);
+        if (chatOwn !== undefined && grants !== undefined) {
+          // C71-D and C71-G: asked of the caller's own member row before any
+          // grant, so nobody is R2 for it here.
+          except(caller.name, 'e-no-grant', declaration.name, chatOwn);
           continue;
         }
         if (declaration.authorisedOn === 'self' && grants !== undefined) {

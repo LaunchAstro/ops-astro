@@ -207,6 +207,7 @@ export {
   mapTicketCondition,
   OWNER_TYPES,
   TASK_TYPES,
+  wayfinderCondition,
   wayfinderFacts,
   type TaskType,
   type WayfinderFacts,
@@ -240,3 +241,5 @@ export * from './connections/signal.ts';
 // Graduation and standing mandates (MP-14-10a): the region's rows and core's check.
 export * from './mandates/mandates.ts';
 export * from './mandates/question.ts';
+// The mandate writers (MP-14-10a), each in core's lock order.
+export * from './mandates/writes.ts';

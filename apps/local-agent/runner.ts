@@ -19,14 +19,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 import { LOCAL_GPT_BODY_LIMIT, LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
-import { promptOf, runCodex, UNKNOWN } from './codex.ts';
-import {
-  DEFAULT_MODEL,
-  decide,
-  REFUSAL_MESSAGES,
-  UNKNOWN_CALL_TOKENS,
-  type CallRefusal,
-} from './gate.ts';
+import { promptOf, runCodex, UNKNOWN, type CodexResult } from './codex.ts';
+import { callNeed, DEFAULT_MODEL, decide, REFUSAL_MESSAGES, type CallRefusal } from './gate.ts';
 import { holdHome } from './home-lock.ts';
 import { appendLedger, type LedgerRow } from './ledger.ts';
 import type { RunnerSettings } from './settings.ts';
@@ -116,16 +110,16 @@ interface RunnerState {
   queue: Promise<unknown>;
 }
 
-/** The row a call leaves: its reported tokens, nothing when nothing ran, or UNKNOWN_CALL_TOKENS. */
+/** The row a call leaves: its reported tokens, nothing when nothing ran, or its need when unknown. */
 function rowOf(
   id: string,
-  call: CallRequest,
+  call: CallRequest & { readonly need: number },
   result: Awaited<ReturnType<typeof runCodex>>,
 ): LedgerRow {
   const at = new Date().toISOString();
   if (result === null) return { id, at, model: call.model, inputTokens: 0, outputTokens: 0 };
   if (result === UNKNOWN) {
-    return { id, at, model: call.model, inputTokens: UNKNOWN_CALL_TOKENS, outputTokens: 0 };
+    return { id, at, model: call.model, inputTokens: call.need, outputTokens: 0 };
   }
   const { model, inputTokens, outputTokens } = result;
   return { id, at, model, inputTokens, outputTokens };
@@ -159,24 +153,43 @@ async function complete(
     log('LOCAL_CAP_REACHED: the ledger could not be written; fix it and restart the runner.');
     return refusal(call.model, 'LOCAL_CAP_REACHED');
   }
-  const decision = decide(settings, call.model);
+  const prompt = promptOf(call.fields);
+  const charged = { ...call, need: callNeed(prompt) };
+  const decision = decide(settings, call.model, charged.need);
   if (!decision.ok) {
     log(`${decision.code}: ${REFUSAL_MESSAGES[decision.code]}`);
     return refusal(call.model, decision.code);
   }
   // Charged as unknown before anything runs, so a runner stopped mid-call never counts it as nothing.
   const id = randomUUID();
-  if (!recorded(settings, state, rowOf(id, call, UNKNOWN))) {
+  if (!recorded(settings, state, rowOf(id, charged, UNKNOWN))) {
     return refusal(call.model, 'LOCAL_GPT_FAILED');
   }
   const run = { ...settings, timeoutMs: Math.min(settings.timeoutMs, left) };
-  const result = await runCodex(run, call.model, promptOf(call.fields), signal);
+  const result = await runCodex(run, call.model, prompt, signal);
   if (
-    !recorded(settings, state, rowOf(id, call, result)) ||
+    !recorded(settings, state, rowOf(id, charged, result)) ||
     result === null ||
     result === UNKNOWN
   ) {
     return refusal(call.model, 'LOCAL_GPT_FAILED');
+  }
+  return answerOf(call, result, decision.tokensLeft, log);
+}
+
+/**
+ * A finished call's answer. Codex reports usage only at the end, so a call
+ * that used more than the tokens left when it was let in is recorded, never answered.
+ */
+function answerOf(
+  call: CallRequest,
+  result: CodexResult,
+  tokensLeft: number,
+  log: (line: string) => void,
+): LocalAnswer {
+  if (result.inputTokens + result.outputTokens > tokensLeft) {
+    log(`LOCAL_CAP_REACHED: ${REFUSAL_MESSAGES.LOCAL_CAP_REACHED}`);
+    return refusal(call.model, 'LOCAL_CAP_REACHED');
   }
   if (result.limited) {
     log(`LOCAL_PLAN_LIMIT: ${REFUSAL_MESSAGES.LOCAL_PLAN_LIMIT}`);

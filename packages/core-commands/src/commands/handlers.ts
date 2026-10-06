@@ -11,8 +11,8 @@
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
-import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
+import type { Handler, RequestOf, WriteName } from './handler-types.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
@@ -30,6 +30,7 @@ import { setNotificationChannel } from './settings-write.ts';
 import { setting } from './handlers-setting.ts';
 import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
 import { startConnectorRepair } from './connector-repair.ts';
+import { demoteClass, fileMandate, promoteClass, revokeStandingMandate } from './mandates.ts';
 import { recordIncident } from './privacy-write.ts';
 import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { issueCredential, revokeCredential } from './credential-write.ts';
@@ -73,30 +74,16 @@ import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { decideLiveCorrection, requestLiveCorrection, setApprover } from './live-corrections.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
-import { markOwnRead, sendDirect } from './chat.ts';
+import { CHAT_HANDLERS } from './chat-handlers.ts';
 import { invitationAct } from './invitations.ts';
-import { scopeMap, setTaskType } from './wayfinder.ts';
 import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
-import { reviseMap } from './wayfinder-revision.ts';
 import {
   adoptActivationVersion,
   revokeStandingApproval,
   rollBackActivation,
   turnOffActivationAsPerson,
 } from './automation-approvals.ts';
-
-/**
- * Each write's request, by name. An intersection rather than `Extract`, so the
- * one union member that five owning operations share narrows to each of them.
- */
-type WriteName = CommandRequest['command'];
-type RequestOf<K extends WriteName> = CommandRequest & { readonly command: K };
-
-type Handler<K extends WriteName> = (
-  tx: TenantQuery,
-  context: CommandContext,
-  request: RequestOf<K>,
-) => Promise<HandlerOutcome>;
+import { WAYFINDER_HANDLERS } from './handlers-wayfinder.ts';
 
 const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.create': createTask,
@@ -158,6 +145,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'secret.set': (tx, context, request) => setCustodySecret(tx, context, request),
   'secret.clear': (tx, context, request) => clearCustodySecret(tx, context, request),
   'connector.repair': (tx, context, request) => startConnectorRepair(tx, context, request),
+  'mandate.file': (tx, context, request) => fileMandate(tx, context, request),
+  'mandate.revoke': (tx, context, request) => revokeStandingMandate(tx, context, request),
+  'graduation.promote': (tx, context, request) => promoteClass(tx, context, request),
+  'graduation.demote': (tx, context, request) => demoteClass(tx, context, request),
 
   'privacy.record_incident': recordIncident,
   'legal.draft_version': draftVersion,
@@ -212,9 +203,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
 
-  'task.set_type': setTaskType,
-  'map.revise': reviseMap,
-  'map.scope': scopeMap,
+  // Wayfinder (WF-1, WF-2), in their own file.
+  ...WAYFINDER_HANDLERS,
   // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
   'budget.set_planning_cap': setPlanningCap,
   // AW-03: the conversation's first message mints it; later ones are its owner's.
@@ -256,9 +246,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
-  // C71-D: the sender and reader are the session's; a body names only the teammate or conversation.
-  'chat.send_direct': (tx, context, chat) => sendDirect(tx, context, chat.teammateId, chat.body),
-  'chat.mark_read': (tx, context, chat) => markOwnRead(tx, context, chat.conversationId, chat.upTo),
+  // C71-D and C71-G: team chat, in `chat-handlers.ts` (moved whole for the line cap).
+  ...CHAT_HANDLERS,
   // C39-T: a person's acts on a team invitation, under `access:share`.
   'invitation.create': invitationAct,
   'invitation.resend': invitationAct,

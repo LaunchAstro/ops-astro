@@ -41,7 +41,7 @@ if (serverUrl === undefined) {
 
 /** Every path is a collection and an operation; the collections are named in the case below. */
 const PATH_SHAPE =
-  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|chat|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation|approval|invitation|record|onboarding|live_correction)\/[a-z_]+$/u;
+  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|chat|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation|approval|invitation|record|onboarding|mandate|graduation|live_correction)\/[a-z_]+$/u;
 
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
@@ -86,7 +86,7 @@ describe('the surface as a table', () => {
     // AW-05's budget stop answers; `definition`, AW-04's attribution; `trace`, AW-13's readers;
     // `harness`, AW-12's result. `operations` and `privacy` are C55's view and its incident record,
     // and `legal` is C81's documents, asked of `privacy`. `credential` is API-2's agent credential.
-    // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
+    // `time` is MP-4-6's (time entries, rows beside a task); `mandate`, `graduation` MP-14-10a.
     // By piece: `tag` MP-4-11; `chat` C71-D; `invitation` C39-T; `map` WF-1; `automation`,
     // `activation` C33; `approval` C52-A; `record`, `onboarding` C41-A; `live_correction` C80.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
@@ -261,13 +261,14 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
     expect(missing).toStrictEqual([]);
   });
 
-  it('finds fifteen of them, which is what makes nine commands too few', () => {
+  it('finds sixteen of them, which is what makes nine commands too few', () => {
     expect(named).toStrictEqual([
       'task.assign',
       'task.complete',
       'task.move',
       'task.reopen',
       'task.reparent',
+      'task.resolve',
       'task.set_adhoc',
       'task.set_audience',
       'task.set_category',
@@ -279,10 +280,9 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
       'task.start',
       'task.triage',
     ]);
-    // Fifteen names, and only two of them — complete and reopen — are among
-    // the contract's nine commands. The other thirteen are why this part declares
-    // more than nine, and `task.rank` is a fifteenth operation the mechanics
-    // need that neither list carries.
+    // Sixteen names, and only two of them — complete and reopen — are among the contract's nine
+    // commands. The other fourteen are why this part declares more than nine, and `task.rank` is
+    // a seventeenth operation the mechanics need that neither list carries.
     expect(named.filter((name) => CONTRACT_NINE.includes(name as CommandName))).toStrictEqual([
       'task.complete',
       'task.reopen',

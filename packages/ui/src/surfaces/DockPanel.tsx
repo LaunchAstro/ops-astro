@@ -22,6 +22,8 @@ export interface DockPanel {
   /** Where the last walk of the dock's history puts this panel's scroll, if anywhere. */
   readonly scrollTop?: number | undefined;
   readonly body: ReactNode;
+  /** The head's New (DP-02): drawn first in the head, where a panel files something new. */
+  readonly onNew?: { readonly label: string; readonly press: () => void } | undefined;
 }
 
 /** What a panel hears and hands back: the application decides what each press means. */
@@ -82,6 +84,17 @@ function DockPanelHead(props: {
     <header className="dpanel__head">
       <h2 className="dpanel__name">{panel.label}</h2>
       <div className="dpanel__acts">
+        {panel.onNew === undefined ? null : (
+          <button
+            className="dpanel__btn"
+            type="button"
+            data-act="new"
+            aria-label={panel.onNew.label}
+            onClick={panel.onNew.press}
+          >
+            <Icon name="plus" />
+          </button>
+        )}
         <a
           className="dpanel__btn"
           data-act="door"

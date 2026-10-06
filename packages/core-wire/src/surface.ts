@@ -30,11 +30,10 @@
 // `handlers.ts`, keyed by the same name,
 // because the web client imports this table and must not import the database.
 
-import type { Action } from '../../core-records/src/index.ts';
 import type { CommandName } from './command-names.ts';
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
-import { WRITE_OPERANDS } from './write-operands.ts';
+import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
 
@@ -49,46 +48,6 @@ export type { Operand, OperandKind, OperandSpec } from './write-operands.ts';
  */
 const TASK_PLACEMENT_LOCK = 'task.placement';
 
-function declare(
-  name: CommandName,
-  action: Action,
-  options: {
-    readonly collection?: string;
-    readonly targetsExistingRecord?: boolean;
-    readonly authorisedOn?: CommandDeclaration['authorisedOn'];
-    readonly targetLock?: CommandDeclaration['targetLock'];
-    readonly serialise?: string;
-    readonly untargetedIdentifiers?: readonly string[];
-    readonly runtimeShaped?: string;
-    readonly agent?: CommandDeclaration['agent'];
-    readonly authority?: readonly string[];
-    readonly rule?: string;
-    readonly audited?: boolean;
-  } = {},
-): CommandDeclaration {
-  const targetsExistingRecord = options.targetsExistingRecord ?? true;
-  return {
-    operands: WRITE_OPERANDS[name] ?? {},
-    ...(options.untargetedIdentifiers === undefined
-      ? {}
-      : { untargetedIdentifiers: options.untargetedIdentifiers }),
-    ...(options.runtimeShaped === undefined ? {} : { runtimeShaped: options.runtimeShaped }),
-    ...(options.serialise === undefined ? {} : { serialise: options.serialise }),
-    ...(options.authority === undefined ? {} : { authority: options.authority }),
-    ...(options.rule === undefined ? {} : { rule: options.rule }),
-    name,
-    kind: 'write',
-    collection: options.collection ?? TASK_COLLECTION,
-    targetsExistingRecord,
-    authorisedOn: options.authorisedOn ?? (targetsExistingRecord ? 'record' : 'business'),
-    targetLock: options.targetLock ?? 'command',
-    action,
-    agent: options.agent ?? 'never',
-    audited: options.audited ?? true,
-  };
-}
-
-const TASK_COLLECTION = 'task';
 const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
@@ -96,6 +55,7 @@ const BILLING_COLLECTION = 'billing';
 const RUN_COLLECTION = 'run';
 const GATE_COLLECTION = 'gate';
 const CUSTODY_COLLECTION = 'custody';
+const MANDATE_COLLECTION = 'mandate';
 const CONVERSATION_COLLECTION = 'conversation';
 const TIME_COLLECTION = 'time';
 const TAG_COLLECTION = 'tag';
@@ -103,41 +63,10 @@ const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
+const CHAT_COLLECTION = 'chat';
+const GROUP_MANAGER =
+  'a member of the group, then its creator or a holder of chat:manage (C71-G); else NOT_FOUND or SCOPE_NOT_GRANTED';
 const RECORD_WRITE = { collection: 'record', targetsExistingRecord: false } as const;
-
-/**
- * A read. It takes the `read` action on the collection it names, targets no
- * revision. It is authorised on the business unless it
- * names one task, which `reads/dispatch.ts` asks about at record scope; the
- * read path decides that from its catalogue row, and
- * `tests/commands/read-authorised-on.test.ts` holds this field to it.
- */
-function read(
-  name: CommandName,
-  collection: string,
-  options: {
-    readonly action?: Action;
-    readonly agent?: CommandDeclaration['agent'];
-    readonly authorisedOn?: 'record' | 'business' | 'self';
-    readonly authority?: readonly string[];
-    readonly audited?: boolean;
-  } = {},
-): CommandDeclaration {
-  return {
-    ...(options.authority === undefined ? {} : { authority: options.authority }),
-    name,
-    kind: 'read',
-    collection,
-    targetsExistingRecord: false,
-    authorisedOn: options.authorisedOn ?? 'business',
-    targetLock: 'command',
-    action: options.action ?? 'read',
-    agent: options.agent ?? 'never',
-    // Every read writes its event (`reads/dispatch.ts`, I13), but a person's
-    // own preferences (CS-2.8).
-    audited: options.audited ?? true,
-  };
-}
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent credential's under its person's business-wide `task:write`
@@ -544,6 +473,28 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['connectionId'],
   }),
+  // Standing mandates (MP-14-10a): every change is `mandate:manage` business-wide (owner and
+  // administrators; a mandate carries a spend ceiling, so C59's step-up applies), never an agent.
+  declare('mandate.file', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['clientId'],
+  }),
+  declare('mandate.revoke', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['mandateId'],
+  }),
+  declare('graduation.promote', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['classId'],
+  }),
+  declare('graduation.demote', 'manage', {
+    collection: MANDATE_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['classId'],
+  }),
 
   // The grant manager's authority, which is `manage` on the task family this
   // head's grants are about, asked of the revoked row's own scope. The
@@ -650,6 +601,16 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // WF-2. A chart is a business write: it files the map and its tickets.
+  declare('map.chart', 'write', { targetsExistingRecord: false, untargetedIdentifiers: [] }),
+  declare('task.set_blocking', 'write', { serialise: WAYFINDER_MAP_LOCK }),
+  // First-come: the envelope locks the ticket and compares its revision; a
+  // second claim on one revision is VERSION_STALE, on the next it is claimed.
+  declare('task.claim', 'assign'),
+  declare('map.graduate', 'write', { serialise: WAYFINDER_MAP_LOCK }),
+  // `write`; grilling and prototype ask the map owner's `decide` in the handler.
+  declare('task.resolve', 'write'),
+  declare('task.close_out_of_scope', 'decide', { serialise: WAYFINDER_MAP_LOCK }),
   // `billing:decide` on the whole business (AW-04, U10): owners and
   // administrators set the planning cap; no agent route serves it.
   declare('budget.set_planning_cap', 'decide', {
@@ -860,6 +821,42 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'self',
     untargetedIdentifiers: ['conversationId'],
     audited: false,
+  }),
+  // Group conversations (C71-G). Starting one and writing in one are
+  // `chat:comment`, the second a member's only (the handler's own filter).
+  declare('chat.start_group', 'comment', {
+    collection: CHAT_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('chat.send_group', 'comment', {
+    collection: CHAT_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
+  // `chat:manage` is its creator's, or the owner's and administrators': the
+  // envelope cannot know who started a conversation, so the handler asks,
+  // after it has found the caller a member. Never an agent's.
+  declare('chat.rename_group', 'manage', {
+    collection: CHAT_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['conversationId'],
+    rule: GROUP_MANAGER,
+  }),
+  declare('chat.change_members', 'manage', {
+    collection: CHAT_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['conversationId'],
+    rule: GROUP_MANAGER,
+  }),
+  // The leaver's own member row only; audited, as a change of members.
+  declare('chat.leave', 'write', {
+    collection: ACCOUNT_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['conversationId'],
   }),
 
   // C39-T: `access:share` on the whole business, a person's key no agent holds

@@ -21,7 +21,12 @@ import { grantTo } from '../commands/fixture.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import { DELEGATION_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
-import { bravoAutomation, bravoRecords, type BravoAutomation } from './ident-audit-bravo-rows.ts';
+import {
+  bravoAutomation,
+  bravoRecords,
+  type BravoAutomation,
+  type WithMandateRows,
+} from './ident-audit-bravo-rows.ts';
 import { bravoStepTask } from './ident-audit-onboarding.ts';
 import type { AgentCall, Body, PersonCall, RawAnswer } from './ident-audit-calls.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
@@ -53,7 +58,7 @@ export type Proposed = Readonly<
 export interface IdentWorld {
   readonly h: Harness;
   /** What bravo owns that an alpha caller could be handed the identifier of. */
-  readonly foreign: Readonly<{
+  readonly foreign: WithMandateRows<{
     admin: Caller;
     task: Task;
     proposal: Proposed;

@@ -11,16 +11,19 @@
 // else's is `SCOPE_NOT_GRANTED`, whoever they are, because holding `comment`
 // on a task is the right to speak on it, not to rewrite what others said. An
 // agent reaches here inside its delegation on its own task and edits only
-// what its own actor wrote.
+// what its own actor wrote for the person that delegation acts for: one agent
+// actor speaks for many people, so a comment it wrote for P is P's to correct,
+// not Q's (OW-036.1). An agent credential's comment records its person the
+// same way. A person's own comment carries no such person.
 
 import { lockComment, removeComment, rewriteComment } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
-import { refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnstorable, storableText } from './values.ts';
-import { NO_COMMENT_TYPE_FIXES } from './tasks-comment.ts';
+import { NO_COMMENT_TYPE_FIXES, representedPerson } from './tasks-comment.ts';
 
 const BODY_FIXES: readonly string[] = [
   'Send a body with something in it. To take the words back, delete the message.',
@@ -35,6 +38,14 @@ export interface CommentChange {
   /** The task, as its envelope locked it. */
   readonly target: TaskRow;
   readonly actorId: string;
+  /** The person the caller acts for as an agent (delegation or credential); `null` for a person. */
+  readonly onBehalfOfPersonId: string | null;
+  /**
+   * The agent entry's authority asked again once the comment is locked, so a
+   * delegation or covering grant revoked while the change waited on a lock
+   * refuses it (OW-036.1 criterion 5); absent on the person entry.
+   */
+  readonly stillAuthorised?: () => Promise<CommandRefusal | undefined>;
 }
 
 /** The person entry's change, from its command context. */
@@ -48,6 +59,7 @@ export function changeFrom(context: CommandContext): CommentChange {
     declaration: context.declaration,
     target,
     actorId: context.session.actorId,
+    onBehalfOfPersonId: representedPerson(context.session),
   };
 }
 
@@ -76,7 +88,12 @@ async function ownComment(
       ? await lockComment(tx, typeId, on.target.id, commentId)
       : undefined;
   if (comment === undefined) return refused(refuseNotFound());
-  if (comment.authorActorId !== on.actorId) {
+  const lapsed = await on.stillAuthorised?.();
+  if (lapsed !== undefined) return refused(lapsed);
+  if (
+    comment.authorActorId !== on.actorId ||
+    comment.onBehalfOfPersonId !== on.onBehalfOfPersonId
+  ) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', ['commentId'], NOT_AUTHOR_FIXES));
   }
   return { typeId, id: comment.id };

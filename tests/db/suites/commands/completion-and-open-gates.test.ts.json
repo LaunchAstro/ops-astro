@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "completing a task waits only on a pending gate on a live lineage's current version: a cancelled lineage's or a superseded version's gate holds nothing"
+}

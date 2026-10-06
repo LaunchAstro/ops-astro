@@ -488,11 +488,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:755-781`, run at `:914-922`). It gets a login and an acting identity,
-  and no membership and no business grant (`:173-176`, `:326-328`). The seed
+  user (`:762-788`, run at `:921-929`). It gets a login and an acting identity,
+  and no membership and no business grant (`:180-183`, `:333-335`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:783-812`, `:951-960`).
+  (`:790-819`, `:958-967`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -597,6 +597,43 @@ joined or after they left. The read marker (`chat.mark_read`) is the reader's
 own member row, self-scoped like `inbox.seen`, and not audited (CS-7.25). The
 client projection refuses a `direct` comment, as it refuses an internal note.
 `tests/api/c71-d-direct-messages.test.ts` and `tests/api/c71-d-isolation.test.ts`
+hold it.
+
+### Group conversations (C71-G)
+
+A group conversation is a `team_conversation` record of kind `group`, with its
+name and its creator, and a member row for each person in it; its messages are
+`task_comment` records with the audience `group`. No new table or record type
+(`core-records/src/team/groups.ts`).
+
+- `chat.start_group` asks `chat:comment` at the door, as a direct message does.
+  Its teammates must be staff here: a client's person, an agent's actor or
+  another business's person is `NOT_FOUND`, so neither a client nor an agent is
+  ever a member.
+- `chat.send_group` asks `chat:comment`, then a current member row; to anyone
+  else the group is `NOT_FOUND`. It writes through `writeMessage`, the path a
+  direct message takes.
+- `chat.rename_group` and `chat.change_members` are `chat:manage`: a group's
+  creator, and the owner and administrators, who hold the key by install
+  default. The envelope cannot know who started a conversation, so the row is
+  `self` and the handler asks: the creator while a current member, then a live
+  `chat:manage` grant through `checkAuthority`, in the group or not. A member
+  who has neither is refused `SCOPE_NOT_GRANTED`; anyone else outside it gets
+  `NOT_FOUND`. Managing never lets the caller read a message: an administrator
+  not in a group renames it or changes who else is in it, never adds herself,
+  and never reads, lists or counts its messages. Changing members needs the
+  member list, so its answers (`FIELD_VALUE_INVALID` for adding a member,
+  `NOT_FOUND` for removing a non-member) tell a manager who is in it; that is
+  the grant's, by #649. Never an agent's.
+- `chat.leave` is the caller's own member row only, self-scoped.
+
+Every send, marker move, member change and leave takes the conversation's lock
+first. A member change cuts its window on a millisecond boundary no message
+shares (it reads the clock and waits that millisecond out before it commits):
+a removed or departed member reads nothing written after, an added member
+nothing written before, and a re-added member reads from the new join only.
+`tests/api/c71-g-group-conversations.test.ts`,
+`tests/api/c71-g-group-members.test.ts` and `tests/api/c71-g-isolation.test.ts`
 hold it.
 
 ## preset.plan

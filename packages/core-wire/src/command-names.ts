@@ -168,6 +168,13 @@ export type CommandName =
   | 'map.revise'
   | 'map.scope'
   | 'map.view'
+  // WF-2: chart a map, a ticket's blocking, claim and close, and fog graduating.
+  | 'map.chart'
+  | 'task.set_blocking'
+  | 'task.claim'
+  | 'map.graduate'
+  | 'task.resolve'
+  | 'task.close_out_of_scope'
   // WF-2: a map's frontier and fog, from their read models.
   | 'map.frontier'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
@@ -247,6 +254,13 @@ export type CommandName =
   | 'chat.conversations'
   | 'chat.messages'
   | 'chat.mark_read'
+  // Group conversations (C71-G): started, written to, renamed, their members
+  // changed, and left.
+  | 'chat.start_group'
+  | 'chat.send_group'
+  | 'chat.rename_group'
+  | 'chat.change_members'
+  | 'chat.leave'
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
   | 'trace.read'
   // The harness adoption test's result on one run (AW-12): the team's.
