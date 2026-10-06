@@ -5,7 +5,36 @@
 
 import type { ReactNode } from 'react';
 
-export type AssistantRole = 'user' | 'ai' | 'note' | 'failed';
+export type AssistantRole = 'user' | 'ai' | 'note' | 'failed' | 'plan';
+
+/**
+ * AW-04: a plan version drawn as a card in the chat. `offered` carries the one
+ * accept; `accepting` while the click is in flight; `approved` once the server
+ * kept the words; `unknown` when the click got no answer, its accept offered
+ * again under the same operation id even once replaced; `stale` once a newer
+ * version replaced it in this chat.
+ */
+export type PlanCardState = 'offered' | 'accepting' | 'approved' | 'unknown' | 'stale';
+
+export interface AssistantPlan {
+  readonly version: number;
+  /** The exact words the click binds, drawn on the card as they are sent. */
+  readonly text: string;
+  /** Each step's title, and the titles of the steps it waits on. */
+  readonly steps: readonly { readonly title: string; readonly after: readonly string[] }[];
+  /** The bootstrap file the click activates, and the other files the run may read. */
+  readonly entryPath: string;
+  readonly paths: readonly string[];
+  readonly ceilingMinor: number;
+  readonly spendMinor: number;
+  readonly currency: string;
+  readonly state: PlanCardState;
+  /** The version that replaced this one, on a stale card. */
+  readonly replacedBy: number | null;
+  /** The server's refusal of the last click, quoted as it came. */
+  readonly refusal: string | null;
+  readonly task: { readonly label: string; readonly href: string };
+}
 
 export interface AssistantCite {
   readonly label: string;
@@ -17,6 +46,8 @@ export interface AssistantMessage {
   readonly role: AssistantRole;
   readonly body: string;
   readonly cites: readonly AssistantCite[];
+  /** On a `plan` message: the card. */
+  readonly plan?: AssistantPlan;
 }
 
 export interface AssistantPage {
@@ -54,6 +85,24 @@ export interface AssistantSubjectView {
   readonly chips: readonly string[];
 }
 
+/** One of the person's own past conversations, as the history list draws it (CS-7.33, C36). */
+export interface AssistantPast {
+  readonly id: string;
+  readonly title: string;
+  readonly lastActivityAt: string;
+}
+
+/**
+ * The drawer's history: shown, it asks `onShow` to read the list, then draws
+ * it; `said` is why there is none to draw. A row opens its conversation as a tab.
+ */
+export interface AssistantHistory {
+  readonly past: readonly AssistantPast[] | null;
+  readonly said: string | null;
+  readonly onShow: () => void;
+  readonly onOpen: (id: string) => void;
+}
+
 export interface AssistantPanelProps {
   readonly subject: AssistantSubjectView;
   readonly chats: readonly AssistantChat[];
@@ -65,6 +114,10 @@ export interface AssistantPanelProps {
   /** The caller's planning allowance line (AW-04), drawn above the transcript. */
   readonly allowance?: ReactNode;
   readonly draft: string;
+  /** The selected tab has a question out with no answer back yet. */
+  readonly answering?: boolean;
+  /** The person's past conversations; absent, the drawer offers no history. */
+  readonly history?: AssistantHistory;
   readonly onSelect: (key: string) => void;
   readonly onRename: (key: string, title: string) => void;
   readonly onTakeOut: (key: string) => void;
@@ -73,6 +126,8 @@ export interface AssistantPanelProps {
   readonly onAddPage: (key: string) => void;
   /** The question for the tab; a promise returned is the send being out. */
   readonly onSend: (key: string, text: string) => void | Promise<void>;
+  /** AW-04: the one click on a plan card, by tab and message. Absent, no accept is drawn. */
+  readonly onAccept?: (key: string, messageId: string) => void;
   /** The drawer's own close, with its title: absent when a host's head (the dock's) frames it. */
   readonly onClose?: (() => void) | undefined;
 }

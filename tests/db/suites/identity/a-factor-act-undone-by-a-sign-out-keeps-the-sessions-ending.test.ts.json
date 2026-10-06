@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a factor act undone by a sign-out keeps the session's ending and removes nothing at the provider"
+}

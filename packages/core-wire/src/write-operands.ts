@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The operand table of each write on the command surface, moved whole from
-// `surface.ts` to keep that file under the 1,000-line limit for product source.
+// Each write's operand table, moved whole from `surface.ts` to keep it under the 1,000-line limit;
 // `surface.ts` reads it into each declaration and re-exports the operand types.
 
 import type { CommandName } from './command-names.ts';
+import { CHAT_OPERANDS } from './write-operands-chat.ts';
+import { LIVE_CORRECTION_OPERANDS } from './surface-live-correction.ts';
+import { SETUP_OPERANDS } from './surface-setup.ts';
+import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
 
 /**
- * The JSON kind of one operand: `id` and `text` are strings, `count` a finite
- * number, `flag` a boolean, `map` an object that is not an array, `any`
- * whatever the command checks by value itself. `?` admits absent, `|null`
- * admits null.
+ * The JSON kind of one operand: `id` and `text` are strings, `count` a finite number, `flag` a
+ * boolean, `map` an object that is not an array, `any` whatever the command checks by value
+ * itself. `?` admits absent, `|null` admits null.
  */
 export type OperandKind = 'id' | 'text' | 'count' | 'flag' | 'map' | 'any';
 export type Operand = `${OperandKind}${'' | '?'}${'' | '|null'}`;
@@ -31,6 +33,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     board: 'id?|null',
     boardSection: 'id?|null',
     stateKey: 'any',
+    taskType: 'any',
     // The caller's own conversation the task is created from (AW-03's origin).
     conversationId: 'id?|null',
   },
@@ -83,6 +86,9 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     plan: 'any',
     entryPath: 'any',
     paths: 'any',
+    // The ceiling the card drew; refused under the locks if the version's differs.
+    ceilingMinor: 'count?',
+    currency: 'text?',
     conversationId: 'id?|null',
   },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
@@ -150,9 +156,24 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
   'operations.change_installation_mode': { mode: 'any' },
   'client.create': { name: 'any' },
+  // Type and outcome are checked by value in the command; `recordId` is `any` so a missing one is refused by name.
+  'record.create': { type: 'any', fields: 'map' },
+  'onboarding.start': { clientId: 'id', templateKey: 'any' },
+  'onboarding.step_result': { recordId: 'any', outcome: 'any', result: 'any' },
+  'client.set_privacy': {
+    clientId: 'id',
+    modelEgress: 'any',
+    providers: 'any',
+    handlesHealth: 'any',
+    noAgentEdits: 'any',
+    requestedBy: 'any?',
+    requestedOn: 'any?',
+    requestLink: 'any?',
+  },
   'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
   'access.revoke': { grantId: 'id' },
   'access.end': { holderId: 'id' },
+  'access.reset_factor': { holderId: 'id' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -171,6 +192,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
   // The task, the attempt held unknown, the minor units charged and why (T3c).
   'budget.write_off': { recordId: 'any', attemptId: 'any', amountMinor: 'count', reason: 'text' },
+  ...WAYFINDER_OPERANDS,
   // Minor units in the price book's currency, against the limit last seen (null: unset).
   'budget.set_planning_cap': {
     limitMinor: 'count',
@@ -243,13 +265,36 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
   'inbox.seen': { itemId: 'id' },
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
-  // CS-7.42: a message's mentions are checked by value, as a task comment's are.
-  'chat.send_direct': { teammateId: 'id', body: 'any', mentions: 'any?' },
-  'chat.mark_read': { conversationId: 'id', upTo: 'any' },
-  // C71-G: a group's name and its people are checked by value by the handler.
-  'chat.start_group': { name: 'any', members: 'any' },
-  'chat.send_group': { conversationId: 'id', body: 'any', mentions: 'any?' },
-  'chat.rename_group': { conversationId: 'id', name: 'any' },
-  'chat.change_members': { conversationId: 'id', add: 'any?', remove: 'any?' },
-  'chat.leave': { conversationId: 'id' },
+  ...CHAT_OPERANDS,
+  'invitation.create': { name: 'text', email: 'text', role: 'text' },
+  'invitation.resend': { invitationId: 'id' },
+  'invitation.revoke': { invitationId: 'id' },
+  // C33: every value but the identifiers is checked in the command, which names
+  // the field it refuses; a version's modes against the activation's in the database.
+  'activation.change': {
+    activationId: 'id?',
+    versionId: 'id',
+    mode: 'any',
+    everyMinutes: 'any',
+    eventKind: 'any',
+    enabled: 'any',
+    expectedRevision: 'any',
+  },
+  'definition.release': {
+    definitionId: 'id?',
+    name: 'any',
+    kind: 'any',
+    contentDigest: 'any',
+    contentSize: 'any',
+    inputs: 'any',
+    operations: 'any',
+    modes: 'any',
+  },
+  // C52-A: the revision is checked in the command, which names it when refused.
+  'activation.adopt': { activationId: 'id', versionId: 'id', expectedRevision: 'any' },
+  'activation.roll_back': { activationId: 'id', expectedRevision: 'any' },
+  'activation.turn_off': { activationId: 'id', expectedRevision: 'any' },
+  'approval.revoke': { approvalId: 'id' },
+  ...SETUP_OPERANDS,
+  ...LIVE_CORRECTION_OPERANDS,
 };

@@ -47,6 +47,9 @@ const SETTINGS = [
   // API-2: the function's instance ceiling, a number that divides the agent limits.
   'AGENT_QUOTA_INSTANCES',
   'ALERT_SCOPE_KEY',
+  // C31: the custody broker's public key and its id; the function seals, never opens.
+  'CUSTODY_KEY_ID',
+  'CUSTODY_PUBLIC_KEY',
   'DATABASE_LOOKUP_URL',
   'DATABASE_URL',
   'DELEGATION_CREDENTIAL_KEYS',

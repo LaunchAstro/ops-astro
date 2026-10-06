@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C71 (CS-7.42): who may hear a team conversation on the live channel. A tab
-// follows `conversation:<id>` as it follows a task, and the board stream says
-// a conversation moved; both only to a current member of it, staff holding
-// `chat:comment`, as `chat.messages` would admit them. The owner and
-// administrators hold no way round it. Anything else is NOT_FOUND, one answer
-// for another person's conversation, another business's, one the caller has
-// left and an id never issued. Neither serves nor audits anything: the
-// channel shows no content (C4 live-sync 6).
+// C71 (CS-7.42): who may hear a team conversation on the live channel: a
+// current member holding `chat:comment`, no one else (one NOT_FOUND for all).
+// Nothing served or audited (C4 live-sync 6).
 
 import {
-  checkAuthority,
+  askedFor,
   currentConversations,
   subjectsOf,
   withSession,
@@ -30,21 +25,16 @@ import {
   type CommandRefusal,
 } from '../commands/refusal.ts';
 import type { AdmissionAt } from './execute.ts';
-import { isInternalReader } from './tasks.ts';
 
-/** The conversations of these the session's person may hear now. */
+/** The conversations of these the session's person may hear now, in one statement. */
 async function heard(
   tx: TenantQuery,
   session: Session,
-  conversationIds: readonly string[],
+  conversationIds: readonly string[] | 'any',
 ): Promise<ReadonlySet<string>> {
-  if (!isInternalReader(session.roleKey)) return new Set();
-  const granted = await checkAuthority(tx, subjectsOf(session), {
-    collection: 'chat',
-    action: 'comment',
-    scope: { kind: 'business', id: null },
-  });
-  if (!granted.ok) return new Set();
+  if (askedFor(subjectsOf(session), { collection: 'chat', action: 'comment' }).length === 0) {
+    return new Set();
+  }
   return await currentConversations(tx, conversationIds, session.personId);
 }
 
@@ -69,16 +59,17 @@ export async function admitConversations(
 }
 
 /**
- * Whether `personId` is a current member of any of these conversations now,
- * asked on the board stream before it says one moved; false unless the bearer
- * still resolves to that same person. Records nothing.
+ * Whether `personId` is a current member of any of these conversations (or,
+ * given `any`, of any conversation) now, asked on the board stream before it
+ * says one moved; false unless the bearer still resolves to that same person.
+ * Records nothing.
  */
 export async function hearsConversation(
   database: Database,
   businessId: BusinessId,
   presented: VerifiedSubject,
   personId: string,
-  conversationIds: readonly string[],
+  conversationIds: readonly string[] | 'any',
 ): Promise<boolean> {
   const outcome = await withStanding(database, businessId, presented, async (tx, session) =>
     session.personId === personId && (await heard(tx, session, conversationIds)).size > 0

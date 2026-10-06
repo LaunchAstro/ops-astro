@@ -1,28 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Who is in a conversation now (C71, CS-7.42), for what tells a person of
-// one: the live channel admits a conversation's topic to its current members
-// alone, the board stream says a conversation moved to them alone, and a
-// mention in it is readable by them alone. Membership is the filter inside
-// each query, as every conversation read asks it (`conversations.ts`).
+// Who is in a conversation now (C71, CS-7.42): membership is the filter
+// inside each query, as every conversation read asks it (`conversations.ts`).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
-import { inConversation } from '../inbox/access.ts';
+import { chatsNow, inConversation } from '../inbox/access.ts';
 import type { Mentioned } from '../inbox/mentions.ts';
 
-/**
- * Which of these live conversations `personId` is a current member of: joined
- * and not left. Another person's, another business's and a fabricated id are
- * all simply not in the answer.
- */
+/** Which of these (`any`: every) conversations `personId` is in and may chat in now, one statement. */
 export async function currentConversations(
   tx: TenantQuery,
-  conversationIds: readonly string[],
+  conversationIds: readonly string[] | 'any',
   personId: string,
 ): Promise<ReadonlySet<string>> {
-  const ids = conversationIds.filter((id) => isUuid(id)).map((id) => id.toLowerCase());
-  if (ids.length === 0) return new Set();
+  const ids =
+    conversationIds === 'any'
+      ? null
+      : conversationIds.filter((id) => isUuid(id)).map((id) => id.toLowerCase());
+  if (ids?.length === 0) return new Set();
   const rows = await tx.query<{ readonly id: string }>(
     `select m.conversation_id::text as id
        from public.team_conversation_members m
@@ -30,8 +26,9 @@ export async function currentConversations(
         and r.deleted_at is null
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
         and t.key = 'team_conversation'
-      where m.business_id = $1 and m.conversation_id = any($2::uuid[]) and m.person_id = $3
-        and m.left_at is null`,
+      where m.business_id = $1 and ($2::uuid[] is null or m.conversation_id = any($2::uuid[]))
+        and m.person_id = $3
+        and m.left_at is null and ${chatsNow('m.person_id')}`,
     [tx.businessId, ids, personId],
   );
   return new Set(rows.map((row) => row.id));

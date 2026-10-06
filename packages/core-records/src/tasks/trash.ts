@@ -23,7 +23,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { refuse, type RecordsRefusal } from '../records/refusals.ts';
 import { slotOf, TASK_SPINE } from './spine.ts';
-import { COMMENT_SPINE } from './comments.ts';
+import { COMMENT_SPINE } from './comment-spine.ts';
 import { detachTaskTime } from './time.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');
@@ -489,8 +489,10 @@ export async function purgeTrashedRecords(
   // lineages and planned runs, 0013's envelopes and leases). Those rows are the
   // runtime class, refused rather than touched, and deleting the task under
   // them would fault on the key and roll the whole purge back — every time,
-  // for every trashed task in the business (0007 names this failure). So the
-  // purge keeps such a task, says so, and purges the rest. Restoring the
+  // for every trashed task in the business (0007 names this failure). A live
+  // correction (C80) keys to its task the same way, and it is evidence: kept
+  // with its task, never detached or deleted. So the purge keeps such a task,
+  // says so, and purges the rest. Restoring the
   // task, or a runtime retention rule this slice does not build, is what
   // would ever release it. Asked after the lock, in a statement of its own,
   // so a row that took a key share on the task before the lock is seen, and
@@ -504,7 +506,13 @@ export async function purgeTrashedRecords(
              or exists (select 1 from public.task_envelopes e
                          where e.business_id = r.business_id and e.task_id = r.id)
              or exists (select 1 from public.leases s
-                         where s.business_id = r.business_id and s.task_id = r.id)) as held
+                         where s.business_id = r.business_id and s.task_id = r.id)
+             or exists (select 1 from public.live_corrections c
+                         where c.business_id = r.business_id and c.task_id = r.id)
+             -- An onboarding's step (C41-A) keys to its task and keeps it: the
+             -- onboarding counts its steps, so the task stays with its step.
+             or exists (select 1 from public.onboarding_steps o
+                         where o.business_id = r.business_id and o.task_id = r.id)) as held
        from records r
       where r.business_id = $1 and r.id = any ($2::uuid[])
       order by r.id`,
@@ -549,10 +557,16 @@ export async function purgeTrashedRecords(
     [tx.businessId, gone],
   );
   // A conversation opened on a purged task keeps its body, its wrap-ups and
-  // its address and loses only the scope: 0092's key to `records` does not
-  // cascade, and deleting the task under it would fault the whole purge.
+  // its address. It loses the scope, since 0092's key to `records` does not
+  // cascade and deleting the task under it would fault the whole purge. It
+  // also loses the subject, which carries the task's title, and a title taken
+  // from that subject goes back to 'New conversation' (core-commands'
+  // DEFAULT_TITLE, which this package may not import): with no scope left,
+  // the reads have no task to check a reader against.
   await tx.query(
-    `update public.conversations set scope_kind = null, scope_record_id = null
+    `update public.conversations
+        set scope_kind = null, scope_record_id = null, subject = null,
+            title = case when title = subject then 'New conversation' else title end
       where business_id = $1 and scope_record_id = any ($2::uuid[])`,
     [tx.businessId, gone],
   );

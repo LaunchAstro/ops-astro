@@ -10,7 +10,7 @@
 // - The sweep's: a worker lost mid-call leaves its call started on a lease
 //   that ran out. Under the sweep's locks the call is held as `worker_lost`,
 //   ours, and its step marked, before the classifier reads the step; a call
-//   never started goes back.
+//   never started goes back, with what a top-up or a stop counted of it.
 // - The pass's: "did it happen?" for a step with held calls is the
 //   provider's to answer (the provider phase, `reconcileProviderCalls`). While
 //   any of its calls is still unknown there is no answer and the step waits;
@@ -46,11 +46,20 @@ export async function holdLostCalls(
       returning reservation_id`,
     [tx.businessId, reservationIds],
   );
-  await tx.query(
+  const released = await tx.query<{ readonly id: string }>(
     `update public.model_calls set state = 'released', ended_at = clock_timestamp()
-      where business_id = $1 and reservation_id = any($2::uuid[]) and state = 'reserved'`,
+      where business_id = $1 and reservation_id = any($2::uuid[]) and state = 'reserved'
+      returning id`,
     [tx.businessId, reservationIds],
   );
+  // A lost worker's hold was never counted (a stop releases its lease, and this
+  // sweep finds live leases only), so this gives nothing today; it keeps every
+  // release giving back what a top-up or a stop counted (catalogue #756).
+  for (const { id } of released) {
+    // One call at a time, under the sweep's envelope locks.
+    // eslint-disable-next-line no-await-in-loop
+    await giveBack(tx, id);
+  }
   await tx.query(
     `update public.attempts
         set dispatch_marker = true

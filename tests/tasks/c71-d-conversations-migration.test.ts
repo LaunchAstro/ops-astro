@@ -11,6 +11,7 @@ import {
   readConversationTypes,
   writeComment,
 } from '../../packages/core-records/src/index.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
 import {
   applyMigrations,
@@ -30,7 +31,7 @@ import {
 
 const ALL = readMigrations('migrations');
 /** The team conversations migration's UTC timestamp ID (ORCH69-MIGTS). */
-const CONVERSATIONS = '20261003000558';
+const CONVERSATIONS = '20261006074341';
 const BEFORE = ALL.filter((m) => m.version < CONVERSATIONS);
 const CONVERSATIONS_MIGRATION = ALL.find((m) => m.version.startsWith(CONVERSATIONS));
 
@@ -150,9 +151,19 @@ async function installsOnceAndKeeps(world: World): Promise<void> {
   expect(kept?.body).toBe('written before the conversations migration');
   await rerunData(db);
   expect(await shape(world)).toBe(after);
-  // The install after it is stable, and a direct message works.
+  // The install after it is stable, and a direct message works for staff the
+  // business lets chat: Mia is granted `chat:comment` across it, as teammates are.
   await db.app.withBusiness(alpha, async (tx) => {
     await installTaskSpine(tx);
+    const chat = await issueGrant(tx, [], {
+      subject: { kind: 'person', id: mia },
+      scope: { kind: 'business', id: null },
+      collection: 'chat',
+      action: 'comment',
+      parentGrantId: null,
+      grantedByActorId: adaActor,
+    });
+    expect(chat.ok).toBe(true);
     const types = await readConversationTypes(tx);
     if (types === undefined) throw new Error('no conversation types');
     const id = await directConversation(tx, types, ada, mia);

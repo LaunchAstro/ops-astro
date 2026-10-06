@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "The copy finder searches values, stored names and texts too long for the text-search parser loosely, never failing the search or dropping a match, and says what it matched loosely or could not search."
+}

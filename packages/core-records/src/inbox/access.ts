@@ -2,9 +2,7 @@
 //
 // An inbox item's access axis (INB-1a), derived on every read from the
 // recipient's live grants and never stored: readable, withheld or gone.
-// An item about a team conversation (C71, a mention in it) is held by the
-// conversation's current members alone, while they may chat, whatever task
-// grants they hold.
+// A team conversation's item (C71) is held by its current members who may chat.
 import {
   EFFECTIVE,
   effectiveGrants,
@@ -13,13 +11,26 @@ import {
   type Subject,
 } from '../authority/grants.ts';
 import { grantedScopes } from '../authority/grant-reach.ts';
+import { isWayfinderRecord, wayfinderFacts } from '../tasks/wayfinder.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /**
+ * The roles shown a task's internal projection (`isInternalReader`). Anyone
+ * else, an external party first, is shown the client view, which no map or
+ * map ticket reaches (WF-1), so their inbox withholds items about one.
+ */
+export const INTERNAL_ROLE_KEYS: readonly string[] = ['owner', 'admin', 'member'];
+
+/** Whether person $2 of business $1 holds an internal role, as SQL. */
+const INTERNAL = `exists (select 1 from public.memberships m
+                   where m.business_id = $1 and m.person_id = $2 and m.active
+                     and m.role_key in (${INTERNAL_ROLE_KEYS.map((key) => `'${key}'`).join(', ')}))`;
+
+/**
  * Derived at every read, never stored. `withheld`: the recipient holds no read
- * on the task. `gone`: the task is trashed and the recipient still holds read
- * on it; without read a trashed task is withheld, so it tells a stranger
- * nothing.
+ * on the task, or reads it only as a client and it is a map or map ticket.
+ * `gone`: the task is trashed and the recipient still holds read on it;
+ * without read a trashed task is withheld, so it tells a stranger nothing.
  */
 export type InboxAccess = 'readable' | 'withheld' | 'gone';
 
@@ -29,30 +40,28 @@ export const IS_CONVERSATION = `exists (select 1 from public.record_types ct
      and ct.key = 'team_conversation')`;
 
 /**
- * Whether `person` (an SQL expression) may chat in `r`'s business now, as
- * `chat.messages` admits them: staff (an active owner, administrator or member
- * membership) holding a live `chat:comment` across the business, walked from
- * `EFFECTIVE` in the statement that asks it.
+ * Whether `person` (SQL) may chat in `r`'s business now: staff holding a live
+ * business-wide `chat:comment`, its expiry read on the statement's clock.
  */
-const chatsNow = (person: string): string => `(exists (select 1 from public.memberships ms
+export const chatsNow = (person: string): string => `(exists (select 1 from public.memberships ms
      where ms.business_id = r.business_id and ms.person_id = ${person} and ms.active
        and ms.role_key in ('owner', 'admin', 'member'))
    and exists (${EFFECTIVE}
      select 1 from effective e
       where e.business_id = r.business_id and e.collection = 'chat' and e.action = 'comment'
-        and e.scope_kind = 'business'
-        and ((e.subject_kind = 'person' and e.subject_id = ${person})
-             or (e.subject_kind = 'actor' and e.subject_id in (
-                   select a.id from public.actors a
-                    where a.business_id = r.business_id and a.person_id = ${person}
-                      and a.kind = 'person' and a.active)))))`;
+        and e.scope_kind = 'business' and ${heldBy(person)}
+        and (e.expires_at is null or e.expires_at > clock_timestamp())))`;
 
-/**
- * Whether `person` (an SQL expression) is a current member of conversation `r`
- * who may chat now (`chatsNow`), and, given `since`, has been a member since
- * then: a re-added member reads from the new join only, an item raised before
- * it included (AUTHORITY.md, team chat).
- */
+/** Whether grant `e` names `person` (an SQL expression) or one of their active acting identities. */
+const heldBy = (
+  person: string,
+): string => `((e.subject_kind = 'person' and e.subject_id = ${person})
+   or (e.subject_kind = 'actor' and e.subject_id in (
+         select a.id from public.actors a
+          where a.business_id = r.business_id and a.person_id = ${person}
+            and a.kind = 'person' and a.active)))`;
+
+/** Whether `person` (SQL) is a current member of `r` who may chat, joined by `since` when given. */
 export const inConversation = (person: string, since?: string): string =>
   `(exists (select 1 from public.team_conversation_members cm
    where cm.business_id = r.business_id and cm.conversation_id = r.id
@@ -60,12 +69,17 @@ export const inConversation = (person: string, since?: string): string =>
        since === undefined ? '' : ` and cm.joined_at <= ${since}`
      }) and ${chatsNow(person)})`;
 
-/**
- * One person's access to one task, or to one conversation, derived as every
- * read derives it. Given an item's `raisedAt` (its `raised_at` as text, so no
- * precision is lost on the way back), a conversation is read as `inbox.read`
- * reads its items: by a member since then.
- */
+/** Whether `person` reads live record `r` now, asked in the statement that acts on it. */
+export const readableNow = (person: string, since: string): string => `(r.deleted_at is null
+  and case when ${IS_CONVERSATION} then ${inConversation(person, since)}
+   else exists (${EFFECTIVE}
+     select 1 from effective e
+      where e.business_id = r.business_id and e.collection = 'task' and e.action = 'read'
+        and (e.scope_kind = 'business' or (e.scope_kind = 'record' and e.scope_id = r.id)
+             or (e.scope_kind = 'party' and e.scope_id = r.uuid_7))
+        and ${heldBy(person)}) end)`;
+
+/** One person's access to one task or conversation; given `raisedAt`, a member since then. */
 export async function taskAccess(
   tx: TenantQuery,
   personId: string,
@@ -90,10 +104,39 @@ export async function taskAccess(
   // A business grant, a grant on this task, or a party grant on the task's
   // own client: a party grant on another client reaches nothing here, which
   // is the client separation.
-  if (!(await holdsOnTask(tx, personId, { id: taskId, clientId: task.clientId }, 'read'))) {
+  if (
+    !(await holdsOnTask(tx, personId, { id: taskId, clientId: task.clientId }, 'read')) &&
+    !(await readsThroughMap(tx, personId, taskId))
+  ) {
     return 'withheld';
   }
+  if ((await isWayfinderRecord(tx, taskId)) && !(await isInternal(tx, personId))) return 'withheld';
   return task.trashed ? 'gone' : 'readable';
+}
+
+/**
+ * A read grant on the task's map covers it (W12), never a nested map, as
+ * `task.read` admits it. The task is then held `for share` and read again, as
+ * that read holds it, so no move commits before the caller has used the answer,
+ * and a placement is never paired with grants read after it changed.
+ */
+export async function readsThroughMap(
+  tx: TenantQuery,
+  personId: string,
+  taskId: string,
+): Promise<boolean> {
+  const map = (await wayfinderFacts(tx, taskId))?.mapId ?? null;
+  if (map === null || map === taskId) return false;
+  if (!(await holdsOnTask(tx, personId, { id: map, clientId: null }, 'read'))) return false;
+  return (await wayfinderFacts(tx, taskId, true))?.mapId === map;
+}
+
+async function isInternal(tx: TenantQuery, personId: string): Promise<boolean> {
+  const rows = await tx.query<{ readonly internal: boolean }>(`select ${INTERNAL} as internal`, [
+    tx.businessId,
+    personId,
+  ]);
+  return rows[0]?.internal === true;
 }
 
 /** The person and their own acting identities: the two a grant may name. */
@@ -175,13 +218,15 @@ export async function readScopes(
 /**
  * Where person $2 reads tasks now, for a query that filters inside itself
  * (INB-1e): `reach`, one row of the whole business, these tasks, or these
- * clients' tasks. The same grants `taskAccess` asks, walked in the statement
- * that uses them, so a grant revoked before that statement runs reaches
- * nothing in it. Opens a `with` list for the caller's own queries to follow.
+ * clients' tasks, and whether they read as staff (`internal`). The same grants
+ * `taskAccess` asks, walked in the statement that uses them, so a grant
+ * revoked before that statement runs reaches nothing in it. Opens a `with`
+ * list for the caller's own queries to follow.
  */
 export const REACH: string = `${EFFECTIVE},
   reach as (
-    select coalesce(bool_or(e.scope_kind = 'business'), false) as business,
+    select ${INTERNAL} as internal,
+           coalesce(bool_or(e.scope_kind = 'business'), false) as business,
            coalesce(array_agg(e.scope_id) filter (where e.scope_kind = 'record'), '{}') as records,
            coalesce(array_agg(e.scope_id) filter (where e.scope_kind = 'party'), '{}') as parties
       from effective e

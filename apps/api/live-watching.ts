@@ -109,8 +109,9 @@ async function mayFollow(
  * again, of `task.execution`'s own admission, the internal activity the channel
  * reports: expiry, a lost membership, a revoked grant, a trashed or foreign
  * task and any external reader all refuse. It serves and audits nothing, since
- * the channel shows the person no content (C4 live-sync 6). Each answer is the
- * task's identifier, the topic, or its refusal.
+ * the channel shows the person no content (C4 live-sync 6). Each answer is its
+ * refusal, or at the door the task's identifier, the topic, and on a recheck
+ * the person admitted.
  */
 async function mayWatch(
   options: Door,
@@ -128,7 +129,7 @@ async function mayWatch(
   return admitted.map((answer) => {
     if (isCommandRefusal(answer)) return answer;
     if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
-    return answer.recordId;
+    return at === 'door' ? answer.recordId : answer.personId;
   });
 }
 
@@ -137,7 +138,7 @@ export function hearing(
   options: Door,
   context: Context,
   businessId: string,
-): (personId: string, conversationIds: readonly string[]) => Promise<boolean> {
+): (personId: string, conversationIds: readonly string[] | 'any') => Promise<boolean> {
   return async (personId, conversationIds) => {
     const presented = await options.verify(context.req);
     if (typeof presented !== 'object') return false;

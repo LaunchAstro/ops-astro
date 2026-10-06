@@ -25,6 +25,7 @@ import {
   asRole,
 } from './restricted-calls-cases.ts';
 import { type CatalogueTable, type CatalogueFunction } from './restricted-calls-catalogue.ts';
+import { INSERT_COLUMNS } from './restricted-calls-mandates.ts';
 
 /**
  * The callers. Every refusal position commits, so a write that should have
@@ -181,6 +182,7 @@ export function expectedOutcome(
   operation: Operation,
   own: number,
   at?: string,
+  copy = false,
 ): string {
   if (!APPLICATION_CALLERS.has(caller)) return 'denied';
   const granted = applicationGrantsAt(table.qualified, at);
@@ -195,7 +197,7 @@ export function expectedOutcome(
   if (caller === 'login in the wrapper, own tenant') {
     return operation === 'select' ? `rows ${String(own)}` : 'past tenancy';
   }
-  if (operation === 'insert') return BEFORE_ROW_REFUSALS[table.qualified] ?? 'rls';
+  if (operation === 'insert') return beforeRowRefusal(table.qualified, at, copy) ?? 'rls';
   return 'rows 0';
 }
 
@@ -211,25 +213,66 @@ export const BEFORE_ROW_REFUSALS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * The same for the bare insert alone, from the migration that adds the
+ * trigger on. 20261003001115 (MP-6-2) refuses a new step holding
+ * `plan_record_written` false, so the bare insert, which names `business_id`
+ * alone, meets `check_violation` first; the whole-row copy, re-sending a step
+ * with no record stored, says true and meets the tenancy check.
+ */
+const BARE_INSERT_REFUSALS_FROM: Readonly<
+  Record<string, { readonly from: string; readonly outcome: string }>
+> = {
+  'public.planned_steps': { from: '20261003001115', outcome: 'constraint' },
+};
+
+function beforeRowRefusal(qualified: string, at: string | undefined, copy: boolean) {
+  const later = copy ? undefined : BARE_INSERT_REFUSALS_FROM[qualified];
+  if (later !== undefined && (at === undefined || at >= later.from)) return later.outcome;
+  return BEFORE_ROW_REFUSALS[qualified];
+}
+
+/**
  * Which own row a table's copy case re-sends, where any row would not do.
  * A version re-sent into a terminal lineage is refused by 0040 (T3a), which
  * is that migration's rule and not this suite's question, so the copy is a
- * version on a live lineage.
+ * version on a live lineage. A step re-sent with a record stored is refused
+ * by 20261003001115's own-task check before the tenancy check, so the copy is
+ * a step with no record; the key is read from the JSON, so a prefix before
+ * that migration, without the column, runs the same text.
  */
 const OWN_ROW_FILTERS: Readonly<Record<string, string>> = {
   'public.proposal_versions': `and exists (select 1 from public.proposal_lineages l
                                    where l.business_id = t.business_id and l.id = t.lineage_id
                                      and l.state = 'live')`,
+  'public.planned_steps': `order by row_to_json(t)->>'plan_record_id' nulls first`,
 };
+
+/**
+ * Why a copy row is not the one the expectation was written for, if it is not.
+ * The planned_steps copy expects row security's answer only for a step with no
+ * record stored; this says so plainly rather than as `expected rls`.
+ */
+export function copyRowFinding(table: CatalogueTable, row: string): string | undefined {
+  if (table.qualified !== 'public.planned_steps') return undefined;
+  const stored = (JSON.parse(row) as { plan_record_id?: string | null }).plan_record_id;
+  return stored === undefined || stored === null
+    ? undefined
+    : `the copy re-sends a step with plan_record_id ${stored}; it must have none stored`;
+}
 
 /**
  * A whole row of the own business, re-sent as it stands. Unlike the bare
  * insert it satisfies every column constraint, so what refuses it from another
  * tenant is the tenancy check (or the trigger above), never a missing value.
+ * A table inserted into by column (MP-14-10a) is re-sent in its granted columns,
+ * unless `whole`: the owner putting a row back exactly.
  */
-export const copyStatement = (table: CatalogueTable): string =>
-  `insert into ${table.qualified}
-     select * from json_populate_record(null::${table.qualified}, $1::text::json) returning 1`;
+export const copyStatement = (table: CatalogueTable, whole = false): string => {
+  const columns = whole ? '*' : (INSERT_COLUMNS[table.qualified]?.join(', ') ?? '*');
+  return `insert into ${table.qualified}${columns === '*' ? '' : ` (${columns})`}
+     select ${columns} from json_populate_record(null::${table.qualified}, $1::text::json)
+     returning 1`;
+};
 
 export async function ownRowJson(
   admin: AdminConnection,

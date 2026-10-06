@@ -39,6 +39,8 @@ const TRANSPORTS = new Map([
     'session/sign-in.ts',
     ['request.fetch(url, {', 'request.fetch(`${request.apiOrigin}${path}`, {'],
   ],
+  // signs out, at the provider, a new session the tab never adopted (C59): a session, not a record
+  ['session/sign-in-again.ts', ['fetch: typeof globalThis.fetch,', 'fetch(url, {']],
   // asks where to sign in before there is a session, and hands the app its fetch
   ['main.tsx', ["window.fetch('/api/sign-in')", 'window.fetch.bind(window)']],
   // wraps that fetch for the sign-in address only, adding the public key: a session, not a record
@@ -175,7 +177,10 @@ const OPERANDS = {
   'task.ledger': { before: null, timeZone: 'Australia/Brisbane', query: null },
   'definition.attribution': { digest: 'a'.repeat(64) },
   'trace.read': { recordId: 'r' },
+  'map.view': { recordId: 'r' },
+  'map.frontier': { recordId: 'r' },
   'harness.read': { runId: 'r' },
+  'live_correction.read': { correctionId: 'c' },
   'privacy.draft_breach_notices': {
     incidentId: '00000000-0000-4000-8000-000000000000',
     oaic: { name: 'o', address: 'a' },

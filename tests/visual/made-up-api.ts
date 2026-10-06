@@ -35,9 +35,13 @@ import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 import { AGENT_READS } from './made-up-agent.ts';
+import { AUTOMATION_REGISTRY } from './made-up-automations.ts';
 import { CONVERSATIONS, DIRECT_MESSAGES, messagesOf } from './made-up-chat.ts';
+import { FLEET_READ, SIGNAL_READ } from './made-up-connections.ts';
 import { EXECUTION, RECEIPT } from './made-up-data.ts';
 import { DETAIL, LEDGER, STATE, TAGS, TASKS, TODOS } from './made-up-rows.ts';
+import { SECRET_LIST } from './made-up-secrets.ts';
+import { WAYFINDER_READS } from './made-up-wayfinder.ts';
 
 export { TASKS } from './made-up-rows.ts';
 
@@ -91,6 +95,7 @@ const READS = {
       { collection: 'tasks', action: 'read' },
       { collection: 'tasks', action: 'write' },
       { collection: 'settings', action: 'manage' },
+      { collection: 'custody', action: 'manage' },
     ],
   } satisfies CapabilitiesResult,
   'task.queue': { ok: true, queue: [], alerts: [], outages: [] } satisfies QueueResult,
@@ -176,6 +181,13 @@ const READS = {
   'chat.conversations': CONVERSATIONS,
   // Answered by the conversation asked for (below); this is the direct one's.
   'chat.messages': DIRECT_MESSAGES,
+  // Custody's keys (C31) for Settings: one set, one not, never a value.
+  'secret.list': SECRET_LIST,
+  // Settings ▸ Workflow triggers (C33).
+  'automation.registry': AUTOMATION_REGISTRY,
+  'connection.fleet': FLEET_READ,
+  'connection.signal': SIGNAL_READ,
+  ...WAYFINDER_READS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

@@ -56,6 +56,8 @@ export interface Harness {
     businessKey?: string,
     caller?: { readonly token: string },
   ): Promise<Answer>;
+  /** Who sends C39-T's invitation acts: the admin until a recipe enrols a fresh inviter. */
+  inviter(): Caller;
   asAgent(
     name: CommandName,
     body: Readonly<Record<string, unknown>>,

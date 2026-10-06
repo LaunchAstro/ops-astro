@@ -101,6 +101,8 @@ function pictures(packet: Packet): { ground: Record<Theme, Rgb>; shots: PageShot
 const catalogue = (): Catalogue => JSON.parse(read(`${root}tests/visual/states.json`)) as Catalogue;
 
 describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
+  // Draws every built page at three widths in two themes, then reports twice: 2.4
+  // to 5.3 s on the hosted runner in October 2026, against vitest's 5 s default.
   it('MP-1-1 harness report: a dark picture gone, too narrow, not an image or scrolling sideways fails by name', () => {
     const packet = readPacket();
     // Dark is captured from here, where the dark theme lands; no longer pending.
@@ -146,7 +148,7 @@ describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
     expect(bad.lines).toContain('FAIL agency:sign-in@390-dark: no picture');
     expect(bad.lines).toContain('FAIL agency:settings@1480-dark: picture is 390 px wide, not 1480');
     expect(bad.lines).toContain('FAIL agency:gallery@900-dark: scrolls sideways by 8 px');
-  });
+  }, 15_000);
 });
 
 describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {

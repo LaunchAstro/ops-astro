@@ -1,4 +1,0 @@
-{
-  "invariant": [],
-  "conformance": ["tests/support/fresh-database-leak.test.ts"]
-}

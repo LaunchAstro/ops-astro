@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#963): an unanswered read of a run's newer span hides no older missing span."
+}

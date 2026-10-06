@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 17 of the 62. For each of the other 45 this file
+// `recordId`, which reaches 17 of the 75. For each of the other 58 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -25,12 +25,13 @@ export const CASE = {
   tag: 'refuses a foreign and a fabricated task alike on the tag commands',
   duplicate: 'refuses a duplicate of a foreign and a fabricated task alike',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
+  liveCorrection: 'refuses a foreign and a fabricated correction or task alike (C80)',
   conversation:
     'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
 
 /**
- * The thirty-nine operations that name no identifier, each with a minimal valid body.
+ * The fifty-four operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -39,9 +40,12 @@ export const CASE = {
  */
 export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['task.create', { fields: { title: 'a task made while bravo is watched' } }],
+  // WF-2: a chart files a new map and its tickets, naming no existing record.
+  ['map.chart', { title: 'a map charted while bravo is watched' }],
   ['task.purge', {}],
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
+  ['settings.set_live_correction_approver', { value: null }],
   ['settings.set_money_step_up', { value: true }],
   ['settings.set_conversation_window', { value: 14 }],
   ['settings.set_retention_window', { value: 90 }],
@@ -63,6 +67,14 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
+  // Custody (C31): the list and a set of a business-wide key name no row.
+  ['secret.list', {}],
+  ['secret.set', { name: 'target-free.key', value: 'target-free-value' }],
+  // The connector fleet (MP-14-7a) names no row.
+  ['connection.fleet', {}],
+  ['connection.signal', {}],
+  // The graduation region (MP-14-10a) names no row either.
+  ['connection.graduation', {}],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
   // AW-04: a digest names a file's bytes, not a record of any business.
@@ -86,6 +98,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['operations.read', {}],
   ['client.list', {}],
   ['client.create', { name: 'A made-up client made while bravo is watched' }],
+  // The one record-create command (C41-A) names no row; a name of its own each run.
+  ['record.create', { type: 'client', fields: { name: `a target-free client ${randomUUID()}` } }],
   [
     'privacy.draft_breach_notices',
     {
@@ -146,9 +160,13 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
   // The reader's own team conversations (C71-D).
   ['chat.conversations', {}],
+  // C39-T: a new invitation names a person and an address, no record.
+  ['invitation.create', { name: 'Invited Ivy', email: 'ivy@example.test', role: 'member' }],
+  // The Workflow triggers registry (C33) names no row.
+  ['automation.registry', {}],
 ];
 
-/** The forty identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The sixty-two identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -156,6 +174,12 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.restart': ['lineageId and recordId', 'control'],
   'task.restore': ['batchId', 'control'],
   'grant.revoke': ['grantId', 'control'],
+  'secret.clear': ['secretId', 'control'],
+  'connector.repair': ['connectionId', 'control'],
+  'mandate.file': ['clientId', 'control'],
+  'mandate.revoke': ['mandateId', 'control'],
+  'graduation.promote': ['classId', 'control'],
+  'graduation.demote': ['classId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.accept_plan': ['gateId', 'gate'],
@@ -172,6 +196,9 @@ export const IDENTIFIER_BEARING: Readonly<
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
   'budget.write_off': ['attemptId', 'control'],
+  'live_correction.request': ['taskId', 'liveCorrection'],
+  'live_correction.decide': ['correctionId', 'liveCorrection'],
+  'live_correction.read': ['correctionId', 'liveCorrection'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.
@@ -194,14 +221,25 @@ export const IDENTIFIER_BEARING: Readonly<
   'access.grant': ['holderId and clientId', 'control'],
   'access.revoke': ['grantId', 'control'],
   'access.end': ['holderId', 'control'],
+  'access.reset_factor': ['holderId', 'control'],
+  // C60: a client's privacy settings, by its client.
+  'client.set_privacy': ['clientId', 'control'],
   'task.duplicate': ['recordId', 'duplicate'],
   'inbox.seen': ['itemId', 'control'],
+  // C33: a version and an activation, and a definition to release on.
+  'activation.change': ['versionId and activationId', 'control'],
+  'definition.release': ['definitionId', 'control'],
+  // New client onboarding (C41-A): the client a start names, the step task a result names.
+  'onboarding.start': ['clientId', 'control'],
+  'onboarding.step_result': ['recordId', 'control'],
+  // C52-A: an activation and the version it adopts, and an approval to revoke.
+  'activation.adopt': ['activationId and versionId', 'control'],
+  'activation.roll_back': ['activationId', 'control'],
+  'activation.turn_off': ['activationId', 'control'],
+  'approval.revoke': ['approvalId', 'control'],
 };
 
-/**
- * Identifier-bearing operations whose foreign-against-fabricated comparison is
- * in their own isolation suite rather than in identifier-negatives.
- */
+/** Identifier-bearing operations compared in their own isolation suite, not identifier-negatives. */
 const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string, suite: string]>>> =
   {
     'chat.send_direct': ['teammateId', 'c71-d'],
@@ -214,10 +252,7 @@ const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string,
     'chat.leave': ['conversationId', 'c71-g'],
   };
 
-/**
- * The named row for an operation the (c) and (d) cells do not reach, or
- * `undefined` for one this file does not know, which the matrix throws on.
- */
+/** The named row for one the (c) and (d) cells miss; `undefined` if unknown (the matrix throws). */
 export function alternativeFor(name: CommandName): string | undefined {
   const bearing = IDENTIFIER_BEARING[name];
   if (bearing !== undefined) {
@@ -235,8 +270,7 @@ export function alternativeFor(name: CommandName): string | undefined {
     );
   }
   if (name === 'run.child_handback') {
-    // AW-11: the body names nothing; the helper's own child credential is the
-    // target, so a foreign one and a made-up one are the operand compared.
+    // AW-11: the body names nothing; the target is the helper's own child credential.
     return (
       'executed alternative: aw-11-child-commands-isolation.test.ts "another business" ' +
       "compares another business's child credential and a fabricated one by status and bytes"
@@ -247,6 +281,13 @@ export function alternativeFor(name: CommandName): string | undefined {
     return (
       'executed alternative: aw-12-harness-read-isolation.test.ts "another business" ' +
       "compares another business's run and a fabricated one by status and bytes"
+    );
+  }
+  if (name === 'invitation.resend' || name === 'invitation.revoke') {
+    // C39-T: the invitation is the target, not a task.
+    return (
+      'executed alternative: c39-t-invitation-refusals.test.ts "C39-T isolation" compares ' +
+      "another business's invitation and a fabricated one by code and raw bytes"
     );
   }
   if (TARGET_FREE.some(([op]) => op === name)) {

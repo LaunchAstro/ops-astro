@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "reconnecting LISTEN after an unmentioned chat message tells the board to reread conversations"
+}

@@ -1,16 +1,67 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Rows of bravo's that the identifier cases hand an alpha caller by id (C81,
-// API-2, C32): written directly, so the alpha caller must not learn they exist.
+// API-2, C32, C31, MP-14-7a): written directly, so the alpha caller must not learn
+// they exist.
 // Split from `ident-audit-cases.ts` to keep that file under the line limit.
 
+import { seedBrokenConnection } from '../connections/fixture.ts';
 import type { World } from './world.ts';
+import { seedAutomation, type SeededAutomation } from '../automations/seed.ts';
 
-export async function bravoRecords(world: World): Promise<{
+/**
+ * An automation of bravo's (C33), an alpha version a foreign activation is aimed
+ * past, and alpha's own activation a foreign version is aimed at (C52-A).
+ */
+export interface BravoAutomation {
+  readonly automation: SeededAutomation;
+  readonly alphaVersionId: string;
+  readonly alphaActivationId: string;
+}
+
+export async function bravoAutomation(world: World): Promise<BravoAutomation> {
+  const automation = await seedAutomation(world.db.admin, world.bravo, world.bea.actorId as string);
+  const alpha = await seedAutomation(world.db.admin, world.alpha, world.ada.actorId as string);
+  return { automation, alphaVersionId: alpha.versionId, alphaActivationId: alpha.activationId };
+}
+
+interface BravoRows {
   readonly legalVersionId: string;
   readonly credentialId: string;
   readonly clientId: string;
-}> {
+  readonly secretId: string;
+  readonly connectionId: string;
+}
+
+/** A live standing mandate and a graduation row of bravo's client (MP-14-10a). */
+export interface BravoMandateRows {
+  readonly mandateId: string;
+  readonly classId: string;
+}
+
+/** The identifier world's foreign rows, with bravo's mandate rows beside them. */
+export type WithMandateRows<Rows> = Readonly<Rows> & BravoMandateRows;
+
+/** The rows a promote, demote or revoke could name, on bravo's client. */
+async function bravoMandateRows(world: World, clientId: string): Promise<BravoMandateRows> {
+  const bravoClass = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.graduation_classes
+       (business_id, id, client_id, action_class, class_label, earned)
+     values ($1, gen_random_uuid(), $2, 'social.post', 'Bravo posts', 'ready') returning id`,
+    [world.bravo, clientId],
+  );
+  const bravoMandate = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.standing_mandates
+       (business_id, id, client_id, classes, refuses, ceiling_minor, currency, expires_at, label,
+        authored_by_actor_id)
+     values ($1, gen_random_uuid(), $2, array['social.post'], false, 100, 'AUD',
+             now() + interval '1 day', 'A bravo mandate', $3) returning id`,
+    [world.bravo, clientId, world.bea.actorId],
+  );
+  return { mandateId: String(bravoMandate[0]?.id), classId: String(bravoClass[0]?.id) };
+}
+
+export async function bravoRecords(world: World): Promise<BravoRows & BravoMandateRows> {
   // A drafted legal document version of bravo's (C81), written directly: the
   // alpha caller is handed its id and must not learn it exists.
   const bravoLegal = await world.db.admin.execute<{ readonly id: string }>(
@@ -40,9 +91,20 @@ export async function bravoRecords(world: World): Promise<{
     [world.bravo, world.bea.actorId],
   );
 
+  // C31: a custody key of bravo's, cleared (a whole row with no sealed value).
+  const bravoSecret = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.custody_secrets (business_id, id, name, scope_kind, scope_id)
+     values ($1, gen_random_uuid(), 'bravo.key', 'business', null) returning id`,
+    [world.bravo],
+  );
+
   return {
     legalVersionId: String(bravoLegal[0]?.id),
     credentialId: String(bravoCredential[0]?.id),
     clientId: String(bravoClient[0]?.id),
+    secretId: String(bravoSecret[0]?.id),
+    // MP-14-7a: a broken connection of bravo's, the one a repair could name.
+    connectionId: await seedBrokenConnection(world.db.admin, world.bravo, 'a bravo source'),
+    ...(await bravoMandateRows(world, String(bravoClient[0]?.id))),
   };
 }

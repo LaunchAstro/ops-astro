@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "#461: a subtask or time log whose answer was lost keeps its operation id through a live task reread, so its retry writes one record, not two"
+}

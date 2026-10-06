@@ -1,14 +1,58 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The positive control's recipes for the client record and Settings ▸ Access
-// (C32, C58), split from role-case-positive-body.ts to keep that file under
-// the line limit, as role-case-privacy-bodies.ts is. The admin holds
-// `record:write` and `access:manage`, as the owner does.
+// (C32, C58, C59), split from role-case-positive-body.ts to keep that file
+// under the line limit, as role-case-privacy-bodies.ts is. The admin holds
+// `record:write`, `access:manage` and `settings:manage`, as the owner does.
 
 import { randomUUID } from 'node:crypto';
+import {
+  recordAuthenticationAttempt,
+  recordFactorEnrolled,
+  recordFactorVerified,
+} from '../../packages/core-records/src/index.ts';
+import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
+import { enrol } from '../commands/fixture.ts';
 import type { BodyContext, Prepared } from './role-case-bodies.ts';
 
-type AccessCommand = 'client.create' | 'access.grant' | 'access.revoke' | 'access.end';
+type AccessCommand =
+  | 'client.create'
+  | 'client.set_privacy'
+  | 'access.grant'
+  | 'access.revoke'
+  | 'access.end'
+  | 'access.reset_factor';
+
+/**
+ * C59: a new member of `businessId` with one sign-in login and a verified
+ * factor, recorded as the member's own enrolment records one, and one session
+ * this business has served: what a reset needs, and every table it writes.
+ */
+export async function factorMember(database: Database, businessId: string): Promise<string> {
+  const member = await enrol(database, businessId, `reset-${randomUUID().slice(0, 8)}`);
+  await database.withBusiness(businessId, async (tx) => {
+    const factor = await recordFactorEnrolled(tx, {
+      personId: member.personId,
+      provider: 'supabase',
+      providerFactorId: randomUUID(),
+    });
+    const { personId, actorId, presented } = member;
+    await recordFactorVerified(tx, { personId, factorId: factor.id, subject: presented.subject });
+    const [login] = await tx.query<{ readonly login_id: string }>(
+      'select login_id from public.person_logins where business_id = $1 and person_id = $2',
+      [tx.businessId, personId],
+    );
+    await recordAuthenticationAttempt(tx, {
+      owner: 'person_login',
+      presented: { ...presented, sessionId: randomUUID() },
+      outcome: 'resolved',
+      loginId: login?.login_id ?? '',
+      actorId,
+      personId,
+    });
+  });
+  return member.personId;
+}
 
 /** Clients made by the matrix, each under a name of its own (one name per business). */
 let clientsMade = 0;
@@ -27,6 +71,18 @@ export async function accessBody(name: AccessCommand, context: BodyContext): Pro
     // C32: `record:write`, a name no other call has used.
     case 'client.create':
       return { body: { name: nextClientName() } };
+    // C60: `privacy:manage`, which the admin holds as the owner does: a
+    // client made for the case, its "no agent edits" switched on.
+    case 'client.set_privacy':
+      return {
+        body: {
+          clientId: await madeClient(context),
+          modelEgress: false,
+          providers: [],
+          handlesHealth: false,
+          noAgentEdits: true,
+        },
+      };
     // C32: `access:manage`. The key is one the member already holds over
     // the whole business, so the answer is that grant and no caller's
     // holdings change under the cases that read them.
@@ -51,5 +107,11 @@ export async function accessBody(name: AccessCommand, context: BodyContext): Pro
     case 'access.end':
       if (context.freshMember === undefined) return { exception: 'no member maker here' };
       return { body: { holderId: await context.freshMember() } };
+    // C59: `settings:manage`, the admin signed in with the second factor just
+    // now (a fresh step-up) clearing a member made for the case, who holds no
+    // grant the admin does not.
+    case 'access.reset_factor':
+      if (context.freshFactorMember === undefined) return { exception: 'no member maker here' };
+      return { body: { holderId: await context.freshFactorMember() } };
   }
 }

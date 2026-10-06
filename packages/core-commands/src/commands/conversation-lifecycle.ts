@@ -20,7 +20,8 @@ import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { advisoryLock, readBusinessSetting } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
-import { itemsOf, requestQuotation, workOf, type Locked } from './conversation-contents.ts';
+import { itemsOf, requestQuotation, type Locked } from './conversation-contents.ts';
+import { workOf } from './conversation-work.ts';
 
 /** Quiet: twenty-four hours without a message. */
 export const QUIET_HOURS = 24;
@@ -144,8 +145,9 @@ export async function purgeHold(
   tx: TenantQuery,
   conversation: Wrapped,
   window: number,
+  lockTask = false,
 ): Promise<'WORK_OPEN' | 'NOT_DUE' | undefined> {
-  const work = await workOf(tx, conversation.id, conversation.scope_record_id);
+  const work = await workOf(tx, conversation.id, conversation.scope_record_id, lockTask);
   if (work.some((item) => !item.terminal)) return 'WORK_OPEN';
   const since = work.reduce(
     (latest, item) => (item.endedAt !== null && item.endedAt > latest ? item.endedAt : latest),
@@ -159,7 +161,7 @@ export async function purgeHold(
 }
 
 /** The business's worker actor, minted once under a lock so two passes share it. */
-async function workerActor(tx: TenantQuery): Promise<string> {
+export async function workerActor(tx: TenantQuery): Promise<string> {
   // Its own key, taken last and by nothing that then waits on a conversation,
   // so it joins no cycle with the row locks above it.
   await advisoryLock(tx, `worker-actor:${tx.businessId}`);
@@ -204,7 +206,7 @@ export async function purgeConversation(
     [tx.businessId, request.conversationId],
   );
   if (covering[0]?.n === '0') return { ok: false, code: 'WRAP_UP_ABSENT' };
-  const hold = await purgeHold(tx, { ...locked, id: request.conversationId }, window);
+  const hold = await purgeHold(tx, { ...locked, id: request.conversationId }, window, true);
   if (hold !== undefined) return { ok: false, code: hold };
   const purged = await tx.query<{ id: string }>(
     `delete from conversation_messages

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "PORT-P11 (C52-A standing approvals): one adoption and one turn-off per revision, on separate connections."
+}

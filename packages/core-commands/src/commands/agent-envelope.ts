@@ -54,7 +54,7 @@
 // collapse the identity model exists to prevent, and it would put the
 // delegating person's identity on the agent's audit rows.
 
-import { resolveAgentLogin } from '../../../core-records/src/index.ts';
+import { admitQuota, resolveAgentLogin } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -139,11 +139,11 @@ export async function executeAgentOperation(
   operation: AgentOperation | undefined,
 ): Promise<CommandResult> {
   // One bounded retry, `retryOnce` in `envelope.ts`, which the person entry
-  // takes too, on its shared predicate (`isRetryableViolation`). It admits a lost
-  // identity claim: a same-operationId retry in flight behind its original
-  // read no register row, then lost `operations_identity_key` to the
-  // original's commit; its whole transaction is gone, so the second attempt
-  // reads the committed row and replays it rather than answering a fault.
+  // takes too, on its shared predicate (`isRetryableViolation`). A
+  // same-operationId retry in flight behind its original waits at `enter`'s
+  // door and replays (#932); a lost `operations_identity_key`, the backstop,
+  // is retried here, and the second attempt reads the committed row and
+  // replays it rather than answering a fault.
   // The predicate is not identity-only: it also admits
   // `AffectedSetChanged` and a lost unique-value claim, under the same single
   // retry. A second retryable failure of any kind propagates. There is no
@@ -158,6 +158,13 @@ export async function executeAgentOperation(
         // that exists for exactly this case (AUTHORITY.md, "every attempt at
         // the door").
         if ('refused' in session) return asCallerVisible(session);
+        // Charged once admitted, as on the person path (`identity/quota.ts`):
+        // the agent's login, and the agent actor it acts as.
+        const overQuota = await admitQuota(tx, 'agent_login', presented, {
+          credential: session.loginId,
+          person: session.actorId,
+        });
+        if (overQuota !== undefined) return overQuota;
         return await runAgentCommand(tx, { session, credential, request }, operation);
       }),
   );
@@ -278,8 +285,8 @@ async function runRow<O extends object>(
 
   const outcome = await inSavepoint(tx, async () => await authorised.run(operands));
   if (isRefused(outcome)) {
-    const { refusal, attempted } = outcome;
-    return await settle(tx, session, request, digest, refusal, 'register', attempted);
+    const { refusal, attempted, kept } = outcome;
+    return await settle(tx, session, request, digest, refusal, 'register', attempted, kept);
   }
 
   return await recordApplied(tx, session, request, digest, outcome);

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a grant that ends while the reply waits on the session check keeps no reply"
+}

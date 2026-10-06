@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "The copy finder lists a row naming a found person by their stored name alone, before and after an erasure."
+}

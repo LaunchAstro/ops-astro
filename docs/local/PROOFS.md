@@ -701,14 +701,14 @@ lane does not own.
   decision and so every pickup was unreachable. The seed now gives the admin
   `task:decide` (`scripts/local-seed.mjs:97`); a member still does not hold it.
 - **The fixture's member and the seed's member differ.** The seed's `member`
-  holds `['task:read', 'task:write', 'task:assign', 'person:read', 'settings:read']`;
+  holds `['task:read', 'task:write', 'task:assign', 'person:read', 'settings:read', 'chat:comment']`;
   the `MEMBER_ACTIONS` that `world.ts` grants (from `tests/acceptance/cast.ts`)
   is `read`, `write`, `assign` and `comment` on `task` only. The matrix does
   not depend on it, because it reads grants back out of the `grants` table
   rather than trusting the list, but `mia` is not the same person in the two
   places. `tests/acceptance/seeded-role-grants.test.ts` now pins that
-  difference: `task:comment` added and the `person` and `settings` reads left
-  out. It also checks that the seeded admin holds every grant a
+  difference: `task:comment` added, and `chat:comment` and the `person` and
+  `settings` reads left out. It also checks that the seeded admin holds every grant a
   `COMMAND_SURFACE` declaration asks for.
 - **Closed: `lockTask` was not exported.** It is exported from
   `packages/core-commands/src/commands/prepare.ts` now, and
@@ -861,8 +861,8 @@ API 8799, Vite 5199):
   answered 401 `AUTH_UNKNOWN_LOGIN`. The lane's
   `.local/synthetic-agents.json` password for the alpha agent's login is not
   the one the shared GoTrue holds (`invalid_credentials`). Another lane
-  created that user, and `scripts/local-seed.mjs` keeps an existing agent
-  user's password rather than resetting it. These cells are unproved on
+  created that user, and `scripts/local-seed.mjs` then kept an existing agent
+  user's password rather than resetting it (it now sets it to the file's). These cells are unproved on
   the mounted browser, not passed.
 - **`verify:browser` on the same stack:** 84 of 85. B6 threw at the same
   agent pickup.

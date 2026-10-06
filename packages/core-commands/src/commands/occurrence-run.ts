@@ -111,7 +111,7 @@ function checkAuthority(authority: OccurrenceAuthority): RuntimeResult<Occurrenc
   return { ok: true, value: authority };
 }
 
-/** Whether the actor is one of this business's, of the kind asked for (a worker only while active). */
+/** Whether the actor is one of this business's, of the kind asked for (a worker only while active, held to commit). */
 async function isActor(
   tx: TenantQuery,
   actorId: string,
@@ -120,7 +120,8 @@ async function isActor(
   if (!isUuid(actorId)) return false;
   const rows = await tx.query<{ readonly id: string }>(
     `select id from public.actors
-      where business_id = $1 and id = $2 and kind = $3 and (active or kind <> 'worker')`,
+      where business_id = $1 and id = $2 and kind = $3 and (active or kind <> 'worker')
+      ${kind === 'worker' ? 'for share' : ''}`,
     [tx.businessId, actorId, kind],
   );
   return rows.length === 1;
@@ -270,11 +271,10 @@ export async function startOccurrenceRun(
 ): Promise<RuntimeResult<OccurrenceRun>> {
   if (!isUuid(request.occurrenceId)) return unknownOccurrence();
   const occurrenceId = request.occurrenceId.toLowerCase();
+  // Held to commit: a second start waits, then answers the first; the worker is asked under it.
+  await advisoryLock(tx, `occurrence_run:${tx.businessId}:${occurrenceId}`);
   if (!(await isActor(tx, request.workerActorId, 'worker'))) return workerRequired();
   const workerActorId = request.workerActorId.toLowerCase();
-  // Held to commit: a second start of this occurrence waits here and then
-  // answers the first run.
-  await advisoryLock(tx, `occurrence_run:${tx.businessId}:${occurrenceId}`);
   const earlier = await existingRun(tx, occurrenceId);
   if (earlier !== undefined) return { ok: true, value: earlier };
 

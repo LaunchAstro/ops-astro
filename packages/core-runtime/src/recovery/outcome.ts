@@ -11,12 +11,13 @@
 
 import { revokeDelegation } from '../../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
-import { settledAt, type Settlement } from '../budget.ts';
+import { NO_CALLS, settledAt, type Settlement } from '../budget.ts';
 import { lockedInstant } from '../clock.ts';
 import type { LockRequest } from '../locks.ts';
 import { lockRediscovered } from '../rediscovery.ts';
 import { refuse, type RuntimeResult } from '../refusals.ts';
-import { checkAuthorityAt, closeHold, holdCoveringGrants } from './classifier.ts';
+import { closeHold } from '../close-hold.ts';
+import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
 import { modelCallsOn } from '../model-calls-on.ts';
 import { endLease } from './lease-retirement.ts';
 import { locksOf, resume, settle, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
@@ -199,7 +200,7 @@ export async function recordOutcome(
   const settlement =
     request.outcome === 'nothing_happened'
       ? await release(tx, row)
-      : await settle(tx, row, BigInt(row.held_minor), 'completed');
+      : await settle(tx, row, BigInt(row.held_minor), NO_CALLS, 'completed');
   // AW-10: the step's held broker calls take the same outcome, with the person's name.
   const person = request.subjects.find((one) => one.kind === 'person');
   if (person !== undefined) {

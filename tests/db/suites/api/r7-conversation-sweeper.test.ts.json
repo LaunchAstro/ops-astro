@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "R7: the idle sweep runs on a schedule over every business, one pass per business at a time, each failure raised once per cause with no body, and stop waits for the pass in flight"
+}

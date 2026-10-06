@@ -38,11 +38,21 @@ export function isBusinessId(value: string): value is BusinessId {
  *
  * Where it sits in the lock order is `core-runtime/src/locks.ts`: the chain
  * class is `acquire`'s own first class, and the command layer's keys (the
- * placement and sibling locks) come before anything `acquire` takes. Nothing
+ * operation identity's door first, then the placement and sibling locks) come
+ * before anything `acquire` takes. Nothing
  * else in `packages/` or `apps/` spells the SQL (`tests/runtime/cq-8.test.ts`).
+ *
+ * `shared` is the same key's reader mode: readers hold it together and only
+ * the exclusive mode waits on them (the settings install lock,
+ * `lockSettingsInstall`).
  */
-export async function advisoryLock(tx: Pick<TenantQuery, 'query'>, key: string): Promise<void> {
-  await tx.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [key]);
+export async function advisoryLock(
+  tx: Pick<TenantQuery, 'query'>,
+  key: string,
+  mode: 'exclusive' | 'shared' = 'exclusive',
+): Promise<void> {
+  const shared = mode === 'shared' ? '_shared' : '';
+  await tx.query(`select pg_advisory_xact_lock${shared}(hashtextextended($1, 0))`, [key]);
 }
 
 export interface Connection {

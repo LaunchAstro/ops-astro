@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#963): a slower export whose bodies all land after a queued delete leaves no later in-window span missing."
+}

@@ -26,6 +26,8 @@ import {
   task,
 } from './api-1-isolation-world.ts';
 import { SHAPE, asAgent, canonical, foreign, type Heard } from './api-1-isolation-surfaces.ts';
+import { requestBody as correction } from '../site/c80-world.ts';
+import { foreignOnboarding, foreignStep } from './api-1-isolation-steps.ts';
 
 let attemptedForeignLeaseId = '';
 let attemptedForeignReservationId = '';
@@ -67,6 +69,8 @@ const FIELD_WRITES: Record<string, (record: string) => Record<string, unknown>> 
   }),
 };
 
+type Body = (record: string) => Record<string, unknown> | null;
+
 /**
  * Each command's own target: a record, a lease, a reservation, or none. A lease
  * call names its task through its lease and ignores a record id beside it, so its
@@ -75,9 +79,8 @@ const FIELD_WRITES: Record<string, (record: string) => Record<string, unknown>> 
  * that person's approved reservation, still held; the run's state, the run on that
  * person's picked-up task. The same bodies at the agent's own claim are the control.
  */
-const bodies = (
-  claim: Claim,
-): Record<string, (record: string) => Record<string, unknown> | null> => ({
+const bodies = (claim: Claim): Record<string, Body> => ({
+  'live_correction.request': (record) => ({ ...correction(randomUUID(), record) }),
   'task.read': (record) => ({ recordId: record }),
   'task.comment': (record) => ({ recordId: record, body: 'made-up', audience: 'internal' }),
   'task.heartbeat': () => ({ ...claim.lease, leaseSeconds: 60 }),
@@ -123,6 +126,7 @@ const bodies = (
   'run.child_handback': () => ({ outcome: 'completed' }),
   // A credential's create (API-2): a pickup's one-task delegation never reaches it.
   'task.create': () => ({ fields: { title: 'made-up' } }),
+  'onboarding.step_result': (record) => ({ recordId: record, outcome: 'done', result: 'made-up' }),
 });
 
 /** The lease and run operations the delegation reaches only on its own task. */
@@ -160,12 +164,18 @@ export function delegationCrossing(): void {
       );
     const before = await claims();
     expect(before).toHaveLength(1);
+    // And the other person's onboarding, whose ready agent step is a step result's crossing.
+    const stepsBefore = await foreignOnboarding();
+    expect(stepsBefore).toContainEqual(
+      expect.objectContaining({ step_key: 'welcome-email', state: 'ready' }),
+    );
     const target = bodies({ lease: foreignLease, taskId: foreignTaskId, runId: foreignRunId });
     expect(Object.keys(target).toSorted()).toEqual(agentRows.map((row) => row.command).toSorted());
     // The lease and the run: the delegation's one task is not the other person's. The
     // pickup: one live delegation per agent and purpose, so a second task never joins
     // the first one's reach. The control below tells this from a collection refusal.
     const reason: Record<string, string> = {
+      'live_correction.request': 'DELEGATION_OUT_OF_PURPOSE',
       'task.heartbeat': 'DELEGATION_OUT_OF_PURPOSE',
       'task.handback': 'DELEGATION_OUT_OF_PURPOSE',
       'task.dispatch': 'DELEGATION_OUT_OF_PURPOSE',
@@ -173,13 +183,14 @@ export function delegationCrossing(): void {
       ...Object.fromEntries(RUN_AND_LEASE.map((command) => [command, 'DELEGATION_OUT_OF_PURPOSE'])),
       'task.pickup': 'DELEGATION_ALREADY_LIVE',
       'task.create': 'DELEGATION_OUT_OF_PURPOSE',
+      'onboarding.step_result': 'DELEGATION_OUT_OF_PURPOSE',
     };
     for (const row of agentRows) {
-      for (const [businessKey, other] of [
-        ['alpha', task.client1],
-        ['alpha', task.client2],
-        ['bravo', task.bravo],
-      ] as const) {
+      // A step result's crossing is the other person's ready agent step.
+      const alpha =
+        row.command === 'onboarding.step_result' ? [foreignStep] : [task.client1, task.client2];
+      const others = [...alpha.map((id) => ['alpha', id] as const), ['bravo', task.bravo] as const];
+      for (const [businessKey, other] of others) {
         const body = target[row.command]?.(other) ?? {};
         // eslint-disable-next-line no-await-in-loop -- one command at a time reads as a list
         const heard = await asAgent(row, businessKey, body);
@@ -214,6 +225,7 @@ export function delegationCrossing(): void {
     }
     // Check first, then act: every refusal left the other person's claims as they were.
     expect(await claims()).toEqual(before);
+    expect(await foreignOnboarding()).toEqual(stepsBefore);
   }, 60_000);
 
   it('API-1 isolation: the agent reaches the lease and run operations on its own delegated task', async () => {
@@ -232,6 +244,7 @@ export function delegationCrossing(): void {
       else expect(heard[0]?.status, where).toBe(200);
     }
   }, 60_000);
+
   /* eslint-enable max-lines-per-function, unicorn/consistent-function-scoping */
 }
 

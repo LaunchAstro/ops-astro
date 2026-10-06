@@ -2,41 +2,80 @@
 //
 // The Agent pane on the task page (MP-6-1), wired to the real commands.
 //
-// `AgentPane` draws what `task.read` stored and returned; this view hands its
-// controls to the same paths the rest of the page uses. A decision names the
-// gate and the version the pane drew, from the same read that showed the
-// evidence, and the server compares that version under its locks: a page that
-// has gone stale is told so and reads again, never decides by accident.
-// Reject is the decide path's `reject`, pressed from the proposal header.
+// `AgentPane` draws what `task.read` returned; its controls take the page's own
+// paths. A decision names the gate and version the pane drew, from the read
+// that showed the evidence, and the server compares that version under its
+// locks: a stale page is told so and reads again, never decides by accident.
+// Reject is the decide path's `reject`, from the proposal header; escalate,
+// past the rounds of changes, names the person chosen (DA-07).
 // Cancel is `task.cancel`, which asks `gate:decide`. A person's word on an
 // unknown effect (C54) is `budget.record_outcome` (T3d1) or `budget.write_off`
 // (T3c), naming the attempt the read showed; both ask `billing:decide`, and the
-// write-off's second approver above the band is the server's. The top-up is
-// the task page's own (T2e). A run stopped at its ceiling (AW-05) is answered
-// with `run.top_up` (`billing:decide`) or `run.end_at_budget_stop`
-// (`gate:decide`), naming the task, the run and the stop the read showed.
-// Every outcome ends in a reread, as the proposals section's does.
+// write-off's second approver above the band is the server's. A run stopped at
+// its ceiling (AW-05) is answered with `run.top_up` (`billing:decide`) or
+// `run.end_at_budget_stop` (`gate:decide`), naming the task, run and stop read.
+// Every outcome ends in a reread, as the proposals section's does. The
+// operational log (MP-6-2) is `task.execution`'s events and their runs' plans,
+// read again with each new task read, as the run's own section reads them; a
+// refused or failed read draws no log, and the run's section says why.
 
 import { useState, type ReactElement } from 'react';
-import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
+import {
+  AgentPane,
+  type GateDecision,
+  type RecordedOutcome,
+  type RunActivity,
+} from '@launchastro/ui';
+import { askDrawer, newAttemptAsk } from '../assistant/asks.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
+  ExecutionEvent,
   PersonView,
   ProposalView,
+  TaskExecutionResult,
   TaskLedgerView,
 } from '../../../../packages/core-wire/src/index.ts';
+import { useRead } from '../data/use-read.ts';
+import { pathTo } from '../routes.ts';
 import type { Settlement } from '../records/use-command.ts';
+import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
+import { closedNote, refusesRecipient, type DecisionNote } from './gate-controls.tsx';
 import { StepUpPrompt } from './step-up-prompt.tsx';
+import { wholeExecution } from './run-progress.tsx';
 
 export interface AgentSectionProps {
   readonly client: OperationsClient;
+  /**
+   * The session the page is read under: the drawer's ask carries it, and the
+   * operational log's read is made under it (MP-6-2).
+   */
+  readonly grantKey: string;
   readonly recordId: string;
+  /** The task's title as the read gave it, or its key while it has none: the drawer's ask names it. */
+  readonly title: string;
+  /**
+   * The client the task is under, as `task.read` sent it: null on an internal
+   * task, and on one whose client the reader's grants do not reach (CS-4.12).
+   * The drawer's ask carries it, so the egress rule sees whose data a plan
+   * would carry (AW-04).
+   */
+  readonly clientId: string | null;
+  /** The task is under a client the reader cannot see (`clientSet`, no id): its setting reads as off. */
+  readonly clientUnseen: boolean;
+  /** The task's key, for the operational log's read (MP-6-2). */
+  readonly taskKey: string;
+  /** The task read's latest answer: each new one re-reads the log. */
+  readonly readOf: unknown;
   readonly proposals: readonly ProposalView[];
   readonly people: readonly PersonView[];
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
   readonly ledger: TaskLedgerView | null | undefined;
   readonly onChanged: () => void;
+  /** The task page's held decision refusal: closed in either view, closed in both. */
+  readonly note: DecisionNote | null;
+  readonly onDecided: (note: DecisionNote | null) => void;
+  readonly onStepUp?: (open: true | null) => void;
 }
 
 interface AgentControls {
@@ -45,6 +84,7 @@ interface AgentControls {
   readonly decide: (
     gate: { readonly gateId: string; readonly versionId: string },
     decision: GateDecision | 'reject',
+    recipientPersonId?: string,
   ) => void;
   readonly cancel: (lineageId: string) => void;
   readonly recordOutcome: (attemptId: string, outcome: RecordedOutcome) => void;
@@ -80,28 +120,37 @@ const STOP_AWAITING =
 
 /** The pane's controls on the real commands, each ending in a reread. */
 function useAgentControls(props: AgentSectionProps): AgentControls {
-  const { busy, run, stepUp } = useMoneyCommand(props.client);
+  const money = useMoneyCommand(props.client);
+  const { busy, run, stepUp } = money;
   const [refusal, setRefusal] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState<string | null>(null);
   const [stopAwaiting, setStopAwaiting] = useState<string | null>(null);
-  const settle = (settlement: Settlement): void => {
+  const hold = useStepUpHold(props, money);
+  const settle = (settlement: Settlement, decision = false): void => {
+    hold(settlement, decision);
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);
     const state = settlement.kind === 'ok' ? stateOf(settlement.value) : undefined;
     setAwaiting(state === 'awaiting_second_approver' ? AWAITING : null);
     setStopAwaiting(state === 'awaiting_second' ? STOP_AWAITING : null);
     props.onChanged();
   };
-  const decide: AgentControls['decide'] = (gate, decision) => {
-    if (busy) return;
+  const decide: AgentControls['decide'] = (gate, decision, recipientPersonId) => {
+    if (busy || props.note?.closed === true) return;
+    props.onDecided(null);
+    const exact = { gateId: gate.gateId, versionId: gate.versionId, decision };
     run(
       (client) =>
         client.mutate('task.decide', {
-          gateId: gate.gateId,
-          versionId: gate.versionId,
-          decision,
+          ...exact,
           note: `Decided from the Agent pane (${decision}).`,
+          ...(recipientPersonId === undefined ? {} : { recipientPersonId }),
         }),
-      settle,
+      (settlement) => {
+        if (settlement.kind === 'closed' && !refusesRecipient(settlement)) {
+          props.onDecided(closedNote(props.proposals, gate.gateId, settlement.because));
+        }
+        settle(settlement, true);
+      },
     );
   };
   const cancel = (lineageId: string): void => {
@@ -116,9 +165,7 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
       settle,
     );
   };
-  const send = (call: Call): void => {
-    run(call, settle);
-  };
+  const send = (call: Call): void => run(call, settle);
   const acts = { ...unknownControls(props, busy, send), ...stopControls(props, busy, send) };
   return { busy, refusal, decide, cancel, awaiting, stopAwaiting, stepUp, ...acts };
 }
@@ -189,6 +236,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
   // preference store once that store is in (MP-2-11); until then it lasts
   // as long as the page.
   const [jobListOpen, setJobListOpen] = useState(false);
+  const activity = useActivity(props);
   const nameOf = (personId: string): string =>
     props.people.find((person) => person.personId === personId)?.name ?? 'a person';
 
@@ -202,14 +250,13 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onJobList={setJobListOpen}
         busy={busy}
         refusal={refusal}
+        decideClosed={props.note?.closed === true}
         onDecide={decide}
-        onReject={(gate) => {
-          decide(gate, 'reject');
-        }}
+        onReject={(gate) => decide(gate, 'reject')}
+        people={props.people}
         onCancel={cancel}
-        // The access ledger has no screen yet, so the stamp names each grant it
-        // draws on without a link; the ledger's route supplies one when it lands.
-        ledgerHref={null}
+        // Each grant the stamp names leads to the access ledger, Settings ▸ Access (F71).
+        ledgerHref={() => pathTo('agency:access')}
         ledger={props.ledger ?? null}
         onOutcome={recordOutcome}
         onWriteOff={writeOff}
@@ -217,8 +264,36 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onTopUpAtStop={controls.topUpAtStop}
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
+        onStartAttempt={() => {
+          const { recordId: id, title, clientId } = props;
+          const unseen = props.clientUnseen ? { clientUnseen: true as const } : {};
+          askDrawer(newAttemptAsk({ id, title, clientId, ...unseen }), props.grantKey);
+        }}
+        {...(activity === undefined ? {} : { activity })}
       />
       {controls.stepUp === null ? null : <StepUpPrompt ask={controls.stepUp} />}
     </section>
   );
 }
+
+/**
+ * The log's rows: the execution read's events, each placed in the plan its run
+ * was proposed under, and those plans, once read. A read without placements
+ * draws no log rather than rows placed against nothing.
+ */
+function useActivity(props: AgentSectionProps): RunActivity | undefined {
+  const { state } = useRead<TaskExecutionResult>({
+    grantKey: props.grantKey,
+    run: async () => await wholeExecution(props.client, props.taskKey),
+    deps: [props.taskKey, props.readOf],
+  });
+  if (state.outcome !== 'ready' && state.outcome !== 'empty') return undefined;
+  const execution = state.value.execution as Partial<TaskExecutionResult['execution']> | undefined;
+  if (!Array.isArray(execution?.events) || !Array.isArray(execution.plans)) return undefined;
+  if (!execution.events.every(placed)) return undefined;
+  return { plans: execution.plans, events: execution.events };
+}
+
+type Placed = ExecutionEvent & { readonly placement: NonNullable<ExecutionEvent['placement']> };
+
+const placed = (event: ExecutionEvent): event is Placed => event.placement !== undefined;

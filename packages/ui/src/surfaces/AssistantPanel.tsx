@@ -13,7 +13,7 @@
 // **With no model on offer and a reason in words, the drawer sends nothing**
 // (owner line 72): the picker is empty and disabled, the reason sits under the
 // head, and a question asked anyway is answered in the drawer, not sent.
-import type { ReactElement } from 'react';
+import { useRef, type ReactElement } from 'react';
 import type {
   AssistantChat,
   AssistantMessage,
@@ -22,6 +22,7 @@ import type {
 } from './assistant/types.ts';
 import { Icon } from '../primitives/Icon.tsx';
 import { Asker } from './assistant/asker.tsx';
+import { useHistory } from './assistant/history.tsx';
 import { TabRow } from './assistant/tab-row.tsx';
 import { Transcript } from './assistant/transcript.tsx';
 
@@ -29,13 +30,17 @@ export type {
   AssistantChat,
   AssistantCitation,
   AssistantCite,
+  AssistantHistory,
   AssistantMessage,
   AssistantModel,
   AssistantOffer,
   AssistantPage,
   AssistantPanelProps,
+  AssistantPast,
+  AssistantPlan,
   AssistantRole,
   AssistantSubjectView,
+  PlanCardState,
 } from './assistant/types.ts';
 
 const NO_MESSAGES: readonly AssistantMessage[] = [];
@@ -93,6 +98,8 @@ function Head(props: {
   readonly onModel: (key: string, model: string) => void;
   readonly onAddPage: (key: string) => void;
   readonly onClose: (() => void) | undefined;
+  /** The history control, beside Page, where the caller offers a history. */
+  readonly history: ReactElement | null;
 }): ReactElement {
   const { onClose } = props;
   // In a host's frame (the dock's `ai` panel) the host's head names the drawer
@@ -122,6 +129,7 @@ function Head(props: {
         >
           <Icon name="eye" size="sm" />
         </button>
+        {props.history}
         {onClose === undefined ? null : <Close onClose={onClose} />}
       </div>
     </Row>
@@ -149,9 +157,61 @@ function Provenance(props: {
   );
 }
 
+/**
+ * Each tab's sends still in flight, kept here because the field is drawn anew
+ * for each tab: back on a tab, a chip is not sent again while that tab's last
+ * send is out, as the field itself refuses while it stays drawn.
+ */
+function useChipGuard(
+  chips: readonly string[],
+  onSend: AssistantPanelProps['onSend'],
+): AssistantPanelProps['onSend'] {
+  const out = useRef(new Map<string, number>());
+  return (key, text) => {
+    const sending = out.current.get(key) ?? 0;
+    if (sending > 0 && chips.includes(text)) return;
+    out.current.set(key, sending + 1);
+    const sent = onSend(key, text);
+    // The field hears a failure from `sent` itself; this branch only counts.
+    const landed = (): void => {
+      out.current.set(key, (out.current.get(key) ?? 1) - 1);
+    };
+    void Promise.resolve(sent).then(landed, landed);
+    return sent;
+  };
+}
+
+/** The selected tab's transcript, and that it is answering while a question is out. */
+function Thread(props: {
+  readonly chat: AssistantChat | undefined;
+  readonly answering: boolean;
+  readonly onAccept: AssistantPanelProps['onAccept'];
+}): ReactElement {
+  const { chat, onAccept } = props;
+  return (
+    <>
+      <Transcript
+        messages={chat?.messages ?? NO_MESSAGES}
+        onAccept={
+          onAccept === undefined || chat === undefined
+            ? undefined
+            : (messageId) => onAccept(chat.key, messageId)
+        }
+      />
+      {props.answering ? (
+        <p className="aip__msg aip__msg--note" role="status" data-assistant="answering">
+          Answering…
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 export function AssistantPanel(props: AssistantPanelProps): ReactElement {
   const chat = props.chats.find((each) => each.key === props.selected);
   const sendable = !(props.offer.models.length === 0 && props.offer.waiting !== null);
+  const send = useChipGuard(props.subject.chips, props.onSend);
+  const history = useHistory(props.history);
   return (
     <section className="aipanel" data-assistant="panel" aria-label="Agent">
       <Head
@@ -160,6 +220,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         onModel={props.onModel}
         onAddPage={props.onAddPage}
         onClose={props.onClose}
+        history={history.control}
       />
       <TabRow
         chats={props.chats}
@@ -169,6 +230,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         onTakeOut={props.onTakeOut}
         onNew={props.onNew}
       />
+      {history.list}
       {props.offer.waiting === null ? null : (
         <p className="aip__msg aip__msg--note" data-assistant="local-model">
           {props.offer.waiting}
@@ -176,7 +238,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
       )}
       <Provenance address={props.address ?? null} citation={props.citation} />
       {props.allowance}
-      <Transcript messages={chat?.messages ?? NO_MESSAGES} />
+      <Thread chat={chat} answering={props.answering === true} onAccept={props.onAccept} />
       <Asker
         // A new draft, or another tab, starts the field again.
         key={`${props.selected} ${props.citation?.id ?? ''} ${props.draft}`}
@@ -185,7 +247,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         chips={props.subject.chips}
         draft={props.draft}
         sendable={sendable}
-        onSend={(text) => (chat === undefined ? undefined : props.onSend(chat.key, text))}
+        onSend={(text) => (chat === undefined ? undefined : send(chat.key, text))}
       />
     </section>
   );

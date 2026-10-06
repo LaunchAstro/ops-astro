@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a conversation message refuses a write grant that expires while it waits for the conversation row"
+}

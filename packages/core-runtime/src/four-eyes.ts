@@ -17,7 +17,11 @@
 // Each caller keeps what is its own: where first approvals are stored, what
 // figure they must match, and the words of its refusals.
 
-import type { Subject, TenantQuery } from '../../core-records/src/index.ts';
+import {
+  lockSettingsInstall,
+  type Subject,
+  type TenantQuery,
+} from '../../core-records/src/index.ts';
 import { minorDigits as iso4217Digits } from '../../core-wire/src/index.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
 import { holdCoveringGrants } from './recovery/classifier.ts';
@@ -39,26 +43,36 @@ export function minorDigits(currency: string): number {
   return iso4217Digits(currency);
 }
 
-/** The band in the currency's minor units, read under the caller's locks; null is off. */
+/**
+ * The band in the currency's minor units, read under the caller's locks; null
+ * is off. Postgres converts the stored decimal exactly and floors it, so a band
+ * of 500.005 is 50000 and 500.01 is above it: a float product rounded up would
+ * let one person approve a figure above the band.
+ */
 export async function fourEyesBandMinor(tx: TenantQuery, currency: string): Promise<bigint | null> {
-  const [row] = await tx.query<{ readonly value: unknown }>(
-    `select value from public.business_settings
+  // A missing row locks nothing: the settings install lock, shared, keeps a first row out (#463).
+  await lockSettingsInstall(tx, 'shared');
+  const digits = minorDigits(currency);
+  const [row] = await tx.query<{ readonly minor: string | null }>(
+    `select case when jsonb_typeof(value) = 'number'
+                 then floor(value::numeric * power(10::numeric, $2::int))::text end as minor
+       from public.business_settings
       where business_id = $1 and key = 'four_eyes_threshold'
       for share`,
-    [tx.businessId],
+    [tx.businessId, digits],
   );
-  const band = row === undefined ? SHIPPED_FOUR_EYES_BAND : row.value;
-  if (typeof band !== 'number') return null;
-  return BigInt(Math.round(band * 10 ** minorDigits(currency)));
+  if (row === undefined) return BigInt(SHIPPED_FOUR_EYES_BAND) * 10n ** BigInt(digits);
+  return row.minor === null ? null : BigInt(row.minor);
 }
 
 /**
  * The first approval this decision pairs with. `null`: the figure is within
  * the band, or the band is off, and one person decides. The approver: a
- * different person, live at the locked instant, completes it. `undefined`:
- * two people are needed and none can pair yet, so this is a first approval.
- * `'own'`: the caller gave the only first approval, and one person twice is
- * one approver.
+ * different person, live at the locked instant, completes it; `prefer`'s
+ * approval first when it is one of them (a person the caller's own rule
+ * requires), otherwise the earliest. `undefined`: two people are needed and
+ * none can pair yet, so this is a first approval. `'own'`: the caller gave
+ * the only first approval, and one person twice is one approver.
  */
 export async function pairFor<A extends FirstApprover>(
   amountMinor: bigint,
@@ -66,13 +80,15 @@ export async function pairFor<A extends FirstApprover>(
   personId: string,
   firsts: readonly A[],
   holds: Holds,
+  prefer?: string,
 ): Promise<A | null | undefined | 'own'> {
   if (band === null || amountMinor <= band) return null;
   const others = firsts.filter((first) => first.personId !== personId);
   const live = await Promise.all(
     others.map(async (one) => ((await holds(one.subjects)) ? one : undefined)),
   );
-  const pair = live.find((one) => one !== undefined);
+  const ready = live.filter((one) => one !== undefined);
+  const pair = ready.find((one) => one.personId === prefer) ?? ready[0];
   if (pair === undefined && firsts.length > others.length) return 'own';
   return pair;
 }

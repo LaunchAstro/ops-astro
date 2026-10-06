@@ -23,14 +23,12 @@ import type {
   PresetPlan,
   SettingValueType,
 } from '../../core-records/src/index.ts';
-import type { TaskLedgerView } from './views-agent.ts';
+import type { AttemptView, TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
 import type { InboxConversation } from './views-chat.ts';
-import type { ClientView } from './views-clients.ts';
+import type { ClientPrivacyView, ClientView } from './views-client.ts';
 
-// The client views (C32) live in their own module, re-exported here, so this
-// one stays under the 1,000-line cap.
-export type { ClientView, ClientListResult } from './views-clients.ts';
+export type { ClientListResult, ClientPrivacyView, ClientView } from './views-client.ts';
 
 // A run's pins, reads, checks and scope, and the task's execution and receipt
 // reads, live in their own module, re-exported here, so this one stays under
@@ -48,6 +46,7 @@ export type {
   ExecutionGraph,
   ExecutionNode,
   ReceiptResult,
+  LiveCorrectionReadResult,
 } from './views-run.ts';
 
 // The run ledger, conversation and awaiting-review views live in their own
@@ -66,6 +65,7 @@ export type {
   ConversationReadResult,
   AwaitingReviewView,
   AwaitingReviewResult,
+  AttemptView,
 } from './views-agent.ts';
 
 export type {
@@ -466,15 +466,6 @@ export interface LeaseView {
   readonly holderActorId: string | null;
 }
 
-export interface AttemptView {
-  readonly id: string;
-  readonly state: string;
-  readonly dispatchMarker: boolean;
-  readonly observed: boolean;
-  /** Why the work dropped under it (T3e1), or null: never a person's cancellation. */
-  readonly dropCause: string | null;
-}
-
 export interface GateView {
   readonly id: string;
   /**
@@ -706,6 +697,13 @@ export interface BoardComments {
 export interface TodoView extends TaskSummary {
   readonly tags: readonly TagView[];
   readonly waitingComments: number;
+  /** The work label's id (CS-4.16), as `task.read` answers it; null for none. */
+  readonly category: string | null;
+  /**
+   * Whose move it is (DP-14), as the task page derives it: Review while a gate
+   * waits on a person, Agent while an agent holds a live lease, Team otherwise.
+   */
+  readonly whoseMove: 'Review' | 'Agent' | 'Team';
 }
 
 /** `task.todos`: the reader's own open tasks, whatever board they sit on. */
@@ -939,6 +937,8 @@ export interface AccessReadResult {
   readonly agents: readonly AccessAgent[];
   /** The business's client records, which a `party` scope in a preview names. */
   readonly clientRecords: readonly ClientView[];
+  /** Each client record's privacy settings (C60), in the same order. */
+  readonly clientPrivacy: readonly ClientPrivacyView[];
 }
 
 /**

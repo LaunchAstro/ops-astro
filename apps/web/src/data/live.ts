@@ -73,7 +73,8 @@ async function readEvents(
   for (;;) {
     // eslint-disable-next-line no-await-in-loop -- a stream is read in order.
     const { value, done } = await reader.read();
-    if (done) return;
+    // A frame read before the abort landed belongs to the stream it ended.
+    if (done || signal.aborted) return;
     const blocks = (buffer + decoder.decode(value, { stream: true })).split('\n\n');
     buffer = blocks.pop() ?? '';
     for (const block of blocks) {

@@ -4,6 +4,7 @@ import { catalogue, EMAIL_SEND, emailAdapter } from '../../packages/core-connect
 import { sendInboxEmail, type Broker } from '../../packages/core-custody/src/index.ts';
 import type { InboxEntry } from '../../packages/core-wire/src/index.ts';
 import { createGroupWorld } from './c71-g-world.ts';
+import { MAIL } from '../broker/email-world.ts';
 
 function mailProbe(): { broker: Broker; dispatched: string[] } {
   const dispatched: string[] = [];
@@ -17,6 +18,7 @@ function mailProbe(): { broker: Broker; dispatched: string[] } {
           return Promise.resolve({ kind: 'refused', started: false, code: 'NOT_SENT_IN_TEST' });
         },
         stderr: () => '',
+        describe: () => Promise.resolve(null),
         raw: () => Promise.resolve({}),
         kill: () => {},
         stop: () => Promise.resolve(),
@@ -100,10 +102,7 @@ it('revoking or ending chat access withholds conversation mentions, new names an
     );
     if (item === undefined) throw new Error('mention item missing');
     const { broker, dispatched } = mailProbe();
-    const email = await sendInboxEmail(world.db.app, world.alpha, item.id, broker, {
-      appOrigin: 'https://ops.example.test',
-      from: 'hello@example.test',
-    });
+    const email = await sendInboxEmail(world.db.app, world.alpha, item.id, broker, MAIL);
     expect.soft(email).toEqual({ ok: false, code: 'ITEM_WITHHELD' });
     expect.soft(dispatched).toEqual([]);
   } finally {

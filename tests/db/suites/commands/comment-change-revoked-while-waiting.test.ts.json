@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an agent's comment edit or delete that waits on a row lock changes nothing once a delegation or grant revoke commits (catalogue #414, PRV-oa-743-R1 criterion 5)"
+}

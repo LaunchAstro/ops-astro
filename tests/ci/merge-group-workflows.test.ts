@@ -219,8 +219,10 @@ describe('merge group: CodeQL reports on a group', () => {
   });
 
   // GitHub never posts the CodeQL results check on a merge group, so a required CodeQL check
-  // would hold every group. The ruleset's code scanning rule gates on CodeQL's results instead.
-  it('reports no Actions check named CodeQL, and CodeQL gates as a code scanning rule, not a required check', () => {
+  // would hold every group. The ruleset's code scanning rule gates each pull request on CodeQL's
+  // results; GitHub does not apply it to merge groups, so a group is scanned but not blocked
+  // (accepted gap awaiting the owner, Sol OW-058.1).
+  it('reports no Actions check named CodeQL, and CodeQL gates each pull request as a code scanning rule, not a required check', () => {
     expect(CODEQL).not.toMatch(/^ {4}name: CodeQL$/mu);
     expect(required.find((c) => c.context === 'CodeQL')).toBeUndefined();
     expect(scanning).toContainEqual({
