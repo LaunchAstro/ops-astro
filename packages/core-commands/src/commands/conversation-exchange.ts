@@ -34,7 +34,15 @@ import {
   callModelInConversation,
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
-import { isUuid, subjectsOf, withSession } from '../../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  isUuid,
+  sessionEndedSince,
+  slotOf,
+  subjectsOf,
+  TASK_SPINE,
+  withSession,
+} from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -102,7 +110,11 @@ interface Question {
   readonly scope: ConversationScope;
   readonly body: string;
   readonly reply: Kept | undefined;
+  /** The conversation was opened on a task with a client, or on one this session cannot see. */
+  readonly clientOrUnseen: boolean;
 }
+
+const CLIENT = slotOf(TASK_SPINE, 'client');
 
 /** The kept reply to a message, if there is one. */
 async function replyTo(tx: TenantQuery, asked: Asked): Promise<Kept | undefined> {
@@ -122,10 +134,18 @@ async function questionOf(
 ): Promise<Question | undefined> {
   if (!isUuid(asked.conversationId) || !isUuid(asked.messageId)) return undefined;
   if (!(await holdsOwnConversations(tx, session))) return undefined;
-  const [found] = await tx.query<{ readonly owner_person_id: string; readonly body: string }>(
-    `select c.owner_person_id, m.body
+  const [found] = await tx.query<{
+    readonly owner_person_id: string;
+    readonly body: string;
+    readonly scope_record_id: string | null;
+    readonly client_or_unseen: boolean;
+  }>(
+    `select c.owner_person_id, m.body, c.scope_record_id,
+            (t.${CLIENT} is not null or (c.scope_record_id is not null and t.id is null))
+              as client_or_unseen
        from conversations c
        join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
+       left join records t on t.business_id = c.business_id and t.id = c.scope_record_id
       where c.business_id = $1 and c.id = $2 and m.id = $3 and m.role = 'person'
         and c.owner_actor_id = $4 and c.body_purged_at is null`,
     [tx.businessId, asked.conversationId, asked.messageId, session.actorId],
@@ -139,7 +159,16 @@ async function questionOf(
     },
     body: found.body,
     reply: await replyTo(tx, asked),
+    clientOrUnseen:
+      found.client_or_unseen || !(await readsTask(tx, session, found.scope_record_id)),
   };
+}
+
+/** The caller may still read the task: the records policies do not hold task grants. */
+async function readsTask(tx: TenantQuery, session: Session, id: string | null): Promise<boolean> {
+  if (id === null) return true;
+  const read = { collection: 'task', action: 'read', scope: { kind: 'record', id } } as const;
+  return (await checkAuthority(tx, subjectsOf(session), read)).ok;
 }
 
 /** The answer, kept as the reply to the message, or the reply already kept. */
@@ -156,6 +185,9 @@ async function keep(
     [tx.businessId, asked.conversationId, session.actorId],
   );
   if (conversation === undefined || conversation.body_purged_at !== null) return undefined;
+  // An ended session keeps nothing, and an ending in flight waits for this; asked
+  // before the grants, so the grant is judged at the clock after this wait too.
+  if (await sessionEndedSince(tx, session)) return undefined;
   // The caller's conversation grants are held for share once the row is
   // locked, a grant issued while this waited included: a revocation that
   // committed first is seen by the check below, and one that comes later waits
@@ -207,6 +239,11 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
     if (isCommandRefusal(found) || found.question === undefined) return null;
     const { session, question } = found;
     if (question.reply !== undefined) return answered(question.reply);
+    // Owner line 72: a client's material reaches no model while no true local
+    // model exists, and the laptop's GPT runner is a cloud model. A conversation
+    // opened on a client's task asks nothing, whatever the provider; so does one whose
+    // task this session cannot see, since its client cannot be known.
+    if (question.clientOrUnseen) return refusedWith('CLIENT_MODEL_USE_OFF');
     const result = await callModelInConversation(
       database,
       businessId,
