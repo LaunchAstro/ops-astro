@@ -193,8 +193,10 @@ export async function refuseCompletion(
   const owner = await refuseUnlessOwnerCloses(tx, context, await wayfinderFacts(tx, taskId));
   if (owner !== undefined) return refused(owner);
   // `held`: the envelope holds the task `for no key update` (a wayfinder
-  // write), which already excludes that task lock; taking it `for update`
-  // here would block a sibling's frontier refresh again.
+  // write), which stands in for the runtime's task lock: a gate is raised only
+  // under that lock `for update`, which waits on this one, and closing a gate
+  // only loosens. Taking it `for update` here would block a sibling's
+  // frontier refresh again.
   if (!held) await acquire(tx, [{ lockClass: 'task', id: taskId }]);
   return (await openGateOn(tx, taskId)) ? refused(gatePending()) : undefined;
 }
