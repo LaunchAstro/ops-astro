@@ -15,6 +15,7 @@ import { localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// eslint-disable-next-line max-lines-per-function -- one world, both races on it
 describe.skipIf(serverUrl === undefined)('a retry while the answer is with the model', () => {
   let w: ConversationWorld;
   let model: LocalModel;
@@ -45,5 +46,47 @@ describe.skipIf(serverUrl === undefined)('a retry while the answer is with the m
     const outcomes = await Promise.all([first, second]);
     expect(model.provider.seen).toHaveLength(1);
     expect(outcomes[1]).toEqual(outcomes[0]);
+  }, 30_000);
+
+  it('a retry whose read finished before the first answer was kept, but returns after, asks nothing', async () => {
+    model.provider.mode('answer');
+    const opened = await w.as(w.colleague, 'conversation.start', { body: 'Late, please' });
+    const asked = {
+      conversationId: String(detail(opened)['conversationId']),
+      messageId: String(detail(opened)['messageId']),
+    };
+    const { app } = w.fixture.db;
+    // eslint-disable-next-line unicorn/consistent-function-scoping -- replaced below
+    let read: () => void = () => {};
+    const readDone = new Promise<void>((resolve) => {
+      read = resolve;
+    });
+    // eslint-disable-next-line unicorn/consistent-function-scoping -- replaced below
+    let deliver: () => void = () => {};
+    const delivered = new Promise<void>((resolve) => {
+      deliver = resolve;
+    });
+    // The retry's first transaction (its read) commits, and its result comes back only later.
+    let first = true;
+    const late: typeof app = Object.create(app) as typeof app;
+    Object.assign(late, {
+      withBusiness: async (...call: Parameters<typeof app.withBusiness>) => {
+        const result = await app.withBusiness(...call);
+        if (first) {
+          first = false;
+          read();
+          await delivered;
+        }
+        return result;
+      },
+    });
+    const before = model.provider.seen.length;
+    const retry = model.exchange(late, w.fixture.business, w.colleague.presented, asked);
+    await readDone;
+    const answer = await model.exchange(app, w.fixture.business, w.colleague.presented, asked);
+    expect(answer).toMatchObject({ answered: true });
+    deliver();
+    expect(await retry).toEqual(answer);
+    expect(model.provider.seen.length).toBe(before + 1);
   }, 30_000);
 });
