@@ -6,8 +6,10 @@
 // at its load. One load per entry and attempt; it admits exactly the reproducibility check's three
 // S1 creates of that entry's own body, each counted in the write that
 // records its container, and a deploy that changes the entry in any way
-// ends the admission. An ended or superseded candidate stays until its
-// image is deleted. A sweep never touches this record.
+// ends the admission. A load at or below a site's latest loaded attempt is
+// refused. An ended or superseded candidate stays until its image is
+// deleted; then a site's latest stays without its runs, so its attempt
+// still refuses a reload. A sweep never touches this record.
 //
 // On every read of the pin list, a site entry's id is taken only when it is
 // the id the proxy accepted for that entry, lockfile digest and attempt, or
@@ -73,7 +75,7 @@ export function admitCandidateLoad(
   if (entry === undefined || entry.image !== '' || !IMAGE.test(id)) return refuse('candidate');
   const taken = book.candidates.some(
     (held) =>
-      (held.site === site && held.entry.attempt === entry.attempt) ||
+      (held.site === site && held.entry.attempt >= entry.attempt) ||
       (isOpen(held) && held.id === id),
   );
   if (taken) return refuse('candidate');
@@ -175,10 +177,17 @@ export function readDeployed(
 export const holdsCandidateImage = (book: CandidateBook, id: string): boolean =>
   book.candidates.some((held) => held.id === id);
 
-/** The book once image `id` is deleted: its ended candidates leave; an open one stays. */
+/**
+ * The book once image `id` is deleted: an open candidate stays; a superseded one leaves; a
+ * site's latest stays with its runs gone, so its attempt still refuses a reload.
+ */
 export const dropCandidateImage = (book: CandidateBook, id: string): CandidateBook => ({
   ...book,
-  candidates: book.candidates.filter((held) => isOpen(held) || held.id !== id),
+  candidates: book.candidates.flatMap((held, at) => {
+    if (isOpen(held) || held.id !== id) return [held];
+    const superseded = book.candidates.slice(at + 1).some((next) => next.site === held.site);
+    return superseded ? [] : [{ ...held, runs: [] }];
+  }),
 });
 
 /** The book as the JSON value its record holds. */
