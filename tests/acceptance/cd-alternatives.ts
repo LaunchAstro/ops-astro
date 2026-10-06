@@ -30,7 +30,7 @@ export const CASE = {
 } as const;
 
 /**
- * The fifty-two operations that name no identifier, each with a minimal valid body.
+ * The fifty-three operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -69,6 +69,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   // The connector fleet (MP-14-7a) names no row.
   ['connection.fleet', {}],
   ['connection.signal', {}],
+  // The graduation region (MP-14-10a) names no row either.
+  ['connection.graduation', {}],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
   // AW-04: a digest names a file's bytes, not a record of any business.

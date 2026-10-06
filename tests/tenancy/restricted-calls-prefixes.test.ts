@@ -397,6 +397,21 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     outcome: 'applied',
     recorded_by_actor: randomUUID(),
   },
+  // 20261006080000 (MP-14-10a): no journey graduates a class or files a mandate.
+  'public.graduation_classes': {
+    client_id: randomUUID(),
+    action_class: 'social.post',
+    class_label: 'Social posts',
+    earned: 'none',
+  },
+  'public.standing_mandates': {
+    client_id: randomUUID(),
+    classes: ['social.post'],
+    refuses: true,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    label: 'restricted calls seed',
+    authored_by_actor_id: randomUUID(),
+  },
   // 0056 (C58): no journey ends a person's access.
   'public.access_endings': {
     person_id: randomUUID(),

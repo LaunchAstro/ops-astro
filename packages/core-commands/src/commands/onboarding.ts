@@ -6,6 +6,7 @@ import {
   checkAuthority,
   claimOnboarding,
   closeStep,
+  closeStepMove,
   deriveSource,
   failStep,
   insertStepTask,
@@ -14,6 +15,7 @@ import {
   isUuid,
   lockStepOfTask,
   ONBOARDING_TEMPLATES,
+  raiseStepMoves,
   stepTaskTitle,
   subjectsOf,
   writeComment,
@@ -111,6 +113,8 @@ export async function startOnboarding(
     laid.push({ ...step, taskId });
   }
   const steps = await insertSteps(tx, onboardingId, laid);
+  const ready = steps.filter((one) => one.state === 'ready').map((one) => one.key);
+  await raiseStepMoves(tx, onboardingId, ready);
   return applied(clientId, null, {
     onboardingId,
     templateKey: template.key,
@@ -201,6 +205,8 @@ export async function writeStepResult(
   let opened: readonly string[] = [];
   if (outcome === 'done') {
     opened = await closeStep(tx, found.step, found.siblings);
+    await closeStepMove(tx, found.step, author.actorId);
+    await raiseStepMoves(tx, found.step.onboardingId, opened);
   } else {
     stopped = await failStep(tx, found.step);
     if (stopped) await writeComment(tx, commentTypeId, { ...comment, body: STOPPED_REPORT });

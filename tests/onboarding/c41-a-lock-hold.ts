@@ -38,6 +38,62 @@ export const byPerson = async (
   headers: authorised(await tokenFor(who.presented.subject)),
 });
 
+/** A promise and the call that resolves it, for holding one side of a schedule. */
+export function latch(): { readonly promise: Promise<void>; readonly resolve: () => void } {
+  const box: { resolve?: () => void } = {};
+  const promise = new Promise<void>((resolve) => {
+    box.resolve = resolve;
+  });
+  return { promise, resolve: () => box.resolve?.() };
+}
+
+/**
+ * `database`, each statement watched: a deadlock (40P01) is recorded in
+ * `deadlocks` and thrown on as before; with `bar`, once a statement naming
+ * `bar.after` has answered, `reached` resolves and the transaction waits,
+ * still open, on `bar.release`.
+ */
+export function watched(
+  database: Database,
+  deadlocks: string[],
+  bar?: { readonly after: string; readonly release: Promise<void> },
+): { readonly database: Database; readonly reached: Promise<void> } {
+  const reached = latch();
+  const wrapped: Database = {
+    log: database.log,
+    close: async () => {
+      await database.close();
+    },
+    withBusiness: async (business, run) =>
+      await database.withBusiness(business, async (tx) => {
+        const query: typeof tx.query = async <Row>(
+          text: string,
+          parameters?: readonly unknown[],
+        ): Promise<readonly Row[]> => {
+          const rows = await tx.query<Row>(text, parameters).catch((error: unknown) => {
+            if ((error as { readonly code?: unknown }).code === '40P01') deadlocks.push(text);
+            throw error;
+          });
+          if (bar !== undefined && text.includes(bar.after)) {
+            reached.resolve();
+            await bar.release;
+          }
+          return rows;
+        };
+        return await run(
+          new Proxy(tx, {
+            get: (target, key) => {
+              if (key === 'query') return query;
+              const value: unknown = Reflect.get(target, key);
+              return typeof value === 'function' ? value.bind(target) : value;
+            },
+          }),
+        );
+      }),
+  };
+  return { database: wrapped, reached: reached.promise };
+}
+
 export interface LockHold {
   readonly onboardingOf: (
     taskId: string,

@@ -26,6 +26,8 @@ const NOT_DRAWN = new Set([
   // WF-1: no screen draws a map until the WF-3/4 map views (P20).
   'map.view',
   'map.frontier',
+  // MP-14-10a: the graduation data lands before the screens that draw it (P06).
+  'connection.graduation',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
