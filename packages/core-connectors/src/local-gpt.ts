@@ -79,12 +79,17 @@ export function localGptCostMinor(_answer: ModelAnswer): number {
   return 0;
 }
 
-/** A task run's step on the local session (a scheduled job, a task's agent run). */
+/**
+ * A task run's step on the local session (a scheduled job, a task's agent
+ * run). GPT is a cloud model, so its route is declared `cloud` and this step
+ * takes business-internal fields only: anything else waits on a local model
+ * (`LOCAL_MODEL_REQUIRED`), as owner line 72 asks.
+ */
 export const LOCAL_GPT_COMPOSE: ModelOperationDeclaration = {
   key: 'model.local_gpt_compose',
   provider: LOCAL_GPT_PROVIDER,
   destination: 'local_gpt',
-  fields: { instruction: 'free_text', tone: 'business_internal' },
+  fields: { instruction: 'business_internal', tone: 'business_internal' },
   answer: readLocalGptAnswer,
   // A `codex exec` call takes seconds, sometimes a minute or two.
   timeoutMs: 120_000,
@@ -100,7 +105,9 @@ export const LOCAL_GPT_COMPOSE: ModelOperationDeclaration = {
  * A person's question in their own conversation, answered by the local
  * session. It carries the conversation operation's key, so the conversation
  * seam, which asks for that one key, reaches it where the composition root
- * catalogues it in the replay declaration's place.
+ * catalogues it in the replay declaration's place. The seam takes this cloud
+ * route only under LA-1's laptop carve-out, for the owner's own typed message
+ * (broker-conversation.ts).
  */
 export const LOCAL_GPT_CONVERSATION: ModelOperationDeclaration = {
   ...LOCAL_GPT_COMPOSE,

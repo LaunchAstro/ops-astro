@@ -50,9 +50,11 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('la1calls');
 
+// GPT is a cloud model: its route says so, and the conversation seam takes it only under
+// the laptop carve-out.
 const ROUTE: BrokerRoute = {
   key: 'local_gpt',
-  reach: 'local',
+  reach: 'cloud',
   provider: LOCAL_GPT_PROVIDER,
   credentialRef: 'local_runner',
   credentialKind: 'subscription',
@@ -147,6 +149,7 @@ it('LA-1 side panel: a conversation message is answered by the local session, se
     state: 'settled',
     route_key: 'local_gpt',
     route_reach: 'local',
+    provider: 'local_gpt',
     credential_kind: 'subscription',
     account: PLAN_ACCOUNT,
     reserved_minor: '0',
@@ -183,6 +186,42 @@ it('LA-1 task run: an unattended step is carried by the subscription under the l
     },
   ]);
 }, 120_000);
+
+it('owner line 72: a task step on the GPT route with a field from outside the business waits on a local model, nothing sent', async () => {
+  const work = await liveWork(s, 'la1 outside field', 2_000);
+  const before = runner.seen.length;
+  await stepOf(work);
+  // A field not read from the task's own row (here, an enquiry's words) is outside the business.
+  const [, ...rest] = requestFor(work, { operation: LOCAL_GPT_COMPOSE.key }).fields;
+  const outside = [
+    { name: 'instruction', source: 'outside' as const, value: 'An enquiry.' },
+    ...rest,
+  ];
+  const result = await callModel(
+    s.db.app,
+    s.business,
+    caller(work),
+    requestFor(work, { operation: LOCAL_GPT_COMPOSE.key, fields: outside }),
+    local(),
+  );
+  expect(result).toMatchObject({ ok: false, code: 'LOCAL_MODEL_REQUIRED' });
+  expect(runner.seen.length).toBe(before);
+}, 120_000);
+
+it('LA-1 conversation: without the carve-out the GPT route is a cloud route, refused before anything is sent', async () => {
+  const before = runner.seen.length;
+  const request = ask('no carve-out');
+  const result = await callModelInConversation(
+    s.db.app,
+    s.business,
+    owner(),
+    request,
+    local({ localOwnerTesting: false }),
+  );
+  expect(result).toMatchObject({ ok: false, code: 'LOCAL_MODEL_REQUIRED' });
+  expect(runner.seen.length).toBe(before);
+  expect(await conversationRows(request.conversation.id)).toEqual([]);
+}, 60_000);
 
 it.each([
   ['without the carve-out', () => local({ localOwnerTesting: false }), LOCAL_GPT_COMPOSE.key],

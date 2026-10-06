@@ -85,12 +85,23 @@ export function localRoute(
 ):
   | { readonly ok: true; readonly route: BrokerRoute }
   | { readonly ok: false; readonly code: BrokerRefusal } {
+  // LA-1's laptop carve-out: the owner's GPT session is a cloud route, taken here only for
+  // the person's own typed message in their own conversation, and only where the broker
+  // carries the carve-out (`carriesLocally`). Every other cloud route stays refused.
   const local = broker.routes.filter(
-    (route) => route.reach === 'local' && route.provider === operation.provider,
+    (route) =>
+      (route.reach === 'local' || carriesLocally(broker, route)) &&
+      route.provider === operation.provider,
   );
-  const choice = eligibleRoutes(operation.fields, fields, local);
+  // The carve-out's route counts as local for the data classes, and is recorded as admitted:
+  // the conversation row's reach is `local` by AW-03's own constraint (0107), and its
+  // provider `local_gpt` says the answer came from the owner's GPT session.
+  const candidates = local.map((route): BrokerRoute =>
+    carriesLocally(broker, route) ? Object.assign({}, route, { reach: 'local' as const }) : route,
+  );
+  const choice = eligibleRoutes(operation.fields, fields, candidates);
   const route = choice.ok
-    ? local.find((candidate) => choice.routes.includes(candidate))
+    ? candidates.find((candidate) => choice.routes.includes(candidate))
     : undefined;
   if (route === undefined) return { ok: false, code: 'LOCAL_MODEL_REQUIRED' };
   const carry = mayCarry(route.credentialKind, {

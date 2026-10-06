@@ -97,15 +97,19 @@ function capOf(text: string | undefined): number | undefined {
   return Number(text);
 }
 
-/** The only environment the codex child gets: nothing of the runner's own settings or keys. */
+/**
+ * The only environment the codex child gets: nothing of the runner's own
+ * settings or keys, and a HOME of the runner's own, so nothing the owner keeps
+ * in their home (skills, keys, dotfiles) is read by a call.
+ */
 function childEnvOf(
   env: Readonly<Record<string, string | undefined>>,
-  userHome: string,
+  childHome: string,
 ): RunnerSettings['childEnv'] {
   const userName = env['USER'] || userInfo().username;
   return {
     PATH: env['PATH'] ?? '/usr/bin:/bin',
-    HOME: userHome,
+    HOME: childHome,
     LANG: env['LANG'] || 'en_AU.UTF-8',
     USER: userName,
     LOGNAME: userName,
@@ -152,7 +156,7 @@ export function readSettings(
       codexBin: env['OPS_LOCAL_AGENT_CODEX_BIN'] || 'codex',
       capTokens,
       capConfigured: (env['OPS_LOCAL_AGENT_CAP_TOKENS'] ?? '') !== '',
-      childEnv: childEnvOf(env, userHome),
+      childEnv: childEnvOf(env, join(home, 'home')),
       // Under custody's 120 s for the call, so the runner gives up first.
       timeoutMs: 100_000,
     },

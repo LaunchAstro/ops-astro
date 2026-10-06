@@ -136,6 +136,8 @@ function routeOf(entry: unknown, provider: AgentProvider): BrokerRoute | undefin
   const text = (key: string): string => shape[key] as string;
   if (!REACHES.has(text('reach')) || !KINDS.has(text('credentialKind'))) return undefined;
   if (!PROVIDERS[provider].has(text('provider'))) return undefined;
+  // GPT is a cloud model wherever its runner listens: a `local` label would let the data classes through.
+  if (text('provider') === LOCAL_GPT_PROVIDER && text('reach') !== 'cloud') return undefined;
   return shape as unknown as BrokerRoute;
 }
 

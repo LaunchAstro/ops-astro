@@ -27,7 +27,7 @@ const CANARY = 'canary-4b9e2a71c0';
 
 const route = (provider: string, credentialKind = 'subscription') => ({
   key: 'local_gpt',
-  reach: 'local',
+  reach: provider === 'local_gpt' ? 'cloud' : 'local',
   provider,
   credentialRef: 'local_runner',
   credentialKind,
@@ -87,6 +87,16 @@ it.each([
   const problem = problemOf({ ...LOCAL_GPT, OPS_ENVIRONMENT: env });
   expect(problem).toContain('OPS_AGENT_PROVIDER');
   expect(problem).toContain('OPS_ENVIRONMENT');
+});
+
+it('LA-1 provider setting: a GPT route labelled local is refused, since GPT is a cloud model', () => {
+  const labelled = broker([{ ...route('local_gpt'), reach: 'local' }]);
+  const problem = problemOf({
+    ...labelled,
+    OPS_AGENT_PROVIDER: 'local-gpt',
+    OPS_ENVIRONMENT: 'local',
+  });
+  expect(problem).toContain('MODEL_BROKER_ROUTES');
 });
 
 it('LA-1 provider setting: local-gpt with no broker settings is refused, not ignored', () => {
