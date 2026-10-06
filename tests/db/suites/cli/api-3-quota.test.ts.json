@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "requests and calls at once are limited per credential, person and business from the one quota table, the refusal is recorded, an outsider is charged nothing and the page size comes from the same table"
+}

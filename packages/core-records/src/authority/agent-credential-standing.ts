@@ -9,6 +9,7 @@
 import { recordAuthenticationAttempt, subjectDigest } from '../identity/authentication-attempts.ts';
 import { NO_ASSURANCE, type VerifiedSubject } from '../identity/verified-subject.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { lockAccess } from './access.ts';
 import { digestOf } from './delegations.ts';
 
 /**
@@ -40,12 +41,16 @@ export type CredentialNotLive = 'not-live';
  * kept. The row is locked `for share` for the rest of the call, so a
  * revocation (`lockAgentCredential`, `for update`) either commits first and
  * this call finds it, or waits for this call to finish.
+ * The business's access lock is taken first, shared, as every holder of both takes it.
  */
 export async function resolveAgentCredential(
   tx: TenantQuery,
   secret: string,
   now: Date,
 ): Promise<CredentialStanding | CredentialNotLive> {
+  // A secret not live holds nothing (#784): screened unlocked, then resolved under the locks.
+  if (!(await isAgentCredentialLive(tx, secret, now))) return 'not-live';
+  await lockAccess(tx, 'shared');
   const row = await standingRow(tx, secret, 'for share of c');
   if (row === undefined) return 'not-live';
   // Judged once the row is held, on the database's clock read after the wait

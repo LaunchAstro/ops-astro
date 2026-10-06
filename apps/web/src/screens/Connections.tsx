@@ -15,8 +15,9 @@
 // "the five above" (AG-C10) come with them.
 //
 // Sections 003 to 005 (credentials and quota, data quality, band health) draw
-// on data the phase 6 sources bring; until MP-14-7b they say so. The sections
-// after them (signal, skill costing, the per-client region) are later pieces.
+// on data the phase 6 sources bring; until MP-14-7b they say so. Sections 006
+// to 008 (grants, tripwires, the night round) are MP-14-8's, read apart on
+// `connection.signal`. Skill costing and the per-client region are later.
 //
 // The screen is keyed on the grant in `screen-registry.tsx`, so a change of
 // business or person starts its view state and repair attempts over, and
@@ -37,6 +38,7 @@ import { useRead } from '../data/use-read.ts';
 import { useCommand } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { FleetTable } from './connections/fleet-table.tsx';
+import { SignalSections } from './connections/signal.tsx';
 import type { RepairControl } from './connections/fleet-row.tsx';
 import { initialFleetView, withFacet, withOpen, type FleetView } from './connections/fleet-view.ts';
 
@@ -218,7 +220,8 @@ export function ConnectionsScreen(props: {
   readonly rollup?: RollupFloor;
 }): ReactElement {
   const { client } = props;
-  const now = (props.now ?? Date.now)();
+  const clock = props.now ?? Date.now;
+  const now = clock();
   const { state, reload } = useRead<ConnectionFleetResult>({
     grantKey: props.grantKey,
     run: () => client.read<ConnectionFleetResult>('connection.fleet', {}),
@@ -251,6 +254,12 @@ export function ConnectionsScreen(props: {
         {(fleet) => <Shown fleet={fleet} now={now} repair={repair} />}
       </RecordState>
       <NotConnected />
+      <SignalSections
+        client={client}
+        grantKey={props.grantKey}
+        clock={clock}
+        {...(props.rollup === undefined ? {} : { rollup: props.rollup })}
+      />
     </div>
   );
 }

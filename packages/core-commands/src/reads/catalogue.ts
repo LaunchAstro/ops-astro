@@ -61,6 +61,7 @@ import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
+import { boardPage, readerBlockers, sharedRead, taskAt, withPaging } from './detail.ts';
 import { readChatConversations, readChatMessages } from './chat.ts';
 
 // A row's shape, in its own file (line cap).
@@ -258,9 +259,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   'task.read': {
     identifiers: ['recordId'],
-    parse: ({ recordId }) =>
-      typeof recordId === 'string'
-        ? parsed({ recordId })
+    parse: (body) =>
+      typeof body['recordId'] === 'string'
+        ? withPaging(body, { recordId: body['recordId'] })
         : rejected('recordId', 'Send recordId as the task’s identifier or its key.'),
     spine: true,
     // The lookup answers nobody: a caller with no grant is refused after it
@@ -270,7 +271,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
     authority: 'declared',
     outsiderNotFound: true,
-    async serve(tx, session, _operands, { spine, recordId }) {
+    async serve(tx, session, operands, { spine, recordId }) {
       if (recordId === undefined) return refuseNotFound();
       // Internal readers get the detail; everyone else, the external party
       // first among them, gets the shared view, which is built from the
@@ -282,7 +283,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
           recordId,
           spine.taskCommentTypeId,
         );
-        return sharedTask === undefined ? refuseNotFound() : { ok: true, sharedTask };
+        return sharedTask === undefined
+          ? refuseNotFound()
+          : sharedRead(operands.detail, sharedTask);
       }
       // An agent credential's call stands as its person but is an agent's
       // (API-2, I09): it reads what the agent prefix reads, never as an
@@ -304,14 +307,19 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
       // The Client field's facts (MP-4-8) go to a member alone: an agent's
-      // detail and the shared view carry neither.
-      return {
-        ok: true,
-        task: agent
-          ? task
-          : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) },
-        states: await readStateChoices(tx, spine.taskStateTypeId),
-      };
+      // detail and the shared view carry neither, at any detail level.
+      const shown = agent
+        ? task
+        : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) };
+      if (operands.detail !== undefined) {
+        const blockers = await readerBlockers(tx, session, recordId);
+        return {
+          ok: true,
+          detail: operands.detail,
+          view: taskAt(operands.detail, shown, blockers),
+        };
+      }
+      return { ok: true, task: shown, states: await readStateChoices(tx, spine.taskStateTypeId) };
     },
   },
   'task.board': {
@@ -320,9 +328,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     // not, and answering it with that list gave a body that asked nothing
     // the answer to a question it never put. A string is
     // looked up, and refused `NOT_FOUND` there if it names nothing here.
-    parse: ({ board }) =>
-      typeof board === 'string' || board === null
-        ? parsed({ board })
+    parse: (body) =>
+      typeof body['board'] === 'string' || body['board'] === null
+        ? withPaging(body, { board: body['board'] })
         : rejected(
             'board',
             'Send board as a board task’s identifier, or null for tasks on no board.',
@@ -357,6 +365,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
       // `viewer` is the caller's own person, the one the viewer preset
       // narrows to (MP-5-12), and `owed` their own count as `inbox.count` gives it.
+      const { board: _board, ...paging } = operands;
+      const page = boardPage(tasks, paging);
+      if (page !== undefined) return page;
       const [viewer, owed] = [session.personId, await countOwed(tx, session.personId)];
       return scope.business
         ? { ok: true, tasks, changedAt, viewer, owed, withheld: 0 }
