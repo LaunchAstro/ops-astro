@@ -15,6 +15,8 @@ import { makeWorld, RUNNER_KEY, type World } from './world.ts';
 
 const { opened, start, call, own } = runnerWorld();
 const message = { fields: { message: 'What is on the board today?' } };
+/** The unknown charge for this message: 50,000 and its 27 bytes. */
+const NEED = 50_027;
 
 /** Until codex has been spawned for `count` calls. */
 async function spawned(w: World, count: number): Promise<void> {
@@ -48,7 +50,7 @@ describe('a call stopped part way', () => {
     const pending = call(r, message).catch(() => null);
     await spawned(w, 1);
     // While codex runs, the call is already charged as unknown: a crash here never counts it as nothing.
-    expect(w.ledger()).toMatchObject([{ inputTokens: 50_000 }]);
+    expect(w.ledger()).toMatchObject([{ inputTokens: NEED }]);
     const began = Date.now();
     await r.close();
     opened.length = 0;
@@ -58,7 +60,7 @@ describe('a call stopped part way', () => {
     // close() waited for the call's own row before letting the home go.
     expect(w.ledger()).toHaveLength(2);
     await pending;
-    expect(w.ledger().at(-1)).toMatchObject({ inputTokens: 50_000 });
+    expect(w.ledger().at(-1)).toMatchObject({ inputTokens: NEED });
     const read = readSettings(w.env, w.userHome);
     if (!read.ok) throw new Error(read.code);
     opened.push(await createRunner(read.settings, () => null));
@@ -91,7 +93,7 @@ describe('a call stopped part way', () => {
     expect(await goneWithin(w.calls()[0]?.pid, 1_500)).toBe(true);
     w.knobs({});
     expect((await call(r, message)).body?.['code']).toBeNull();
-    expect(w.ledger()[1]).toMatchObject({ inputTokens: 50_000 });
+    expect(w.ledger()[1]).toMatchObject({ inputTokens: NEED });
   });
 
   it('a call whose deadline passed while it queued is not started', async () => {
