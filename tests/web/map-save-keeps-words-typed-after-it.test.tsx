@@ -6,7 +6,7 @@
 // earlier save is still on its way stays in the editor once that save
 // applies, and a graduate form whose fog patch someone else removed stays on
 // screen, explained, to copy or dismiss, without offering a save it cannot
-// make.
+// make. Dropping words without saving them drops their conflict too.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -37,6 +37,14 @@ function signal(): { readonly fired: Promise<void>; readonly fire: () => void } 
 
 const revisionShown = (page: Mounted) =>
   (page.find('[data-map]') as HTMLElement | null)?.dataset['revision'];
+
+/** The gone form's words: neutral about who removed the patch. */
+function expectGoneWording(page: Mounted) {
+  const words = page.find('[data-graduate-gone]')?.textContent ?? '';
+  expect(words).toContain('This patch is no longer in the fog.');
+  expect(words).toContain('The titles below were not graduated from it');
+  expect(words).not.toContain('someone else');
+}
 
 describe.skipIf(serverUrl === undefined)('A map save keeps the words typed after it', () => {
   let w: CliWorld;
@@ -147,19 +155,21 @@ describe.skipIf(serverUrl === undefined)('A map save keeps the words typed after
     expect(page.find('[data-graduate-gone]')?.textContent).toContain(
       'sent ticket and a later thought',
     );
+    // The reader's own graduation removed the patch: nothing blames another.
+    expectGoneWording(page);
   });
 
-  it('a graduate form whose patch someone else removed stays on screen, explained, to copy or dismiss', async () => {
-    const m = await chart(
-      w,
-      lead,
-      'removed patch',
-      [{ ref: 'a', title: 'a', type: 'task' }],
-      ['removed patch text'],
-    );
+  /**
+   * The lead's graduate form on the first of `patches`, two titles typed;
+   * `other` retires that patch; the lead's Graduate comes back VERSION_STALE
+   * and the map is reread.
+   */
+  async function graduateRetiredPatch(title: string, patches: readonly string[]) {
+    const m = await chart(w, lead, title, [{ ref: 'a', title: 'a', type: 'task' }], patches);
     const page = await openMap(w, open, lead, m.key);
     await page.click('[role="tab"][id="map-tab-fog"]');
-    const patch = (page.find('[data-patch]') as HTMLElement).dataset['patch'] as string;
+    const ids = page.all('[data-patch]').map((one) => (one as HTMLElement).dataset['patch'] ?? '');
+    const patch = ids[0] as string;
     await page.click(`button[data-graduate="${patch}"]`);
     await page.type('input[name="ticket-title-0"]', 'my first ticket');
     await page.click('button[data-add-ticket]');
@@ -176,9 +186,13 @@ describe.skipIf(serverUrl === undefined)('A map save keeps the words typed after
         revisionShown(page) === String(latest),
       'the stale refusal and the reread',
     );
+    return { page, others: ids.slice(1) };
+  }
 
+  it('a graduate form whose patch someone else removed stays on screen, explained, to copy or dismiss', async () => {
+    const { page } = await graduateRetiredPatch('removed patch', ['removed patch text']);
     const gone = page.find('[data-graduate-gone]');
-    expect(gone?.textContent).toContain('no longer exists');
+    expectGoneWording(page);
     expect(gone?.textContent).toContain('my first ticket');
     expect(gone?.textContent).toContain('my second ticket');
     // Nothing offers to save it again: there is no patch to graduate.
@@ -188,5 +202,43 @@ describe.skipIf(serverUrl === undefined)('A map save keeps the words typed after
     await page.click('button[data-graduate-dismiss]');
     expect(page.find('[data-graduate-gone]')).toBeNull();
     expect(page.text()).not.toContain('my first ticket');
+    // Dismissed, nothing is kept, so nothing is offered to save again.
+    expect(page.find('[data-map-conflict]')).toBeNull();
+    expect(page.text()).not.toContain('save it again');
+  });
+
+  it('while a gone graduate form is held, another patch cannot open a form over it', async () => {
+    const { page, others } = await graduateRetiredPatch('two patches', [
+      'retired patch text',
+      'remaining patch text',
+    ]);
+    const remaining = others[0] as string;
+    const button = page.find(`button[data-graduate="${remaining}"]`) as HTMLButtonElement | null;
+    expect(button?.disabled).toBe(true);
+    await page.click(`button[data-graduate="${remaining}"]`);
+    const gone = page.find('[data-graduate-gone]');
+    expect(gone?.textContent).toContain('my first ticket');
+    expect(gone?.textContent).toContain('my second ticket');
+    expect(page.find('input[name="ticket-title-0"]')).toBeNull();
+  });
+
+  it('a stale notes save cancelled drops its conflict with its words', async () => {
+    const m = await chart(w, lead, 'cancelled notes', [{ ref: 'a', title: 'a', type: 'task' }]);
+    const page = await openMap(w, open, lead, m.key);
+    await page.click('button[data-edit="notes"]');
+    await page.type('textarea[name="notes"]', 'words I will drop');
+    const at = { recordId: m.map, expectedRevision: await w.revisionOf(m.map) };
+    must(await w.as(other, { command: 'map.revise', ...at, notes: 'elsewhere' }), 'map.revise');
+    const latest = await w.revisionOf(m.map);
+    await page.click('button[data-save="notes"]');
+    await until(
+      page,
+      () => page.find('[data-map-conflict]') !== null && revisionShown(page) === String(latest),
+      'the conflict and the reread',
+    );
+    await page.click('[data-map-section="notes"] button[type="button"]');
+    expect(page.find('textarea[name="notes"]')).toBeNull();
+    expect(page.find('[data-map-conflict]')).toBeNull();
+    expect(page.text()).not.toContain('save it again');
   });
 });
