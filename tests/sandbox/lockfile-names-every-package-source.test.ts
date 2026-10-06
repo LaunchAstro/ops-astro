@@ -206,6 +206,12 @@ it('refuses entry values of the wrong JSON type, never reading them as text', ()
   expect(at({ ...entry, integrity: [entry['integrity']] })).toEqual(refused('lockfile integrity'));
   for (const resolved of [undefined, 7, [entry['resolved']]])
     expect(at({ ...entry, resolved }), String(resolved)).toEqual(refused('lockfile resolved'));
+  const scoped = github('@agency/theme', '0.4.0-beta.1');
+  for (const resolved of [undefined, 7, [scoped['resolved']]])
+    expect(
+      withEntry('node_modules/@agency/theme', { ...scoped, resolved }),
+      String(resolved),
+    ).toEqual(refused('lockfile resolved'));
   for (const value of [null, 'astro', ['5.1.0']])
     expect(check({ ...PACKAGES, 'node_modules/astro': value })).toEqual(refused('lockfile entry'));
   for (const packages of [null, [entry], 'node_modules/astro'])
