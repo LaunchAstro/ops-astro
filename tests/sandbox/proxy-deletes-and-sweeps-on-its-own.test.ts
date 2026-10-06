@@ -2,7 +2,8 @@
 //
 // P4, P6, I4 and B8 (docs/plan/sandbox-contract.md, sections 4 and 6): run
 // operations take only the recorded id. The proxy sweeps on start before it
-// takes a request, kills a container at its deadline and deletes it 30 s
+// takes a request, kills a container at every tick from its deadline until
+// the record clears, and deletes it 30 s
 // after the later of its wait and attach ending, 30 s after the launcher
 // closes its attach before the wait, and at the latest 30 s after the
 // deadline. An id leaves the record only on a delete answered success or
@@ -67,7 +68,7 @@ it('takes a run operation only for the recorded full id', async () => {
   ).toEqual(refused('container id'));
 });
 
-it('kills at the deadline, once, and deletes 30 s after it', async () => {
+it('kills at every tick from the deadline, whatever each kill answered, and deletes 30 s after', async () => {
   const w = world();
   const state = await opened(w);
   await state.handle(create(P, s1('p')));
@@ -78,11 +79,15 @@ it('kills at the deadline, once, and deletes 30 s after it', async () => {
   w.now = T0 + S1_WALL;
   w.answer.kill = 409;
   await state.tick();
+  w.answer.kill = 500;
   await state.tick();
-  expect(w.calls).toEqual(['kill']);
+  w.throws.add('kill');
+  await state.tick();
+  expect(w.calls).toEqual(['kill', 'kill', 'kill']);
+  w.throws.clear();
   w.now += GRACE;
   await state.tick();
-  expect(w.calls).toEqual(['kill', 'delete']);
+  expect(w.calls).toEqual(['kill', 'kill', 'kill', 'kill', 'delete']);
   expect(heldId(w)).toBeNull();
   expect(await state.handle(create(P, s1('p')))).toEqual(CREATED);
 });

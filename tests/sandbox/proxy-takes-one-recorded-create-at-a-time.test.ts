@@ -222,11 +222,6 @@ it('refuses a record the proxy could not have written', () => {
       candidates: book,
       containers: { container: { ...container, deadline: 4999 } },
     }),
-    new TextEncoder().encode(
-      new TextDecoder()
-        .decode(writeProxyRecord({ candidates: book, containers: recorded }))
-        .replace('"killed":false', '"killed":0'),
-    ),
   );
   const bad = { ok: false, reason: 'internal', why: 'proxy record' };
   expect(broken.map((bytes) => readProxyRecord(bytes))).toEqual(broken.map(() => bad));

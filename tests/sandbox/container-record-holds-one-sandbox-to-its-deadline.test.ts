@@ -5,8 +5,9 @@
 // daemon count of zero; a count that differs from the record refuses the
 // create and starts a sweep. The run operations take only the recorded
 // full id. The container's deadline runs from its durable create record,
-// so a container never started has one too. The proxy kills it at the
-// deadline (a kill refused as not running counts as landed) and deletes it
+// so a container never started has one too. The proxy kills it at every
+// tick from the deadline until the record clears, whatever any kill or
+// start answered (a repeat kill of a stopped container is harmless), and deletes it
 // 30 s after the later of its wait returning and its attach ending, 30 s
 // after the launcher fully closes its attach before the wait returns, and
 // at the latest 30 s after the deadline; a `wall` crossing's container not
@@ -22,7 +23,6 @@ import {
   deleteAnswered,
   EMPTY_CONTAINERS,
   GRACE_MS,
-  killAnswered,
   noteAttachClosed,
   noteAttachEnded,
   noteWaitReturned,
@@ -60,21 +60,16 @@ it('takes a run operation only for the recorded full id', () => {
   expect(admitContainerOp(EMPTY_CONTAINERS, ID)).toEqual(refused);
 });
 
-it('kills at the deadline from the create record, even if never started, and deletes 30 s after', () => {
+it('kills from the deadline of the create record, even if never started, and deletes 30 s after', () => {
   expect(containerDue(held(), DEADLINE - 1)).toEqual(none);
   expect(containerDue(held(), DEADLINE)).toEqual({ kill: true, delete: false });
-  const killed = killAnswered(held(), 'not running');
-  expect(containerDue(killed, DEADLINE)).toEqual(none);
-  expect(containerDue(killed, DEADLINE + GRACE_MS - 1)).toEqual(none);
-  expect(containerDue(killed, DEADLINE + GRACE_MS)).toEqual({ kill: false, delete: true });
-  const unkilled = killAnswered(held(), 'failed');
-  expect(containerDue(unkilled, DEADLINE + GRACE_MS)).toEqual({ kill: true, delete: true });
+  expect(containerDue(held(), DEADLINE + GRACE_MS - 1)).toEqual({ kill: true, delete: false });
+  expect(containerDue(held(), DEADLINE + GRACE_MS)).toEqual({ kill: true, delete: true });
 });
 
-it('kills at the deadline even after a wait returned, until a kill lands', () => {
+it('kills from the deadline whatever the wait answered', () => {
   const waited = noteWaitReturned(held(), T0 + 10_000);
   expect(containerDue(waited, DEADLINE)).toEqual({ kill: true, delete: false });
-  expect(containerDue(killAnswered(waited, 'not running'), DEADLINE)).toEqual(none);
 });
 
 it('deletes 30 s after the later of the wait returning and the attach ending', () => {
@@ -119,10 +114,7 @@ it('lets an id leave only on success or "no such container", else keeps it and s
 });
 
 it('reads the record back whole after a restart, and refuses any other shape', () => {
-  const book = noteAttachEnded(
-    noteWaitReturned(killAnswered(held(true), 'landed'), T0 + 1),
-    T0 + 2,
-  );
+  const book = noteAttachEnded(noteWaitReturned(held(true), T0 + 1), T0 + 2);
   expect(readContainerBook(writeContainerBook(book))).toEqual({ ok: true, book });
   expect(readContainerBook(writeContainerBook(EMPTY_CONTAINERS))).toEqual({
     ok: true,

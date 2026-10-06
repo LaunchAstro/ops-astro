@@ -4,8 +4,8 @@
 // run's calls in the order the launcher sent them. A wait sent before its
 // container's start was answered 204 is no run's end, even when its answer
 // arrives after that start's. A start sent at or after the deadline is
-// refused, and one answered 204 at or after it is killed again, so a killed
-// container never runs on. A launcher call the
+// refused, and one that lands after a deadline kill is killed again at the
+// next tick, so a killed container never runs on. A launcher call the
 // daemon drops (a throw) answers `internal`, and a dropped delete of the
 // recorded container starts a sweep as any failed delete does. Every case
 // runs against the fixture's doubles, not a real daemon.
@@ -56,7 +56,7 @@ it('refuses a start at or after the deadline', async () => {
   expect(w.calls).toEqual([]);
 });
 
-it('kills again when a start sent before the deadline lands after the deadline kill', async () => {
+it('kills again at the next tick when a start sent before the deadline lands after a kill', async () => {
   const w = world();
   const state = await opened(w);
   await state.handle(create(P, s1('p')));
@@ -68,6 +68,7 @@ it('kills again when a start sent before the deadline lands after the deadline k
   await state.tick();
   release();
   await late;
+  await state.tick();
   expect(w.calls.filter((call) => call === 'kill')).toHaveLength(2);
 });
 
