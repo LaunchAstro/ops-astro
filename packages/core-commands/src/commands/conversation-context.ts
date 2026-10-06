@@ -37,7 +37,13 @@ import {
   localGptAdapter,
 } from '../../../core-connectors/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
-import { heldScopes, slotOf, subjectsOf, TASK_SPINE } from '../../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  heldScopes,
+  slotOf,
+  subjectsOf,
+  TASK_SPINE,
+} from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
 
@@ -191,6 +197,24 @@ export async function keptRefused(
   if (taskId === null) return null;
   const page = await pageOf(tx, session, taskId);
   return typeof page === 'string' ? page : null;
+}
+
+/**
+ * A keep's waits, made before it asks its grants (Sol PRV-oa-1088-SC1,
+ * SEC1-1): the page task judged under its share lock, then the audit chain's
+ * lock, which its own audit events and the envelope's would otherwise wait on
+ * after the check, so a grant a chain holder ended is seen. The chain key is
+ * the trigger's, `business_id::text`, which is lower case. Answers why the
+ * page refuses the question, if it does.
+ */
+export async function waitsFirst(
+  tx: TenantQuery,
+  session: Session,
+  taskId: string | null,
+): Promise<PageRefusal | null> {
+  const pageRefused = await keptRefused(tx, session, taskId);
+  await advisoryLock(tx, tx.businessId.toLowerCase());
+  return pageRefused;
 }
 
 /** The page and earlier messages for the asked message, in the caller's transaction. */

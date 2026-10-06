@@ -16,11 +16,11 @@
 // carries the payload's digest only.
 
 import { randomUUID } from 'node:crypto';
-import { advisoryLock, checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
+import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { keptRefused, markRefusedForPage, type PageRefusal } from './conversation-context.ts';
+import { markRefusedForPage, waitsFirst, type PageRefusal } from './conversation-context.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
@@ -57,24 +57,6 @@ export async function holdsOwnConversations(
   if (under === undefined) return (await checkAuthority(tx, subjectsOf(session), OWN_WRITE)).ok;
   const own = await checkAuthorityAt(tx, subjectsOf(session), OWN_WRITE, under.at);
   return own.ok && own.value.some((grant) => under.held.has(grant.id));
-}
-
-/**
- * A keep's waits, made before it asks its grants (Sol PRV-oa-1088-SC1,
- * SEC1-1): the page task judged under its share lock, then the audit chain's
- * lock, which its own audit events and the envelope's would otherwise wait on
- * after the check, so a grant a chain holder ended is seen. The chain key is
- * the trigger's, `business_id::text`, which is lower case. Answers why the
- * page refuses the question, if it does.
- */
-async function waitsFirst(
-  tx: TenantQuery,
-  session: Session,
-  taskId: string | null,
-): Promise<PageRefusal | null> {
-  const pageRefused = await keptRefused(tx, session, taskId);
-  await advisoryLock(tx, tx.businessId.toLowerCase());
-  return pageRefused;
 }
 
 export const bounded = (value: unknown, limit: number): value is string =>
@@ -138,6 +120,10 @@ async function citable(
     return refuseNotFound(['scope']);
   }
   const pageRefused = await waitsFirst(tx, context.session, scope.id);
+  // Refused here, so no row lock is waited on once the chain is held (SEC2-2).
+  if (pageRefused === 'SCOPE_NOT_GRANTED' || pageRefused === 'NOT_FOUND') {
+    return refuseNotFound(['scope']);
+  }
   if ((await live('for key share')).length === 0) return refuseNotFound(['scope']);
   const at = await lockedInstant(tx);
   // The door's grant first, as the door asked it.
@@ -145,6 +131,22 @@ async function citable(
   if (!own.ok) return own.refusal;
   const reads = (await checkAuthorityAt(tx, subjects, read, at)).ok;
   return reads ? { at, pageRefused } : refuseNotFound(['scope']);
+}
+
+/**
+ * The start's waits, then its grants asked after them: a cited task's through
+ * `citable`; with none, the audit chain alone (SEC2-1).
+ */
+async function startAdmitted(
+  tx: TenantQuery,
+  context: CommandContext,
+  scope: Scope | null,
+): Promise<{ readonly pageRefused: PageRefusal | null } | CommandRefusal> {
+  if (scope !== null) return await citable(tx, context, scope);
+  await waitsFirst(tx, context.session, null);
+  const subjects = subjectsOf(context.session);
+  const own = await checkAuthorityAt(tx, subjects, OWN_WRITE, await lockedInstant(tx));
+  return own.ok ? { pageRefused: null } : own.refusal;
 }
 
 /** The first message's fields, refused by name; undefined when they will do. */
@@ -172,12 +174,9 @@ export async function startConversation(
   const scope = scopeOf(fields.scope);
   const invalid = startRefusal(fields, scope);
   if (invalid !== undefined) return refused(invalid);
-  let pageRefused: PageRefusal | null = null;
-  if (scope) {
-    const cited = await citable(tx, context, scope);
-    if (!('at' in cited)) return refused(cited);
-    pageRefused = cited.pageRefused;
-  }
+  const admitted = await startAdmitted(tx, context, scope ?? null);
+  if (!('pageRefused' in admitted)) return refused(admitted);
+  const { pageRefused } = admitted;
   const { session } = context;
   const subject = typeof fields.subject === 'string' ? fields.subject.trim() : null;
   const title = typeof fields.title === 'string' ? fields.title.trim() : (subject ?? DEFAULT_TITLE);
