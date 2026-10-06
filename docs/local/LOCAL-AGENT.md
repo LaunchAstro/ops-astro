@@ -18,14 +18,24 @@ for. Staging has no real model yet.
 
 2. Each time: `OPS_ENVIRONMENT=local pnpm local-agent`. It starts the runner
    on loopback, files the runner's key for custody (`credentials.json`, 0600)
-   and writes `~/.ops-astro-local-agent/api.env` (0600).
+   and writes `~/.ops-astro-local-agent/api.env` (0600). Each start picks a
+   new port and key unless `OPS_LOCAL_AGENT_PORT` and `OPS_LOCAL_AGENT_KEY`
+   are set.
 3. In another terminal: `source ~/.ops-astro-local-agent/api.env`, then
    `pnpm api:up` and `pnpm web:up` as usual. The side panel now answers.
+   The API reads the port and key only when it starts: after every launcher
+   start, re-source `api.env` and restart the API.
 
 ## What it refuses
 
-- Anywhere but `OPS_ENVIRONMENT=local`, the API and the runner both refuse
-  `OPS_AGENT_PROVIDER=local-gpt` by name.
+- Anywhere but `OPS_ENVIRONMENT=local`: the API refuses
+  `OPS_AGENT_PROVIDER=local-gpt`, and the runner and launcher refuse to
+  start (`LOCAL_ONLY`).
+- A runner home someone else owns (`HOME_NOT_OWNED`) or that others can
+  write to (`HOME_NOT_PRIVATE`; `chmod 700` it), a home or installation
+  name holding a quote or line break, or a port that is not a port
+  (`SETTING_MALFORMED`), and a second start while a runner holds the home
+  (`LOCAL_HOME_IN_USE`).
 - A runner home whose Codex login is not the ChatGPT plan: an API-key login
   would bill per call, so `pnpm local-agent` stops with `CODEX_NOT_SIGNED_IN`.
 - **Chat about a client.** GPT is a cloud model, so the owner's rule on client
@@ -47,6 +57,7 @@ raise the cap (10,000,000 at most) or allow another model, write
 { "capTokens": 4000000, "models": ["gpt-5"] }
 ```
 
-`OPS_LOCAL_AGENT_CAP_TOKENS` set when starting is the cap, whatever the
-approvals say. When the plan itself is at its usage limit, the panel says so
+`OPS_LOCAL_AGENT_CAP_TOKENS` set when starting is the cap; one above 2,000,000
+starts only when `approvals.json` names that same figure (`CAP_NOT_APPROVED`).
+When the plan itself is at its usage limit, the panel says so
 (`LOCAL_PLAN_LIMIT`); wait for it to reset.

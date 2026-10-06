@@ -6,7 +6,8 @@
 // through a symlink, and writes the API's settings for a `local-gpt` broker
 // that the composition root accepts as they stand.
 
-import { existsSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { brokerSettings } from '../../apps/api/model-broker.ts';
@@ -55,7 +56,33 @@ describe('what the stack refuses before writing anything', () => {
     expect(existsSync(join(w.agentHome, 'api.env'))).toBe(false);
     expect(existsSync(join(w.agentHome, 'runner.lock'))).toBe(false);
   });
+
+  it.each([
+    ['a home others can write to', 0o777, {}, 'HOME_NOT_PRIVATE'],
+    ['a home its group can write to', 0o770, {}, 'HOME_NOT_PRIVATE'],
+    ['a port that is not a port', 0o700, { OPS_LOCAL_AGENT_PORT: '70000' }, 'SETTING_MALFORMED'],
+  ])('refuses %s', async (_label, mode, overrides, code) => {
+    const w = fresh();
+    chmodSync(w.agentHome, mode);
+    expect(await start(w, overrides)).toMatchObject({ ok: false, code });
+    expect(existsSync(join(w.agentHome, 'credentials.json'))).toBe(false);
+    expect(existsSync(join(w.agentHome, 'api.env'))).toBe(false);
+    expect(existsSync(join(w.agentHome, 'runner.lock'))).toBe(false);
+  });
 });
+
+/** A loopback port nothing listens on now. */
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = server.address() as { port: number };
+  await new Promise((resolve) => {
+    server.close(resolve);
+  });
+  return port;
+}
 
 // eslint-disable-next-line max-lines-per-function -- one started stack per case
 describe('a started stack', () => {
@@ -104,6 +131,15 @@ describe('a started stack', () => {
     }[];
     expect(filed?.value).toMatch(/^[0-9a-f]{48}$/u);
     expect(printed.join('\n')).not.toContain(filed?.value);
+  });
+
+  it('listens on OPS_LOCAL_AGENT_PORT when set, and tells the owner to restart the API', async () => {
+    const w = fresh();
+    const port = await freePort();
+    const started = await start(w, { OPS_LOCAL_AGENT_PORT: String(port) });
+    if (!started.ok) throw new Error(started.code);
+    expect(started.stack.runner.origin).toBe(`http://127.0.0.1:${String(port)}`);
+    expect(printed.join('\n')).toMatch(/source .*api\.env.*restart the API/u);
   });
 
   it('a second start on a live home is refused, the filed key still the one the runner serves', async () => {

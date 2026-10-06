@@ -96,10 +96,11 @@ function credentialOf(key: string) {
 // live home is refused with the filed key still the one the first runner serves.
 async function claimHome(
   settings: RunnerSettings,
+  port: number,
   print: (line: string) => void,
 ): Promise<{ readonly ok: true; readonly runner: Runner } | Refusal> {
   try {
-    return { ok: true, runner: await createRunner(settings, print) };
+    return { ok: true, runner: await createRunner(settings, print, port) };
   } catch (error) {
     if (!String(error).includes('LOCAL_HOME_IN_USE')) throw error;
     return {
@@ -115,7 +116,9 @@ async function ready(
   env: Readonly<Record<string, string | undefined>>,
   key: string,
   userHome: string,
-): Promise<{ readonly ok: true; readonly settings: RunnerSettings } | Refusal> {
+): Promise<
+  { readonly ok: true; readonly settings: RunnerSettings; readonly port: number } | Refusal
+> {
   const read = readSettings({ ...env, OPS_LOCAL_AGENT_KEY: key }, userHome);
   if (!read.ok) return { ok: false, code: read.code, message: read.message };
   const { settings } = read;
@@ -127,10 +130,27 @@ async function ready(
       message: 'OPS_LOCAL_AGENT_HOME and OPS_LOCAL_AGENT_INSTALLATION hold no quote or line break',
     };
   }
+  const port = Number(env['OPS_LOCAL_AGENT_PORT'] ?? '0');
+  if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) {
+    return {
+      ok: false,
+      code: 'SETTING_MALFORMED',
+      message: 'OPS_LOCAL_AGENT_PORT is a port number',
+    };
+  }
   mkdirSync(settings.home, { recursive: true, mode: 0o700 });
+  const home = statSync(settings.home);
   // A home someone else owns could hold their symlinks or read the key.
-  if (statSync(settings.home).uid !== process.getuid?.()) {
+  if (home.uid !== process.getuid?.()) {
     return { ok: false, code: 'HOME_NOT_OWNED', message: 'OPS_LOCAL_AGENT_HOME is not yours' };
+  }
+  // In a home others can write to, they could rename their own api.env over the one the owner sources.
+  if ((home.mode & 0o022) !== 0) {
+    return {
+      ok: false,
+      code: 'HOME_NOT_PRIVATE',
+      message: 'others can write to OPS_LOCAL_AGENT_HOME: chmod 700 it',
+    };
   }
   if (!(await codexLogin(settings))) {
     return {
@@ -139,7 +159,7 @@ async function ready(
       message: `sign the runner's Codex home in to ChatGPT once: CODEX_HOME=${settings.codexHome} codex login`,
     };
   }
-  return { ok: true, settings };
+  return { ok: true, settings, port };
 }
 
 export async function startStack(
@@ -150,8 +170,8 @@ export async function startStack(
   const key = env['OPS_LOCAL_AGENT_KEY'] || randomBytes(24).toString('hex');
   const checked = await ready(env, key, userHome);
   if (!checked.ok) return checked;
-  const { settings } = checked;
-  const claimed = await claimHome(settings, print);
+  const { settings, port } = checked;
+  const claimed = await claimHome(settings, port, print);
   if (!claimed.ok) return claimed;
   const { runner } = claimed;
   const credentialsFile = join(settings.home, 'credentials.json');
@@ -165,7 +185,9 @@ export async function startStack(
     throw error;
   }
   print(`local agent: runner on ${runner.origin}`);
-  print(`local agent: source ${apiEnvFile} before starting the API (pnpm api:up)`);
+  // The API and custody read the port and key only when they start.
+  print(`local agent: source ${apiEnvFile}, then start or restart the API (pnpm api:up)`);
+  print('local agent: after every launcher start, re-source it and restart the API');
   return {
     ok: true,
     stack: { home: settings.home, runner, credentialsFile, apiEnvFile, close: runner.close },
