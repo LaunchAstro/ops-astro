@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
-import { mayCarry } from './credentials.ts';
+import { carriesLocally, mayCarry } from './credentials.ts';
 import { sendingAccount } from './broker-carrier.ts';
 import {
   atCeiling,
@@ -99,6 +99,7 @@ export function localRoute(
     workForPersonId: caller.attendedByPersonId,
     tenantInstallation: broker.installation,
     credentialInstallation: route.installation,
+    localOwnerTesting: carriesLocally(broker, route),
   });
   return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
 }

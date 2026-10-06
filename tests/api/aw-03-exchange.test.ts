@@ -158,6 +158,28 @@ describe.skipIf(serverUrl === undefined)('AW-03 the exchange', () => {
   });
 
   // eslint-disable-next-line max-lines-per-function -- every crossing against one owned message
+  it('owner line 72: a conversation opened on a client’s task asks no model and keeps no reply', async () => {
+    const task = await c.createTask('a task for a client');
+    const made = await c.asPerson('client.create', { name: `Client ${randomUUID()}` });
+    const placed = await c.asPerson('task.set_party', {
+      recordId: task.id,
+      expectedRevision: task.revision,
+      fields: { client: String(detail(made)['clientId']) },
+    });
+    expect(placed.status).toBe(200);
+    const before = await calls();
+    const sent = model.provider.seen.length;
+    const opened = await w.as(w.owner, 'conversation.start', {
+      body: `${canary} how is this client going?`,
+      scope: { kind: 'task', id: task.id },
+    });
+    expect(opened.status).toBe(200);
+    expect(replyOf(opened)).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+    expect(await calls()).toBe(before);
+    expect(model.provider.seen.length).toBe(sent);
+    expect(await agentRows(String(detail(opened)['conversationId']))).toBe(0);
+  });
+
   it('AW-03 exchange isolation: another business, another client, another person and the owner’s agent get no answer, and nothing is sent', async () => {
     const opened = await w.as(w.owner, 'conversation.start', { body: `${canary} private` });
     const conversationId = String(detail(opened)['conversationId']);

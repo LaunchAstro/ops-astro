@@ -34,7 +34,13 @@ import {
   callModelInConversation,
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
-import { isUuid, subjectsOf, withSession } from '../../../core-records/src/index.ts';
+import {
+  isUuid,
+  slotOf,
+  subjectsOf,
+  TASK_SPINE,
+  withSession,
+} from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -102,7 +108,11 @@ interface Question {
   readonly scope: ConversationScope;
   readonly body: string;
   readonly reply: Kept | undefined;
+  /** The client of the task the conversation was opened on, if it has one. */
+  readonly client: string | null;
 }
+
+const CLIENT = slotOf(TASK_SPINE, 'client');
 
 /** The kept reply to a message, if there is one. */
 async function replyTo(tx: TenantQuery, asked: Asked): Promise<Kept | undefined> {
@@ -122,10 +132,15 @@ async function questionOf(
 ): Promise<Question | undefined> {
   if (!isUuid(asked.conversationId) || !isUuid(asked.messageId)) return undefined;
   if (!(await holdsOwnConversations(tx, session))) return undefined;
-  const [found] = await tx.query<{ readonly owner_person_id: string; readonly body: string }>(
-    `select c.owner_person_id, m.body
+  const [found] = await tx.query<{
+    readonly owner_person_id: string;
+    readonly body: string;
+    readonly client: string | null;
+  }>(
+    `select c.owner_person_id, m.body, t.${CLIENT}::text as client
        from conversations c
        join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
+       left join records t on t.business_id = c.business_id and t.id = c.scope_record_id
       where c.business_id = $1 and c.id = $2 and m.id = $3 and m.role = 'person'
         and c.owner_actor_id = $4 and c.body_purged_at is null`,
     [tx.businessId, asked.conversationId, asked.messageId, session.actorId],
@@ -139,6 +154,7 @@ async function questionOf(
     },
     body: found.body,
     reply: await replyTo(tx, asked),
+    client: found.client,
   };
 }
 
@@ -207,6 +223,10 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
     if (isCommandRefusal(found) || found.question === undefined) return null;
     const { session, question } = found;
     if (question.reply !== undefined) return answered(question.reply);
+    // Owner line 72: a client's material reaches no model while no true local
+    // model exists, and the laptop's GPT runner is a cloud model. A conversation
+    // opened on a client's task asks nothing, whatever the provider.
+    if (question.client !== null) return refusedWith('CLIENT_MODEL_USE_OFF');
     const result = await callModelInConversation(
       database,
       businessId,
