@@ -1,7 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- An agent login is live elsewhere too, and a login's subject is fixed
--- (C58 and C59, D3-FIX2).
+-- An agent login is live elsewhere too (C58 and C59, D3-FIX2).
 --
 -- One provider user can be a person's login in alpha and an agent's login in
 -- bravo. The shared-login check asked only `person_logins`, so ending the
@@ -11,15 +10,10 @@
 -- body changes: the signature, definer, settings, revoke and grant are
 -- 20261005235557's, repeated here.
 --
--- An ending holds its subject's lock from its last shared check to its stamp,
--- and every mapping write takes that lock (20261006213000). Changing a mapped
--- login's subject or provider took no lock and fired no mapping trigger, so
--- bravo could point a live login at the subject alpha was banning, after
--- alpha's check. Nothing changes either column once a login is written (the
--- seeds and scan-login insert; no product path updates `public.logins`), so
--- both are now fixed, for every role, the owner included. 20261004102930
--- already fixes them with this function and trigger, for scan-login's cleanup;
--- they are written here as it writes them, so either copy may run first.
+-- D3-FIX2's other half, a login's provider and subject fixed once written so
+-- no mapped login is pointed at a subject an ending is banning, is main's
+-- 20261004102930 (`logins_subject_is_fixed`), which holds the same function
+-- and trigger; it is not repeated here.
 
 create or replace function public.factor_login_live_elsewhere(login uuid)
   returns boolean
@@ -52,21 +46,3 @@ $$;
 
 revoke all on function public.factor_login_live_elsewhere(uuid) from public;
 grant execute on function public.factor_login_live_elsewhere(uuid) to ops_astro_app;
-
-create or replace function public.logins_subject_is_fixed() returns trigger
-  language plpgsql
-  as $$
-begin
-  raise exception 'logins: a login''s provider and subject are fixed once written'
-    using errcode = 'check_violation';
-end;
-$$;
-
-revoke execute on function public.logins_subject_is_fixed() from public;
-
-drop trigger if exists logins_subject_is_fixed on public.logins;
-create trigger logins_subject_is_fixed
-  before update of provider, subject on public.logins
-  for each row
-  when (new.provider is distinct from old.provider or new.subject is distinct from old.subject)
-  execute function public.logins_subject_is_fixed();
