@@ -18,6 +18,7 @@ import {
 import {
   purgeConversation,
   sweepConversations,
+  writeWrapUp,
   type SweepReport,
   type SweepRequest,
 } from '../../packages/core-commands/src/index.ts';
@@ -121,12 +122,45 @@ async function raiseFailures(stuck: string, raise: (failure: SweepFailure) => vo
   await round();
 }
 
+/** `rounds` while a real operation on a second connection holds the conversation's row. */
+async function heldThrough(conversationId: string, rounds: () => Promise<void>): Promise<void> {
+  await second.withBusiness(s.alpha, async (tx) => {
+    const held = await writeWrapUp(tx, { conversationId, codeRevision: REVISION });
+    expect(held).toMatchObject({ ok: true, written: false });
+    await rounds();
+  });
+}
+
+/**
+ * A wrapped conversation due for its purge, held past the lock timeout through
+ * two passes, then let go and purged; then another, held through one.
+ */
+async function purgeFailures(raise: (failure: SweepFailure) => void): Promise<string[]> {
+  const round = alphaRound(raise, 200);
+  const first = await s.dueInAlpha('Held through its purge.');
+  await round();
+  await heldThrough(first, async () => {
+    await round();
+    await round();
+  });
+  await round();
+  const again = await s.dueInAlpha('Held through its purge after the first was purged.');
+  await round();
+  await heldThrough(again, round);
+  await round();
+  expect([await s.messages(first), await s.messages(again)]).toEqual([0, 0]);
+  return [first, again];
+}
+
 async function failureCase(): Promise<void> {
   await settle();
-  const stuck = await plantedConversation();
   const { failures, raise } = raisedFailures();
   const logged = consoleLines();
+  let purges: string[] = [];
+  let stuck = '';
   try {
+    purges = await purgeFailures(raise);
+    stuck = await plantedConversation();
     await raiseFailures(stuck, raise);
     // The default raise logs the cause alone.
     await sweepRound(s.db, {
@@ -139,13 +173,14 @@ async function failureCase(): Promise<void> {
   }
   const window = { businessId: s.alpha, cause: 'window_unreadable', conversationIds: [] };
   expect(failures).toEqual([
+    ...purges.map((id) => ({ businessId: s.alpha, cause: 'purge', conversationIds: [id] })),
     { businessId: s.alpha, cause: 'wrap_up', conversationIds: [stuck] },
     window,
     window,
   ]);
   expect(logged.text()).toContain('conversation sweep:');
   for (const text of [JSON.stringify(failures), logged.text()]) expect(text).not.toContain(canary);
-  for (const id of [s.alpha, stuck]) expect(logged.text()).not.toContain(id);
+  for (const id of [s.alpha, stuck, ...purges]) expect(logged.text()).not.toContain(id);
 }
 
 const breaking =
