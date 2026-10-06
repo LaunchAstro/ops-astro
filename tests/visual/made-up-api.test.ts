@@ -25,9 +25,6 @@ const NOT_DRAWN = new Set([
   // them yet; the Team panel arrives in a later piece.
   'chat.conversations',
   'chat.messages',
-  // MP-14-9, MP-14-6: the cost data lands before the screens that draw it.
-  'finance.skill_costs',
-  'finance.agent_costs',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {

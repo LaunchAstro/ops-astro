@@ -38,6 +38,7 @@ import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-ac
 import { AGENT_READS } from './made-up-agent.ts';
 import { AUTOMATION_REGISTRY } from './made-up-automations.ts';
 import { FLEET_READ, GRADUATION, SIGNAL_READ } from './made-up-connections.ts';
+import { AGENT_COSTS, SKILL_COSTS } from './made-up-costs.ts';
 import { EXECUTION, RECEIPT } from './made-up-data.ts';
 import { DETAIL, LEDGER, STATE, TAGS, TASKS, TODOS } from './made-up-rows.ts';
 import { WAYFINDER_READS } from './made-up-wayfinder.ts';
@@ -207,6 +208,8 @@ const READS = {
   'connection.fleet': FLEET_READ,
   'connection.signal': SIGNAL_READ,
   'connection.graduation': GRADUATION,
+  'finance.skill_costs': SKILL_COSTS,
+  'finance.agent_costs': AGENT_COSTS,
   ...WAYFINDER_READS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 

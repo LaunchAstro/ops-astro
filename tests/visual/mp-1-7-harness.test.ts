@@ -171,8 +171,8 @@ function everyPageAtItsAddress(): void {
 // The registry's pages: wave 0's four, the public legal page (C81), the task page
 // with no key (MP-4-1), Settings ▸ Access, Telemetry (U14), Operations (C55),
 // MP-7-3's inbox, the component gallery (MP-1-3, U04), My to-dos (MP-7-1),
-// MP-7-10's Team, SL06's Clients book, a conversation's own address (C36)
-// and a Wayfinder map (WF-3).
+// MP-7-10's Team, SL06's Clients book, a conversation's own address (C36),
+// a Wayfinder map (WF-3), the Executive page and the onboarding look.
 const BUILT_PAGES = [
   'agency:sign-in',
   'agency:legal',
@@ -181,6 +181,8 @@ const BUILT_PAGES = [
   'agency:task-unnamed',
   'agency:map',
   'agency:connections',
+  'agency:executive',
+  'agency:onboarding',
   'agency:settings',
   'agency:access',
   'agency:telemetry',
