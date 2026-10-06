@@ -81,7 +81,18 @@ describe('a message answered through codex exec', () => {
 
   it("gives the child its own Codex home and nothing of the runner's environment", async () => {
     const { w, settings } = setUp();
-    await runCodex(settings, MODEL, 'hi');
+    // Planted in the runner's own process, where a spawn would inherit it by default.
+    const planted = { OPENAI_API_KEY: CANARY, OPS_LOCAL_AGENT_KEY: RUNNER_KEY };
+    const kept = Object.fromEntries(Object.keys(planted).map((name) => [name, process.env[name]]));
+    Object.assign(process.env, planted);
+    try {
+      await runCodex(settings, MODEL, 'hi');
+    } finally {
+      for (const [name, value] of Object.entries(kept)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
     const env = w.calls()[0]?.env ?? {};
     expect(env['CODEX_HOME']).toBe(w.codexHome);
     const own = Object.keys(env).filter((name) =>
