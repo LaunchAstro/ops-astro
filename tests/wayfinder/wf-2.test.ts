@@ -477,14 +477,29 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     ).toBe('SCOPE_NOT_GRANTED');
   });
 
-  it('WF-2 an agent is refused a grilling resolve, and a retype to route around it is refused first', async () => {
-    const { tickets } = await charted(owner, {
+  it('WF-2 an agent on a live delegation is refused claim, resolve and retype at the agent surface, on its own grilling ticket', async () => {
+    const { map } = await charted(owner, {
       title: 'agent map',
-      tickets: [{ ref: 'g', title: 'owner decides', type: 'grilling' }],
+      tickets: [{ ref: 'r', title: 'a sibling', type: 'research' }],
     });
+    // The agent's own delegated ticket, moved under the map and made grilling.
     const picked = await w.pickUp(owner, 'agent picks this up');
-    // Its own ticket, under the map, as grilling.
-    const g = tickets['g'] as string;
+    const g = picked.taskId;
+    must(
+      await w.as(owner, { command: 'task.reparent', ...(await at(g)), parentId: map }),
+      'reparent',
+    );
+    must(
+      await w.as(owner, { command: 'task.set_type', ...(await at(g)), taskType: 'grilling' }),
+      'retype',
+    );
+    // The delegation is live and reaches this ticket: its thread takes the agent's comment.
+    const comment = { command: 'task.comment', recordId: g, body: 'on it', audience: 'internal' };
+    expect(
+      codeOf(await w.asAgent({ ...comment, operationId: randomUUID() }, picked.credential)),
+    ).toBe('applied');
+    // No agent row serves the WF-2 commands yet (API-2): each is refused by
+    // name at the agent surface, the floor the owner rule sits behind.
     for (const [command, extra] of [
       ['task.set_type', { taskType: 'research' }],
       ['task.resolve', { answer: 'x', gist: 'y' }],
@@ -494,15 +509,13 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
         { command, operationId: randomUUID(), ...(await at(g)), ...extra },
         picked.credential,
       );
-      expect(codeOf(answer)).not.toBe('applied');
+      expect(codeOf(answer)).toBe('DELEGATION_EXCLUDES_OPERATION');
     }
     const rows = await w.db.admin.execute<{ readonly type: string; readonly gist: string | null }>(
       `select data->>'type' as type, data->>'gist' as gist from public.records where business_id = $1 and id = $2`,
       [w.business, g],
     );
     expect(rows[0]).toStrictEqual({ type: 'grilling', gist: null });
-    // The ticket stays open for the map's owner.
-    expect(codeOf(await resolve(owner, g))).toBe('applied');
   });
 
   it('WF-2 a grilling ticket cannot leave its map to route around its owner', async () => {
@@ -592,8 +605,32 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
       expect(codeOf(blocked)).toBe('NOT_FOUND');
       clean(blocked);
     }
-    // 3. An agent under a live delegation reaches none of map B.
+    // 3. An agent under a live delegation reaches none of map B: the
+    // delegation comments on its own task, and is refused map B's ticket
+    // through a row it holds (the comment) as through the WF-2 commands no
+    // agent row serves yet.
     const picked = await w.pickUp(owner, 'delegated work two');
+    const own = {
+      command: 'task.comment',
+      recordId: picked.taskId,
+      body: 'on it',
+      audience: 'internal',
+    };
+    expect(codeOf(await w.asAgent({ ...own, operationId: randomUUID() }, picked.credential))).toBe(
+      'applied',
+    );
+    const elsewhere = await w.asAgent(
+      {
+        command: 'task.comment',
+        operationId: randomUUID(),
+        recordId: ticketB,
+        body: 'x',
+        audience: 'internal',
+      },
+      picked.credential,
+    );
+    expect(codeOf(elsewhere)).not.toBe('applied');
+    clean(elsewhere);
     for (const [command, extra] of [
       ['task.claim', {}],
       ['task.resolve', { answer: 'x', gist: 'y' }],
@@ -602,7 +639,7 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
         { command, operationId: randomUUID(), ...(await at(ticketB)), ...extra },
         picked.credential,
       );
-      expect(codeOf(answer)).not.toBe('applied');
+      expect(codeOf(answer)).toBe('DELEGATION_EXCLUDES_OPERATION');
       clean(answer);
     }
     expect((await frontierOf(owner, mapB.map)).frontier.map((t) => t.id)).toStrictEqual([ticketB]);
@@ -792,5 +829,121 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     await waiterOf(w.db, held);
     const written = await held.letGo().then(() => 'committed', String);
     expect([written, await closing]).toStrictEqual(['committed', 'applied']);
+  });
+  it.each(['task.claim', 'task.resolve'] as const)(
+    'WF-2 %s takes its map row before its ticket, so writers on one map queue rather than deadlock',
+    async (command) => {
+      const { map, tickets } = await charted(owner, {
+        title: `queued ${command}`,
+        tickets: [{ ref: 'a', title: 'a', type: 'research' }],
+      });
+      const a = tickets['a'] as string;
+      const extra = command === 'task.resolve' ? { answer: 'x', gist: 'y' } : {};
+      const body = { command, ...(await at(a)), ...extra };
+      // Another writer of the map holds its row, as a claim or resolve of a
+      // sibling ticket does, and once this one waits takes the key-share lock
+      // its frontier refresh takes on this ticket: free, since the waiter has
+      // not locked its ticket yet. The other order is the cycle (Sol F1).
+      const held = await hold(
+        w.db,
+        async (execute) => {
+          await execute(`set local deadlock_timeout = '10ms'`);
+          await execute(`select set_config('app.business_id', $1, true)`, [w.business]);
+          await execute(
+            `select 1 from public.records where business_id = $1 and id = $2 for no key update`,
+            [w.business, map],
+          );
+        },
+        async (execute) => {
+          await execute(
+            `select 1 from public.records where business_id = $1 and id = $2 for key share nowait`,
+            [w.business, a],
+          );
+        },
+      );
+      const running = w.asOnSecond(owner, body).then(codeOf, String);
+      await waiterOf(w.db, held);
+      const written = await held.letGo().then(() => 'committed', String);
+      expect([written, await running]).toStrictEqual(['committed', 'applied']);
+    },
+  );
+
+  it('WF-2 a resolution is stamped when it writes, after any wait, so Decisions so far keeps closing order', async () => {
+    const { tickets } = await charted(owner, {
+      title: 'stamped map',
+      tickets: [{ ref: 'a', title: 'a', type: 'research' }],
+    });
+    const a = tickets['a'] as string;
+    const body = { command: 'task.resolve', ...(await at(a)), answer: 'x', gist: 'waited' };
+    // Another transaction holds the ticket; the resolve begins, waits, and
+    // writes only after the holder's clock reading.
+    const held = await hold(
+      w.db,
+      async (execute) => {
+        await execute(
+          `select 1 from public.records where business_id = $1 and id = $2 for update`,
+          [w.business, a],
+        );
+      },
+      async (execute) =>
+        (await execute<{ readonly at: string }>(`select clock_timestamp()::text as at`))[0]?.at,
+    );
+    const resolving = w.asOnSecond(owner, body).then(codeOf, String);
+    await waiterOf(w.db, held);
+    const released = await held.letGo();
+    expect(await resolving).toBe('applied');
+    const rows = await w.db.admin.execute<{ readonly later: boolean }>(
+      `select (data->>'completed_at')::timestamptz >= $3::timestamptz as later
+         from public.records where business_id = $1 and id = $2`,
+      [w.business, a, released],
+    );
+    expect(rows[0]?.later).toBe(true);
+  });
+
+  it('WF-2 a ticket reopened after out of scope, then resolved, joins Decisions so far', async () => {
+    const { map, tickets } = await charted(owner, {
+      title: 'reopened map',
+      tickets: [{ ref: 't', title: 'later after all', type: 'task' }],
+    });
+    const t = tickets['t'] as string;
+    must(await w.as(owner, { command: 'task.close_out_of_scope', ...(await at(t)) }), 'close');
+    must(
+      await w.as(owner, { command: 'task.reopen', ...(await at(t)), reason: 'Now required' }),
+      'reopen',
+    );
+    must(await resolve(owner, t, 'Now decided'), 'resolve');
+    const view = (await w.read(owner, { read: 'map.view', recordId: map })) as {
+      map: { decisions: readonly { ticketId: string; gist: string }[] };
+    };
+    expect(view.map.decisions.map((d) => [d.ticketId, d.gist])).toStrictEqual([[t, 'Now decided']]);
+  });
+
+  it('WF-2 a resolution posts its answer on the ticket as a comment a teammate reads', async () => {
+    const { map, tickets } = await charted(owner, {
+      title: 'answered map',
+      tickets: [{ ref: 'r', title: 'how far', type: 'research' }],
+    });
+    const r = tickets['r'] as string;
+    const answer = 'The measured limit is 42 units';
+    must(
+      await w.as(owner, {
+        command: 'task.resolve',
+        ...(await at(r)),
+        answer,
+        gist: 'Limit established',
+      }),
+      'resolve',
+    );
+    const read = (await w.read(teammate, { read: 'task.read', recordId: r })) as {
+      task?: { comments?: readonly { body?: string }[] };
+    };
+    console.log('F2SHAPE', JSON.stringify(read).slice(0, 600));
+    expect(read.task?.comments?.map((c) => c.body)).toStrictEqual([answer]);
+    const view = (await w.read(teammate, { read: 'map.view', recordId: map })) as {
+      map: { decisions: readonly { ticketId: string; gist: string }[] };
+    };
+    expect(view.map.decisions.map((d) => [d.ticketId, d.gist])).toStrictEqual([
+      [r, 'Limit established'],
+    ]);
   });
 });
