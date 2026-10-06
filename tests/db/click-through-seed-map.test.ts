@@ -66,6 +66,7 @@ describe.skipIf(serverUrl === undefined)('SR-1 click-through seed map', () => {
   mapCases();
   readerCases();
   guardCases();
+  roleCases();
 });
 
 function mapCases() {
@@ -157,25 +158,62 @@ function guardCases() {
     );
     expect(moved?.n).toBe(2);
   });
+}
 
-  it('runs the four map read-model functions as a role that is no owner and passes no row security', async () => {
-    const owners = await world.db.admin.execute<{
-      fn: string;
-      definer: boolean;
-      owner: string;
-      past: boolean;
-    }>(
-      `select p.proname as fn, p.prosecdef as definer, r.rolname as owner,
-              r.rolsuper or r.rolbypassrls or r.rolcanlogin
-                or pg_has_role(r.oid, d.datdba, 'member') as past
+/** Each read-model writer: how it runs, who owns it, and who may call it or become its owner. */
+const FUNCTION_FACTS = `select p.proname as fn, p.prosecdef as definer, p.proconfig as config,
+              r.rolname as owner, r.rolsuper or r.rolbypassrls or r.rolcanlogin as past,
+              pg_has_role(r.oid, d.datdba, 'member') as owner_member,
+              pg_has_role('ops_astro_app', r.oid, 'member') as application_becomes,
+              has_function_privilege('public', p.oid, 'EXECUTE') as public,
+              has_function_privilege('ops_astro_app', p.oid, 'EXECUTE') as application,
+              has_function_privilege('ops_astro_worker', p.oid, 'EXECUTE') as worker
          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
          join pg_roles r on r.oid = p.proowner
          join pg_database d on d.datname = current_database()
-        where n.nspname = 'public' and p.proname = any($1) order by 1`,
-      [READ_MODEL_FUNCTIONS],
+        where n.nspname = 'public' and p.proname = any($1) order by 1`;
+
+function roleCases() {
+  it('runs the four map read-model functions as their own pinned role, which no caller becomes or calls', async () => {
+    const functions = await world.db.admin.execute<Record<string, unknown>>(FUNCTION_FACTS, [
+      READ_MODEL_FUNCTIONS,
+    ]);
+    // Its own role: the made-up guard and row security judge its writes as the
+    // application's, never the owner's; the application can neither take the
+    // role nor call the writers, which only their triggers fire.
+    expect(functions).toStrictEqual(
+      READ_MODEL_FUNCTIONS.toSorted().map((fn) => ({
+        fn,
+        definer: true,
+        config: ['search_path=pg_catalog, public'],
+        owner: 'ops_astro_map_path',
+        past: false,
+        owner_member: false,
+        application_becomes: false,
+        public: false,
+        application: false,
+        worker: false,
+      })),
     );
-    expect(owners.map((row) => [row.fn, row.definer, row.owner, row.past])).toEqual(
-      READ_MODEL_FUNCTIONS.toSorted().map((fn) => [fn, true, 'ops_astro_map_path', false]),
+  });
+
+  it("gives the map read models' role reads of what they count and writes to the two read models only", async () => {
+    const held = await world.db.admin.execute<{ held: string }>(
+      `select c.relname || ':' || string_agg(lower(a.action), ',' order by a.action) as held
+         from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) as a(action)
+        where n.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm')
+          and has_table_privilege('ops_astro_map_path', c.oid, a.action)
+        group by c.relname order by 1`,
     );
+    expect(held.map((row) => row.held)).toStrictEqual([
+      'map_components:select',
+      'map_frontier:delete,insert,select',
+      'map_summaries:delete,insert,select,update',
+      'map_versions:select',
+      'record_links:select',
+      'record_types:select',
+      'records:select',
+    ]);
   });
 }

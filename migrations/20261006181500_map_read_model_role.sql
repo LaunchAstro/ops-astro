@@ -8,9 +8,12 @@
 -- map edit as a write it cannot vouch for and the next seed run refused the
 -- database. As this role, the guard and row security judge those writes as
 -- they judge the application's. The functions' bodies, search paths, definer
--- setting and revokes do not change; every policy they meet applies to every
--- role, and the owner is under the same forced row security, so they read and
--- write the same rows as before.
+-- setting and revokes do not change. The owner ran them past row security; this
+-- role is under it, and every policy they meet applies to every role. They read
+-- and write the same rows as before because each statement in them already
+-- carries the tenancy test itself (business_id = app_business_id()): keep it
+-- there, since the restrictive tenancy policy is now what holds them to one
+-- business as well.
 
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'ops_astro_map_path') then
