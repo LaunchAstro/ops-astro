@@ -6,7 +6,9 @@
 // reordering. The fog view lists the patches not yet specified and graduates
 // one into tickets through `map.graduate`, which retires the patch in the same
 // version. The open form and its lines are held above the read (`Drafts`), so
-// a graduate refused VERSION_STALE keeps them over the reread map.
+// a graduate refused VERSION_STALE keeps them over the reread map; if the
+// reread map no longer has the form's patch, the lines stay on screen to copy
+// or dismiss, with no save offered against a patch that is gone.
 
 import type { ReactElement } from 'react';
 import type { MapFrontierResult, MapView } from '../../../../../packages/core-wire/src/index.ts';
@@ -50,53 +52,109 @@ export function FrontierView(props: {
   );
 }
 
-export function FogView(props: {
+export function FogView(props: FogProps): ReactElement {
+  const { map } = props;
+  const { graduating, setGraduating } = props.drafts;
+  const gone = graduating !== null && !map.fog.some((patch) => patch.id === graduating.patch);
+  return (
+    <Section name="fog-view" label="Fog">
+      {gone ? (
+        <GoneForm
+          lines={graduating.lines}
+          onDismiss={() => {
+            setGraduating(null);
+          }}
+        />
+      ) : null}
+      {map.fog.length === 0 ? <p>Nothing on this map is foggy.</p> : null}
+      <ul>
+        {map.fog.map((patch) => (
+          <PatchRow key={patch.id} {...props} patch={patch} gone={gone} />
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+interface FogProps {
   readonly map: MapView;
   readonly busy: boolean;
   readonly send: Send;
   readonly drafts: Drafts;
-}): ReactElement {
-  const { map } = props;
+}
+
+/** One patch: its text, and its graduate form when open, else the button that opens it. */
+function PatchRow(
+  props: FogProps & { readonly patch: MapView['fog'][number]; readonly gone: boolean },
+): ReactElement {
+  const { map, patch } = props;
   const { graduating, setGraduating } = props.drafts;
   return (
-    <Section name="fog-view" label="Fog">
-      {map.fog.length === 0 ? <p>Nothing on this map is foggy.</p> : null}
+    <li data-patch={patch.id}>
+      {patch.text}{' '}
+      {graduating?.patch === patch.id ? (
+        <Graduate
+          lines={graduating.lines}
+          onLines={(lines) => {
+            setGraduating({ patch: patch.id, lines });
+          }}
+          onCancel={() => {
+            setGraduating(null);
+          }}
+          busy={props.busy}
+          onGraduate={(tickets) => {
+            const body = { patchId: patch.id, tickets };
+            props.send('map.graduate', map.id, map.revision, body, 'graduate');
+          }}
+        />
+      ) : (
+        <button
+          className="btn"
+          type="button"
+          data-graduate={patch.id}
+          // Opening another form would replace a kept one whose patch is gone.
+          disabled={props.busy || props.gone}
+          onClick={() => {
+            setGraduating({ patch: patch.id, lines: [{ title: '', type: 'task' }] });
+          }}
+        >
+          Graduate into tickets
+        </button>
+      )}
+    </li>
+  );
+}
+
+/**
+ * A graduate form whose patch someone else graduated or removed. There is no
+ * patch to send it against, so it offers no save: the typed titles stay
+ * here, to copy into another patch's form or a ticket, until dismissed.
+ */
+function GoneForm(props: {
+  readonly lines: readonly Line[];
+  readonly onDismiss: () => void;
+}): ReactElement {
+  const typed = props.lines.filter((line) => line.title.trim() !== '');
+  return (
+    <div className="stack" data-graduate-gone="">
+      <p className="field__error">
+        The fog patch you were graduating no longer exists: someone else graduated or removed it.
+        Your ticket titles are kept below to copy; they cannot be graduated from it.
+      </p>
       <ul>
-        {map.fog.map((patch) => (
-          <li key={patch.id} data-patch={patch.id}>
-            {patch.text}{' '}
-            {graduating?.patch === patch.id ? (
-              <Graduate
-                lines={graduating.lines}
-                onLines={(lines) => {
-                  setGraduating({ patch: patch.id, lines });
-                }}
-                onCancel={() => {
-                  setGraduating(null);
-                }}
-                busy={props.busy}
-                onGraduate={(tickets) => {
-                  const body = { patchId: patch.id, tickets };
-                  props.send('map.graduate', map.id, map.revision, body, 'graduate');
-                }}
-              />
-            ) : (
-              <button
-                className="btn"
-                type="button"
-                data-graduate={patch.id}
-                disabled={props.busy}
-                onClick={() => {
-                  setGraduating({ patch: patch.id, lines: [{ title: '', type: 'task' }] });
-                }}
-              >
-                Graduate into tickets
-              </button>
-            )}
+        {typed.map((line, index) => (
+          // oxlint-disable-next-line react/no-array-index-key -- lines have no identity but their place
+          <li key={index}>
+            {line.title} <span className="sbact__meta">{line.type}</span>
           </li>
         ))}
       </ul>
-    </Section>
+      <div className="btnrow">
+        <button className="btn" type="button" data-graduate-dismiss="" onClick={props.onDismiss}>
+          Dismiss
+        </button>
+      </div>
+    </div>
   );
 }
 
