@@ -18,7 +18,7 @@
 // (`modelOffer`), so no command leaves for it. The model picker offers what
 // `conversation.models` answers for the selected tab (CS-7.30, `assistant/models.ts`);
 // a choice is held in the tab until it starts and sent by `conversation.set_model`
-// straight after the start, then each later choice in turn, like a rename.
+// straight after the start, then each later choice in turn, landing before the next question.
 //
 // The agent's answer comes back beside each kept question (AW-03's exchange,
 // on AW-01's conversation seam) and is drawn after its question, as text.
@@ -157,6 +157,8 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
       plan: (k, words, offer) => store.plan(k, words, offer, question),
     };
     let known = chat.conversationId;
+    // A started tab's question waits for its writes so far: a model just chosen is the one asked.
+    if (known !== null) await starts.current.get(key);
     if (known === null) {
       // Queued behind the tab's last start: joins what it made, or starts
       // itself only once that start is refused.
