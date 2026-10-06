@@ -6,20 +6,24 @@
 // the line limit; the contract and the catalogue reads are unchanged.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
-import { OCCURRENCE_ROLE } from './restricted-calls-cases.ts';
+import { MANDATE_GRANTS, MANDATE_UPDATES, OCCURRENCE_ROLE } from './restricted-calls-cases.ts';
 
 /**
  * Update granted column by column: the table, the columns, and the first migration that
- * grants them. Every other column-level privilege, to any role, is outside the contract.
+ * grants them; a table a later migration grants more columns on has a row for each. Every
+ * other column-level privilege, to any role, is outside the contract.
  */
-const COLUMN_UPDATES: Readonly<
-  Record<string, { readonly from: string; readonly columns: readonly string[] }>
-> = {
-  'public.planned_runs': { from: '0086', columns: ['state'] },
+const COLUMN_UPDATES: readonly {
+  readonly table: string;
+  readonly from: string;
+  readonly columns: readonly string[];
+}[] = [
+  { table: 'public.planned_runs', from: '0086', columns: ['state'] },
   // C40B: a reset token is spent by `spent_at` alone.
-  'public.password_reset_tokens': { from: '20261005144947', columns: ['spent_at'] },
+  { table: 'public.password_reset_tokens', from: '20261005144947', columns: ['spent_at'] },
   // C33: an activation's setting, pin and switch, each change by a person.
-  'public.activations': {
+  {
+    table: 'public.activations',
     from: '20261005003850',
     columns: [
       'changed_at',
@@ -32,31 +36,32 @@ const COLUMN_UPDATES: Readonly<
       'version_id',
     ],
   },
-  'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
-  // MP-14-10a: promoting and demoting serialise on a class's revision.
-  'public.graduation_classes': { from: '20261005222000', columns: ['revision'] },
-  // MP-14-10a: a mandate is revoked, never edited; its trigger refuses the rest.
-  'public.standing_mandates': {
-    from: '20261005222000',
-    columns: ['revision', 'revoked_at', 'revoked_by_actor_id'],
+  // C52-A: the standing approval an activation names, set by an adoption.
+  { table: 'public.activations', from: '20261005193201', columns: ['approval_id'] },
+  {
+    table: 'public.leases',
+    from: '20261004040200',
+    columns: ['expires_at', 'released_at', 'state'],
   },
+  // C41-A: an onboarding's state, stop and revision, a step's state, failures and close.
+  {
+    table: 'public.onboardings',
+    from: '20261005200007',
+    columns: ['revision', 'state', 'stopped_at'],
+  },
+  {
+    table: 'public.onboarding_steps',
+    from: '20261005200007',
+    columns: ['closed_at', 'failures', 'state'],
+  },
+  ...MANDATE_UPDATES,
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
-  'public.clients': {
+  {
+    table: 'public.clients',
     from: '20261003000423',
     columns: ['handles_health', 'model_egress', 'model_providers', 'no_agent_edits'],
   },
-};
-
-/**
- * Insert granted column by column, held in ROLE_COLUMN_GRANTS below. MP-14-10a: a
- * mandate's `created_at` is the database's, and it is filed live, at revision 1.
- */
-export const INSERT_COLUMNS: Readonly<Record<string, readonly string[]>> = {
-  'public.standing_mandates': [
-    ...'authored_by_actor_id business_id ceiling_minor classes client_id currency'.split(' '),
-    ...'expires_at graduation_class id label refuses'.split(' '),
-  ],
-};
+];
 
 /**
  * Whether the migration `at` (its version, `0086_bootstrap_pins` or
@@ -68,9 +73,8 @@ const reached = (at: string, from: string): boolean =>
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
 export function columnUpdatesAt(at?: string): readonly string[] {
-  return Object.entries(COLUMN_UPDATES)
-    .filter(([, grant]) => at === undefined || reached(at, grant.from))
-    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
+  return COLUMN_UPDATES.filter((grant) => at === undefined || reached(at, grant.from))
+    .flatMap((grant) => grant.columns.map((column) => `${grant.table}.${column}`))
     .toSorted();
 }
 
@@ -183,11 +187,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '20261005023013',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
   })),
-  // MP-14-10a (20261005222000): a mandate is filed with its own columns alone.
-  ...(INSERT_COLUMNS['public.standing_mandates'] ?? []).map((column) => ({
-    from: '20261005222000',
-    line: `ops_astro_app INSERT public.standing_mandates.${column}`,
-  })),
+  ...MANDATE_GRANTS,
 ];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {

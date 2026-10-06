@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "PORT-P11 (C52-A standing approvals): no silent skill change, no older approval named, isolation over bravo's own approval."
+}

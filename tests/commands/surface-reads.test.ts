@@ -137,7 +137,7 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
   describe('session.capabilities', () => {
     it('answers the caller’s own live grants, the person and the business', async () => {
       const result = await read({ read: 'session.capabilities' });
-      if (!('grants' in result)) throw new Error('session.capabilities refused');
+      if (!('personId' in result)) throw new Error('session.capabilities refused');
       expect(result.personId).toBe(mia.personId);
       expect(result.businessKey).toBe('alpha');
       expect(
@@ -158,7 +158,7 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
   describe('session.capabilities', () => {
     it('follows a revocation, because the grants are read and not remembered', async () => {
       const before = await read({ read: 'session.capabilities' });
-      if (!('grants' in before)) throw new Error('refused');
+      if (!('personId' in before)) throw new Error('refused');
       expect(before.grants.some((grant) => grant.action === 'manage')).toBe(true);
 
       await db.app.withBusiness(alpha, async (tx) => {
@@ -171,7 +171,7 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
       });
 
       const after = await read({ read: 'session.capabilities' });
-      if (!('grants' in after)) throw new Error('refused');
+      if (!('personId' in after)) throw new Error('refused');
       expect(after.grants.some((grant) => grant.action === 'manage')).toBe(false);
       expect(after.grants.some((grant) => grant.action === 'read')).toBe(true);
 

@@ -226,6 +226,7 @@ code on this head, and where that is shown.
 | `FRESH_SIGN_IN_REQUIRED`                                                     | 403    | yes, on `/account/factor/enrol` (C59)                                                                                                                                                                                                                                                                   |
 | `FACTOR_ALREADY_ENROLLED`                                                    | 409    | yes, on `/account/factor/enrol` (C59)                                                                                                                                                                                                                                                                   |
 | `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                                                                                                                                                                    |
+| `FACTOR_RESET_REFUSED`                                                       | 409    | yes, on `access.reset_factor`: own person, a member holding more, not one login, or live elsewhere (C59)                                                                                                                                                                                                |
 | `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                                                                                                                                                                    |
 | `SECOND_FACTOR_LOCKED`                                                       | 429    | yes, after five wrong codes in fifteen minutes (C59)                                                                                                                                                                                                                                                    |
 | `AGENT_QUOTA_EXCEEDED`                                                       | 429    | yes, an agent credential past a limit a minute or at once (API-2)                                                                                                                                                                                                                                       |
@@ -781,13 +782,17 @@ reaches the rows an agent may reach under a delegation that need no lease
 (`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.update`, `task.assign`,
 `task.set_scores`, `task.set_adhoc`, `task.set_category`, `task.comment`,
 `task.edit_comment`, `task.delete_comment`, `task.propose`,
-`run.child_handback` and `session.capabilities`), held to a delegated agent's
-limits where the handler has them (`updateTask`, `assignTask`, `commentOnTask`);
+`run.child_handback`, `onboarding.step_result` and `session.capabilities`), held
+to a delegated agent's limits where the handler has them (`updateTask`,
+`assignTask`, `commentOnTask`, and `onboarding.step_result`'s agent steps only);
 anything else is `DELEGATION_EXCLUDES_OPERATION`,
 `run.revise_state` included by name (`OUTSIDE_REACH`), though a run's delegation
 reaches it.
 A create asks the person's business-wide `task:write` within the ticked keys; it
 is audited against the agent and the task's `source` is `agent:api`.
+A step result is the agent's, so it records agent steps only: a person or
+client-wait step answers `DELEGATION_EXCLUDES_OPERATION` naming `kind`, and the
+step's comment has `source` `agent:api` (C41-A in API.md).
 `session.capabilities` answers the ticked keys the person's grants still cover,
 so a key the person holds and did not tick, or one revoked from them since, is
 not listed; `agentActorId` is the acting identity and `personId` the person it
@@ -820,6 +825,21 @@ Settings ▸ Workflow triggers (C33) reads the business's automations under
 and none ever an agent's. A definition carries no client, so a grant at one
 client's scope reaches none of the three. Switching an activation to a
 schedule or an event starts nothing; a run waits on C52-A's standing approval.
+Adopting a version (`activation.adopt`), rolling back
+(`activation.roll_back`), turning an automation off (`activation.turn_off`)
+and revoking a standing approval (`approval.revoke`) are each
+`automation:manage`, asked of the whole business and never an agent's. Only
+an adoption grants an approval; `settings:manage` can end one (a change of
+the pin, mode, schedule or event, or a switch off), never give one. Each of
+the four holds the caller's `automation` grants for share before any
+automation row, so a revocation of one waits for the change, and asks the key
+again after it has locked the activation, at the clock after that wait: a
+grant that ran out while it waited refuses it. Once its rows are written it
+takes the audit chain's lock, its last wait, and asks again at that clock,
+refusing too if the session that sent it was signed out meanwhile. An
+automation that is off is
+never approved, so switching one on under `settings:manage` carries no
+approval.
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a
@@ -840,6 +860,12 @@ issued in that business with its agent actor, and ends the membership and the
 person's acting identity. The delegations lose their ceiling with the grants and are
 revoked with the cause `authority_lost`. Nobody ends the last business-wide
 `access:manage` of a person who can sign in.
+
+Resetting a member's lost authenticator (`access.reset_factor`, C59) is
+`settings:manage`, never an agent's, behind the caller's own fresh step-up. It
+is refused `FACTOR_RESET_REFUSED` unless the caller holds every business-wide
+grant the member holds (ORCH66-FACTORM2): no reset upward, owner to owner
+allowed. [The API](API.md#resetting-a-members-authenticator-c59) has the rest.
 
 A party-scoped grant is checked at party scope. The task reads and writes ask
 record scope, so they do not yet resolve a grant over a client through the

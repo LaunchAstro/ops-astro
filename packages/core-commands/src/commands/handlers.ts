@@ -37,8 +37,11 @@ import { setService } from './overseas-write.ts';
 import { setClass } from './data-class-write.ts';
 import { changeInstallationMode, recordGateItem } from './gate-write.ts';
 import { createClientRecord, grantOnAccess } from './access-write.ts';
+import { recordStepResult, startOnboarding } from './onboarding.ts';
+import { createRecord } from './record-create.ts';
 import { setClientPrivacy } from './client-privacy-write.ts';
 import { endAccessOnSettings } from './access-end.ts';
+import { resetFactorOnSettings } from './factor-reset.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { acceptPlanOnGate } from './plan-accept.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
@@ -73,6 +76,12 @@ import { invitationAct } from './invitations.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
 import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
 import { reviseMap } from './wayfinder-revision.ts';
+import {
+  adoptActivationVersion,
+  revokeStandingApproval,
+  rollBackActivation,
+  turnOffActivationAsPerson,
+} from './automation-approvals.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -166,10 +175,14 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.accept_plan': acceptPlanOnGate,
 
   'client.create': createClientRecord,
+  'record.create': (tx, context, request) => createRecord(tx, context, request),
+  'onboarding.start': (tx, context, request) => startOnboarding(tx, context, request),
+  'onboarding.step_result': (tx, context, request) => recordStepResult(tx, context, request),
   'client.set_privacy': setClientPrivacy,
   'access.grant': grantOnAccess,
   'access.revoke': (tx, context, request) => revokeGrantOnAccess(tx, context, request.grantId),
   'access.end': endAccessOnSettings,
+  'access.reset_factor': resetFactorOnSettings,
   'grant.revoke': (tx, context, request) => revokeGrantAsManager(tx, context, request.grantId),
   'delegation.revoke': (tx, context, request) =>
     revokeDelegationAsManager(tx, context, request.delegationId),
@@ -248,6 +261,11 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // Settings ▸ Workflow triggers (C33), in `automations.ts`.
   'activation.change': changeActivationAsPerson,
   'definition.release': releaseDefinitionVersion,
+  // Standing approvals (C52-A), in `automation-approvals.ts`.
+  'activation.adopt': adoptActivationVersion,
+  'activation.roll_back': rollBackActivation,
+  'activation.turn_off': turnOffActivationAsPerson,
+  'approval.revoke': revokeStandingApproval,
 };
 
 function writeOwned(

@@ -11,6 +11,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { enrol } from '../commands/fixture.ts';
 import { childProbe, type BodyContext } from './role-case-bodies.ts';
 import { legalEvidence } from './role-case-gate-bodies.ts';
+import { factorMember } from './role-case-access-bodies.ts';
 import type { Answer, Caller, World } from './world.ts';
 
 export const TITLE = 'Quarterly retainer: draft for review';
@@ -22,10 +23,16 @@ export const SIBLING_TITLE = 'Sibling task the client must never learn about';
 /** One call on the person path, as the test file sends it. */
 type As = (who: Caller, name: CommandName, body: Record<string, unknown>) => Promise<Answer>;
 
-/** The admin's hooks item 3's bodies need: a member to end (C58), items 3 to 6's links (C81). */
-export const adminHooks = (world: World): Pick<BodyContext, 'freshMember' | 'legalEvidence'> => ({
+/**
+ * The admin's hooks item 3's bodies need: a member to end (C58), one with a
+ * factor to reset (C59), items 3 to 6's links (C81).
+ */
+export const adminHooks = (
+  world: World,
+): Pick<BodyContext, 'freshMember' | 'freshFactorMember' | 'legalEvidence'> => ({
   freshMember: async () =>
     (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+  freshFactorMember: async () => await factorMember(world.db.app, world.alpha),
   legalEvidence: async () => await legalEvidence(world.db.admin, world.alpha),
 });
 

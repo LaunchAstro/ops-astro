@@ -18,7 +18,6 @@
 import { describe, expect, it } from 'vitest';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { READ_CATALOGUE, type ReadName } from '../../packages/core-commands/src/reads/catalogue.ts';
-
 const rows = Object.entries(READ_CATALOGUE) as [ReadName, (typeof READ_CATALOGUE)[ReadName]][];
 const READ_IDENTIFIERS = Object.fromEntries(rows.map(([name, row]) => [name, row.identifiers]));
 const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([name]) => name);
@@ -32,6 +31,7 @@ const PINNED_SHAPE = {
   'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'connection.fleet': { spine: false, subject: false, authority: 'holds-any-grant' },
   'connection.graduation': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.signal': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
@@ -69,6 +69,7 @@ const PINNED_IDENTIFIERS = {
   'client.list': [],
   'connection.fleet': [],
   'connection.graduation': [],
+  'connection.signal': [],
   'conversation.allowance': ['conversationId'],
   'conversation.list': [],
   'conversation.read': ['conversationId'],
@@ -226,6 +227,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'automation.registry': BODIES.map(() => null),
   'secret.list': BODIES.map(() => null),
   'connection.fleet': BODIES.map(() => null),
+  'connection.signal': BODIES.map(() => null),
   'connection.graduation': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
@@ -263,9 +265,8 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
   const { refusal } = parsed;
   return { code: refusal.code, names: refusal.names, fixes: refusal.fixes };
 }
-
 describe('the per-read facts at 06ab232', () => {
-  it('names the same thirty-six reads', () => {
+  it('names the same thirty-seven reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

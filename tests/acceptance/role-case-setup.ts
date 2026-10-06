@@ -50,7 +50,7 @@ export async function tableBody(name: CommandName, context: SetupContext): Promi
   if (fixed !== undefined) return { body: { ...fixed } };
   if (isInvitation(name)) return await invitationBody(name, context);
   // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
-  if (name === 'connection.fleet') return { body: {} };
+  if (name === 'connection.fleet' || name === 'connection.signal') return { body: {} };
   // The graduation region (MP-14-10a): the admin reads it.
   if (name === 'connection.graduation') return { body: {} };
   if (name === 'connector.repair') {

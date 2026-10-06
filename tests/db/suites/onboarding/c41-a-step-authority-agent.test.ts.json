@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C41-A races on the agent paths: a step result asks again, once the onboarding lock is held, what its delegation draws on (the delegating person's grant lapsing narrows it; a revocation for lost authority is DELEGATION_NARROWED) and whether its API-2 credential still stands, each writing nothing, on separate connections"
+}

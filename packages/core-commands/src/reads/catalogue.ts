@@ -47,6 +47,7 @@ import { readPlanningCap } from '../../../core-custody/src/index.ts';
 import { readSettings } from './settings.ts';
 import { listCustodySecrets } from './custody.ts';
 import { readConnectionFleet } from './connections.ts';
+import { readConnectionSignal } from './signal.ts';
 import { readConnectionGraduation } from './graduation.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
@@ -736,6 +737,15 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'holds-any-grant',
     outsiderNotFound: false,
     serve: async (tx, session) => await readConnectionFleet(tx, session),
+  },
+  // Grants, tripwires and the night round, by the same scopes (MP-14-8).
+  'connection.signal': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionSignal(tx, session),
   },
   // Every client the caller's `connection:read` scopes reach at once, so the
   // scope bar asks nothing (MP-14-10a); held nowhere is refused, not empty.
