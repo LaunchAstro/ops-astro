@@ -9,10 +9,11 @@
 // empty for the fleet and signal reads, and records every call, so the cases
 // can prove what each control sends and what sends nothing.
 
-import { act } from 'react';
+import { act, type ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ConnectionsScreen } from '../../apps/web/src/screens/Connections.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { StepUpContext } from '../../apps/web/src/records/use-money-command.ts';
 import type {
   ConnectionGraduationResult,
   GraduationRowView,
@@ -108,49 +109,83 @@ const COMMAND = /\/(mandate|graduation)\/(file|revoke|promote|demote)$/u;
 
 const opened: Mounted[] = [];
 
-/** Open the page; a command whose path matches `refuse` is refused as stale. */
-async function open(refuse?: RegExp): Promise<{ readonly page: Mounted; readonly sent: string[] }> {
+const REVOKE_CONFIRMED = '[data-confirm="revoke-mandate"] [data-act="revoke"] button';
+const REVOKE_KEPT = '[data-confirm="revoke-mandate"] [data-act="keep"] button';
+
+interface Opening {
+  /** The refusal code, stale by default; `once` refuses only the first matching call. */
+  readonly code?: string;
+  readonly once?: boolean;
+  /** Commands wait on this before they are answered. */
+  readonly hold?: Promise<void>;
+  /** A step-up the page may call, where the case needs one. */
+  readonly stepUp?: (code: string) => Promise<{ ok: true; sessionId: string }>;
+}
+
+const FLEET = {
+  ok: true,
+  connections: [],
+  counts: { all: 0, active: 0, degraded: 0, broken: 0, clientConnections: 0 },
+};
+
+/** The stub's answer to one call; `refusing` says whether a matching command is refused. */
+function answer(at: string, refusing: () => boolean, code: string): Response {
+  if (at.endsWith('/connection/graduation')) return json(BODY);
+  if (at.endsWith('/connection/fleet')) return json(FLEET);
+  if (COMMAND.test(at) && refusing()) {
+    return json(
+      {
+        refused: true,
+        code,
+        names: ['revision=4'],
+        fixes: ['Read the region again and act on the revision it is at now.'],
+      },
+      409,
+    );
+  }
+  if (COMMAND.test(at)) {
+    return json({ recordId: 'm-new', revision: 1, detail: { mandateId: 'm-new' } });
+  }
+  return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
+}
+
+/** Open the page; a command whose path matches `refuse` is refused, as stale by default. */
+async function open(
+  refuse?: RegExp,
+  opening: Opening = {},
+): Promise<{
+  readonly page: Mounted;
+  readonly sent: string[];
+  readonly signInAgain: () => Promise<void>;
+}> {
   const sent: string[] = [];
-  const fetch = ((url: string | URL, init?: RequestInit) => {
+  let refused = 0;
+  const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
     sent.push(`${at} ${String(init?.body ?? '')}`);
-    if (at.endsWith('/connection/graduation')) return Promise.resolve(json(BODY));
-    if (at.endsWith('/connection/fleet')) {
-      return Promise.resolve(
-        json({
-          ok: true,
-          connections: [],
-          counts: { all: 0, active: 0, degraded: 0, broken: 0, clientConnections: 0 },
-        }),
-      );
-    }
-    if (refuse?.test(at) === true) {
-      return Promise.resolve(
-        json(
-          {
-            refused: true,
-            code: 'VERSION_STALE',
-            names: ['revision=4'],
-            fixes: ['Read the region again and act on the revision it is at now.'],
-          },
-          409,
-        ),
-      );
-    }
-    if (COMMAND.test(at)) {
-      return Promise.resolve(
-        json({ recordId: 'm-new', revision: 1, detail: { mandateId: 'm-new' } }),
-      );
-    }
-    return Promise.resolve(json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404));
+    if (COMMAND.test(at)) await opening.hold;
+    const refusing = (): boolean =>
+      refuse?.test(at) === true && (opening.once !== true || refused++ === 0);
+    return answer(at, refusing, opening.code ?? 'VERSION_STALE');
   }) as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
-  const page = await mount(
-    <ConnectionsScreen client={client} grantKey="alpha:a@x:0" now={() => NOW} />,
+  const screen = (): ReactElement => (
+    <StepUpContext.Provider value={opening.stepUp ?? null}>
+      <ConnectionsScreen
+        client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
+        grantKey="alpha:a@x:0"
+        now={() => NOW}
+      />
+    </StepUpContext.Provider>
   );
+  const page = await mount(screen());
   opened.push(page);
   await tick();
-  return { page, sent };
+  // The application builds a new client for a stepped-up sign-in.
+  const signInAgain = async (): Promise<void> => {
+    await page.render(screen());
+    await tick();
+  };
+  return { page, sent, signInAgain };
 }
 
 afterEach(async () => {
@@ -194,6 +229,7 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect(Date.parse(expiry)).toBeGreaterThan(NOW);
 
     await page.click('[data-mandate="m-b"] [data-mandate-revoke]');
+    await page.click(REVOKE_CONFIRMED);
     await tick();
     expect(sentTo(sent, '/mandate/revoke')).toMatchObject({
       mandateId: 'm-b',
@@ -367,5 +403,108 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     // Real data never carries the mark.
     expect(page.find('[data-section="010"] [data-provenance="mock"]')).toBeNull();
     expect(sent).toHaveLength(before);
+  });
+  it('revoking a standing approval waits on a confirmation that names its sentence; keeping it sends nothing', async () => {
+    const { page, sent } = await open();
+    await page.click('[data-mandate="m-yes"] [data-mandate-revoke]');
+    await tick();
+    expect(commands(sent)).toHaveLength(0);
+    expect(page.find('[data-confirm="revoke-mandate"]')?.textContent).toContain('Sentence m-yes');
+    await page.click(REVOKE_KEPT);
+    await tick();
+    expect(page.find('[data-confirm="revoke-mandate"]')).toBeNull();
+    expect(commands(sent)).toHaveLength(0);
+    await page.click('[data-mandate="m-yes"] [data-mandate-revoke]');
+    await page.click(REVOKE_CONFIRMED);
+    await tick();
+    expect(commands(sent)).toHaveLength(1);
+    expect(sentTo(sent, '/mandate/revoke')).toMatchObject({
+      mandateId: 'm-yes',
+      expectedRevision: 1,
+    });
+  });
+
+  it('revoking a refusal names the classes it will stop holding before anything is sent', async () => {
+    const { page, sent } = await open();
+    await page.click('[data-mandate="m-no"] [data-mandate-revoke]');
+    await tick();
+    expect(commands(sent)).toHaveLength(0);
+    const confirm = page.find('[data-confirm="revoke-mandate"]')?.textContent ?? '';
+    expect(confirm).toContain('Nothing social for A');
+    expect(confirm).toContain('Class held');
+  });
+
+  it('a write refused for a fresh sign-in asks for the code and sends once more when stepped up', async () => {
+    const codes: string[] = [];
+    const { page, sent, signInAgain } = await open(/\/graduation\/demote$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      stepUp: async (code) => {
+        codes.push(code);
+        return await Promise.resolve({ ok: true, sessionId: 'stepped' });
+      },
+    });
+    await page.click('[data-grad="auto"] [data-auto]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await page.type('[data-step-up="code"]', '123456');
+    await page.click('[data-step-up="confirm"]');
+    await tick();
+    expect(codes).toEqual(['123456']);
+    await signInAgain();
+    expect(commands(sent).filter((call) => call.includes('/graduation/demote'))).toHaveLength(2);
+    expect(page.find('[data-step-up="prompt"]')).toBeNull();
+  });
+
+  it('a refused filing keeps its sentence and a refused promote keeps its form open', async () => {
+    const { page, sent } = await open(/\/(mandate\/file|graduation\/promote)$/u, {});
+    await page.type('[data-mandate-label]', 'Kept after a refusal');
+    await page.type('[data-mandate-ceiling]', '500');
+    await page.type('[data-mandate-expiry]', '2026-10-31');
+    await page.click('[data-mandate-add]');
+    await tick();
+    expect(commands(sent)).toHaveLength(1);
+    expect((page.find('[data-mandate-label]') as HTMLInputElement | null)?.value).toBe(
+      'Kept after a refusal',
+    );
+    await page.click('[data-grad="ready"] [data-auto]');
+    await page.type('[data-promote-form="ready"] [data-promote-ceiling]', '25');
+    await page.type('[data-promote-form="ready"] [data-promote-expiry]', '2026-10-15');
+    await page.click('[data-promote-form="ready"] [data-promote-confirm]');
+    await tick();
+    expect(commands(sent)).toHaveLength(2);
+    expect(
+      (page.find('[data-promote-form="ready"] [data-promote-ceiling]') as HTMLInputElement | null)
+        ?.value,
+    ).toBe('25');
+  });
+
+  it('a filing that succeeds clears the sentence', async () => {
+    const { page, sent } = await open();
+    await page.type('[data-mandate-label]', 'Cleared once filed');
+    await page.type('[data-mandate-ceiling]', '500');
+    await page.type('[data-mandate-expiry]', '2026-10-31');
+    await page.click('[data-mandate-add]');
+    await tick();
+    expect(commands(sent)).toHaveLength(1);
+    expect((page.find('[data-mandate-label]') as HTMLInputElement | null)?.value).toBe('');
+  });
+
+  it('the controls that write are disabled while a write is in flight', async () => {
+    const gate: { release?: () => void } = {};
+    const hold = new Promise<void>((resolve) => {
+      gate.release = resolve;
+    });
+    const { page } = await open(undefined, { hold });
+    await page.click('[data-grad="auto"] [data-auto]');
+    await tick();
+    const disabled = (selector: string): boolean | undefined =>
+      page.host.querySelector<HTMLButtonElement>(selector)?.disabled;
+    expect(disabled('[data-mandate-add]')).toBe(true);
+    expect(disabled('[data-grad="ready"] [data-auto]')).toBe(true);
+    expect(disabled('[data-mandate="m-yes"] [data-mandate-revoke]')).toBe(true);
+    gate.release?.();
+    await tick();
+    expect(disabled('[data-mandate-add]')).toBe(false);
   });
 });
