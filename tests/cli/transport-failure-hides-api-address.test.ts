@@ -75,3 +75,46 @@ describe('a failed request never prints a secret from the API address', () => {
     expectHidden(printed, address);
   });
 });
+
+/** `task get` on the verb line with these settings: its exit code and every line it printed. */
+async function verbLine(
+  settings: Readonly<Record<string, string>>,
+): Promise<{ readonly code: number; readonly printed: readonly string[] }> {
+  const printed: string[] = [];
+  const io = {
+    out: (line: string) => printed.push(line),
+    err: (line: string) => printed.push(line),
+    stdin: () => Promise.resolve(''),
+  };
+  const code = await cli(['task', 'get', 'some-task'], { ...SETTINGS, ...settings }, io);
+  return { code, printed };
+}
+
+const CLOSED = 'http://127.0.0.1:9';
+
+describe('a failed verb line never prints a secret from the address, bearer or delegation', () => {
+  it.each(ADDRESSES)('the agent verb line exits 3 and hides %s', async (address) => {
+    const { code, printed } = await verbLine({ OPS_ASTRO_API_URL: address });
+    expect(code).toBe(3);
+    expectHidden(printed, address);
+  });
+
+  it('the agent verb line hides a bearer the request could not carry', async () => {
+    const { code, printed } = await verbLine({
+      OPS_ASTRO_TOKEN: `made-up\n${CANARY}`,
+      OPS_ASTRO_API_URL: CLOSED,
+    });
+    expect(code).toBe(3);
+    expectHidden(printed, `${CLOSED}/`);
+  });
+
+  it('the agent verb line hides a delegation the request could not carry', async () => {
+    const { code, printed } = await verbLine({
+      OPS_ASTRO_AGENT: '1',
+      OPS_ASTRO_DELEGATION: `made-up\n${CANARY}`,
+      OPS_ASTRO_API_URL: CLOSED,
+    });
+    expect(code).toBe(3);
+    expectHidden(printed, `${CLOSED}/`);
+  });
+});

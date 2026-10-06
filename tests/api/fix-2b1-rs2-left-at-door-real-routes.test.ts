@@ -8,7 +8,8 @@
 // route's own door (`admit`, then `asks.atDoor` or `mayJoinBoard`) is in flight
 // when the tab leaves, and the signal reads aborted by the time `streamSSE`
 // runs its callback. Nothing reads or cancels the response body, so the only
-// way the stream can end is app.ts's `endsWithRequest`.
+// way the stream can end is `endsWithRequest`, which app.ts's routes take
+// through `liveStream` (`live-stream.ts`).
 //
 // T2f's `follow` (app.ts) waits on `stream.onAbort` without first asking
 // `stream.aborted`. `endsWithRequest` aborts the Hono stream synchronously
@@ -17,7 +18,7 @@
 // timer, never ends, and `topics.close()` (shutdown) waits on it forever.
 //
 // The C4 task topic and the INB-1f board cases are expected green at the head:
-// they also prove that app.ts itself calls `endsWithRequest` (remove the call
+// they also prove that app.ts's routes call `endsWithRequest` (remove the call
 // and nothing ends them, because nothing else aborts their stream here).
 
 import { randomUUID } from 'node:crypto';

@@ -65,6 +65,7 @@ import type {
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
+import type { BoardPage, Leveled, Paging } from './detail.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -85,9 +86,9 @@ export type {
  * uses is a field its `parse` checked.
  */
 export interface ReadOperands {
-  readonly 'task.read': { readonly recordId: string };
+  readonly 'task.read': { readonly recordId: string } & Paging;
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
-  readonly 'task.board': { readonly board: string | null };
+  readonly 'task.board': { readonly board: string | null } & Paging;
   /**
    * The activity ledger's page: the newest days with events before `before`
    * (a `YYYY-MM-DD` in `timeZone`), or the newest days of all when it is
@@ -225,6 +226,9 @@ export interface ReadRequest {
 
 export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
+  /** A task or a page at a named detail level (API-3, `detail.ts`). */
+  | ({ readonly ok: true } & Leveled)
+  | BoardPage
   | SharedTaskRead
   | TaskBoardResult
   | TaskSearchResult
