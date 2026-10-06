@@ -30,7 +30,7 @@ it('an inbox read under way when chat access is revoked does not name the group 
             statement: string,
             parameters?: readonly unknown[],
           ): Promise<readonly Row[]> {
-            if (statement.includes('t.key = $3 as conversation')) {
+            if (statement.includes('as task_title')) {
               reached.release();
               await resume.promise;
             }

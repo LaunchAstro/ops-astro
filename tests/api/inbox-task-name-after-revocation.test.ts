@@ -31,7 +31,7 @@ it('an inbox read under way when task read is revoked does not name the task by 
             statement: string,
             parameters?: readonly unknown[],
           ): Promise<readonly Row[]> {
-            if (statement.includes('t.key = $3 as conversation')) {
+            if (statement.includes('as task_title')) {
               reached.release();
               await resume.promise;
             }

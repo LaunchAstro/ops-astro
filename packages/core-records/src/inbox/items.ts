@@ -10,7 +10,7 @@
 // at each read from the recipient's live grants (`read.ts`). Read is not done,
 // delivered is not seen, and withheld is not gone.
 
-import { readableNow } from './access.ts';
+import { taskAccess } from './access.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /** Why the item is owed to the recipient: CS-16.8's reasons, one each. */
@@ -183,27 +183,29 @@ export async function stampSeen(
   personId: string,
   itemId: string,
 ): Promise<boolean> {
-  // Opening needs read on the task now, asked in the insert itself: an item
-  // about a task the recipient cannot read (another client's, a lost grant, a
-  // conversation they left or rejoined since) is answered as not theirs.
-  const heldItem = `select i.id from public.inbox_items i
-         join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
-        where i.business_id = $1 and i.id = $2 and i.recipient_person_id = $3
-          and ${readableNow('$3::uuid', 'i.raised_at')}`;
+  const mine = await tx.query<{ readonly subject: string; readonly raisedAt: string }>(
+    `select subject_record_id as subject, raised_at::text as "raisedAt" from public.inbox_items
+      where business_id = $1 and id = $2 and recipient_person_id = $3`,
+    [tx.businessId, itemId, personId],
+  );
+  // Opening needs read on the task now: an item about a task the recipient
+  // cannot read (another client's, a lost grant, a conversation they left or
+  // rejoined since it was raised) is answered as not theirs.
+  const held = mine[0];
+  const readable = async (): Promise<boolean> =>
+    held !== undefined &&
+    (await taskAccess(tx, personId, held.subject, held.raisedAt)) === 'readable';
+  if (!(await readable())) return false;
   // The insert can wait on another stamp of the same item, so read access is
   // asked again after it, and a grant revoked meanwhile undoes this stamp
   // (#443). The app role cannot delete an attention row: a savepoint holds it.
   await tx.query('savepoint inbox_seen');
-  const held = await tx.query(
-    `with held as (${heldItem}),
-     stamped as (insert into public.inbox_attention (business_id, item_id, person_id)
-       select $1, id, $3 from held on conflict (business_id, item_id) do nothing)
-     select 1 from held`,
+  await tx.query(
+    `insert into public.inbox_attention (business_id, item_id, person_id)
+     values ($1, $2, $3) on conflict (business_id, item_id) do nothing`,
     [tx.businessId, itemId, personId],
   );
-  const still =
-    held.length === 0 ? [] : await tx.query(heldItem, [tx.businessId, itemId, personId]);
-  if (still.length === 0) {
+  if (!(await readable())) {
     await tx.query('rollback to savepoint inbox_seen');
     await tx.query('release savepoint inbox_seen');
     return false;
