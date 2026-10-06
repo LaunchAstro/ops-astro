@@ -149,17 +149,28 @@ function revertPorts(
 }
 
 /**
- * The revert's receipt, unknown, under the lease before an unregistered revert
- * is sent: a lease or worker lost before its answer is registered leaves the
- * next run waiting on a person. A later receipt or the register overrides it.
+ * The revert taken under the lease: in one transaction, the correction row locked by the read,
+ * it is still live with no revert registered or left unknown, and its receipt says unknown
+ * before the send. Of two runners only the first takes it; a lease or worker lost before the
+ * answer is registered leaves the next run waiting on a person.
  */
-async function unknownUntilAnswered(db: Database, run: CorrectionRun, correctionId: string) {
+async function takeRevert(db: Database, run: CorrectionRun, correctionId: string) {
   const observations = { effect_operation_id: seen(correctionEffectId(correctionId, 'revert')) };
-  return await db.withBusiness(
-    run.business,
-    async (tx) =>
-      await recordObservedResult(tx, { ...run, step: 'revert', outcome: 'unknown', observations }),
-  );
+  return await db.withBusiness(run.business, async (tx) => {
+    const read = await readCorrectionForRun(tx, run);
+    if (!read.ok) return read;
+    const taken =
+      read.correction.state !== 'live' ||
+      (await latestRevert(tx, correctionId))?.outcome === 'unknown' ||
+      (await readCorrectionEffect(tx, read.correction, 'revert')) !== undefined;
+    if (taken) return { ok: false, code: 'OUTCOME_UNKNOWN' } as const;
+    return await recordObservedResult(tx, {
+      ...run,
+      step: 'revert',
+      outcome: 'unknown',
+      observations,
+    });
+  });
 }
 
 /** Revert a live correction forward, observed and timed (case 8). */
@@ -173,13 +184,12 @@ export async function runLiveRevert(
   const { correction, published, reverted } = held;
   if (correction.state !== 'live' || published === undefined) return refused('GATE_NOT_APPROVED');
   if (reverted === undefined && held.last?.outcome === 'unknown') {
-    const asked = observedIn(held.last.observations, 'waits_on') === 'person';
-    return await unknownWaits(db, run, { step: 'revert', outcome: 'unknown' }, asked, ports);
+    return await unknownWaits(db, run, { step: 'revert', outcome: 'unknown' }, ports);
   }
   const unfenced = await pageRefused(correction, ports);
   if (unfenced !== undefined) return unfenced;
   if (reverted === undefined) {
-    const marked = await unknownUntilAnswered(db, run, correction.id);
+    const marked = await takeRevert(db, run, correction.id);
     if (!marked.ok) return await leaseRefused(marked.code, ports);
   }
   const decided = Date.parse(reverted?.decidedAt ?? '');

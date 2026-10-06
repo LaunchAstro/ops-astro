@@ -36,7 +36,7 @@ import {
   type Occurrence,
 } from '../../../core-connectors/src/index.ts';
 import { effectOperationId } from '../../../core-wire/src/index.ts';
-import { occurrenceFrom, seen } from './live-correction-observations.ts';
+import { observedIn, occurrenceFrom, seen } from './live-correction-observations.ts';
 
 export type EffectStep = 'publish' | 'revert';
 
@@ -219,4 +219,29 @@ export async function takeDispatch(
     return await recordObservedResult(tx, { ...run, ...result });
   });
   return taken.ok ? undefined : taken.code;
+}
+
+/**
+ * Whether this run is the one to ask a person about an outcome nothing registered: the ask is
+ * kept on a receipt (the state unchanged) before any task is raised, in one transaction under
+ * the correction's lock with the step's latest receipt read again, so of concurrent retries
+ * only the one that writes it is told to raise the task. A lease refusal is its code.
+ */
+export async function askOnce(
+  db: Database,
+  run: UnderLease & { readonly business: string },
+  at: { readonly step: EffectStep; readonly outcome: 'unknown' | 'accepted' },
+): Promise<boolean | string> {
+  const observations = { waits_on: seen('person') };
+  return await db.withBusiness(run.business, async (tx) => {
+    const read = await readCorrectionForRun(tx, run);
+    if (!read.ok) return read.code;
+    const last =
+      at.step === 'publish'
+        ? read.lastPublish
+        : (await latestRevert(tx, run.correctionId))?.observations;
+    if (observedIn(last, 'waits_on') === 'person') return false;
+    const written = await recordObservedResult(tx, { ...run, ...at, observations });
+    return written.ok || written.code;
+  });
 }
