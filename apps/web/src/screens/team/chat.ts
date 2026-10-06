@@ -5,18 +5,16 @@
 // stream (C4). Nothing here decides who may read what: both reads filter by
 // membership on the server, and every refusal is the server's, said whole.
 //
-// `chat.conversations` lists the reader's conversations; `chat.messages`
-// reads each one. The list is read again on every `board` signal (the server
-// signals a conversation's members there when a message is written) and after
-// each of the reader's own commands. A conversation's messages are read again
-// when its own topic, `conversation:<uuid>`, signals, and whenever the list
-// shows a newer message or a moved marker than the messages held.
+// `chat.conversations` lists the reader's conversations; `chat.messages` reads each one. The
+// list is read again on every `board` signal (the server signals a conversation's members there
+// when a message is written) and after each of the reader's own commands. A conversation's
+// messages are read again when its own topic, `conversation:<uuid>`, signals, and whenever the
+// list shows a newer message or a moved marker than the messages held.
 //
-// The panel keeps which conversation is open to itself, so every conversation
-// held is followed, the most recently active first, up to `FOLLOWED`; the
-// stream names at most 32 topics for the whole tab, and one past the cap still
-// moves through the list. `closed` on a topic (the reader left, or was removed)
-// re-reads the list, which shows a group left read-only.
+// Every conversation held is followed (the panel keeps which is open to itself), the most
+// recently active first, up to `FOLLOWED` of the tab's 32 topics; one past the cap still moves
+// through the list. `closed` on a topic (the reader left, or was removed) re-reads the list,
+// which shows a group left read-only; a change re-reads a group it shows departed as such.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DirectThread, GroupAction, GroupThread, TeamConversations } from '@launchastro/ui';
@@ -52,7 +50,6 @@ type Listed = readonly ChatConversationView[] | 'none' | null;
 type Kept = ChatMessagesResult & { readonly departed: boolean };
 /** Each conversation's messages; null when its read answered with none to draw. */
 type Held = Readonly<Record<string, Kept | null>>;
-type SetHeld = (update: (was: Held) => Held) => void;
 
 export interface ChatModel {
   readonly list: Listed;
@@ -92,6 +89,8 @@ function topicsOf(list: Listed): string {
 
 /** A reader who has left a group: the server withholds its name and members from them. */
 const departed = (view: ChatConversationView): boolean => view.members.length === 0;
+const leftIn = (list: Listed, id: string): boolean =>
+  Array.isArray(list) && list.some((view) => view.conversationId === id && departed(view));
 
 /** The list read, while `current`: only the newest lands, never undone by an older answer. */
 function newestList(
@@ -118,7 +117,7 @@ function useReads(
   client: OperationsClient,
   grantKey: string,
   setList: (update: (was: Listed) => Listed) => void,
-  setHeld: SetHeld,
+  setHeld: (update: (was: Held) => Held) => void,
 ): Reads | null {
   const [reads, setReads] = useState<Reads | null>(null);
   useEffect(() => {
@@ -155,15 +154,18 @@ function useReads(
   return reads;
 }
 
-/** Each followed conversation's own topic: a change re-reads its messages, `closed` the list. */
-function useTopics(client: OperationsClient, reads: Reads | null, topics: string): void {
+/** Each followed conversation's topic: `closed` re-reads the list, a change its messages. */
+function useTopics(client: OperationsClient, reads: Reads | null, list: Listed): void {
+  const listRef = useRef(list);
+  listRef.current = list;
+  const topics = topicsOf(list);
   useEffect(() => {
     if (reads === null || topics === '') return;
     const hub = hubOf(client);
     const stops = topics.split(' ').map((id) =>
       hub.follow(`conversation:${id}`, (change) => {
         if (change === 'closed') reads.list();
-        else reads.messages(id, false);
+        else reads.messages(id, leftIn(listRef.current, id));
       }),
     );
     return () => {
@@ -196,8 +198,7 @@ export function useChat(
   const [held, setHeld] = useState<Held>({});
   const reads = useReads(client, grantKey, setList, setHeld);
   useMessageReads(reads, list, held);
-
-  useTopics(client, reads, topicsOf(list));
+  useTopics(client, reads, list);
 
   const settledRef = useRef(false);
   if (list === null) settledRef.current = false;
