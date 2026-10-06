@@ -58,22 +58,17 @@ const sameForm = (one: Drafts['graduating'], two: Drafts['graduating']) =>
 const latch = (name: MapCommand, recordId: string) => `${keyOf(name) ?? name} ${recordId}`;
 
 /**
- * The page's writes: one at a time, each followed by a reread unless refused.
- *
- * An applied save drops its draft only if the draft still holds what was
- * sent; words typed while the save was on its way stay in the editor. A
- * `SCOPE_NOT_GRANTED` closes the refused key on the refused record only, so a
- * ticket the reader may not write leaves the ones they may write open.
+ * The typed words, held above the read, and the slot whose save came back
+ * stale. `sending(slot)` notes what a save sends and answers the step that,
+ * once it applies, drops the slot only if it still holds that: words typed
+ * while the save was on its way stay in the editor. Words dropped unsaved
+ * (Cancel, Dismiss, an emptied line) take their conflict with them: nothing
+ * is kept, so nothing is offered to save again.
  */
-function useWrites(client: OperationsClient, reload: () => void) {
-  const command = useCommand();
-  const [sent, setSent] = useState<MapCommand>('map.revise');
+function useDrafts() {
   const [texts, setTexts] = useState<Readonly<Record<string, string>>>({});
   const [graduating, setGraduating] = useState<Drafts['graduating']>(null);
   const [conflict, setConflict] = useState<string | null>(null);
-  const [shut, setShut] = useState<ReadonlySet<string>>(new Set());
-  // Words dropped unsaved (Cancel, Dismiss, an emptied line) take their
-  // conflict with them: nothing is kept, so nothing is offered to save again.
   const unconflict = (slot: string) => {
     setConflict((now) => (now === slot ? null : now));
   };
@@ -85,23 +80,46 @@ function useWrites(client: OperationsClient, reload: () => void) {
     if (form === null) unconflict('graduate');
     setGraduating(form);
   };
+  const sending = (slot: string): (() => void) => {
+    if (slot === 'graduate') {
+      const sentForm = graduating;
+      return () => {
+        setGraduating((now) => (sameForm(now, sentForm) ? null : now));
+      };
+    }
+    const sentText = texts[slot];
+    return () => {
+      setTexts((now) => {
+        if (now[slot] !== sentText) return now;
+        const { [slot]: _saved, ...rest } = now;
+        return rest;
+      });
+    };
+  };
+  const text = (slot: string) => texts[slot] ?? null;
+  const drafts: Drafts = { text, setText, graduating, setGraduating: setForm, conflict };
+  const open = graduating !== null || Object.keys(texts).length > 0;
+  return { drafts, open, sending, setConflict };
+}
+
+/**
+ * The page's writes: one at a time, each followed by a reread unless refused.
+ * A `SCOPE_NOT_GRANTED` closes the refused key on the refused record only, so
+ * a ticket the reader may not write leaves the ones they may write open.
+ */
+function useWrites(client: OperationsClient, reload: () => void) {
+  const command = useCommand();
+  const [sent, setSent] = useState<MapCommand>('map.revise');
+  const [shut, setShut] = useState<ReadonlySet<string>>(new Set());
+  const { drafts, open, sending, setConflict } = useDrafts();
   const send: Send = (name, recordId, revision, body, slot) => {
-    const sentText = slot === undefined ? undefined : texts[slot];
-    const sentForm = graduating;
+    const applied = slot === undefined ? undefined : sending(slot);
     setSent(name);
     setConflict(null);
     command.run(
       () => client.mutate(name, { recordId, ...body }, { expectedRevision: revision }),
       (settlement) => {
-        if (settlement.kind === 'ok' && slot === 'graduate') {
-          setGraduating((now) => (sameForm(now, sentForm) ? null : now));
-        } else if (settlement.kind === 'ok' && slot !== undefined) {
-          setTexts((now) => {
-            if (now[slot] !== sentText) return now;
-            const { [slot]: _saved, ...rest } = now;
-            return rest;
-          });
-        }
+        if (settlement.kind === 'ok') applied?.();
         if (settlement.kind === 'closed') {
           setShut((now) => new Set(now).add(latch(name, recordId)));
         }
@@ -113,9 +131,6 @@ function useWrites(client: OperationsClient, reload: () => void) {
     );
   };
   const locked: Locked = (name, recordId) => command.busy || shut.has(latch(name, recordId));
-  const text = (slot: string) => texts[slot] ?? null;
-  const drafts: Drafts = { text, setText, graduating, setGraduating: setForm, conflict };
-  const open = graduating !== null || Object.keys(texts).length > 0;
   return { command, sent, send, locked, drafts, open };
 }
 
