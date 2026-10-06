@@ -5,7 +5,6 @@
 // grow its own").
 //
 // Two things are deliberately *not* in the type.
-//
 // The actor, the business and the entry point are absent. All three are
 // constructed by the server — the first two from trusted authentication, the
 // third from which surface the call arrived on — so there is no field here for

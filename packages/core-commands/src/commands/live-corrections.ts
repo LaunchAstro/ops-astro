@@ -40,6 +40,8 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { endedRefusal, standsAfterWaits } from './live-correction-standing.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 
+export { setApprover } from './live-correction-approver.ts';
+
 type Of<K extends CommandRequest['command']> = CommandRequest & { readonly command: K };
 
 const ENVELOPE_FIXES: readonly string[] = [

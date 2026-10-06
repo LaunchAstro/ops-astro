@@ -69,6 +69,8 @@ const FIELD_WRITES: Record<string, (record: string) => Record<string, unknown>> 
   }),
 };
 
+type Body = (record: string) => Record<string, unknown> | null;
+
 /**
  * Each command's own target: a record, a lease, a reservation, or none. A lease
  * call names its task through its lease and ignores a record id beside it, so its
@@ -77,9 +79,7 @@ const FIELD_WRITES: Record<string, (record: string) => Record<string, unknown>> 
  * that person's approved reservation, still held; the run's state, the run on that
  * person's picked-up task. The same bodies at the agent's own claim are the control.
  */
-const bodies = (
-  claim: Claim,
-): Record<string, (record: string) => Record<string, unknown> | null> => ({
+const bodies = (claim: Claim): Record<string, Body> => ({
   'live_correction.request': (record) => ({ ...correction(randomUUID(), record) }),
   'task.read': (record) => ({ recordId: record }),
   'task.comment': (record) => ({ recordId: record, body: 'made-up', audience: 'internal' }),

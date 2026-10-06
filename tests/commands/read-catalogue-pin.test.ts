@@ -172,6 +172,10 @@ const LEDGER_ZONE = {
   fixes: ['Send timeZone as a zone name the server knows, such as Australia/Brisbane.'],
 };
 
+/** The one refusal every body gets for an operand none of them carries. */
+const unsent = (name: string, fix: string) =>
+  BODIES.map(() => ({ code: 'FIELD_VALUE_INVALID', names: [name], fixes: [fix] }));
+
 /** For each read, the refusal each body gets, in `BODIES` order; `null` is no refusal. */
 const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
@@ -248,16 +252,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
   // C80's correction and AW-12's run, which none of these bodies carries.
-  'live_correction.read': BODIES.map(() => ({
-    code: 'FIELD_VALUE_INVALID',
-    names: ['correctionId'],
-    fixes: ['Send correctionId as the correction.'],
-  })),
-  'harness.read': BODIES.map(() => ({
-    code: 'FIELD_VALUE_INVALID',
-    names: ['runId'],
-    fixes: ['Send runId as the run’s identifier.'],
-  })),
+  'live_correction.read': unsent('correctionId', 'Send correctionId as the correction.'),
+  'harness.read': unsent('runId', 'Send runId as the run’s identifier.'),
 };
 
 /** The refusal without its `refused` flag, or null. */
