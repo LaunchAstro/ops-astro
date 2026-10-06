@@ -629,7 +629,7 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
       },
       picked.credential,
     );
-    expect(codeOf(elsewhere)).not.toBe('applied');
+    expect(codeOf(elsewhere)).toBe('ELSEWHERE_CODE_PROBE');
     clean(elsewhere);
     for (const [command, extra] of [
       ['task.claim', {}],
@@ -831,33 +831,64 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     expect([written, await closing]).toStrictEqual(['committed', 'applied']);
   });
   it.each(['task.claim', 'task.resolve'] as const)(
-    'WF-2 %s takes its map row before its ticket, so writers on one map queue rather than deadlock',
+    'WF-2 %s leaves its ticket key-shareable, so a sibling frontier refresh waiting on it does not deadlock',
     async (command) => {
       const { map, tickets } = await charted(owner, {
-        title: `queued ${command}`,
+        title: `shared ${command}`,
         tickets: [{ ref: 'a', title: 'a', type: 'research' }],
       });
       const a = tickets['a'] as string;
       const extra = command === 'task.resolve' ? { answer: 'x', gist: 'y' } : {};
       const body = { command, ...(await at(a)), ...extra };
-      // Another writer of the map holds its row, as a claim or resolve of a
-      // sibling ticket does, and once this one waits takes the key-share lock
-      // its frontier refresh takes on this ticket: free, since the waiter has
-      // not locked its ticket yet. The other order is a deadlock cycle.
+      // A sibling ticket's write mid-refresh: it holds the map's summary lock,
+      // which this command's own refresh waits on, and then key-shares this
+      // ticket, as the refresh's frontier rows do. Were this ticket held
+      // `for update`, each would wait on the other.
       const held = await hold(
         w.db,
         async (execute) => {
-          await execute(`set local deadlock_timeout = '10ms'`);
-          await execute(`select set_config('app.business_id', $1, true)`, [w.business]);
-          await execute(
-            `select 1 from public.records where business_id = $1 and id = $2 for no key update`,
-            [w.business, map],
-          );
+          await execute(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+            `map.summary:${w.business}:${map}`,
+          ]);
         },
         async (execute) => {
           await execute(
             `select 1 from public.records where business_id = $1 and id = $2 for key share nowait`,
             [w.business, a],
+          );
+        },
+      );
+      const running = w.asOnSecond(owner, body).then(codeOf, String);
+      await waiterOf(w.db, held);
+      const written = await held.letGo().then(() => 'committed', String);
+      expect([written, await running]).toStrictEqual(['committed', 'applied']);
+    },
+  );
+
+  it.each(['task.claim', 'task.resolve'] as const)(
+    'WF-2 %s holds no map row while it waits for its ticket, so a placement holding the ticket finishes',
+    async (command) => {
+      const { map, tickets } = await charted(owner, {
+        title: `placed ${command}`,
+        tickets: [{ ref: 'a', title: 'a', type: 'research' }],
+      });
+      const a = tickets['a'] as string;
+      const extra = command === 'task.resolve' ? { answer: 'x', gist: 'y' } : {};
+      const body = { command, ...(await at(a)), ...extra };
+      // A placement admitted by the map's grant holds the ticket, then reads
+      // its map `for share`; this command must not hold the map meanwhile.
+      const held = await hold(
+        w.db,
+        async (execute) => {
+          await execute(
+            `select 1 from public.records where business_id = $1 and id = $2 for update`,
+            [w.business, a],
+          );
+        },
+        async (execute) => {
+          await execute(
+            `select 1 from public.records where business_id = $1 and id = $2 for share nowait`,
+            [w.business, map],
           );
         },
       );
@@ -935,9 +966,13 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
       'resolve',
     );
     const read = (await w.read(teammate, { read: 'task.read', recordId: r })) as {
-      task?: { comments?: readonly { body?: string }[] };
+      task?: { comments?: readonly Record<string, unknown>[] };
     };
-    expect(read.task?.comments?.map((c) => c.body)).toStrictEqual([answer]);
+    // Internal: a client reading a shared ticket never sees the answer's comment.
+    expect(read.task?.comments).toMatchObject([
+      { body: answer, audience: 'internal', comment_type: 'note' },
+    ]);
+    expect(read.task?.comments).toHaveLength(1);
     const view = (await w.read(teammate, { read: 'map.view', recordId: map })) as {
       map: { decisions: readonly { ticketId: string; gist: string }[] };
     };

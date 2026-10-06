@@ -43,9 +43,9 @@ const LOCKED: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(
   (one) => one.targetsExistingRecord && one.targetLock === 'command',
 );
 
-/** `lockTask`'s own statement, the task row taken `for update`. */
+/** `lockTask`'s own statement, the task row taken `for update` (a wayfinder write: `for no key update`). */
 const TASK_LOCK =
-  /^select id, revision::text as revision, data, deleted_at, trash_batch_id from records where business_id = \$1 and record_type_id = \$2 and id = \$3 for update$/u;
+  /^select id, revision::text as revision, data, deleted_at, trash_batch_id from records where business_id = \$1 and record_type_id = \$2 and id = \$3 for (no key )?update$/u;
 
 /** The envelope's steps before the lock, each with why it may come first. */
 const BEFORE_LOCK: readonly (readonly [RegExp, string])[] = [
