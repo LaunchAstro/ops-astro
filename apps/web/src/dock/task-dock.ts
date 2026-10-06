@@ -15,17 +15,18 @@
 // own storage and history never bring the id back; the task panel's host
 // keeps the open task and opens it again after a reload (S1).
 //
-// **New task on every page (DOCK T-17, DP-02).** Signed in, the Task tab is
-// on the rail with nothing open; its press opens a draft filed from the page.
-// Any `[data-new-task]` control opens one too, prefilled from the door, through
-// the gesture law (a shift press opens it beside what is open).
+// **New task on every page (DOCK T-17, DP-02).** The To-dos panel's head New
+// (`dock-props.tsx`) opens a draft filed from the page; the rail keeps the
+// registry's doors (R34), so the Task tab shows only while the panel holds
+// something. Any `[data-new-task]` control opens a draft too, prefilled from
+// the door, through the gesture law (a shift press opens it beside).
 
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import type { DockPanel, DockTab } from '@launchastro/ui';
 import { PANEL_RANK, type PanelId } from '../panels.ts';
 import { close, openByGesture } from './open-set.ts';
 import type { DockModel } from './use-dock.ts';
-import { doorContext, pageName, type PageContext } from '../screens/task/task-prefill.ts';
+import { doorContext, type PageContext } from '../screens/task/task-prefill.ts';
 
 /** The task panel as the dock draws it. */
 export interface TaskDock {
@@ -79,10 +80,6 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
       const shift = beside.current;
       beside.current = false;
       if (!docked) change((state) => openByGesture(state, 'task', shift));
-    } else if (!open && docked && !was.docked) {
-      // The Task tab pressed with nothing in the panel: a draft from the page.
-      if (file === null) change((state) => close(state, 'task'));
-      else file({ from: pageName() });
     } else if (!open && docked) {
       change((state) => close(state, 'task'));
     } else if (open && was.docked && !docked) {
@@ -102,8 +99,8 @@ export function withTaskTab(
   task: TaskDock | null,
   docked: boolean,
 ): readonly DockTab[] {
-  if (task === null || task.file === null) return tabs;
-  const mine: DockTab = { id: 'task', label: LABEL, icon: 'list-check', count: null, open: docked };
+  if (task?.open !== true || !docked) return tabs;
+  const mine: DockTab = { id: 'task', label: LABEL, icon: 'list-check', count: null, open: true };
   return [...tabs, mine].toSorted((a, b) => rank(a.id) - rank(b.id));
 }
 
