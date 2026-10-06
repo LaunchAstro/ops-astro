@@ -10,8 +10,11 @@
 //    `conversation:write` as `conversation.read` asks of an owner, and the
 //    message is found as the caller's own, a person's message, in a
 //    conversation of this business whose body is kept. Anything else answers
-//    nothing, a reply already kept included.
-// 2. Its words go to AW-01's broker on the conversation seam
+//    nothing, a reply already kept included. In the same transaction the
+//    conversation's page task is held for share and checked (no client, in
+//    the caller's grants), and the bounded earlier messages are read
+//    (`conversation-context.ts`).
+// 2. Its words, with the page's id and title and the earlier messages, go to AW-01's broker on the conversation seam
 //    (`callModelInConversation`): the owner in their own session, a local
 //    route only, nothing held. A cloud route is refused there before anything
 //    is written or sent (AW-03 egress off).
@@ -34,13 +37,7 @@ import {
   callModelInConversation,
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
-import {
-  isUuid,
-  slotOf,
-  subjectsOf,
-  TASK_SPINE,
-  withSession,
-} from '../../../core-records/src/index.ts';
+import { isUuid, subjectsOf, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -49,13 +46,20 @@ import type {
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
 import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
+import { contextOf, type Cite, type Context } from './conversation-context.ts';
 import { bounded, holdsOwnConversations } from './conversations.ts';
 import { auditAs, type ModelBroker } from './model-call.ts';
 import { isCommandRefusal } from './refusal.ts';
 
 /** What the person path hands back beside an applied message: the answer, or why none. */
 export type ConversationReply =
-  | { readonly answered: true; readonly messageId: string; readonly body: string }
+  | {
+      readonly answered: true;
+      readonly messageId: string;
+      readonly body: string;
+      /** The records the call read, by the product's own address. */
+      readonly cites: readonly Cite[];
+    }
   | { readonly answered: false; readonly code: string; readonly words: string };
 
 /** The message a person just kept, from the applied command's detail. */
@@ -98,21 +102,20 @@ interface Kept {
   readonly body: string;
 }
 
-const answered = (reply: Kept): ConversationReply => ({
+const answered = (reply: Kept, cites: readonly Cite[]): ConversationReply => ({
   answered: true,
   messageId: reply.id,
   body: reply.body,
+  cites,
 });
 
 interface Question {
   readonly scope: ConversationScope;
   readonly body: string;
   readonly reply: Kept | undefined;
-  /** The conversation was opened on a task with a client, or on one this session cannot see. */
-  readonly clientOrUnseen: boolean;
+  /** What goes beside the message, and whether the page refuses any model. */
+  readonly context: Context;
 }
-
-const CLIENT = slotOf(TASK_SPINE, 'client');
 
 /** The kept reply to a message, if there is one. */
 async function replyTo(tx: TenantQuery, asked: Asked): Promise<Kept | undefined> {
@@ -135,14 +138,11 @@ async function questionOf(
   const [found] = await tx.query<{
     readonly owner_person_id: string;
     readonly body: string;
-    readonly client_or_unseen: boolean;
+    readonly scope_record_id: string | null;
   }>(
-    `select c.owner_person_id, m.body,
-            (t.${CLIENT} is not null or (c.scope_record_id is not null and t.id is null))
-              as client_or_unseen
+    `select c.owner_person_id, m.body, c.scope_record_id
        from conversations c
        join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
-       left join records t on t.business_id = c.business_id and t.id = c.scope_record_id
       where c.business_id = $1 and c.id = $2 and m.id = $3 and m.role = 'person'
         and c.owner_actor_id = $4 and c.body_purged_at is null`,
     [tx.businessId, asked.conversationId, asked.messageId, session.actorId],
@@ -156,7 +156,7 @@ async function questionOf(
     },
     body: found.body,
     reply: await replyTo(tx, asked),
-    clientOrUnseen: found.client_or_unseen,
+    context: await contextOf(tx, session, asked, found.scope_record_id),
   };
 }
 
@@ -224,12 +224,13 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
     }));
     if (isCommandRefusal(found) || found.question === undefined) return null;
     const { session, question } = found;
-    if (question.reply !== undefined) return answered(question.reply);
+    // A repeat finds the reply kept and makes no call, so it read nothing and cites nothing.
+    if (question.reply !== undefined) return answered(question.reply, []);
     // Owner line 72: a client's material reaches no model while no true local
     // model exists, and the laptop's GPT runner is a cloud model. A conversation
     // opened on a client's task asks nothing, whatever the provider; so does one whose
     // task this session cannot see, since its client cannot be known.
-    if (question.clientOrUnseen) return refusedWith('CLIENT_MODEL_USE_OFF');
+    if (question.context.refused) return refusedWith('CLIENT_MODEL_USE_OFF');
     const result = await callModelInConversation(
       database,
       businessId,
@@ -237,7 +238,14 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
       {
         conversation: question.scope,
         operation: CONVERSATION_ANSWER.key,
-        fields: [{ name: 'message', source: 'outside', value: question.body }],
+        fields: [
+          ...question.context.fields.map(({ name, value }) => ({
+            name,
+            source: 'outside' as const,
+            value,
+          })),
+          { name: 'message', source: 'outside', value: question.body },
+        ],
       },
       { ...broker, audit: auditAs(session.actorId) },
     );
@@ -249,6 +257,8 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
       presented,
       async (tx, now) => await keep(tx, now, asked, result.text),
     ).catch(heldElsewhere);
-    return kept === undefined || isCommandRefusal(kept) ? null : answered(kept);
+    if (kept === undefined || isCommandRefusal(kept)) return null;
+    // The cites are what this call read, even where a twin request's answer was kept first.
+    return answered(kept, question.context.cites);
   };
 }
