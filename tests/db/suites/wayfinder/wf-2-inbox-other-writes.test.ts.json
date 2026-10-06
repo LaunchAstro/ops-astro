@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#673: the map owner's decision item for a grilling or prototype ticket on the committed frontier, whichever write moved it there (a blocker completed by another writer, an assignee cleared), once per ticket and owner, never for a ticket that crossed the frontier and left it in one transaction, a research or task ticket or an ownerless map, and the isolation crossing of two businesses and an owner named across them"
+}
