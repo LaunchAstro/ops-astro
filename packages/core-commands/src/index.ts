@@ -25,6 +25,7 @@ export {
 } from './commands/credential-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export { runLiveRevert } from './commands/live-correction-revert.ts';
+export { siteRunnerPorts, type SitePortDependencies } from './commands/live-correction-ports.ts';
 export {
   runLivePublish,
   type CorrectionRun,

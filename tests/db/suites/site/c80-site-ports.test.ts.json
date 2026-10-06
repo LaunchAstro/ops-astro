@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's runner on its site ports: every provider call goes through the binding's guarded calls, a publish lands live and reverts forward, a binding on another seam sends nothing past the source read, and a request merged by another worker ends unknown, never failed."
+}
