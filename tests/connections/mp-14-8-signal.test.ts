@@ -562,6 +562,15 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       )
     )[0]?.id;
 
+  // A child is minted only on the delegating person's live run:write; each
+  // child case asks for it here, so none leans on an earlier case's grant.
+  let runWrite: Promise<string> | undefined;
+  const holdRunWrite = async (): Promise<string> =>
+    await (runWrite ??= controls.fixture.db.app.withBusiness(
+      controls.fixture.business,
+      async (tx) => await grantTo(tx, admin, 'write', undefined, true, 'run'),
+    ));
+
   // A helper agent with its own login, and a child delegation minted to it
   // under the parent credential, as the authority mints one.
   const mintHelperChild = async (parentCredential: string) => {
@@ -610,10 +619,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   it('MP-14-8 a child grant stops counting live once its parent is taken back', async () => {
     // Sol PRV-oa-1006-R1.1: a child delegation's own lifecycle fields stay
     // open when its parent ends, and the child can no longer act.
-    const { db, business } = controls.fixture;
-    await db.app.withBusiness(business, async (tx) => {
-      await grantTo(tx, admin, 'write', undefined, true, 'run');
-    });
+    await holdRunWrite();
     const [parentId, parentCredential] = await delegate('parent_fleet', null);
     const { helper, subject, child } = await mintHelperChild(parentCredential);
     const recordId = await taskOf(parentId);
@@ -879,6 +885,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   it('MP-14-8 a live child grant shows its parent-bounded end, not its own later expiry', async () => {
     // #1029 (SEC-P04B-RB1.2): a child stands only while its parent does, so
     // the end the screen counts down to is the earlier of the two expiries.
+    await holdRunWrite();
     const [parentId, parentCredential] = await delegate('bounded_parent', null);
     const { child } = await mintHelperChild(parentCredential);
     await owner(

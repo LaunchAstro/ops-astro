@@ -16,7 +16,8 @@
 // authority asks it to (`DELEGATION_STANDS`). A child whose parent ended
 // first is taken back or ran out by what ended the parent first, at that
 // time and for that cause, whatever its own row did later (AW-11); its calls
-// count only until the earlier of the two ends.
+// count only until the earlier of the two ends, and its expiry is the earlier
+// of the two expiries.
 // Its client is its purpose task's client
 // (`uuid_7`, the slot a party-scoped grant resolves against), named from
 // `clients`. Its redemptions are the applied calls its agent made on that

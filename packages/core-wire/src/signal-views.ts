@@ -14,7 +14,8 @@
  * grant whose parent ended first carries the time and cause of what ended the
  * parent first: taken back only when that was a revocation. A child grant's
  * `expiresAt` is the earlier of its own expiry and its parent's, since it
- * stands only while its parent does.
+ * stands only while its parent does. `expiresAt` is when a grant was due to
+ * end; an ended grant's `endedAt` is when it did, and can be earlier.
  */
 export interface GrantView {
   readonly id: string;

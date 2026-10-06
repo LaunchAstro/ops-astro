@@ -3548,7 +3548,9 @@ signal.
 A grant is a delegation, live while it stands as a call through it would: a
 child whose parent ended first is taken back or ran out by what ended the
 parent first, at that time and for that cause, and counts calls only until
-then. Its client is its
+then; a child's `expiresAt` is the earlier of its own expiry and its
+parent's. `expiresAt` is when a grant was due to end, and an ended grant's
+`endedAt` is when it did, which can be earlier. Its client is its
 purpose task's client, shown by its name (`label` null when no client row
 answers the id); its `redemptions` are the applied calls its agent made on that task while
 it held it, less the pickup that minted it. Nothing records what each call
