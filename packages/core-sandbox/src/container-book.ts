@@ -4,7 +4,8 @@
 // durable container record. It holds at most one container (B7: one
 // sandbox at a time). A create needs an empty record and a daemon count of
 // zero; a count that differs from the record (zero for an empty one, one
-// for a held one) refuses the create first, and the caller starts a sweep. Run operations take only the recorded full id.
+// for a held one) refuses the create first, and the caller starts a sweep.
+// Run operations take only the recorded full id.
 //
 // The deadline runs from the durable create record, so a container never
 // started has one too. The kill is due at every tick from the deadline

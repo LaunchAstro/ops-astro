@@ -61,6 +61,7 @@ type Reply = { readonly status: number; readonly body: Uint8Array };
 /** The operations this flow decides: everything but P5's loads and image calls (piece 2d-ii). */
 export type StateOp = Exclude<ProxyOp, { kind: 'load' | 'image-inspect' | 'image-delete' }>;
 type CreateOp = Extract<StateOp, { kind: 'create' }>;
+type Landed = { readonly started: boolean; readonly at: number; readonly late: boolean };
 export type ProxyPorts = {
   /** The one file holding both records; `read` gives null before the first write. */
   readonly store: {
@@ -149,18 +150,14 @@ export class ProxyState {
     const at = this.#ports.now();
     if (op.kind === 'wait') {
       const late = this.#reached(op.id, at);
-      await this.#exclusive(() => this.#waited(op.id, started, reply, at, late));
+      await this.#exclusive(() => this.#waited(op.id, reply, { started, at, late }));
     }
     if (op.kind === 'delete') await this.#exclusive(() => this.#deleted(op.id, reply));
     if ('id' in op && op.kind !== 'delete' && this.#swept.has(op.id)) return UNAVAILABLE;
     return reply === THREW ? fault('reply status') : { ok: true, reply };
   }
 
-  /**
-   * The caller's timer: a due kill first, whatever else is pending, then a due sweep or delete.
-   * The kill and the delete go to the daemon without the lock, so no create's I/O holds them
-   * back; only the delete's record change and the sweep wait for it.
-   */
+  /** The caller's timer: a due kill, then a due sweep or delete; the daemon calls skip the lock. */
   async tick(): Promise<void> {
     const id = this.#containers.container?.id;
     const now = this.#ports.now();
@@ -186,7 +183,7 @@ export class ProxyState {
     return this.#note(id, (book, now) => noteAttachClosed(book, now));
   }
 
-  /** Whether recorded container `id` has reached its deadline, latched against a clock step back. */
+  /** Whether recorded container `id` reached its deadline, latched against a clock step back. */
   #reached(id: string, now: number): boolean {
     if (containerDue(this.#containers, now).kill && this.#containers.container?.id === id)
       this.#expired = id;
@@ -258,14 +255,8 @@ export class ProxyState {
     return { ok: true, reply };
   }
 
-  /** A wait's answer, judged at `at`, when it returned, not when its write took the lock. */
-  async #waited(
-    id: string,
-    started: boolean,
-    reply: Reply,
-    at: number,
-    late: boolean,
-  ): Promise<void> {
+  /** A wait's answer, judged at `at`, when it landed, not when its write took the lock. */
+  async #waited(id: string, reply: Reply, { started, at, late }: Landed): Promise<void> {
     const held = this.#containers.container;
     const status = reply.status === OK ? readWaitStatus(reply.body) : null;
     if (held?.id !== id || !started || status?.ok !== true) return;
