@@ -10,7 +10,8 @@ import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
-import { invalid, notPermitted, refuseUnlessOwner, textOk, type RequestOf } from './wayfinder.ts';
+import { invalid, notPermitted, textOk, type RequestOf } from './wayfinder.ts';
+import { refuseUnlessOwner } from './wayfinder-owner.ts';
 import { applyRevision } from './wayfinder-revision.ts';
 
 const GIST_LIMIT = 200;
