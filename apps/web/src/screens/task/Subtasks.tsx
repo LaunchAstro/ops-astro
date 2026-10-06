@@ -13,10 +13,9 @@
 // its row carries an eye and a note in place of the tick, and it stays open in
 // the count until the gate is decided.
 //
-// **The box stays ready.** Enter adds and clears the box, unless a newer name
-// is typed there, and keeps the focus; the page holds its words above the read.
-// A new step joins the end, in the order the server lists them. An add whose
-// answer was lost keeps its id, so Enter on the same name is replayed.
+// **The box stays ready.** Enter adds and clears the box, unless a newer name is typed there,
+// and keeps the focus; the page holds its words, and a lost add's id, above the read, so Enter
+// on the same name is replayed (#461). A new step joins the end, in the server's order.
 //
 // **Finished steps fold away.** A done step, and an archived one (it left the
 // count without being done, MP-4-15), sit under "Show finished", the person's
@@ -32,6 +31,7 @@ import { useCommand } from '../../records/use-command.ts';
 import { stepMarks } from './perspective-counts.ts';
 import { TeamWork, type PanelOpener } from './Perspectives.tsx';
 import { TimeLog } from './Time.tsx';
+import { useHeldOperations } from './held-operations.ts';
 
 const REOPEN_REASON = 'Unticked on the parent task’s subtask list.';
 /** The add box's words where the page holds them above its read; the panel's box keeps its own. */
@@ -124,18 +124,18 @@ function AddStep(props: {
   const typed = useRef(title);
   typed.current = title;
   const box = useRef<HTMLInputElement>(null);
-  const held = useRef<Record<string, string | undefined>>({});
+  const held = useHeldOperations();
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     const wanted = title.trim();
     if (wanted === '' || busy) return;
     const body = { fields: { title: wanted }, parentId: props.parentId };
-    const operationId = (held.current[JSON.stringify(body)] ??= props.client.newOperationId());
+    const operationId = (held[JSON.stringify(body)] ??= props.client.newOperationId());
     run(
       () => props.client.mutate('task.create', body, { operationId }),
       (settlement) => {
-        if (settlement.kind !== 'unknown') held.current[JSON.stringify(body)] = undefined;
+        if (settlement.kind !== 'unknown') held[JSON.stringify(body)] = undefined;
         // A name typed since is the next one, not this one's to clear.
         if (settlement.kind === 'ok' && typed.current === title) setTitle('');
         if (settlement.kind === 'ok') props.onChanged();

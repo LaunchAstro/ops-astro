@@ -2,19 +2,19 @@
 //
 // MP-4-6: the time section on the Team side (CS-4.1, CS-4.28 to CS-4.31).
 //
-// Everything drawn here is `task.read`'s `time`: the reader's own entries and
-// running timer, and the task's total (RS-VAULT-9). Start and Stop drive the
-// person's one timer through `time.start` and `time.stop`; the log box sends
-// what was typed as `time.log` and the server parses it; a note edits inline
-// by keyboard through `time.set_note`; an entry deletes through `time.delete`.
+// Everything drawn here is `task.read`'s `time`: the reader's own entries and running timer, and
+// the task's total (RS-VAULT-9). Start and Stop drive the person's one timer through `time.start`
+// and `time.stop`; the log box sends what was typed as `time.log` and the server parses it; a
+// note edits inline by keyboard through `time.set_note`; an entry deletes through `time.delete`.
 // After each, the page rereads rather than guessing the next state.
 
-import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { useState, type KeyboardEvent, type ReactElement } from 'react';
 import { Icon } from '@launchastro/ui';
 import type { TaskTimeView, TimeEntryView } from '../../../../../packages/core-wire/src/index.ts';
 import { useSignedInName } from '../../app-state.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
+import { useHeldOperations } from './held-operations.ts';
 
 /** The entries shown before the fold (CS-4.31). */
 const LATEST = 3;
@@ -159,13 +159,13 @@ function LogBox(props: {
   readonly log: (duration: string, operationId: string, then: (kind: string) => void) => void;
 }): ReactElement {
   const [typed, setTyped] = useState('');
-  const held = useRef<Record<string, string | undefined>>({});
+  const held = useHeldOperations();
   const send = (): void => {
     const duration = typed.trim();
     if (duration === '' || props.busy) return;
-    const operationId = (held.current[duration] ??= props.mint());
+    const operationId = (held[duration] ??= props.mint());
     props.log(duration, operationId, (kind) => {
-      if (kind !== 'unknown') held.current[duration] = undefined;
+      if (kind !== 'unknown') held[duration] = undefined;
       if (kind === 'ok') setTyped((now) => (now === typed ? '' : now));
     });
   };
