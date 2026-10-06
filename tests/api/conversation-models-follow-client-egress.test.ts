@@ -17,9 +17,11 @@ import { REPLAY_MODEL_WINDOW } from '../../packages/core-connectors/src/index.ts
 import { revokeGrant } from '../../packages/core-records/src/index.ts';
 import { addClient, enrol, grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { blockedBefore, holdRow, waitPast } from '../support/lock-wait-race.ts';
 import {
   CONVERSATION,
   conversationWorld,
+  expiringSoon,
   started,
   type ConversationWorld,
 } from './aw-03-fixture.ts';
@@ -192,5 +194,46 @@ describe.skipIf(serverUrl === undefined)('the models a conversation is offered',
     expect(off.status).toBe(200);
     expect(off.body).toStrictEqual(allowed.body);
     for (const answer of [allowed, set, off]) carriesNothing(answer);
+  });
+
+  it('CS-7.40: a task read that expires while a model choice waits for the conversation row takes no choice', async () => {
+    const { db, business } = w.fixture;
+    const member = await enrol(db.app, business, 'reader-till-the-wait');
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, member, 'write', undefined, false, CONVERSATION);
+      await grantTo(tx, member, 'read', { kind: 'record', id: clientTask });
+    });
+    const old = await started(w, member, {
+      body: 'while I can read it',
+      scope: { kind: 'task', id: clientTask },
+    });
+    await egress(['replay']);
+    const { expiry } = await expiringSoon(w, member.personId, 'task', 'read');
+    const held = await holdRow(db, 'select id from public.conversations where id = $1 for update', [
+      old,
+    ]);
+    const sending = w.as(member, 'conversation.set_model', {
+      conversationId: old,
+      model: REPLAY_MODEL_WINDOW.model,
+    });
+    let startedLive = false;
+    try {
+      startedLive = await blockedBefore(db, held, expiry);
+      await waitPast(db, expiry);
+    } finally {
+      await held.letGo();
+    }
+    const set = await sending;
+    const [kept] = await db.admin.execute<{ readonly model_id: string | null }>(
+      'select model_id from public.conversations where id = $1',
+      [old],
+    );
+    expect({
+      startedLive,
+      status: set.status,
+      code: set.body['code'],
+      model: kept?.model_id,
+    }).toEqual({ startedLive: true, status: 422, code: 'FIELD_VALUE_INVALID', model: null });
+    carriesNothing(set);
   });
 });
