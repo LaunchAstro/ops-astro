@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two requests for one message's answer while the first is with the model ask it once, and both get the first's outcome"
+}

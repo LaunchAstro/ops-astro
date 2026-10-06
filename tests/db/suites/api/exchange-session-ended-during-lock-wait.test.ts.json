@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a session ended while the exchange's keep waits on the conversation lock keeps no reply"
+}
