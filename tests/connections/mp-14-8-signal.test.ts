@@ -562,6 +562,15 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
       )
     )[0]?.id;
 
+  // A child is minted only on the delegating person's live run:write; each
+  // child case asks for it here, so none leans on an earlier case's grant.
+  let runWrite: Promise<string> | undefined;
+  const holdRunWrite = async (): Promise<string> =>
+    await (runWrite ??= controls.fixture.db.app.withBusiness(
+      controls.fixture.business,
+      async (tx) => await grantTo(tx, admin, 'write', undefined, true, 'run'),
+    ));
+
   // A helper agent with its own login, and a child delegation minted to it
   // under the parent credential, as the authority mints one.
   const mintHelperChild = async (parentCredential: string) => {
@@ -610,10 +619,7 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   it('MP-14-8 a child grant stops counting live once its parent is taken back', async () => {
     // Sol PRV-oa-1006-R1.1: a child delegation's own lifecycle fields stay
     // open when its parent ends, and the child can no longer act.
-    const { db, business } = controls.fixture;
-    await db.app.withBusiness(business, async (tx) => {
-      await grantTo(tx, admin, 'write', undefined, true, 'run');
-    });
+    await holdRunWrite();
     const [parentId, parentCredential] = await delegate('parent_fleet', null);
     const { helper, subject, child } = await mintHelperChild(parentCredential);
     const recordId = await taskOf(parentId);
@@ -874,6 +880,48 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     ]) {
       expect(text).not.toContain(foreign);
     }
+  });
+
+  it('MP-14-8 a live child grant shows its parent-bounded end, not its own later expiry', async () => {
+    // #1029 (SEC-P04B-RB1.2): a child stands only while its parent does, so
+    // the end the screen counts down to is the earlier of the two expiries.
+    await holdRunWrite();
+    const [parentId, parentCredential] = await delegate('bounded_parent', null);
+    const { child } = await mintHelperChild(parentCredential);
+    await owner(
+      `update public.delegations set expires_at = now() + interval '10 minutes' where id = $1`,
+      [parentId],
+    );
+    const result = await signal(admin);
+    const parentEnd = grantOf(result, parentId)?.expiresAt;
+    const shown = grantOf(result, child.delegation.id);
+    expect(Date.parse(String(parentEnd))).toBeLessThan(Date.now() + 15 * 60_000);
+    expect([shown?.state, shown?.expiresAt]).toStrictEqual(['live', parentEnd]);
+  });
+
+  it('MP-14-8 a grant that ran out and was settled by its agent next mint ends at the settlement', async () => {
+    // Sol PRV-oa-1045-R1.1: minting a grant settles the same agent's expired,
+    // unsettled grant for the same purpose, so endedAt is that settlement,
+    // after expiresAt, not null.
+    const [oldId] = await delegate('settled_on_mint', null);
+    await owner(
+      `update public.delegations
+          set granted_at = now() - interval '2 hours', expires_at = now() - interval '1 hour'
+        where id = $1`,
+      [oldId],
+    );
+    await delegate('settled_on_mint', null);
+    const settled = await controls.fixture.db.admin.execute<{ readonly settled_at: Date | null }>(
+      `select settled_at from public.delegations where id = $1`,
+      [oldId],
+    );
+    const at = settled[0]?.settled_at;
+    expect(at).toBeInstanceOf(Date);
+    const shown = grantOf(await signal(admin), oldId);
+    expect([shown?.state, shown?.endedAt]).toStrictEqual(['ran_out', at?.toISOString()]);
+    expect(Date.parse(String(shown?.endedAt))).toBeGreaterThan(
+      Date.parse(String(shown?.expiresAt)),
+    );
   });
 
   it('MP-14-8 parity: the sections are one read on connection:read, person only, and add no action', () => {
