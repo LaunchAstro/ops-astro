@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the worker recovers its own lost proposal by identity and picks up only a version it proposed, never another actor's work on its task"
+}
