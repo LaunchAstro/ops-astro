@@ -141,18 +141,17 @@ export class ProxyState {
     return reply === THREW ? fault('reply status') : { ok: true, reply };
   }
 
-  /** The caller's timer: a due sweep, kill or delete. */
+  /** The caller's timer: a due kill first, whatever else is pending, then a due sweep or delete. */
   tick(): Promise<void> {
     return this.#exclusive(async () => {
+      const id = this.#containers.container?.id;
+      const due = containerDue(this.#containers, this.#ports.now());
+      if (id !== undefined && due.kill) await this.#call({ kind: 'kill', id });
       if (this.#retryAt !== null) {
         if (this.#ports.now() >= this.#retryAt) await this.#sweep();
-        return;
+      } else if (id !== undefined && due.delete) {
+        await this.#deleted(id, await this.#call({ kind: 'delete', id }));
       }
-      const id = this.#containers.container?.id;
-      if (id === undefined) return;
-      const due = containerDue(this.#containers, this.#ports.now());
-      if (due.kill) await this.#call({ kind: 'kill', id });
-      if (due.delete) await this.#deleted(id, await this.#call({ kind: 'delete', id }));
     });
   }
 
