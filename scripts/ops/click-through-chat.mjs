@@ -44,10 +44,15 @@ export async function askTheAgent(w) {
     body: QUESTION,
   });
   await w.database.withBusiness(w.cast.businessId, async (tx) => {
-    await tx.query(
-      'select from public.conversations where business_id = $1 and id = $2 for update',
-      [tx.businessId, asked.conversationId],
+    // Ada's own conversation, its body kept, as `keep` asks before it writes.
+    const [held] = await tx.query(
+      `select body_purged_at from public.conversations
+        where business_id = $1 and id = $2 and owner_actor_id = $3 for update`,
+      [tx.businessId, asked.conversationId, w.cast.adminActorId],
     );
+    if (held === undefined || held.body_purged_at !== null) {
+      throw new Error(`click-through-seed: '${CHAT_TITLE}' is not Ada's kept conversation`);
+    }
     // The reply and the activity at one instant, read once the lock is held.
     const at = await lockedInstant(tx);
     const inserted = await tx.query(

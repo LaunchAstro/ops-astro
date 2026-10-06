@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/verified-subject.ts';
 import {
@@ -50,9 +51,12 @@ interface Read {
 const read = (cast: Cast, who: VerifiedSubject, request: object, business?: string) =>
   executeRead(cast.db.app, (business ?? cast.business) as BusinessId, who, request as never);
 
-/** Ada's conversations as the panel's tab row lists them. */
-async function tabsOf(who: VerifiedSubject): Promise<readonly { id: string; title: string }[]> {
-  const listed = await read(world, who, { read: 'conversation.list' });
+/** A person's conversations as the panel's tab row lists them, in their business or `business`. */
+async function tabsOf(
+  who: VerifiedSubject,
+  business?: string,
+): Promise<readonly { id: string; title: string }[]> {
+  const listed = await read(world, who, { read: 'conversation.list' }, business);
   if (isCommandRefusal(listed)) throw new Error(`conversation.list ${JSON.stringify(listed)}`);
   return (listed as unknown as { conversations: { id: string; title: string }[] }).conversations;
 }
@@ -108,27 +112,22 @@ function readCases() {
 }
 
 function crossingCases() {
-  // After the snapshot cases: Ada gives Mia a conversation grant of her own,
-  // through the product, so Mia is refused by the owner rule, not for holding none.
-  it("lets neither Mia, holding conversation:write, nor bravo's Bea read Ada's conversation", async () => {
+  // After the snapshot cases. Each reader holds a conversation grant of their
+  // own, so each refusal is the rule under test, never a reader holding none:
+  // Mia, given conversation:write by Ada, meets the owner rule; Bea, given
+  // bravo's read-any grant (conversation:read), meets the business boundary.
+  it("lets neither Mia, holding conversation:write, nor bravo's Bea, holding read-any, read Ada's conversation", async () => {
     const [tab] = await tabsOf(ada(world));
     const id = tab!.id;
     expect(id).toMatch(/^[0-9a-f-]{36}$/u);
     const mia = person(world, 'mia@alpha.local');
     const bea = person(world, 'bea@bravo.local');
     const bravo = await businessOf(world.db, 'bravo');
-    const [held] = await world.db.admin.execute<{ id: string }>(
-      `select id from public.people where business_id = $1 and display_name = 'Mia Alpha'`,
-      [world.business],
-    );
-    const granted = await executeCommand(world.db.app, world.business, ada(world), 'api', {
-      command: 'access.grant',
-      operationId: `made-up:${randomUUID()}`,
-      holderId: held!.id,
-      collection: 'conversation',
-      action: 'write',
-    } as never);
-    expect('code' in granted, JSON.stringify(granted)).toBe(false);
+    await grantMia();
+    await grantBea(bravo);
+    // Both hold their grant: each lists their own tabs, and there are none.
+    expect(await tabsOf(mia)).toEqual([]);
+    expect(await tabsOf(bea, bravo)).toEqual([]);
     const answers = [
       await read(world, mia, { read: 'conversation.read', conversationId: id }),
       await read(world, bea, { read: 'conversation.read', conversationId: id }, bravo),
@@ -139,8 +138,8 @@ function crossingCases() {
       for (const words of [TITLE, QUESTION, REPLY])
         expect(JSON.stringify(answer)).not.toContain(words);
     }
-    expect(answers[0]).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
-    expect(await tabsOf(mia)).toEqual([]);
+    expect(JSON.stringify(answers[0])).toContain('its owner’s alone');
+    expect(answers[1]).toMatchObject({ code: 'NOT_FOUND' });
   });
 
   it('names no client: no scope, or a task without one', async () => {
@@ -171,4 +170,41 @@ function strandedCase() {
     expect(ran.out).toMatch(/click-through-seed: REFUSED, 'Newsletter ideas' .*reset/u);
     expect([await snapshot(stranded.db), await guardState(stranded.db)]).toEqual(was);
   }, 300_000);
+}
+
+/** Ada gives Mia conversation:write through the product. */
+async function grantMia(): Promise<void> {
+  const [held] = await world.db.admin.execute<{ id: string }>(
+    `select id from public.people where business_id = $1 and display_name = 'Mia Alpha'`,
+    [world.business],
+  );
+  const granted = await executeCommand(world.db.app, world.business, ada(world), 'api', {
+    command: 'access.grant',
+    operationId: `made-up:${randomUUID()}`,
+    holderId: held!.id,
+    collection: 'conversation',
+    action: 'write',
+  } as never);
+  expect('code' in granted, JSON.stringify(granted)).toBe(false);
+}
+
+/** Bea gets bravo's read-any grant, as local-seed issues one: bravo has no administrator. */
+async function grantBea(bravo: string): Promise<void> {
+  const [bea] = await world.db.admin.execute<{ person: string; actor: string }>(
+    `select p.id as person, a.id as actor from public.people p
+       join public.actors a on a.business_id = p.business_id and a.person_id = p.id
+      where p.business_id = $1 and p.display_name = 'Bea Bravo'`,
+    [bravo],
+  );
+  const issued = await world.db.app.withBusiness(bravo as BusinessId, (tx) =>
+    issueGrant(tx, [], {
+      subject: { kind: 'person', id: bea!.person },
+      scope: { kind: 'business', id: null },
+      collection: 'conversation',
+      action: 'read',
+      parentGrantId: null,
+      grantedByActorId: bea!.actor,
+    }),
+  );
+  expect(issued.ok, JSON.stringify(issued)).toBe(true);
 }
