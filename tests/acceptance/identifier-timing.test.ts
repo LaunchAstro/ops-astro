@@ -592,11 +592,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 93 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 96 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(93);
-    expect(names).toHaveLength(93);
+    expect(new Set(names).size, 'distinct operations').toBe(96);
+    expect(names).toHaveLength(96);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
