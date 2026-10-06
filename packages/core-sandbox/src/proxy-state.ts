@@ -143,18 +143,23 @@ export class ProxyState {
     return reply === THREW ? fault('reply status') : { ok: true, reply };
   }
 
-  /** The caller's timer: a due kill first, whatever else is pending, then a due sweep or delete. */
-  tick(): Promise<void> {
-    return this.#exclusive(async () => {
-      const id = this.#containers.container?.id;
-      const due = containerDue(this.#containers, this.#ports.now());
-      if (id !== undefined && due.kill) await this.#call({ kind: 'kill', id });
-      if (this.#retryAt !== null) {
-        if (this.#ports.now() >= this.#retryAt) await this.#sweep();
-      } else if (id !== undefined && due.delete) {
-        await this.#deleted(id, await this.#call({ kind: 'delete', id }));
-      }
-    });
+  /**
+   * The caller's timer: a due kill first, whatever else is pending, then a due sweep or delete.
+   * The kill and the delete go to the daemon without the lock, so no create's I/O holds them
+   * back; only the delete's record change and the sweep wait for it.
+   */
+  async tick(): Promise<void> {
+    const id = this.#containers.container?.id;
+    const due = containerDue(this.#containers, this.#ports.now());
+    if (id !== undefined && due.kill) await this.#call({ kind: 'kill', id });
+    if (this.#retryAt !== null) {
+      await this.#exclusive(async () => {
+        if (this.#retryAt !== null && this.#ports.now() >= this.#retryAt) await this.#sweep();
+      });
+    } else if (id !== undefined && due.delete) {
+      const reply = await this.#call({ kind: 'delete', id });
+      await this.#exclusive(() => this.#deleted(id, reply));
+    }
   }
 
   /** The recorded container's attach stream ended. */
