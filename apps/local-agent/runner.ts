@@ -250,20 +250,26 @@ export async function createRunner(
     server.listen(port, '127.0.0.1', resolve);
   });
   const address = server.address() as AddressInfo;
+  // Closed once: a second close waits on the first and lets go of nothing again.
+  let closed: Promise<void> | undefined;
+  const close = async (): Promise<void> => {
+    // The call in flight is killed and its row written, and every answer sent, before the home goes.
+    state.closing = true;
+    for (const call of state.inFlight) call.abort();
+    await state.queue;
+    await nextTurn();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+    releaseHome();
+  };
   return {
     origin: `http://127.0.0.1:${String(address.port)}`,
     port: address.port,
     close: async () => {
-      // The call in flight is killed and its row written, and every answer sent, before the home goes.
-      state.closing = true;
-      for (const call of state.inFlight) call.abort();
-      await state.queue;
-      await nextTurn();
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => {
-        server.close(() => resolve());
-      });
-      releaseHome();
+      closed ??= close();
+      await closed;
     },
   };
 }

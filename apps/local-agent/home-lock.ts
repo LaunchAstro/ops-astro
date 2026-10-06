@@ -2,7 +2,7 @@
 //
 // The local runner's hold on its home (LA-1): one runner at a time, so two
 // never read the same ledger total and both start under the cap. The hold is
-// a lock file, `<home>/runner.lock`, naming the runner's process.
+// a lock file, `<home>/runner.lock`, naming the runner's process and its hold.
 
 import { randomUUID } from 'node:crypto';
 import { linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -16,13 +16,21 @@ import { linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } 
 export function holdHome(home: string): () => void {
   mkdirSync(home, { recursive: true });
   const lock = `${home}/runner.lock`;
-  const mine = String(process.pid);
+  // The process and this hold: runners in one process each hold their own.
+  const mine = `${String(process.pid)} ${randomUUID()}`;
   if (!created(lock, mine)) {
     setAside(lock);
     if (!created(lock, mine)) throw inUse();
   }
   return () => {
-    rmSync(lock, { force: true });
+    // Only this runner's own lock goes: a later runner's hold on the home stays.
+    let held: string;
+    try {
+      held = readFileSync(lock, 'utf8');
+    } catch {
+      return;
+    }
+    if (held === mine) rmSync(lock, { force: true });
   };
 }
 
