@@ -212,12 +212,13 @@ export interface NewComment {
 export const NOW_TEXT: string = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
 
 /**
- * A team conversation message's time: the wall clock when it is written, which
- * is after its writer took the conversation's lock (conversations.ts). A send
- * that waited behind another is stamped after it, so no read marker set in
- * between can pass it unseen; the transaction's start time can.
+ * A conversation message's time and place, read under its lock (conversations.ts):
+ * the wall clock, so a send that waited is stamped after the one before, and
+ * `created_at`, a strict order of writes that ranks one millisecond's messages.
  */
 const CLOCK_TEXT = `to_char(clock_timestamp() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
+const CONVERSATION_ORDER = `(select greatest(clock_timestamp(), max(c.created_at) + interval '1 microsecond')
+  from records c where c.business_id = $1 and c.record_type_id = $3 and c.uuid_4 = ($11::text)::uuid and c.deleted_at is null)`;
 
 /**
  * Write one comment, inside the caller's transaction.
@@ -234,11 +235,11 @@ export async function writeComment(
 ): Promise<string> {
   const id = randomUUID();
   await tx.query(
-    `insert into records (business_id, id, record_type_id, data)
+    `insert into records (business_id, id, record_type_id, data, created_at)
      values ($1, $2, $3, jsonb_strip_nulls(jsonb_build_object(
        'task', $4::text, 'author', $5::text, 'comment_type', $6::text,
        'audience', $7::text, 'body', $8::text, 'source', $9::text,
-       'posted_at', ${comment.conversationId === undefined ? NOW_TEXT : CLOCK_TEXT}, 'parent', $10::text, 'conversation', $11::text)))`,
+       'posted_at', ${comment.conversationId === undefined ? NOW_TEXT : CLOCK_TEXT}, 'parent', $10::text, 'conversation', $11::text)), ${comment.conversationId === undefined ? 'now()' : CONVERSATION_ORDER})`,
     [
       tx.businessId,
       id,

@@ -9,6 +9,7 @@
 // recording are `items.ts`.
 
 import { REACH, type InboxAccess } from './access.ts';
+import { mapTicketCondition, wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { Disclosed, InboxAlert, InboxItem, InboxItemAxes } from './items.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
@@ -24,7 +25,9 @@ export const INBOX_HISTORY_SCAN: number = 4 * INBOX_HISTORY_PAGE;
 
 /** A row as read: the axes, the pointers, and the facts access is derived from. */
 type ItemRow = InboxItemAxes &
-  Omit<Disclosed, 'alert'> & {
+  Omit<Disclosed, 'alert' | 'task'> & {
+    readonly taskKey: string | null;
+    readonly taskTitle: string | null;
     readonly trashed: boolean;
     readonly held: boolean;
     readonly alertId: string | null;
@@ -34,19 +37,39 @@ type ItemRow = InboxItemAxes &
   };
 
 /**
- * Whether the recipient reads the row's task now, from the statement's own
- * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every row.
+ * A reader shown the client view reads no map or map ticket (WF-1), as
+ * `taskAccess`: on the row `r`, for the person `reach` was walked for.
  */
-const HELD = `((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
-         or r.uuid_7 = any((select parties from reach)::uuid[]))`;
+const CLIENT_SAFE = `((select internal from reach) or not ${wayfinderCondition('r')})`;
+
+/**
+ * A ticket of a map the recipient reads (W12): a map grant covers its tickets,
+ * never a nested map, as `task.read` admits them. Read with the row, so the
+ * placement and the name come from one snapshot.
+ */
+const MAP_TICKET = `(r.uuid_4 = any((select records from reach)::uuid[]) and ${mapTicketCondition('r')})`;
+
+/**
+ * Whether the recipient reads the row's task now, from the statement's own
+ * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every
+ * row. Item `i`, task `r`; the unattended list asks it of its viewer.
+ */
+export const HELD: string = `(((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
+         or r.uuid_7 = any((select parties from reach)::uuid[]) or ${MAP_TICKET}) and ${CLIENT_SAFE})`;
 
 /** An item's own columns, as `shown` carries them before trashed and held. */
 const COLUMNS = `i.id, i.business_id, i.recipient_person_id, i.subject_record_id, i.reason,
        i.fact_kind, i.fact_id, i.owed, i.work_state, i.raised_at, i.closed_at,
        i.closed_by_person_id`;
 
+/**
+ * The task's name and client, from the row whose access the same statement
+ * derives, so no retype or rename committed after the check reaches the answer.
+ */
+const NAMES = `r.txt_1 as task_key, r.txt_4 as task_title, r.uuid_7 as client_id`;
+
 /** Every open item, access derived per row. */
-const OPEN = `select ${COLUMNS}, r.deleted_at is not null as trashed, ${HELD} as held
+const OPEN = `select ${COLUMNS}, ${NAMES}, r.deleted_at is not null as trashed, ${HELD} as held
          from public.inbox_items i
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
         where i.business_id = $1 and i.recipient_person_id = $2 and i.work_state = 'open'`;
@@ -60,25 +83,27 @@ const OPEN = `select ${COLUMNS}, r.deleted_at is not null as trashed, ${HELD} as
  * a task the recipient cannot read is never looked at, so it takes no place.
  */
 const PAGE = `select * from (
-         (select ${COLUMNS}, r.deleted_at is not null as trashed, true as held
+         (select ${COLUMNS}, ${NAMES}, r.deleted_at is not null as trashed, true as held
             from public.inbox_items i
             join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
            where (select business from reach) and i.business_id = $1 and i.recipient_person_id = $2
-             and i.work_state <> 'open'
+             and i.work_state <> 'open' and ${CLIENT_SAFE}
            order by i.closed_at desc, i.id desc
            limit $3)
          union all
          (select h.*
             from public.records r
             cross join lateral (
-              select ${COLUMNS}, r.deleted_at is not null as trashed, true as held
+              select ${COLUMNS}, ${NAMES}, r.deleted_at is not null as trashed, true as held
                 from public.inbox_items i
                where i.business_id = r.business_id and i.recipient_person_id = $2
                  and i.subject_record_id = r.id and i.work_state <> 'open'
                order by i.closed_at desc, i.id desc
                limit $3) h
            where not (select business from reach) and r.business_id = $1
-             and (r.id = any((select records from reach)::uuid[]) or r.uuid_7 = any((select parties from reach)::uuid[]))
+             and (r.id = any((select records from reach)::uuid[]) or r.uuid_7 = any((select parties from reach)::uuid[])
+                  or ${MAP_TICKET})
+             and ${CLIENT_SAFE}
            order by h.closed_at desc, h.id desc
            limit $3)
        ) page`;
@@ -90,7 +115,8 @@ const PAGE = `select * from (
  * items on the history index (0044), which the scan starts and stops on.
  */
 const WITHHELD = `shown as (${REACH}
-       select ${COLUMNS}, r.deleted_at is not null as trashed, false as held
+       select ${COLUMNS}, null::text as task_key, null::text as task_title, null::uuid as client_id,
+              r.deleted_at is not null as trashed, false as held
          from (select ${COLUMNS}
                  from public.inbox_items i
                 where i.business_id = $1 and i.recipient_person_id = $2
@@ -110,6 +136,7 @@ const listing = (ctes: string): string => `with ${ctes}
             s.subject_record_id as "subjectRecordId", s.reason, s.fact_kind as "factKind",
             s.fact_id as "factId", s.owed, s.work_state as "workState", s.raised_at as "raisedAt",
             s.closed_at as "closedAt", s.closed_by_person_id as "closedByPersonId",
+            s.task_key as "taskKey", s.task_title as "taskTitle", s.client_id as "clientId",
             a.seen_at as "seenAt",
             (select d.state from public.inbox_delivery_attempts d
               where d.business_id = s.business_id and d.item_id = s.id
@@ -187,8 +214,8 @@ const byRaised = (a: ItemRow, b: ItemRow): number =>
 
 /** One row as the recipient may be shown it: pointers and the alert only while readable. */
 function itemOf(row: ItemRow): InboxItem {
-  const { trashed, held, subjectRecordId, factId, closedByPersonId, ...rest } = row;
-  const { alertId, alertKind, alertReason, alertAt, ...axes } = rest;
+  const { trashed, held, subjectRecordId, factId, closedByPersonId, clientId, ...rest } = row;
+  const { alertId, alertKind, alertReason, alertAt, taskKey, taskTitle, ...axes } = rest;
   const access: InboxAccess = held ? (trashed ? 'gone' : 'readable') : 'withheld';
   if (access !== 'readable') return { ...axes, access };
   const alert: InboxAlert | null =
@@ -200,7 +227,8 @@ function itemOf(row: ItemRow): InboxItem {
           waitingReason: alertReason,
           raisedAt: alertAt.toISOString(),
         };
-  return { ...axes, access, subjectRecordId, factId, closedByPersonId, alert };
+  const task = { key: taskKey ?? '', title: taskTitle };
+  return { ...axes, access, subjectRecordId, factId, closedByPersonId, task, clientId, alert };
 }
 
 /**

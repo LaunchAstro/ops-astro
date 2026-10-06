@@ -12,7 +12,12 @@
 // panel another (`TaskPanel`'s `duplicate`); a made-up one draws the design
 // system's one Mock corner label (`SourceRegion`, MP-1-6) on the form.
 
-import type { CallResult, CommandOutcome, OperationsClient } from '../../operations/client.ts';
+import {
+  isUnavailable,
+  type CallResult,
+  type CommandOutcome,
+  type OperationsClient,
+} from '../../operations/client.ts';
 import type {
   ClientListResult,
   InternalTaskDetail as Task,
@@ -129,17 +134,29 @@ export function realClientFacts(client: OperationsClient): ClientFactsSource {
   };
 }
 
-/** The panel's own duplicate: `task.duplicate` on the person path, as the form sent it. */
+/**
+ * The panel's own duplicate: `task.duplicate` on the person path, as the form
+ * sent it. A send whose answer was lost keeps its `operationId` until one
+ * comes back, so an unchanged retry is the same attempt and the server replays
+ * the task it made; a changed request is a new attempt.
+ */
 export function realDuplicate(client: OperationsClient): DuplicateSource {
+  const held: Record<string, string | undefined> = {};
   return {
     provenance: 'real',
-    send: async (request) =>
-      await client.mutate('task.duplicate', {
+    send: async (request) => {
+      const body = {
         recordId: request.recordId,
         client: request.client,
         title: request.title,
         stepNames: request.stepNames,
         confirmCarried: request.confirmCarried,
-      }),
+      };
+      const sent = JSON.stringify(body);
+      const operationId = (held[sent] ??= client.newOperationId());
+      const result = await client.mutate('task.duplicate', body, { operationId });
+      if (!isUnavailable(result)) held[sent] = undefined;
+      return result;
+    },
   };
 }

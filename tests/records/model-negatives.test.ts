@@ -184,9 +184,12 @@ describe.skipIf(serverUrl === undefined)('the model negatives, one per member', 
     // fifteen since MP-4-10 added the Ad hoc mark `task.set_adhoc` owns, and
     // seventeen since MP-4-15 added the two archive fields its transition writes,
     // and eighteen since Assign to AI added the agent `task.assign` owns, and
-    // nineteen since MP-4-8 added the category `task.set_category` owns.
-    it('is nineteen, read from the spine', () => {
-      expect(PROTECTED_TASK_FIELDS.length).toBe(19);
+    // nineteen since MP-4-8 added the category `task.set_category` owns, and
+    // twenty-two since WF-1 added the type `task.set_type` owns, the map's
+    // owner and the retype history, and twenty-three with the map's version
+    // number, which `map.revise` stamps.
+    it('is twenty-three, read from the spine', () => {
+      expect(PROTECTED_TASK_FIELDS.length).toBe(23);
     });
 
     it.each([...PROTECTED_TASK_FIELDS])('catches %s relaxed to generic', async (key) => {
@@ -310,6 +313,11 @@ const OWNER_CASES: Readonly<Record<string, OwnerCase>> = {
     command: 'task.set_category',
     payload: () => ({ fields: { category: 'seo' } }),
     stored: () => 'seo',
+  },
+  type: {
+    command: 'task.set_type',
+    payload: () => ({ taskType: 'research' }),
+    stored: () => 'research',
   },
   state: {
     command: 'task.start',

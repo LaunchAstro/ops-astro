@@ -78,8 +78,9 @@ async function copyVersionAndRun(
     [...v, r9, v9],
   );
   await run(
-    `insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
-     select s.business_id, $3, $4, s.ordinal, s.kind, s.payload
+    `insert into public.planned_steps
+       (business_id, id, run_id, ordinal, kind, payload, plan_record_id, plan_record_written)
+     select s.business_id, $3, $4, s.ordinal, s.kind, s.payload, s.plan_record_id, true
        from public.planned_steps s
        join public.planned_runs r on r.business_id = s.business_id and r.id = s.run_id
       where s.business_id = $1 and r.version_id = $2`,

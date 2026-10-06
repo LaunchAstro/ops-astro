@@ -11,6 +11,7 @@
 // read as markup.
 
 import type { ReactElement } from 'react';
+import { PlanCard } from './plan-card.tsx';
 import type { AssistantCite, AssistantMessage } from './types.ts';
 
 /** A path inside the product: one leading slash, then no slash or backslash, no space or control. */
@@ -22,6 +23,7 @@ const ROLE_CLASS = {
   ai: 'aip__msg--ai',
   note: 'aip__msg--note',
   failed: 'aip__msg--note aip__msg--failed',
+  plan: 'aip__msg--ai aip__msg--plan',
 } as const satisfies Record<AssistantMessage['role'], string>;
 
 function Cites(props: { readonly cites: readonly AssistantCite[] }): ReactElement {
@@ -38,7 +40,10 @@ function Cites(props: { readonly cites: readonly AssistantCite[] }): ReactElemen
 
 export function Transcript(props: {
   readonly messages: readonly AssistantMessage[];
+  /** AW-04: the one click on a plan card, by message. */
+  readonly onAccept?: ((messageId: string) => void) | undefined;
 }): ReactElement {
+  const { onAccept } = props;
   return (
     <div className="aip__scroll" role="log" aria-live="polite" aria-label="Conversation">
       {props.messages.map((message) => (
@@ -48,6 +53,12 @@ export function Transcript(props: {
           data-message-role={message.role}
         >
           {message.body}
+          {message.plan === undefined ? null : (
+            <PlanCard
+              plan={message.plan}
+              onAccept={onAccept === undefined ? undefined : () => onAccept(message.id)}
+            />
+          )}
           {message.role === 'ai' && message.cites.length > 0 ? (
             <Cites cites={message.cites} />
           ) : null}

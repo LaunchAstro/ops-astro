@@ -617,9 +617,6 @@
 .dtp .tf__ta {
   padding: 0.5rem var(--s-3);
   background: var(--bg);
-  font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
 }
 
 .dtp .sb__k {
@@ -641,4 +638,15 @@
 .dtp [data-step-add]:focus {
   outline: none;
   border-bottom-color: var(--accent);
+}
+
+/* Settings ▸ Workflow triggers (C33): the list card's rows run to its edges. */
+.triggers__list {
+  margin: 0;
+  padding: 0;
+}
+
+.triggers__note {
+  margin: 0;
+  padding: var(--s-4) var(--s-5);
 }

@@ -41,8 +41,8 @@ describe('AUTHORITY.md on task.comment', () => {
   it('records internal-only agent comments as the owner ruling, not a pending choice', () => {
     expect(folded(authority)).not.toContain('awaits root or owner confirmation');
     expect(folded(authority)).toMatch(/Internal-only is Nathan's ruling/u);
-    expect(read('packages/core-commands/src/commands/agent-operations.ts')).toContain(
-      "const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);",
+    expect(read('packages/core-commands/src/commands/tasks-comment.ts')).toContain(
+      "export const AGENT_AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal']);",
     );
   });
 });

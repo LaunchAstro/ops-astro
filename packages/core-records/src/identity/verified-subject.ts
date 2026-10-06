@@ -29,6 +29,13 @@ export const NO_ASSURANCE: Assurance = { level: 'aal1', signedInAt: null, factor
  */
 export const SESSION_ABSOLUTE_SECONDS: number = 12 * 60 * 60;
 
+/**
+ * How far ahead of this server's clock a first sign-in time may be and still
+ * be served: the sign-in provider's clock may run a little fast. Anything
+ * that compares a first sign-in time with this server's clock allows for it.
+ */
+export const SIGN_IN_CLOCK_SKEW_SECONDS: number = 60;
+
 /** A subject the auth provider has already verified. Never from a request body. */
 export interface VerifiedSubject {
   readonly provider: string;

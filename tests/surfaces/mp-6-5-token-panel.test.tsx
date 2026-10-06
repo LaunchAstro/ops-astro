@@ -68,7 +68,7 @@ function world(over: { envelope?: Partial<Envelope>; runs?: readonly Reservation
       heldMinor: 2_500,
       actualMinor: null,
       lease: { state: 'live' },
-      attempt: { state: 'dispatched' },
+      attempt: { state: 'dispatched', outcome: null },
     }),
   ];
   return {

@@ -36,6 +36,8 @@ import {
   httpTransport,
   isRefusal,
   isWrite,
+  shownAddress,
+  statusOnlyRedirect,
   unknownVerb,
   usage,
   type CliAnswer,
@@ -219,6 +221,13 @@ interface Io {
   readonly stdin: () => Promise<string>;
 }
 
+/**
+ * Fetch that never follows a redirect: a followed 307 resends the password
+ * (#780). The redirect answers by its status alone.
+ */
+const unredirected: typeof globalThis.fetch = async (input, init) =>
+  await statusOnlyRedirect(await globalThis.fetch(input, { ...init, redirect: 'manual' }));
+
 async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string) {
   const email = text(parsed.flags, 'email') ?? env['OPS_ASTRO_EMAIL'];
   if (email === undefined || email === '') throw new UsageError('login needs --email');
@@ -227,7 +236,7 @@ async function login(parsed: Parsed, env: Environment, io: Io, tokenFile: string
   const gotrueUrl = text(parsed.flags, 'gotrue') ?? env['OPS_ASTRO_GOTRUE_URL'] ?? DEFAULTS.gotrue;
   assertWritable(tokenFile, 'the login token');
   // The web sign-in's own function: the same password grant, the same endpoint.
-  const result = await signIn({ gotrueUrl, email, password, fetch: globalThis.fetch });
+  const result = await signIn({ gotrueUrl, email, password, fetch: unredirected });
   if (!result.ok) {
     io.err(`login: ${result.because}`);
     return EXIT.refused;
@@ -346,7 +355,7 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     } catch {
       // Never the failure's own text: it can carry the request, and the
       // request carries the bearer and the delegation (T2 canary token).
-      io.err(`cli: no answer from ${api}`);
+      io.err(`cli: no answer from ${shownAddress(api)}`);
       replayHint();
       return EXIT.transport;
     }

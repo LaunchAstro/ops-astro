@@ -34,6 +34,7 @@ import {
   set,
   setOk,
 } from './c81-data-classes-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const CANARY = 'CANARY-c81-data-class-7d40c3';
 
@@ -151,7 +152,7 @@ const storedFor = async (business: string) =>
 
 test('C81 isolation: a class set in bravo, and text a refusal was sent, reach no log, audit row, operation register row, refusal or alpha read', async () => {
   const logged: string[] = [];
-  const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+  const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
   const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
     vi.spyOn(console, level).mockImplementation(capture),
   );

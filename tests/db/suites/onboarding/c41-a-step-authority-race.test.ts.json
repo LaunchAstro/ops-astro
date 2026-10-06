@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C41-A races: a step result asks its authority again once the onboarding lock is held (a revocation of the writer's covering grant made during the wait waits for the result; a covering grant or a delegation that lapses during the wait is refused, writing nothing), each on its own connection"
+}

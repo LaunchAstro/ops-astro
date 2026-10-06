@@ -21,7 +21,7 @@
 // (TC:108). The rows are the acceptance world's own, one per table, taken once
 // from a full-schema world and written by the owner with triggers and foreign
 // keys off, since an intermediate prefix has no journey to write them; the
-// three tables the journey leaves empty get a row made here. They are removed
+// tables the journey leaves empty get a row made here. They are removed
 // again before the next migration, so no migration meets a row it did not
 // expect. The worker role is created by 0008, but roles belong to
 // the cluster rather than the database, so on a server where any database has
@@ -55,6 +55,7 @@ import {
   APPLICATION_CALLERS,
   OPERATIONS,
   callFor,
+  copyRowFinding,
   copyStatement,
   expectedOutcome,
   fingerprint,
@@ -97,12 +98,68 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // T3e2: the journey drops nothing.
   'public.outage_reports': { cause: 'worker_lost' },
+  // A cleared secret, whole with no sealed value (C31).
+  'public.custody_secrets': {
+    name: 'restricted-calls.seed',
+    scope_kind: 'business',
+    scope_id: null,
+  },
+  // The connector fleet (MP-14-7a): nothing the journey does writes one.
+  'public.connections': {
+    connector_key: 'restricted-calls',
+    label: 'restricted calls',
+    status: 'active',
+  },
+  'public.connection_clients': { connection_id: randomUUID(), client_id: randomUUID() },
+  'public.connection_repairs': {
+    connection_id: randomUUID(),
+    connection_revision: 1,
+    started_by_actor_id: randomUUID(),
+  },
+  // Tripwires and the night round (MP-14-8): nothing the journey does writes one.
+  'public.tripwires': {
+    what: 'restricted calls',
+    rule: 'restricted calls',
+    watching: 'restricted calls',
+    state: 'armed',
+  },
+  'public.night_round_steps': {
+    round_on: '2026-09-29',
+    at: '2026-09-28T23:00:00Z',
+    tone: 'plain',
+    what: 'restricted calls',
+    who: 'restricted calls',
+    say: 'restricted calls',
+  },
   'public.outage_runs': {
     outage_id: randomUUID(),
     attempt_id: randomUUID(),
     run_id: randomUUID(),
     task_id: randomUUID(),
     reactivated: false,
+  },
+  'public.live_corrections': {
+    party_id: randomUUID(),
+    task_id: randomUUID(),
+    requested_by_actor_id: randomUUID(),
+    requested_by_person_id: randomUUID(),
+    target_path: 'src/pages/about.md',
+    word: 'friendly',
+    replacement: 'welcoming',
+    page_url: 'https://agency.example/about/',
+    pre_image_digest: 'sha256:seed',
+    base_revision: 'rev-1',
+    seam: 'seam-seed',
+    version_id: randomUUID(),
+    version_digest: 'sha256:seed',
+  },
+  'public.live_correction_receipts': {
+    correction_id: randomUUID(),
+    lease_id: randomUUID(),
+    fence: 1,
+    step: 'publish',
+    outcome: 'live',
+    observations: {},
   },
   // The journey records no check (MP-6-1); the row is written with foreign
   // keys off, as every reference row is.
@@ -223,6 +280,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.trace_export_cursors': {},
   'public.trace_export_gaps': { code: 'target_unreachable', events: 1 },
   'public.trace_expiry_batches': { window_days: 30, runs: 1, expired_run_ids: [randomUUID()] },
+  'public.trace_expiry_asks': { run_id: randomUUID(), after_tx: '1', after_id: randomUUID() },
   'public.bootstrap_bytes': {
     content_digest: SEED_DIGEST,
     content_size: 4,
@@ -313,11 +371,59 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     name: `restricted calls seed ${randomUUID()}`,
     created_by_actor_id: randomUUID(),
   },
+  // C41-A (20261005200007): no journey starts an onboarding.
+  'public.onboardings': {
+    client_id: randomUUID(),
+    template_key: 'restricted-calls',
+    template_version: 1,
+    started_by_actor_id: randomUUID(),
+  },
+  'public.onboarding_steps': {
+    onboarding_id: randomUUID(),
+    step_key: 'restricted-calls',
+    task_id: randomUUID(),
+    position: 0,
+    phase: 'restricted calls',
+    kind: 'agent',
+    state: 'ready',
+  },
+  // C60: no journey records a client's written request.
+  'public.client_model_requests': {
+    client_id: randomUUID(),
+    requested_by: 'restricted calls seed',
+    requested_on: '2026-10-01',
+    request_link: 'https://files.example.test/seed.pdf',
+    providers: ['replay'],
+    outcome: 'applied',
+    recorded_by_actor: randomUUID(),
+  },
+  // 20261006080000 (MP-14-10a): no journey graduates a class or files a mandate.
+  'public.graduation_classes': {
+    client_id: randomUUID(),
+    action_class: 'social.post',
+    class_label: 'Social posts',
+    earned: 'none',
+  },
+  'public.standing_mandates': {
+    client_id: randomUUID(),
+    classes: ['social.post'],
+    refuses: true,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    label: 'restricted calls seed',
+    authored_by_actor_id: randomUUID(),
+  },
   // 0056 (C58): no journey ends a person's access.
   'public.access_endings': {
     person_id: randomUUID(),
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
+  },
+  // 20261005235557 (C59): no journey resets a factor.
+  'public.factor_resets': {
+    person_id: randomUUID(),
+    login_id: randomUUID(),
+    reset_by_actor_id: randomUUID(),
+    provider_factor_id: 'restricted-calls-seed',
   },
   // 0057 (C58): no journey here signs out.
   'public.ended_sessions': {
@@ -332,8 +438,102 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // 0067: nothing in the journey saves a preference yet.
   'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
-  // 20261003000558: nothing in the journey opens a team conversation (C71-D).
+  // Automations (C33, 20261005003850): the journey releases and fires none.
+  'public.automation_definitions': {
+    kind: 'automation',
+    name: 'restricted calls',
+    created_by_actor_id: randomUUID(),
+  },
+  'public.definition_versions': {
+    definition_id: randomUUID(),
+    number: 1,
+    content_digest: 'a'.repeat(64),
+    content_size: 0,
+    inputs: [],
+    operations: [],
+    modes: ['manual'],
+    released_by_actor_id: randomUUID(),
+  },
+  'public.activations': {
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    mode: 'manual',
+    changed_by_actor_id: randomUUID(),
+  },
+  'public.activation_occurrences': {
+    activation_id: randomUUID(),
+    version_id: randomUUID(),
+    due_at: '2026-09-29T00:00:00Z',
+    outcome: 'activation_off',
+  },
+  // Standing approvals (C52-A, 20261005193201): the journey adopts, revokes and dispatches none.
+  'public.standing_approvals': {
+    activation_id: randomUUID(),
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    previous_version_id: randomUUID(),
+    act: 'adopted',
+    sequence: 2,
+    decided_by_actor_id: randomUUID(),
+  },
+  'public.standing_approval_revocations': {
+    approval_id: randomUUID(),
+    revoked_by_actor_id: randomUUID(),
+  },
+  'public.occurrence_dispatches': {
+    occurrence_id: randomUUID(),
+    outcome: 'activation_off',
+  },
+  // 20261006074341: nothing in the journey opens a team conversation (C71-D).
   'public.team_conversation_members': { conversation_id: randomUUID(), person_id: randomUUID() },
+  // WF-1: the journey charts no map.
+  'public.map_components': {
+    map_id: randomUUID(),
+    kind: 'destination',
+    body: 'restricted calls seed',
+    position: 1,
+    created_version: 1,
+  },
+  'public.map_versions': {
+    map_id: randomUUID(),
+    version: 1,
+    changed: [randomUUID()],
+    actor_id: randomUUID(),
+  },
+  'public.map_summaries': {
+    map_id: randomUUID(),
+    version: 1,
+    open_tickets: 0,
+    closed_tickets: 0,
+    fog: 0,
+    out_of_scope: 0,
+  },
+  'public.map_frontier': { map_id: randomUUID(), ticket_id: randomUUID(), position: 1 },
+  // C39-T: nothing on the journey invites anyone.
+  'public.invitations': {
+    person_id: randomUUID(),
+    role_key: 'member',
+    address: 'invitee@example.test',
+    expires_at: '2099-01-01T00:00:00Z',
+    created_by_actor_id: randomUUID(),
+  },
+  'public.enrolment_tokens': {
+    invitation_id: randomUUID(),
+    token_hash: '0'.repeat(64),
+    expires_at: '2099-01-01T00:00:00Z',
+  },
+  'public.invitation_delivery_attempts': {
+    invitation_id: randomUUID(),
+    token_id: randomUUID(),
+    state: 'asked',
+  },
+  // C40B: nothing on the journey asks for a password reset.
+  'public.password_reset_tokens': {
+    login_id: randomUUID(),
+    token_hash: '0'.repeat(64),
+    created_at: '2099-01-01T00:00:00Z',
+    expires_at: '2099-01-01T00:10:00Z',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;
@@ -541,6 +741,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
         // oxlint-disable-next-line no-await-in-loop
         const row = table.tenant ? await ownRowJson(db.admin, table, alpha) : undefined;
         if (row === undefined) continue;
+        const finding = copyRowFinding(table, row);
+        if (finding !== undefined) {
+          wrong.push(`${table.qualified} insert copy: ${finding}`);
+          continue;
+        }
         for (const caller of activeCallers.slice(1)) {
           // oxlint-disable-next-line no-await-in-loop
           const before = await fingerprint(db.admin, table.qualified);
@@ -549,7 +754,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
           // oxlint-disable-next-line no-await-in-loop
           const after = await fingerprint(db.admin, table.qualified);
           calls += 1;
-          const expected = expectedOutcome(caller, table, 'insert', 0, migration.version);
+          const expected = expectedOutcome(caller, table, 'insert', 0, migration.version, true);
           const line = `${table.qualified} insert copy ${caller}: ${describeOutcome(outcome)}`;
           if (!meets(expected, outcome)) wrong.push(`${line}, expected ${expected}`);
           if (before !== after) wrong.push(`${line}, the table changed`);

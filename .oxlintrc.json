@@ -14,12 +14,104 @@
   "ignorePatterns": ["node_modules", "dist", "tests/gate/canary.txt", ".claude/skills", ".codex"],
   "overrides": [
     {
+      "files": [
+        "tests/surfaces/c31-keys-panel-latest-read-and-settings-harness.test.tsx",
+        "tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx",
+        "tests/surfaces/c31-keys-panel-stale-set-refused.test.tsx",
+        "tests/surfaces/c31-keys-panel-write-denial-drops-the-list.test.tsx"
+      ],
+      "rules": {
+        "require-await": "off",
+        "no-promise-executor-return": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "max-lines-per-function": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/acceptance/a-credential-cannot-write-another-clients-or-persons-task.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
+        "tests/api/an-ending-admitted-before-its-manager-grant-was-revoked-is-refused.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
+    },
+    {
+      "files": [
+        "tests/web/settings-late-step-up-refusal-stays-with-its-business.test.tsx",
+        "tests/web/settings-lost-save-intent-stays-with-its-business.test.tsx",
+        "tests/web/preference-recovery-read-keeps-earlier-restore.test.tsx",
+        "tests/web/settings-late-scope-refusal-stays-with-its-business.test.tsx",
+        "tests/web/layout-save-survives-same-person-client-refresh.test.tsx"
+      ],
+      "rules": {
+        "max-lines-per-function": "off",
+        "no-await-in-loop": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "unicorn/prefer-dom-node-dataset": "off"
+      }
+    },
+    {
       "files": ["tests/surfaces/receipt-read-refusal-does-not-claim-no-effect.test.tsx"],
       "rules": { "require-await": "off", "no-promise-executor-return": "off" }
     },
     { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } },
     {
+      "files": ["tests/automations/c33-registry-snapshot-and-claim-races.test.ts"],
+      "rules": {
+        "consistent-function-scoping": "off",
+        "max-lines-per-function": "off",
+        "no-await-in-loop": "off"
+      }
+    },
+    {
+      "files": ["tests/surfaces/select-arrow-up-after-open-shrink.test.tsx"],
+      "rules": { "no-await-in-loop": "off" }
+    },
+    {
       "files": ["tests/commands/review-p03-unattended-escalated-decider.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/api/failed-handback-story.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
+        "tests/api/a-credential-write-waiting-on-its-task-lock-is-refused-once-its-grant-is-revoked.test.ts",
+        "tests/api/an-agent-run-state-write-whose-delegation-was-revoked-during-the-run-lock-wait-is-refused.test.ts",
+        "tests/api/an-agent-run-state-write-whose-delegation-expired-during-the-run-lock-wait-is-refused.test.ts",
+        "tests/commands/a-completion-whose-parent-grant-was-revoked-during-the-subtask-lock-wait-is-refused.test.ts",
+        "tests/commands/a-ticket-write-whose-direct-grant-was-revoked-during-the-task-lock-wait-stands-on-its-map-grant.test.ts",
+        "tests/identity/a-factor-act-undone-by-a-sign-out-keeps-the-sessions-ending.test.ts",
+        "tests/identity/a-factor-change-whose-session-was-signed-out-during-the-factor-lock-wait-is-refused.test.ts",
+        "tests/runtime/a-child-agent-write-whose-parent-delegation-expired-during-its-lock-wait-is-refused.test.ts",
+        "tests/runtime/a-handback-that-waited-at-the-operation-door-across-its-delegations-expiry-keeps-its-report.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
+        "tests/db/run-end-stamped-after-lock-wait.test.ts",
+        "tests/db/run-supersede-stamped-after-lock-wait.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
+        "tests/api/a-gate-that-expires-during-the-read-transaction-is-not-offered.test.ts",
+        "tests/api/an-agent-reply-advances-activity-past-a-message-kept-while-it-waited.test.ts",
+        "tests/api/a-later-conversation-message-advances-activity-when-its-transaction-began-first.test.ts",
+        "tests/api/an-agent-credential-that-expires-during-its-row-lock-wait-is-not-served.test.ts",
+        "tests/authority/a-money-protection-switch-waiting-at-sign-in-cannot-use-an-expired-step-up.test.ts",
+        "tests/commands/a-duplicate-by-a-caller-who-cannot-read-the-source-takes-no-lock-on-it.test.ts",
+        "tests/commands/a-duplicate-does-not-rest-on-a-read-grant-issued-while-it-waits-for-the-source-row.test.ts",
+        "tests/commands/a-duplicate-refuses-a-read-grant-that-expires-while-it-waits-for-the-source-row.test.ts",
+        "tests/operations/the-last-legal-publication-is-current-when-its-transaction-began-first.test.ts"
+      ],
       "rules": { "max-lines-per-function": "off" }
     },
     {
@@ -42,6 +134,7 @@
         "tests/api/live-board-client-move-prompt-review.test.ts",
         "tests/api/live-board-task-resync-isolation-review.test.ts",
         "tests/api/live-task-frame-no-identifier-review.test.ts",
+        "tests/api/c40-password-set-races.test.ts",
         "tests/ci/inb1f-rebind-mutation-review.test.ts"
       ],
       "rules": {
@@ -52,6 +145,49 @@
       }
     },
     {
+      "files": [
+        "tests/runtime/trace-export-resends-a-run-whole-while-its-delete-is-owed.test.ts",
+        "tests/runtime/trace-export-resends-every-fresh-event-of-an-owed-run.test.ts",
+        "tests/runtime/trace-retention-keeps-recovering-while-a-second-delete-is-queued.test.ts",
+        "tests/runtime/trace-retention-recovery-reaches-a-later-owed-run-past-present-ones.test.ts",
+        "tests/runtime/trace-retention-recovery-tests-reject-an-old-span-for-the-fresh-one.test.ts",
+        "tests/runtime/trace-retention-expires-a-late-committed-event-once-past-the-window.test.ts",
+        "tests/runtime/trace-retention-recovers-a-delete-after-a-database-fault.test.ts",
+        "tests/runtime/trace-retention-recovers-a-delete-that-lands-after-a-timeout.test.ts",
+        "tests/runtime/trace-retention-recovery-for-one-run-keeps-another-confirmed-run-gone.test.ts",
+        "tests/runtime/trace-export-owed-tail-does-not-block-a-later-run.test.ts",
+        "tests/runtime/trace-retention-unknown-reads-do-not-stop-a-later-recovery.test.ts",
+        "tests/runtime/trace-retention-reads-the-first-owed-span-back.test.ts",
+        "tests/runtime/trace-retention-reads-owed-runs-in-turn-order-across-places.test.ts",
+        "tests/runtime/trace-export-an-overlapping-export-waits-while-another-holds-the-business.test.ts",
+        "tests/runtime/trace-export-a-failing-exporter-never-undoes-a-healthy-ones-progress.test.ts",
+        "tests/runtime/trace-export-a-slower-export-landing-after-a-delete-hides-no-later-span.test.ts",
+        "tests/runtime/trace-export-a-stalled-exporter-is-taken-over-only-after-its-lease-expires.test.ts",
+        "tests/runtime/trace-export-a-body-that-may-have-landed-keeps-the-business-for-its-lease.test.ts",
+        "tests/runtime/trace-retention-a-business-whose-export-never-advanced-is-asked-nothing.test.ts",
+        "tests/runtime/trace-export-a-stale-body-sent-after-a-takeover-hides-no-later-span.test.ts",
+        "tests/runtime/trace-export-a-timed-out-body-stored-after-its-hold-hides-no-later-span.test.ts",
+        "tests/runtime/trace-retention-two-stale-bodies-cannot-hide-a-missing-middle.test.ts",
+        "tests/runtime/trace-retention-later-recovery-tests-reject-an-old-span-for-the-fresh-one.test.ts",
+        "tests/runtime/trace-export-a-stalled-exporter-cannot-renew-while-another-holds-the-lease.test.ts",
+        "tests/runtime/trace-retention-a-present-run-cannot-spend-every-read-before-a-gone-one.test.ts",
+        "tests/runtime/trace-retention-an-unanswered-newer-span-hides-no-older-missing-one.test.ts",
+        "tests/runtime/trace-retention-a-run-longer-than-the-stores-allowance-is-read-through.test.ts",
+        "tests/runtime/trace-retention-three-unanswered-newer-spans-hide-no-older-missing-one.test.ts",
+        "tests/runtime/trace-retention-a-run-read-in-fixed-steps-reaches-every-missing-span.test.ts"
+      ],
+      "rules": {
+        "max-lines-per-function": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "unicorn/no-array-callback-reference": "off",
+        "require-await": "off"
+      }
+    },
+    {
+      "files": ["tests/runtime/aw-13-world.ts"],
+      "rules": { "max-lines": "off" }
+    },
+    {
       "files": ["tests/api/live-board-lost-access.test.ts"],
       "rules": {
         "no-await-in-loop": "off",
@@ -60,7 +196,29 @@
       }
     },
     {
+      "files": [
+        "tests/api/live-presence-remap-drops-previous-person.test.ts",
+        "tests/api/function-outbox-before-response.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
+        "tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts",
+        "tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts",
+        "tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts"
+      ],
+      "rules": {
+        "max-lines-per-function": "off",
+        "unicorn/consistent-function-scoping": "off"
+      }
+    },
+    {
       "files": ["tests/ci/staging-special-objects.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/surfaces/aw-04-plan-card-accept-faithful.test.tsx"],
       "rules": { "max-lines-per-function": "off" }
     },
     {
@@ -100,6 +258,87 @@
         "tests/ci/s0-3-unstarted-dump-stops.test.ts"
       ],
       "rules": { "no-inline-comments": "off" }
+    },
+    {
+      "files": [
+        "tests/review/backup-read-part-appointment-proof.test.ts",
+        "tests/review/ow-063-export-revocation-proof.test.ts",
+        "tests/review/export-session-ended-after-part-gate-proof.test.ts",
+        "tests/review/store-hands-out-no-part-after-session-end-proof.test.ts",
+        "tests/operations/scan-login-cleanup-subject-race.proof.test.ts",
+        "tests/surfaces/page-kit-check-rejects-class-attribute-restyle.test.tsx",
+        "tests/surfaces/page-kit-check-rejects-parent-scoped-tip-restyle.test.tsx",
+        "tests/surfaces/page-kit-check-rejects-subject-only-restyle.test.tsx",
+        "tests/surfaces/phone-width-funnel-check-rejects-collapsed-drawing.test.tsx"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/review/backup-restore-revocation-proof.test.ts"],
+      "rules": { "require-await": "off" }
+    },
+    {
+      "files": [
+        "tests/review/ow066-export-revocation-proof.test.ts",
+        "tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts"
+      ],
+      "rules": { "unicorn/no-useless-undefined": "off" }
+    },
+    {
+      "files": ["tests/broker/sweep-after-committed-renewal-leaves-call-startable.test.ts"],
+      "rules": { "max-lines-per-function": "off", "unicorn/no-useless-undefined": "off" }
+    },
+    {
+      "files": [
+        "tests/ci/restore-check-barrier-and-logs.proof.test.mjs",
+        "tests/ci/restore-refuses-permissive-barrier.proof.test.mjs",
+        "tests/ci/restore-refuses-permissive-partitioned-barrier.proof.test.mjs",
+        "tests/operations/scan-login-cleanup-subject-race.proof.test.ts",
+        "tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts",
+        "tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts"
+      ],
+      "rules": {
+        "no-await-in-loop": "off",
+        "require-await": "off",
+        "no-promise-executor-return": "off",
+        "unicorn/no-array-callback-reference": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/review/staging-logins-duplicate-sslmode-proof.test.ts",
+        "tests/review/staging-logins-direct-privileges-proof.test.ts",
+        "tests/review/staging-logins-group-race-proof.test.ts",
+        "tests/review/seed-boundaries-proof.test.mjs"
+      ],
+      "rules": {
+        "max-depth": "off",
+        "max-lines-per-function": "off",
+        "no-await-in-loop": "off",
+        "no-promise-executor-return": "off",
+        "require-unicode-regexp": "off"
+      }
+    },
+    {
+      "files": ["tests/review/role-repair-drops-inherited-access-proof.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs"],
+      "rules": { "no-promise-executor-return": "off", "sort-vars": "off" }
+    },
+    {
+      "files": ["tests/broker/reconcile-keeps-call-when-its-carrier-changes.test.ts"],
+      "rules": { "max-lines-per-function": "off", "no-promise-executor-return": "off" }
+    },
+    {
+      "files": ["tests/surfaces/term-tip-test-detects-invisible-tooltip.mjs"],
+      "rules": {
+        "no-control-regex": "off",
+        "unicorn/prefer-string-replace-all": "off",
+        "unicorn/escape-case": "off",
+        "unicorn/no-hex-escape": "off"
+      }
     }
   ]
 }

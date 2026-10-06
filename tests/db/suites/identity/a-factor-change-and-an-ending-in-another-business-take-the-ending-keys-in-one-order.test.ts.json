@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a factor change and an ending of its session in another business take C52-A's ending keys in one order: the ending waits or is waited for, and neither deadlocks"
+}

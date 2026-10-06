@@ -6,23 +6,75 @@
 // the line limit; the contract and the catalogue reads are unchanged.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
-import { OCCURRENCE_ROLE } from './restricted-calls-cases.ts';
+import { MANDATE_GRANTS, MANDATE_UPDATES, OCCURRENCE_ROLE } from './restricted-calls-cases.ts';
 
 /**
  * Update granted column by column: the table, the columns, and the first migration that
- * grants them. Every other column-level privilege, to any role, is outside the contract.
+ * grants them; a table a later migration grants more columns on has a row for each. Every
+ * other column-level privilege, to any role, is outside the contract.
  */
-const COLUMN_UPDATES: Readonly<
-  Record<string, { readonly from: string; readonly columns: readonly string[] }>
-> = {
-  'public.planned_runs': { from: '0086', columns: ['state'] },
-};
+const COLUMN_UPDATES: readonly {
+  readonly table: string;
+  readonly from: string;
+  readonly columns: readonly string[];
+}[] = [
+  { table: 'public.planned_runs', from: '0086', columns: ['state'] },
+  // C40B: a reset token is spent by `spent_at` alone.
+  { table: 'public.password_reset_tokens', from: '20261005144947', columns: ['spent_at'] },
+  // C33: an activation's setting, pin and switch, each change by a person.
+  {
+    table: 'public.activations',
+    from: '20261005003850',
+    columns: [
+      'changed_at',
+      'changed_by_actor_id',
+      'enabled',
+      'event_kind',
+      'every_minutes',
+      'mode',
+      'revision',
+      'version_id',
+    ],
+  },
+  // C52-A: the standing approval an activation names, set by an adoption.
+  { table: 'public.activations', from: '20261005193201', columns: ['approval_id'] },
+  {
+    table: 'public.leases',
+    from: '20261004040200',
+    columns: ['expires_at', 'released_at', 'state'],
+  },
+  // C41-A: an onboarding's state, stop and revision, a step's state, failures and close.
+  {
+    table: 'public.onboardings',
+    from: '20261005200007',
+    columns: ['revision', 'state', 'stopped_at'],
+  },
+  {
+    table: 'public.onboarding_steps',
+    from: '20261005200007',
+    columns: ['closed_at', 'failures', 'state'],
+  },
+  ...MANDATE_UPDATES,
+  // C60: a client's four privacy settings, by `client.set_privacy` alone.
+  {
+    table: 'public.clients',
+    from: '20261003000423',
+    columns: ['handles_health', 'model_egress', 'model_providers', 'no_agent_edits'],
+  },
+];
+
+/**
+ * Whether the migration `at` (its version, `0086_bootstrap_pins` or
+ * `20261005003850_automations`) is `from` or later. Every four-digit ID sorts
+ * before every fourteen-digit timestamp, so both are padded to fourteen.
+ */
+const reached = (at: string, from: string): boolean =>
+  (at.split('_', 1)[0] ?? at).padStart(14, '0') >= from.padStart(14, '0');
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
 export function columnUpdatesAt(at?: string): readonly string[] {
-  return Object.entries(COLUMN_UPDATES)
-    .filter(([, grant]) => at === undefined || at.slice(0, 4) >= grant.from)
-    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
+  return COLUMN_UPDATES.filter((grant) => at === undefined || reached(at, grant.from))
+    .flatMap((grant) => grant.columns.map((column) => `${grant.table}.${column}`))
     .toSorted();
 }
 
@@ -83,6 +135,19 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
       line: `ops_astro_app ${act} ops.second_factor_subjects.${column}`,
     })),
   ),
+  // C40 (20261005144947): a reset in flight; the application opens one and settles it.
+  ...[
+    ['INSERT', 'id'],
+    ['INSERT', 'subject_digest'],
+    ['SELECT', 'id'],
+    ['SELECT', 'open_until'],
+    ['SELECT', 'settled_at'],
+    ['SELECT', 'subject_digest'],
+    ['UPDATE', 'settled_at'],
+  ].map(([act, column]) => ({
+    from: '20261005144947',
+    line: `ops_astro_app ${act} ops.subject_resets.${column}`,
+  })),
   // Batch 2b's (C55, C59): the forwarder writes an alert's kind alone and the
   // application reads kind and time (0069); a second-factor code's rows are
   // read and written column by column (0072).
@@ -103,10 +168,30 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '0072',
     line: `ops_astro_app ${act} ops.second_factor_codes.${column}`,
   })),
+  // C31: custody's select leaves out the three sealed columns (20261005023013).
+  ...[
+    'business_id',
+    'cleared_at',
+    'cleared_by_actor_id',
+    'created_at',
+    'id',
+    'key_id',
+    'last_used_at',
+    'name',
+    'revision',
+    'scope_id',
+    'scope_kind',
+    'set_at',
+    'set_by_actor_id',
+  ].map((column) => ({
+    from: '20261005023013',
+    line: `ops_astro_app SELECT public.custody_secrets.${column}`,
+  })),
+  ...MANDATE_GRANTS,
 ];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {
-  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
+  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || reached(at, grant.from))
     .map((grant) => grant.line)
     .toSorted();
 }

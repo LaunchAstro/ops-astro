@@ -61,3 +61,6 @@ export type ChatRequest<E> =
       readonly remove?: unknown;
     } & E)
   | ({ readonly command: 'chat.leave'; readonly conversationId: string } & E);
+
+/** Both for `requests.ts`: a comment takes the targeted envelope, a chat command does not. */
+export type CommentOrChatRequest<Targeted, E> = CommentRequest<Targeted> | ChatRequest<E>;

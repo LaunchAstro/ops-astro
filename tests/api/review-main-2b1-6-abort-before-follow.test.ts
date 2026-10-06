@@ -72,7 +72,7 @@ async function topicsNow(): Promise<LiveTopics> {
 const asks: Watching = {
   businessId: business,
   atDoor: (taskIds) => Promise.resolve(taskIds.map(() => task)),
-  again: () => Promise.resolve(task),
+  again: () => Promise.resolve(person),
 };
 
 /** 'resolved', or 'hung' when `running` has not settled within the bound. */
@@ -112,7 +112,7 @@ describe('REVIEW-MAIN-2B1-6: a live stream aborted before follow starts never en
         { topics, recheckMs: 60_000 },
         [{ label: `task:${task}`, taskId: task }],
         asks,
-        { session, presence },
+        { session, presence, sitter: async () => await Promise.resolve(session) },
       );
 
       expect

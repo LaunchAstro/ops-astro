@@ -1,20 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What `s0-5-client-lock.test.ts` runs: the task-content commands read from
-// the catalogue, each fixture's marker or the rows that name its task, the
-// client change through the CLI and the API, and the interleaving of a
-// content write with a client change under the task's row lock.
+// What `s0-5-client-lock.test.ts` runs: the catalogue's task-content commands, each fixture's
+// marker, the client change by CLI and API, and a content write racing it under the row lock.
 
 import { randomUUID } from 'node:crypto';
 import {
   COMMAND_EFFECTS,
-  COMMAND_SURFACE,
   type CommandDeclaration,
   type CommandName,
 } from '../../packages/core-wire/src/index.ts';
 import type { Harness } from '../acceptance/role-case-harness.ts';
 import { both, refusedAlike } from '../cli/cli-parity.ts';
-import { NOT_CONTENT } from './s0-5-not-content.ts';
+import { CONTENT } from './s0-5-client-lock-content.ts';
+
+export { CONTENT } from './s0-5-client-lock-content.ts';
 
 /** Bookkeeping every call writes; never content of its own. */
 const BOOKKEEPING: ReadonlySet<string> = new Set([
@@ -22,11 +21,6 @@ const BOOKKEEPING: ReadonlySet<string> = new Set([
   'operations',
   'authentication_attempts',
 ]);
-
-export const CONTENT: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(
-  ({ name }) =>
-    !(name in NOT_CONTENT) && COMMAND_EFFECTS[name].writes.some((kind) => kind.scope === 'client'),
-);
 
 let harness: Harness;
 
@@ -142,8 +136,8 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'run.top_up',
   'run.end_at_budget_stop',
   'run.revise_state',
-  // The task's own rows beside it (MP-4-5 comments, MP-4-6 time, MP-4-11 tags):
-  // a comment's edit or removal, a time entry, a tag on the task.
+  // The task's own rows beside it (MP-4-5 comments, MP-4-6 time, MP-4-11 tags, C41-A):
+  // a comment's edit or removal, a time entry, a tag, a step's result as a comment.
   'task.edit_comment',
   'task.delete_comment',
   'time.start',
@@ -153,6 +147,7 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'time.delete',
   'task.add_tag',
   'task.remove_tag',
+  'onboarding.step_result',
   // SL11 (batch 3b): approves the proposal's gate as `task.decide` does, then pins and binds.
   'task.accept_plan',
 ]);
