@@ -651,8 +651,8 @@ unless the person named is a current member who may chat (staff holding
 `chat:comment`, as `chat.messages` asks), and its inbox item is held by such
 members alone: a member who leaves or is removed, loses `chat:comment` or whose
 access ends is no longer shown it, counted for it, let stamp it seen or emailed
-it (asked in the seen insert and in the statement that reads the address, so
-access ended before either writes or sends nothing), and an operations viewer outside the conversation is never listed it as
+it (asked before the seen insert and again after it, the stamp undone if access has gone,
+and in the statement that reads the address, so access ended first stamps or sends nothing), and an operations viewer outside the conversation is never listed it as
 unattended. An agent key (API-2) that does not tick `chat:comment` is shown and
 counted none, as `chat.messages` refuses it. A mention is raised at its message's posted time, so a member who
 reads the message, a re-added one included, is shown and counted its mention.
