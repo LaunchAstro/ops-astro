@@ -12,6 +12,7 @@
 // contract does not name fails rather than being skipped. Nothing here asserts.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
+import { MANDATE_EXECUTES, MANDATE_GROUPS } from './restricted-calls-mandates.ts';
 export { MANDATE_GRANTS, MANDATE_UPDATES } from './restricted-calls-mandates.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
@@ -160,6 +161,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
   ['si', 'tags'],
   ['sid', 'task_tags'],
+  // 20261006074341: a conversation member's row; a member leaves by a mark, never a delete.
+  ['siu', 'team_conversation_members'],
   // C80: a live correction takes updates (a decision is one); its receipts
   // are append only.
   ['siu', 'live_corrections'],
@@ -187,10 +190,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 20261005201200 (MP-14-8): tripwires and night round steps are written by the
   // checks and the round (not built) and read here.
   ['s', 'night_round_steps tripwires'],
-  // 20261006080000 (MP-14-10a): a class's revision and a mandate's filing and revoke go by column
-  // grant, a mandate never edited (`restricted-calls-mandates.ts`).
-  ['s', 'graduation_classes'],
-  ['si', 'standing_mandates'],
+  ...MANDATE_GROUPS,
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(
@@ -249,8 +249,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   // 20261005235557 (C59): a definer answering one boolean for a login of the caller's own
   // business; PUBLIC may not execute it.
   'public.factor_login_live_elsewhere',
-  // 20261006080000 (MP-14-10a): a mandate's word list checked whole, in its check constraint.
-  'public.standing_mandate_words_known',
+  ...MANDATE_EXECUTES,
 ];
 
 /** What the server said, reduced to what a contract can name. */

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "after a budget-stop top-up the run's pickup replaces the hold, so calls made after the top-up count at observation, keep the hold whole while open, and give nothing back when they settle, and a call the top-up moved counts once"
+}

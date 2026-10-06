@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a reply advances activity past a message kept while it waited for the conversation"
+}

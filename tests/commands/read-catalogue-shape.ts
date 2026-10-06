@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// `read-catalogue-pin.test.ts`'s pinned shape of each read, moved whole from
+// that file to keep it under the line limit.
+
+/** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
+export const PINNED_SHAPE = {
+  'map.frontier': { spine: true, subject: true, authority: 'declared' },
+  'map.view': { spine: true, subject: true, authority: 'declared' },
+  'access.read': { spine: false, subject: false, authority: 'declared' },
+  'chat.conversations': { spine: false, subject: false, authority: 'declared' },
+  'chat.messages': { spine: false, subject: false, authority: 'declared' },
+  'automation.registry': { spine: false, subject: false, authority: 'declared' },
+  'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.fleet': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.graduation': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.signal': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'harness.read': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'inbox.count': { spine: false, subject: false, authority: 'self' },
+  'inbox.read': { spine: false, subject: false, authority: 'self' },
+  'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
+  'operations.read': { spine: false, subject: false, authority: 'declared' },
+  'person.list': { spine: false, subject: false, authority: 'declared' },
+  'preference.read': { spine: false, subject: false, authority: 'self' },
+  'preset.plan': { spine: false, subject: false, authority: 'from the request' },
+  'privacy.draft_breach_notices': { spine: false, subject: false, authority: 'declared' },
+  'secret.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'session.person': { spine: false, subject: false, authority: 'self' },
+  'settings.read': { spine: false, subject: false, authority: 'declared' },
+  'tag.list': { spine: false, subject: false, authority: 'declared' },
+  'task.board': { spine: true, subject: false, authority: 'declared-within' },
+  'task.execution': { spine: true, subject: true, authority: 'declared' },
+  'task.queue': { spine: false, subject: false, authority: 'declared' },
+  'task.read': { spine: true, subject: true, authority: 'declared' },
+  'task.receipt': { spine: true, subject: true, authority: 'declared' },
+  'task.todos': { spine: true, subject: false, authority: 'declared' },
+  'task.search': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'task.ledger': { spine: true, subject: false, authority: 'declared' },
+  'team.list': { spine: false, subject: false, authority: 'declared' },
+  'trace.read': { spine: true, subject: true, authority: 'declared' },
+};

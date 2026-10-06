@@ -819,6 +819,23 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: [],
   }),
 
+  // Team conversations (C71-D): `chat:comment`, agency members only, never an agent or a client.
+  declare('chat.send_direct', 'comment', {
+    collection: 'chat',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['teammateId'],
+  }),
+  read('chat.conversations', 'chat', { action: 'comment' }),
+  read('chat.messages', 'chat', { action: 'comment' }),
+  // The reader's own read marker (CS-7.25): their member row, no grant asked, not audited.
+  declare('chat.mark_read', 'write', {
+    collection: ACCOUNT_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['conversationId'],
+    audited: false,
+  }),
+
   // C39-T: `access:share` on the whole business, a person's key no agent holds
   // (the permission key catalogue). Another business's invitation is
   // NOT_FOUND from the handler, as an id nobody issued. An administrator's

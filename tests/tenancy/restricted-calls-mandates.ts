@@ -1,7 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// MP-14-10a's column grants, held against `restricted-calls-catalogue.ts`'s
-// contract beside the rest. Apart from it to keep that file under the line limit.
+// MP-14-10a's part of the restricted-calls contract (20261006080000): its table grants, column
+// grants and the one function the application executes, spread into `restricted-calls-cases.ts`
+// and `restricted-calls-catalogue.ts` beside the rest. Apart from them to keep both under the
+// line limit.
+
+/**
+ * Table grants: a class's record is read and its revision bumped by column grant; a mandate is
+ * filed by its own columns and revoked by column grant, never edited.
+ */
+export const MANDATE_GROUPS: readonly (readonly [string, string])[] = [
+  ['s', 'graduation_classes'],
+  ['si', 'standing_mandates'],
+];
+
+/** Executed: a mandate's word list checked whole, in its check constraint. */
+export const MANDATE_EXECUTES: readonly string[] = ['public.standing_mandate_words_known'];
 
 /**
  * Update: promoting and demoting serialise on a class's revision; a mandate is revoked,

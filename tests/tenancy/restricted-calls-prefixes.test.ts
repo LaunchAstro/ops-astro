@@ -484,6 +484,8 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     occurrence_id: randomUUID(),
     outcome: 'activation_off',
   },
+  // 20261006074341: nothing in the journey opens a team conversation (C71-D).
+  'public.team_conversation_members': { conversation_id: randomUUID(), person_id: randomUUID() },
   // WF-1: the journey charts no map.
   'public.map_components': {
     map_id: randomUUID(),

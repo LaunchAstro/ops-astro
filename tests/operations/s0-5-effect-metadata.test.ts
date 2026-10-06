@@ -164,10 +164,10 @@ const EXACT: ReadonlySet<string> = new Set([
   'run.revise_state',
 ]);
 
-/** An EXACT command's kind written only on a path its fixture misses, proved there. */
+/** An EXACT kind its fixture misses, proved where written: money-paths, the reopened-step end. */
 const ON_A_PATH: Readonly<Record<string, readonly string[]>> = {
-  // At a hold its calls spent whole: `s0-5-effect-money-paths`.
   'run.top_up': ['attempts'],
+  'run.end_at_budget_stop': ['attempts'],
 };
 
 /**
