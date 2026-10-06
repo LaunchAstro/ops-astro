@@ -107,8 +107,14 @@ beforeAll(async () => {
   await proposeOn(ids['gated']);
   ids['leased'] = (await world.pickUp(reader, 'an agent holds it')).taskId;
   // A gate waiting beside a live lease: the person's move comes first.
-  ids['both'] = (await world.pickUp(reader, 'held, and a new gate waits')).taskId;
-  await proposeOn(ids['both']);
+  ids['both'] = (await world.pickUp(reader, 'held, and its gate waits again')).taskId;
+  await world.db.admin.execute(
+    `update public.gates g
+        set state = 'pending', decided_at = null, expires_at = now() + interval '1 hour'
+       from public.planned_runs run
+      where run.business_id = g.business_id and run.id = g.run_id and run.task_id = $1`,
+    [ids['both']],
+  );
   // A pending gate past its expiry waits on nobody.
   ids['lapsed'] = await created('its gate expired');
   await proposeOn(ids['lapsed']);
