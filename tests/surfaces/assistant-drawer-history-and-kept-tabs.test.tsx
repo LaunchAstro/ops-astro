@@ -17,10 +17,7 @@ import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle, type Mounted } from './mount.tsx';
 import { track, unmountAll } from './mp-7-11-drawer-fixtures.tsx';
 
-afterEach(async () => {
-  await unmountAll();
-  sessionStorage.clear();
-});
+afterEach(unmountAll);
 
 const ONE = '11111111-1111-4111-8111-111111111111';
 const TWO = '22222222-2222-4222-8222-222222222222';
@@ -138,10 +135,9 @@ describe('MP-7-11 CS-7.33 drawer history', () => {
     ]);
     await page.click(`[data-past="${ONE}"]`);
     await settle();
-    expect(calls.at(-1)).toStrictEqual({
-      name: 'conversation.read',
-      body: { conversationId: ONE },
-    });
+    expect(calls.filter((call) => call.name === 'conversation.read')).toStrictEqual([
+      { kind: 'read', name: 'conversation.read', body: { conversationId: ONE } },
+    ]);
     expect(tabTitles(page).at(-1)).toContain('Pacing question');
     expect(bodies(page)).toStrictEqual(['user: Is pacing on track?', 'ai: Yes, 4% under.']);
     expect(page.find('[data-assistant="address"]')?.getAttribute('href')).toBe(`/agent/${ONE}`);
