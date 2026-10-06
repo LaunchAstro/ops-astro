@@ -20,6 +20,11 @@ minimumReleaseAgeExclude:
   - '@exodus/bytes@1.15.2' # published 21 Sep, a week old 28 Sep
   - tldts@7.4.14 # published 21 Sep, a week old 29 Sep
   - tldts-core@7.4.14 # published 21 Sep, a week old 29 Sep
+  - source-map-js@1.2.2 # GHSA-68fv-2mgg-jv7q's fix; published 30 Sep, a week old 7 Oct
+# source-map-js below 1.2.2 carries GHSA-68fv-2mgg-jv7q (high); vite's postcss and
+# jsdom's css-tree both pull it.
+overrides:
+  'source-map-js@<1.2.2': 1.2.2
 # Refuse a version published with weaker trust evidence than an earlier one.
 trustPolicy: no-downgrade
 # A dependency of a dependency comes from the registry, never a git URL or tarball.
