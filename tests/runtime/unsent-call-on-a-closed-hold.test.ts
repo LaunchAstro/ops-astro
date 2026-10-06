@@ -148,6 +148,35 @@ describe.skipIf(serverUrl === undefined)('a pickup after a top-up on a closed ho
   });
 });
 
+describe.skipIf(serverUrl === undefined)('a pickup after a top-up on a causeless hold', () => {
+  it('counts a hold the classifier closed before it recorded a cause once, so the topped-up step is held again for what it has left', async () => {
+    // As above, but the first hold keeps no cause, as one the classifier settled
+    // before 20261004040100 does: the upgrade leaves such a row as it was.
+    const { work, versionId, first } = await roomyWork(s);
+    await spend(s, first, 300);
+    await unsentCall(s, first, 200);
+    expect(await stopForRoom(work, first, 200)).toBe('BUDGET_UNAVAILABLE');
+    const legacy = await s.db.admin.execute(
+      `update public.reservations set classified_cause = null, classified_cause_id = null
+        where business_id = $1 and id = $2 and state = 'actual'
+        returning id`,
+      [s.business, first],
+    );
+    expect(legacy, 'the first hold closed actual, its cause now dropped').toHaveLength(1);
+    expect(codeOf(await topUp(s, work, first, 100))).toBe('applied');
+    const fresh = (await holdsOf(s, versionId)).find((hold) => hold.state === 'held');
+    const third = await pickup(s, fresh?.id);
+    await spend(s, third['reservationId'], 40);
+    await stopWorker(s, third);
+
+    const again = await claim(fresh?.id);
+    expect({ code: codeOf(again), live: await liveOf(versionId) }).toEqual({
+      code: 'applied',
+      live: ['60'],
+    });
+  });
+});
+
 describe.skipIf(serverUrl === undefined)('a top-up on an abandoned hold with a call unsent', () => {
   it('releases the unsent call uncounted when a top-up answers a no-room stop on a hold its lease left unspent, so the sweep gives nothing back', async () => {
     const { work, first } = await roomyWork(s);
