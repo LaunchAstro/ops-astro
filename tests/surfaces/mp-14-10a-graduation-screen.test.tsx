@@ -156,6 +156,25 @@ function answer(
   return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
 }
 
+/** What the stub has stored: a filing adds its mandate to the next read, a revoke ends it. */
+function stubStore(): {
+  readonly region: () => ConnectionGraduationResult;
+  readonly keep: (at: string, body: Record<string, unknown>) => void;
+} {
+  let filed: MandateView[] = [];
+  return {
+    region: () => ({ ...BODY, mandates: [...BODY.mandates, ...filed] }),
+    keep: (at, body) => {
+      if (at.endsWith('/mandate/file') && filed.length === 0) {
+        filed = [
+          mandate('m-new', { clientId: String(body['clientId']), label: String(body['label']) }),
+        ];
+      }
+      if (at.endsWith('/mandate/revoke') && body['mandateId'] === 'm-new') filed = [];
+    },
+  };
+}
+
 /** Open the page; a command whose path matches `refuse` is refused, as stale by default. */
 async function open(
   refuse?: RegExp,
@@ -169,27 +188,15 @@ async function open(
   const sent: string[] = [];
   let refused = 0;
   let lost = 0;
-  // What the stub has stored: a filing adds its mandate to the next read, a revoke ends it.
-  let filed: MandateView[] = [];
-  const store = (at: string, body: Record<string, unknown>): void => {
-    if (at.endsWith('/mandate/file') && filed.length === 0) {
-      filed = [
-        mandate('m-new', { clientId: String(body['clientId']), label: String(body['label']) }),
-      ];
-    }
-    if (at.endsWith('/mandate/revoke') && body['mandateId'] === 'm-new') filed = [];
-  };
+  const stored = stubStore();
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
     sent.push(`${at} ${String(init?.body ?? '')}`);
     if (COMMAND.test(at)) await opening.hold;
     const refusing = (): boolean =>
       refuse?.test(at) === true && (opening.once !== true || refused++ === 0);
-    const reply = answer(at, refusing, opening.code ?? 'VERSION_STALE', {
-      ...BODY,
-      mandates: [...BODY.mandates, ...filed],
-    });
-    if (COMMAND.test(at) && reply.ok) store(at, bodyOf(`${at} ${String(init?.body ?? '')}`));
+    const reply = answer(at, refusing, opening.code ?? 'VERSION_STALE', stored.region());
+    if (COMMAND.test(at) && reply.ok) stored.keep(at, bodyOf(`${at} ${String(init?.body ?? '')}`));
     if (opening.lose?.test(at) === true && lost++ === 0) throw new TypeError('Failed to fetch');
     return reply;
   }) as typeof globalThis.fetch;

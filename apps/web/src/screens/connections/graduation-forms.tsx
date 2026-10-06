@@ -220,16 +220,11 @@ export function MandateForm(props: {
         placeholder="Write the rule the way you would say it out loud"
         aria-label="New standing approval sentence"
         value={label}
+        disabled={props.locked}
         onChange={(event) => setLabel(event.target.value)}
         data-mandate-label
       />
-      <ScopePicker
-        scopes={props.scopes}
-        scope={scope}
-        setScope={setScope}
-        refuses={refuses}
-        setRefuses={setRefuses}
-      />
+      <ScopePicker scopes={props.scopes} {...{ scope, setScope, refuses, setRefuses }} />
       <CeilingAndExpiry what="" marks="mandate" noCeiling={refuses} {...values} />
       <button
         type="button"
