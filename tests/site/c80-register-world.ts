@@ -147,3 +147,12 @@ export async function handBack(second: string): Promise<void> {
     [lease.leaseId],
   );
 }
+
+/** A promise and the function that settles it. */
+export function latch(): [Promise<void>, () => void] {
+  const opener: { open?: () => void } = {};
+  const settled = new Promise<void>((resolve) => {
+    opener.open = resolve;
+  });
+  return [settled, () => opener.open?.()];
+}

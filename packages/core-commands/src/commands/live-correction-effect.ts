@@ -56,7 +56,7 @@ export interface EffectAnswer {
   readonly deploymentId: string;
   /** The publish's idempotency key at the provider. */
   readonly dispatchToken?: string;
-  /** When the revert was decided: its interval is timed from here. */
+  /** When the runner first took the revert up: its interval is timed from here. */
   readonly decidedAt?: string;
   /** The publish's calibrated place, where its live check reads the word. */
   readonly occurrence?: Occurrence;
@@ -134,12 +134,12 @@ const text = (value: unknown): string | undefined =>
 /**
  * The effect the provider accepted, applied in the register under the actor
  * holding the dispatching lease. A second answer under the same identity
- * writes nothing: the first is the effect. False when the lease is not one on
- * the correction's task, so nothing could be written under it.
+ * writes nothing: the first is the effect. False unless the caller holds the
+ * lease, at its fence, on the correction's task.
  */
 export async function registerCorrectionEffect(
   db: Database,
-  run: { readonly business: string; readonly leaseId: string },
+  run: Omit<UnderLease, 'correctionId'> & { readonly business: string },
   correction: Pick<LiveCorrection, 'id' | 'taskId'>,
   step: EffectStep,
   answer: EffectAnswer,
@@ -149,8 +149,9 @@ export async function registerCorrectionEffect(
   return await db.withBusiness(run.business, async (tx) => {
     const holders = await tx.query<{ readonly holder_actor_id: string }>(
       `select holder_actor_id from public.leases
-        where business_id = $1 and id = $2 and task_id = $3`,
-      [tx.businessId, run.leaseId, correction.taskId],
+        where business_id = $1 and id = $2 and task_id = $3
+          and holder_actor_id = $4 and fence = $5`,
+      [tx.businessId, run.leaseId, correction.taskId, run.actorId, run.fence],
     );
     const actorId = holders[0]?.holder_actor_id;
     if (actorId === undefined) return false;
@@ -175,15 +176,23 @@ export async function registerCorrectionEffect(
   });
 }
 
-/** Whether the correction's latest revert receipt recorded an unknown outcome. */
-export async function revertLeftUnknown(tx: TenantQuery, correctionId: string): Promise<boolean> {
-  const rows = await tx.query<{ readonly outcome: string }>(
-    `select outcome from public.live_correction_receipts
+type RevertReceipt = {
+  readonly outcome: string;
+  readonly observations: Readonly<Record<string, unknown>>;
+};
+
+/** The correction's latest revert receipt: its outcome and observations, or nothing. */
+export async function latestRevert(
+  tx: TenantQuery,
+  correctionId: string,
+): Promise<RevertReceipt | undefined> {
+  const rows = await tx.query<RevertReceipt>(
+    `select outcome, observations from public.live_correction_receipts
       where business_id = $1 and correction_id = $2 and step = 'revert'
       order by created_at desc, id desc limit 1`,
     [tx.businessId, correctionId],
   );
-  return rows[0]?.outcome === 'unknown';
+  return rows[0];
 }
 
 /**

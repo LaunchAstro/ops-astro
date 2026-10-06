@@ -241,7 +241,11 @@ describe.skipIf(serverUrl === undefined)('C80 publish runner, after the dispatch
     });
     expect(await publish(id, ports)).toMatchObject({ kind: 'recorded', state: 'unknown' });
     expect(ports.seen.raised).toEqual(['PROVIDER_TIMEOUT']);
-    expect(await publish(id, ports)).toEqual({ kind: 'refused', code: 'OUTCOME_UNKNOWN' });
+    expect(await publish(id, ports)).toEqual({
+      kind: 'refused',
+      code: 'OUTCOME_UNKNOWN',
+      waitsOn: 'person',
+    });
     expect([ports.seen.dispatched.length, await w.receiptsOf(id)]).toEqual([1, 2]);
   });
 

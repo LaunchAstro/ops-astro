@@ -4,12 +4,25 @@
 // looked at, as text, never a value the plan supplied (receipts.ts).
 
 import type { LiveCorrection } from '../../../core-records/src/index.ts';
-import type { Accepted, Occurrence } from '../../../core-connectors/src/index.ts';
+import type {
+  Accepted,
+  CorrectionTarget,
+  Occurrence,
+  PublishOutcome,
+} from '../../../core-connectors/src/index.ts';
 
 export type Observations = Record<string, { readonly observed: string }>;
 
 export function seen(value: string): { readonly observed: string } {
   return { observed: value };
+}
+
+export function targetOf(correction: LiveCorrection): CorrectionTarget {
+  return {
+    path: correction.targetPath,
+    word: correction.word,
+    replacement: correction.replacement,
+  };
 }
 
 /** One observation a receipt recorded, when it recorded one as text. */
@@ -35,6 +48,21 @@ export function pinnedObservations(
     approved_version_digest: seen(correction.decidedVersionDigest ?? 'none'),
     gate_decision: seen(`approved version ${correction.versionId}`),
     refusals_raised: seen(refusals.length === 0 ? 'none recorded' : refusals.join(' ')),
+  };
+}
+
+/**
+ * Receipt L's observations of a publish the executable did not accept: refused before the send
+ * (settled failed), failed on a declared proof, or unknown with its task already raised.
+ */
+export function notAccepted(outcome: Exclude<PublishOutcome, Accepted>): Observations {
+  if (outcome.state === 'refused') return { refusals_raised: seen(outcome.code) };
+  if (outcome.state === 'failed')
+    return { refusals_raised: seen(`${outcome.code} ${outcome.proof}`) };
+  return {
+    waits_on: seen('person'),
+    attempt_and_dispatch_token: seen(outcome.dispatchToken),
+    unknown_outcome_reconciliation: seen(`${outcome.code}, read back by ${outcome.reference}`),
   };
 }
 

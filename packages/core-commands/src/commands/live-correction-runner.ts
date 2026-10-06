@@ -1,28 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C80's system runner: the job a worker runs under its lease once the gate has
-// passed, composing the reviewed executable (`core-connectors`) with the
-// records (`core-records`) in three steps:
-//
-// 1. Read the correction under the worker lease, and ask the effect register
-//    (`live-correction-effect.ts`) whether its publish happened. One the
-//    register holds is observed again, never dispatched again; an unknown one
-//    the register does not hold waits on a person. Only a correction a person
-//    approved publishes. A stored page the C18-1 fence refuses stops the run
-//    before anything is read or sent (`live-correction-capture.ts`).
-// 2. Rebuild the exact approved bytes from the pinned source (the store keeps
-//    digests, never text), then take the dispatch under the lease: in one
-//    transaction the correction, still approved, moves to unknown with its
-//    receipt. Only then does the executable read back and send, so a second
-//    runner, in this process or another, finds it unknown and waits on a
-//    person. The provider's acceptance is registered as soon as the executable
-//    returns it, with the place its live check reads.
+// passed, composing the reviewed executable (`core-connectors`) with the records:
+// 1. Read the correction under the lease and ask the effect register
+//    (`live-correction-effect.ts`) whether its publish happened. One it holds is
+//    observed again, never sent again; an unknown one it does not hold waits on
+//    a person, asked once. Only a correction a person approved publishes, and a
+//    stored page the C18-1 fence refuses stops the run first.
+// 2. Rebuild the exact approved bytes from the pinned source, then take the
+//    dispatch under the lease (approved moves to unknown with its receipt), so a
+//    second runner finds it unknown. A check that refuses after the take proves
+//    nothing was sent and settles it failed. An acceptance is registered with the
+//    place its live check reads.
 // 3. Write the observed result with its receipt under the same lease. A lease
 //    lost in between writes no receipt and raises a task; the register still
 //    holds the effect, so the next run observes it rather than sending it.
-//
-// No transaction is held open across a provider call. The revert (case 8) is
-// `live-correction-revert.ts`, on the same helpers.
+// No transaction is held open across a provider call.
 
 import {
   readCorrectionForRun,
@@ -33,21 +26,25 @@ import {
 } from '../../../core-records/src/index.ts';
 import {
   approvedChange,
+  checkEnvelope,
   contentDigest,
   dispatchToken,
   observeLanded,
   publishCorrection,
   type Accepted,
   type CaptureOptions,
-  type CorrectionTarget,
   type ProviderResult,
   type PublishJob,
+  type PublishPorts,
   type ReadBack,
 } from '../../../core-connectors/src/index.ts';
 import {
   landedObservations,
+  notAccepted,
+  observedIn,
   pinnedObservations,
   seen,
+  targetOf,
   type Observations,
 } from './live-correction-observations.ts';
 import { capturePort, pageNotCatalogued } from './live-correction-capture.ts';
@@ -70,17 +67,14 @@ export interface CorrectionRun {
 }
 
 type Seamed = { readonly seam: string; readonly dispatchToken: string };
-type Published = { revision: string; deploymentId: string; liveUrl: string };
 type Deployed = { revision: string; deploymentId: string };
 
 /** The provider calls, each a catalogued operation through the guarded call or the fence. */
 export interface RunnerPorts {
-  readonly readSource: () => Promise<ProviderResult<{ content: string; revision: string }>>;
+  readonly readSource: PublishPorts['readSource'];
   /** `site.request.read` by the seam. */
-  readonly readBack: (input: Seamed) => Promise<ReadBack<Published>>;
-  readonly publish: (
-    input: Seamed & { versionDigest: string },
-  ) => Promise<ProviderResult<Published>>;
+  readonly readBack: PublishPorts['readBack'];
+  readonly publish: PublishPorts['publish'];
   readonly readDeployment: (
     deploymentId: string,
   ) => Promise<ProviderResult<{ revision: string; served: boolean }>>;
@@ -116,18 +110,25 @@ export async function leaseRefused(code: string, ports: RunnerPorts): Promise<Ru
   return code === 'DELEGATION_NARROWED' ? await waiting(code, ports) : refused(code);
 }
 
-export function targetOf(correction: LiveCorrection): CorrectionTarget {
-  return {
-    path: correction.targetPath,
-    word: correction.word,
-    replacement: correction.replacement,
-  };
-}
-
 /** The digest a person approved, only while the correction stands approved. */
-function approvedDigest(correction: LiveCorrection): string | undefined {
-  if (correction.state !== 'approved') return undefined;
-  return correction.decidedVersionDigest ?? undefined;
+const approvedDigest = (correction: LiveCorrection): string | undefined =>
+  correction.state === 'approved' ? (correction.decidedVersionDigest ?? undefined) : undefined;
+
+/**
+ * An outcome nothing registered: it waits on a person, asked once. The task is raised first,
+ * then a receipt (the state unchanged) keeps the ask, so a later run does not raise it again.
+ */
+export async function unknownWaits(
+  db: Database,
+  run: CorrectionRun,
+  at: Pick<ObservedResult, 'step' | 'outcome'>,
+  asked: boolean,
+  ports: RunnerPorts,
+): Promise<RunResult> {
+  if (asked) return { kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' };
+  const waits = await waiting('OUTCOME_UNKNOWN', ports);
+  await record(db, run, { ...at, observations: { waits_on: seen('person') } }, ports);
+  return waits;
 }
 
 /** Step 3: the observed result and its receipt, or a raised task when it cannot be written. */
@@ -199,6 +200,7 @@ async function rebuild(
   };
   const change = approvedChange(pin, source.value.content, approved);
   if (change === undefined) return refused('PROPOSAL_SUPERSEDED');
+  if (!checkEnvelope(change, pin.target).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
   return {
     ...pin,
     correctionId: correction.id,
@@ -235,8 +237,8 @@ async function dispatch(
     raiseTask: async (reason) => await ports.raiseTask(reason),
     capture: capturePort(correction.pageUrl, ports.capture),
   });
-  // Refused after the dispatch was taken: the correction stands unknown, for a person.
-  if (outcome.state === 'refused') return await waiting(outcome.code, ports);
+  // Every refusal comes before the send: nothing went out, so the take is settled as failed.
+  if (outcome.state === 'refused') await ports.raiseTask(outcome.code);
   if (outcome.state === 'accepted') {
     const { revision, deploymentId, occurrence } = outcome;
     const answer = { revision, deploymentId, dispatchToken: outcome.dispatchToken };
@@ -248,20 +250,14 @@ async function dispatch(
   const observations: Observations = {
     ...pinnedObservations(correction, ports.refusals()),
     effect_operation_id: seen(correctionEffectId(correction.id, 'publish')),
-    ...(outcome.state === 'failed'
-      ? { refusals_raised: seen(`${outcome.code} ${outcome.proof}`) }
-      : {
-          attempt_and_dispatch_token: seen(outcome.dispatchToken),
-          unknown_outcome_reconciliation: seen(
-            `${outcome.code}, read back by ${outcome.reference}`,
-          ),
-        }),
+    ...notAccepted(outcome),
   };
-  return await record(db, run, { step: 'publish', outcome: outcome.state, observations }, ports);
+  const state = outcome.state === 'refused' ? 'failed' : outcome.state;
+  return await record(db, run, { step: 'publish', outcome: state, observations }, ports);
 }
 
 /** The states a publish the register holds is observed again from, never sent again. */
-const OBSERVED_AGAIN: ReadonlySet<LiveCorrection['state']> = new Set([
+const OBSERVED_AGAIN: ReadonlySet<string> = new Set([
   'approved',
   'accepted',
   'unknown',
@@ -288,8 +284,16 @@ export async function runLivePublish(
     if (unfenced !== undefined) return unfenced;
     return await observe(db, run, correction, accepted, ports);
   }
-  if (correction.state === 'unknown' || correction.state === 'accepted')
-    return refused('OUTCOME_UNKNOWN');
+  if (correction.state === 'unknown' || correction.state === 'accepted') {
+    const asked = observedIn(held.lastPublish, 'waits_on') === 'person';
+    return await unknownWaits(
+      db,
+      run,
+      { step: 'publish', outcome: correction.state },
+      asked,
+      ports,
+    );
+  }
   const job = await rebuild(correction, ports);
   if (!isJob(job)) return job;
   return await dispatch(db, run, correction, job, ports);
