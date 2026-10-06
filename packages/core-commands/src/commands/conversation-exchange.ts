@@ -108,8 +108,8 @@ interface Question {
   readonly scope: ConversationScope;
   readonly body: string;
   readonly reply: Kept | undefined;
-  /** The client of the task the conversation was opened on, if it has one. */
-  readonly client: string | null;
+  /** The conversation was opened on a task with a client, or on one this session cannot see. */
+  readonly clientOrUnseen: boolean;
 }
 
 const CLIENT = slotOf(TASK_SPINE, 'client');
@@ -135,9 +135,11 @@ async function questionOf(
   const [found] = await tx.query<{
     readonly owner_person_id: string;
     readonly body: string;
-    readonly client: string | null;
+    readonly client_or_unseen: boolean;
   }>(
-    `select c.owner_person_id, m.body, t.${CLIENT}::text as client
+    `select c.owner_person_id, m.body,
+            (t.${CLIENT} is not null or (c.scope_record_id is not null and t.id is null))
+              as client_or_unseen
        from conversations c
        join conversation_messages m on m.business_id = c.business_id and m.conversation_id = c.id
        left join records t on t.business_id = c.business_id and t.id = c.scope_record_id
@@ -154,7 +156,7 @@ async function questionOf(
     },
     body: found.body,
     reply: await replyTo(tx, asked),
-    client: found.client,
+    clientOrUnseen: found.client_or_unseen,
   };
 }
 
@@ -225,8 +227,9 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
     if (question.reply !== undefined) return answered(question.reply);
     // Owner line 72: a client's material reaches no model while no true local
     // model exists, and the laptop's GPT runner is a cloud model. A conversation
-    // opened on a client's task asks nothing, whatever the provider.
-    if (question.client !== null) return refusedWith('CLIENT_MODEL_USE_OFF');
+    // opened on a client's task asks nothing, whatever the provider; so does one whose
+    // task this session cannot see, since its client cannot be known.
+    if (question.clientOrUnseen) return refusedWith('CLIENT_MODEL_USE_OFF');
     const result = await callModelInConversation(
       database,
       businessId,

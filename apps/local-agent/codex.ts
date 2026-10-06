@@ -92,6 +92,8 @@ interface Reading {
 function readEvent(event: Record<string, unknown>, reading: Reading): boolean {
   const type = event['type'];
   if (typeof type !== 'string' || !EVENTS.has(type)) return false;
+  // The turn's usage ends the turn: nothing may follow it and replace its answer.
+  if (reading.usage !== undefined) return false;
   if (type === 'turn.failed' || type === 'error') reading.failed = true;
   if (type === 'turn.completed') {
     const usage = record(event['usage']);
@@ -187,8 +189,10 @@ export async function runCodex(
   if (!MODEL.test(model)) return null;
   if (HOME_INSTRUCTIONS.some((name) => existsSync(join(settings.codexHome, name)))) return null;
   const cwd = join(settings.home, 'cwd');
-  mkdirSync(cwd, { recursive: true });
+  mkdirSync(settings.home, { recursive: true, mode: 0o700 });
   mkdirSync(settings.codexHome, { recursive: true, mode: 0o700 });
+  mkdirSync(settings.childEnv.HOME, { recursive: true, mode: 0o700 });
+  mkdirSync(cwd, { recursive: true });
   return await new Promise((resolve) => {
     const child = spawn(settings.codexBin, codexArgs(model, cwd), {
       cwd,
@@ -219,8 +223,11 @@ export async function runCodex(
       parts.push(chunk);
     });
     child.on('error', () => finish(null));
-    child.on('close', () => {
-      finish(readCodexEvents(Buffer.concat(parts).toString('utf8'), model) ?? UNKNOWN);
+    child.on('close', (code) => {
+      const read = readCodexEvents(Buffer.concat(parts).toString('utf8'), model);
+      // A codex that exits non-zero or on a signal did not finish its answer, whatever it printed.
+      if (read === undefined) finish(UNKNOWN);
+      else finish(code === 0 ? read : { ...read, text: '', failed: true });
     });
     child.stdin.on('error', () => null);
     child.stdin.end(prompt);

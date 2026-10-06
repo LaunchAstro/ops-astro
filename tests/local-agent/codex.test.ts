@@ -80,7 +80,7 @@ describe('a message answered through codex exec', () => {
     expect(argv.at(-1)).toBe('-');
   });
 
-  it("gives the child its own Codex home and nothing of the runner's environment", async () => {
+  it("gives the child its own Codex home and HOME, and nothing of the runner's environment", async () => {
     const { w, settings } = setUp();
     // Planted in the runner's own process, where a spawn would inherit it by default.
     const planted = { OPENAI_API_KEY: CANARY, OPS_LOCAL_AGENT_KEY: RUNNER_KEY };
@@ -96,10 +96,10 @@ describe('a message answered through codex exec', () => {
     }
     const env = w.calls()[0]?.env ?? {};
     expect(env['CODEX_HOME']).toBe(w.codexHome);
-    const own = Object.keys(env).filter((name) =>
-      ['PATH', 'HOME', 'LANG', 'USER', 'LOGNAME', 'CODEX_HOME'].includes(name),
-    );
-    expect(own.toSorted()).toEqual(['CODEX_HOME', 'HOME', 'LANG', 'LOGNAME', 'PATH', 'USER']);
+    expect(env['HOME']).toBe(join(w.agentHome, 'home'));
+    // macOS adds its own `__CF_USER_TEXT_ENCODING` to a process; nothing else is the runner's.
+    const passed = Object.keys(env).filter((name) => !name.startsWith('__CF_'));
+    expect(passed.toSorted()).toEqual(['CODEX_HOME', 'HOME', 'LANG', 'LOGNAME', 'PATH', 'USER']);
     const seen = JSON.stringify(env);
     expect(seen).not.toContain(CANARY);
     expect(seen).not.toContain(RUNNER_KEY);
@@ -117,6 +117,11 @@ describe('what never becomes an answer', () => {
       failed: true,
       inputTokens: 120,
     });
+  });
+
+  it('a codex that exits non-zero fails, whatever it printed', async () => {
+    const { settings } = setUp({ exit: 3 });
+    expect(await runCodex(settings, MODEL, 'hi')).toMatchObject({ text: '', failed: true });
   });
 
   it('a failed turn fails', async () => {
@@ -171,6 +176,7 @@ describe('the event grammar', () => {
     ['a JSON array', `[]\n${completed}`],
     ['usage out of shape', line({ type: 'turn.completed', usage: { input_tokens: -1 } })],
     ['an item with no type', line({ type: 'item.completed', item: {} }) + completed],
+    ['an answer after the turn ended', message('hi') + completed + message('swapped')],
   ])('refuses %s', (_label, stdout) => {
     expect(readCodexEvents(stdout, MODEL)).toBeUndefined();
   });
