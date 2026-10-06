@@ -1856,7 +1856,14 @@ or delete.
   fresh reservation, so the run spends the raised ceiling once and the cap
   counts the spend once. A stop raised because the step's calls spent its
   whole hold (`budget-stop.ts`) has no hold left to raise: completing it holds
-  the amount on a fresh reservation for the step (`holdTopUp`).
+  the amount on a fresh reservation for the step (`holdTopUp`). The answer
+  records the stopped hold's state as the locks read it (`hold_state`:
+  `held`, `actual` or `abandoned`; `20261006075726_budget_answer_hold_state`).
+  The version room a replacement is sized by (`versionRoom`, `pickup.ts`)
+  counts a hold topped up while `held` and closed later at its actual plus its
+  calls, since the top-up moved the calls' spend and the close charges only
+  what it adds. A hold settled at its calls before its top-up, or one whose
+  top-up was written before the column (null), counts once, at the greater.
 - **The end** (`endAtBudgetStop`, `gate:decide` on the task, a person). One
   call with no confirmation (U7). The hold becomes `abandoned` with the cause
   `budget_stop_ended`; the envelope releases the unspent part and keeps the
