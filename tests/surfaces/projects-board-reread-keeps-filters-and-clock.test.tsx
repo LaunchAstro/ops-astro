@@ -102,3 +102,29 @@ it('#903 a board on the real clock judges overdue on the new day once fresh rows
     await view.unmount();
   }
 });
+
+it('#902 Review still drops a held assignee filter', async () => {
+  const board = (rows: readonly ProjectRow[]) => (
+    <ProjectsBoard
+      rows={rows}
+      stages={[]}
+      href={(one) => `/tasks/${one.id}`}
+      address={new URLSearchParams({ f: viewerFacetId(ben.id) }).toString()}
+      viewerOn={false}
+      now={new Date(2026, 9, 4)}
+      width={1400}
+      viewport={1480}
+    />
+  );
+  const waiting = { assignee: ana, awaitingDecision: true };
+  const view = await mount(board([row('ben-1', { assignee: ben }), row('ana-1', waiting)]));
+  try {
+    await view.render(board([row('ben-1', { assignee: ana }), row('ana-1', waiting)]));
+    await view.click('.cbd__mode[data-mode="review"]');
+    expect(shown(view), 'the held Ben filter hid the task waiting on a decision').toEqual([
+      'ana-1',
+    ]);
+  } finally {
+    await view.unmount();
+  }
+});
