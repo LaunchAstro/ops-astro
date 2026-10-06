@@ -32,3 +32,4 @@ export {
   type ReceiptOutcome,
   type UnderLease,
 } from './correction-receipts.ts';
+export { coveredAt, holdCoveringGrants, type Covering } from './covering.ts';

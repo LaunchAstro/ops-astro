@@ -8,6 +8,7 @@
 import {
   checkDelegatedAuthority,
   digestOf,
+  resolveDelegation,
   resolveLiveById,
   resolveSettledByLease,
   DERIVED_SCHEME,
@@ -24,6 +25,7 @@ import { isRefused } from './outcome.ts';
 import type { AgentCall } from './agent-call.ts';
 import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { replayChildHandback, replayChildPickup } from './agent-child.ts';
+import { replayRefusal } from './live-correction-agent.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
@@ -54,6 +56,15 @@ export async function releaseReplay(
       return await operation.open(async (row) => {
         const authorised = await authorise(tx, call, row);
         return 'refusal' in authorised ? authorised.refusal : undefined;
+      });
+    case 'correctionRequest':
+      return await operation.open(async (row) => {
+        const authorised = await authorise(tx, call, row);
+        if ('refusal' in authorised) return authorised.refusal;
+        // `authorise` resolved this credential as live a statement ago.
+        const resolved = await resolveDelegation(tx, call.session.actorId, call.credential ?? '');
+        if (!resolved.ok) return resolved.refusal;
+        return await replayRefusal(tx, call.request, resolved.value);
       });
   }
 }
