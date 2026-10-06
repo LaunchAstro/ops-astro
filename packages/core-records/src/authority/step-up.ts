@@ -129,9 +129,11 @@ export async function refuseStaleMoneyStep(
   const switchesOff = key.name === MONEY_STEP_UP_SWITCH && request['value'] === false;
   if (!switchesOff && !(await asksMoneyStepUp(tx, key))) return undefined;
   // Whole seconds, as the token's times are: the boundary is one second either
-  // side of sixty minutes, and a fraction of the clock is not a second.
+  // side of sixty minutes, and a fraction of the clock is not a second. The
+  // clock as read now, not the transaction's start: a step-up that expired
+  // while sign-in waited on the person's row is stale (#444).
   const rows = await tx.query<{ readonly now: number }>(
-    'select floor(extract(epoch from now()))::float8 as now',
+    'select floor(extract(epoch from clock_timestamp()))::float8 as now',
   );
   const now = rows[0]?.now ?? Number.POSITIVE_INFINITY;
   if (judgeStepUp(standing, now) === 'fresh') return undefined;

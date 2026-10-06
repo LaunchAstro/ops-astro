@@ -81,8 +81,36 @@
     },
     {
       "files": [
+        "tests/api/a-credential-write-waiting-on-its-task-lock-is-refused-once-its-grant-is-revoked.test.ts",
+        "tests/api/an-agent-run-state-write-whose-delegation-was-revoked-during-the-run-lock-wait-is-refused.test.ts",
+        "tests/api/an-agent-run-state-write-whose-delegation-expired-during-the-run-lock-wait-is-refused.test.ts",
+        "tests/commands/a-completion-whose-parent-grant-was-revoked-during-the-subtask-lock-wait-is-refused.test.ts",
+        "tests/commands/a-ticket-write-whose-direct-grant-was-revoked-during-the-task-lock-wait-stands-on-its-map-grant.test.ts",
+        "tests/identity/a-factor-act-undone-by-a-sign-out-keeps-the-sessions-ending.test.ts",
+        "tests/identity/a-factor-change-whose-session-was-signed-out-during-the-factor-lock-wait-is-refused.test.ts",
+        "tests/runtime/a-child-agent-write-whose-parent-delegation-expired-during-its-lock-wait-is-refused.test.ts",
+        "tests/runtime/a-handback-that-waited-at-the-operation-door-across-its-delegations-expiry-keeps-its-report.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
         "tests/db/run-end-stamped-after-lock-wait.test.ts",
         "tests/db/run-supersede-stamped-after-lock-wait.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
+        "tests/api/a-gate-that-expires-during-the-read-transaction-is-not-offered.test.ts",
+        "tests/api/an-agent-reply-advances-activity-past-a-message-kept-while-it-waited.test.ts",
+        "tests/api/a-later-conversation-message-advances-activity-when-its-transaction-began-first.test.ts",
+        "tests/api/an-agent-credential-that-expires-during-its-row-lock-wait-is-not-served.test.ts",
+        "tests/authority/a-money-protection-switch-waiting-at-sign-in-cannot-use-an-expired-step-up.test.ts",
+        "tests/commands/a-duplicate-by-a-caller-who-cannot-read-the-source-takes-no-lock-on-it.test.ts",
+        "tests/commands/a-duplicate-does-not-rest-on-a-read-grant-issued-while-it-waits-for-the-source-row.test.ts",
+        "tests/commands/a-duplicate-refuses-a-read-grant-that-expires-while-it-waits-for-the-source-row.test.ts",
+        "tests/operations/the-last-legal-publication-is-current-when-its-transaction-began-first.test.ts"
       ],
       "rules": { "max-lines-per-function": "off" }
     },

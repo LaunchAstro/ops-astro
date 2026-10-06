@@ -11,10 +11,10 @@
 // in version 1 (RA-10): they are the writer's text, kept and shown.
 
 import { randomUUID } from 'node:crypto';
-import { isUuid } from '../../../core-records/src/index.ts';
+import { checkAuthority, isUuid, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 
 /** The most items in either list, and the longest item, in characters. */
@@ -70,14 +70,15 @@ function refuseBody(
 /**
  * The revision on the run the task names, as `actorId`: the person, or the
  * agent working under its delegation. `taskId` is the id the authority check
- * was asked of, as sent.
+ * was asked of, as sent. `askAgain` is that check on the task, asked again
+ * once the run is held: a grant revoked while this waited appends nothing (#443).
  */
 export async function reviseRunState(
   tx: TenantQuery,
   taskTypeId: string,
   target: { readonly taskId: unknown; readonly runId: unknown },
   revision: Revision,
-  actorId: string,
+  actor: { readonly id: string; readonly askAgain: (task: string) => Promise<Refused | undefined> },
 ): Promise<HandlerOutcome> {
   const invalid = refuseBody(target, revision);
   if (invalid !== undefined) return invalid;
@@ -102,7 +103,9 @@ export async function reviseRunState(
     [tx.businessId, runId, task],
   );
   if (runs[0] === undefined) return refused(refuseNotFound(['runId']));
-  return await appendVersion(tx, { task, run: runId.toLowerCase() }, revision, actorId);
+  const lost = await actor.askAgain(task);
+  if (lost !== undefined) return lost;
+  return await appendVersion(tx, { task, run: runId.toLowerCase() }, revision, actor.id);
 }
 
 /** The next version after the newest, read under the run's lock, or `VERSION_STALE`. */
@@ -156,6 +159,16 @@ export async function reviseStateOnRun(
     context.spine.taskTypeId,
     { taskId: fields.recordId, runId: fields.runId },
     fields,
-    context.session.actorId,
+    {
+      id: context.session.actorId,
+      askAgain: async (task) => {
+        const still = await checkAuthority(tx, subjectsOf(context.session), {
+          collection: context.declaration.collection,
+          action: context.declaration.action,
+          scope: { kind: 'record', id: task },
+        });
+        return still.ok ? undefined : refused(still.refusal);
+      },
+    },
   );
 }

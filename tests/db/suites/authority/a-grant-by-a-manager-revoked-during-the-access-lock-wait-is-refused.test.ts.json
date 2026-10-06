@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "giving a grant by a manager revoked during the access lock wait is refused, and gives nothing"
+}

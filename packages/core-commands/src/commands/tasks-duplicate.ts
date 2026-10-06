@@ -4,26 +4,22 @@
 // 75 and 76).
 //
 // Once a task has content its client is locked, and the way to serve another
-// client is a new task from the bare shell. The command takes the old task's
-// id, the chosen client and the shell as the person edited it (the title and
-// the step names), and writes exactly that: a task of the old task's type for
-// the chosen client, one subtask per step name, and nothing else. It reads one
-// thing of the old task, its type; the old task is untouched.
+// client is a new task from the bare shell: the old task's type for the chosen
+// client, the title and one subtask per step name as the person edited them,
+// and nothing else. Only the old task's type and client are read; it is untouched.
 //
-// All three asks of the authority are made here, inside the transaction that
-// creates the task, with the caller's task grants held for share: `task:read`
-// on the old task, at record scope as `task.read` asks it; `task:write` at the
-// chosen client (party scope, or the business when there is none); and
-// `task:share` at the chosen client when it differs from the old task's (none
-// counts as a client), since that moves the work across clients (ORCH57B11,
-// REVIEW-2D-2). So a read revoked after the draft opened refuses the create.
-// An agent never reaches this: the row is person-only on every surface.
+// The three asks of the authority are made in the transaction that creates the
+// task, with the caller's task grants held for share: `task:read` on the old
+// task at record scope, as `task.read` asks it; `task:write` at the chosen
+// client (party scope, or the business when there is none); and `task:share`
+// there when it differs from the old task's (none counts as a client), since
+// that moves the work across clients (ORCH57B11, REVIEW-2D-2). All three are
+// asked again after the last write's wait (#444). An agent never reaches this:
+// the row is person-only on every surface.
 //
-// The carried text guard comes from here, so the app, the API and the command
-// line give the same answer: a title or step name that names the old task's
-// client (its name in the client model) is refused naming the fields until
-// the person confirms it. The refusal carries the field names only, never the
-// name it matched.
+// The carried text guard comes from here, so every surface gives one answer: a
+// title or step name that names the old task's client (its name in the client
+// model) is refused naming the fields, never the name, until the person confirms.
 //
 // The new task records where it came from as a `duplicated_from` link to the
 // old task. `task.read` shows that id only to a reader who holds read on the
@@ -179,37 +175,52 @@ async function readOld(
   return { typeId: row.type_id, client: row.client };
 }
 
+/** The old task as `authorise` admitted it, and its grants asked again at a later clock. */
+type Admitted = NonNullable<Awaited<ReturnType<typeof readOld>>> & {
+  readonly askAgain: (at: string) => Promise<CommandRefusal | null>;
+};
+
 /**
- * The authority, asked with the caller's task grants held for share, before
- * the old task's row is locked (grants before records, as `task.decide` holds
- * them): a revocation that committed first is seen, and one that comes second
- * waits for this transaction. Asked at the clock after the hold, so a grant
- * that lapsed while this waited no longer counts. Share is asked last, of the
- * old task's client as read under its lock, so it cannot move meanwhile.
- * Answers the old task, or the refusal.
+ * The authority, asked with the caller's task grants held for share (grants
+ * before records, as `task.decide` holds them), each answer resting on a grant
+ * held here: a revocation that committed first is seen, and one that comes
+ * second waits for this transaction. Read and write are asked before the old
+ * task's row is locked, so a caller who cannot read it takes no lock on it;
+ * then all three, share last of the client read under that lock, at the clock
+ * after it (#444). Answers the old task with `askAgain`, for the writes' own
+ * waits (the sibling-rank lock, the key), or the refusal.
  */
 async function authorise(
   tx: TenantQuery,
   context: CommandContext,
   oldId: string,
   client: string | null,
-): Promise<CommandRefusal | { readonly typeId: string; readonly client: string | null }> {
+): Promise<CommandRefusal | Admitted> {
   const subjects = subjectsOf(context.session);
   const there: Scope =
     client === null ? { kind: 'business', id: null } : { kind: 'party', id: client };
-  await holdCoveringGrants(tx, subjects, 'task');
-  const at = await lockedInstant(tx);
-  const ask = async (action: 'read' | 'write' | 'share', scope: Scope) =>
-    await checkAuthorityAt(tx, subjects, { collection: 'task', action, scope }, at);
-  const reads = await ask('read', { kind: 'record', id: oldId });
-  if (!reads.ok) return reads.refusal;
-  const writes = await ask('write', there);
-  if (!writes.ok) return writes.refusal;
+  const held = new Set(await holdCoveringGrants(tx, subjects, 'task'));
+  const ask = async (action: 'read' | 'write' | 'share', scope: Scope, at: string) => {
+    const decision = await checkAuthorityAt(
+      tx,
+      subjects,
+      { collection: 'task', action, scope },
+      at,
+    );
+    if (!decision.ok) return decision.refusal;
+    if (decision.value.some((grant) => held.has(grant.id))) return null;
+    const words = ['no live grant covers it', 'ask a holder who may delegate'];
+    return refuseCommand('SCOPE_NOT_GRANTED', [], words);
+  };
+  const readAndWrite = async (at: string) =>
+    (await ask('read', { kind: 'record', id: oldId }, at)) ?? (await ask('write', there, at));
+  const before = await readAndWrite(await lockedInstant(tx));
+  if (before !== null) return before;
   const old = await readOld(tx, context.spine.taskTypeId, oldId, client);
-  if (old === undefined) return refuseNotFound();
-  if (old.client === client) return old;
-  const shares = await ask('share', there);
-  return shares.ok ? old : shares.refusal;
+  if (old === undefined) return (await readAndWrite(await lockedInstant(tx))) ?? refuseNotFound();
+  const askAgain = async (at: string) =>
+    (await readAndWrite(at)) ?? (old.client === client ? null : await ask('share', there, at));
+  return (await askAgain(await lockedInstant(tx))) ?? { ...old, askAgain };
 }
 
 /** The new top-level task: the shell's title, the chosen client, the server's placement. */
@@ -277,6 +288,10 @@ export async function duplicateTask(
      values ($1, $2, $3, $4, $5)`,
     [tx.businessId, randomUUID(), DUPLICATED_FROM, made.id, oldId],
   );
+  // After the last write's wait: a grant that lapsed while the shell waited
+  // for its rank refuses, and the envelope's savepoint takes every write back.
+  const still = await old.askAgain(await lockedInstant(tx));
+  if (still !== null) return refused(still);
   const rows = await tx.query<{ readonly revision: string }>(
     `select revision::text as revision from public.records where business_id = $1 and id = $2`,
     [tx.businessId, made.id],

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a ticket write whose direct grant was revoked during the task lock wait stands on its map grant"
+}

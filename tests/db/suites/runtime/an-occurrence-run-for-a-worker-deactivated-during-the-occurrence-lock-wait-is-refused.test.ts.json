@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an occurrence run for a worker deactivated during the occurrence lock wait is refused, and writes nothing"
+}
