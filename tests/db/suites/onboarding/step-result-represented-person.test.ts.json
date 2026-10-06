@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an agent's onboarding step result and its stop report record the person its delegation acts for, and an API-2 credential's records the credential's person (catalogue #414)"
+}

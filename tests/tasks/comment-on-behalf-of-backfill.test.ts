@@ -17,6 +17,7 @@ import { insertBusiness } from '../identity/fixture.ts';
 
 const MIGRATION = readFileSync('migrations/20261006125645_comment_on_behalf_of.sql', 'utf8');
 
+// eslint-disable-next-line max-lines-per-function -- one fresh database, the backfill and its guard
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('the on_behalf_of backfill', () => {
   let db: FreshDatabase;
   let business: string;
@@ -63,5 +64,23 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('the on_behalf_of ba
       ],
       backfilled: installed,
     });
+  });
+
+  it('refuses, by name, a preset field already holding the key, and adds no core row beside it', async () => {
+    await db.admin.execute(
+      `update public.field_defs set origin = 'preset'
+        where record_type_id = $1 and key = 'on_behalf_of'`,
+      [commentTypeId],
+    );
+    await expect(db.admin.execute(MIGRATION)).rejects.toMatchObject({
+      code: '23514',
+      message: expect.stringMatching(/comment field on_behalf_of is reserved by the core/u),
+    });
+    expect((await rows()).map((row) => row['origin'])).toStrictEqual(['preset']);
+    await db.admin.execute(
+      `update public.field_defs set origin = 'core'
+        where record_type_id = $1 and key = 'on_behalf_of'`,
+      [commentTypeId],
+    );
   });
 });
