@@ -556,7 +556,7 @@ async function coveringMap(
 }
 
 /** OWNER-3 A: writes judged under revocations' access lock; exclusive where the handler takes it. */
-const ACCESS_LOCKERS = /^(?:access\.(?:grant|revoke|end)|grant\.revoke|credential\.issue)$/;
+const ACCESS_LOCKERS = /^(?:access\.(?:grant|revoke|end)|grant\.revoke|credential\.issue)$/u;
 
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
@@ -667,7 +667,7 @@ export async function prepareCommand(
       return viaMap.refusal;
     }
     // OWNER-3 A: authority read before the lock wait is judged again after it, as a replay is;
-    // a body refused is answered after the revision (CQ-6), and the access lock covers it.
+    // a refused body is answered after the revision (CQ-6); a revocation waits on the access lock (expiry: #1020).
     if (declaration.targetLock === 'command' && !('refusal' in parsed)) {
       const again = await prepareCommand(tx, session, entryPoint, request, {
         ...declaration,
