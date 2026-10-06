@@ -378,7 +378,7 @@ async function replay(
 
   // The original result, returned exactly. A caller cannot tell a replay from
   // the first call, which is the point; the chain can, which is also the point.
-  const stored = seen.result as unknown as CommandResult;
+  const { stored, subject } = keptApart(seen.result);
   // A stored refusal carries nothing protected (`Refused.kept`: a refusal
   // naming what only the caller's rights then could see is kept without it,
   // so its replay names less than the first answer). A stored success is released
@@ -401,10 +401,21 @@ async function replay(
     operationId: request.operationId,
     outcome: 'replayed',
     refusalCode: isCommandRefusal(stored) ? stored.code : null,
-    subjectRecordId: isCommandRefusal(stored) ? null : stored.recordId,
+    subjectRecordId: subject,
     payloadDigest: digest,
   });
   return released ?? stored;
+}
+
+/** A success as the register keeps it: the answer, and beside it what its audit event names. */
+type KeptHandle = CommandHandle & { readonly auditSubjectId?: string };
+
+/** The stored answer, and the record its audit event named (null for a refusal). */
+function keptApart(result: unknown): { stored: CommandResult; subject: string | null } {
+  const kept = result as CommandRefusal | KeptHandle;
+  if (isCommandRefusal(kept)) return { stored: kept, subject: null };
+  const { auditSubjectId, ...stored } = kept;
+  return { stored, subject: auditSubjectId ?? stored.recordId };
 }
 
 /**
@@ -526,14 +537,21 @@ async function answerOf(
     revision: outcome.revision,
     detail: outcome.detail,
   };
-  await register(tx, session, request, digest, withoutSecret(handle), outcome.recordId);
+  // A promote's or demote's audit names the mandate (`auditSubjectId`); the
+  // register keeps that beside the answer, so its replay names the same one.
+  const { auditSubjectId } = outcome;
+  const kept: KeptHandle =
+    auditSubjectId === undefined
+      ? withoutSecret(handle)
+      : { ...withoutSecret(handle), auditSubjectId };
+  await register(tx, session, request, digest, kept, outcome.recordId);
   if (!declaration.audited) return handle;
   await writeAuditEvent(tx, {
     actorId: session.actorId,
     command: request.command,
     operationId: request.operationId,
     outcome: 'applied',
-    subjectRecordId: outcome.recordId,
+    subjectRecordId: outcome.auditSubjectId ?? outcome.recordId,
     payloadDigest: digest,
     originConversationId: outcome.originConversationId ?? null,
   });

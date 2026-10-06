@@ -23,4 +23,32 @@ export type ConnectionsRequest<Envelope> =
       readonly command: 'connector.repair';
       readonly connectionId: string;
       readonly expectedRevision?: unknown;
+    } & Envelope)
+  // Graduation and standing mandates (MP-14-10a): each value is checked in the
+  // command, which names the field it refuses.
+  | ({
+      readonly command: 'mandate.file';
+      readonly clientId: string;
+      readonly classes?: unknown;
+      readonly refuses?: unknown;
+      readonly ceiling?: unknown;
+      readonly expiresAt?: unknown;
+      readonly label?: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'mandate.revoke';
+      readonly mandateId: string;
+      readonly expectedRevision?: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'graduation.promote';
+      readonly classId: string;
+      readonly ceiling?: unknown;
+      readonly expiresAt?: unknown;
+      readonly expectedRevision?: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'graduation.demote';
+      readonly classId: string;
+      readonly expectedRevision?: unknown;
     } & Envelope);

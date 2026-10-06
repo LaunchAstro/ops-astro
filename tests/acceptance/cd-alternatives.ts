@@ -6,7 +6,6 @@
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
-//
 // A harness, not a suite: nothing here runs on its own.
 
 import { randomUUID } from 'node:crypto';
@@ -32,7 +31,6 @@ export const CASE = {
 
 /**
  * The fifty-four operations that name no identifier, each with a minimal valid body.
- *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
  * 113, root ruling 3). There is no foreign target to compare with a fabricated
@@ -166,7 +164,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The fifty-eight identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The sixty-four identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -176,6 +174,10 @@ export const IDENTIFIER_BEARING: Readonly<
   'grant.revoke': ['grantId', 'control'],
   'secret.clear': ['secretId', 'control'],
   'connector.repair': ['connectionId', 'control'],
+  'mandate.file': ['clientId', 'control'],
+  'mandate.revoke': ['mandateId', 'control'],
+  'graduation.promote': ['classId', 'control'],
+  'graduation.demote': ['classId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.accept_plan': ['gateId', 'gate'],
@@ -268,8 +270,7 @@ export function alternativeFor(name: CommandName): string | undefined {
     );
   }
   if (name === 'run.child_handback') {
-    // AW-11: the body names nothing; the helper's own child credential is the
-    // target, so a foreign one and a made-up one are the operand compared.
+    // AW-11: the body names nothing; the target is the helper's own child credential.
     return (
       'executed alternative: aw-11-child-commands-isolation.test.ts "another business" ' +
       "compares another business's child credential and a fabricated one by status and bytes"

@@ -117,8 +117,7 @@ export function deriveGraduation(
 ): Derived {
   if (row.earned === 'never') return { state: 'never', heldBy: null, promotedBy: null };
   const live = mandates.filter((one) => one.clientId === row.clientId && one.live);
-  const promotedBy =
-    live.find((one) => !one.refuses && one.graduationClass === row.actionClass) ?? null;
+  const promotedBy = promotingMandate(row, mandates);
   const veto = live.find(
     (one) => one.refuses && one.classes.some((scope) => classMatches(scope, row.actionClass)),
   );
@@ -127,6 +126,26 @@ export function deriveGraduation(
   }
   if (promotedBy !== null) return { state: 'promoted', heldBy: null, promotedBy };
   return { state: row.earned, heldBy: null, promotedBy: null };
+}
+
+/**
+ * The live mandate that promoted this class, whatever its record shows now: a
+ * class whose record turned `never` shows `never`, and still has a promotion
+ * to end.
+ */
+export function promotingMandate(
+  row: GraduationClassRow,
+  mandates: readonly MandateRow[],
+): MandateRow | null {
+  return (
+    mandates.find(
+      (one) =>
+        one.clientId === row.clientId &&
+        one.live &&
+        !one.refuses &&
+        one.graduationClass === row.actionClass,
+    ) ?? null
+  );
 }
 
 /** The scope list a mandate for this client may pick from. */
@@ -172,7 +191,7 @@ export const mandateOf = (row: MandateDbRow): MandateRow => ({
   revision: Number(row.revision),
 });
 
-interface ClassDbRow {
+export interface ClassDbRow {
   readonly id: string;
   readonly client_id: string;
   readonly action_class: string;
@@ -188,7 +207,7 @@ interface ClassDbRow {
   readonly revision: string;
 }
 
-const classOf = (row: ClassDbRow): GraduationClassRow => ({
+export const classOf = (row: ClassDbRow): GraduationClassRow => ({
   id: row.id,
   clientId: row.client_id,
   actionClass: row.action_class,
