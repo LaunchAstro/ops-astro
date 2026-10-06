@@ -31,7 +31,7 @@ import { stepUpSession, type StepUpResult } from './session/step-up.ts';
 import { signInAgainSession } from './session/sign-in-again.ts';
 import { StepUpProviders } from './records/step-up-providers.tsx';
 import { SignIn } from './screens/SignIn.tsx';
-import { endThenSignOut, signOutAccessEnded } from './sign-out.ts';
+import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 import { AssistantView } from './views/assistant.tsx';
@@ -90,7 +90,6 @@ export function App(props: AppProps): ReactElement {
     });
     setSession(null);
     props.navigate(pathTo('agency:sign-in'));
-    signOutAccessEnded(props, from, refusal.code);
   };
 
   const client = useMemo(

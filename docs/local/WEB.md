@@ -104,9 +104,7 @@ verifies until its hour is up, so the API answers their next call 403
 that was never a member still gets `AUTH_NO_MEMBERSHIP`, a denial to draw (the
 browser's N2 row). So two rules end the session, with the same notice. The
 client ends it on exactly 403 with `AUTH_ACCESS_ENDED`, on its first answer too,
-so a reload signs the person out as the open tab does, and then asks the API,
-best effort, to end that sign-in and clear its cookie, as a sign-out in the tab
-does. Standing can also go with no ending written (a last share revoked or
+so a reload signs the person out as the open tab does. Standing can also go with no ending written (a last share revoked or
 expired), answered 403 `AUTH_NO_MEMBERSHIP`. So each client also remembers
 whether its bearer has had an answer only a member gets: a success (a live
 call's counts as a read's), or a refusal decided past login resolution such as
