@@ -143,6 +143,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'access_endings'],
   // 0057 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
+  // 20261005235557 (C59): a factor reset is written, then its provider step is stamped by
+  // update; never deleted.
+  ['siu', 'factor_resets'],
   // 0065: the live change record, stamped by the writes' own triggers (C4);
   // the trash purge deletes a purged task's row.
   ['siud', 'live_changes'],
@@ -238,6 +241,9 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.password_reset_token_find',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
+  // 20261005235557 (C59): a definer answering one boolean for a login of the caller's own
+  // business; PUBLIC may not execute it.
+  'public.factor_login_live_elsewhere',
 ];
 
 /** What the server said, reduced to what a contract can name. */

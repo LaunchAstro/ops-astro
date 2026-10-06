@@ -231,6 +231,7 @@ export { loginLiveElsewhere } from './identity/shared-login.ts';
 export * from './site/index.ts';
 export * from './automations/index.ts';
 export * from './custody/surface.ts';
+export { factorLoginLiveElsewhere } from './identity/factor-elsewhere.ts';
 // The connector fleet and a repair's start (MP-14-7a): no value is read.
 export * from './connections/fleet.ts';
 // Grants, tripwires and the night round on the same page (MP-14-8).

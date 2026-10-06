@@ -391,6 +391,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       ],
       // C58: bravo's person named in an alpha ending.
       ['access.end', pair('holderId', person, (holderId) => ({ holderId }))],
+      // C59: bravo's person named in an alpha authenticator reset.
+      ['access.reset_factor', pair('holderId', person, (holderId) => ({ holderId }))],
       // C60: bravo's client named in an alpha privacy change.
       [
         'client.set_privacy',
