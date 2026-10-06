@@ -100,12 +100,13 @@ describe('Envelope directives, raw end tags and Markdown destinations', () => {
       '<script></scriptx> friendly</script>\n',
       '<p title=friendly>x</p>\n',
       '<textarea><b>friendly</b></textarea>\n',
+      '<éx title="</p><script>">friendly</script>\n',
     ]);
     const held = '<Counter client:load />\n<p class:list={[a, b]}>We are a friendly studio.</p>\n';
     expect(verdict(held)).toMatchObject({ ok: true, value: { line: 2 } });
   });
 
-  it('refuses a word in a Markdown link destination or autolink and holds it in link text', () => {
+  it('refuses a word in a Markdown destination, image or autolink and holds it in link text', () => {
     const page = 'src/pages/about.md';
     refusedEach(
       [
@@ -114,6 +115,7 @@ describe('Envelope directives, raw end tags and Markdown destinations', () => {
         'See [our studio][s].\n\n[s]:\n  https://friendly.example/\n',
         'See https://friendly.example/about or www.friendly.example.\n',
         'Write to friendly@example.test today.\n',
+        'See ![a friendly studio](studio.png) here.\n',
       ],
       page,
     );
