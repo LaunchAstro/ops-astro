@@ -65,6 +65,7 @@ describe.skipIf(serverUrl === undefined)('S0-3 backup reach checked', () => {
   guardGranted();
   unreadTableStops();
   hostedAuthLeftOut();
+  notOursStillChecked();
 });
 
 function guardGranted(): void {
@@ -123,6 +124,36 @@ function hostedAuthLeftOut(): void {
     } finally {
       await db.admin.execute('drop schema if exists auth cascade');
       await db.admin.execute(`drop role if exists "${platform}"`);
+    }
+  });
+}
+
+function notOursStillChecked(): void {
+  it('checks every other schema the dump names, even one the migrating owner cannot grant on', async () => {
+    const other = `${db.name}_oth`;
+    await db.admin.execute(`create role "${other}" nologin`);
+    try {
+      // The guard made by another login: our owner may use it, not grant on it.
+      await db.admin.execute(`create schema ops_astro_made_up authorization "${other}"`);
+      await db.admin.execute(
+        'create table ops_astro_made_up.untrusted (relation text primary key)',
+      );
+      await db.admin.execute(`alter table ops_astro_made_up.untrusted owner to "${other}"`);
+      await db.admin.execute('revoke all on schema ops_astro_made_up from ops_astro_backup');
+      await db.admin.execute('revoke all on ops_astro_made_up.untrusted from ops_astro_backup');
+      await db.admin.execute(`grant usage on schema ops_astro_made_up to "${owner}"`);
+      await db.admin.execute(`grant select on ops_astro_made_up.untrusted to "${owner}"`);
+      // And `public`, which our owner does not own here either.
+      await db.admin.execute('create table public.unread_by_backup (id int)');
+      await db.admin.execute('revoke all on public.unread_by_backup from ops_astro_backup');
+      const outcome = await migrateAs(owner);
+      expect(outcome).toMatch(/^42501 /u);
+      expect(outcome).toContain('schema ops_astro_made_up');
+      expect(outcome).toContain('public.unread_by_backup');
+    } finally {
+      await db.admin.execute('drop table if exists public.unread_by_backup');
+      await db.admin.execute('drop schema if exists ops_astro_made_up cascade');
+      await db.admin.execute(`drop role if exists "${other}"`);
     }
   });
 }

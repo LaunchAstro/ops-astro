@@ -19,6 +19,8 @@ export const SCHEMAS = ['public', 'ops', 'auth', 'ops_astro_made_up'];
 // migrations/20261006140500_backup_reach_checked.sql). The hosted dump leaves it
 // out; its sign-ins stay in Supabase's own project backup, and staging's
 // made-up cast gets them back from the reset's sign-in step (staging-reset.mjs).
+// The job reaches staging only by the pooler (backup.mjs, OPS_EGRESS_POOLER_*),
+// so the pooler's name is the sign.
 const HOSTED = /^[a-z0-9-]+\.pooler\.supabase\.com$/u;
 
 /** The schemas dumped from `host`, as the URL parser reads it. */
@@ -40,6 +42,10 @@ const staging = JSON.parse(
  */
 export function pgDump(sourceUrl) {
   const url = new URL(sourceUrl);
+  // pg_dump reads a --dbname holding `=` or a URI as a connection of its own,
+  // whose host wins over --host: the name is a plain identifier or no dump.
+  const dbname = decodeURIComponent(url.pathname.slice(1));
+  if (!/^[A-Za-z0-9_]{1,63}$/u.test(dbname)) throw new Error('not a plain database name');
   const args = [
     'run',
     '--rm',
@@ -57,7 +63,7 @@ export function pgDump(sourceUrl) {
     `--host=${url.hostname}`,
     `--port=${url.port || '5432'}`,
     `--username=${decodeURIComponent(url.username)}`,
-    `--dbname=${url.pathname.slice(1)}`,
+    `--dbname=${dbname}`,
   ];
   const child = spawn('docker', args, {
     // TLS or no dump: the source's bytes are plaintext until the job seals them.

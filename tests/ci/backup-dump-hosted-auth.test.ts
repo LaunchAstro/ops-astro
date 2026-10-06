@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 
+/** A Supabase pooler host, the hosted source the job dumps from. */
+const POOLER = 'aws-0-x.pooler.supabase.com';
 const originalPath = process.env['PATH'];
 const originalCapture = process.env['DUMP_CAPTURE_PATH'];
 
@@ -71,4 +73,14 @@ it.each([
     'auth',
     'ops_astro_made_up',
   ]);
+});
+
+it.each([
+  'host=elsewhere.test',
+  'postgresql://elsewhere.test/postgres',
+  'postgres%20host%3Delsewhere',
+])('refuses a database name that pg_dump would read as another connection: %s', async (name) => {
+  await expect(
+    dumpedSchemas(`postgres://backup.ref:made-up@${POOLER}:5432/${name}`),
+  ).rejects.toThrow(/database name/u);
 });

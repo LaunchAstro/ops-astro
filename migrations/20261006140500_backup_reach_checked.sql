@@ -17,8 +17,8 @@
 --   own project backup, and staging's made-up cast gets them back from the
 --   reset's sign-in step (scripts/ops/staging-reset.mjs).
 --
--- Then every schema the dump names that is ours to grant on, and every table
--- and sequence in it, must be readable by the backup identity, or the
+-- Then every schema the dump names (`auth` only where it is ours), and every
+-- table and sequence in it, must be readable by the backup identity, or the
 -- migration stops and names what is not.
 
 do $$ begin
@@ -36,8 +36,9 @@ begin
   with dumped as (
     select n.oid, n.nspname from pg_namespace n
      where n.nspname in ('public', 'ops', 'ops_astro_made_up', 'auth')
-       -- A schema whose owner's privileges we do not hold is not ours to grant on.
-       and pg_has_role(current_user, n.nspowner, 'USAGE')
+       -- Only `auth` may be the platform's: one whose owner's privileges we do
+       -- not hold is left to it. Every other schema is ours to make readable.
+       and (n.nspname <> 'auth' or pg_has_role(current_user, n.nspowner, 'USAGE'))
   )
   select string_agg(missing, ', ' order by missing) into unread from (
     select format('schema %I', d.nspname) as missing from dumped d
