@@ -13,8 +13,8 @@
 // No grant is written, and every name is made up.
 //
 // Idempotent by lookup, never by truncation: each item has a fixed title (the
-// untitled task a fixed description), and an item whose task is there is left
-// alone. An item that failed halfway is left as it stands, not repaired.
+// untitled task a fixed description), and an item already in its end state is
+// left alone. One whose task is there without it is refused: reset to repair.
 
 import { randomUUID } from 'node:crypto';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
@@ -51,79 +51,124 @@ const PLAIN = [
   ['Tidy the shared drive', null, MEMBER, 'started'],
 ];
 const ENDS = { started: 'task.start', done: 'task.complete' };
+const CATEGORY = { open: 'unstarted', started: 'started', done: 'completed' };
 
 /** The untitled task is found by its description, since it has no title. */
 const UNTITLED_NOTE = 'Click-through: a task saved with no title.';
 
-/** The tasks that carry a run. */
-const RUNS = {
-  demonstration: 'Demonstration task: draft the client update',
-  revised: 'Revise the brochure copy',
-  finished: 'Summarise the meeting notes',
-  capped: 'Research venue options',
-  unknownOne: 'Post the event reminder',
-  unknownTwo: 'Reply to the supplier',
-  helper: 'Collect quotes for printing',
-};
+/** A refusal this seed names, as against a fault it did not expect. */
+export class Refusal extends Error {}
 
 // A task's own record type: a comment's body sits in the same column as a title.
 const TASKS = `select r.id from public.records r
     join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-   where t.key = 'task' and r.deleted_at is null`;
+   where r.business_id = $1 and t.key = 'task' and r.deleted_at is null`;
 
-/** Seed every item that is not there yet; the titles of those it made. */
+// Each item's end state, asked of its task ($1) in the business ($2).
+const RUN = `from public.planned_runs run where run.business_id = $2 and run.task_id = $1`;
+const PLAIN_END = `select from public.records r
+    join public.records s on s.business_id = r.business_id and s.id = r.uuid_1
+    left join public.clients c on c.business_id = r.business_id and c.id = r.uuid_7
+   where r.business_id = $2 and r.id = $1 and s.txt_2 = $3 and c.name is not distinct from $4`;
+const WAITING = `select ${RUN} and exists (select from public.gates g
+    join public.proposal_versions v on v.business_id = g.business_id and v.id = g.version_id
+   where g.business_id = $2 and g.run_id = run.id and g.state = 'pending' and v.version = 2)`;
+const ENDED = {
+  finished: `select ${RUN} and run.state = 'handed_back' and exists (select from
+    public.handback_reports h where h.business_id = $2 and h.run_id = run.id
+      and h.outcome = 'completed')`,
+  capped: `select ${RUN} and run.state = 'waiting_budget'`,
+  unknown: `select ${RUN} and exists (select from public.attempts a where a.business_id = $2
+    and a.run_id = run.id and a.state = 'liability_unknown')`,
+  helper: `select ${RUN} and exists (select from public.leases l
+    join public.delegations child on child.business_id = l.business_id
+      and child.parent_delegation_id = l.delegation_id
+   where l.business_id = $2 and l.run_id = run.id)`,
+};
+
+/** Every item: its task's title, the end state it is seeded to, and how. */
+function items(w, lost) {
+  const run = (title, ended, build) => ({
+    title,
+    ended: [ended],
+    build: async () => {
+      await build(await task(w, { title }, NORTH, ADMIN));
+    },
+  });
+  return [
+    ...PLAIN.map(([title, client, who, end]) => ({
+      title,
+      ended: [PLAIN_END, CATEGORY[end], client],
+      build: () => plainTask(w, title, client, who, end),
+    })),
+    { title: null, ended: null, build: () => task(w, { description: UNTITLED_NOTE }, null, ADMIN) },
+    run('Demonstration task: draft the client update', WAITING, (id) => reviewWaiting(w, id)),
+    run('Revise the brochure copy', WAITING, (id) => reviewWaiting(w, id)),
+    run('Summarise the meeting notes', ENDED.finished, (id) => finished(w, id)),
+    run('Research venue options', ENDED.capped, (id) => stopAtCap(w, id)),
+    run('Post the event reminder', ENDED.unknown, async (id) => lost.push(await dispatched(w, id))),
+    run('Reply to the supplier', ENDED.unknown, async (id) => lost.push(await dispatched(w, id))),
+    run('Collect quotes for printing', ENDED.helper, (id) => handToHelper(w, id)),
+  ];
+}
+
+/**
+ * Seed every item that is not there yet; the titles of those it made. An
+ * item whose task is there without its end state was left halfway, and the
+ * whole run is refused before its first write: a reset is the repair.
+ */
 export async function seedClickThrough(database, cast) {
   const w = world(database, cast);
-  w.clients = await ensureClients(w);
-  return [...(await seedPlain(w)), ...(await seedRuns(w))];
-}
-
-/** The ten plain tasks, each in its state, and the untitled one. */
-async function seedPlain(w) {
-  const made = [];
-  for (const [title, client, who, end] of PLAIN) {
-    // In order, so the board reads in the order written here.
-    // oxlint-disable-next-line no-await-in-loop
-    if ((await w.taskTitled(title)) !== undefined) continue;
-    // oxlint-disable-next-line no-await-in-loop
-    const id = await task(w, { title }, client, who);
-    if (ENDS[end] !== undefined) {
-      // oxlint-disable-next-line no-await-in-loop
-      await w.as(who, { command: ENDS[end], recordId: id, expectedRevision: await w.revision(id) });
-    }
-    made.push(title);
-  }
-  const untitled = `${TASKS} and r.txt_4 is null and r.data ->> 'description' = $1`;
-  if ((await w.query(untitled, [UNTITLED_NOTE])).length === 0) {
-    await task(w, { description: UNTITLED_NOTE }, null, ADMIN);
-    made.push('(untitled)');
-  }
-  return made;
-}
-
-/** The tasks that carry a run, each on the made-up client North. */
-async function seedRuns(w) {
-  const made = [];
   const lost = [];
-  const steps = [
-    ['demonstration', (id) => reviewWaiting(w, id)],
-    ['revised', (id) => reviewWaiting(w, id)],
-    ['finished', (id) => finished(w, id)],
-    ['capped', (id) => stopAtCap(w, id)],
-    ['unknownOne', async (id) => lost.push(await dispatched(w, id))],
-    ['unknownTwo', async (id) => lost.push(await dispatched(w, id))],
-    ['helper', (id) => handToHelper(w, id)],
-  ];
-  for (const [key, build] of steps) {
-    // Each run is built on the one before's committed state.
+  const wanted = [];
+  for (const item of items(w, lost)) {
+    // Read in turn, before anything is written.
     // oxlint-disable-next-line no-await-in-loop
-    if ((await w.taskTitled(RUNS[key])) !== undefined) continue;
-    // oxlint-disable-next-line no-await-in-loop
-    await build(await task(w, { title: RUNS[key] }, NORTH, ADMIN));
-    made.push(RUNS[key]);
+    const state = await stateOf(w, item);
+    if (state === 'stranded') {
+      throw new Refusal(
+        `'${item.title}' is there without its end state: reset staging and seed again.`,
+      );
+    }
+    if (state === 'absent') wanted.push(item);
   }
-  if (lost.length > 0) await sweepLost(w, lost);
-  return made;
+  if (wanted.length === 0) return [];
+  w.clients = await ensureClients(w);
+  try {
+    // In order, so the board reads in the order written here, each built on
+    // the one before's committed state.
+    // oxlint-disable-next-line no-await-in-loop
+    for (const item of wanted) await item.build();
+  } finally {
+    // A dispatched run's lease runs out whether or not a later item failed.
+    if (lost.length > 0) await sweepLost(w, lost);
+  }
+  return wanted.map((item) => item.title ?? '(untitled)');
+}
+
+async function stateOf(w, item) {
+  const id =
+    item.title === null
+      ? (
+          await w.query(`${TASKS} and r.txt_4 is null and r.data ->> 'description' = $2`, [
+            w.cast.businessId,
+            UNTITLED_NOTE,
+          ])
+        )[0]?.id
+      : await w.taskTitled(item.title);
+  if (id === undefined) return 'absent';
+  if (item.ended === null) return 'ended';
+  const [sql, ...rest] = item.ended;
+  const [row] = await w.query(`select exists (${sql}) as ended`, [id, w.cast.businessId, ...rest]);
+  return row.ended ? 'ended' : 'stranded';
+}
+
+/** A plain task, taken to its state by the person who made it. */
+async function plainTask(w, title, client, who, end) {
+  const id = await task(w, { title }, client, who);
+  if (ENDS[end] !== undefined) {
+    await w.as(who, { command: ENDS[end], recordId: id, expectedRevision: await w.revision(id) });
+  }
 }
 
 /** The calls every item makes, as the cast. */
@@ -142,8 +187,16 @@ function world(database, cast) {
         executeAgentCommand(database, cast.businessId, cast.agent, credential, operation(body)),
       ),
     revision: async (id) =>
-      Number((await query('select revision from public.records where id = $1', [id]))[0].revision),
-    taskTitled: async (title) => (await query(`${TASKS} and r.txt_4 = $1`, [title]))[0]?.id,
+      Number(
+        (
+          await query('select revision from public.records where business_id = $1 and id = $2', [
+            cast.businessId,
+            id,
+          ])
+        )[0].revision,
+      ),
+    taskTitled: async (title) =>
+      (await query(`${TASKS} and r.txt_4 = $2`, [cast.businessId, title]))[0]?.id,
     purposes: 0,
   };
 }
@@ -154,9 +207,10 @@ async function ensureClients(w) {
   for (const name of CLIENTS) {
     // Each is looked up before it is made, one at a time.
     // oxlint-disable-next-line no-await-in-loop
-    const [held] = await w.query('select id from public.clients where lower(name) = lower($1)', [
-      name,
-    ]);
+    const [held] = await w.query(
+      'select id from public.clients where business_id = $1 and lower(name) = lower($2)',
+      [w.cast.businessId, name],
+    );
     // oxlint-disable-next-line no-await-in-loop
     ids.set(name, held?.id ?? (await w.as(ADMIN, { command: 'client.create', name })).clientId);
   }

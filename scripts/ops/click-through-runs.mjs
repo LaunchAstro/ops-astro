@@ -16,7 +16,7 @@ const EFFECT = { kind: 'synthetic_comment', payload: {} };
 /** Below one call's priced maximum, so the run stops at its ceiling. */
 const SMALL_CEILING = 400;
 /** Long enough to dispatch under across a slow link, short enough to wait out. */
-const LOST_LEASE_SECONDS = 10;
+const LOST_LEASE_SECONDS = 30;
 
 /** A purpose of its own: an agent holds one live delegation per purpose. */
 function purpose(w) {
@@ -127,8 +127,8 @@ export async function dispatched(w, id) {
 export async function sweepLost(w, lost) {
   const [left] = await w.query(
     `select greatest(0, extract(epoch from max(expires_at) - clock_timestamp()))::float8 as s
-       from public.leases where id = any($1)`,
-    [lost.map((picked) => picked.leaseId)],
+       from public.leases where business_id = $1 and id = any($2)`,
+    [w.cast.businessId, lost.map((picked) => picked.leaseId)],
   );
   await wait(Math.ceil(Number(left.s) * 1000) + 500);
   await w.database.withBusiness(w.cast.businessId, (tx) => sweepExpiredLeases(tx));

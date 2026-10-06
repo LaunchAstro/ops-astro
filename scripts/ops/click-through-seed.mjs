@@ -21,17 +21,18 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
-import { admitMadeUp, bindSeed } from './made-up-only.ts';
-import { ADMIN, BUSINESS, MEMBER, seedClickThrough } from './click-through-work.mjs';
+import { configuredCredentialKeys } from '../../packages/core-records/src/authority/credential-keys.ts';
+import { productionSigns } from './made-up-only.ts';
+import { ADMIN, BUSINESS, MEMBER, Refusal, seedClickThrough } from './click-through-work.mjs';
+
+/** The run's own advisory lock, held by the admin session for the whole run. */
+const LOCK = 'ops-astro click-through seed';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 // The folder local-seed writes its keys to (OPS_SEED_DIR on staging).
 const local = process.env['OPS_SEED_DIR'] || `${root}.local`;
 const fromEnvFile = (name) =>
   process.env[name] || readEnvFile(`${local}/db.env`)[name] || undefined;
-
-/** A refusal this script names, as against a fault it did not expect. */
-class Refusal extends Error {}
 
 const adminUrl = fromEnvFile('DATABASE_ADMIN_URL');
 const appUrl = fromEnvFile('DATABASE_URL');
@@ -42,49 +43,53 @@ if (!adminUrl || !appUrl) {
   process.exit(1);
 }
 
-// Decisions are signed with the key local-seed keeps, and delegation
-// credentials derived under its keyring, unless the environment names others.
-const gate = readEnvFile(`${local}/gate.env`);
-process.env['GATE_SIGNING_KEY_ID'] ||= gate['GATE_SIGNING_KEY_ID'] ?? '';
-process.env['GATE_SIGNING_SECRET'] ||= gate['GATE_SIGNING_SECRET'] ?? '';
-const keyFile = `${local}/delegation.env`;
-const keyed = Boolean(process.env['DELEGATION_CREDENTIAL_KEY_ID']);
-if (!keyed) process.env['DELEGATION_CREDENTIAL_KEY_FILE'] ||= keyFile;
-
-// Staging holds made-up data only (S0-1), admitted as local-seed admits it,
-// except that an unmarked database is never confirmed here: the cast must be
-// there already, and local-seed marks the database it seeds.
-const admin = connectAsAdmin(adminUrl, { source: 'seed' });
-await bindSeed(admin);
-const signs = await admitMadeUp(admin, false);
-if (signs.length > 0) {
-  console.error(`click-through-seed: REFUSED, not provably made-up data: ${signs.join('; ')}.`);
-  await admin.close();
+/** Refused, with nothing written: every refusal comes before the first write. */
+function refuse(why) {
+  console.error(`click-through-seed: REFUSED, ${why}`);
   process.exit(1);
 }
-// The work goes through DATABASE_URL, so it must reach the database just
-// judged: a lock the admin connection holds, under a key no one else knows,
-// is seen there (pg_locks names its database). local-seed's check, as is.
-const database = connect(appUrl, { source: 'seed' });
-const sameDatabase = await admin.transaction(async (execute) => {
-  const key = [randomInt(2 ** 31), randomInt(2 ** 31)];
-  await execute('select pg_advisory_xact_lock($1, $2)', key);
-  const [row] = await database.withBusiness(randomUUID(), (tx) =>
-    tx.query(
-      `select exists (select from pg_locks where locktype = 'advisory' and granted
-          and database = (select oid from pg_database where datname = current_database())
-          and classid = $1::int::oid and objid = $2::int::oid and objsubid = 2) as seen`,
-      key,
-    ),
-  );
-  return row?.seen === true;
-});
 
-try {
-  if (!sameDatabase) throw new Refusal('DATABASE_URL does not reach the database judged above.');
-  if (!process.env['GATE_SIGNING_SECRET'] || (!keyed && !existsSync(keyFile))) {
-    throw new Refusal(`no gate or delegation key in ${local}: run local-seed first.`);
+// The keys before any connection. The gate key is a pair from one source,
+// the environment or local-seed's file, never half of each.
+const fileGate = readEnvFile(`${local}/gate.env`);
+const envGate = ['GATE_SIGNING_KEY_ID', 'GATE_SIGNING_SECRET'].map((name) => process.env[name]);
+const [gateId, gateSecret] = envGate.some(Boolean)
+  ? envGate
+  : [fileGate['GATE_SIGNING_KEY_ID'], fileGate['GATE_SIGNING_SECRET']];
+if (!gateId || !gateSecret) refuse(`no whole gate signing key, in the environment or ${local}.`);
+process.env['GATE_SIGNING_KEY_ID'] = gateId;
+process.env['GATE_SIGNING_SECRET'] = gateSecret;
+// The delegation keyring as the API reads it, from a file that is already
+// there: `configuredCredentialKeys` makes one that is absent, and a keyring
+// made here would not be the deployment's.
+const explicit = ['DELEGATION_CREDENTIAL_KEY_ID', 'DELEGATION_CREDENTIAL_KEYS'].some(
+  (name) => (process.env[name] ?? '') !== '',
+);
+if (!explicit) {
+  process.env['DELEGATION_CREDENTIAL_KEY_FILE'] ||= `${local}/delegation.env`;
+  if (!existsSync(process.env['DELEGATION_CREDENTIAL_KEY_FILE'])) {
+    refuse("no delegation keyring file: run local-seed first, or name the deployment's.");
   }
+}
+const keyring = configuredCredentialKeys();
+if (!keyring.ok) refuse(`the delegation keyring: ${keyring.problem}`);
+
+// Staging holds made-up data only (S0-1): judged as local-seed judges it, and
+// only judged. The guard is local-seed's to install, so this neither binds a
+// seed tag nor rebuilds it, and an unmarked database is never confirmed here.
+const admin = connectAsAdmin(adminUrl, { source: 'seed' });
+const database = connect(appUrl, { source: 'seed' });
+try {
+  const signs = await productionSigns(admin, [], false);
+  if (signs.length > 0) throw new Refusal(`not provably made-up data: ${signs.join('; ')}.`);
+  if (!(await sameDatabase())) {
+    throw new Refusal('DATABASE_URL does not reach the database judged above.');
+  }
+  const role = await appRole();
+  if (role !== undefined) throw new Refusal(`DATABASE_URL's role ${role}.`);
+  // One run at a time, for the whole run: the lock is the admin session's.
+  const [held] = await admin.execute(`select pg_try_advisory_lock(hashtext($1)) as held`, [LOCK]);
+  if (held?.held !== true) throw new Refusal('another click-through seed is running.');
   const made = await seedClickThrough(database, await readCast());
   console.log(
     `click-through-seed: ${BUSINESS} ` +
@@ -99,6 +104,46 @@ try {
 } finally {
   await database.close();
   await admin.close();
+}
+
+/**
+ * Whether DATABASE_URL reaches the database just judged: a lock the admin
+ * connection holds, under a key no one else knows, is seen there (pg_locks
+ * names its database). local-seed's check, as is.
+ */
+async function sameDatabase() {
+  return await admin.transaction(async (execute) => {
+    const key = [randomInt(2 ** 31), randomInt(2 ** 31)];
+    await execute('select pg_advisory_xact_lock($1, $2)', key);
+    const [row] = await database.withBusiness(randomUUID(), (tx) =>
+      tx.query(
+        `select exists (select from pg_locks where locktype = 'advisory' and granted
+            and database = (select oid from pg_database where datname = current_database())
+            and classid = $1::int::oid and objid = $2::int::oid and objsubid = 2) as seen`,
+        key,
+      ),
+    );
+    return row?.seen === true;
+  });
+}
+
+/**
+ * What lets DATABASE_URL's role past row security, or nothing: the work must
+ * run as the application does, so the policies judge it and the guard does
+ * not take it for an owner's write (the rule `tenancy/privileges.ts` checks).
+ */
+async function appRole() {
+  const [row] = await database.withBusiness(randomUUID(), (tx) =>
+    tx.query(
+      `select r.rolsuper, r.rolbypassrls, pg_has_role(current_user, d.datdba, 'member') as owner
+         from pg_roles r, pg_database d
+        where r.rolname = current_user and d.datname = current_database()`,
+    ),
+  );
+  if (row === undefined) return 'cannot be read';
+  if (row.rolsuper) return 'is a superuser';
+  if (row.rolbypassrls) return 'bypasses row security';
+  if (row.owner) return 'is a member of the database owner';
 }
 
 /** The business, its two people and its agent, as local-seed left them. */
