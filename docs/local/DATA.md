@@ -377,7 +377,12 @@ triggers, WF-1) follow the same pattern (migration 20261006181500): they belong
 to `ops_astro_map_path` (no login, no bypass, not the owner), which reads what
 they count and writes `map_summaries` and `map_frontier` under row security, so
 the made-up guard judges a map edit on staging as the application's.
-`tests/db/click-through-seed-map.test.ts` proves it.
+`tests/db/click-through-seed-map.test.ts` proves it. A fifth,
+`map_frontier_raise_decision` (migration 20261006213000, #673), is a deferred
+constraint trigger on `map_frontier` inserts: at commit it raises the map
+owner's decision item for a grilling or prototype ticket still on the frontier,
+once per ticket and owner, so the role also reads `people` and reads and
+inserts `inbox_items`.
 
 `ops_astro_occurrence` (migration 0097, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's

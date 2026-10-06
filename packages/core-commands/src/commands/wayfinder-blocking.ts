@@ -14,7 +14,6 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
-import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
 import { invalid, notPermitted, type RequestOf } from './wayfinder.ts';
 import { applyRevision, type Revision } from './wayfinder-revision.ts';
 import { fileTicket, linkBlocks, TICKET_LIMIT, ticketList } from './wayfinder-chart.ts';
@@ -136,7 +135,6 @@ export async function setBlocking(
       where business_id = $1 and id = $2 returning revision::text as revision`,
     [tx.businessId, target.id, blockers],
   );
-  await raiseFrontierDecisions(tx, target.id);
   return applied(target.id, Number(rows[0]?.revision), { blockedBy: blockers });
 }
 
@@ -223,6 +221,5 @@ export async function graduateFog(
     patchId: patch[0].id,
     tickets: made,
   });
-  await raiseFrontierDecisions(tx, target.id);
   return applied(target.id, written.revision, { version: written.version, tickets: made });
 }

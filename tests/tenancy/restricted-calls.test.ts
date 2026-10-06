@@ -662,6 +662,7 @@ async function roleClasses(
 const DEFINERS: readonly string[] = [
   'factor_login_live_elsewhere(uuid)',
   'handback_reports_append_only()',
+  'map_frontier_raise_decision()',
   'map_summary_on_link()',
   'map_summary_on_map_part()',
   'map_summary_on_record()',
@@ -948,7 +949,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly twelve, each with its search path pinned', () => {
+    it('are exactly thirteen, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -1009,6 +1010,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       functions.find((fn) => fn.definer && fn.signature === signature);
 
     it.each([
+      ['map_frontier_raise_decision()', true],
       ['map_summary_on_link()', true],
       ['map_summary_on_map_part()', true],
       ['map_summary_on_record()', true],
