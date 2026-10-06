@@ -415,6 +415,23 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('connector.repair', 'connectionId', f.connectionId, (connectionId) => ({
       connectionId,
     }));
+    // MP-14-10a: bravo's mandate, class and client named in an alpha change.
+    const ceiling = { amountMinor: 100, currency: 'AUD' };
+    const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+    byAda('mandate.revoke', 'mandateId', f.mandateId, (mandateId) => ({ mandateId }));
+    byAda('graduation.promote', 'classId', f.classId, (classId) => ({
+      classId,
+      ceiling,
+      expiresAt,
+    }));
+    byAda('graduation.demote', 'classId', f.classId, (classId) => ({ classId }));
+    byAda('mandate.file', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      classes: ['social.post'],
+      ceiling,
+      expiresAt,
+      label: NOBODY,
+    }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
       holderId,
@@ -610,11 +627,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 106 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 110 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(106);
-    expect(names).toHaveLength(106);
+    expect(new Set(names).size, 'distinct operations').toBe(110);
+    expect(names).toHaveLength(110);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

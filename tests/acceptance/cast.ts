@@ -144,6 +144,8 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   ['chat', 'manage'],
   // C33: releasing a definition version, the owner's and administrators'.
   ['automation', 'manage'],
+  // MP-14-10a: standing mandates and graduation, as the seed's admin holds it.
+  ['mandate', 'manage'],
 ];
 
 export async function tokenFor(

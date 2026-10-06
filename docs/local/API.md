@@ -1689,6 +1689,10 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connection.graduation`                    | `readConnectionGraduation` (`reads/graduation.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `mandate.file`                             | `fileMandate` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `mandate.revoke`                           | `revokeStandingMandate` (`commands/mandates.ts`)                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `graduation.promote`                       | `promoteClass` (`commands/mandates.ts`)                                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `graduation.demote`                        | `demoteClass` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connection.signal`                        | `readConnectionSignal` (`reads/signal.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -3729,8 +3733,7 @@ a live mandate filed by promoting that class shows `promoted`, and a live
 refusal whose words cover the class holds a `ready` or `promoted` class as
 `held`, naming the refusal in `heldBy`. Live is not revoked and not past
 `expiresAt` on the database's clock. Graduation rows are written by the agent
-loops (AW-01) and mandates by the mandate commands (next piece); this build only
-reads them.
+loops (AW-01); mandates are filed and revoked by the four commands below.
 
 | Operation               | Route                    | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                       |
 | ----------------------- | ------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -3757,6 +3760,44 @@ time (`standing_mandates_written_once`). A graduation row's revision moves by on
 or not at all. A class whose record is `never` shows
 `never` in the region whatever is filed, as core treats it. No effect names an action class yet
 (AW-01/AW-02), so today no mandate pre-approves anything.
+
+Filing, revoking, promoting and demoting are `mandate:manage` business-wide, a
+person's act and never an agent's, and in C59's money set, so a sign-in without
+a second factor inside sixty minutes is refused `STEP_UP_REQUIRED`. Each command
+locks the client's row, then the class's graduation row, then the mandate
+(core's order), then asks `mandate:manage` again with the caller's grants held,
+so a grant revoked before it refuses it. Once its rows are written, each takes
+the business's audit chain lock, its last wait, and asks once more at that
+clock: a grant that ran out meanwhile refuses `SCOPE_NOT_GRANTED`, and a session
+signed out by then through any business its login reaches refuses
+`AUTH_SESSION_EXPIRED`, holding the session's ending keys to commit, so a later
+sign-out waits for it. Nothing is kept. A mandate is never edited: filed at
+revision 1, revoked once at revision 2. Promoting files a one-class mandate for
+a class that shows `ready`; demoting revokes the mandate that promoted it, also
+while a refusal holds the class or its record has since turned `never`, so the
+class does not run unattended again when the refusal ends or the record
+recovers; each steps the graduation row's revision by one, as does revoking a
+promoting mandate. A promote's or demote's audit event names the mandate it
+filed or revoked, and so does its replay. Another business's client, class or
+mandate answers exactly as a made-up or malformed identifier does. Classes are 1
+to 20 picked from the client's own scope list, the ceiling is whole minor units
+of a three-letter currency, `expiresAt` is `toISOString()`'s form for a year
+from 0001 to 9999 and must be at least a minute past the database's clock, and
+the label, trimmed, is 1 to 500 characters with no control character, line
+break, bidi control or character that draws as nothing or as a blank (no
+non-joiner, tag character, variation selector but U+FE0E-FE0F, space but U+0020,
+unassigned or private-use code point; U+FE0E-FE0F only on a pictograph or
+keycap, the joiner only inside an emoji sequence, at most four combining marks
+on one character, and at least one character that draws); each refusal names its
+field. A promote's label shows the class and client by name, or by identifier
+where a name would not pass that rule.
+
+| Operation            | Route                 | Body                                                                                                  | Answer or refusals                                                                                                                                                                                                                                                  |
+| -------------------- | --------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mandate.file`       | `/mandate/file`       | `operationId`, `clientId`, `classes`, `refuses?`, `ceiling` (none on a refusal), `expiresAt`, `label` | `detail: { mandateId, refuses }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `FIELD_VALUE_INVALID` 422                                                                                                                                       |
+| `mandate.revoke`     | `/mandate/revoke`     | `operationId`, `mandateId`, `expectedRevision?`                                                       | `detail: { mandateId, state: 'revoked' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                       |
+| `graduation.promote` | `/graduation/promote` | `operationId`, `classId`, `ceiling`, `expiresAt`, `expectedRevision?`                                 | `detail: { classId, mandateId, state: 'promoted' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not `ready`), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                 |
+| `graduation.demote`  | `/graduation/demote`  | `operationId`, `classId`, `expectedRevision?`                                                         | `detail: { classId, mandateId, state }`, `state` the class's derived state after the revoke; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (nothing promotes it), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 |
 
 ## Grants, tripwires and the night round (MP-14-8)
 

@@ -42,23 +42,16 @@ import type { CommandContext } from './context.ts';
 import { holdAutomationAuthority } from './automation-authority.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { readableText } from './values.ts';
 
 const MODES: readonly ActivationMode[] = ['manual', 'scheduled', 'event'];
 const KINDS: readonly DefinitionKind[] = ['skill', 'automation'];
 // Each guard below is a closed grammar over the whole value, never a scan for
-// bad characters. DOTTED is the shape `activations_event_shape` holds, and an
-// operation's name alike; DIGEST is 64 lower-case hex digits.
+// bad characters. A name or an input is `readableText` (values.ts); DOTTED is
+// the shape `activations_event_shape` holds, and an operation's name alike;
+// DIGEST is 64 lower-case hex digits.
 const DOTTED = /^[a-z][a-z0-9_]{0,31}(\.[a-z][a-z0-9_]{0,31}){1,3}$/u;
 const DIGEST = /^[0-9a-f]{64}$/u;
-// STORABLE: the code points a name or an input may hold, listed: printable
-// ASCII and every later code point but the C1 controls, the line and paragraph
-// separators (U+2028-2029), the bidi marks and overrides (U+061C, U+200E-200F,
-// U+202A-202E, U+2066-2069) and the surrogates.
-// So no control character, line break or escape, and no text that reorders
-// what an admin reads; the joiners emoji need stay. With the `u` flag a lone
-// surrogate is one code point outside every range, so it is refused too.
-const STORABLE =
-  /^[\u{20}-\u{7E}\u{A0}-\u{61B}\u{61D}-\u{200D}\u{2010}-\u{2027}\u{202F}-\u{2065}\u{206A}-\u{D7FF}\u{E000}-\u{10FFFF}]*$/u;
 const RELEASE_ATTEMPTS = 3;
 
 const FIXES: Readonly<Record<string, string>> = {
@@ -190,7 +183,7 @@ const appliedActivation = (row: {
   });
 
 const storable = (value: unknown): boolean =>
-  typeof value === 'string' && value.length <= 200 && STORABLE.test(value);
+  typeof value === 'string' && value.length <= 200 && readableText(value);
 
 function inputsOf(value: unknown): readonly unknown[] | null {
   if (!Array.isArray(value) || value.length > 50) return null;

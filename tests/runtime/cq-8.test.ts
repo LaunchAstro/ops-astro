@@ -116,6 +116,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // its row locks, as tasks-agent.ts does, so its authority re-read comes
   // after every wait.
   'packages/core-commands/src/commands/live-correction-standing.ts',
+  // MP-14-10a: a mandate command's last ask takes the audit chain key after
+  // its write, as C52-A's does, before `sessionEndedSince` (PRV-oa-1053-R1).
+  'packages/core-commands/src/commands/mandate-authority.ts',
   'packages/core-commands/src/commands/occurrence-run.ts',
   'packages/core-commands/src/commands/prepare.ts',
   // #413: an agent assignment takes the audit chain's key after its write,

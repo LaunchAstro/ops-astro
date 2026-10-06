@@ -166,7 +166,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The fifty-eight identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The sixty-two identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -176,6 +176,10 @@ export const IDENTIFIER_BEARING: Readonly<
   'grant.revoke': ['grantId', 'control'],
   'secret.clear': ['secretId', 'control'],
   'connector.repair': ['connectionId', 'control'],
+  'mandate.file': ['clientId', 'control'],
+  'mandate.revoke': ['mandateId', 'control'],
+  'graduation.promote': ['classId', 'control'],
+  'graduation.demote': ['classId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.accept_plan': ['gateId', 'gate'],
@@ -248,10 +252,7 @@ const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string,
     'chat.leave': ['conversationId', 'c71-g'],
   };
 
-/**
- * The named row for an operation the (c) and (d) cells do not reach, or
- * `undefined` for one this file does not know, which the matrix throws on.
- */
+/** The named row for one the (c) and (d) cells miss; `undefined` if unknown (the matrix throws). */
 export function alternativeFor(name: CommandName): string | undefined {
   const bearing = IDENTIFIER_BEARING[name];
   if (bearing !== undefined) {
@@ -269,8 +270,7 @@ export function alternativeFor(name: CommandName): string | undefined {
     );
   }
   if (name === 'run.child_handback') {
-    // AW-11: the body names nothing; the helper's own child credential is the
-    // target, so a foreign one and a made-up one are the operand compared.
+    // AW-11: the body names nothing; the target is the helper's own child credential.
     return (
       'executed alternative: aw-11-child-commands-isolation.test.ts "another business" ' +
       "compares another business's child credential and a fabricated one by status and bytes"
