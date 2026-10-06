@@ -99,6 +99,21 @@ it('LA-1 provider setting: a GPT route labelled local is refused, since GPT is a
   expect(problem).toContain('MODEL_BROKER_ROUTES');
 });
 
+it("LA-1 provider setting: the GPT runner's destination must be this machine's loopback address", () => {
+  const offMachine = {
+    ...broker([route('local_gpt')]),
+    MODEL_BROKER_DESTINATIONS: JSON.stringify([
+      { key: 'local_gpt', origin: 'https://runner.example' },
+    ]),
+  };
+  const problem = problemOf({
+    ...offMachine,
+    OPS_AGENT_PROVIDER: 'local-gpt',
+    OPS_ENVIRONMENT: 'local',
+  });
+  expect(problem).toContain('loopback');
+});
+
 it('LA-1 provider setting: local-gpt with no broker settings is refused, not ignored', () => {
   const problem = problemOf({ OPS_AGENT_PROVIDER: 'local-gpt', OPS_ENVIRONMENT: 'local' });
   expect(problem).toContain('OPS_AGENT_PROVIDER');

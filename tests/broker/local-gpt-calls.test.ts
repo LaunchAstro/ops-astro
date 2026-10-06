@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// LA-1 (#859) through the real broker, custody's real process and a stand-in
-// runner on loopback: a side-panel message answered by the local session; a
-// runner refusal (the cap) released with nothing held; an unattended task run
-// carried by the subscription only under the local carve-out, and refused by
-// name without it, on any other provider, or for another installation's
-// tenant. The runner's planted key never reaches an answer, a row or output.
+// LA-1 (#859) through the real broker, custody and a stand-in runner: the side
+// panel answered, a runner refusal released, unattended work carried only under
+// the carve-out, owner line 72's refusals, and the runner key kept in.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt, vi } from 'vitest';
@@ -17,6 +14,7 @@ import {
   localGptAdapter,
   localGptCostMinor,
   REPLAY_COMPOSE,
+  type ModelOperationDeclaration,
 } from '../../packages/core-connectors/src/index.ts';
 import {
   callModel,
@@ -50,8 +48,7 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('la1calls');
 
-// GPT is a cloud model: its route says so, and the conversation seam takes it only under
-// the laptop carve-out.
+// GPT is a cloud model: its route says so; the conversation seam takes it under the carve-out.
 const ROUTE: BrokerRoute = {
   key: 'local_gpt',
   reach: 'cloud',
@@ -62,10 +59,8 @@ const ROUTE: BrokerRoute = {
   ceiling: 4,
 };
 
-// Custody carries the runner's own loopback key, with the plan as its account;
-// the subscription itself stays in the runner's Codex login and is never stored. A settled
-// row records the route's kind, `subscription`, so the audit shows where LA-1's
-// carve-out was used (review 1, B7).
+// Custody carries the runner's own key, with the plan as its account; the login stays
+// in the runner's Codex home. A settled row records route kind `subscription`.
 let runner: StubRunner;
 const output: string[] = [];
 
@@ -85,11 +80,18 @@ afterAll(async () => {
   await runner?.close();
 });
 
+/** A step whose fields are all business-internal, the only kind GPT may carry: it reaches the carve-out. */
+const INTERNAL_STEP: ModelOperationDeclaration = {
+  ...LOCAL_GPT_COMPOSE,
+  key: 'model.local_gpt_internal_step',
+  fields: { instruction: 'business_internal', tone: 'business_internal' },
+};
+
 /** The broker as the composition root builds it under `local-gpt` on the laptop. */
 const local = (overrides: Partial<Broker> = {}): Broker => ({
   ...broker,
   custody: runner.custody,
-  operations: catalogue([LOCAL_GPT_COMPOSE, LOCAL_GPT_CONVERSATION]),
+  operations: catalogue([LOCAL_GPT_COMPOSE, INTERNAL_STEP, LOCAL_GPT_CONVERSATION]),
   providers: new Map([[LOCAL_GPT_PROVIDER, { build: localGptAdapter, price: localGptCostMinor }]]),
   routes: [ROUTE],
   localOwnerTesting: true,
@@ -112,7 +114,7 @@ const conversationRows = async (id: string): Promise<readonly Record<string, unk
   await s.db.admin.execute(`select * from public.model_calls where conversation_id = $1`, [id]);
 
 /** An unattended task run's model step, as a scheduled job or a task's agent run makes it. */
-async function runStep(work: Work, with_: Broker, operation = LOCAL_GPT_COMPOSE.key) {
+async function runStep(work: Work, with_: Broker, operation = INTERNAL_STEP.key) {
   await stepOf(work);
   return await callModel(
     s.db.app,
@@ -187,26 +189,27 @@ it('LA-1 task run: an unattended step is carried by the subscription under the l
   ]);
 }, 120_000);
 
-it('owner line 72: a task step on the GPT route with a field from outside the business waits on a local model, nothing sent', async () => {
-  const work = await liveWork(s, 'la1 outside field', 2_000);
-  const before = runner.seen.length;
-  await stepOf(work);
-  // A field not read from the task's own row (here, an enquiry's words) is outside the business.
-  const [, ...rest] = requestFor(work, { operation: LOCAL_GPT_COMPOSE.key }).fields;
-  const outside = [
-    { name: 'instruction', source: 'outside' as const, value: 'An enquiry.' },
-    ...rest,
-  ];
-  const result = await callModel(
-    s.db.app,
-    s.business,
-    caller(work),
-    requestFor(work, { operation: LOCAL_GPT_COMPOSE.key, fields: outside }),
-    local(),
-  );
-  expect(result).toMatchObject({ ok: false, code: 'LOCAL_MODEL_REQUIRED' });
-  expect(runner.seen.length).toBe(before);
-}, 120_000);
+it.each([
+  ['a field from outside the business', INTERNAL_STEP.key, true],
+  ["the product's task step, which carries task text", LOCAL_GPT_COMPOSE.key, false],
+])(
+  'owner line 72: a task step on the GPT route with %s waits on a local model, nothing sent',
+  async (_label, operation, outside) => {
+    const work = await liveWork(s, 'la1 waits local', 2_000);
+    const before = runner.seen.length;
+    await stepOf(work);
+    // An enquiry's words are outside the business; the task's own text is task text either way.
+    const instruction = outside
+      ? { name: 'instruction', source: 'outside' as const, value: 'An enquiry.' }
+      : { name: 'instruction', from: { recordId: work.taskId, key: 'title' } };
+    const fields = [instruction, ...requestFor(work, { operation }).fields];
+    const request = requestFor(work, { operation, fields });
+    const result = await callModel(s.db.app, s.business, caller(work), request, local());
+    expect(result).toMatchObject({ ok: false, code: 'LOCAL_MODEL_REQUIRED' });
+    expect(runner.seen.length).toBe(before);
+  },
+  120_000,
+);
 
 it('LA-1 conversation: without the carve-out the GPT route is a cloud route, refused before anything is sent', async () => {
   const before = runner.seen.length;
@@ -224,14 +227,14 @@ it('LA-1 conversation: without the carve-out the GPT route is a cloud route, ref
 }, 60_000);
 
 it.each([
-  ['without the carve-out', () => local({ localOwnerTesting: false }), LOCAL_GPT_COMPOSE.key],
+  ['without the carve-out', () => local({ localOwnerTesting: false }), INTERNAL_STEP.key],
   [
     'with the carve-out flag unset',
     (): Broker => {
       const { localOwnerTesting: _unset, ...rest } = local();
       return rest;
     },
-    LOCAL_GPT_COMPOSE.key,
+    INTERNAL_STEP.key,
   ],
   [
     'on another provider',

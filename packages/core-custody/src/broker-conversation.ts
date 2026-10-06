@@ -4,7 +4,8 @@
 // their own conversation, which has no task lease, run, step or approved
 // version. Local routes only and unpriced: no money moves, so nothing is
 // reserved, and a cloud route is refused before anything is written (AW-03
-// egress off). A priced planning reply takes the same checks and holds
+// egress off), save LA-1's laptop carve-out: the owner's own GPT session
+// (`carriesLocally`), for the owner's own typed message. A priced planning reply takes the same checks and holds
 // against the planning budget (`broker-planning.ts`, AW-04's U10).
 
 import { randomUUID } from 'node:crypto';

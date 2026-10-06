@@ -81,15 +81,16 @@ export function localGptCostMinor(_answer: ModelAnswer): number {
 
 /**
  * A task run's step on the local session (a scheduled job, a task's agent
- * run). GPT is a cloud model, so its route is declared `cloud` and this step
- * takes business-internal fields only: anything else waits on a local model
- * (`LOCAL_MODEL_REQUIRED`), as owner line 72 asks.
+ * run). GPT is a cloud model, so its route is declared `cloud`, and the
+ * step's task text is free text, which goes to no cloud route: on the GPT
+ * route this step waits on a local model (`LOCAL_MODEL_REQUIRED`), as owner
+ * line 72 asks. Only the conversation below reaches GPT.
  */
 export const LOCAL_GPT_COMPOSE: ModelOperationDeclaration = {
   key: 'model.local_gpt_compose',
   provider: LOCAL_GPT_PROVIDER,
   destination: 'local_gpt',
-  fields: { instruction: 'business_internal', tone: 'business_internal' },
+  fields: { instruction: 'free_text', tone: 'business_internal' },
   answer: readLocalGptAnswer,
   // A `codex exec` call takes seconds, sometimes a minute or two.
   timeoutMs: 120_000,
