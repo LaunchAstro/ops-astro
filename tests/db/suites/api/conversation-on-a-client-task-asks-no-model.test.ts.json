@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a conversation on a client's task, or one whose task read was revoked, asks no model"
+}
