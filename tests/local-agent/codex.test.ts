@@ -188,7 +188,7 @@ describe('the login check', () => {
     const pending = new Promise((resolve) => {
       timer = setTimeout(() => {
         resolve('still pending');
-      }, 5_000);
+      }, 4_000);
     });
     try {
       expect(await Promise.race([codexLogin(settings, 2_000), pending])).toBe(false);
@@ -209,7 +209,7 @@ describe('the login check', () => {
     const pending = new Promise((resolve) => {
       timer = setTimeout(() => {
         resolve('still pending');
-      }, 5_000);
+      }, 4_000);
     });
     try {
       expect(await Promise.race([codexLogin(settings, 2_000), pending])).toBe(false);

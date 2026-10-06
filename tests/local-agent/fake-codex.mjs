@@ -8,10 +8,11 @@
 // plan's usage limit, raw output, the tokens used, an exit code or a wait.
 // The login answers as its `login` knob says; `wrapper` is a wrapper whose
 // descendant holds its output open and never answers (`escaped`: from a
-// process group of its own); `loosen` opens the home while it answers. It never reaches a model.
+// process group of its own); `loosen` opens the home while it answers;
+// `vanish` removes it. It never reaches a model.
 
 import { spawn } from 'node:child_process';
-import { appendFileSync, chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const home = process.env.CODEX_HOME ?? '';
@@ -39,7 +40,9 @@ if (process.argv[2] === 'login') {
   }
   // `loosen`: signed in, but the runner's home is opened to others while the check runs.
   if (login === 'loosen') chmodSync(dirname(home), 0o777);
-  if (login === 'chatgpt' || login === 'loosen') process.stdout.write('Logged in using ChatGPT\n');
+  // `vanish`: signed in, but the runner's home is gone by the time it answers.
+  if (login === 'vanish') rmSync(dirname(home), { recursive: true, force: true });
+  if (login === 'chatgpt' || login === 'loosen' || login === 'vanish') process.stdout.write('Logged in using ChatGPT\n');
   else if (login === 'apikey') process.stdout.write('Logged in using an API key - sk-proj-***\n');
   else process.stdout.write('Not logged in\n');
   process.exit(login === 'none' ? 1 : 0);

@@ -97,6 +97,13 @@ describe('what the stack refuses before writing anything', () => {
     expect(tree(w.agentHome)).toEqual(before);
   });
 
+  it('refuses a home gone by the time the login answers, and makes none to file the key in', async () => {
+    const w = fresh();
+    w.knobs({ login: 'vanish' });
+    expect(await start(w)).toMatchObject({ ok: false, code: 'HOME_NOT_OWNED' });
+    expect(tree(w.agentHome)).toBeNull();
+  });
+
   it('refuses a home opened to others while the login was checked, and files no key there', async () => {
     const w = fresh();
     w.knobs({ login: 'loosen' });
