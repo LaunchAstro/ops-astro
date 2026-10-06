@@ -14,7 +14,8 @@
 //   asked at the instant after it, so a grant that runs out while the keep
 //   waits on the task no longer counts: the keep is refused and keeps nothing.
 // - SEC1-1: so is the audit chain's lock, the last wait: a grant ended by a
-//   writer that holds the chain when the keep reaches it no longer counts.
+//   writer that holds the chain when the keep reaches it no longer counts,
+//   a start citing no task included (SEC2-1).
 //
 // The task row is held on another connection (`for update`, or `for no key
 // update` as an ordinary task write takes it, which the citing start's
@@ -46,7 +47,7 @@ const CITING = 'select count(*) as n from public.conversations where scope_recor
 const MARKED = `select count(*) as n from public.audit_events
   where command = 'model.call_refused' and refusal_code = $2 and attempted ->> 'messageId' = $1`;
 
-// eslint-disable-next-line max-lines-per-function -- one world and its five cases
+// eslint-disable-next-line max-lines-per-function -- one world and its six cases
 describe.skipIf(serverUrl === undefined)('a question kept on a held page task', () => {
   let w: ConversationWorld;
 
@@ -217,6 +218,19 @@ describe.skipIf(serverUrl === undefined)('a question kept on a held page task', 
         }),
     );
     expect({ ...seen, kept: await w.count(CITING, [taskId]) }).toEqual({
+      waited: true,
+      status: 403,
+      code: 'SCOPE_NOT_GRANTED',
+      kept: 0,
+    });
+  }, 30_000);
+  it('SEC2-1: a start on no task whose conversation:write grant ends behind the audit chain it waits on is refused and keeps nothing', async () => {
+    const subject = `Unscoped behind the chain ${randomUUID()}`;
+    const seen = await behindAnEndingWriter(
+      async () => await w.as(w.colleague, 'conversation.start', { body: 'Sent', subject }),
+    );
+    const kept = 'select count(*) as n from public.conversations where subject = $1';
+    expect({ ...seen, kept: await w.count(kept, [subject]) }).toEqual({
       waited: true,
       status: 403,
       code: 'SCOPE_NOT_GRANTED',

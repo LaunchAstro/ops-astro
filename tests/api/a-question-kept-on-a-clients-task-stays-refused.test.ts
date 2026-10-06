@@ -4,6 +4,9 @@
 // in the transaction that keeps it, so it asks no model though no exchange
 // ran then, a client link committed while it was kept included; and a repeat
 // that waited on the page while its twin refused still sees that refusal.
+// A question kept by a sender who could not read the page, marked for that
+// and not for the client the page had then, stays refused once the read is
+// granted again and the client cleared (SEC2-3).
 // Through a fresh Postgres and the replay stand-in on loopback, the exchange
 // called directly so the test decides when it reads the page.
 
@@ -14,15 +17,21 @@ import { markRefusedForPage } from '../../packages/core-commands/src/commands/co
 import { executeCommand } from '../../packages/core-commands/src/index.ts';
 import { withSession } from '../../packages/core-records/src/index.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { addClient, grantTo } from '../commands/fixture.ts';
+import { revokeGrant } from '../../packages/core-records/src/index.ts';
+import { addClient, enrol, grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { conversationWorld, detail, type ConversationWorld } from './aw-03-fixture.ts';
+import {
+  CONVERSATION,
+  conversationWorld,
+  detail,
+  type ConversationWorld,
+} from './aw-03-fixture.ts';
 import { composedWith, localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
 import { createApiFixture, type Answer } from './fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
-// eslint-disable-next-line max-lines-per-function -- one world, its polling and the three cases
+// eslint-disable-next-line max-lines-per-function -- one world, its polling and the four cases
 describe.skipIf(serverUrl === undefined)('a question kept on a client’s task', () => {
   let w: ConversationWorld;
   let model: LocalModel;
@@ -103,6 +112,35 @@ describe.skipIf(serverUrl === undefined)('a question kept on a client’s task',
     await unlink(taskId, linked);
     const before = model.provider.seen.length;
     const answer = await model.exchange(db.app, business, w.owner.presented, asked);
+    expect(answer).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+    expect(model.provider.seen.length).toBe(before);
+  });
+
+  it('SEC2-3: a question kept on a client’s task its sender could not read stays refused once the read is back and the client cleared', async () => {
+    const { db, business } = w.fixture;
+    const { taskId, linked } = await clientTask();
+    const person = await enrol(db.app, business, `unseen-${randomUUID().slice(0, 8)}`);
+    const read = await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, person, 'write', undefined, false, CONVERSATION);
+      return await grantTo(tx, person, 'read', { kind: 'record', id: taskId });
+    });
+    const opened = await w.as(person, 'conversation.start', {
+      body: 'What is this?',
+      scope: { kind: 'task', id: taskId },
+    });
+    const conversationId = String(detail(opened)['conversationId']);
+    await db.app.withBusiness(business, async (tx) => await revokeGrant(tx, read));
+    const sent = await w.as(person, 'conversation.message', {
+      conversationId,
+      body: `CANARY-${randomUUID()} asked unseen`,
+    });
+    const asked = { conversationId, messageId: String(detail(sent)['messageId']) };
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, person, 'read', { kind: 'record', id: taskId });
+    });
+    await unlink(taskId, linked);
+    const before = model.provider.seen.length;
+    const answer = await model.exchange(db.app, business, person.presented, asked);
     expect(answer).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
     expect(model.provider.seen.length).toBe(before);
   });
