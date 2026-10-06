@@ -62,7 +62,8 @@ async function insertCall(db: FreshDatabase, call: Call, at: CallPlace): Promise
       at.reservationId,
       at.delegationId,
       call.state,
-      settled ? Math.max(call.minor, 1) : 500,
+      // Reserved above what it settled at, so only the settled amount is spend.
+      settled ? call.minor + 1_000 : 500,
       settled ? call.minor : null,
       at.hoursAgo,
       at.minute,
