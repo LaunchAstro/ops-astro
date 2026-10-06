@@ -106,15 +106,24 @@ function WaitingCount(props: { readonly scope: TodoScope; readonly waiting: numb
 
 const realTime = (): Date => new Date();
 
-/** The tick: `task.complete` at the row's revision; a landed one reads the list again. */
+/**
+ * The tick: `task.complete` at the row's revision; a landed one reads the list
+ * again. The completed row stays drawn while that reread is in flight, so its
+ * revision is spent: a second tick on it sends nothing.
+ */
 function useTick(client: OperationsClient, reload: () => void) {
   const { because, run } = useCommand();
+  const [spent, setSpent] = useState<ReadonlySet<string>>(() => new Set());
   const tick = (todo: TodoView): void => {
+    const at = `${todo.id}@${String(todo.revision)}`;
+    if (spent.has(at)) return;
     run(
       () =>
         client.mutate('task.complete', { recordId: todo.id }, { expectedRevision: todo.revision }),
       (settlement) => {
-        if (settlement.kind === 'ok') reload();
+        if (settlement.kind !== 'ok') return;
+        setSpent((was) => new Set(was).add(at));
+        reload();
       },
     );
   };
