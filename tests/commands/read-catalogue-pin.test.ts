@@ -28,6 +28,7 @@ const PINNED_IDENTIFIERS = {
   'chat.messages': ['conversationId'],
   'client.list': [],
   'connection.fleet': [],
+  'connection.graduation': [],
   'connection.signal': [],
   'conversation.allowance': ['conversationId'],
   'conversation.list': [],
@@ -195,6 +196,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'secret.list': BODIES.map(() => null),
   'connection.fleet': BODIES.map(() => null),
   'connection.signal': BODIES.map(() => null),
+  'connection.graduation': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
@@ -233,7 +235,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same thirty-nine reads', () => {
+  it('names the same forty reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

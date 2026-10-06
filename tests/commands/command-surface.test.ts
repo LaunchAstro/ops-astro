@@ -84,9 +84,8 @@ describe('the surface as a table', () => {
     // with the agent (AW-03), its writes and its read at its address. `model`
     // is AW-01's call through the broker, asked of the lease's task. `run` is
     // AW-05's budget stop answers; `definition`, AW-04's attribution; `trace`, AW-13's readers;
-    // `harness`, AW-12's result. `operations`
-    // and `privacy` are C55's view and its incident record, and `legal` is C81's
-    // documents, asked of `privacy`. `credential` is API-2's agent credential.
+    // `harness`, AW-12's result. `operations` and `privacy` are C55's view and its incident record,
+    // and `legal` is C81's documents, asked of `privacy`. `credential` is API-2's agent credential.
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
     // By piece: `tag` MP-4-11; `chat` C71-D; `invitation` C39-T; `map` WF-1; `automation`,
     // `activation` C33; `approval` C52-A; `record`, `onboarding` C41-A; `live_correction` C80.
@@ -102,6 +101,7 @@ const DECLARED_READS = [
   'chat.messages',
   'client.list',
   'connection.fleet',
+  'connection.graduation',
   'connection.signal',
   'conversation.allowance',
   'conversation.list',
@@ -138,7 +138,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the thirty-nine reads as reads, and everything else as a write', () => {
+  it('declares the forty reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

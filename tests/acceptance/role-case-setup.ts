@@ -54,6 +54,8 @@ export async function tableBody(name: CommandName, context: BodyContext): Promis
   if (C80_NAMES.has(name)) return await c80PositiveBody(name, context);
   // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
   if (name === 'connection.fleet' || name === 'connection.signal') return { body: {} };
+  // The graduation region (MP-14-10a): the admin reads it.
+  if (name === 'connection.graduation') return { body: {} };
   if (name === 'connector.repair') {
     return { body: { connectionId: (await context.brokenConnection?.()) ?? randomUUID() } };
   }

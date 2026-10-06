@@ -6,7 +6,7 @@
 // the line limit; the contract and the catalogue reads are unchanged.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
-import { OCCURRENCE_ROLE } from './restricted-calls-cases.ts';
+import { MANDATE_GRANTS, MANDATE_UPDATES, OCCURRENCE_ROLE } from './restricted-calls-cases.ts';
 
 /**
  * Update granted column by column: the table, the columns, and the first migration that
@@ -54,6 +54,7 @@ const COLUMN_UPDATES: readonly {
     from: '20261005200007',
     columns: ['closed_at', 'failures', 'state'],
   },
+  ...MANDATE_UPDATES,
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
   {
     table: 'public.clients',
@@ -186,6 +187,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '20261005023013',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
   })),
+  ...MANDATE_GRANTS,
 ];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {

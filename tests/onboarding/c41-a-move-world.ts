@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The world C41-A's step cases share (c41-a-step-client-lock and the authority
-// races): one business on the controls fixture, an admin who starts onboardings, an assignee and a self-assigner, the calls they make and
+// The world C41-A's move cases share (c41-a-move-follows-owner and
+// c41-a-step-client-lock): one business on the controls fixture, an admin who
+// starts onboardings, an assignee and a self-assigner, the calls they make and
 // a race of two commands held at the business's audit-chain lock.
 
 import { randomUUID } from 'node:crypto';
