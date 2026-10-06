@@ -2,9 +2,8 @@
 //
 // What every broker email send shares (the inbox item's in `broker-email.ts`,
 // C39-T's invitation in `broker-invitation.ts`): the sender check, the
-// catalogued `email.send` and its route, which the login provider's
-// `auth.create_user` shares (`broker-auth-user.ts`), and the one reading of
-// what the provider answered. Nothing here sends or writes.
+// catalogued `email.send` and its route, and the one reading of what the
+// provider answered. Nothing here sends or writes.
 
 import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { BrokerRoute, Broker, ProviderAdapter } from './broker-types.ts';

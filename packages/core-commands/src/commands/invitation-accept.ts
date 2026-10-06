@@ -6,23 +6,21 @@
 // 1. Find the token (`enrolment_token_find`, SEC27 F6), live (unspent, in its
 //    lifetime, its pending invitation's newest), else `ENROLMENT_LINK_INVALID`.
 // 2. Claim the invitation under its lock, every check again. A login bound
-//    here under our id already: `sign_in`. A live claim, or no room under the
-//    provider calls' limits: `ENROLMENT_UNAVAILABLE`, nothing asked.
-// 3. Through custody, make the login under our id (`loginSubject`), or set
-//    the address's login again under it, adopting one an earlier accept
+//    here under our id already: `sign_in`. A live claim on the address (by any
+//    invitation), or no room under the calls' limits: `ENROLMENT_UNAVAILABLE`, nothing asked.
+// 3. Through custody, make the login under our id (`loginSubject`), or, the claim renewed,
+//    set the address's login again under it, adopting one an earlier accept
 //    stranded. No user under our id: someone else's login, untouched,
 //    `sign_in`. A refused password is `PASSWORD_INVALID`; a fault binds
 //    nothing. A call never answered may still apply: its claim stays to lapse.
 // 4. Under the lock and the claim, every check again: spend the tokens, accept, seat the
-//    person, map the login, audit both; an adopted login's sessions end (C40's reset window).
+//    person, map the login, audit both; an adopted login's sessions end, plus the clock skew.
 
 import { createHash } from 'node:crypto';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import {
   advisoryLock,
-  openResetWindow,
-  settleResetWindow,
-  waitForNextSecond,
+  endOtherSeenSessions,
   type Database,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
@@ -131,9 +129,7 @@ async function find(
         [hash],
       ),
   );
-  if (at?.business === null || at === undefined || !businesses.includes(at.business)) {
-    return undefined;
-  }
+  if (typeof at?.business !== 'string' || !businesses.includes(at.business)) return undefined;
   const { business, token } = at;
   const row = await database.withBusiness(business, async (tx) => await liveToken(tx, token));
   return row === undefined ? undefined : { business, ...row };
@@ -163,7 +159,8 @@ async function claim(tx: TenantQuery, asked: Found, subject: string, limits: Log
     `update invitations i set accept_claim = gen_random_uuid(),
             accept_claimed_until = clock_timestamp() + make_interval(secs => $5::float8 / 1000)
       where i.business_id = $1 and i.id = $2
-        and coalesce(i.accept_claimed_until <= clock_timestamp(), true)
+        and not exists (select 1 from invitations o where o.business_id = $1
+                          and o.address = i.address and o.accept_claimed_until > clock_timestamp())
         and (select count(*) from invitations n where n.business_id = $1
                and n.accept_claimed_until > clock_timestamp()) < $3
         and public.enrolment_route_room($4) = 1
@@ -171,6 +168,17 @@ async function claim(tx: TenantQuery, asked: Found, subject: string, limits: Log
     [tx.businessId, asked.invitationId, limits.concurrency, limits.ceiling, limits.boundMs],
   );
   return taken?.id ?? 'busy';
+}
+
+/** Our claim, never taken over, and its link both live: held one more bound; false when not. */
+async function renew(tx: TenantQuery, asked: Found, claimId: string, boundMs: number) {
+  if ((await heldLive(tx, asked, claimId)) === undefined) return false;
+  await tx.query(
+    `update invitations set accept_claimed_until = clock_timestamp() + $3::float8 * interval '1ms'
+      where business_id = $1 and id = $2`,
+    [tx.businessId, asked.invitationId, boundMs],
+  );
+  return true;
 }
 
 const RELEASE = `update invitations set accept_claim = null, accept_claimed_until = null
@@ -231,11 +239,7 @@ async function bind(
   );
   const worker = await workerActor(tx);
   const loginId = await seat(tx, found, subject, worker);
-  if (adopted) {
-    const window = await openResetWindow(tx, subject);
-    await waitForNextSecond(tx);
-    await settleResetWindow(tx, window);
-  }
+  if (adopted) await endOtherSeenSessions(tx, personId, undefined, 'factor_change', subject);
   const event = { actorId: worker, outcome: 'applied' } as const;
   await writeAuditEvent(tx, {
     ...event,
@@ -271,22 +275,23 @@ export async function acceptInvitation(
   const id = loginSubject(found.business, found.address);
   const limits = loginLimits(broker);
   if (limits === undefined) return UNAVAILABLE;
-  const claimId = await database.withBusiness(found.business, (tx) => claim(tx, found, id, limits));
+  const inBusiness = async <T>(work: (tx: TenantQuery) => Promise<T>): Promise<T> =>
+    await database.withBusiness(found.business, work);
+  const claimId = await inBusiness((tx) => claim(tx, found, id, limits));
   if (claimId === 'invalid' || claimId === 'bound' || claimId === 'busy') {
     return { invalid: LINK_INVALID, bound: SIGN_IN, busy: UNAVAILABLE }[claimId];
   }
   const asked: LoginAsked = { id, email: found.address, password: request.password };
   let login = await createLogin(broker, asked);
   const adopted = !login.ok && login.kind === 'refused';
-  if (adopted) login = await updateLogin(broker, asked);
+  if (adopted) {
+    const held = await inBusiness((tx) => renew(tx, found, claimId, limits.boundMs));
+    login = held ? await updateLogin(broker, asked) : { ok: false, kind: 'fault' };
+  }
   const made = login.ok ? { subject: login.subject, claimId, adopted } : undefined;
-  const bound =
-    made !== undefined &&
-    (await database.withBusiness(found.business, (tx) => bind(tx, found, made)));
+  const bound = made !== undefined && (await inBusiness((tx) => bind(tx, found, made)));
   if (!bound && (login.ok || login.kind !== 'lost')) {
-    await database.withBusiness(found.business, (tx) =>
-      tx.query(RELEASE, [tx.businessId, found.invitationId, claimId]),
-    );
+    await inBusiness((tx) => tx.query(RELEASE, [tx.businessId, found.invitationId, claimId]));
   }
   if (login.ok) return bound ? { ok: true, state: 'enrolled' } : LINK_INVALID;
   if (login.kind === 'password') return { ok: false, code: 'PASSWORD_INVALID' };

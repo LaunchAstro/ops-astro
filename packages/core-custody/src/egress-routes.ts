@@ -51,7 +51,7 @@ const SEGMENT = /^[A-Za-z0-9_-]{1,128}$/u;
 export interface Extras {
   readonly headers?: Readonly<Record<string, string>>;
   readonly routes?: readonly Route[];
-  /** `false`: a POST only to a listed POST route. */
+  /** `false`: no POST to any path, only the listed routes. */
   readonly post?: false;
 }
 

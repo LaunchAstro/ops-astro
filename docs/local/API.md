@@ -2436,15 +2436,14 @@ custody's `auth` destination takes no POST but its listed
 sign-in and no grant: the token is the authority, found by its SHA-256 through
 `enrolment_token_find`, live while unspent, in its lifetime, its invitation's
 newest and pending. The accept claims the invitation under its lock before
-the provider is asked; a live claim, or no room under the calls' limits
-(concurrency per business, the route's ceiling shared by
-`enrolment_route_room`), is 503 `ENROLMENT_UNAVAILABLE`. The provider makes a
-confirmed login under our user id for the address in this business, or sets
-the address's login again under it, adopting one an earlier accept stranded,
-whose sessions all end (C40's reset window). Then, under the lock and the
-claim, the tokens are spent, the invitation accepted, its person seated, the
-login mapped, and both events audited: 200 `{ state: 'enrolled' }`, no
-session. Someone else's login, or one bound here already: 200
+the provider is asked; a live claim on the address (by any invitation), or no
+room under the calls' limits (`enrolment_route_room` shares the route's
+ceiling), is 503 `ENROLMENT_UNAVAILABLE`. The provider makes a confirmed login
+under our user id for the address in this business, or, the claim still live
+and renewed, sets the login an earlier accept stranded again, whose sessions
+all end to the commit plus the clock skew. Then, under the lock and the claim,
+the tokens are spent, the invitation accepted, its person seated, the login
+mapped, and both events audited: 200 `{ state: 'enrolled' }`, no session. Someone else's login, or one bound here already: 200
 `{ state: 'sign_in' }`, nothing spent. Any other token is 404
 `ENROLMENT_LINK_INVALID`; a password outside 12 to 72 bytes or refused by the
 provider 400 `PASSWORD_INVALID`; a provider fault or hostile answer 503
