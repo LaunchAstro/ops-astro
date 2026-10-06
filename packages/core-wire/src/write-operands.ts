@@ -284,5 +284,10 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     operations: 'any',
     modes: 'any',
   },
+  // C52-A: the revision is checked in the command, which names it when refused.
+  'activation.adopt': { activationId: 'id', versionId: 'id', expectedRevision: 'any' },
+  'activation.roll_back': { activationId: 'id', expectedRevision: 'any' },
+  'activation.turn_off': { activationId: 'id', expectedRevision: 'any' },
+  'approval.revoke': { approvalId: 'id' },
   ...SETUP_OPERANDS,
 };

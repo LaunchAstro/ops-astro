@@ -173,6 +173,7 @@ export type {
   AutomationDefinitionView,
   AutomationRegistryResult,
   DefinitionVersionView,
+  StandingApprovalView,
 } from './views-automations.ts';
 // Custody's secrets as Settings ▸ Keys reads them (C31), and the connector
 // fleet as Connections & signal reads it (MP-14-7a).

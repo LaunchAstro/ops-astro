@@ -162,6 +162,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // are written once and never changed; an activation's setting moves by the
   // column grant in COLUMN_UPDATES.
   ['si', 'activation_occurrences activations automation_definitions definition_versions'],
+  // 20261005193201 (C52-A): an adoption, a revocation and a dispatch are
+  // written once and never changed; an activation names its standing adoption
+  // by the column grant in COLUMN_UPDATES.
+  ['si', 'occurrence_dispatches standing_approval_revocations standing_approvals'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
