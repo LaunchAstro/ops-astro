@@ -9,9 +9,12 @@
 // - SC1.1: a person whose read of the task was revoked is not let read or
 //   lock it. Their message is kept and marked refused at once, without
 //   waiting behind the task's writer.
+//   The mark names why: SCOPE_NOT_GRANTED, not a client's refusal.
 // - SC1.2: the share lock is taken before the `conversation:write` grant is
 //   asked at the instant after it, so a grant that runs out while the keep
 //   waits on the task no longer counts: the keep is refused and keeps nothing.
+// - SEC1-1: so is the audit chain's lock, the last wait: a grant ended by a
+//   writer that holds the chain when the keep reaches it no longer counts.
 //
 // The task row is held on another connection (`for update`, or `for no key
 // update` as an ordinary task write takes it, which the citing start's
@@ -25,7 +28,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { revokeGrant } from '../../packages/core-records/src/index.ts';
 import { enrol, grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { blockedBefore, holdRow, waitPast } from '../support/lock-wait-race.ts';
+import { blockedBefore, hold, holdRow, waiterOf, waitPast } from '../support/lock-wait-race.ts';
 import {
   CONVERSATION,
   conversationWorld,
@@ -33,6 +36,7 @@ import {
   expiringSoon,
   type ConversationWorld,
 } from './aw-03-fixture.ts';
+import type { Answer } from './fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -40,10 +44,9 @@ const PERSON_MESSAGES = `select count(*) as n from public.conversation_messages
   where conversation_id = $1 and role = 'person'`;
 const CITING = 'select count(*) as n from public.conversations where scope_record_id = $1';
 const MARKED = `select count(*) as n from public.audit_events
-  where command = 'model.call_refused' and refusal_code = 'CLIENT_MODEL_USE_OFF'
-    and attempted ->> 'messageId' = $1`;
+  where command = 'model.call_refused' and refusal_code = $2 and attempted ->> 'messageId' = $1`;
 
-// eslint-disable-next-line max-lines-per-function -- one world and its three cases
+// eslint-disable-next-line max-lines-per-function -- one world and its five cases
 describe.skipIf(serverUrl === undefined)('a question kept on a held page task', () => {
   let w: ConversationWorld;
 
@@ -87,7 +90,7 @@ describe.skipIf(serverUrl === undefined)('a question kept on a held page task', 
     }
     const messageId = String(detail(await sending)['messageId']);
     expect(await w.count(PERSON_MESSAGES, [conversationId])).toBe(2);
-    expect(await w.count(MARKED, [messageId])).toBe(1);
+    expect(await w.count(MARKED, [messageId, 'SCOPE_NOT_GRANTED'])).toBe(1);
   }, 30_000);
 
   it('SC1.2: a message whose conversation:write grant expires while it waits on its page task is refused and keeps nothing', async () => {
@@ -152,5 +155,72 @@ describe.skipIf(serverUrl === undefined)('a question kept on a held page task', 
       code: answer.body['code'],
       kept: await w.count(CITING, [taskId]),
     }).toEqual({ startedLive: true, status: 403, code: 'SCOPE_NOT_GRANTED', kept: 0 });
+  }, 30_000);
+
+  /**
+   * The colleague's keep `send`, sent while another writer ends their one
+   * `conversation:write` grant and holds the audit chain: whether the keep
+   * waited on that writer, what it answered once the writer committed.
+   */
+  async function behindAnEndingWriter(send: () => Promise<Answer>) {
+    const { db, business } = w.fixture;
+    const [grant] = await db.admin.execute<{ readonly id: string }>(
+      `select id from public.grants where subject_id = $1 and collection = $2 and action = 'write'
+          and revoked_at is null`,
+      [w.colleague.personId, CONVERSATION],
+    );
+    const id = String(grant?.id);
+    const held = await hold(db, async (execute) => {
+      await execute('update public.grants set expires_at = clock_timestamp() where id = $1', [id]);
+      // The chain trigger's own key: an audit event this writer wrote would hold it so.
+      await execute('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        business.toLowerCase(),
+      ]);
+    });
+    const sending = send();
+    let waited = false;
+    try {
+      waited = (await waiterOf(db, held)) !== '';
+    } finally {
+      await held.letGo();
+    }
+    const answer = await sending;
+    await db.admin.execute('update public.grants set expires_at = null where id = $1', [id]);
+    return { waited, status: answer.status, code: answer.body['code'] };
+  }
+
+  it('SEC1-1: a message whose conversation:write grant ends behind the audit chain it waits on is refused and keeps nothing', async () => {
+    const taskId = await task(`Messaged behind the chain ${randomUUID()}`);
+    const opened = await w.as(w.colleague, 'conversation.start', {
+      body: 'What is this?',
+      scope: { kind: 'task', id: taskId },
+    });
+    const conversationId = String(detail(opened)['conversationId']);
+    const seen = await behindAnEndingWriter(
+      async () => await w.as(w.colleague, 'conversation.message', { conversationId, body: 'now?' }),
+    );
+    expect({ ...seen, kept: await w.count(PERSON_MESSAGES, [conversationId]) }).toEqual({
+      waited: true,
+      status: 403,
+      code: 'SCOPE_NOT_GRANTED',
+      kept: 1,
+    });
+  }, 30_000);
+
+  it('SEC1-1: a start whose conversation:write grant ends behind the audit chain it waits on is refused and keeps nothing', async () => {
+    const taskId = await task(`Started behind the chain ${randomUUID()}`);
+    const seen = await behindAnEndingWriter(
+      async () =>
+        await w.as(w.colleague, 'conversation.start', {
+          body: 'Sent behind the chain',
+          scope: { kind: 'task', id: taskId },
+        }),
+    );
+    expect({ ...seen, kept: await w.count(CITING, [taskId]) }).toEqual({
+      waited: true,
+      status: 403,
+      code: 'SCOPE_NOT_GRANTED',
+      kept: 0,
+    });
   }, 30_000);
 });
