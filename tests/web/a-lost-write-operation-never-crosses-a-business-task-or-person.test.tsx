@@ -65,7 +65,7 @@ const CROSSINGS = [
   { crossing: 'person to person', to: { business: 'alpha', grant: 'alpha:noah', key: KEY } },
 ] as const;
 
-describe('#461 a held operation never crosses a business, a client task or a person', () => {
+describe('a held operation never crosses a business, a client task or a person', () => {
   for (const { kind, path, selector, typed } of KINDS) {
     it.each(CROSSINGS)(
       `a lost ${kind}, then $crossing: a fresh operation to the destination`,

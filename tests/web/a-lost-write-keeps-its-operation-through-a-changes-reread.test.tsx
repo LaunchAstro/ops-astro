@@ -22,7 +22,7 @@ const CASES = [
   { kind: 'time log', path: '/time/log', selector: '[data-time-log]', typed: '30m' },
 ] as const;
 
-describe('#461 a lost write keeps its operation through a change-count reread', () => {
+describe('a lost write keeps its operation through a change-count reread', () => {
   it.each(CASES)(
     'a lost $kind answer, then a write elsewhere: the retry goes under the same operation',
     async ({ path, selector, typed }) => {
@@ -141,7 +141,7 @@ async function lateAnswerWrites(c: (typeof CASES)[number]) {
   return server.writes;
 }
 
-describe('#461 a late answer and another box never release the wrong held operation', () => {
+describe('a late answer and another box never release the wrong held operation', () => {
   it.each(CASES)(
     'a late $kind answer from a remounted box leaves a newer lost operation held',
     async (c) => {
