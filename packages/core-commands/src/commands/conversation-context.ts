@@ -16,6 +16,9 @@
 //   (the read first, then the share lock, then the read again), before it
 //   asks its own write grant, so no grant counts across that wait. A question
 //   kept on a page its sender may not read is marked too, the task untouched.
+//   The mark names its reason: CLIENT_MODEL_USE_OFF for a client's task,
+//   SCOPE_NOT_GRANTED for a page out of the sender's reads, NOT_FOUND for one
+//   gone; the person is answered the same for each.
 //   A marked message is refused ever after: sent
 //   again with its operation id once the client is cleared or the task
 //   purged, it asks no model.
@@ -76,14 +79,22 @@ async function reads(tx: TenantQuery, session: Session, taskId: string): Promise
   );
 }
 
+/** Why a page is refused, as its mark records it. */
+export type PageRefusal = 'CLIENT_MODEL_USE_OFF' | 'SCOPE_NOT_GRANTED' | 'NOT_FOUND';
+const PAGE_REFUSALS: readonly PageRefusal[] = [
+  'CLIENT_MODEL_USE_OFF',
+  'SCOPE_NOT_GRANTED',
+  'NOT_FOUND',
+];
+
 /** The page task, held for share, if the caller may read it and it is no client's. */
 async function pageOf(
   tx: TenantQuery,
   session: Session,
   taskId: string,
-): Promise<PageRow | 'refused'> {
+): Promise<PageRow | PageRefusal> {
   // Before the task is touched: a caller who may not read it neither waits on its writer nor reads it.
-  if (!(await reads(tx, session, taskId))) return 'refused';
+  if (!(await reads(tx, session, taskId))) return 'SCOPE_NOT_GRANTED';
   // A separate select: Postgres refuses FOR SHARE on the nullable side of an outer join.
   const [task] = await tx.query<PageRow>(
     `select id, ${KEY} as key, ${TITLE} as title, ${CLIENT} as client
@@ -92,9 +103,10 @@ async function pageOf(
       for share`,
     [tx.businessId, taskId],
   );
-  if (task === undefined || task.client !== null) return 'refused';
+  if (task === undefined) return 'NOT_FOUND';
+  if (task.client !== null) return 'CLIENT_MODEL_USE_OFF';
   // Asked again once the task is held, so a grant revoked while this waited is seen.
-  return (await reads(tx, session, taskId)) ? task : 'refused';
+  return (await reads(tx, session, taskId)) ? task : 'SCOPE_NOT_GRANTED';
 }
 
 /** Whether the whole GPT request, as the adapter writes it, fits the runner's body limit. */
@@ -117,7 +129,6 @@ function earlierOf(
 
 /** The audit action a message refused for its page is marked with, as the broker's refusals are. */
 const REFUSED_CALL = 'model.call_refused';
-const PAGE_REFUSED = 'CLIENT_MODEL_USE_OFF';
 const REFUSED: Context = { refused: true, fields: [], cites: [] };
 
 type Asked = { readonly conversationId: string; readonly messageId: string };
@@ -127,31 +138,40 @@ async function markedRefused(tx: TenantQuery, asked: Asked): Promise<boolean> {
   const [row] = await tx.query<{ readonly marked: boolean }>(
     `select exists (
        select 1 from audit_events
-        where business_id = $1 and command = $2 and refusal_code = $3
-          and attempted ->> 'conversationId' = $4 and attempted ->> 'messageId' = $5) as marked`,
-    [tx.businessId, REFUSED_CALL, PAGE_REFUSED, asked.conversationId, asked.messageId],
+        where business_id = $1 and command = $2 and refusal_code = any($3::text[])
+          and attempted ->> 'operation' = $4
+          and attempted ->> 'conversationId' = $5 and attempted ->> 'messageId' = $6) as marked`,
+    [
+      tx.businessId,
+      REFUSED_CALL,
+      PAGE_REFUSALS,
+      CONVERSATION_ANSWER.key,
+      asked.conversationId,
+      asked.messageId,
+    ],
   );
   return row?.marked === true;
 }
 
-/** Marks the message refused for its page, in the transaction that judged it so. */
+/** Marks the message refused for its page, with why, in the transaction that judged it so. */
 export async function markRefusedForPage(
   tx: TenantQuery,
   session: Session,
   asked: Asked,
+  code: PageRefusal,
 ): Promise<Context> {
   const { conversationId, messageId } = asked;
   const detail = {
     operation: CONVERSATION_ANSWER.key,
     conversationId,
     messageId,
-    code: PAGE_REFUSED,
+    code,
   };
   await writeAuditEvent(tx, {
     actorId: session.actorId,
     command: REFUSED_CALL,
     outcome: 'refused',
-    refusalCode: PAGE_REFUSED,
+    refusalCode: code,
     payloadDigest: payloadDigest(detail),
     attempted: detail,
   });
@@ -160,15 +180,17 @@ export async function markRefusedForPage(
 
 /**
  * At keep, before the keep asks its grants: whether a question kept on this
- * page task is refused for it (a client's, gone, or not the sender's to read).
- * The caller marks it once the message is written.
+ * page task is refused for it (a client's, gone, or not the sender's to read),
+ * and why. The caller marks it once the message is written.
  */
 export async function keptRefused(
   tx: TenantQuery,
   session: Session,
   taskId: string | null,
-): Promise<boolean> {
-  return taskId !== null && (await pageOf(tx, session, taskId)) === 'refused';
+): Promise<PageRefusal | null> {
+  if (taskId === null) return null;
+  const page = await pageOf(tx, session, taskId);
+  return typeof page === 'string' ? page : null;
 }
 
 /** The page and earlier messages for the asked message, in the caller's transaction. */
@@ -181,7 +203,9 @@ export async function contextOf(
   const page = scopeRecordId === null ? null : await pageOf(tx, session, scopeRecordId);
   // Asked once the page is held, so a twin's refusal committed while this waited is seen.
   const marked = await markedRefused(tx, asked);
-  if (page === 'refused') return marked ? REFUSED : await markRefusedForPage(tx, session, asked);
+  if (typeof page === 'string') {
+    return marked ? REFUSED : await markRefusedForPage(tx, session, asked, page);
+  }
   if (marked) return REFUSED;
   const rows = await tx.query<{ readonly role: string; readonly body: string }>(
     `select role, body from (

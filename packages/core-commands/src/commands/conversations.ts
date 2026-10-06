@@ -16,11 +16,11 @@
 // carries the payload's digest only.
 
 import { randomUUID } from 'node:crypto';
-import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
+import { advisoryLock, checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { keptRefused, markRefusedForPage } from './conversation-context.ts';
+import { keptRefused, markRefusedForPage, type PageRefusal } from './conversation-context.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
@@ -59,6 +59,24 @@ export async function holdsOwnConversations(
   return own.ok && own.value.some((grant) => under.held.has(grant.id));
 }
 
+/**
+ * A keep's waits, made before it asks its grants (Sol PRV-oa-1088-SC1,
+ * SEC1-1): the page task judged under its share lock, then the audit chain's
+ * lock, which its own audit events and the envelope's would otherwise wait on
+ * after the check, so a grant a chain holder ended is seen. The chain key is
+ * the trigger's, `business_id::text`, which is lower case. Answers why the
+ * page refuses the question, if it does.
+ */
+async function waitsFirst(
+  tx: TenantQuery,
+  session: Session,
+  taskId: string | null,
+): Promise<PageRefusal | null> {
+  const pageRefused = await keptRefused(tx, session, taskId);
+  await advisoryLock(tx, tx.businessId.toLowerCase());
+  return pageRefused;
+}
+
 export const bounded = (value: unknown, limit: number): value is string =>
   typeof value === 'string' && value.trim() !== '' && value.length <= limit;
 
@@ -93,14 +111,15 @@ export interface StartFields {
  * caller who cannot read it waits on no task write and holds no lock on it.
  * Then the row is read `for share`, the page's client with it, which covers
  * the `for key share` the scope's foreign key takes, and both grants are
- * asked again at the instant after that wait (#444, Sol PRV-oa-1088-SC1.2):
- * one that lapsed in the wait no longer counts.
+ * asked again at the instant after that wait and the audit chain's
+ * (`waitsFirst`, #444): one that lapsed or was ended in either wait no longer
+ * counts.
  */
 async function citable(
   tx: TenantQuery,
   context: CommandContext,
   scope: Scope,
-): Promise<{ readonly at: string; readonly pageRefused: boolean } | CommandRefusal> {
+): Promise<{ readonly at: string; readonly pageRefused: PageRefusal | null } | CommandRefusal> {
   const subjects = subjectsOf(context.session);
   const read = {
     collection: 'task',
@@ -118,7 +137,7 @@ async function citable(
   if (!(await checkAuthorityAt(tx, subjects, read, await lockedInstant(tx))).ok) {
     return refuseNotFound(['scope']);
   }
-  const pageRefused = await keptRefused(tx, context.session, scope.id);
+  const pageRefused = await waitsFirst(tx, context.session, scope.id);
   if ((await live('for key share')).length === 0) return refuseNotFound(['scope']);
   const at = await lockedInstant(tx);
   // The door's grant first, as the door asked it.
@@ -153,7 +172,7 @@ export async function startConversation(
   const scope = scopeOf(fields.scope);
   const invalid = startRefusal(fields, scope);
   if (invalid !== undefined) return refused(invalid);
-  let pageRefused = false;
+  let pageRefused: PageRefusal | null = null;
   if (scope) {
     const cited = await citable(tx, context, scope);
     if (!('at' in cited)) return refused(cited);
@@ -186,7 +205,9 @@ export async function startConversation(
      values ($1, $2, $3, 'person', $4, $5)`,
     [tx.businessId, messageId, conversationId, session.actorId, fields.body],
   );
-  if (pageRefused) await markRefusedForPage(tx, session, { conversationId, messageId });
+  if (pageRefused !== null) {
+    await markRefusedForPage(tx, session, { conversationId, messageId }, pageRefused);
+  }
   return applied(null, null, {
     conversationId,
     messageId,
@@ -246,9 +267,7 @@ export async function messageConversation(
   if (conversation === undefined) return refused(refuseNotFound());
   if (conversation.owner_actor_id !== context.session.actorId) return refused(NOT_YOURS);
   if (conversation.body_purged_at !== null) return refused(PURGED);
-  // The page is judged first, under its share lock, so the grant asked below
-  // is asked after every wait this keep makes (Sol PRV-oa-1088-SC1).
-  const pageRefused = await keptRefused(tx, context.session, conversation.scope_record_id);
+  const pageRefused = await waitsFirst(tx, context.session, conversation.scope_record_id);
   const messageId = randomUUID();
   // Stamped after the row lock, so messages list in the order kept (#444).
   // The grant the door asked is asked again at that clock: one that lapsed
@@ -268,7 +287,7 @@ export async function messageConversation(
     [tx.businessId, fields.conversationId, at],
   );
   const asked = { conversationId: fields.conversationId, messageId };
-  if (pageRefused) await markRefusedForPage(tx, context.session, asked);
+  if (pageRefused !== null) await markRefusedForPage(tx, context.session, asked, pageRefused);
   return applied(null, null, {
     conversationId: fields.conversationId,
     messageId,

@@ -133,7 +133,7 @@ describe.skipIf(serverUrl === undefined)('a question kept on a client’s task',
         replying = model.exchange(reader, business, w.owner.presented, asked);
         await waitingOnLocks(1);
         await withSession(db.app, business, w.owner.presented, async (twin, session) => {
-          await markRefusedForPage(twin, session, asked);
+          await markRefusedForPage(twin, session, asked, 'CLIENT_MODEL_USE_OFF');
         });
       });
       expect(await replying).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
