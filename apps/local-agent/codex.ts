@@ -274,3 +274,27 @@ export async function runCodex(
     child.stdin.end(prompt);
   });
 }
+
+const PLAN_LOGIN = 'Logged in using ChatGPT';
+
+/** On the ChatGPT plan (an API key bills per call): `codex login status` exits 0 with that line. */
+export async function codexLogin(settings: RunnerSettings): Promise<boolean> {
+  mkdirSync(settings.codexHome, { recursive: true, mode: 0o700 });
+  return await new Promise((resolve) => {
+    const child = spawn(settings.codexBin, ['login', 'status'], {
+      cwd: settings.codexHome,
+      env: { ...settings.childEnv, CODEX_HOME: settings.codexHome },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false,
+    });
+    const parts: Buffer[] = [];
+    for (const out of [child.stdout, child.stderr]) out.on('data', (b: Buffer) => parts.push(b));
+    const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
+    child.on('error', () => resolve(false));
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      const lines = Buffer.concat(parts).toString('utf8').split('\n');
+      resolve(code === 0 && lines.some((line) => line.trim() === PLAN_LOGIN));
+    });
+  });
+}
