@@ -25,7 +25,7 @@ import { Empty } from '../primitives/Absence.tsx';
 import { rankFacets } from '../board/funnel.ts';
 import { narrowRows, readingLine } from '../board/filters.ts';
 import { sortRows } from '../board/sort.ts';
-import type { BoardAction, BoardContext, BoardView } from '../board/types.ts';
+import type { BoardAction, BoardContext, BoardView, Facet } from '../board/types.ts';
 import type { BoardMachineProps } from './board-props.ts';
 import {
   useBoardMachine,
@@ -40,16 +40,34 @@ import { Table } from './BoardTable.tsx';
 
 export type { BoardMachineProps, BoardMode } from './board-props.ts';
 
+/**
+ * The facets handed in, and any the view still has on that the last rows no
+ * longer offer (#902): a reread that drops the last row of an active filter
+ * narrows to nothing and keeps its tag, rather than silently widening.
+ */
+function useHeldFacets<Row>(
+  offered: readonly Facet<Row>[],
+  on: readonly string[],
+): readonly Facet<Row>[] {
+  const seen = useRef(new Map<string, Facet<Row>>());
+  for (const facet of offered) seen.current.set(facet.id, facet);
+  const gone = on.flatMap((id) => {
+    const held = seen.current.get(id);
+    return held === undefined || offered.some((facet) => facet.id === id) ? [] : [held];
+  });
+  return gone.length === 0 ? offered : [...offered, ...gone];
+}
+
 export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const { facets, columns, presets, modes } = props;
   const context = useMemo<BoardContext<Row>>(
     () => ({ facets, columns, presets: presets ?? [], modes: modes ?? [] }),
     [facets, columns, presets, modes],
   );
-  // Every filter's row count, once per set of rows: a drag redraws on each
-  // pointer move and must not recount.
+  // Every filter's row count, once per set of rows, never per drag move.
   const ranked = useMemo(() => rankFacets(props.rows, props.facets), [props.rows, props.facets]);
   const { machine, dispatch } = useBoardMachine(context, props, props);
+  const held = useHeldFacets(props.facets, machine.view.ids);
   const card = useRef<HTMLDivElement>(null);
   const available = useMeasuredWidth(card, props.width);
   const viewport =
@@ -60,7 +78,7 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   useChipRowFit(chipRow, card);
   const command = (
     <CommandBar
-      facets={props.facets}
+      facets={held}
       names={props.rows.map((row) => props.name(row))}
       noun={props.noun}
       machine={machine}
@@ -81,12 +99,12 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
         rows={props.rows}
         presets={props.presets ?? []}
         modes={props.modes ?? []}
-        facets={props.facets}
+        facets={held}
         hay={props.hay}
         view={machine.view}
         dispatch={dispatch}
       />
-      <BoardBody {...props} view={machine.view} drag={drag} dispatch={dispatch} />
+      <BoardBody {...props} facets={held} view={machine.view} drag={drag} dispatch={dispatch} />
     </div>
   );
 }
