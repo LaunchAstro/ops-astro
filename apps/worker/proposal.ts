@@ -52,17 +52,24 @@ export async function proposeStep(
 }
 
 /**
- * Whether a refusal proves the proposal never committed. A replay refused by
- * a delegation check (`agent-replay.ts`) may be withholding a committed
- * receipt, so it proves nothing while that authority is missing; once the
- * capabilities read just before it show the write is covered again, a
- * delegation refusal is the stored answer of a proposal that never ran.
+ * Whether the task shows the proposal `operationId` names: its payload
+ * carries that id, so the server's own read tells a committed proposal from
+ * one that never ran. A replay refused by a delegation check
+ * (`agent-replay.ts`) may be withholding a committed receipt; it is kept
+ * unless this read answers and shows no such proposal.
  */
-const provesUncommitted = (code: string, capabilities: Record<string, unknown>): boolean =>
-  !code.startsWith('DELEGATION_') ||
-  ((capabilities['grants'] ?? []) as readonly { action?: unknown }[]).some(
-    (grant) => grant.action === 'write',
+async function committed(call: Call, recordId: string, operationId: string): Promise<boolean> {
+  const read = await call('task.read', { recordId });
+  if (!('body' in read)) return true;
+  const task = read.detail['task'] as { proposals?: readonly LineageSeen[] } | undefined;
+  return (task?.proposals ?? []).some((lineage) =>
+    (lineage.versions ?? []).some((one) => one.payload?.proposalId === operationId),
   );
+}
+
+interface LineageSeen {
+  readonly versions?: readonly { readonly payload?: { readonly proposalId?: unknown } }[];
+}
 
 /** A proposal with no answer, or one whose refusal proves nothing, is sent again as it was. */
 async function proposeAlone(
@@ -80,8 +87,9 @@ async function proposeAlone(
     const read = await call('task.read', { recordId });
     if (!('body' in read)) return read;
     const task = read.detail['task'] as { revision?: unknown } | undefined;
+    const operationId = randomUUID();
     mine.unanswered = {
-      operationId: randomUUID(),
+      operationId,
       recordId,
       expectedRevision: task?.revision,
       purpose: step.kind,
@@ -89,6 +97,7 @@ async function proposeAlone(
       currency: 'AUD',
       payload: {
         change: 'a team-only comment; this demonstration changes nothing outside the app',
+        proposalId: operationId,
       },
       step,
     };
@@ -96,7 +105,8 @@ async function proposeAlone(
   const sent = mine.unanswered;
   const proposed = await call('task.propose', sent);
   if ('fault' in proposed) return proposed;
-  if ('refused' in proposed && !provesUncommitted(proposed.refused.code, capabilities.body)) {
+  const withheld = 'refused' in proposed && proposed.refused.code.startsWith('DELEGATION_');
+  if (withheld && (await committed(call, sent.recordId, String(sent['operationId'])))) {
     return proposed;
   }
   mine.unanswered = undefined;
