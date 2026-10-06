@@ -24,6 +24,22 @@ async function spawned(w: World, count: number): Promise<void> {
   }
 }
 
+/** Whether a process is gone within `withinMs`: kill(pid, 0) refused with ESRCH. */
+async function goneWithin(pid: number | undefined, withinMs: number): Promise<boolean> {
+  if (pid === undefined) return false;
+  const until = Date.now() + withinMs;
+  for (;;) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'ESRCH';
+    }
+    if (Date.now() > until) return false;
+    // oxlint-disable-next-line no-await-in-loop -- polling one fake process
+    await sleep(20);
+  }
+}
+
 // eslint-disable-next-line max-lines-per-function -- one case per way a call is stopped
 describe('a call stopped part way', () => {
   it('a runner closed mid-call kills codex, charges the call as unknown, then lets the home go', async () => {
@@ -37,6 +53,8 @@ describe('a call stopped part way', () => {
     await r.close();
     opened.length = 0;
     expect(Date.now() - began).toBeLessThan(3_000);
+    // Killed, not left to answer at its 5 s.
+    expect(await goneWithin(w.calls()[0]?.pid, 1_500)).toBe(true);
     // close() waited for the call's own row before letting the home go.
     expect(w.ledger()).toHaveLength(2);
     await pending;
@@ -70,6 +88,7 @@ describe('a call stopped part way', () => {
     await spawned(w, 1);
     leaving.abort();
     await pending;
+    expect(await goneWithin(w.calls()[0]?.pid, 1_500)).toBe(true);
     w.knobs({});
     expect((await call(r, message)).body?.['code']).toBeNull();
     expect(w.ledger()[1]).toMatchObject({ inputTokens: 50_000 });

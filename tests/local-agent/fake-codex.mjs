@@ -3,10 +3,10 @@
 //
 // A stand-in for `codex exec --json` and `codex login status` (LA-1). An
 // exec records what it was given (argv, stdin, environment, working folder)
-// in its CODEX_HOME's calls.jsonl and answers as that folder's fake.json
-// says: a reply, extra event lines, a tool item, a failed turn, the plan's
-// usage limit, raw output, the tokens used, an exit code or a wait. The
-// login answers as its `login` knob says. It never reaches a model.
+// and its pid in its CODEX_HOME's calls.jsonl and answers as that folder's
+// fake.json says: a reply, extra event lines, a tool item, a failed turn, the
+// plan's usage limit, raw output, the tokens used, an exit code or a wait.
+// The login answers as its `login` knob says. It never reaches a model.
 
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,8 +30,18 @@ process.stdin.on('data', (chunk) => (stdin += chunk));
 process.stdin.on('end', () => {
   appendFileSync(
     join(home, 'calls.jsonl'),
-    `${JSON.stringify({ argv: process.argv.slice(2), stdin, env: process.env, cwd: process.cwd() })}\n`,
+    `${JSON.stringify({ argv: process.argv.slice(2), stdin, env: process.env, cwd: process.cwd(), pid: process.pid })}\n`,
   );
+  // As codex 0.160.1 does under `forced_login_method="chatgpt"` (probed with a
+  // worthless key): a saved API-key login is logged out, and nothing is asked.
+  if (knobs.login === 'apikey' && process.argv.includes('forced_login_method="chatgpt"')) {
+    process.stderr.write(
+      'ChatGPT login is required, but an API key is currently being used. Logging out.\n',
+    );
+    process.exit(1);
+  }
+  if (knobs.login === 'apikey')
+    appendFileSync(join(home, 'billed.jsonl'), `${JSON.stringify(stdin)}\n`);
   const answer = () => {
     if (knobs.limit) {
       const limit = { type: 'error', message: "You've hit your usage limit. Try again later." };

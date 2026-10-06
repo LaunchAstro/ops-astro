@@ -23,8 +23,8 @@
 //    a grant being changed at that moment keeps nothing.
 //
 // A message has at most one reply. A repeat of the request finds the reply
-// kept and answers with it, and the model is not asked again; two repeats at
-// once can each ask it, and only the first answer is kept. The model's words
+// kept and answers with it, and the model is not asked again; a repeat while
+// the answer is with the model, in the same process, waits for it. The model's words
 // are kept in the reply's row and nowhere else: a refusal answers in fixed
 // words, never the model's or the person's.
 
@@ -35,7 +35,9 @@ import {
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
 import {
+  checkAuthority,
   isUuid,
+  sessionEndedSince,
   slotOf,
   subjectsOf,
   TASK_SPINE,
@@ -135,9 +137,10 @@ async function questionOf(
   const [found] = await tx.query<{
     readonly owner_person_id: string;
     readonly body: string;
+    readonly scope_record_id: string | null;
     readonly client_or_unseen: boolean;
   }>(
-    `select c.owner_person_id, m.body,
+    `select c.owner_person_id, m.body, c.scope_record_id,
             (t.${CLIENT} is not null or (c.scope_record_id is not null and t.id is null))
               as client_or_unseen
        from conversations c
@@ -156,8 +159,16 @@ async function questionOf(
     },
     body: found.body,
     reply: await replyTo(tx, asked),
-    clientOrUnseen: found.client_or_unseen,
+    clientOrUnseen:
+      found.client_or_unseen || !(await readsTask(tx, session, found.scope_record_id)),
   };
+}
+
+/** The caller may still read the task: the records policies do not hold task grants. */
+async function readsTask(tx: TenantQuery, session: Session, id: string | null): Promise<boolean> {
+  if (id === null) return true;
+  const read = { collection: 'task', action: 'read', scope: { kind: 'record', id } } as const;
+  return (await checkAuthority(tx, subjectsOf(session), read)).ok;
 }
 
 /** The answer, kept as the reply to the message, or the reply already kept. */
@@ -185,6 +196,8 @@ async function keep(
   const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
   const at = await lockedInstant(tx);
   if (!(await holdsOwnConversations(tx, session, { at, held }))) return undefined;
+  // After the last wait: an ended session keeps nothing; an ending in flight waits for this.
+  if (await sessionEndedSince(tx, session)) return undefined;
   const id = randomUUID();
   // The reply and the activity are stamped at that same instant, so a reply
   // that waited behind a message is listed and dated after it (#444). The
@@ -215,40 +228,70 @@ function heldElsewhere(cause: unknown): undefined {
   return undefined;
 }
 
-/** The exchange over a deployment's broker, for the API's person path. */
+/** The model asked for one message, and the answer kept as its reply. */
+async function answerOnce(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+  asked: Asked,
+  found: { readonly session: Session; readonly question: Question },
+  broker: ModelBroker,
+): Promise<ConversationReply | null> {
+  const { session, question } = found;
+  const result = await callModelInConversation(
+    database,
+    businessId,
+    { actorId: session.actorId, delegationId: null, attendedByPersonId: session.personId },
+    {
+      conversation: question.scope,
+      operation: CONVERSATION_ANSWER.key,
+      fields: [{ name: 'message', source: 'outside', value: question.body }],
+    },
+    { ...broker, audit: auditAs(session.actorId) },
+  );
+  if (!result.ok) return refusedWith(result.code);
+  if (!bounded(result.text, REPLY_LIMIT)) return refusedWith('ANSWER_UNUSABLE');
+  const kept = await withSession(
+    database,
+    businessId,
+    presented,
+    async (tx, now) => await keep(tx, now, asked, result.text),
+  ).catch(heldElsewhere);
+  return kept === undefined || isCommandRefusal(kept) ? null : answered(kept);
+}
+
+/**
+ * The exchange over a deployment's broker, for the API's person path. A request whose
+ * own message is already with the model (in this process) waits for that answer: a
+ * retry asking again would spend tokens on a reply that is not kept.
+ */
 export function conversationExchange(broker: ModelBroker): ConversationExchange {
+  const asking = new Map<string, Promise<ConversationReply | null>>();
   return async (database, businessId, presented, asked) => {
     const found = await withSession(database, businessId, presented, async (tx, session) => ({
       session,
       question: await questionOf(tx, session, asked),
     }));
     if (isCommandRefusal(found) || found.question === undefined) return null;
-    const { session, question } = found;
+    const { question } = found;
     if (question.reply !== undefined) return answered(question.reply);
     // Owner line 72: a client's material reaches no model while no true local
     // model exists, and the laptop's GPT runner is a cloud model. A conversation
     // opened on a client's task asks nothing, whatever the provider; so does one whose
     // task this session cannot see, since its client cannot be known.
     if (question.clientOrUnseen) return refusedWith('CLIENT_MODEL_USE_OFF');
-    const result = await callModelInConversation(
-      database,
-      businessId,
-      { actorId: session.actorId, delegationId: null, attendedByPersonId: session.personId },
-      {
-        conversation: question.scope,
-        operation: CONVERSATION_ANSWER.key,
-        fields: [{ name: 'message', source: 'outside', value: question.body }],
-      },
-      { ...broker, audit: auditAs(session.actorId) },
-    );
-    if (!result.ok) return refusedWith(result.code);
-    if (!bounded(result.text, REPLY_LIMIT)) return refusedWith('ANSWER_UNUSABLE');
-    const kept = await withSession(
+    const key = `${businessId}/${asked.conversationId}/${asked.messageId}`;
+    const running = asking.get(key);
+    if (running !== undefined) return await running;
+    const answering = answerOnce(
       database,
       businessId,
       presented,
-      async (tx, now) => await keep(tx, now, asked, result.text),
-    ).catch(heldElsewhere);
-    return kept === undefined || isCommandRefusal(kept) ? null : answered(kept);
+      asked,
+      { ...found, question },
+      broker,
+    ).finally(() => asking.delete(key));
+    asking.set(key, answering);
+    return await answering;
   };
 }

@@ -197,6 +197,9 @@ export function codexArgs(model: string, cwd: string): string[] {
     'model_reasoning_effort="low"',
     '-c',
     'web_search="disabled"',
+    // A saved API-key login bills per call: codex logs it out and asks nothing.
+    '-c',
+    'forced_login_method="chatgpt"',
     ...DISABLED_FEATURES.flatMap((feature) => ['--disable', feature]),
     '--cd',
     cwd,
