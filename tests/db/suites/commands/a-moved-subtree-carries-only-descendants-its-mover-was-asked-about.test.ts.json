@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a move whose descendant lock waited behind a creation asks about the grandchild that creation committed, and refuses a mover without write on it, leaving every board unchanged"
+}
