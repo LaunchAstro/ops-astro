@@ -80,9 +80,9 @@ function useStepContext<Row>(props: BoardMachineProps<Row>, known: readonly Face
   );
 }
 
-/** No row, and no filter or word on: nothing on the board for a person to drop. */
+/** No row, and no filter, word or mode on: nothing on the board for a person to drop. */
 const isBare = (rows: readonly unknown[], view: BoardView): boolean =>
-  rows.length === 0 && view.ids.length === 0 && view.text.length === 0;
+  rows.length === 0 && view.ids.length === 0 && view.text.length === 0 && view.mode === null;
 
 export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const facets = useKnownFacets(props.facets);
