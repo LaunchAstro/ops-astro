@@ -33,6 +33,9 @@
 // AW-04: the allowance line sits above the transcript from the start (`allowance-line.tsx`); a
 // reply's plan is a card whose one click is `task.accept_plan` (`assistant/plans.ts`); the Agent
 // pane's new attempt opens the drawer through `useAsks`, drafted, unsent, its session's alone.
+//
+// C80 (P30): the one-word site correction's door and desks sit beside the allowance line
+// (`correction-card.tsx`), drawn only where the host hands in the request port.
 
 import { useEffect, useRef, type ReactElement } from 'react';
 import { AssistantPanel, type AssistantPage } from '@launchastro/ui';
@@ -63,6 +66,8 @@ import type {
 import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 import { AllowanceLine } from './allowance-line.tsx';
+import { SidebarCorrections } from './correction-card.tsx';
+import type { ProposePort } from '../assistant/correction.ts';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
 
@@ -80,6 +85,8 @@ export interface AssistantViewProps {
   readonly onClose?: () => void;
   /** The session it serves: it takes a page's ask (`asks.ts`) only from this one, none without it. */
   readonly grantKey?: string;
+  /** The sidebar's `site.source.propose` call; without it no correction door is drawn. */
+  readonly propose?: ProposePort;
 }
 
 type Sent = Promise<CallResult<CommandOutcome>>;
@@ -218,6 +225,16 @@ function allowanceFor(client: OperationsClient, chat: Chat | undefined): ReactEl
   return <AllowanceLine client={client} conversationId={conversationId} settled={settled} />;
 }
 
+/** The allowance line, and the correction door and desks where the host hands in the port. */
+const besideAllowance = (props: AssistantViewProps, chat: Chat | undefined): ReactElement => (
+  <>
+    {allowanceFor(props.client, chat)}
+    {props.propose === undefined ? null : (
+      <SidebarCorrections client={props.client} propose={props.propose} />
+    )}
+  </>
+);
+
 /** The send, with the tab answering while its question is out; a kept tab's read lands first. */
 const answering =
   (store: KeptStore, send: (key: string, body: string) => Promise<void>) =>
@@ -257,7 +274,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
         opened === null ? null : pathTo('agency:agent-conversation', { conversation: opened })
       }
       citation={state.citation}
-      allowance={allowanceFor(props.client, chat)}
+      allowance={besideAllowance(props, chat)}
       draft={state.draft}
       answering={(state.answering[state.selected] ?? 0) > 0}
       history={useHistoryList(props.client, store)}
