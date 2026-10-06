@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function, unicorn/no-array-callback-reference -- the review's proof, kept as written */
 //
 // #461: a subtask or time log whose answer was lost keeps its operation id
 // through a live task reread, so the retry of the same request is the same
