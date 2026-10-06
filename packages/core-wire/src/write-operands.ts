@@ -265,6 +265,8 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
   'inbox.seen': { itemId: 'id' },
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
+  'chat.send_direct': { teammateId: 'id', body: 'any' },
+  'chat.mark_read': { conversationId: 'id', upTo: 'any' },
   'invitation.create': { name: 'text', email: 'text', role: 'text' },
   'invitation.resend': { invitationId: 'id' },
   'invitation.revoke': { invitationId: 'id' },

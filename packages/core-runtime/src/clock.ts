@@ -21,8 +21,9 @@ export type HeldSetting = 'client_sign_off_required' | 'four_eyes_threshold';
 
 /**
  * The database's current instant as text, to be passed back as
- * `$n::timestamptz`. Text rather than a `Date`, which keeps milliseconds where
- * the column keeps microseconds. `settings` are held first, to commit: the
+ * `$n::text::timestamptz`. Text rather than a `Date`, which keeps milliseconds
+ * where the column keeps microseconds; bound as `$n::timestamptz` the driver
+ * makes it a `Date` all the same. `settings` are held first, to commit: the
  * install lock shared, then their rows `for share`.
  */
 export async function lockedInstant(

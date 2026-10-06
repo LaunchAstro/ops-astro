@@ -48,6 +48,7 @@ import {
 import { TASK_SPINE } from '../../packages/core-records/src/tasks/spine.ts';
 import { COMMENT_SPINE } from '../../packages/core-records/src/tasks/comments.ts';
 import { TASK_STATE_FIELDS } from '../../packages/core-records/src/tasks/states.ts';
+import { CONVERSATION_SPINE } from '../../packages/core-records/src/team/conversations.ts';
 import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient, type ReadName } from '../../apps/web/src/operations/client.ts';
 import type { Harness } from './role-case-harness.ts';
@@ -65,8 +66,9 @@ export const SYSTEM_PAYLOAD_FIELDS: readonly string[] = TASK_SPINE.filter(
   .toSorted();
 
 /**
- * Every installed `write_mode = 'system'` field key, across the three record
- * types the spine installs: the task's, the comment's and the state's.
+ * Every installed `write_mode = 'system'` field key, across the four record
+ * types the spine installs: the task's, the comment's, the state's and the
+ * team conversation's (C71-D: every field the server's, so all four refused).
  *
  * The server refuses these at the top level from the installed `field_defs`
  * rows (root ruling 1); the list here is what the installer writes those rows
@@ -74,7 +76,7 @@ export const SYSTEM_PAYLOAD_FIELDS: readonly string[] = TASK_SPINE.filter(
  */
 export const INSTALLED_SYSTEM_FIELDS: readonly string[] = [
   ...new Set(
-    [...TASK_SPINE, ...COMMENT_SPINE, ...TASK_STATE_FIELDS]
+    [...TASK_SPINE, ...COMMENT_SPINE, ...TASK_STATE_FIELDS, ...CONVERSATION_SPINE]
       .filter((field) => field.writeMode === 'system')
       .map((field) => field.key),
   ),

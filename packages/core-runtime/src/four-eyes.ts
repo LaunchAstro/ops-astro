@@ -68,10 +68,11 @@ export async function fourEyesBandMinor(tx: TenantQuery, currency: string): Prom
 /**
  * The first approval this decision pairs with. `null`: the figure is within
  * the band, or the band is off, and one person decides. The approver: a
- * different person, live at the locked instant, completes it. `undefined`:
- * two people are needed and none can pair yet, so this is a first approval.
- * `'own'`: the caller gave the only first approval, and one person twice is
- * one approver.
+ * different person, live at the locked instant, completes it; `prefer`'s
+ * approval first when it is one of them (a person the caller's own rule
+ * requires), otherwise the earliest. `undefined`: two people are needed and
+ * none can pair yet, so this is a first approval. `'own'`: the caller gave
+ * the only first approval, and one person twice is one approver.
  */
 export async function pairFor<A extends FirstApprover>(
   amountMinor: bigint,
@@ -79,13 +80,15 @@ export async function pairFor<A extends FirstApprover>(
   personId: string,
   firsts: readonly A[],
   holds: Holds,
+  prefer?: string,
 ): Promise<A | null | undefined | 'own'> {
   if (band === null || amountMinor <= band) return null;
   const others = firsts.filter((first) => first.personId !== personId);
   const live = await Promise.all(
     others.map(async (one) => ((await holds(one.subjects)) ? one : undefined)),
   );
-  const pair = live.find((one) => one !== undefined);
+  const ready = live.filter((one) => one !== undefined);
+  const pair = ready.find((one) => one.personId === prefer) ?? ready[0];
   if (pair === undefined && firsts.length > others.length) return 'own';
   return pair;
 }

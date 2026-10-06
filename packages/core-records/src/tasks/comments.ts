@@ -39,8 +39,12 @@ export const COMMENT_TYPE_KEY = 'task_comment';
  */
 export type CommentType = 'note' | 'client' | 'system';
 
-/** Who it is for. The projection reads this and nothing else to decide. */
-export type CommentAudience = 'internal' | 'client';
+/**
+ * Who it is for. The projection reads this and nothing else to decide. A
+ * team conversation's message (C71) is `direct` (its two members) or `group`
+ * (its members): never a task's, and never shown outside.
+ */
+export type CommentAudience = 'internal' | 'client' | 'direct' | 'group';
 
 /**
  * The comment spine.
@@ -147,6 +151,17 @@ export const COMMENT_SPINE: readonly SpineField[] = [
     visibilityClass: 'shared',
   },
   {
+    key: 'conversation',
+    label: 'Conversation',
+    valueType: 'uuid',
+    slot: 'uuid_4',
+    // The team conversation a message sits in (C71), in place of a task:
+    // set when it is written and never edited, like `task`. Internal.
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
     key: 'source',
     label: 'Source',
     valueType: 'text',
@@ -180,7 +195,10 @@ export interface StoredComment {
 }
 
 export interface NewComment {
-  readonly taskId: string;
+  /** The task it is on, or null for a team conversation's message. */
+  readonly taskId: string | null;
+  /** The team conversation it is in (C71); absent on a task's comment. */
+  readonly conversationId?: string;
   readonly authorActorId: string;
   readonly commentType: CommentType;
   readonly audience: CommentAudience;
@@ -192,6 +210,15 @@ export interface NewComment {
 
 /** The server's now, as the ISO text a comment's times are stored in. */
 export const NOW_TEXT: string = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
+
+/**
+ * A conversation message's time and place, read under its lock (conversations.ts):
+ * the wall clock, so a send that waited is stamped after the one before, and
+ * `created_at`, a strict order of writes that ranks one millisecond's messages.
+ */
+const CLOCK_TEXT = `to_char(clock_timestamp() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
+const CONVERSATION_ORDER = `(select greatest(clock_timestamp(), max(c.created_at) + interval '1 microsecond')
+  from records c where c.business_id = $1 and c.record_type_id = $3 and c.uuid_4 = ($11::text)::uuid and c.deleted_at is null)`;
 
 /**
  * Write one comment, inside the caller's transaction.
@@ -208,13 +235,11 @@ export async function writeComment(
 ): Promise<string> {
   const id = randomUUID();
   await tx.query(
-    `insert into records (business_id, id, record_type_id, data)
-     values ($1, $2, $3, jsonb_build_object(
+    `insert into records (business_id, id, record_type_id, data, created_at)
+     values ($1, $2, $3, jsonb_strip_nulls(jsonb_build_object(
        'task', $4::text, 'author', $5::text, 'comment_type', $6::text,
        'audience', $7::text, 'body', $8::text, 'source', $9::text,
-       'posted_at', ${NOW_TEXT})
-       || case when $10::text is null then '{}'::jsonb
-               else jsonb_build_object('parent', $10::text) end)`,
+       'posted_at', ${comment.conversationId === undefined ? NOW_TEXT : CLOCK_TEXT}, 'parent', $10::text, 'conversation', $11::text)), ${comment.conversationId === undefined ? 'now()' : CONVERSATION_ORDER})`,
     [
       tx.businessId,
       id,
@@ -226,6 +251,7 @@ export async function writeComment(
       comment.body,
       comment.source,
       comment.parentId ?? null,
+      comment.conversationId ?? null,
     ],
   );
   return id;

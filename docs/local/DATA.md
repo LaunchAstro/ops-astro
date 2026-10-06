@@ -547,6 +547,14 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 - `team.list {}` → the staff with an active membership and each one's
   availability (`person_availability`, 0066, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`
+- `chat.conversations {}` → the reader's own team conversations (C71-D), each
+  with its members and its unread, derived from the reader's own marker
+  (`team_conversation_members.last_read_at`, 20261006074341, set only by that person);
+  the reader's member row is the query's filter, so nobody else's is listed
+- `chat.messages { conversationId }` → one of the reader's conversations'
+  messages: `task_comment` records with audience `direct`, anchored by their
+  `conversation` field, written while the reader was a member; any other is
+  `NOT_FOUND`
 
 The other six, `task.queue`, `task.ledger`, `preset.plan`, `settings.read`,
 `session.capabilities` and `access.read` (Settings ▸ Access, C32, under

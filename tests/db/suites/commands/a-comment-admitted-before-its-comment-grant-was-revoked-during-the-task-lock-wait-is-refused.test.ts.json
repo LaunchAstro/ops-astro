@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a comment admitted before its comment grant was revoked during the task lock wait is refused, and writes nothing"
+}
