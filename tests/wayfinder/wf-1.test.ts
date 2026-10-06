@@ -644,43 +644,6 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     must(await reparent(owner, loose.id, map.id), "the owner files it on the owner's map");
   });
 
-  it('WF-1 a grilling or prototype ticket is filed on a map by its owner alone, task.create included', async () => {
-    const map = await newMap(owner, 'filed map');
-    const children = async () =>
-      (
-        await w.db.admin.execute<{ readonly n: string }>(
-          `select count(*)::text as n from public.records
-            where business_id = $1 and data->>'parent' = $2::text`,
-          [w.business, map.id],
-        )
-      )[0]?.n;
-    const file = async (who: Member, taskType: string) =>
-      await w.as(who, {
-        command: 'task.create',
-        fields: { title: `a ${taskType} ticket` },
-        taskType,
-        parentId: map.id,
-      });
-    for (const taskType of ['grilling', 'prototype']) {
-      // A writer without task:decide, then a decide holder who is not the owner.
-      const byWriter = await file(writer, taskType);
-      expect(codeOf(byWriter)).toBe('SCOPE_NOT_GRANTED');
-      expect(JSON.stringify(byWriter)).toContain(
-        'Filing a grilling or prototype ticket on a map needs task:decide.',
-      );
-      const byTeammate = await file(teammate, taskType);
-      expect(codeOf(byTeammate)).toBe('SCOPE_NOT_GRANTED');
-      expect(JSON.stringify(byTeammate)).toContain(
-        "Only the map's owner files a grilling or prototype ticket on the map.",
-      );
-    }
-    expect(await children()).toBe('0');
-    // Research is the row's task:write, and the owner files either kind.
-    must(await file(writer, 'research'), 'a writer files research');
-    must(await file(owner, 'grilling'), 'the owner files grilling');
-    expect(await children()).toBe('2');
-  });
-
   it('WF-1 map scoped follows the client rules of task.set_party', async () => {
     const scope = async (who: Member, map: string, client: unknown) =>
       await w.as(who, {

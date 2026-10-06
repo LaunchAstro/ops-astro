@@ -48,7 +48,7 @@ import { AGENT_ASSIGN_FIELDS, oneKind, outsideAgentReach } from './tasks-agent.t
 import { writeOwnedFields, type FieldWriteContext } from './tasks-state.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
-import { refuseOwnerTicketCreate, taskTypeOperand, wayfinderDataOnCreate } from './wayfinder.ts';
+import { taskTypeOperand, wayfinderDataOnCreate } from './wayfinder.ts';
 
 /** The fields a create body can use to claim a provenance it does not have. */
 const SPOOFABLE_ON_CREATE: readonly string[] = ['source', 'intake_state'];
@@ -161,8 +161,6 @@ export async function createTask(
     suppliedKeys: Object.keys(request.fields),
   });
   if (isRecordsRefusal(placement)) return refused(placement);
-  const ownerRule = await refuseOwnerTicketCreate(tx, context, taskType, parentId);
-  if (ownerRule !== undefined) return refused(ownerRule);
 
   const named =
     request.stateKey === undefined

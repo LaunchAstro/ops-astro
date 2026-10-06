@@ -51,33 +51,6 @@ export function taskTypeOperand(value: unknown): TaskType | CommandRefusal {
 }
 
 /**
- * A grilling or prototype ticket filed on a map by `task.create` is the map
- * owner's, under `task:decide`, as moving one onto the map is: a writer cannot
- * file the owner a ticket that only the owner may then retype, move or close.
- */
-export async function refuseOwnerTicketCreate(
-  tx: TenantQuery,
-  context: CommandContext,
-  type: TaskType,
-  parentId: string | null,
-): Promise<CommandRefusal | undefined> {
-  if (parentId === null || type === 'map' || !OWNER_TYPES.has(type)) return undefined;
-  // Held `for share` before its type is read: a retype of the parent in flight is seen.
-  const into = await wayfinderFacts(tx, parentId, true);
-  if (into?.type !== 'map') return undefined;
-  return await refuseUnlessOwner(
-    tx,
-    context,
-    into,
-    {
-      decide: 'Filing a grilling or prototype ticket on a map needs task:decide.',
-      owner: "Only the map's owner files a grilling or prototype ticket on the map.",
-    },
-    'refuse',
-  );
-}
-
-/**
  * What a new task's `data` gains from its type and its parent: the type, the
  * owner of a new map (its creator), and the client of the map it is filed
  * under, so a client-scoped map's tickets carry the client too.
