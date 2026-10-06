@@ -51,6 +51,13 @@ describe.skipIf(serverUrl === undefined)('the models a conversation is offered',
       [clientId, providers.length > 0, providers],
     );
   };
+  const modelOf = async (id: string): Promise<unknown> =>
+    (
+      await w.fixture.db.admin.execute<{ readonly model_id: string | null }>(
+        'select model_id from public.conversations where id = $1',
+        [id],
+      )
+    )[0]?.model_id;
   const offered = async (conversationId?: string): Promise<Answer> =>
     await w.as(
       w.owner,
@@ -169,13 +176,6 @@ describe.skipIf(serverUrl === undefined)('the models a conversation is offered',
     await db.app.withBusiness(business, async (tx) => {
       await revokeGrant(tx, readGrant);
     });
-    const choice = async (): Promise<unknown> =>
-      (
-        await db.admin.execute<{ readonly model_id: string | null }>(
-          'select model_id from public.conversations where id = $1',
-          [old],
-        )
-      )[0]?.model_id;
     const readOld = async (): Promise<Answer> =>
       await w.as(member, 'conversation.models', { conversationId: old });
     await egress(['replay']);
@@ -188,7 +188,7 @@ describe.skipIf(serverUrl === undefined)('the models a conversation is offered',
     });
     expect(set.status).toBe(422);
     expect(set.body).toMatchObject({ code: 'FIELD_VALUE_INVALID', names: ['model'] });
-    expect(await choice()).toBeNull();
+    expect(await modelOf(old)).toBeNull();
     await egress([]);
     const off = await readOld();
     expect(off.status).toBe(200);
@@ -224,16 +224,76 @@ describe.skipIf(serverUrl === undefined)('the models a conversation is offered',
       await held.letGo();
     }
     const set = await sending;
-    const [kept] = await db.admin.execute<{ readonly model_id: string | null }>(
-      'select model_id from public.conversations where id = $1',
-      [old],
-    );
+    const kept = await modelOf(old);
     expect({
       startedLive,
       status: set.status,
       code: set.body['code'],
-      model: kept?.model_id,
+      model: kept,
     }).toEqual({ startedLive: true, status: 422, code: 'FIELD_VALUE_INVALID', model: null });
     carriesNothing(set);
+  });
+
+  /** A second client, A, whose egress allows replay, and a task placed on it. */
+  const aTaskOnAnotherClient = async (): Promise<string> => {
+    const { db, business } = w.fixture;
+    const clientA = randomUUID();
+    await addClient(db.app, business, clientA, w.owner);
+    await db.admin.execute(
+      `update public.clients set model_egress = true, model_providers = '{replay}' where id = $1`,
+      [clientA],
+    );
+    const madeA = await w.as(w.owner, 'task.create', { fields: { title: 'client A’s task' } });
+    const placedA = await w.as(w.owner, 'task.set_party', {
+      operationId: randomUUID(),
+      recordId: madeA.body['recordId'],
+      expectedRevision: madeA.body['revision'],
+      fields: { client: clientA },
+    });
+    expect(placedA.status).toBe(200);
+    return String(madeA.body['recordId']);
+  };
+
+  it('CS-7.40 client to client: a member who keeps client A’s task read and loses client B’s is offered nothing on B and takes no choice there', async () => {
+    const { db, business } = w.fixture;
+    const taskA = await aTaskOnAnotherClient();
+    const member = await enrol(db.app, business, 'reader-of-a-only');
+    const readB = await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, member, 'write', undefined, false, CONVERSATION);
+      await grantTo(tx, member, 'read', { kind: 'record', id: taskA });
+      return await grantTo(tx, member, 'read', { kind: 'record', id: clientTask });
+    });
+    const onA = await started(w, member, { body: 'about A', scope: { kind: 'task', id: taskA } });
+    const onB = await started(w, member, {
+      body: 'about B',
+      scope: { kind: 'task', id: clientTask },
+    });
+    await db.app.withBusiness(business, async (tx) => {
+      await revokeGrant(tx, readB);
+    });
+    const read = async (id: string): Promise<Answer> =>
+      await w.as(member, 'conversation.models', { conversationId: id });
+    await egress(['replay']);
+    expect(ids(await read(onA)), 'A is still read').toStrictEqual([REPLAY_MODEL_WINDOW.model]);
+    const allowed = await read(onB);
+    const set = await w.as(member, 'conversation.set_model', {
+      conversationId: onB,
+      model: REPLAY_MODEL_WINDOW.model,
+    });
+    await egress([]);
+    const off = await read(onB);
+    const kept = await modelOf(onB);
+    expect({
+      allowed: ids(allowed),
+      set: [set.status, set.body['code']],
+      same: off.body,
+      model: kept,
+    }).toStrictEqual({
+      allowed: [],
+      set: [422, 'FIELD_VALUE_INVALID'],
+      same: allowed.body,
+      model: null,
+    });
+    for (const answer of [allowed, set, off]) carriesNothing(answer);
   });
 });
