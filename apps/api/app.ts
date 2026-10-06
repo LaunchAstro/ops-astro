@@ -95,10 +95,9 @@ import {
   TOPICS,
   type LiveStream,
   type Seated,
-  type Watching,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
-import { hearing, watching } from './live-watching.ts';
+import { hearing, watching, type DoorWatching } from './live-watching.ts';
 import { liveStream } from './live-stream.ts';
 import { recordsIn } from './records-in.ts';
 import { settleAfterCommit } from './settle-after-commit.ts';
@@ -662,6 +661,8 @@ async function onSeat<A extends SeatAsk>(
   if (admission === undefined || isCommandRefusal(admission)) {
     return refuse(context, admission ?? refuseNotFound());
   }
+  // Only for the person the recheck admitted: a login remapped since never acts through another's seat.
+  if (admission.personId !== viewer.personId) return refuse(context, refuseNotFound());
   const answered = answer(asked, viewer.personId, businessId);
   return answered === undefined ? refuse(context, refuseNotFound()) : context.json(answered);
 }
@@ -671,16 +672,18 @@ async function seatOf(
   options: ApiOptions,
   live: LiveOptions,
   context: Context,
-  asks: Watching,
+  asks: DoorWatching,
 ): Promise<Seated | undefined> {
   const { presence } = live;
   if (presence === undefined) return undefined;
-  return await seatFor(presence, async () => {
+  const seated = await seatFor(presence, async () => {
     const presented = await options.verify(context.req);
     if (typeof presented !== 'object') return;
     const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
     return isCommandRefusal(viewer) ? undefined : viewer;
   });
+  // The person the door admitted, or no seat: a login remapped since never sits in their place.
+  return seated?.session.personId === asks.admitted() ? seated : undefined;
 }
 
 /**

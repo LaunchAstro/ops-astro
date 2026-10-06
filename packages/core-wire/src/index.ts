@@ -167,6 +167,8 @@ export type { MapComponentView, MapView, MapViewResult, MapFrontierResult } from
 export type {
   AllowanceResult,
   AttributionResult,
+  ConversationModelsResult,
+  ConversationModelView,
   PlanningAllowanceView,
   PreReviewAttribution,
   PreReviewRun,

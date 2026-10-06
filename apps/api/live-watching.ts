@@ -37,20 +37,39 @@ interface Admitting {
 }
 
 type Answers = readonly (string | CommandRefusal)[] | CommandRefusal;
+/** A task the caller may watch, and the person admitted to it. */
+type Watched = { readonly taskId: string; readonly personId: string };
+/** A stream's questions, and the person its door admitted: the only person its seat is for. */
+export type DoorWatching = Watching & { readonly admitted: () => string | undefined };
 
 export function watching(
   options: Door,
   live: Admitting,
   context: Context,
   businessId: string,
-): Watching {
+): DoorWatching {
+  let admitted: string | undefined;
+  // At the door a task's answer is its topic, and the person it admitted is
+  // the stream's; on a recheck it is the person admitted now.
+  const topics = (
+    answers: readonly (Watched | CommandRefusal)[] | CommandRefusal,
+    at: AdmissionAt,
+  ) =>
+    isCommandRefusal(answers)
+      ? answers
+      : answers.map((answer) => {
+          if (isCommandRefusal(answer)) return answer;
+          if (at === 'recheck') return answer.personId;
+          admitted ??= answer.personId;
+          return answer.taskId;
+        });
   const ask = async (watches: readonly Watch[], at: AdmissionAt) => {
     const tasks = watches.flatMap((watch) => (watch.kind === undefined ? [watch.taskId] : []));
     const chats = watches.flatMap((watch) => (watch.kind === undefined ? [] : [watch.taskId]));
     const forTasks = (
       tasks.length === 0
         ? []
-        : perId(tasks, await mayWatch(options, live, context, businessId, tasks, at))
+        : perId(tasks, topics(await mayWatch(options, live, context, businessId, tasks, at), at))
     ).values();
     // The door records one authentication attempt: a task's, when one is named.
     const chatsAt = tasks.length > 0 ? 'recheck' : at;
@@ -65,6 +84,7 @@ export function watching(
   };
   return {
     businessId,
+    admitted: () => admitted,
     atDoor: async (ids, watches) => await ask(watches ?? tasksOf(ids), 'door'),
     async again(id, watch) {
       const [answer] = await ask([watch ?? { label: '', taskId: id }], 'recheck');
@@ -110,8 +130,7 @@ async function mayFollow(
  * reports: expiry, a lost membership, a revoked grant, a trashed or foreign
  * task and any external reader all refuse. It serves and audits nothing, since
  * the channel shows the person no content (C4 live-sync 6). Each answer is its
- * refusal, or at the door the task's identifier, the topic, and on a recheck
- * the person admitted.
+ * refusal, or the task's identifier (the topic) and the person admitted.
  */
 async function mayWatch(
   options: Door,
@@ -120,7 +139,7 @@ async function mayWatch(
   businessId: string,
   taskIds: readonly string[],
   at: AdmissionAt,
-): Promise<Answers> {
+): Promise<readonly (Watched | CommandRefusal)[] | CommandRefusal> {
   const presented = await presentedOf(options, context);
   if (isCommandRefusal(presented)) return presented;
   const requests = taskIds.map((recordId) => ({ read: 'task.execution' as const, recordId }));
@@ -129,7 +148,7 @@ async function mayWatch(
   return admitted.map((answer) => {
     if (isCommandRefusal(answer)) return answer;
     if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
-    return at === 'door' ? answer.recordId : answer.personId;
+    return { taskId: answer.recordId, personId: answer.personId };
   });
 }
 
