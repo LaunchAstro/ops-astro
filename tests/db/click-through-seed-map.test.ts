@@ -181,7 +181,7 @@ function roleCases() {
     // Its own role: the made-up guard and row security judge its writes as the
     // application's, never the owner's; the application can neither take the
     // role nor call the writers, which only their triggers fire.
-    expect(functions).toStrictEqual(
+    expect(functions.map((row) => Object.assign({}, row))).toStrictEqual(
       READ_MODEL_FUNCTIONS.toSorted().map((fn) => ({
         fn,
         definer: true,
