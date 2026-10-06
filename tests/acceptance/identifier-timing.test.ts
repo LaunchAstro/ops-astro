@@ -359,6 +359,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       action: 'read',
     }));
     byAda('access.end', 'holderId', f.admin.personId as string, (holderId) => ({ holderId }));
+    // C59: bravo's person named in an alpha authenticator reset.
+    byAda('access.reset_factor', 'holderId', f.admin.personId as string, (holderId) => ({
+      holderId,
+    }));
     // C60: bravo's client named in an alpha privacy change.
     byAda('client.set_privacy', 'clientId', f.clientId, (clientId) => ({
       clientId,
@@ -526,11 +530,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 89 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 90 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(89);
-    expect(names).toHaveLength(89);
+    expect(new Set(names).size, 'distinct operations').toBe(90);
+    expect(names).toHaveLength(90);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

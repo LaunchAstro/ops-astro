@@ -136,6 +136,8 @@ export type CommandName =
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'
+  // C59 (ORCH65-Q3): the owner clears a member's lost authenticator.
+  | 'access.reset_factor'
   | 'grant.revoke'
   | 'delegation.revoke'
   | 'task.cancel'

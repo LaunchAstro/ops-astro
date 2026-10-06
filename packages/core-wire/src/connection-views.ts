@@ -3,7 +3,8 @@
 // What Settings' Keys panel and Connections & signal read (U33): custody's
 // secrets (C31) and the connector fleet (MP-14-7a). Types only,
 // beside `views.ts`, which holds the rest of the read results; a client takes
-// both through the wire package's index.
+// both through the wire package's index. The page's grants, tripwires and
+// night round (MP-14-8) are in `signal-views.ts`.
 
 /**
  * One secret as custody shows it (C31): whether a value is set, its scope and
