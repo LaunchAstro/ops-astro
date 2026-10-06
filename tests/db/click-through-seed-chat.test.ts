@@ -188,7 +188,7 @@ async function grantMia(): Promise<void> {
   expect('code' in granted, JSON.stringify(granted)).toBe(false);
 }
 
-/** Bea gets bravo's read-any grant, as local-seed issues one: bravo has no administrator. */
+/** Bea gets bravo's conversation:write and read-any grants, as local-seed issues one: bravo has no administrator. */
 async function grantBea(bravo: string): Promise<void> {
   const [bea] = await world.db.admin.execute<{ person: string; actor: string }>(
     `select p.id as person, a.id as actor from public.people p
@@ -196,15 +196,22 @@ async function grantBea(bravo: string): Promise<void> {
       where p.business_id = $1 and p.display_name = 'Bea Bravo'`,
     [bravo],
   );
-  const issued = await world.db.app.withBusiness(bravo as BusinessId, (tx) =>
-    issueGrant(tx, [], {
-      subject: { kind: 'person', id: bea!.person },
-      scope: { kind: 'business', id: null },
-      collection: 'conversation',
-      action: 'read',
-      parentGrantId: null,
-      grantedByActorId: bea!.actor,
-    }),
-  );
-  expect(issued.ok, JSON.stringify(issued)).toBe(true);
+  // Write lists her own tab row; read-any would read any conversation of bravo.
+  const issued = await world.db.app.withBusiness(bravo as BusinessId, async (tx) => [
+    await issueGrant(tx, [], { ...BEA_GRANT(bea!), action: 'write' }),
+    await issueGrant(tx, [], { ...BEA_GRANT(bea!), action: 'read' }),
+  ]);
+  expect(
+    issued.map((one) => one.ok),
+    JSON.stringify(issued),
+  ).toEqual([true, true]);
 }
+
+const BEA_GRANT = (bea: { readonly person: string; readonly actor: string }) =>
+  ({
+    subject: { kind: 'person', id: bea.person },
+    scope: { kind: 'business', id: null },
+    collection: 'conversation',
+    parentGrantId: null,
+    grantedByActorId: bea.actor,
+  }) as const;
