@@ -1067,7 +1067,9 @@ and its replay rule; `lease` repeats this pickup's `leaseId` and `fence`;
 `outcomes` is `completed`, `failed` or `dropped` (T3e1: a drop names
 `report.dropCause`, `provider_unavailable` or `connection_lost`, asks for no
 successor, and the same work is reserved again; anything else is
-`FIELD_VALUE_INVALID` on `report`). `credential` names where the claimant's
+`FIELD_VALUE_INVALID` on `report`, and `conditions.dropped` says so in the
+answer, naming the required `report.dropCause`, its two causes and the
+excluded `successor`). `credential` names where the claimant's
 credential travels, never the credential itself. That is the
 `x-agent-delegation` header for an agent and the person's own bearer for a
 person. `versionBinding` has no operand. The lease is bound to `versionId`, and the handback refuses `LEASE_NOT_OWNED`, keeping the

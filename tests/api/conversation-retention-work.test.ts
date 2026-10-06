@@ -15,9 +15,10 @@ import {
   type ConversationWorld,
 } from './aw-03-fixture.ts';
 import { localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
-import { createControls, PROPOSAL, type Controls } from './controls-fixture.ts';
+import { createControls, detailOf, PROPOSAL, type Controls } from './controls-fixture.ts';
 import { grantTo } from '../commands/fixture.ts';
 import type { Answer } from './fixture.ts';
+import { acceptBody, useInstructionRoot } from '../runtime/aw-04-world.ts';
 
 // Conversation retention holds for created work, decided gates and an unreadable window.
 let w: ConversationWorld;
@@ -34,6 +35,7 @@ beforeAll(async () => {
     await grantTo(tx, w.owner, 'share');
   });
 }, 180_000);
+useInstructionRoot();
 afterAll(async () => {
   await model?.close();
   await second?.close();
@@ -195,6 +197,29 @@ it('a run whose plan is rejected before it starts has ended at the rejection', a
     outcome: await purge(conversationId),
     messages: await messages(conversationId),
   }).toMatchObject({ outcome: { ok: false, code: 'NOT_DUE' }, messages: 1 });
+});
+
+it('a plan accepted in an unscoped conversation lists its run and gate, and the planned run holds the body', async () => {
+  const conversationId = await started(w, w.owner, { body: 'Plan the follow-up on that task' });
+  const created = await c.createTask('existing task, planned from a conversation');
+  const proposal = await c.propose(created.id, created.revision, 'accepted_in_conversation');
+  const body = acceptBody({ taskId: created.id, proposal }, { conversationId });
+  const accepted = await c.asPerson('task.accept_plan', body, w.owner);
+  expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+  await w.age(conversationId, 8);
+  expect(await wrap(conversationId)).toMatchObject({ ok: true, written: true });
+  const [row] = await w.fixture.db.admin.execute<{ items: unknown; left_open: unknown }>(
+    'select items, left_open from public.conversation_wrap_ups where conversation_id = $1',
+    [conversationId],
+  );
+  // The run is listed and left open, still planned; the gate is listed, decided.
+  const run = { kind: 'run', id: detailOf(accepted)['runId'], state: 'planned' };
+  expect(row?.left_open).toEqual([expect.objectContaining(run)]);
+  expect(JSON.stringify(row?.items)).toContain(String(proposal['gateId']));
+  expect({
+    outcome: await purge(conversationId),
+    messages: await messages(conversationId),
+  }).toMatchObject({ outcome: { ok: false, code: 'WORK_OPEN' }, messages: 1 });
 });
 
 /** Waits until a backend in this database waits on a lock. */
