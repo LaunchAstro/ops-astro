@@ -656,6 +656,8 @@ async function onSeat<A extends SeatAsk>(
   if (admission === undefined || isCommandRefusal(admission)) {
     return refuse(context, admission ?? refuseNotFound());
   }
+  // Only for the person the recheck admitted: a login remapped since never acts through another's seat.
+  if (admission.personId !== viewer.personId) return refuse(context, refuseNotFound());
   const answered = answer(asked, viewer.personId, businessId);
   return answered === undefined ? refuse(context, refuseNotFound()) : context.json(answered);
 }
