@@ -28,6 +28,8 @@ type Body = Readonly<Record<string, unknown>>;
 
 let world: AgentWorld;
 let reader: Decider;
+/** A second person: four eyes keep the reader from deciding a gate on their own task. */
+let other: Decider;
 const ids: Record<string, string> = {};
 
 async function revisionOf(recordId: string): Promise<number> {
@@ -38,8 +40,12 @@ async function revisionOf(recordId: string): Promise<number> {
   return Number(rows[0]?.revision);
 }
 
-async function applied(body: Body, what: string): Promise<Record<string, unknown>> {
-  const result = await world.asPerson(reader, { operationId: randomUUID(), ...body });
+async function applied(
+  body: Body,
+  what: string,
+  by: Decider = reader,
+): Promise<Record<string, unknown>> {
+  const result = await world.asPerson(by, { operationId: randomUUID(), ...body });
   if (isCommandRefusal(result)) throw new Error(`${what} refused ${result.code}`);
   return { ...(result.detail as Record<string, unknown>), recordId: result.recordId };
 }
@@ -76,6 +82,7 @@ beforeAll(async () => {
   if (serverUrl === undefined) return;
   world = await agentWorld('b9', `todos-move-${randomUUID().slice(0, 8)}`);
   reader = await world.decider('reader');
+  other = await world.decider('other');
   await world.db.app.withBusiness(world.business, async (tx) => {
     await grantTo(tx, reader, 'assign');
   });
@@ -138,6 +145,7 @@ live('task.todos whose move (DP-14)', () => {
         note: 'not this one',
       },
       'task.decide',
+      other,
     );
     expect((await todos()).get(ids['gated'] ?? '')?.whoseMove).toBe('Team');
   });
