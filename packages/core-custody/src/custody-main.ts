@@ -174,7 +174,7 @@ function isRequest(value: unknown): value is OutboundRequest {
       .filter((key) => key !== 'notAfter')
       .toSorted()
       .join() === REQUEST_KEYS &&
-    ['undefined', 'number'].includes(typeof shape['notAfter']) &&
+    (shape['notAfter'] === undefined || Number.isSafeInteger(shape['notAfter'])) &&
     typeof shape['destination'] === 'string' &&
     typeof shape['path'] === 'string' &&
     (METHODS as readonly unknown[]).includes(shape['method']) &&
