@@ -5,7 +5,9 @@
 // so the seeded map is read back through those two reads, as Ada and as two
 // readers who must see none of it.
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
@@ -19,9 +21,13 @@ import {
   ada,
   businessOf,
   closeWorld,
+  guardState,
   openWorld,
   person,
+  runSeed,
+  SEED,
   serverUrl,
+  snapshot,
   taskId,
   type World,
 } from './click-through-seed.fixture.ts';
@@ -32,6 +38,7 @@ const COPY = 'Draft the home page copy';
 const BUILD = 'Build the enquiry page';
 const GRILL = 'Settle the launch date';
 const PROTOTYPE = 'Try a shorter menu';
+const NOTES = 'A made-up map for the click-through: the owner signs off the copy.';
 
 let world: World;
 
@@ -67,6 +74,8 @@ describe.skipIf(serverUrl === undefined)('SR-1 click-through seed map', () => {
   readerCases();
   guardCases();
   roleCases();
+  // Last: it reopens the research ticket, which every case above reads resolved.
+  driftCases();
 });
 
 function mapCases() {
@@ -74,7 +83,7 @@ function mapCases() {
     const map = await adaMap();
     expect(map.title).toBe(MAP);
     expect(map.destination?.text).toMatch(/enquiry/u);
-    expect(map.notes?.text).not.toBe('');
+    expect(map.notes?.text).toBe(NOTES);
     expect(map.fog.map((patch) => patch.text)).toHaveLength(2);
     expect(map.outOfScope.map((item) => item.text)).toEqual(['A booking system']);
     // Made-up work of the business's own: no client is named.
@@ -215,5 +224,34 @@ function roleCases() {
       'record_types:select',
       'records:select',
     ]);
+  });
+}
+
+async function revisionOf(id: string): Promise<number> {
+  const [row] = await world.db.admin.execute<{ revision: string }>(
+    'select revision::text as revision from public.records where id = $1',
+    [id],
+  );
+  return Number(row?.revision);
+}
+
+function driftCases() {
+  it('refuses the map by name, writing nothing, once its research ticket is reopened', async () => {
+    const research = await taskId(world, RESEARCH);
+    const reopened = await executeCommand(world.db.app, world.business, ada(world), 'api', {
+      command: 'task.reopen',
+      operationId: `made-up:${randomUUID()}`,
+      recordId: research,
+      expectedRevision: await revisionOf(research),
+      reason: 'Recheck the enquiry form',
+    } as never);
+    expect('code' in reopened, JSON.stringify(reopened)).toBe(false);
+    expect((await adaMap()).decisions).toEqual([]);
+    const was = [await snapshot(world.db), await guardState(world.db)];
+    const ran = runSeed(SEED, { admin: world.db, local: world.local });
+    expect(ran.status, ran.out).toBe(1);
+    expect(ran.out).toMatch(/click-through-seed: REFUSED/u);
+    expect(ran.out).toMatch(/'Plan the new agency website' .*reset/u);
+    expect([await snapshot(world.db), await guardState(world.db)]).toEqual(was);
   });
 }
