@@ -204,8 +204,9 @@ export async function keptRefused(
  * SEC1-1): the page task judged under its share lock, then the audit chain's
  * lock, which its own audit events and the envelope's would otherwise wait on
  * after the check, so a grant a chain holder ended is seen. The chain key is
- * the trigger's, `business_id::text`, which is lower case. Answers why the
- * page refuses the question, if it does.
+ * the trigger's, `business_id::text`, which is lower case. The page read is
+ * asked once more after the chain. Answers why the page refuses the question,
+ * if it does.
  */
 export async function waitsFirst(
   tx: TenantQuery,
@@ -214,7 +215,9 @@ export async function waitsFirst(
 ): Promise<PageRefusal | null> {
   const pageRefused = await keptRefused(tx, session, taskId);
   await advisoryLock(tx, tx.businessId.toLowerCase());
-  return pageRefused;
+  if (pageRefused !== null || taskId === null) return pageRefused;
+  // The read asked again after the chain: one a chain holder ended is seen (SEC3-F3).
+  return (await reads(tx, session, taskId)) ? null : 'SCOPE_NOT_GRANTED';
 }
 
 /** The page and earlier messages for the asked message, in the caller's transaction. */
