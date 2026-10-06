@@ -9,6 +9,7 @@
 import { rmSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
+import { ledgerTotal } from '../../apps/local-agent/ledger.ts';
 import { createRunner } from '../../apps/local-agent/runner.ts';
 import { readSettings } from '../../apps/local-agent/settings.ts';
 import { LOCAL_GPT_COMPOSE } from '../../packages/core-connectors/src/index.ts';
@@ -99,6 +100,27 @@ describe('the cap stops a run', () => {
     });
     expect(w.calls()).toHaveLength(0);
     expect(logged.join('\n')).toContain('needs the owner’s yes to raise it');
+  });
+
+  it('refuses with fewer tokens left than one call is charged, so the cap holds', async () => {
+    const { w, r } = await start();
+    w.write('ledger.jsonl', used(1_980_000));
+    w.knobs({ usage: { input_tokens: 25_000, output_tokens: 0 } });
+    expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
+    expect(w.calls()).toHaveLength(0);
+    expect(ledgerTotal(w.agentHome, 2_000_000)).toBe(1_980_000);
+  });
+
+  it('withholds the answer of a call that used more than the tokens it was given', async () => {
+    const { w, r } = await start();
+    w.write('ledger.jsonl', used(1_940_000));
+    w.knobs({ usage: { input_tokens: 70_000, output_tokens: 0 } });
+    const reply = await call(r, message);
+    expect(reply.body).toMatchObject({ text: '', code: 'LOCAL_CAP_REACHED' });
+    // What it used is recorded as it was reported, never trimmed to fit.
+    expect(ledgerTotal(w.agentHome, 2_000_000)).toBe(2_010_000);
+    expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
+    expect(w.calls()).toHaveLength(1);
   });
 
   it('stops the run once a call takes the total to the cap', async () => {
