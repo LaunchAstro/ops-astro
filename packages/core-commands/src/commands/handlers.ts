@@ -11,8 +11,8 @@
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
-import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
+import type { Handler, RequestOf, WriteName } from './handler-types.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
@@ -81,19 +81,6 @@ import {
   turnOffActivationAsPerson,
 } from './automation-approvals.ts';
 import { WAYFINDER_HANDLERS } from './handlers-wayfinder.ts';
-
-/**
- * Each write's request, by name. An intersection rather than `Extract`, so the
- * one union member that five owning operations share narrows to each of them.
- */
-export type WriteName = CommandRequest['command'];
-type RequestOf<K extends WriteName> = CommandRequest & { readonly command: K };
-
-export type Handler<K extends WriteName> = (
-  tx: TenantQuery,
-  context: CommandContext,
-  request: RequestOf<K>,
-) => Promise<HandlerOutcome>;
 
 const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.create': createTask,

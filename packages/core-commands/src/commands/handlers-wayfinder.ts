@@ -3,7 +3,7 @@
 // The wayfinder commands' handlers (WF-1, WF-2), a block of `HANDLERS`
 // (handlers.ts), which spreads it in (moved whole to keep it under its line cap).
 
-import type { Handler, WriteName } from './handlers.ts';
+import type { Handler, WriteName } from './handler-types.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
 import { reviseMap } from './wayfinder-revision.ts';
 import { chartMap } from './wayfinder-chart.ts';
