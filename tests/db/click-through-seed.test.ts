@@ -4,11 +4,11 @@
 // Each item is read back the way the product reads it, a second run changes
 // nothing, and an unmarked database is refused before anything is written.
 
-import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFreshDatabase } from '../support/fresh-database.ts';
 import {
   closeWorld,
+  guardState,
   openWorld,
   pendingFor,
   readTask,
@@ -170,26 +170,32 @@ function unknownAndHelperCases() {
 }
 
 function rerunCases() {
-  it('a second run makes nothing and changes nothing', () => {
+  it('a second run makes nothing and changes nothing, history, audit and receipts included', () => {
     expect(world.second.status, world.second.out).toBe(0);
     expect(world.second.out).toContain('already seeded, nothing made');
     expect(world.before['records']!.length).toBeGreaterThan(20);
+    expect(world.before['audit_events']!.length).toBeGreaterThan(0);
     expect(world.after).toEqual(world.before);
   });
 
-  it('refuses an unmarked database and writes nothing to it', async () => {
+  it('the first run leaves the made-up guard and mark as local-seed left them', () => {
+    expect(world.guards[0]['functions']!.length).toBeGreaterThan(0);
+    expect(world.guards[1]).toEqual(world.guards[0]);
+  });
+
+  it("the first run leaves bravo's rows untouched", () => {
+    expect(world.bravo[0]['actors']!.length).toBeGreaterThan(0);
+    expect(world.bravo[1]).toEqual(world.bravo[0]);
+  });
+
+  it('refuses an unmarked database and writes nothing to it, guard included', async () => {
     const bare = await createFreshDatabase({ part: 'sr1clickbare' });
     try {
-      const was = await snapshot(bare);
-      const refused = runSeed(SEED, bare, join(world.root, '.local'));
+      const was = [await snapshot(bare), await guardState(bare)];
+      const refused = runSeed(SEED, { admin: bare, local: world.local });
       expect(refused.status, refused.out).toBe(1);
       expect(refused.out).toMatch(/click-through-seed: REFUSED, .*it carries no made-up mark/u);
-      expect(await snapshot(bare)).toEqual(was);
-      const [mark] = await bare.admin.execute<{ mark: string | null }>(
-        `select shobj_description(oid, 'pg_database') as mark
-           from pg_database where datname = current_database()`,
-      );
-      expect(mark?.mark ?? null).toBeNull();
+      expect([await snapshot(bare), await guardState(bare)]).toEqual(was);
     } finally {
       await bare.drop();
     }

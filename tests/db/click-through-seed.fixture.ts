@@ -36,55 +36,97 @@ export interface Ran {
 
 export type Snapshot = Readonly<Record<string, readonly unknown[]>>;
 
-export interface World {
+export interface Cast {
   readonly db: FreshDatabase;
   readonly root: string;
+  readonly local: string;
   readonly business: BusinessId;
+}
+
+export interface World extends Cast {
   readonly first: Ran;
   readonly second: Ran;
   readonly before: Snapshot;
   readonly after: Snapshot;
+  /** The guard and mark around the first run, and bravo's rows around it. */
+  readonly guards: readonly [Snapshot, Snapshot];
+  readonly bravo: readonly [Snapshot, Snapshot];
 }
 
-/** Every table the seed could write, so two runs can be compared whole. */
+/** Every table the seed could write, history, audit and receipts included. */
 const TABLES: readonly string[] = (
   'records clients actors logins actor_logins grants planned_runs gates gate_decisions ' +
-  'proposal_versions leases delegations attempts reservations budget_asks handback_reports operations'
+  'proposal_versions leases delegations attempts reservations budget_asks handback_reports ' +
+  'operations audit_events live_changes run_events live_correction_receipts'
 ).split(' ');
 
-export function runSeed(script: string, db: FreshDatabase, local: string, confirm = false): Ran {
+export interface SeedOptions {
+  readonly admin: FreshDatabase;
+  /** The application address, when not the admin database's own. */
+  readonly appUrl?: string;
+  readonly local: string;
+  readonly confirm?: boolean;
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+export function adminUrlOf(db: FreshDatabase): string {
   const url = new URL(serverUrl ?? '');
   url.pathname = `/${db.name}`;
+  return url.toString();
+}
+
+export function runSeed(script: string, options: SeedOptions): Ran {
   const result = spawnSync(process.execPath, [script], {
     encoding: 'utf8',
     timeout: 240_000,
     env: {
       PATH: process.env['PATH'] ?? '',
-      DATABASE_URL: db.appUrl,
-      DATABASE_ADMIN_URL: url.toString(),
-      OPS_SEED_DIR: local,
+      DATABASE_URL: options.appUrl ?? options.admin.appUrl,
+      DATABASE_ADMIN_URL: adminUrlOf(options.admin),
+      OPS_SEED_DIR: options.local,
       GOTRUE_URL: 'http://127.0.0.1:9',
-      LOCAL_SEED_MADE_UP: confirm ? 'confirm' : '',
+      LOCAL_SEED_MADE_UP: options.confirm === true ? 'confirm' : '',
+      ...options.env,
     },
   });
   return { status: result.status, out: `${result.stdout}\n${result.stderr}` };
 }
 
-export async function snapshot(db: FreshDatabase): Promise<Snapshot> {
+/** The tables above, whole or one business's rows. */
+export async function snapshot(db: FreshDatabase, business?: string): Promise<Snapshot> {
   const out: Record<string, readonly unknown[]> = {};
   for (const table of TABLES) {
     // One owner connection; the reads are sequential by construction.
     // oxlint-disable-next-line no-await-in-loop
     out[table] = await db.admin.execute(
-      `select to_jsonb(t) as row from public.${table} t order by to_jsonb(t)::text`,
+      `select to_jsonb(t) as row from public.${table} t
+        where $1::uuid is null or t.business_id = $1::uuid order by to_jsonb(t)::text`,
+      [business ?? null],
     );
   }
   return out;
 }
 
-/** local-seed's cast, then the click-through seed twice. */
-export async function openWorld(): Promise<World> {
-  const db = await createFreshDatabase({ part: 'sr1clickthrough' });
+/** The made-up guard's functions, triggers, ledger and watch, and the database's mark. */
+export async function guardState(db: FreshDatabase): Promise<Snapshot> {
+  const read = (text: string) => db.admin.execute(text);
+  return {
+    functions: await read(`select p.proname, p.prosrc from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'ops_astro_made_up'
+      order by 1, 2`),
+    triggers: await read(`select tgrelid::regclass::text as rel, tgenabled from pg_trigger
+      where tgname = 'ops_astro_made_up_guard' order by 1`),
+    watch: await read('select evtname, evtenabled, evtfoid::text from pg_event_trigger order by 1'),
+    ledger: await read(`select to_jsonb(l) as row from ops_astro_made_up.untrusted l
+      where to_regclass('ops_astro_made_up.untrusted') is not null`).catch(() => []),
+    mark: await read(`select shobj_description(oid, 'pg_database') as mark
+      from pg_database where datname = current_database()`),
+  };
+}
+
+/** A fresh database with local-seed's cast on it, its files under a temporary root. */
+export async function openCast(part: string): Promise<Cast> {
+  const db = await createFreshDatabase({ part });
   const root = mkdtempSync(join(tmpdir(), 'sr1-seed-'));
   for (const dir of ['scripts', 'scripts/local', '.local']) mkdirSync(join(root, dir));
   for (const file of ['scripts/local-seed.mjs', 'scripts/local/signing-key.mjs']) {
@@ -94,26 +136,42 @@ export async function openWorld(): Promise<World> {
     symlinkSync(join(repo, link), join(root, link));
   }
   const local = join(root, '.local');
-  const cast = runSeed(join(root, 'scripts/local-seed.mjs'), db, local, true);
+  const cast = runSeed(join(root, 'scripts/local-seed.mjs'), { admin: db, local, confirm: true });
   expect(cast.status, cast.out).toBe(0);
-  const [row] = await db.admin.execute<{ id: string }>(
-    `select id from public.businesses where key = 'alpha'`,
-  );
-  const first = runSeed(SEED, db, local);
-  const before = await snapshot(db);
-  const second = runSeed(SEED, db, local);
-  const after = await snapshot(db);
-  return { db, root, business: row!.id as BusinessId, first, second, before, after };
+  return { db, root, local, business: (await businessOf(db, 'alpha')) as BusinessId };
 }
 
-export async function closeWorld(world: World | undefined): Promise<void> {
+export async function businessOf(db: FreshDatabase, key: string): Promise<string> {
+  const [row] = await db.admin.execute<{ id: string }>(
+    'select id from public.businesses where key = $1',
+    [key],
+  );
+  return row!.id;
+}
+
+/** local-seed's cast, then the click-through seed twice. */
+export async function openWorld(): Promise<World> {
+  const cast = await openCast('sr1clickthrough');
+  const bravo = await businessOf(cast.db, 'bravo');
+  const options = { admin: cast.db, local: cast.local };
+  const [guarded, bravoWas] = [await guardState(cast.db), await snapshot(cast.db, bravo)];
+  const first = runSeed(SEED, options);
+  const before = await snapshot(cast.db);
+  const guards = [guarded, await guardState(cast.db)] as const;
+  const bravoRows = [bravoWas, await snapshot(cast.db, bravo)] as const;
+  const second = runSeed(SEED, options);
+  const after = await snapshot(cast.db);
+  return { ...cast, first, second, before, after, guards, bravo: bravoRows };
+}
+
+export async function closeWorld(world: Cast | undefined): Promise<void> {
   if (world === undefined) return;
   rmSync(world.root, { recursive: true, force: true });
   await world.db.drop();
 }
 
 /** Ada, the cast's admin, signed in with her second factor. */
-export function ada(world: World): VerifiedSubject {
+export function ada(world: Cast): VerifiedSubject {
   const file = join(world.root, '.local/synthetic-users.json');
   const users = JSON.parse(readFileSync(file, 'utf8')) as { email: string; subject: string }[];
   const now = Math.floor(Date.now() / 1000);
@@ -125,7 +183,7 @@ export function ada(world: World): VerifiedSubject {
 }
 
 /** The one task of the business with this title. */
-export async function taskId(world: World, title: string): Promise<string> {
+export async function taskId(world: Cast, title: string): Promise<string> {
   const rows = await world.db.admin.execute<{ id: string }>(
     `select r.id from public.records r join public.record_types t on t.id = r.record_type_id
       where t.key = 'task' and r.business_id = $1 and r.txt_4 = $2`,
@@ -141,7 +199,7 @@ export interface ReadTask {
 }
 
 /** The task as Ada reads it through `task.read`. */
-export async function readTask(world: World, id: string): Promise<ReadTask> {
+export async function readTask(world: Cast, id: string): Promise<ReadTask> {
   const read = await executeRead(world.db.app, world.business, ada(world), {
     read: 'task.read',
     recordId: id,
@@ -152,7 +210,7 @@ export async function readTask(world: World, id: string): Promise<ReadTask> {
 
 /** The gates Ada may decide, through `gate.pending`. */
 export async function pendingFor(
-  world: World,
+  world: Cast,
 ): Promise<readonly { readonly taskId: string; readonly version: number }[]> {
   const read = await executeRead(world.db.app, world.business, ada(world), {
     read: 'gate.pending',
@@ -163,7 +221,7 @@ export async function pendingFor(
 
 /** The runs on the task with this title, oldest first. */
 export async function runsOf(
-  world: World,
+  world: Cast,
   title: string,
 ): Promise<readonly { readonly id: string; readonly state: string }[]> {
   return await world.db.admin.execute<{ id: string; state: string }>(
