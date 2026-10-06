@@ -185,6 +185,9 @@ async function keep(
     [tx.businessId, asked.conversationId, session.actorId],
   );
   if (conversation === undefined || conversation.body_purged_at !== null) return undefined;
+  // An ended session keeps nothing, and an ending in flight waits for this; asked
+  // before the grants, so the grant is judged at the clock after this wait too.
+  if (await sessionEndedSince(tx, session)) return undefined;
   // The caller's conversation grants are held for share once the row is
   // locked, a grant issued while this waited included: a revocation that
   // committed first is seen by the check below, and one that comes later waits
@@ -196,8 +199,6 @@ async function keep(
   const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
   const at = await lockedInstant(tx);
   if (!(await holdsOwnConversations(tx, session, { at, held }))) return undefined;
-  // After the last wait: an ended session keeps nothing; an ending in flight waits for this.
-  if (await sessionEndedSince(tx, session)) return undefined;
   const id = randomUUID();
   // The reply and the activity are stamped at that same instant, so a reply
   // that waited behind a message is listed and dated after it (#444). The
