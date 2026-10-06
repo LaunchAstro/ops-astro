@@ -45,7 +45,12 @@ async function holdOn(hold: (tx: TenantQuery) => Promise<void>): Promise<Holder>
     held.release();
     await release.promise;
   });
-  await Promise.race([held.promise, holding]);
+  try {
+    await Promise.race([held.promise, holding]);
+  } catch (error) {
+    await blocker.close();
+    throw error;
+  }
   return {
     pid,
     letGo: release.release,
