@@ -64,6 +64,7 @@ import type {
 import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 import { AllowanceLine } from './allowance-line.tsx';
+import { besideAllowance, type CorrectionHost } from './correction-card.tsx';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
 
@@ -248,7 +249,7 @@ const answering =
     }
   };
 
-export function AssistantView(props: AssistantViewProps): ReactElement {
+export function AssistantView(props: AssistantViewProps & CorrectionHost): ReactElement {
   const store = useKeptStore(props.client, props.grantKey);
   const { state, update } = store;
   useEffect(() => {
@@ -275,7 +276,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
         opened === null ? null : pathTo('agency:agent-conversation', { conversation: opened })
       }
       citation={state.citation}
-      allowance={allowanceFor(props.client, chat)}
+      allowance={besideAllowance(allowanceFor(props.client, chat), props)}
       draft={state.draft}
       answering={(state.answering[state.selected] ?? 0) > 0}
       history={useHistoryList(props.client, store)}
