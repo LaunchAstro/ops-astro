@@ -16,8 +16,9 @@
 // first. Every command goes through `useMoneyCommand`, since mandate:manage
 // needs a fresh sign-in (C59), says its refusal in the server's words, and
 // reads the region again; a form clears only once its write succeeds. A write
-// held for that sign-in is withdrawn when the scope bar moves or its form is
-// cancelled, and one whose answer was lost goes again under its operation.
+// held for that sign-in is withdrawn when the scope bar moves or the form that
+// sent it is cancelled, and one whose answer was lost goes again under its
+// operation.
 
 import { useState, type ReactElement } from 'react';
 import { Empty, SectionHead } from '@launchastro/ui';
@@ -35,7 +36,7 @@ import { StepUpPrompt } from '../../views/step-up-prompt.tsx';
 import { ChannelsMock, ExceptionsMock } from './client-mock.tsx';
 import { MandateForm, type MandateFiling } from './graduation-forms.tsx';
 import { ConfirmRevokeMandate, GraduationRow, Mandate } from './graduation-rows.tsx';
-import { useSend, type Drop, type Send } from './graduation-send.ts';
+import { promotionOf, useSend, type Drop, type Send } from './graduation-send.ts';
 
 type Client = ConnectionGraduationResult['clients'][number];
 
@@ -145,7 +146,7 @@ function Graduation(props: {
               );
             }}
             cancel={() => {
-              props.drop();
+              props.drop(promotionOf(row.id));
               setPromoting(null);
             }}
           />
