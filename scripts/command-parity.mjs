@@ -189,6 +189,7 @@ const OPERANDS = {
     steps: 's',
   },
   'chat.messages': { conversationId: '00000000-0000-4000-8000-000000000000' },
+  'finance.agent_costs': { from: '2026-01-01T00:00:00Z', to: '2026-02-01T00:00:00Z' },
 };
 
 // The grants a read really asks: the real read path on a transaction that holds none.

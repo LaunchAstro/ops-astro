@@ -15,6 +15,8 @@ export const PINNED_SHAPE = {
   'connection.fleet': { spine: false, subject: false, authority: 'holds-any-grant' },
   'connection.graduation': { spine: false, subject: false, authority: 'holds-any-grant' },
   'connection.signal': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'finance.skill_costs': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'finance.agent_costs': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },

@@ -34,6 +34,8 @@ const PINNED_IDENTIFIERS = {
   'conversation.list': [],
   'conversation.read': ['conversationId'],
   'definition.attribution': [],
+  'finance.agent_costs': [],
+  'finance.skill_costs': [],
   'gate.pending': [],
   'harness.read': [],
   'inbox.count': [],
@@ -197,6 +199,13 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'connection.fleet': BODIES.map(() => null),
   'connection.signal': BODIES.map(() => null),
   'connection.graduation': BODIES.map(() => null),
+  'finance.skill_costs': BODIES.map(() => null),
+  // The cost log's period, which none of these bodies carries.
+  'finance.agent_costs': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['from'],
+    fixes: ['Send from and to as ISO date-times, from before to.'],
+  })),
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
@@ -235,7 +244,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same forty reads', () => {
+  it('names the same forty-two reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

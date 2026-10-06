@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What agent runs cost (U39): skill costing on Connections & signal (MP-14-9)
+// What agent runs cost: skill costing on Connections & signal (MP-14-9)
 // and what our agents cost us (MP-14-6). Money is minor units as text, with
 // its currency. A figure the product cannot give yet is a named field,
 // unavailable with its reason, never left out and never a zero.

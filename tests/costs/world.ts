@@ -10,18 +10,23 @@
 // Its model calls are the broker's (AW-01) and its definition pin is the
 // aw-02 cutover's (a `definition_version` pin, not yet written by anything),
 // so both are seeded as the database owner, the way MP-14-7a seeds the
-// connector rows. A finished run is handed back through `task.handback`.
-// Bravo's runs come the same way, through bravo's own routes, manager and
-// agent, so each business's reads have the other's runs to leave out.
+// connector rows (`calls.ts`). A finished run is handed back through
+// `task.handback`. Bravo's run comes the same way, through bravo's own routes,
+// manager and agent (`bravo.ts`), so each business's reads have the other's
+// runs to leave out.
 
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
-import { insertBusiness, insertLogin } from '../identity/fixture.ts';
+import { insertBusiness } from '../identity/fixture.ts';
+import { runInBravo, type Ran } from './bravo.ts';
+import { seedRunCalls, type Call } from './calls.ts';
+
+export type { Ran } from './bravo.ts';
 import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
-import { createControls, PROPOSAL, type Controls } from '../api/controls-fixture.ts';
-import type { FreshDatabase } from '../support/fresh-database.ts';
+import { createControls, type Controls } from '../api/controls-fixture.ts';
 import {
+  createClient,
   insertDefinition,
   releaseVersion,
   type TenantQuery,
@@ -33,17 +38,6 @@ const DIGEST = 'b'.repeat(64);
 /** Bravo's one settled call, a figure no alpha total can hold. */
 export const BRAVO_MINOR = 7_777;
 
-/** One model call as the broker leaves it: settled at a price, or its cost not known. */
-/** A settled call names the model that answered and its units, as the priced settle writes them, or neither. */
-export type Call =
-  | {
-      readonly state: 'settled';
-      readonly minor: number;
-      readonly model?: string;
-      readonly units?: readonly [number, number];
-    }
-  | { readonly state: 'liability_unknown' };
-
 export interface RunSpec {
   readonly client?: string;
   readonly skill?: string;
@@ -51,11 +45,6 @@ export interface RunSpec {
   readonly finish?: boolean;
   /** How long ago its first call started. */
   readonly hoursAgo?: number;
-}
-
-export interface Ran {
-  readonly runId: string;
-  readonly taskId: string;
 }
 
 export interface CostWorld {
@@ -85,62 +74,6 @@ export interface CostWorld {
 const path = (business: string, name: string): string =>
   `/api/b/${business}/${name.replace('.', '/')}`;
 
-const detail = (answer: Answer): Record<string, unknown> =>
-  answer.body['detail'] as Record<string, unknown>;
-
-/** Where a seeded call sits: the run's own step, lease, version, reservation and delegation. */
-interface CallPlace {
-  readonly business: string;
-  readonly runId: string;
-  readonly stepId: unknown;
-  readonly leaseId: unknown;
-  readonly versionId: unknown;
-  readonly reservationId: unknown;
-  readonly delegationId: unknown;
-  readonly hoursAgo: number;
-  readonly minute: number;
-}
-
-/** One model call as the broker leaves it, started `minute` minutes into its run. */
-async function insertCall(db: FreshDatabase, call: Call, at: CallPlace): Promise<void> {
-  const settled = call.state === 'settled';
-  await db.admin.execute(
-    `insert into public.model_calls
-       (business_id, id, run_id, step_id, lease_id, version_id, reservation_id,
-        delegation_id, operation_key, route_key, route_reach, credential_kind, state,
-        reserved_minor, actual_minor, accepted_at, started_at, completed_at, ended_at,
-        model_id, input_units, output_units, unknown_since)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, 'model.replay_compose', 'local.test',
-             'local', 'subscription', $9, $10, $11,
-             now() - make_interval(hours => $12::int),
-             now() - make_interval(hours => $12::int) + make_interval(mins => $13::int),
-             case when $14::boolean then now() - make_interval(hours => $12::int)
-                    + make_interval(mins => $13::int + 1) end,
-             case when $14::boolean then now() - make_interval(hours => $12::int)
-                    + make_interval(mins => $13::int + 1) end,
-             $15, $16, $17, case when $14::boolean then null else now() end)`,
-    [
-      at.business,
-      randomUUID(),
-      at.runId,
-      at.stepId,
-      at.leaseId,
-      at.versionId,
-      at.reservationId,
-      at.delegationId,
-      call.state,
-      settled ? Math.max(call.minor, 1) : 500,
-      settled ? call.minor : null,
-      at.hoursAgo,
-      at.minute,
-      settled,
-      settled ? (call.model ?? null) : null,
-      settled ? (call.units?.[0] ?? null) : null,
-      settled ? (call.units?.[1] ?? null) : null,
-    ],
-  );
-}
-
 // eslint-disable-next-line max-lines-per-function -- the world and its helpers, built in one place
 export async function createCostWorld(part: string): Promise<CostWorld> {
   const controls = await createControls(part);
@@ -168,30 +101,6 @@ export async function createCostWorld(part: string): Promise<CostWorld> {
       actorId: bravoFinance.actorId,
     });
   });
-  // Bravo's own manager and agent, installed as the API fixture installs alpha's.
-  const bravoManager = await enrol(db.app, bravo, 'bravomanager');
-  const bravoAgent = `agent-${randomUUID()}`;
-  await db.app.withBusiness(bravo, async (tx) => {
-    for (const action of ['read', 'write', 'decide', 'assign', 'comment', 'manage'] as const) {
-      // eslint-disable-next-line no-await-in-loop -- a grant reads the granter's own rows
-      await grantTo(tx, bravoManager, action);
-    }
-    await tx.query(
-      `insert into public.budget_caps (business_id, id, key, limit_minor, currency)
-       values ($1, $2, 'local', 500000, 'AUD')`,
-      [bravo, randomUUID()],
-    );
-    const actorId = randomUUID();
-    await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
-      bravo,
-      actorId,
-    ]);
-    await tx.query(
-      `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
-       values ($1, $2, $3, $4, $5)`,
-      [bravo, randomUUID(), await insertLogin(tx, bravoAgent), actorId, bravoManager.actorId],
-    );
-  });
   const charlie = await insertBusiness(db.app, 'charlie');
   await installSpine(db.app, charlie);
   const charlieFinance = await enrol(db.app, charlie, 'charliefinance');
@@ -209,36 +118,7 @@ export async function createCostWorld(part: string): Promise<CostWorld> {
     spec: RunSpec,
     business = alpha,
   ) {
-    const [row] = await db.admin.execute<{
-      readonly reservation_id: string;
-      readonly version_id: string;
-      readonly step_id: string;
-    }>(
-      `select r.id as reservation_id, r.version_id,
-              (select s.id from public.planned_steps s
-                where s.business_id = r.business_id and s.run_id = r.run_id
-                order by s.ordinal limit 1) as step_id
-         from public.reservations r
-        where r.business_id = $1 and r.run_id = $2
-        order by r.created_at limit 1`,
-      [business, ran.runId],
-    );
-    let minute = 0;
-    for (const call of spec.calls) {
-      minute += 1;
-      // eslint-disable-next-line no-await-in-loop -- a handful of rows in order
-      await insertCall(db, call, {
-        business,
-        runId: ran.runId,
-        stepId: row?.step_id,
-        leaseId: picked['leaseId'],
-        versionId: row?.version_id,
-        reservationId: row?.reservation_id,
-        delegationId: picked['delegationId'],
-        hoursAgo: spec.hoursAgo ?? 1,
-        minute,
-      });
-    }
+    await seedRunCalls(db, business, ran.runId, picked, spec.calls, spec.hoursAgo ?? 1);
     if (spec.skill !== undefined) {
       await db.admin.execute(
         `insert into public.run_definition_pins
@@ -250,54 +130,9 @@ export async function createCostWorld(part: string): Promise<CostWorld> {
     }
   }
 
-  /** One run in bravo through bravo's routes, with one settled call of `BRAVO_MINOR`. */
-  async function runInBravo(): Promise<Ran> {
-    const manager = await tokenFor(bravoManager.presented.subject);
-    const asManager = async (name: string, body: object): Promise<Record<string, unknown>> => {
-      const answer = await post(
-        controls.api,
-        path('bravo', name),
-        { operationId: randomUUID(), ...body },
-        authorised(manager),
-      );
-      expect(answer.status, `${name} ${JSON.stringify(answer.body)}`).toBe(200);
-      return answer.body;
-    };
-    const task = await asManager('task.create', { fields: { title: `bravo ${BRAVO_CANARY}` } });
-    const proposal = detail({
-      status: 200,
-      body: await asManager('task.propose', {
-        recordId: task['recordId'],
-        expectedRevision: task['revision'],
-        ...PROPOSAL,
-      }),
-    });
-    const decided = await asManager('task.decide', {
-      gateId: proposal['gateId'],
-      versionId: proposal['versionId'],
-      decision: 'approve',
-      note: 'approved so an agent can work it',
-    });
-    const pickup = await post(
-      controls.api,
-      '/api/a/b/bravo/task/pickup',
-      {
-        operationId: randomUUID(),
-        reservationId: detail({ status: 200, body: decided })['reservationId'],
-      },
-      authorised(await tokenFor(bravoAgent)),
-    );
-    expect(pickup.status, JSON.stringify(pickup.body)).toBe(200);
-    const picked = detail(pickup);
-    const [run] = await db.admin.execute<{ readonly run_id: string }>(
-      `select run_id from public.leases where business_id = $1 and id = $2`,
-      [bravo, picked['leaseId']],
-    );
-    const ran = { runId: String(run?.run_id), taskId: String(task['recordId']) };
+  const bravoRun = await runInBravo(controls, bravo, BRAVO_CANARY, async (ran, picked) => {
     await seedCalls(ran, picked, { calls: [{ state: 'settled', minor: BRAVO_MINOR }] }, bravo);
-    return ran;
-  }
-  const bravoRun = await runInBravo();
+  });
 
   return {
     controls,
@@ -312,12 +147,13 @@ export async function createCostWorld(part: string): Promise<CostWorld> {
     agentActorId,
     answers,
     async client(name) {
-      const made = await controls.asPerson('record.create', {
-        type: 'client',
-        fields: { name: `${name} ${RECORD_CANARY}` },
-      });
-      expect(made.status, JSON.stringify(made.body)).toBe(200);
-      return String(detail(made)['recordId']);
+      // A client of the business (0055), the row a task's client link and a
+      // party grant name.
+      const made = await inAlpha(
+        async (tx) => await createClient(tx, `${name} ${RECORD_CANARY}`, controls.manager.actorId),
+      );
+      if (!made.ok) throw new Error(`client ${name} was not made`);
+      return made.value;
     },
     async skill(name) {
       return await inAlpha(async (tx) => {

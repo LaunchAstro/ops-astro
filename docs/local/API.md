@@ -1688,6 +1688,8 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connection.graduation`                    | `readConnectionGraduation` (`reads/graduation.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `finance.skill_costs`                      | `readSkillCosts` (`reads/costs.ts`)                                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `finance.agent_costs`                      | `readAgentCosts` (`reads/agent-costs.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `mandate.file`                             | `fileMandate` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `mandate.revoke`                           | `revokeStandingMandate` (`commands/mandates.ts`)                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -3798,6 +3800,36 @@ where a name would not pass that rule.
 | `mandate.revoke`     | `/mandate/revoke`     | `operationId`, `mandateId`, `expectedRevision?`                                                       | `detail: { mandateId, state: 'revoked' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                       |
 | `graduation.promote` | `/graduation/promote` | `operationId`, `classId`, `ceiling`, `expiresAt`, `expectedRevision?`                                 | `detail: { classId, mandateId, state: 'promoted' }`; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not `ready`), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                 |
 | `graduation.demote`  | `/graduation/demote`  | `operationId`, `classId`, `expectedRevision?`                                                         | `detail: { classId, mandateId, state }`, `state` the class's derived state after the revoke; `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (nothing promotes it), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 |
+
+## What agent runs cost (MP-14-9, MP-14-6)
+
+Skill costing on Connections & signal (MP-14-9) and what our agents cost us
+(MP-14-6), in money minor units per run, from the broker's model calls
+(`listRunCosts`, `costs/run-costs.ts`). Both reads are asked by the scopes the
+caller holds `finance:read` at, filtered inside the statement: a business-wide
+holder sees every run, a client-scoped holder only the runs whose task names
+that client, never the agency's own; a caller holding it nowhere is refused
+`SCOPE_NOT_GRANTED`. A person's reads only: no agent route. A run's client is
+its task's client link, named in `clients`.
+
+A run's cost is the sum of its settled calls; a run with any started call not
+settled (in flight, or its liability unknown) is unpriced, counted and in no
+figure or total. A skill's runs are those whose `definition_version` pin names
+one of its versions; a run names one definition, so none is shared yet. Its
+figure is a mean with the spread `lo` to `hi` from more than one priced run
+(and `finishedMean` from more than one handed back), `one` for a single priced
+run, `none` otherwise. The split's three buckets add back to its `runs` and
+`total`. A skill's `usage: { measuredRuns, meanIn, meanOut }` takes the same
+rule over the input and output units the priced settle recorded (0098): a mean
+of each only from more than one priced run whose every settled call recorded
+them. `models: { ids, unnamedCalls }`, on a skill and on each log row, lists
+every exact model id its calls named and counts the settled calls that named
+none. The process document is `{ available: false, reason }` until Docs exists.
+
+| Operation             | Route                  | Body           | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------- | ---------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `finance.skill_costs` | `/finance/skill_costs` | `{}`           | `{ ok: true, costing: { skills: [{ skillId, name, currency, runs, soloRuns, sharedRuns, unpricedRuns, tasks, figure, soloTotal, usage, models, document }], split: [{ currency, runs, total, solo: { runs, total }, shared, unattributed, unpricedRuns }] } \| null }`, `null` when nothing the caller may see has run; `SCOPE_NOT_GRANTED` 403                                                                                                          |
+| `finance.agent_costs` | `/finance/agent_costs` | `{ from, to }` | `{ ok: true, period: { from, to }, runs: [{ runId, taskId, agentActorId, attachment: { kind: 'client', id, name } \| { kind: 'agency' }, currency, cost, unpriced, startedAt, models }], byAgent: [{ agentActorId, currency, runs, unpricedRuns, total }], byAttachment: [{ attachment, currency, runs, unpricedRuns, total }] }`; `FIELD_VALUE_INVALID` 422 naming `from` or `to` unless both are ISO date-times, `from` first; `SCOPE_NOT_GRANTED` 403 |
 
 ## Grants, tripwires and the night round (MP-14-8)
 

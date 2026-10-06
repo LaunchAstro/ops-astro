@@ -282,5 +282,9 @@ export type CommandName =
   | 'activation.roll_back'
   | 'activation.turn_off'
   | 'approval.revoke'
+  // What agent runs cost: skill costing (MP-14-9) and the agents' cost log
+  // (MP-14-6), each one read by `finance:read`, a person's only.
+  | 'finance.skill_costs'
+  | 'finance.agent_costs'
   // Setup's operations (C31 on), in `surface-setup.ts`.
   | SetupCommandName;

@@ -468,6 +468,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The per-client graduation region (MP-14-10a): the same page's key, asked per client by the
   // scopes the caller holds it at, never an agent.
   read('connection.graduation', 'connection'),
+  // What agent runs cost (MP-14-9, MP-14-6): skill costing and the agents' cost log for a
+  // period, each asked per row by the scopes the caller holds `finance:read` at, never an agent.
+  read('finance.skill_costs', 'finance'),
+  read('finance.agent_costs', 'finance'),
   declare('connector.repair', 'manage', {
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,
