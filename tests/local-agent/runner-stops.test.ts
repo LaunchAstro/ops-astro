@@ -56,7 +56,8 @@ describe('a call stopped part way', () => {
     await r.close();
     opened.length = 0;
     expect((await queued).body).toMatchObject({ code: 'LOCAL_GPT_FAILED' });
-    await running;
+    // The stopped call is answered too: a declared refusal custody releases, its 50,000 kept here.
+    expect((await running)?.body).toMatchObject({ code: 'LOCAL_GPT_FAILED' });
     expect(w.calls()).toHaveLength(1);
     expect(w.ledger()).toHaveLength(2);
   });
