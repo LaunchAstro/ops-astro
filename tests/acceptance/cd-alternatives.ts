@@ -251,8 +251,7 @@ const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string,
   };
 
 /**
- * The named row for an operation the (c) and (d) cells do not reach, or
- * `undefined` for one this file does not know, which the matrix throws on.
+ * The named row for one the (c) and (d) cells miss; `undefined` if unknown (the matrix throws).
  */
 export function alternativeFor(name: CommandName): string | undefined {
   const bearing = IDENTIFIER_BEARING[name];
@@ -271,8 +270,7 @@ export function alternativeFor(name: CommandName): string | undefined {
     );
   }
   if (name === 'run.child_handback') {
-    // AW-11: the body names nothing; the helper's own child credential is the
-    // target, so a foreign one and a made-up one are the operand compared.
+    // AW-11: the body names nothing; the target is the helper's own child credential.
     return (
       'executed alternative: aw-11-child-commands-isolation.test.ts "another business" ' +
       "compares another business's child credential and a fabricated one by status and bytes"

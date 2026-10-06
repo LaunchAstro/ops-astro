@@ -86,10 +86,9 @@ describe('the surface as a table', () => {
     // AW-05's budget stop answers; `definition`, AW-04's attribution; `trace`, AW-13's readers;
     // `harness`, AW-12's result. `operations` and `privacy` are C55's view and its incident record,
     // and `legal` is C81's documents, asked of `privacy`. `credential` is API-2's agent credential.
-    // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
+    // `time` is MP-4-6's (time entries, rows beside a task); `mandate`, `graduation` MP-14-10a.
     // By piece: `tag` MP-4-11; `chat` C71-D; `invitation` C39-T; `map` WF-1; `automation`,
-    // `activation` C33; `approval` C52-A; `record`, `onboarding` C41-A; `live_correction` C80;
-    // `mandate`, `graduation` MP-14-10a's standing mandates.
+    // `activation` C33; `approval` C52-A; `record`, `onboarding` C41-A; `live_correction` C80.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
