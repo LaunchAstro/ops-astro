@@ -20,9 +20,12 @@
 -- without one. A top-up on a closed hold held the step afresh in its own
 -- transaction (`holdTopUp`): that hold's attempt is stamped `now()`, the
 -- transaction's start, as the answer's `answered_at` is, so the two stamps
--- are equal. A closed hold never changes state again, so its state now is its
--- state then. A top-up on a held hold made no hold: it found the hold held. A
--- stopped hold in any other state fails the check, and the upgrade with it.
+-- are equal, and it is for the stopped hold's step at the top-up's amount
+-- (both fixed once written), so another transaction on the run that started
+-- in the same microsecond is not taken for it. A closed hold never changes
+-- state again, so its state now is its state then. A top-up on a held hold
+-- made no hold: it found the hold held. A stopped hold in any other state
+-- fails the check, and the upgrade with it.
 
 alter table public.budget_answers add column hold_state text;
 
@@ -31,7 +34,11 @@ update public.budget_answers a
                       select 1 from public.attempts t
                        where t.business_id = a.business_id and t.run_id = a.run_id
                          and t.reservation_id <> k.reservation_id
-                         and t.created_at = a.answered_at)
+                         and t.created_at = a.answered_at
+                         and t.estimated_minor = a.amount_minor
+                         and t.step_id in (select s.step_id from public.attempts s
+                                            where s.business_id = k.business_id
+                                              and s.reservation_id = k.reservation_id))
                     then r.state else 'held' end
   from public.budget_asks k, public.reservations r
  where a.kind = 'top_up'
