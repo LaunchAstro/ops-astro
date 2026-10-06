@@ -14,6 +14,7 @@ import {
   type RefObject,
 } from 'react';
 import { TASK_CATEGORIES } from '../../../../../packages/core-wire/src/index.ts';
+import { DraftTime } from './DraftTimer.tsx';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import type { TaskDraft } from './task-draft.ts';
 
@@ -169,19 +170,7 @@ function DraftParts({ draft, put, locked }: DraftFieldsProps): ReactElement {
           put({ steps });
         }}
       />
-      <Field id="panel-draft-time" label="Time spent">
-        <input
-          id="panel-draft-time"
-          className="input"
-          type="text"
-          placeholder="30m"
-          readOnly={locked}
-          value={draft.time}
-          onChange={(event) => {
-            put({ time: event.target.value });
-          }}
-        />
-      </Field>
+      <DraftTime draft={draft} put={put} locked={locked} />
       <Field id="panel-draft-note" label="Note">
         <textarea
           id="panel-draft-note"
