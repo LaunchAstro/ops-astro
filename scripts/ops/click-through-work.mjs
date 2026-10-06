@@ -10,7 +10,9 @@
 // its `stopAtCeiling` calls it, and the unknown outcome is the lease sweep's
 // (`sweepExpiredLeases`) after a dispatched run's lease runs out. The helper
 // agent is an actor and a login, inserted as local-seed inserts the agent.
-// No grant is written, and every name is made up.
+// The agent's reply in Ada's one conversation is written as the exchange
+// keeps one, with no model (`click-through-chat.mjs`). No grant is written,
+// and every name is made up.
 //
 // Idempotent by lookup, never by truncation: each item has a fixed title (the
 // untitled task a fixed description), and an item already in its end state is
@@ -18,6 +20,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { askTheAgent, CHAT_TITLE, chatState } from './click-through-chat.mjs';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import {
@@ -109,6 +112,7 @@ function items(w, lost) {
     run('Post the event reminder', ENDED.unknown, async (id) => lost.push(await dispatched(w, id))),
     run('Reply to the supplier', ENDED.unknown, async (id) => lost.push(await dispatched(w, id))),
     run('Collect quotes for printing', ENDED.helper, (id) => handToHelper(w, id)),
+    { title: CHAT_TITLE, state: () => chatState(w), build: () => askTheAgent(w) },
   ];
 }
 
@@ -147,6 +151,7 @@ export async function seedClickThrough(database, cast) {
 }
 
 async function stateOf(w, item) {
+  if (item.state !== undefined) return await item.state();
   const id =
     item.title === null
       ? (
