@@ -5,7 +5,8 @@
 // container's start was answered 204 is no run's end, even when its answer
 // arrives after that start's. A start sent at or after the deadline is
 // refused, and one that lands after a deadline kill is killed again at the
-// next tick, so a killed container never runs on. A launcher call the
+// next tick, so a killed container never runs on, a failed sweep's wait
+// included. A launcher call the
 // daemon drops (a throw) answers `internal`, and a dropped delete of the
 // recorded container starts a sweep as any failed delete does. Every case
 // runs against the fixture's doubles, not a real daemon.
@@ -26,6 +27,7 @@ import {
   S1_WALL,
   s1,
   T0,
+  UNAVAILABLE,
   world,
 } from './proxy-state-fixture.ts';
 
@@ -70,6 +72,20 @@ it('kills again at the next tick when a start sent before the deadline lands aft
   await late;
   await state.tick();
   expect(w.calls.filter((call) => call === 'kill')).toHaveLength(2);
+});
+
+it('kills a recorded container at its deadline while a failed sweep waits to repeat', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(P, s1('p')));
+  w.answer.delete = 409;
+  w.listBroken = true;
+  await state.handle(op('delete', ID));
+  expect(await state.handle({ kind: 'ping' })).toEqual(UNAVAILABLE);
+  w.now = T0 + S1_WALL;
+  w.calls.length = 0;
+  await state.tick();
+  expect(w.calls).toEqual(['kill', 'list']);
 });
 
 it('answers a dropped launcher call internal, and sweeps after a dropped delete', async () => {
