@@ -178,7 +178,9 @@ describe.skipIf(serverUrl === undefined)('a pickup after a top-up on a causeless
       live: ['60'],
     });
   });
+});
 
+describe.skipIf(serverUrl === undefined)('a pickup after a top-up with no hold state', () => {
   it('counts a closed hold once when its top-up was written before the answer recorded the hold state', async () => {
     // As above, the top-up's hold_state also null, as a top-up written before
     // the column was: the room counts it closed first, at the greater.

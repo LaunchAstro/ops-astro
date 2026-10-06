@@ -89,7 +89,7 @@ export async function topUpAtBudgetStop(
       value: { state: 'awaiting_second', approvalId, thresholdMinor: threshold.minor },
     };
   }
-  // Before the answer marks a closed stopped hold counted (`releaseUncounted`).
+  // Before the answer (with the hold's state, for the version room) marks a closed hold counted.
   if (CLOSED_STOPS.includes(opened.value.locked.reservation_state))
     await releaseUncounted(tx, opened.value.locked.reservation_id);
   const answerId = randomUUID();
@@ -108,7 +108,6 @@ export async function topUpAtBudgetStop(
       threshold?.minor ?? null,
       other?.person_id ?? opened.value.person.personId,
       other === undefined ? null : opened.value.person.personId,
-      // The stopped hold's state, read under its lock: the version room counts by it.
       opened.value.locked.reservation_state,
     ],
   );
@@ -212,9 +211,8 @@ async function raiseHold(
 }
 
 /**
- * The closed holds a stop can be raised on (`budget-stop.ts`): one the step's
- * calls spent whole, or a replacement's target the version had no room for,
- * which may have closed at nothing. The closed hold stays closed.
+ * The closed holds a stop can be raised on (`budget-stop.ts`): one its calls spent whole, or a
+ * replacement's target the version had no room for, maybe closed at nothing. It stays closed.
  */
 const CLOSED_STOPS: readonly string[] = ['actual', 'abandoned'];
 
