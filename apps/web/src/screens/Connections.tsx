@@ -220,7 +220,8 @@ export function ConnectionsScreen(props: {
   readonly rollup?: RollupFloor;
 }): ReactElement {
   const { client } = props;
-  const now = (props.now ?? Date.now)();
+  const clock = props.now ?? Date.now;
+  const now = clock();
   const { state, reload } = useRead<ConnectionFleetResult>({
     grantKey: props.grantKey,
     run: () => client.read<ConnectionFleetResult>('connection.fleet', {}),
@@ -256,7 +257,7 @@ export function ConnectionsScreen(props: {
       <SignalSections
         client={client}
         grantKey={props.grantKey}
-        now={now}
+        clock={clock}
         {...(props.rollup === undefined ? {} : { rollup: props.rollup })}
       />
     </div>

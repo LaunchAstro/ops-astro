@@ -215,7 +215,8 @@ const isEmpty = (signal: ConnectionSignalResult): boolean =>
 export function SignalSections(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
-  readonly now: number;
+  /** Read on each draw: the sections refresh apart from the fleet around them. */
+  readonly clock: () => number;
   readonly rollup?: RollupFloor;
 }): ReactElement {
   const { client } = props;
@@ -244,7 +245,7 @@ export function SignalSections(props: {
           // RecordState wraps what it draws, so the column that spaces the
           // three sections sits inside it, as Access does.
           <div className="secs">
-            <GrantsSection signal={signal} now={props.now} />
+            <GrantsSection signal={signal} now={props.clock()} />
             <TripwiresSection signal={signal} />
             <NightSection signal={signal} />
           </div>
