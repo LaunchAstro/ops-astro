@@ -187,6 +187,12 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '20261005023013',
     line: `ops_astro_app SELECT public.custody_secrets.${column}`,
   })),
+  // The frontier decision trigger's role joins a map's owner to a person by
+  // business and id, and reads nothing else of people (20261006213000).
+  ...['business_id', 'id'].map((column) => ({
+    from: '20261006213000',
+    line: `ops_astro_map_path SELECT public.people.${column}`,
+  })),
   ...MANDATE_GRANTS,
 ];
 
