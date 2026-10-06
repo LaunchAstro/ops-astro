@@ -41,7 +41,8 @@ describe.skipIf(serverUrl === undefined)('WF-4 isolation', () => {
   const at = async (id: string) => ({ recordId: id, expectedRevision: await w.revisionOf(id) });
 
   it('WF-4 isolation', async () => {
-    const a = await chart(w, lead, 'canary-wf4-A', [{ ref: 'a', title: 'A one', type: 'task' }]);
+    // Map A for client X, map B for client Y, each scoped while empty.
+    const a = await scopedMap(w, lead, 'canary-wf4-A', 'canary-wf4-A ticket');
     const b = await scopedMap(w, lead, 'canary-wf4-B', 'canary-wf4-B ticket', ['canary-wf4-B fog']);
     const bTicket = b.tickets['t'] as string;
     const clean = (what: string, text: string) => {
@@ -82,12 +83,19 @@ describe.skipIf(serverUrl === undefined)('WF-4 isolation', () => {
     expect(codeOf(crossed)).toBe('NOT_FOUND');
     clean('bravo blocking', JSON.stringify(crossed));
 
-    // 2. Another client in the same business: a person granted only map A.
+    // 2. Another client in the same business: a person granted only map A
+    // reads map A and its frontier, and none of client Y's map B.
     const scoped = await w.member('wf4-scoped-a', ['read', 'write'], { kind: 'record', id: a.map });
+    const readsA = await openMap(w, open, scoped, a.key);
+    expect(readsA.find('[role="tab"]')).not.toBeNull();
+    expect(codeOf(await w.read(scoped, { read: 'map.frontier', recordId: a.map }))).toBe('applied');
     const other = await openMap(w, open, scoped, b.key);
     expect(other.find('[data-map-refused]')?.textContent).toContain('SCOPE_NOT_GRANTED');
     expect(other.find('[role="tab"]')).toBeNull();
     clean('other client page', other.text());
+    const frontierB = await w.read(scoped, { read: 'map.frontier', recordId: b.map });
+    expect(codeOf(frontierB)).toBe('SCOPE_NOT_GRANTED');
+    clean('other client frontier', JSON.stringify(frontierB));
     const patch = (
       (await w.read(lead, { read: 'map.view', recordId: b.map })) as {
         map: { fog: { id: string }[] };
@@ -102,19 +110,38 @@ describe.skipIf(serverUrl === undefined)('WF-4 isolation', () => {
     expect(codeOf(graduate)).toBe('SCOPE_NOT_GRANTED');
     const blockAcross = await w.as(scoped, {
       command: 'task.set_blocking',
-      ...(await at(a.tickets['a'] as string)),
+      ...(await at(a.tickets['t'] as string)),
       blockedBy: [bTicket],
     });
     expect(['NOT_FOUND', 'SCOPE_NOT_GRANTED']).toContain(codeOf(blockAcross));
     clean('other client writes', JSON.stringify([graduate, blockAcross]));
 
-    // 3. A person under a live delegation: the agent reaches no frontier
+    // 3. A person under a live delegation: the agent comments on its own task,
+    // is refused map B's ticket as outside its purpose, and reaches no frontier
     // (LEANS-ON SL09 U18, the agent credential narrowed from a person's grants).
     const picked = await w.pickUp(await w.decider('wf4-delegator'), 'frontier agent task');
     const agent = await w.agent(picked.credential);
-    const delegated = await agent.run('map', 'frontier', b.map);
-    expect(delegated.exit).toBe(1);
-    clean('delegated', delegated.out);
+    const revision = String(await w.revisionOf(picked.taskId));
+    const mine = await agent.run(
+      'task',
+      'comment',
+      picked.taskId,
+      '--revision',
+      revision,
+      '--text',
+      'on it',
+    );
+    expect(mine.exit, mine.out).toBe(0);
+    for (const [code, argv] of [
+      ['DELEGATION_OUT_OF_PURPOSE', ['task', 'comment', bTicket, '--revision', '1', '--text', 'x']],
+      ['DELEGATION_EXCLUDES_OPERATION', ['map', 'frontier', b.map]],
+    ] as const) {
+      // oxlint-disable-next-line no-await-in-loop
+      const delegated = await agent.run(...argv);
+      expect(delegated.exit, delegated.out).toBe(1);
+      expect(delegated.out).toContain(code);
+      clean('delegated', delegated.out);
+    }
   });
 
   it('WF-4 a blocks link from a record that is not a ticket of the map is never shown', async () => {

@@ -1,5 +1,5 @@
 {
   "kind": "invariant",
-  "isolation": true,
-  "why": "the WF-3 map view mounted over the composed API: every section drawn from map.view, a notes edit through map.revise read back as the new version in the history, the edit and its reads audited in order, a refusal per key with the key named and the draft kept, CLI parity on result and refusal, and the three isolation crossings"
+  "isolation": false,
+  "why": "the WF-3 map view mounted over the composed API: every section drawn from map.view, a notes edit through map.revise read back as the new version in the history, the edit and its reads audited in order, a refusal per key with the key named and the draft kept, and CLI parity on result and refusal"
 }

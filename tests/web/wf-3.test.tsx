@@ -6,14 +6,15 @@
 // real database, so every read and edit it makes goes through the route, the
 // envelope and the audit chain a person's browser reaches. The look (W4, the
 // width-and-theme harness MP-1-7) and an agent's edit as a reviewable change
-// are held in `wf-3-held.test.tsx`.
+// are held in `wf-3-held.test.tsx`, and the isolation crossings are in
+// `wf-3-isolation.test.tsx`.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { cliWorld, type CliWorld } from '../cli/api-3-world.ts';
 import { must } from '../wayfinder/world.ts';
 import type { Mounted } from '../surfaces/mount.tsx';
-import { openMap, scopedMap, until } from './wayfinder-web.tsx';
+import { openMap, until } from './wayfinder-web.tsx';
 import { createCli, type Transport } from '../../apps/cli/client.ts';
 import { tokenFor } from '../api/fixture.ts';
 import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
@@ -240,44 +241,5 @@ describe.skipIf(serverUrl === undefined)('WF-3 the map view', () => {
     expect(
       reopened.find(`[data-map-section="history"] [data-version="${String(latest?.version)}"]`),
     ).not.toBeNull();
-  });
-
-  it('WF-3 isolation', async () => {
-    const { map: mapA } = await fullMap('canary-wf3-A');
-    const b = await scopedMap(w, lead, 'canary-wf3-B', 'canary-wf3-B ticket');
-    const [mapB, keyB, ticketB] = [b.map, b.key, b.tickets['t'] as string];
-    const clean = (what: string, text: string) => {
-      for (const canary of ['canary-wf3-B', mapB, ticketB])
-        expect(text, what).not.toContain(canary);
-    };
-
-    // 1. Another business: bravo's person asks for alpha's map by key.
-    const bea = await openMapAs(await w.outsider('wf3-bea'), keyB, `${w.key}-bravo`);
-    expect(bea.find('[data-map-refused]')?.textContent).toContain('NOT_FOUND');
-    expect(bea.find('[data-map-section]')).toBeNull();
-    clean('bravo', bea.text());
-
-    // 2. Another client in the same business: a person granted only map A.
-    const scoped = await w.member('wf3-scoped-a', ['read', 'write'], { kind: 'record', id: mapA });
-    const other = await openMapAs(scoped, keyB);
-    expect(other.find('[data-map-refused]')?.textContent).toContain('SCOPE_NOT_GRANTED');
-    expect(other.find('[data-map-section]')).toBeNull();
-    clean('other client', other.text());
-    const version = await w.revisionOf(mapB);
-    const edit = await w.as(scoped, {
-      command: 'map.revise',
-      ...(await at(mapB)),
-      notes: 'crossed',
-    });
-    expect((edit as { code?: string }).code).toBe('SCOPE_NOT_GRANTED');
-    expect(await w.revisionOf(mapB)).toBe(version);
-
-    // 3. A person under a live delegation: the agent reaches no map view
-    // (LEANS-ON SL09 U18, the agent credential narrowed from a person's grants).
-    const picked = await w.pickUp(await w.decider('wf3-delegator'), 'map view agent task');
-    const agent = await w.agent(picked.credential);
-    const delegated = await agent.run('map', 'view', mapB);
-    expect(delegated.exit).toBe(1);
-    clean('delegated', delegated.out);
   });
 });

@@ -7,51 +7,53 @@
 // Every edit is handed up as a `map.revise` body; this file sends nothing
 // itself.
 
-import { useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { MapView } from '../../../../../packages/core-wire/src/index.ts';
 import { Decisions, Section, ticketLink, Versions } from './ReadSections.tsx';
+import type { Drafts } from './model.ts';
 
-/** One edit: the operands of `map.revise` beyond its target and revision. */
-export type Revise = (body: Readonly<Record<string, unknown>>) => void;
+/** One edit: the operands of `map.revise` beyond its target and revision, and its draft slot. */
+export type Revise = (body: Readonly<Record<string, unknown>>, slot?: string) => void;
 
 interface SectionsProps {
   readonly map: MapView;
   /** A write is in flight, or the server has closed this map's edits to the reader. */
   readonly busy: boolean;
+  readonly drafts: Drafts;
   readonly onRevise: Revise;
 }
 
 export function MapSections(props: SectionsProps): ReactElement {
-  const { map, busy } = props;
+  const { map, busy, drafts } = props;
   const revise = props.onRevise;
   return (
     <div className="stack">
       <EditableText
-        // A new version writes a new component: the editor closes on it, and
-        // stays open with its draft on a refusal.
-        key={map.destination?.id ?? 'destination'}
+        // The draft is held above the read: the editor closes when its save
+        // applies, and stays open with its words on a refusal or a stale save.
         kind="destination"
         label="Destination"
         text={map.destination?.text ?? null}
         busy={busy}
+        drafts={drafts}
         onSave={(text) => {
-          revise({ destination: text });
+          revise({ destination: text }, 'destination');
         }}
       />
       <EditableText
-        key={map.notes?.id ?? 'notes'}
         kind="notes"
         label="Notes"
         text={map.notes?.text ?? null}
         busy={busy}
+        drafts={drafts}
         onSave={(text) => {
-          revise({ notes: text });
+          revise({ notes: text }, 'notes');
         }}
       />
       <Decisions map={map} />
-      <Fog map={map} busy={busy} onRevise={revise} />
-      <OutOfScope map={map} busy={busy} onRevise={revise} />
+      <Fog map={map} busy={busy} drafts={drafts} onRevise={revise} />
+      <OutOfScope map={map} busy={busy} drafts={drafts} onRevise={revise} />
       <Versions map={map} />
     </div>
   );
@@ -62,13 +64,20 @@ interface EditableProps {
   readonly label: string;
   readonly text: string | null;
   readonly busy: boolean;
+  readonly drafts: Drafts;
   readonly onSave: (text: string) => void;
 }
 
 function EditableText(props: EditableProps): ReactElement {
-  const [draft, setDraft] = useState<string | null>(null);
+  const draft = props.drafts.text(props.kind);
+  const setDraft = (text: string | null) => {
+    props.drafts.setText(props.kind, text);
+  };
   return (
     <Section name={props.kind} label={props.label}>
+      {draft !== null && props.drafts.conflict === props.kind ? (
+        <p data-map-latest="">Now saved: {props.text ?? 'nothing'}</p>
+      ) : null}
       {draft === null ? (
         <>
           {props.text === null ? (
@@ -143,9 +152,14 @@ function AddLine(props: {
   readonly name: string;
   readonly label: string;
   readonly busy: boolean;
+  readonly drafts: Drafts;
   readonly onAdd: (text: string) => void;
 }): ReactElement {
-  const [text, setText] = useState('');
+  // Held above the read under the section's name, and cleared once the add applies.
+  const text = props.drafts.text(props.name) ?? '';
+  const setText = (next: string) => {
+    props.drafts.setText(props.name, next === '' ? null : next);
+  };
   return (
     <form
       className="btnrow"
@@ -153,7 +167,6 @@ function AddLine(props: {
         event.preventDefault();
         if (text.trim() === '') return;
         props.onAdd(text);
-        setText('');
       }}
     >
       <input
@@ -199,8 +212,9 @@ function Fog(props: SectionsListProps): ReactElement {
         name="fog"
         label="A line not yet specified"
         busy={props.busy}
+        drafts={props.drafts}
         onAdd={(text) => {
-          props.onRevise({ addFog: [text] });
+          props.onRevise({ addFog: [text] }, 'fog');
         }}
       />
     </Section>
@@ -210,7 +224,8 @@ function Fog(props: SectionsListProps): ReactElement {
 interface SectionsListProps {
   readonly map: MapView;
   readonly busy: boolean;
-  readonly onRevise: (body: Readonly<Record<string, unknown>>) => void;
+  readonly drafts: Drafts;
+  readonly onRevise: Revise;
 }
 
 function OutOfScope(props: SectionsListProps): ReactElement {
@@ -230,8 +245,9 @@ function OutOfScope(props: SectionsListProps): ReactElement {
         name="out-of-scope"
         label="A line out of scope"
         busy={props.busy}
+        drafts={props.drafts}
         onAdd={(text) => {
-          props.onRevise({ addOutOfScope: [{ text }] });
+          props.onRevise({ addOutOfScope: [{ text }] }, 'out-of-scope');
         }}
       />
     </Section>

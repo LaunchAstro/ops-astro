@@ -5,15 +5,16 @@
 // always as current as the map it sits in; the filters narrow it without
 // reordering. The fog view lists the patches not yet specified and graduates
 // one into tickets through `map.graduate`, which retires the patch in the same
-// version.
+// version. The open form and its lines are held above the read (`Drafts`), so
+// a graduate refused VERSION_STALE keeps them over the reread map.
 
-import { useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import type { MapFrontierResult, MapView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useRead } from '../../data/use-read.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { Section, ticketLink } from './ReadSections.tsx';
-import { TICKET_TYPES, passes, type Filters, type Send } from './model.ts';
+import { TICKET_TYPES, passes, type Drafts, type Filters, type Line, type Send } from './model.ts';
 
 export function FrontierView(props: {
   readonly map: MapView;
@@ -53,9 +54,10 @@ export function FogView(props: {
   readonly map: MapView;
   readonly busy: boolean;
   readonly send: Send;
+  readonly drafts: Drafts;
 }): ReactElement {
   const { map } = props;
-  const [graduating, setGraduating] = useState<string | null>(null);
+  const { graduating, setGraduating } = props.drafts;
   return (
     <Section name="fog-view" label="Fog">
       {map.fog.length === 0 ? <p>Nothing on this map is foggy.</p> : null}
@@ -63,14 +65,19 @@ export function FogView(props: {
         {map.fog.map((patch) => (
           <li key={patch.id} data-patch={patch.id}>
             {patch.text}{' '}
-            {graduating === patch.id ? (
+            {graduating?.patch === patch.id ? (
               <Graduate
+                lines={graduating.lines}
+                onLines={(lines) => {
+                  setGraduating({ patch: patch.id, lines });
+                }}
                 onCancel={() => {
                   setGraduating(null);
                 }}
                 busy={props.busy}
                 onGraduate={(tickets) => {
-                  props.send('map.graduate', map.id, map.revision, { patchId: patch.id, tickets });
+                  const body = { patchId: patch.id, tickets };
+                  props.send('map.graduate', map.id, map.revision, body, 'graduate');
                 }}
               />
             ) : (
@@ -80,7 +87,7 @@ export function FogView(props: {
                 data-graduate={patch.id}
                 disabled={props.busy}
                 onClick={() => {
-                  setGraduating(patch.id);
+                  setGraduating({ patch: patch.id, lines: [{ title: '', type: 'task' }] });
                 }}
               >
                 Graduate into tickets
@@ -93,17 +100,16 @@ export function FogView(props: {
   );
 }
 
-interface Line {
-  readonly title: string;
-  readonly type: string;
-}
-
-function Graduate(props: {
+interface GraduateProps {
   readonly busy: boolean;
+  readonly lines: readonly Line[];
+  readonly onLines: (lines: readonly Line[]) => void;
   readonly onGraduate: (tickets: readonly Line[]) => void;
   readonly onCancel: () => void;
-}): ReactElement {
-  const [lines, setLines] = useState<readonly Line[]>([{ title: '', type: 'task' }]);
+}
+
+function Graduate(props: GraduateProps): ReactElement {
+  const { lines, onLines: setLines } = props;
   const set = (index: number, line: Line) => {
     setLines(lines.map((one, at) => (at === index ? line : one)));
   };

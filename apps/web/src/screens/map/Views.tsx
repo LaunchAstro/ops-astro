@@ -14,7 +14,7 @@ import type { OperationsClient } from '../../operations/client.ts';
 import { MapSections } from './Sections.tsx';
 import { TicketsView } from './Tickets.tsx';
 import { FogView, FrontierView } from './Frontier.tsx';
-import { TICKET_TYPES, type Filters, type MapViewName, type Send } from './model.ts';
+import { TICKET_TYPES, type Drafts, type Filters, type MapViewName, type Send } from './model.ts';
 
 const TABS = [
   { id: 'map', label: 'Map' },
@@ -33,6 +33,7 @@ export interface MapViewsProps {
   readonly onFilters: (filters: Filters) => void;
   readonly busy: boolean;
   readonly send: Send;
+  readonly drafts: Drafts;
 }
 
 export function MapViews(props: MapViewsProps): ReactElement {
@@ -59,8 +60,9 @@ export function MapViews(props: MapViewsProps): ReactElement {
         <MapSections
           map={map}
           busy={props.busy}
-          onRevise={(body) => {
-            props.send('map.revise', map.id, map.revision, body);
+          drafts={props.drafts}
+          onRevise={(body, slot) => {
+            props.send('map.revise', map.id, map.revision, body, slot);
           }}
         />
       ))}
@@ -76,7 +78,7 @@ export function MapViews(props: MapViewsProps): ReactElement {
         />
       ))}
       {panel('fog', () => (
-        <FogView map={map} busy={props.busy} send={props.send} />
+        <FogView map={map} busy={props.busy} send={props.send} drafts={props.drafts} />
       ))}
     </div>
   );

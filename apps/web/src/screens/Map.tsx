@@ -13,11 +13,13 @@
 // After an applied edit the page reads the map again: the new version in the
 // history is the server's, never one this file numbered.
 //
-// **The command's state lives above the read.** A reread unmounts the loaded
-// view (`RecordState` draws its loading voice), so a refusal held inside it
-// would vanish together with the attempt it was about. It is held here, and
-// the screen registry keys this screen by map and grant, so another map or
-// another reader starts with none (a closed edit included).
+// **The command's state and the drafts live above the read.** A reread
+// unmounts the loaded view unless kept, so a refusal or typed words held
+// inside it would vanish with the attempt they were about. They are held
+// here, as TaskDetail holds its draft: a save refused VERSION_STALE keeps
+// the words, rereads the map and draws the conflict, and a second save sends
+// them against the latest revision. The screen registry keys this screen by
+// map and grant, so another map or another reader starts with none.
 //
 // The look waits on the accepted prototype W4 (#603); until then the page is
 // drawn with the kit's existing section and button classes.
@@ -33,6 +35,7 @@ import { MapViews } from './map/Views.tsx';
 import {
   NO_FILTERS,
   type Filters,
+  type Drafts,
   type MapCommand,
   type MapViewName,
   type Send,
@@ -49,18 +52,33 @@ export interface MapScreenProps {
 function useWrites(client: OperationsClient, reload: () => void) {
   const command = useCommand();
   const [sent, setSent] = useState<MapCommand>('map.revise');
-  const send: Send = (name, recordId, revision, body) => {
+  const [texts, setTexts] = useState<Readonly<Record<string, string>>>({});
+  const [graduating, setGraduating] = useState<Drafts['graduating']>(null);
+  const [conflict, setConflict] = useState<string | null>(null);
+  const setText = (slot: string, text: string | null) => {
+    setTexts(({ [slot]: _dropped, ...rest }) => (text === null ? rest : { ...rest, [slot]: text }));
+  };
+  const send: Send = (name, recordId, revision, body, slot) => {
     setSent(name);
+    setConflict(null);
     command.run(
       () => client.mutate(name, { recordId, ...body }, { expectedRevision: revision }),
       (settlement) => {
+        if (settlement.kind === 'ok' && slot !== undefined) {
+          if (slot === 'graduate') setGraduating(null);
+          else setText(slot, null);
+        }
+        if (settlement.kind === 'stale' && slot !== undefined) setConflict(slot);
         // Applied, or stale: either way the map on screen is no longer the
         // server's, so read it again. A refusal leaves the map as it was.
         if (settlement.kind === 'ok' || settlement.kind === 'stale') reload();
       },
     );
   };
-  return { command, sent, send };
+  const text = (slot: string) => texts[slot] ?? null;
+  const drafts: Drafts = { text, setText, graduating, setGraduating, conflict };
+  const open = graduating !== null || Object.keys(texts).length > 0;
+  return { command, sent, send, drafts, open };
 }
 
 export function MapScreen(props: MapScreenProps): ReactElement {
@@ -70,7 +88,7 @@ export function MapScreen(props: MapScreenProps): ReactElement {
     run: () => client.read<MapViewResult>('map.view', { recordId: props.mapKey }),
     deps: [props.mapKey],
   });
-  const { command, sent, send } = useWrites(client, reload);
+  const { command, sent, send, drafts, open } = useWrites(client, reload);
   // Held above the read, so a reread after a write keeps the view and filters.
   const [view, setView] = useState<MapViewName>('map');
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
@@ -83,7 +101,13 @@ export function MapScreen(props: MapScreenProps): ReactElement {
           {needsKey(sent, 'refusal' in command.failure ? command.failure.refusal : undefined)}
         </p>
       )}
-      <RecordState state={state} subject="map" onRetry={reload}>
+      {drafts.conflict === null ? null : (
+        <p className="field__error" data-map-conflict="">
+          Someone else changed this map while you were typing. What you typed is kept; save it again
+          to write it over the latest version.
+        </p>
+      )}
+      <RecordState state={state} subject="map" onRetry={reload} keep={open}>
         {(value) => (
           <MapViews
             map={value.map}
@@ -95,6 +119,7 @@ export function MapScreen(props: MapScreenProps): ReactElement {
             onFilters={setFilters}
             busy={command.locked}
             send={send}
+            drafts={drafts}
           />
         )}
       </RecordState>
