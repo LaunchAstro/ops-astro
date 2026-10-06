@@ -11,7 +11,7 @@ import { createGroupWorld } from './c71-g-world.ts';
 // eslint-disable-next-line max-lines-per-function -- one controlled interleaving and its cleanup
 // Needs a database; skipped where the suite runs without one, as its siblings are.
 it.skipIf(databaseUrlFromEnvironment() === undefined)(
-  'Sol proof, criterion 5: a queued chat send cannot write a message or mention after sender chat authority is revoked',
+  'C71-G a group send queued on the conversation lock writes no message or mention once the sender’s chat authority is revoked',
   async () => {
     const g = await createGroupWorld('sol357sender');
     const { world } = g.chat.harness;
