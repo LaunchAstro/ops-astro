@@ -15,7 +15,9 @@
 // The proxy sweeps on start before it takes a request, on a failed count
 // check and on a failed delete of its recorded container. While no sweep
 // has passed every request is `unavailable`, and the sweep repeats every
-// 30 s; a run whose container a sweep removed stays `unavailable`. A throw
+// 30 s; a run whose container a sweep removed stays `unavailable`, an
+// answer that lands after that sweep included (a delete's own sweep is its
+// answer). A throw
 // fails a sweep or delete and answers the launcher `internal`, a create's too. A wait counts
 // only if sent after a start answered 204 (a created container's wait
 // answers at once), and a start at the deadline is refused. `tick` is the
@@ -140,6 +142,7 @@ export class ProxyState {
     const at = this.#ports.now();
     if (op.kind === 'wait') await this.#exclusive(() => this.#waited(op.id, started, reply, at));
     if (op.kind === 'delete') await this.#exclusive(() => this.#deleted(op.id, reply));
+    if ('id' in op && op.kind !== 'delete' && this.#swept.has(op.id)) return UNAVAILABLE;
     return reply === THREW ? fault('reply status') : { ok: true, reply };
   }
 
