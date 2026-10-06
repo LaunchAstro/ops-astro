@@ -96,6 +96,8 @@ const lookahead = (workflow: Pick<Workflow, 'jobs'>) =>
   Object.entries(workflow.jobs).find(([, each]) => each.name.startsWith(LOOKAHEAD_JOB)) ?? [];
 /** The shards the required `database conformance` check rolls up (#252). */
 const SHARD_JOB = 'database conformance shard ${{ matrix.shard }}';
+/** The isolation suites run in these shards, behind the required `isolation tests` (CI-SHARDS-2). */
+const ISOLATION_SHARDS = 'isolation tests shard ${{ matrix.shard }}';
 
 describe('S0-7 CI on the hosted major', () => {
   ciOnTheCases1();
@@ -114,7 +116,7 @@ function ciOnTheCases1() {
     const want = `postgres@sha256:${DIGEST}`;
     const places = {
       'ci.yml database conformance': images(job(SHARD_JOB)),
-      'ci.yml isolation tests': images(job('isolation tests')),
+      'ci.yml isolation tests': images(job(ISOLATION_SHARDS)),
       'scripts/local/db-up.sh': assigned('scripts/local/db-up.sh', 'IMAGE'),
       'scripts/local/restart-proof.sh': assigned('scripts/local/restart-proof.sh', 'IMAGE'),
       'scripts/local/auth-up.sh': assigned('scripts/local/auth-up.sh', 'PG_IMAGE'),
@@ -146,7 +148,7 @@ function ciOnTheCases1() {
     );
     expect(read('scripts/db-conformance.mjs')).toMatch(/A skip is the failure/u);
     // The required jobs never ask for another major.
-    for (const name of ['database conformance', SHARD_JOB, 'isolation tests']) {
+    for (const name of ['database conformance', SHARD_JOB, 'isolation tests', ISOLATION_SHARDS]) {
       expect(job(name), name).not.toContain(LOOKAHEAD);
       expect(job(name), name).not.toMatch(/continue-on-error/u);
     }

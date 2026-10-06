@@ -131,6 +131,49 @@
       }
     },
     {
+      "files": [
+        "tests/runtime/trace-export-resends-a-run-whole-while-its-delete-is-owed.test.ts",
+        "tests/runtime/trace-export-resends-every-fresh-event-of-an-owed-run.test.ts",
+        "tests/runtime/trace-retention-keeps-recovering-while-a-second-delete-is-queued.test.ts",
+        "tests/runtime/trace-retention-recovery-reaches-a-later-owed-run-past-present-ones.test.ts",
+        "tests/runtime/trace-retention-recovery-tests-reject-an-old-span-for-the-fresh-one.test.ts",
+        "tests/runtime/trace-retention-expires-a-late-committed-event-once-past-the-window.test.ts",
+        "tests/runtime/trace-retention-recovers-a-delete-after-a-database-fault.test.ts",
+        "tests/runtime/trace-retention-recovers-a-delete-that-lands-after-a-timeout.test.ts",
+        "tests/runtime/trace-retention-recovery-for-one-run-keeps-another-confirmed-run-gone.test.ts",
+        "tests/runtime/trace-export-owed-tail-does-not-block-a-later-run.test.ts",
+        "tests/runtime/trace-retention-unknown-reads-do-not-stop-a-later-recovery.test.ts",
+        "tests/runtime/trace-retention-reads-the-first-owed-span-back.test.ts",
+        "tests/runtime/trace-retention-reads-owed-runs-in-turn-order-across-places.test.ts",
+        "tests/runtime/trace-export-an-overlapping-export-waits-while-another-holds-the-business.test.ts",
+        "tests/runtime/trace-export-a-failing-exporter-never-undoes-a-healthy-ones-progress.test.ts",
+        "tests/runtime/trace-export-a-slower-export-landing-after-a-delete-hides-no-later-span.test.ts",
+        "tests/runtime/trace-export-a-stalled-exporter-is-taken-over-only-after-its-lease-expires.test.ts",
+        "tests/runtime/trace-export-a-body-that-may-have-landed-keeps-the-business-for-its-lease.test.ts",
+        "tests/runtime/trace-retention-a-business-whose-export-never-advanced-is-asked-nothing.test.ts",
+        "tests/runtime/trace-export-a-stale-body-sent-after-a-takeover-hides-no-later-span.test.ts",
+        "tests/runtime/trace-export-a-timed-out-body-stored-after-its-hold-hides-no-later-span.test.ts",
+        "tests/runtime/trace-retention-two-stale-bodies-cannot-hide-a-missing-middle.test.ts",
+        "tests/runtime/trace-retention-later-recovery-tests-reject-an-old-span-for-the-fresh-one.test.ts",
+        "tests/runtime/trace-export-a-stalled-exporter-cannot-renew-while-another-holds-the-lease.test.ts",
+        "tests/runtime/trace-retention-a-present-run-cannot-spend-every-read-before-a-gone-one.test.ts",
+        "tests/runtime/trace-retention-an-unanswered-newer-span-hides-no-older-missing-one.test.ts",
+        "tests/runtime/trace-retention-a-run-longer-than-the-stores-allowance-is-read-through.test.ts",
+        "tests/runtime/trace-retention-three-unanswered-newer-spans-hide-no-older-missing-one.test.ts",
+        "tests/runtime/trace-retention-a-run-read-in-fixed-steps-reaches-every-missing-span.test.ts"
+      ],
+      "rules": {
+        "max-lines-per-function": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "unicorn/no-array-callback-reference": "off",
+        "require-await": "off"
+      }
+    },
+    {
+      "files": ["tests/runtime/aw-13-world.ts"],
+      "rules": { "max-lines": "off" }
+    },
+    {
       "files": ["tests/api/live-board-lost-access.test.ts"],
       "rules": {
         "no-await-in-loop": "off",

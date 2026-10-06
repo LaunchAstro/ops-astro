@@ -101,8 +101,15 @@ export interface BodyContext {
   clientTask?(title: string): Promise<Task>;
   /** A comment `author` (the admin when absent) wrote on a fresh task (MP-4-5). */
   ownComment?(author?: unknown): Promise<Task & { readonly commentId: string }>;
+  /**
+   * C39-T: invitation acts from here on, the recipe's own and the case's, come from a new
+   * member holding `access:share` alone, so no case spends another's hourly limit.
+   */
+  freshInviter?(): Promise<void>;
   /** C58: a new member of this business with a login, for a case that ends one. */
   freshMember?(): Promise<string>;
+  /** C59: a new member of this business with a verified factor, for a case that resets it. */
+  freshFactorMember?(): Promise<string>;
   /** S0-5: a gate item's record removed by the owner, so the next record of it applies. */
   clearGateItem?(item: string): Promise<void>;
   /** C81: the links to the published legal versions gate items 3 to 6 take (`legalEvidence`). */

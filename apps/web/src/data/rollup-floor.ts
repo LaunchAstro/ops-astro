@@ -63,6 +63,14 @@ class Floor implements RollupFloor {
   }
 }
 
+let tab: RollupFloor | undefined;
+
+/** The tab's one floor, shared by every rollup page drawn on it. */
+export function tabRollupFloor(): RollupFloor {
+  tab ??= createRollupFloor();
+  return tab;
+}
+
 export function createRollupFloor({
   visible = () => document.visibilityState === 'visible',
 }: HubOptions = {}): RollupFloor {
