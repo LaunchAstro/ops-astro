@@ -318,3 +318,27 @@ it('judges a wait in time when it returned, not when its write took the lock', a
   expect(candidateOf(w)?.runs).toEqual([{ statusCode: 0, inTime: true }]);
   expect(record(w).containers.container?.waitAt).toBe(deadline - 1);
 });
+
+it('kills and deletes on time while a create holds the lock on a slow pin read', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(P, s1('p')));
+  await state.handle(op('start', ID));
+  const deadline = T0 + S1_WALL;
+  w.now = deadline - 1;
+  const release = hold(w, 'pins');
+  const second = state.handle(create(P, s1('p')));
+  await settle();
+  w.calls.length = 0;
+  w.now = deadline;
+  const killed = state.tick();
+  await settle();
+  w.now = deadline + GRACE;
+  const deleted = state.tick();
+  await settle();
+  expect(w.calls).toEqual(['kill', 'kill', 'delete']);
+  release();
+  expect(await second).toMatchObject({ ok: false, reason: 'proxy refused' });
+  await Promise.all([killed, deleted]);
+  expect([heldId(w), w.held.size]).toEqual([null, 0]);
+});

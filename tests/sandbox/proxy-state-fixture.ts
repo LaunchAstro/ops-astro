@@ -123,7 +123,7 @@ export type World = {
   waitCode: number;
   /** Daemon calls (`list`, `info` or a forwarded kind) that throw, as a reset socket does. */
   readonly throws: Set<string>;
-  /** Holds the next forwarded operation of each kind, or the next store `write`, until released. */
+  /** Holds the next forwarded operation of each kind, store `write` or `pins` read, until released. */
   readonly holds: Map<string, Promise<void>>;
 };
 
@@ -208,7 +208,12 @@ export function ports(w: World): ProxyPorts {
         w.stored = bytes;
       },
     },
-    pins: () => Promise.resolve(w.pins),
+    pins: async () => {
+      const held = w.holds.get('pins');
+      w.holds.delete('pins');
+      await held;
+      return w.pins;
+    },
     now: () => w.now,
     daemon: daemon(w),
   };
@@ -228,7 +233,7 @@ export function record(w: World): ProxyRecord {
 }
 export const candidateOf = (w: World): Candidate | undefined =>
   record(w).candidates.candidates.at(-1);
-/** Holds the next forwarded `kind` (or store `write`) until the returned function is called. */
+/** Holds the next forwarded `kind` (or store `write`, or `pins` read) until the returned function is called. */
 export function hold(w: World, kind: string): () => void {
   const gate = { open: (): void => undefined };
   w.holds.set(
