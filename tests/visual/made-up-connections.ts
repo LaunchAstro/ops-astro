@@ -293,3 +293,8 @@ export const GRADUATION: ConnectionGraduationResult = {
     },
   ],
 };
+export const CONNECTION_READS: Readonly<Record<string, unknown>> = {
+  'connection.fleet': FLEET_READ,
+  'connection.signal': SIGNAL_READ,
+  'connection.graduation': GRADUATION,
+};

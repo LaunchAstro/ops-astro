@@ -64,7 +64,7 @@ const PROMOTE = [
   ['promote-form', '[data-promote-form]', { 'box.x': '41', 'box.width': '308' }],
   ['promote-ceiling', '[data-promote-ceiling]', { 'box.width': '308' }],
   ['promote-expiry', '[data-promote-expiry]', { 'box.width': '308' }],
-  ['promote-confirm', '[data-promote-confirm]', { 'box.x': '41', 'box.width': '71' }],
+  ['promote-confirm', '[data-promote-confirm]', { 'box.x': '41' }],
 ] as const;
 const promoteProbe = (
   id: string,
