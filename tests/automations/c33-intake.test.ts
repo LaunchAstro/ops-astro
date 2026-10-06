@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one world, the ceiling and intake cases and the race that shares them */
 //
 // C33: the run ceiling and the bounded event intake, against a real database
 // (U36, #483 point 4). Both reuse AW-01's durable limit: each count is read
@@ -219,10 +220,14 @@ describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () 
     const { activation } = await f.approved();
     const { activation: other } = await f.approved();
     const events = await f.approved('event');
-    const busy = await approvedOccurrences(activation.id, FIRING_LIMITS.runsInFlight + 1);
-    await dispatchEach(busy.slice(0, FIRING_LIMITS.runsInFlight));
+    await dispatchEach(await approvedOccurrences(activation.id, FIRING_LIMITS.runsInFlight));
     const [rival] = await approvedOccurrences(other.id, 1);
     await queueTo(FIRING_LIMITS.eventQueue, events);
+    // One transaction locks one activation: the held dispatch is of the events' own queue.
+    const [queued] = await w.db.admin.execute<{ readonly id: string }>(
+      "select id from public.activation_occurrences where activation_id = $1 and outcome = 'approved'",
+      [events.activation.id],
+    );
     const { activationId: bravo } = await bravoApproved(w, 'event', 'Bravo digest');
     const bravoStarter = workerStarter(k.bravoWorker);
     const alphaRuns = await w.count(
@@ -239,7 +244,7 @@ describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () 
       const first = w.inAlpha(async (tx) => {
         try {
           const claim = await claimOccurrence(tx, events.activation.id, { eventId: 'evt-busy' });
-          const dispatch = await dispatchOccurrence(tx, busy[FIRING_LIMITS.runsInFlight]!, s.start);
+          const dispatch = await dispatchOccurrence(tx, queued!.id, s.start);
           firstIn.release();
           await held.held;
           return [occurrenceOf(claim).outcome, dispatch.kind];

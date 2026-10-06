@@ -96,8 +96,8 @@ export async function lockActivation(
   activationId: string,
 ): Promise<ActivationRow | null> {
   const one = await tx.query<{ readonly id: string }>(
-    `select set_config('ops_astro.activation', lower($1), true) as id
-      where coalesce(current_setting('ops_astro.activation', true), '') in ('', lower($1))`,
+    `select set_config('ops_astro.activation', $1::uuid::text, true) as id
+      where coalesce(current_setting('ops_astro.activation', true), '') in ('', $1::uuid::text)`,
     [activationId],
   );
   if (one[0] === undefined) throw new Error('one transaction locks one activation');
