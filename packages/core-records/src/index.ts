@@ -207,6 +207,7 @@ export {
   mapTicketCondition,
   OWNER_TYPES,
   TASK_TYPES,
+  wayfinderCondition,
   wayfinderFacts,
   type TaskType,
   type WayfinderFacts,
