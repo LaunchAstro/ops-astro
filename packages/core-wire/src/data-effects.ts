@@ -105,7 +105,6 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.move': TASK,
   'task.rank': TASK,
   'task.trash': TASK,
-  'task.restore': TASK,
   'task.purge': TASK,
   'task.read': READ,
   'task.board': READ,
