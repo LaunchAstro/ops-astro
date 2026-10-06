@@ -33,6 +33,7 @@ import {
 } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import { DraftFields } from './DraftFields.tsx';
+import type { Prefill } from './task-prefill.ts';
 import {
   createFromDraft,
   dropDraft,
@@ -51,6 +52,8 @@ import {
 export interface DraftScope {
   readonly clientId: string | null;
   readonly from: string;
+  /** The page's guesses for a fresh draft (DN-02); a kept draft comes back as left. */
+  readonly prefill?: Prefill;
 }
 
 export interface DraftPanelProps {
