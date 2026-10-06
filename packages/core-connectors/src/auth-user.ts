@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The login provider's two catalogued operations (C39-T, piece P3), read as
-// every catalogued operation is (`operation.ts`): `auth.create_user`, a login
-// made when an invitation is accepted, and `auth.update_user`, the same login
-// set again when an earlier accept made it and never bound it. Each asks
-// Supabase Auth's admin route for a confirmed user under the caller's id;
-// custody adds the origin and the service key. Of the answer only the user's
-// id is read; the password goes into the request and nowhere else. 422
-// `email_exists` and 404 `user_not_found` mean nothing changed; 422
-// `weak_password` is the provider's no to the password.
+// The login provider's two catalogued operations (C39-T, piece P3), read as every catalogued
+// operation is (`operation.ts`): `auth.create_user` asks Supabase Auth's admin route for a
+// confirmed user under the caller's id when an invitation is accepted; `auth.update_user` sets
+// it again when an earlier accept made it and never bound it. Custody adds the origin and the
+// service key. Only the answer's user id is read; the password goes into the request alone.
+// 422 `email_exists` and 404 `user_not_found` mean nothing changed; 422 `weak_password` is the
+// provider's no to the password.
 
 import { AUTH_USERS_PATH } from './auth-password.ts';
 import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';

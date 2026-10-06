@@ -170,7 +170,11 @@ function isRequest(value: unknown): value is OutboundRequest {
   if (typeof value !== 'object' || value === null) return false;
   const shape = value as Record<string, unknown>;
   return (
-    Object.keys(shape).toSorted().join() === REQUEST_KEYS &&
+    Object.keys(shape)
+      .filter((key) => key !== 'notAfter')
+      .toSorted()
+      .join() === REQUEST_KEYS &&
+    ['undefined', 'number'].includes(typeof shape['notAfter']) &&
     typeof shape['destination'] === 'string' &&
     typeof shape['path'] === 'string' &&
     (METHODS as readonly unknown[]).includes(shape['method']) &&
@@ -222,8 +226,12 @@ process.on('message', (message: unknown) => {
     return;
   }
   reply({ type: 'started' });
+  // None sent past the request's `notAfter` (epoch ms), and none still running then (C39-T).
+  const ms = Math.min(request.timeoutMs, (request.notAfter ?? Infinity) - Date.now());
   void (async (): Promise<void> => {
-    const outcome = await send(loaded.destinations, request, credential);
+    const late = { ok: false, fault: 'timeout', status: null } as const;
+    const outcome =
+      ms > 0 ? await send(loaded.destinations, { ...request, timeoutMs: ms }, credential) : late;
     const safe = outcome.ok ? { ...outcome, body: redact(outcome.body, credential) } : outcome;
     reply({
       type: 'answer',

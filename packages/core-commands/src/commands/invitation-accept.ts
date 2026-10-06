@@ -8,11 +8,10 @@
 // 2. Claim the invitation under its lock, every check again. A login bound
 //    here under our id already: `sign_in`. A live claim on the address (by any
 //    invitation), or no room under the calls' limits: `ENROLMENT_UNAVAILABLE`, nothing asked.
-// 3. Through custody, make the login under our id (`loginSubject`), or, the claim renewed,
-//    set the address's login again under it, adopting one an earlier accept
-//    stranded. No user under our id: someone else's login, untouched,
-//    `sign_in`. A refused password is `PASSWORD_INVALID`; a fault binds
-//    nothing. A call never answered may still apply: its claim stays to lapse.
+// 3. Through custody, each call ending before its claim can lapse (`endBy`), make the login
+//    under our id (`loginSubject`), or, the claim renewed, set again one an earlier accept
+//    stranded. Someone else's login: untouched, `sign_in`. A refused password is
+//    `PASSWORD_INVALID`; a fault binds nothing; a call never answered keeps its claim to lapse.
 // 4. Under the lock and the claim, every check again: spend the tokens, accept, seat the
 //    person, map the login, audit both; an adopted login's sessions end, plus the clock skew.
 
@@ -26,10 +25,10 @@ import {
 } from '../../../core-records/src/index.ts';
 import {
   createLogin,
+  endBy,
   loginLimits,
   updateLogin,
   type Broker,
-  type LoginAsked,
   type LoginLimits,
 } from '../../../core-custody/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
@@ -52,16 +51,15 @@ export interface AcceptRequest {
   readonly password: string;
 }
 
+type Refusal = 'ENROLMENT_LINK_INVALID' | 'PASSWORD_INVALID' | 'ENROLMENT_UNAVAILABLE';
 export type AcceptResult =
   | { readonly ok: true; readonly state: 'enrolled' | 'sign_in' }
-  | {
-      readonly ok: false;
-      readonly code: 'ENROLMENT_LINK_INVALID' | 'PASSWORD_INVALID' | 'ENROLMENT_UNAVAILABLE';
-    };
+  | { readonly ok: false; readonly code: Refusal };
 
 const UNAVAILABLE = { ok: false, code: 'ENROLMENT_UNAVAILABLE' } as const;
 const LINK_INVALID = { ok: false, code: 'ENROLMENT_LINK_INVALID' } as const;
 const SIGN_IN = { ok: true, state: 'sign_in' } as const;
+const PASSWORD_INVALID = { ok: false, code: 'PASSWORD_INVALID' } as const;
 
 interface Found {
   readonly business: string;
@@ -71,6 +69,7 @@ interface Found {
   readonly roleKey: string;
   readonly address: string;
 }
+type Live = Omit<Found, 'business'>;
 
 /**
  * Our provider user id for one address in one business, a UUID (v8, RFC 9562) from SHA-256: by
@@ -79,24 +78,16 @@ interface Found {
 function loginSubject(business: string, address: string): string {
   const hex = createHash('sha256').update(`ops-astro login|${business}|${address}`).digest('hex');
   const variant = ((Number.parseInt(hex.charAt(16), 16) & 0x3) | 0x8).toString(16);
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    `8${hex.slice(13, 16)}`,
-    `${variant}${hex.slice(17, 20)}`,
-    hex.slice(20, 32),
-  ].join('-');
+  const head = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}`;
+  return `${head}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 /** A business-less transaction's business: the lookup below reads no tenant's rows. */
 const NO_BUSINESS = '00000000-0000-0000-0000-000000000000';
 
 /** The token's row and its invitation, when the token is live. */
-async function liveToken(
-  tx: TenantQuery,
-  tokenId: string,
-): Promise<Omit<Found, 'business'> | undefined> {
-  const [row] = await tx.query<Omit<Found, 'business'> & { live: boolean }>(
+async function liveToken(tx: TenantQuery, tokenId: string): Promise<Live | undefined> {
+  const [row] = await tx.query<Live & { live: boolean }>(
     `select t.id as "tokenId", i.id as "invitationId", i.person_id as "personId",
             i.role_key as "roleKey", i.address,
             (t.spent_at is null and t.expires_at > clock_timestamp()
@@ -170,9 +161,10 @@ async function claim(tx: TenantQuery, asked: Found, subject: string, limits: Log
   return taken?.id ?? 'busy';
 }
 
-/** Our claim, still live (so counted in the limits), and its link: held one more bound. */
+/** Our live claim and its link: one more bound, under the claims' lock (none sees it lapse). */
 async function renew(tx: TenantQuery, asked: Found, claimId: string, boundMs: number) {
   if ((await heldLive(tx, asked, claimId)) === undefined) return false;
+  await advisoryLock(tx, 'enrolment_claims');
   const held = await tx.query(
     `update invitations set accept_claimed_until = clock_timestamp() + $3::float8 * interval '1ms'
       where business_id = $1 and id = $2 and accept_claimed_until > clock_timestamp() returning 1`,
@@ -185,12 +177,7 @@ const RELEASE = `update invitations set accept_claim = null, accept_claimed_unti
   where business_id = $1 and id = $2 and accept_claim = $3`;
 
 /** The invitation's person seated: an actor, a membership, the address, and the login mapped. */
-async function seat(
-  tx: TenantQuery,
-  found: Omit<Found, 'business'>,
-  subject: string,
-  worker: string,
-): Promise<string | null> {
+async function seat(tx: TenantQuery, found: Live, subject: string, worker: string) {
   await tx.query(
     `with actor as (
        insert into actors (business_id, id, kind, person_id)
@@ -266,9 +253,7 @@ export async function acceptInvitation(
   request: AcceptRequest,
 ): Promise<AcceptResult> {
   const bytes = Buffer.byteLength(request.password, 'utf8');
-  if (bytes < PASSWORD_BYTES.least || bytes > PASSWORD_BYTES.most) {
-    return { ok: false, code: 'PASSWORD_INVALID' };
-  }
+  if (bytes < PASSWORD_BYTES.least || bytes > PASSWORD_BYTES.most) return PASSWORD_INVALID;
   const hash = createHash('sha256').update(request.token).digest('hex');
   const found = TOKEN.test(request.token) ? await find(database, businesses, hash) : undefined;
   if (found === undefined) return LINK_INVALID;
@@ -277,16 +262,18 @@ export async function acceptInvitation(
   if (limits === undefined) return UNAVAILABLE;
   const inBusiness = async <T>(work: (tx: TenantQuery) => Promise<T>): Promise<T> =>
     await database.withBusiness(found.business, work);
+  const notAfter = endBy(limits, Date.now());
   const claimId = await inBusiness((tx) => claim(tx, found, id, limits));
   if (claimId === 'invalid' || claimId === 'bound' || claimId === 'busy') {
     return { invalid: LINK_INVALID, bound: SIGN_IN, busy: UNAVAILABLE }[claimId];
   }
-  const asked: LoginAsked = { id, email: found.address, password: request.password };
+  const asked = { id, email: found.address, password: request.password, notAfter };
   let login = await createLogin(broker, asked);
   const adopted = !login.ok && login.kind === 'refused';
   if (adopted) {
+    const again = { ...asked, notAfter: endBy(limits, Date.now()) };
     const held = await inBusiness((tx) => renew(tx, found, claimId, limits.boundMs));
-    login = held ? await updateLogin(broker, asked) : { ok: false, kind: 'fault' };
+    login = held ? await updateLogin(broker, again) : { ok: false, kind: 'fault' };
   }
   const made = login.ok ? { subject: login.subject, claimId, adopted } : undefined;
   const bound = made !== undefined && (await inBusiness((tx) => bind(tx, found, made)));
@@ -294,6 +281,6 @@ export async function acceptInvitation(
     await inBusiness((tx) => tx.query(RELEASE, [tx.businessId, found.invitationId, claimId]));
   }
   if (login.ok) return bound ? { ok: true, state: 'enrolled' } : LINK_INVALID;
-  if (login.kind === 'password') return { ok: false, code: 'PASSWORD_INVALID' };
+  if (login.kind === 'password') return PASSWORD_INVALID;
   return login.kind === 'refused' ? SIGN_IN : UNAVAILABLE;
 }

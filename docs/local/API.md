@@ -2435,27 +2435,28 @@ Auth mail (a reset among it) has no attempt yet and is not sent (C40).
 `POST /api/enrol` with `token` and `password` accepts an invitation
 (`acceptInvitation`, mounted by `mountEnrolment` with the deployment's
 businesses and a broker cataloguing `auth.create_user` and `auth.update_user`;
-custody's `auth` destination takes no POST but its listed
-`POST /auth/v1/admin/users`, and the PUT `/auth/v1/admin/users/*`). No
-sign-in and no grant: the token is the authority, found by its SHA-256 through
+custody's `auth` destination takes no POST but its listed `POST
+/auth/v1/admin/users`, and the PUT `/auth/v1/admin/users/*`). No sign-in and no
+grant: the token is the authority, found by its SHA-256 through
 `enrolment_token_find`, live while unspent, in its lifetime, its invitation's
-newest and pending. The accept claims the invitation under its lock before
-the provider is asked; a live claim on the address (by any invitation), or no
-room under the calls' limits (`enrolment_route_room` shares the route's
-ceiling), is 503 `ENROLMENT_UNAVAILABLE`. The provider makes a confirmed login
-under our user id for the address in this business, or, the claim still live
-and renewed, sets the login an earlier accept stranded again, whose sessions
-all end to the commit plus the clock skew. Then, under the lock and the claim,
-the tokens are spent, the invitation accepted, its person seated, the login
-mapped, and both events audited: 200 `{ state: 'enrolled' }`, no session. Someone else's login, or one bound here already: 200
-`{ state: 'sign_in' }`, nothing spent. Any other token is 404
-`ENROLMENT_LINK_INVALID`; a password outside 12 to 72 bytes or refused by the
-provider 400 `PASSWORD_INVALID`; a provider fault or hostile answer 503
-`ENROLMENT_UNAVAILABLE`; a body over 2 KiB 413 `ENROL_TOO_LARGE`, a malformed
-one 400 `ENROL_MALFORMED`, any other fault 503 `ENROL_FAULT`. The page is
-`/enrol/:token`. Not here yet: the send after the command, the hook and route
-wired in `main`, the signed-in accept, the second factor first (C59) and the
-Access screen.
+newest and pending. The accept claims the invitation under its lock before the
+provider is asked; a live claim on the address (by any invitation), or no room
+under the calls' limits (`enrolment_route_room` shares the route's ceiling), is
+503 `ENROLMENT_UNAVAILABLE`. The provider makes a confirmed login under our
+user id, or sets again one an earlier accept stranded, the claim renewed under
+the claims' lock while live; each call carries `notAfter`, 5 s before its claim
+can lapse, and custody sends none past it. An adopted login's sessions all end
+to the commit plus the clock skew. Then, under the lock and the claim, the
+tokens are spent, the invitation accepted, its person seated, the login mapped,
+both events audited: 200 `{ state: 'enrolled' }`, no session. Someone else's
+login, or one bound here already: 200 `{ state: 'sign_in' }`, nothing spent.
+Any other token is 404 `ENROLMENT_LINK_INVALID`; a password outside 12 to 72
+bytes or refused by the provider 400 `PASSWORD_INVALID`; a provider fault or
+hostile answer 503 `ENROLMENT_UNAVAILABLE`; a body over 2 KiB 413
+`ENROL_TOO_LARGE`, a malformed one 400 `ENROL_MALFORMED`, any other fault 503
+`ENROL_FAULT`. The page is `/enrol/:token`. Not here yet: the send after the
+command, the hook and route wired in `main`, the signed-in accept, the second
+factor first (C59) and the Access screen.
 
 ## Tags
 

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `/enrol/:token` (C39-T, piece P3): the invitation link's page. Set a
-// password, the invitation is accepted, nobody is signed in. Four answers:
-// enrolled; sign in with the address's login; a link no longer good, one
-// wording for every reason; the provider unavailable, keeping the form.
+// `/enrol/:token` (C39-T, piece P3): the invitation link's page. Set a password, the invitation
+// is accepted, nobody is signed in. Four answers: enrolled; sign in with the address's login; a
+// link no longer good, one wording for every reason; the provider unavailable, keeping the form.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Banner, Button, FieldError } from '@launchastro/ui';

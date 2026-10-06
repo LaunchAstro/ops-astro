@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C39-T, piece P3: a login made at the login provider (`auth.create_user`), or set again
-// under our id (`auth.update_user`), through custody, which keeps the service key; this
-// process sends the id, address and password once and keeps none. The answer must name
-// the id asked for. `refused` is the provider's proof nothing changed (`email_exists`, or
-// `user_not_found` on an update); `weak_password` is `password`; a call never answered is
-// `lost`; anything else (another id, a field for a password, an answer oversized,
-// redirected or malformed) is a fault.
+// C39-T, piece P3: a login made at the login provider (`auth.create_user`), or set again under
+// our id (`auth.update_user`), through custody, which keeps the service key; this process sends
+// the id, address and password once and keeps none. The answer must name the id asked for.
+// `refused` proves nothing changed (`email_exists`, or `user_not_found` on an update);
+// `weak_password` is `password`; a call never answered is `lost`; anything else (another id, a
+// field for a password, an answer oversized, redirected or malformed) is a fault.
 
 import {
   AUTH_CREATE_USER,
@@ -21,6 +20,8 @@ export interface LoginAsked {
   readonly id: string;
   readonly email: string;
   readonly password: string;
+  /** Epoch ms the call must end by (`endBy`): none is sent, and none runs, past its claim. */
+  readonly notAfter: number;
 }
 
 export type LoginMade =
@@ -57,6 +58,7 @@ async function ask(broker: Broker, key: string, login: LoginAsked): Promise<Logi
     body: built.body,
     timeoutMs: operation.timeoutMs,
     maxResponseBytes: operation.maxResponseBytes,
+    notAfter: login.notAfter,
   });
   if (outcome.kind === 'worker_lost') return LOST;
   if (outcome.kind === 'answered') {
@@ -88,6 +90,9 @@ export async function updateLogin(broker: Broker, login: LoginAsked): Promise<Lo
 
 /** How many calls per business, the route's ceiling, and how long a claim holds. */
 export type LoginLimits = Readonly<Record<'concurrency' | 'ceiling' | 'boundMs', number>>;
+
+/** The epoch ms calls under a claim taken or renewed at `at` end by: 5 s before it can lapse. */
+export const endBy = (limits: LoginLimits, at: number): number => at + limits.boundMs - 5_000;
 
 /** The limits both calls share (a claim outlives both timeouts by 5 s); none when one is missing. */
 export function loginLimits(broker: Broker): LoginLimits | undefined {

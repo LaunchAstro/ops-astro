@@ -122,6 +122,7 @@ export interface OutboundRequest {
   readonly body: string;
   readonly timeoutMs: number;
   readonly maxResponseBytes: number;
+  readonly notAfter?: number;
 }
 
 export type { OutboundFault };

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `POST /api/enrol` (C39-T, piece P3): the enrolment page's token and password,
-// and the invitation accepted (`acceptInvitation`), outside the business
-// prefix: no sign-in, grant or cookie; the token, in the body, is the
-// authority. The answer is a code (API.md), no session; nothing is logged.
+// `POST /api/enrol` (C39-T, piece P3): the enrolment page's token and password, and the
+// invitation accepted (`acceptInvitation`), outside the business prefix: no sign-in, grant or
+// cookie; the token, in the body, is the authority. The answer is a code (API.md), no session;
+// nothing is logged.
 
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
