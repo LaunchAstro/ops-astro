@@ -358,9 +358,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['conversationId'],
   }),
-  // CS-7.30: the drawer's model picker, under the list's rule (the owner's
-  // own, holding `conversation:write`), so the catalogue names that grant
-  // (API-1). Not audited beyond the command's own event; no agent entry.
+  // CS-7.30: the drawer's model picker, under the list's rule (the owner's own, holding
+  // `conversation:write`; API-1 names that grant). Only its own audit event; no agent entry.
   read('conversation.models', CONVERSATION_COLLECTION, { authority: ['conversation:write'] }),
   declare('conversation.set_model', 'write', {
     collection: CONVERSATION_COLLECTION,
