@@ -24,6 +24,7 @@ import {
   TITLE,
 } from './external-party-records.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { taskBodyContext } from './c80-bodies.ts';
 import {
   bearer,
   call,
@@ -207,7 +208,7 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     // body check's. Each is sent as it is (against a sibling the admin made, or
     // the business) and again aimed at the shared record itself.
     const positiveBody = createPositiveBody({
-      alphaTaskId: shared,
+      ...taskBodyContext(world, shared),
       assigneePersonId: world.ada.personId as string,
       asPerson: async (name, body) =>
         await as(world.ada, name, { operationId: randomUUID(), ...body }),

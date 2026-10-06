@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Identity's sign-in records: agent and person logins, attempts, standing,
+// Identity's sign-in records: agent and person logins, attempts, quotas, standing,
 // assurance, second factors and seen sessions. The other packages reach them
 // through the package index, which re-exports this file whole.
 
@@ -11,6 +11,9 @@ export {
   type AgentSession,
 } from './agent-login.ts';
 export { recordAuthenticationAttempt, recordBodyRefusal } from './authentication-attempts.ts';
+export { admitQuota, createQuotaGate, holdQuotaSlot, pageSizes } from './quota.ts';
+export { QUOTAS, withQuotaScope } from './quota.ts';
+export type { QuotaLimits, QuotaOptions, QuotaRefusal } from './quota.ts';
 export {
   ENDED_FIXES,
   NO_MEMBERSHIP_FIXES,

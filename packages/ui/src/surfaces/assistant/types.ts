@@ -85,6 +85,24 @@ export interface AssistantSubjectView {
   readonly chips: readonly string[];
 }
 
+/** One of the person's own past conversations, as the history list draws it (CS-7.33, C36). */
+export interface AssistantPast {
+  readonly id: string;
+  readonly title: string;
+  readonly lastActivityAt: string;
+}
+
+/**
+ * The drawer's history: shown, it asks `onShow` to read the list, then draws
+ * it; `said` is why there is none to draw. A row opens its conversation as a tab.
+ */
+export interface AssistantHistory {
+  readonly past: readonly AssistantPast[] | null;
+  readonly said: string | null;
+  readonly onShow: () => void;
+  readonly onOpen: (id: string) => void;
+}
+
 export interface AssistantPanelProps {
   readonly subject: AssistantSubjectView;
   readonly chats: readonly AssistantChat[];
@@ -96,6 +114,10 @@ export interface AssistantPanelProps {
   /** The caller's planning allowance line (AW-04), drawn above the transcript. */
   readonly allowance?: ReactNode;
   readonly draft: string;
+  /** The selected tab has a question out with no answer back yet. */
+  readonly answering?: boolean;
+  /** The person's past conversations; absent, the drawer offers no history. */
+  readonly history?: AssistantHistory;
   readonly onSelect: (key: string) => void;
   readonly onRename: (key: string, title: string) => void;
   readonly onTakeOut: (key: string) => void;

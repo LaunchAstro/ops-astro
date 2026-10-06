@@ -35,6 +35,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import type { SecuritySignal } from '../../apps/api/alerts/detect.ts';
+import { chainPlaces, revokedOrBehindHolder } from '../support/lock-waits.ts';
 import { testSignIn } from '../support/sign-in.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -181,11 +182,15 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
       undefined,
       pausingAfter(pool, statement, paused),
     );
-    const repairVia = async (who: Member, connectionId: string): Promise<Answer> => {
+    const repairVia = async (
+      who: Member,
+      connectionId: string,
+      operationId = randomUUID(),
+    ): Promise<Answer> => {
       const answer = await post(
         api,
         path('alpha', 'connector.repair'),
-        { operationId: randomUUID(), connectionId, expectedRevision: 1 },
+        { operationId, connectionId, expectedRevision: 1 },
         authorised(await tokenFor(who.presented.subject)),
       );
       answers.push(answer);
@@ -895,13 +900,36 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     // Sol PRV-oa-978-R1.1: the starter holds exactly one business-wide
     // custody:manage grant; the administrator revokes it, through the real
     // command on its own connection, while the start sits after its read.
+    // Two outcomes: the revocation commits in the pause and the start is
+    // refused; or, the start holding the business's access lock from its
+    // grant check (#1008), the revocation waits behind it and commits after.
     const { connection, starter, grantId } = await soleCustodian('revokedstarter');
-    let revoked: Answer | undefined;
+    const [start, revocation] = [randomUUID(), randomUUID()];
+    let revoking: Promise<Answer> | undefined;
+    let order: Awaited<ReturnType<typeof revokedOrBehindHolder>> | undefined;
     const race = pausedApi(1, async () => {
-      revoked = await as(admin, 'access.revoke', { grantId });
+      let answered = false;
+      revoking = as(admin, 'access.revoke', { grantId, operationId: revocation });
+      const settle = (): void => {
+        answered = true;
+      };
+      void revoking.then(settle, settle);
+      order = await revokedOrBehindHolder(
+        controls.fixture.db.admin,
+        CONNECTION_READ,
+        () => answered,
+      );
     });
-    const answer = await race.repairVia(starter, connection.id).finally(race.close);
-    expect(revoked?.status).toBe(200);
+    const answer = await race.repairVia(starter, connection.id, start).finally(race.close);
+    expect((await revoking)?.status).toBe(200);
+    if (order === 'behind the holder') {
+      const [started, revoked] = await chainPlaces(controls.fixture.db.admin, [start, revocation]);
+      expect({
+        status: answer.status,
+        committedFirst: Number(started) < Number(revoked) ? 'start' : 'revocation',
+      }).toEqual({ status: 200, committedFirst: 'start' });
+      return;
+    }
     expect(answer.status).toBe(403);
     expect(answer.body['code']).toBe('SCOPE_NOT_GRANTED');
     expect(await repairsOf(connection.id)).toBe(0);
@@ -911,12 +939,22 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     // SEC-P02-RB8.1: the grant goes, and the connection moves on, after the
     // envelope's grant check and before the start reads the connection. The
     // answer is the refusal of authority, never the revision or the status.
+    // Or, the start holding the business's access lock from before that
+    // check (#1008), the revocation waits behind it: the starter still holds
+    // its grant when it reads the connection, so it is told the revision.
     const { connection, starter, grantId } = await soleCustodian('lateststarter');
-    let revoked: Answer | undefined;
+    let revoking: Promise<Answer> | undefined;
+    let order: Awaited<ReturnType<typeof revokedOrBehindHolder>> | undefined;
     const race = pausedApi(
       1,
       async () => {
-        revoked = await as(admin, 'access.revoke', { grantId });
+        let answered = false;
+        revoking = as(admin, 'access.revoke', { grantId });
+        const settle = (): void => {
+          answered = true;
+        };
+        void revoking.then(settle, settle);
+        order = await revokedOrBehindHolder(controls.fixture.db.admin, GRANT_CHECK, () => answered);
         await controls.fixture.db.admin.execute(
           `update public.connections set revision = revision + 1 where id = $1`,
           [connection.id],
@@ -925,7 +963,12 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
       GRANT_CHECK,
     );
     const answer = await race.repairVia(starter, connection.id).finally(race.close);
-    expect(revoked?.status).toBe(200);
+    expect((await revoking)?.status).toBe(200);
+    if (order === 'behind the holder') {
+      expect([answer.status, answer.body['code']]).toStrictEqual([409, 'VERSION_STALE']);
+      expect(await repairsOf(connection.id)).toBe(0);
+      return;
+    }
     expect([answer.status, answer.body['code']]).toStrictEqual([403, 'SCOPE_NOT_GRANTED']);
     expect(JSON.stringify(answer.body)).not.toContain('revision=');
     expect(await repairsOf(connection.id)).toBe(0);

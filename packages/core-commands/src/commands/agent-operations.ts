@@ -13,10 +13,12 @@ import { READ_CATALOGUE } from '../reads/catalogue.ts';
 import { READ_BODY_FIXES, ReadIntegrityFault } from '../reads/dispatch.ts';
 import { DecisionIntegrityError } from '../reads/verified-decisions.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
+import { blockersFor, isRefusal, parsePaging, taskAt } from '../reads/detail.ts';
 import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts';
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { CORRECTION_REQUEST } from './live-correction-agent.ts';
 import { invalid, isFieldMap } from './operands.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { handbackLease } from './tasks-handback.ts';
@@ -70,7 +72,13 @@ interface AgentOperationRow<O extends object> {
   readonly operands: (request: AgentRequest) => O | Refused;
   /** How a stored success is released on replay (`agent-replay.ts`). */
   readonly replay:
-    'reauthorise' | 'pickup' | 'serveAgain' | 'settledHandback' | 'childPickup' | 'childHandback';
+    | 'reauthorise'
+    | 'correctionRequest'
+    | 'pickup'
+    | 'serveAgain'
+    | 'settledHandback'
+    | 'childPickup'
+    | 'childHandback';
   /** What an authority refusal keeps, when the operation keeps anything. */
   readonly onRefused?: (
     tx: TenantQuery,
@@ -668,15 +676,20 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       subjectTask: 'record',
       replay: 'reauthorise',
       identifiers: READ_CATALOGUE['task.read'].identifiers,
-      // The person read's own operand rule, so the two prefixes refuse a
-      // non-string id in one body.
-      operands: recordIdOperand((request) => {
-        const read = READ_CATALOGUE['task.read'].parse(request);
-        return read.ok ? undefined : read.refusal;
-      }),
-      serve: async (tx, _call, _operands, _delegation, taskId) => {
+      // The person read's rules: both prefixes refuse a non-string id, then a level, size or page.
+      operands: (request) => {
+        const id = recordIdOperand(() => {
+          const read = READ_CATALOGUE['task.read'].parse(request);
+          return read.ok ? undefined : read.refusal;
+        })(request);
+        const paging = parsePaging(request as unknown as Readonly<Record<string, unknown>>);
+        return isOperandRefusal(id) || !isRefusal(paging) ? id : refused(paging);
+      },
+      serve: async (tx, call, _operands, _delegation, taskId) => {
         if (taskId === undefined) return NOT_FOUND();
         const spine = await readTaskSpine(tx);
+        const paging = parsePaging(call.request as unknown as Readonly<Record<string, unknown>>);
+        const level = isRefusal(paging) ? undefined : paging.detail;
         let task: Awaited<ReturnType<typeof readTaskDetail>>;
         try {
           task = await readTaskDetail(
@@ -704,9 +717,12 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
           if (cause instanceof DecisionIntegrityError) throw new ReadIntegrityFault(cause);
           throw cause;
         }
-        return task === undefined
-          ? NOT_FOUND()
-          : { recordId: task.id, revision: task.revision, detail: { task } };
+        if (task === undefined) return NOT_FOUND();
+        if (level === undefined)
+          return { recordId: task.id, revision: task.revision, detail: { task } };
+        // Its delegation reaches this task alone, so every blocker is withheld by count.
+        const view = taskAt(level, task, await blockersFor(tx, [], task.id));
+        return { recordId: task.id, revision: task.revision, detail: { detail: level, view } };
       },
     }),
   ],
@@ -851,6 +867,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       operands: NONE,
     }),
   ],
+  ['live_correction.request', row(CORRECTION_REQUEST)],
   [
     'model.call',
     modelCallRow(() =>

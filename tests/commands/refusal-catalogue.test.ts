@@ -109,6 +109,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['CLIENT_NO_AGENT_EDITS', 403, 'caller'],
   ['AUTH_CROSS_SITE', 403, 'caller'],
   ['AUTH_SESSION_MISMATCH', 403, 'caller'],
+  ['QUOTA_EXCEEDED', 429, 'caller'],
   ['DELEGATION_EXCLUDES_OPERATION', 403, 'caller'],
   ['DELEGATION_EXCLUDES_DECISION', 403, 'caller'],
   ['DELEGATION_EXCLUDES_INTAKE', 403, 'caller'],

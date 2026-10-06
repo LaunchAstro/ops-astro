@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "PORT-P11 (P11b, C33 ceiling and intake): the run ceiling and the bounded event intake on the durable limiter, racing dispatches on separate connections; one business at its bounds never delays another."
+}

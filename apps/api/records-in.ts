@@ -4,7 +4,7 @@
 // agent quota: a task is one, a list (a search's hits, the fleet too) is its
 // length, a frontier is its tickets and its fog, a map is its tickets and
 // its components, and the signal sections are their grants, tripwires,
-// night round steps and roster.
+// night round steps and roster. A leveled task is one; a board page, its length.
 
 import type {
   ConnectionSignalResult,
@@ -21,7 +21,7 @@ export function recordsIn(read: object): number {
     const { frontier, fog } = read as MapFrontierResult;
     return frontier.length + fog.length;
   }
-  const lists = ['tasks', 'persons', 'queue', 'hits', 'connections'].map(
+  const lists = ['tasks', 'persons', 'queue', 'hits', 'connections', 'page'].map(
     (key) => (read as Record<string, unknown>)[key],
   );
   const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
@@ -31,5 +31,6 @@ export function recordsIn(read: object): number {
     const parts = [map.destination, map.notes].filter((part) => part !== null).length;
     return map.tickets.length + map.fog.length + map.outOfScope.length + parts;
   }
-  return 'task' in read || 'sharedTask' in read ? 1 : 0;
+  const leveled = 'detail' in read && 'view' in read;
+  return 'task' in read || 'sharedTask' in read || leveled ? 1 : 0;
 }

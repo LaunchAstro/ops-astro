@@ -8,8 +8,8 @@
 // of its own, as each worker will, so dispatches sent at once overlap (the app
 // pool holds one).
 
-import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
+import { occurrenceRunStarter } from '../../packages/core-commands/src/index.ts';
 import {
   adoptVersion,
   connect,
@@ -29,29 +29,56 @@ import {
   type RevokeResult,
   type RunRequest,
   type RunStarter,
-  type StandingApprovalRow,
   type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
-import { DIGEST, type AutomationWorld } from './world.ts';
-
-export interface Approved {
-  readonly version: DefinitionVersionRow;
-  readonly activation: ActivationRow;
-  readonly approval: StandingApprovalRow;
-}
+import { installSpine } from '../commands/fixture.ts';
+import type { FreshDatabase } from '../support/fresh-database.ts';
+import { insertWorker } from './run-start.ts';
+import { DIGEST, type Approved, type AutomationWorld } from './world.ts';
 
 export interface Starter {
   readonly runs: RunRequest[];
   readonly start: RunStarter;
 }
 
-export function starter(): Starter {
+const workers = new WeakMap<FreshDatabase, Map<string, Promise<string>>>();
+
+/** A business's worker and task spine, made once per database. */
+async function workerOf(db: FreshDatabase, business: string): Promise<string> {
+  const made = workers.get(db) ?? new Map<string, Promise<string>>();
+  workers.set(db, made);
+  const known = made.get(business);
+  if (known !== undefined) return await known;
+  const making = installSpine(db.app, business).then(async () => await insertWorker(db, business));
+  made.set(business, making);
+  return await making;
+}
+
+/**
+ * The product's run starter for each business's own worker, listing each run
+ * it started: a dispatch names a real run (P11b's keys). A new starter first
+ * hands back the runs earlier cases started, so C33's run ceiling holds none.
+ */
+export async function starter(db: FreshDatabase, ...businesses: string[]): Promise<Starter> {
   const runs: RunRequest[] = [];
+  const own = new Map<string, RunStarter>();
+  for (const business of businesses) {
+    // eslint-disable-next-line no-await-in-loop -- one business after another
+    own.set(business, occurrenceRunStarter(await workerOf(db, business)));
+  }
+  await db.admin.execute(
+    `update public.planned_runs set state = 'handed_back'
+      where business_id = any($1) and origin_occurrence_id is not null`,
+    [businesses],
+  );
   return {
     runs,
-    start(_tx, run) {
-      runs.push(run);
-      return Promise.resolve(randomUUID());
+    async start(tx, run) {
+      const real = own.get(tx.businessId);
+      if (real === undefined) throw new Error(`no worker for ${tx.businessId}`);
+      const answer = await real(tx, run);
+      if (typeof answer === 'string') runs.push(run);
+      return answer;
     },
   };
 }

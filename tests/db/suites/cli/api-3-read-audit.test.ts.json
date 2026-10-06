@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "each agent CLI read writes exactly one audit event (I13)"
+}
