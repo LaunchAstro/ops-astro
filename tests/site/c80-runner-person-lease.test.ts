@@ -177,6 +177,7 @@ describe.skipIf(serverUrl === undefined)(
       const revoker = connect(w.world.db.appUrl, { source: 'runtime' });
       let issued: string | undefined;
       let revoked = false;
+      let updated = false;
       try {
         await revokeOwnTaskWrites(revoker);
         const result = await recordLive(held, async (sql) => {
@@ -186,8 +187,10 @@ describe.skipIf(serverUrl === undefined)(
               grantTo(other, w.cal, 'write', task),
             );
           }
-          if (issued !== undefined && /update public\.live_corrections/u.test(sql))
+          if (issued !== undefined && /update public\.live_corrections/u.test(sql)) {
+            updated = true;
             revoked = await revokeElsewhere(revoker, issued);
+          }
         });
         expect(issued).toBeDefined();
         expect({
@@ -195,8 +198,11 @@ describe.skipIf(serverUrl === undefined)(
           state: await w.stateOf(held.id),
           receipts: await w.receiptsOf(held.id),
         }).toStrictEqual({ writeOk: false, state: 'approved', receipts: 0 });
-        expect(revoked).toBe(true);
+        // A write that reached its update did so after the grant it read was revoked; one
+        // refused on the grants it held never reaches it.
+        expect(revoked).toBe(updated);
       } finally {
+        if (issued !== undefined && !revoked) await revokeElsewhere(revoker, issued);
         // Cal's writes back, for the next case's pickup.
         await w.world.db.app.withBusiness(w.world.business, async (tx) => {
           await grantTo(tx, w.cal, 'write');
