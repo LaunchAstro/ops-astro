@@ -18,7 +18,9 @@
 //    AW-01's broker on the conversation seam
 //    (`callModelInConversation`): the owner in their own session, a local
 //    route only, nothing held. A cloud route is refused there before anything
-//    is written or sent (AW-03 egress off).
+//    is written or sent (AW-03 egress off). It asks for the conversation's
+//    model (CS-7.30), the default when none is chosen; a chosen model no
+//    longer offered it (`offeredModels`) is refused first, nothing sent.
 // 3. The answer is kept as the agent's message answering that one message
 //    (0099), in a second transaction that resolves the caller again, takes
 //    the conversation's row lock, as a message and the purge do, so a reply
@@ -52,21 +54,19 @@ import type {
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
 import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
-import { contextOf, type Cite, type Context } from './conversation-context.ts';
+import { contextOf, type Context } from './conversation-context.ts';
 import { bounded, holdsOwnConversations } from './conversations.ts';
+import { askedModel } from './conversation-model.ts';
+import {
+  answered,
+  refusedWith,
+  type ConversationReply,
+  type Kept,
+} from './conversation-replies.ts';
 import { auditAs, type ModelBroker } from './model-call.ts';
 import { isCommandRefusal } from './refusal.ts';
 
-/** What the person path hands back beside an applied message: the answer, or why none. */
-export type ConversationReply =
-  | {
-      readonly answered: true;
-      readonly messageId: string;
-      readonly body: string;
-      /** The records the call read, by the product's own address. */
-      readonly cites: readonly Cite[];
-    }
-  | { readonly answered: false; readonly code: string; readonly words: string };
+export type { ConversationReply } from './conversation-replies.ts';
 
 /** The message a person just kept, from the applied command's detail. */
 export interface Asked {
@@ -84,43 +84,14 @@ export type ConversationExchange = (
 /** A reply's body is a message's (0092). */
 const REPLY_LIMIT = 20_000;
 
-const OFF =
-  'Models are off for this material until a local model is available, so nothing was sent. ' +
-  'Your message is kept.';
-
-const WORDS: Readonly<Record<string, string>> = {
-  LOCAL_MODEL_REQUIRED: OFF,
-  CLIENT_MODEL_USE_OFF: OFF,
-  RATE_LIMITED: 'The model is busy, so nothing was sent. Your message is kept; ask again shortly.',
-};
-
-const UNUSABLE =
-  'The model’s answer could not be used, so nothing was kept. Your message is kept; ask again.';
-
-const refusedWith = (code: string): ConversationReply => ({
-  answered: false,
-  code,
-  words: WORDS[code] ?? UNUSABLE,
-});
-
-interface Kept {
-  readonly id: string;
-  readonly body: string;
-}
-
-const answered = (reply: Kept, cites: readonly Cite[]): ConversationReply => ({
-  answered: true,
-  messageId: reply.id,
-  body: reply.body,
-  cites,
-});
-
 interface Question {
   readonly scope: ConversationScope;
   readonly body: string;
   readonly reply: Kept | undefined;
   /** What goes beside the message, and whether the page refuses any model. */
   readonly context: Context;
+  /** The model to ask (CS-7.30): the chosen one, else the default; null when the choice is not offered now. */
+  readonly model: string | undefined | null;
 }
 
 /** The kept reply to a message, if there is one. */
@@ -138,6 +109,7 @@ async function questionOf(
   tx: TenantQuery,
   session: Session,
   asked: Asked,
+  provider: string,
 ): Promise<Question | undefined> {
   if (!isUuid(asked.conversationId) || !isUuid(asked.messageId)) return undefined;
   if (!(await holdsOwnConversations(tx, session))) return undefined;
@@ -155,6 +127,7 @@ async function questionOf(
   );
   if (found === undefined) return undefined;
   return {
+    model: await askedModel(tx, session, asked.conversationId, provider),
     scope: {
       id: asked.conversationId,
       businessId: tx.businessId,
@@ -248,6 +221,7 @@ async function answerOnce(
         ...question.context.fields.map((field) => ({ ...field, source: 'outside' as const })),
         { name: 'message', source: 'outside', value: question.body },
       ],
+      ...(question.model === undefined || question.model === null ? {} : { model: question.model }),
     },
     { ...broker, audit: auditAs(session.actorId) },
   );
@@ -272,14 +246,17 @@ async function answerOnce(
 export function conversationExchange(broker: ModelBroker): ConversationExchange {
   const asking = new Map<string, Promise<ConversationReply | null>>();
   return async (database, businessId, presented, asked) => {
+    // The provider the deployment's broker runs the conversation on: what it can send.
+    const provider = broker.operations.get(CONVERSATION_ANSWER.key)?.provider ?? '';
     const found = await withSession(database, businessId, presented, async (tx, session) => ({
       session,
-      question: await questionOf(tx, session, asked),
+      question: await questionOf(tx, session, asked, provider),
     }));
     if (isCommandRefusal(found) || found.question === undefined) return null;
     const { question } = found;
     // A repeat finds the reply kept and makes no call, so it read nothing and cites nothing.
     if (question.reply !== undefined) return answered(question.reply, []);
+    if (question.model === null) return refusedWith('MODEL_NOT_OFFERED');
     // Owner line 72: a client's material reaches no model (the laptop's GPT is a cloud
     // model); nor does a task this session cannot see, whose client cannot be known.
     if (question.context.refused) return refusedWith('CLIENT_MODEL_USE_OFF');

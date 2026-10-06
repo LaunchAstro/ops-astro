@@ -48,12 +48,13 @@ export const REPLAY_PATH = '/v1/complete';
 export function replayAdapter(
   values: Readonly<Record<string, string>>,
   operationId?: string,
+  model: string = REPLAY_MODEL_WINDOW.model,
 ): AdapterRequest {
   return {
     path: REPLAY_PATH,
     method: 'POST',
     body: JSON.stringify({
-      model: REPLAY_MODEL_WINDOW.model,
+      model,
       fields: values,
       ...(operationId === undefined ? {} : { operation_id: operationId }),
     }),
@@ -157,9 +158,16 @@ async function readAll(request: IncomingMessage): Promise<string> {
   return Buffer.concat(parts).toString('utf8');
 }
 
+/** The honest answer, naming the model that ran. */
+const answered = (model: string): unknown => ({
+  text: 'Drafted.',
+  model,
+  usage: { input: 40, output: 30 },
+});
+
 /** The modes whose answer is a fixed body. */
 const FIXED_ANSWERS: Partial<Record<ReplayMode, unknown>> = {
-  answer: { text: 'Drafted.', model: REPLAY_MODEL_WINDOW.model, usage: { input: 40, output: 30 } },
+  answer: answered(REPLAY_MODEL_WINDOW.model),
   unnamed_model: { text: 'Drafted.', usage: { input: 40, output: 30 } },
   bad_model: {
     text: 'Drafted.',
@@ -169,6 +177,16 @@ const FIXED_ANSWERS: Partial<Record<ReplayMode, unknown>> = {
   costly: { text: 'Long.', model: REPLAY_MODEL_WINDOW.model, usage: { input: 400, output: 300 } },
   planted: { text: PLANTED, usage: { input: 40, output: 30 } },
 };
+
+/** The model a request asked for, else the stand-in's own. */
+function askedOf(body: string): string {
+  try {
+    const model = (JSON.parse(body) as Record<string, unknown>)['model'];
+    return typeof model === 'string' ? model : REPLAY_MODEL_WINDOW.model;
+  } catch {
+    return REPLAY_MODEL_WINDOW.model;
+  }
+}
 
 /** The stand-in's answer in each mode, hostile ones included. */
 function respond(
@@ -252,7 +270,9 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
         return;
       }
       if (operation !== null && !NOT_BEGUN.has(current)) processed.add(operation);
-      respond(current, response, authorization, timers);
+      // An honest answer names the model it was asked for, as a provider's does (CS-7.30).
+      if (current === 'answer') answer(response, answered(askedOf(body)));
+      else respond(current, response, authorization, timers);
     })();
   });
   await new Promise<void>((resolve) => {

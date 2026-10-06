@@ -21,6 +21,7 @@ import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { markRefusedForPage, waitsFirst, type PageRefusal } from './conversation-context.ts';
+import { keepModel } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
@@ -34,7 +35,7 @@ export const DEFAULT_TITLE = 'New conversation';
 export const conversationAddress = (conversationId: string): string => `/agent/${conversationId}`;
 
 /** `conversation:write` across the business: the owner's key to their own conversations. */
-const OWN_WRITE = {
+export const OWN_WRITE = {
   collection: 'conversation',
   action: 'write',
   scope: { kind: 'business', id: null },
@@ -83,6 +84,8 @@ export interface StartFields {
   readonly title?: unknown;
   readonly subject?: unknown;
   readonly scope?: unknown;
+  /** The model chosen before the first message (CS-7.30): an offered one, or absent for the default. */
+  readonly model?: unknown;
 }
 
 /**
@@ -198,20 +201,20 @@ export async function startConversation(
       scope?.id ?? null,
     ],
   );
+  // CS-7.30: kept before the commit, so the first exchange asks for it; refused, nothing kept.
+  const chosen = fields.model ?? null;
+  const notKept =
+    chosen === null ? undefined : await keepModel(tx, session, conversationId, chosen);
+  if (notKept !== undefined) return refused(notKept);
   await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body)
      values ($1, $2, $3, 'person', $4, $5)`,
     [tx.businessId, messageId, conversationId, session.actorId, fields.body],
   );
-  if (pageRefused !== null) {
-    await markRefusedForPage(tx, session, { conversationId, messageId }, pageRefused);
-  }
-  return applied(null, null, {
-    conversationId,
-    messageId,
-    address: conversationAddress(conversationId),
-  });
+  const asked = { conversationId, messageId };
+  if (pageRefused !== null) await markRefusedForPage(tx, session, asked, pageRefused);
+  return applied(null, null, { ...asked, address: conversationAddress(conversationId) });
 }
 
 export interface MessageFields {

@@ -258,4 +258,43 @@ describe.skipIf(serverUrl === undefined)('W02 (a): the pickup payload, field by 
     const shape = expectShape(detail, 'person');
     expect(JSON.stringify(shape)).not.toContain(DELEGATION_HEADER);
   });
+
+  it.each(['agent', 'person'] as const)(
+    "the %s's pickup names what a dropped hand-back must carry, and that drop settles",
+    async (claimant) => {
+      const send = async (name: string, body: Record<string, unknown>, credential?: string) =>
+        claimant === 'agent'
+          ? await c.asAgent(name, body, credential)
+          : await c.asPerson(name, body);
+      const work = await approvedWork(`drop_${claimant}_${randomUUID().slice(0, 8)}`);
+      const answer = await send('task.pickup', { reservationId: work.reservationId });
+      expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+      const detail = detailOf(answer);
+      const shape = expectShape(detail, claimant);
+      // The handback refuses a drop without one of these causes, or with a
+      // successor, so the descriptor has to say both.
+      const conditions = shape['conditions'] as Record<string, { dropCause: string[] }> | undefined;
+      const dropped = conditions?.['dropped'];
+      expect(dropped).toStrictEqual({
+        required: ['report.dropCause'],
+        dropCause: ['provider_unavailable', 'connection_lost'],
+        excluded: ['successor'],
+      });
+      const operands = shape['operands'] as Record<string, { accepts: string }>;
+      expect(operands['report']?.accepts).toContain('dropCause');
+      expect(operands['successor']?.accepts).toContain('dropped');
+      // Exactly the drop described: the required operands and its first cause.
+      const settled = await send(
+        'task.handback',
+        {
+          leaseId: detail['leaseId'],
+          fence: detail['fence'],
+          outcome: 'dropped',
+          report: { dropCause: dropped?.dropCause[0] },
+        },
+        String(detail['credential']),
+      );
+      expect(settled.status, JSON.stringify(settled.body)).toBe(200);
+    },
+  );
 });

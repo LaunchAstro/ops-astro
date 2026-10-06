@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a presence route acts only for the person its recheck admitted, so a login remapped mid-request never marks another person's seat"
+}
