@@ -38,7 +38,8 @@ const CREDENTIAL_REF = 'local_runner';
 function apiEnvOf(origin: string, credentialsFile: string, installation: string) {
   const route = {
     key: LOCAL_GPT_PROVIDER,
-    reach: 'local',
+    // GPT is a cloud model wherever its runner listens; the broker refuses it labelled local.
+    reach: 'cloud',
     provider: LOCAL_GPT_PROVIDER,
     credentialRef: CREDENTIAL_REF,
     credentialKind: 'subscription',

@@ -30,6 +30,8 @@ for. Staging has no real model yet.
   would bill per call, so `pnpm local-agent` stops with `CODEX_NOT_SIGNED_IN`.
 - **Chat about a client.** GPT is a cloud model, so the owner's rule on client
   material stands: a conversation opened on a client's task asks no model.
+  Only your own typed message reaches GPT; task text and anything from outside
+  the business (an enquiry, a guest) waits for a local model.
 - Tools. Each call runs with every Codex tool off, a read-only sandbox, no
   saved session and a minimal environment; a reply in which the model reached
   for a tool is not used.

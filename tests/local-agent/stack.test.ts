@@ -57,6 +57,7 @@ describe('what the stack refuses before writing anything', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one started stack per case
 describe('a started stack', () => {
   it('files the runner key for custody alone, 0600, and prints it nowhere', async () => {
     const w = fresh();
@@ -87,7 +88,7 @@ describe('a started stack', () => {
     expect(settings).toMatchObject({
       kind: 'configured',
       provider: 'local-gpt',
-      routes: [{ provider: 'local_gpt', reach: 'local', credentialKind: 'subscription' }],
+      routes: [{ provider: 'local_gpt', reach: 'cloud', credentialKind: 'subscription' }],
     });
     expect(sourced(started.stack.apiEnvFile)['MODEL_BROKER_DESTINATIONS']).toContain(
       started.stack.runner.origin,

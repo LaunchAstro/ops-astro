@@ -54,7 +54,10 @@ describe.skipIf(serverUrl === undefined)('the side panel on the local GPT runner
       body: 'Two tasks are due today.',
     });
     expect(laptop.calls().map((call) => call.stdin)).toEqual([question]);
-    expect(laptop.ledger()).toHaveLength(1);
+    // One call: charged as unknown before codex ran, then what it used, under one id.
+    const ids = new Set(laptop.ledger().map((row) => row['id']));
+    expect(ids.size).toBe(1);
+    expect(laptop.ledger().at(-1)).toMatchObject({ inputTokens: 120, outputTokens: 7 });
     const [row] = await w.fixture.db.admin.execute<Record<string, unknown>>(
       `select route_reach, credential_kind, provider, state from public.model_calls
         where conversation_id is not null`,
