@@ -148,6 +148,51 @@ function removeAnswer(w: World, id: string): Reply {
   return reply(w.held.delete(id) ? 204 : 404);
 }
 
+/** The daemon double: it answers from `w` and logs each call. */
+function daemon(w: World): ProxyPorts['daemon'] {
+  return {
+    list: () => {
+      w.calls.push('list');
+      if (w.throws.has('list')) return Promise.reject(new Error('socket reset'));
+      if (w.listBroken) return Promise.resolve(reply(200, [{ Id: 'x' }]));
+      return Promise.resolve(
+        reply(
+          200,
+          [...w.held].map((Id) => ({ Id })),
+        ),
+      );
+    },
+    remove: (id) => {
+      w.calls.push('remove');
+      return Promise.resolve(removeAnswer(w, id));
+    },
+    info: () => {
+      w.calls.push('info');
+      return Promise.resolve(reply(w.answer['info'] ?? 200, { Containers: w.held.size }));
+    },
+    forward: async (step) => {
+      w.calls.push(step.kind);
+      const held = w.holds.get(step.kind);
+      w.holds.delete(step.kind);
+      await held;
+      if (w.throws.has(step.kind)) throw new Error('socket reset');
+      const status = w.answer[step.kind];
+      if (status !== undefined) return reply(status, { StatusCode: w.waitCode });
+      if (step.kind === 'create') {
+        w.made += 1;
+        const id = containerId(w.made);
+        w.held.add(id);
+        if (w.crashAfterCreate) w.crash = true;
+        return reply(201, { Id: w.badCreate ? id.slice(1) : id, Warnings: [] });
+      }
+      if (step.kind === 'delete') return removeAnswer(w, step.id);
+      if (step.kind === 'kill' || step.kind === 'start') return reply(204);
+      if (step.kind === 'wait') return reply(200, { StatusCode: w.waitCode });
+      return reply(200, {});
+    },
+  };
+}
+
 export function ports(w: World): ProxyPorts {
   return {
     store: {
@@ -160,47 +205,7 @@ export function ports(w: World): ProxyPorts {
     },
     pins: () => Promise.resolve(w.pins),
     now: () => w.now,
-    daemon: {
-      list: () => {
-        w.calls.push('list');
-        if (w.throws.has('list')) return Promise.reject(new Error('socket reset'));
-        if (w.listBroken) return Promise.resolve(reply(200, [{ Id: 'x' }]));
-        return Promise.resolve(
-          reply(
-            200,
-            [...w.held].map((Id) => ({ Id })),
-          ),
-        );
-      },
-      remove: (id) => {
-        w.calls.push('remove');
-        return Promise.resolve(removeAnswer(w, id));
-      },
-      info: () => {
-        w.calls.push('info');
-        return Promise.resolve(reply(w.answer['info'] ?? 200, { Containers: w.held.size }));
-      },
-      forward: async (step) => {
-        w.calls.push(step.kind);
-        const held = w.holds.get(step.kind);
-        w.holds.delete(step.kind);
-        await held;
-        if (w.throws.has(step.kind)) throw new Error('socket reset');
-        const status = w.answer[step.kind];
-        if (status !== undefined) return reply(status, { StatusCode: w.waitCode });
-        if (step.kind === 'create') {
-          w.made += 1;
-          const id = containerId(w.made);
-          w.held.add(id);
-          if (w.crashAfterCreate) w.crash = true;
-          return reply(201, { Id: w.badCreate ? id.slice(1) : id, Warnings: [] });
-        }
-        if (step.kind === 'delete') return removeAnswer(w, step.id);
-        if (step.kind === 'kill' || step.kind === 'start') return reply(204);
-        if (step.kind === 'wait') return reply(200, { StatusCode: w.waitCode });
-        return reply(200, {});
-      },
-    },
+    daemon: daemon(w),
   };
 }
 
