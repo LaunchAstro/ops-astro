@@ -293,18 +293,40 @@ export async function codexLogin(settings: RunnerSettings, deadlineMs = 10_000):
     });
     const parts: Buffer[] = [];
     for (const out of [child.stdout, child.stderr]) out.on('data', (b: Buffer) => parts.push(b));
-    // At the deadline it is no login, whatever still holds the output open.
-    const timer = setTimeout(() => {
-      resolve(false);
+    const stopGroup = (): void => {
       try {
         if (child.pid !== undefined) process.kill(-child.pid, 'SIGKILL');
       } catch {
         // The group has already gone.
       }
+    };
+    // Outside the terminal's Ctrl-C, so a launcher stopped mid-check stops the group, then goes as asked.
+    const cancelled = (signal: NodeJS.Signals): void => {
+      stopGroup();
+      release();
+      process.kill(process.pid, signal);
+    };
+    const release = (): void => {
+      process.off('SIGINT', cancelled);
+      process.off('SIGTERM', cancelled);
+      process.off('exit', stopGroup);
+    };
+    process.once('SIGINT', cancelled);
+    process.once('SIGTERM', cancelled);
+    process.once('exit', stopGroup);
+    // At the deadline it is no login, whatever still holds the output open.
+    const timer = setTimeout(() => {
+      release();
+      resolve(false);
+      stopGroup();
     }, deadlineMs);
-    child.on('error', () => resolve(false));
+    child.on('error', () => {
+      release();
+      resolve(false);
+    });
     child.on('close', (code) => {
       clearTimeout(timer);
+      release();
       const lines = Buffer.concat(parts).toString('utf8').split('\n');
       resolve(code === 0 && lines.some((line) => line.trim() === PLAN_LOGIN));
     });
