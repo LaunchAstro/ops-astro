@@ -67,8 +67,15 @@ describe.skipIf(serverUrl === undefined)('the answer to a person whose access en
       code: 'AUTH_NO_MEMBERSHIP',
     });
 
-    // Alpha's ending is alpha's: a bravo login of the same subject is not told of it.
+    // Alpha's ending is alpha's: a bravo login of the same subject, linked to a
+    // bravo person with no standing there, runs bravo's own endings read and is
+    // not told of it.
     const { person: ended, token: endedToken } = await teammate('ended-in-alpha');
+    await harness.world.db.app.withBusiness(harness.world.bravo, async (tx) => {
+      const personId = await insertPerson(tx, 'no-standing-in-bravo');
+      const login = await insertLogin(tx, ended.presented.subject);
+      await insertMapping(tx, login, personId, await insertActor(tx, personId));
+    });
     expect(outcome(await end(api, ended.personId))).toEqual({ status: 200, code: 'ok' });
     expect(outcome(await ownCall(api, endedToken, 'bravo'))).toEqual({
       status: 403,

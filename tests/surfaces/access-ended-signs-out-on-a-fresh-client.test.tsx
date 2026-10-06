@@ -5,7 +5,9 @@
 // says so, whichever client hears it. A reload builds a new client with no
 // memory of earlier answers, so the decision is the server's explicit code,
 // 403 `AUTH_ACCESS_ENDED`, matched exactly. A 403 `AUTH_NO_MEMBERSHIP` is a
-// denial to draw, before or after any success, and keeps the session.
+// denial to draw on a client that has had no answer only a member gets; once
+// this client's bearer has had one, it ends the session too (a lost share
+// writes no ending).
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { useState, type ReactElement } from 'react';
@@ -167,15 +169,20 @@ describe('the client decides on the code, not on what it remembers', () => {
     expect(await heard([[refusal('AUTH_ACCESS_ENDED'), 403]], false)).toEqual([]);
   });
 
-  it('keeps the session on a no-membership denial, even after the bearer was served', async () => {
+  it('ends the session on a no-membership answer once this bearer was served, and not before', async () => {
     expect(await heard([[refusal('AUTH_NO_MEMBERSHIP'), 403]])).toEqual([]);
     expect(
       await heard([
         [{ ok: true, tasks: [] }, 200],
+        [refusal('AUTH_NO_MEMBERSHIP'), 403],
+      ]),
+    ).toEqual(['AUTH_NO_MEMBERSHIP']);
+    expect(
+      await heard([
         [refusal('SCOPE_NOT_GRANTED'), 403],
         [refusal('AUTH_NO_MEMBERSHIP'), 403],
       ]),
-    ).toEqual([]);
+    ).toEqual(['AUTH_NO_MEMBERSHIP']);
   });
 
   it(

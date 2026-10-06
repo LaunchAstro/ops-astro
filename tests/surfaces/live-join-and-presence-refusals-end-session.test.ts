@@ -36,7 +36,7 @@ it('a presence call refused after access ended ends the tab session', async () =
     fetch: async () =>
       revoked
         ? Response.json(
-            { refused: true, code: 'AUTH_ACCESS_ENDED', names: [], fixes: [] },
+            { refused: true, code: 'AUTH_NO_MEMBERSHIP', names: [], fixes: [] },
             { status: 403 },
           )
         : Response.json({ ok: true, person: { name: 'Ada' } }),
@@ -47,7 +47,7 @@ it('a presence call refused after access ended ends the tab session', async () =
   expect(await client.read('session.person', {})).toMatchObject({ ok: true });
   revoked = true;
   expect(await client.live('presence?seat=own-seat&topic=task%3Aown-task', {})).toBeNull();
-  expect(ended).toEqual(['AUTH_ACCESS_ENDED']);
+  expect(ended).toEqual(['AUTH_NO_MEMBERSHIP']);
 });
 
 // Sol OW-082.1 criterion 1, retitled by what it proves; its body is Sol's.
