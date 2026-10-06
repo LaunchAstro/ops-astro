@@ -73,15 +73,17 @@ describe.skipIf(serverUrl === undefined)('WF-2 decision items from every frontie
 
   /** Every decision item about one ticket, in any business and any work state. */
   const items = async (ticket: string): Promise<readonly Item[]> =>
-    await w.db.admin.execute<Item>(
-      `select business_id::text as business, recipient_person_id::text as recipient,
-              work_state as state
-         from public.inbox_items
-        where subject_record_id = $1 and fact_id = $1 and fact_kind = 'record'
-          and reason = 'decision'
-        order by raised_at`,
-      [ticket],
-    );
+    (
+      await w.db.admin.execute<Item>(
+        `select business_id::text as business, recipient_person_id::text as recipient,
+                work_state as state
+           from public.inbox_items
+          where subject_record_id = $1 and fact_id = $1 and fact_kind = 'record'
+            and reason = 'decision'
+          order by raised_at`,
+        [ticket],
+      )
+    ).map(({ business, recipient, state }) => ({ business, recipient, state }));
 
   const onFrontier = async (map: string, business: BusinessId = w.business) =>
     (
