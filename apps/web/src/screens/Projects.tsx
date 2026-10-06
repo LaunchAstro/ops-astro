@@ -148,7 +148,8 @@ function ProjectBoard(
   const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
   // At a client filter (a Clients row door) every client the reader reaches (C32)
   // is a Client filter even with no row, and the board waits for them, so a door
-  // to a quiet client keeps its filter. At none, nothing more is read.
+  // to a quiet client keeps its filter. At none, nothing more is read. A failed
+  // read keeps the filters the address asks for, and says it failed.
   const query = queryOf(props.address);
   const named = clientFiltersIn(query) > 0;
   const reached = useRead<ClientListResult>({
@@ -159,7 +160,7 @@ function ProjectBoard(
         : { ok: true as const, value: { ok: true as const, clients: [] } },
     deps: [named],
   });
-  const clients = useMemo(() => clientNamesOf(reached.state), [reached.state]);
+  const clients = useMemo(() => clientNamesOf(reached.state, query), [reached.state, query]);
   // INB-1f: one stream for the tab, shared by the board and the inbox panels.
   const followInbox = useBoardLive(client, props.grantKey, reload);
 
@@ -175,6 +176,11 @@ function ProjectBoard(
           {said}
         </p>
       )}
+      {reached.state.outcome === 'denied' || reached.state.outcome === 'unavailable' ? (
+        <RecordState state={reached.state} subject="client list" onRetry={reached.reload}>
+          {() => null}
+        </RecordState>
+      ) : null}
       {/*
         Kept drawn while it reads again: a re-read after an edit or a live
         change leaves the filters, an open editor and focus where they were.
@@ -236,14 +242,30 @@ function ProjectBoard(
 
 const NO_CLIENTS: readonly string[] = [];
 
-/** The reached clients' names; null while the read is out, none when it is refused or fails. */
-function clientNamesOf(state: ReadState<ClientListResult>): readonly string[] | null {
+/**
+ * The reached clients' names; null while the read is out. A refused or failed
+ * read reaches no answer, so the address's own client filters are kept: the
+ * board then shows only rows of those clients, never every client's work.
+ */
+function clientNamesOf(
+  state: ReadState<ClientListResult>,
+  query: string,
+): readonly string[] | null {
   if (state.outcome === 'loading') return null;
+  if (state.outcome === 'denied' || state.outcome === 'unavailable') return requestedIn(query);
   const answered = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
   // An answer without its list offers none, rather than breaking the board.
   return Array.isArray(answered?.clients) && answered.clients.length > 0
     ? answered.clients.map((one) => one.name)
     : NO_CLIENTS;
+}
+
+/** The client names an address's filters ask for (`client:"<name>"`, the facet id's escapes undone). */
+function requestedIn(query: string): readonly string[] {
+  return (new URLSearchParams(query).get('f') ?? '').split(',').flatMap((id) => {
+    const name = /^client:"(?<name>.*)"$/u.exec(id)?.groups?.['name'];
+    return name === undefined ? [] : [name.replaceAll('%2C', ',').replaceAll('%25', '%')];
+  });
 }
 
 /** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
