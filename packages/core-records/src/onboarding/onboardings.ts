@@ -145,7 +145,17 @@ export async function insertSteps(
   return steps.flatMap((step) => byKey.get(step.key) ?? []);
 }
 
-/** The step on this task, locking onboarding, steps, then its task; undefined if absent, trashed or off the client. */
+/** Every step's task, in id order as trash and restore take them, before any delegation: park and withdraw re-take these. */
+async function lockStepTasks(tx: TenantQuery, onboardingId: string): Promise<void> {
+  await tx.query(
+    `select r.id from public.onboarding_steps s
+       join public.records r on r.business_id = s.business_id and r.id = s.task_id
+      where s.business_id = $1 and s.onboarding_id = $2 order by r.id for update of r`,
+    [tx.businessId, onboardingId],
+  );
+}
+
+/** The step on this task, locking onboarding, steps, then every step's task; undefined if absent, trashed or off the client. */
 export async function lockStepOfTask(
   tx: TenantQuery,
   taskId: string,
@@ -178,6 +188,7 @@ export async function lockStepOfTask(
       where business_id = $1 and onboarding_id = $2 order by position for update`,
     [tx.businessId, onboardingId],
   );
+  await lockStepTasks(tx, onboardingId);
   // A client change or trash in flight is waited on and its row read; set_party takes no onboarding lock.
   const task = await tx.query<{ readonly client_id: string | null }>(
     'select uuid_7 as client_id from public.records where business_id = $1 and id = $2 and deleted_at is null for update',

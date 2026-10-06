@@ -23,7 +23,7 @@ async function park(
   await tx.query(
     `select r.id from public.onboarding_steps s
        join public.records r on r.business_id = s.business_id and r.id = s.task_id
-      where s.business_id = $1 and ${steps} order by s.position for update of r`,
+      where s.business_id = $1 and ${steps} order by r.id for update of r`,
     [tx.businessId, ...values],
   );
   const moves = await tx.query<{ readonly task_id: string; readonly owner: string | null }>(
@@ -68,7 +68,7 @@ export async function withdrawStepMoves(tx: TenantQuery, onboardingId: string): 
        join public.onboardings o on o.business_id = s.business_id and o.id = s.onboarding_id
        join public.records r on r.business_id = s.business_id and r.id = s.task_id
       where s.business_id = $1 and s.onboarding_id = $2 and s.state in ('ready', 'stopped')`;
-  await tx.query(`select r.id ${owed} order by s.position for update of r`, [
+  await tx.query(`select r.id ${owed} order by r.id for update of r`, [
     tx.businessId,
     onboardingId,
   ]);
