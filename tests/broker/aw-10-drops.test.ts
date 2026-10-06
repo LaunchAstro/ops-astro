@@ -5,7 +5,8 @@
 // the call, never answered, and the lease ran out). Each says which drop,
 // whose fault and where the work got to, stops rather than redo work that may
 // have happened, joins one report per outage, and comes back by itself only
-// on the provider's declared proof that nothing happened. Failures that are
+// on the provider's declared proof that nothing happened. A call the provider
+// never received may still arrive, so its lookup proves nothing. Failures that are
 // no drop carry a fault from the evidence, `undetermined` where it cannot say.
 
 import { expect, it as vitestIt } from 'vitest';
@@ -93,12 +94,15 @@ it('AW-10 three drops: provider down, connection cut and worker lost each say wh
   expect(new Set(seen.map((one) => one.fault)).size).toBe(3);
 });
 
-it('AW-10 three drops: each comes back by itself on the provider proving nothing happened, with a person told', async () => {
+it('AW-10 three drops: a call the provider refused comes back by itself, with a person told; a call it never received stays held', async () => {
   world.provider.lookupMode('honest');
   const runs = [await dropped('unavailable'), await dropped('cut')];
   const lost = await workerLost();
   await pass();
-  for (const work of [...runs.map((one) => one.work), lost]) {
+  // The lost call never reached the provider and may still arrive: nothing comes back.
+  expect(await attemptsOf(s, lost)).toMatchObject([{ state: 'liability_unknown', held: 'held' }]);
+  expect(await callsOf(s, lost)).toMatchObject([{ state: 'liability_unknown' }]);
+  for (const work of runs.map((one) => one.work)) {
     // eslint-disable-next-line no-await-in-loop
     const [first, second] = await attemptsOf(s, work);
     expect(first).toMatchObject({ state: 'liability_unknown', held: 'held' });
@@ -155,8 +159,8 @@ it("AW-10 a heartbeat provider start is not cleared by a call's absence proof: t
   world.provider.lookupMode('honest');
   const work = await workerLost(s, true);
   const swept = await pass();
-  // The positive proof released the silent call, and that proves nothing about the step's provider.
-  expect(await callsOf(s, work)).toMatchObject([{ state: 'released', outcome: null }]);
+  // The silent call never reached the provider, so its lookup proves nothing and it stays held.
+  expect(await callsOf(s, work)).toMatchObject([{ state: 'liability_unknown', outcome: null }]);
   const reconciled = swept.ok ? (swept.businesses[0]?.reconciled ?? []) : [];
   expect(reconciled.filter((one) => one.attemptId === work.picked['attemptId'])).toMatchObject([
     { answer: 'unanswered' },
