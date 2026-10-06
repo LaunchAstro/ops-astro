@@ -263,9 +263,10 @@ describe.skipIf(noDatabase)('C39-T enrolment resumed accepts', () => {
     await delay(700);
     held.commit();
     await delay(500);
-    const inFlight = e.users.received.length - from;
+    const inFlight = e.users.received.slice(from).map((one) => one.method);
     release();
-    await Promise.all([a, b]);
-    expect(inFlight, 'calls in flight on a route of one').toBeLessThanOrEqual(1);
+    const [, second] = await Promise.all([a, b]);
+    expect(inFlight, 'calls in flight on a route of one').toStrictEqual(['PUT']);
+    expect(second, 'the other business waits for the place').toStrictEqual(UNAVAILABLE);
   }, 40_000);
 });

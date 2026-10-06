@@ -20,6 +20,7 @@ import {
   startCustody,
   type Custody,
   type Destination,
+  type OutboundRequest,
 } from '../../packages/core-custody/src/index.ts';
 
 const USERS = '/auth/v1/admin/users';
@@ -130,4 +131,35 @@ it('C39-T custody create route: a destination taking no POST takes one only on i
   expect(seen).toHaveLength(0);
   expect(await post(USERS)).toMatchObject({ kind: 'answered', outbound: { ok: true } });
   expect(seen).toStrictEqual([`POST ${USERS}`]);
+});
+
+it('C39-T custody deadline: a request names its notAfter in whole epoch ms; past it nothing is sent, before it the call is cut to it (SEC-P3A-6 L2)', async () => {
+  custody = await start();
+  seen.length = 0;
+  const by = async (notAfter: unknown): Promise<unknown> =>
+    await custody.dispatch('auth_key', {
+      destination: 'auth',
+      path: USERS,
+      method: 'POST',
+      body: '{}',
+      timeoutMs: 10_000,
+      maxResponseBytes: 4_096,
+      notAfter,
+    } as OutboundRequest);
+  expect(await by(Date.now() - 1)).toMatchObject({
+    kind: 'answered',
+    outbound: { ok: false, fault: 'timeout' },
+  });
+  expect(seen).toHaveLength(0);
+  expect(await by(Date.now() + 5_000)).toMatchObject({ kind: 'answered', outbound: { ok: true } });
+  expect(seen).toStrictEqual([`POST ${USERS}`]);
+  // Not a whole number of ms: refused whole, as any request outside the grammar is.
+  for (const notAfter of [Date.now() + 5_000.5, String(Date.now() + 5_000), true]) {
+    // oxlint-disable-next-line no-await-in-loop
+    expect(await by(notAfter), String(notAfter)).toMatchObject({
+      kind: 'refused',
+      code: 'CUSTODY_REQUEST_MALFORMED',
+    });
+  }
+  expect(seen).toHaveLength(1);
 });
