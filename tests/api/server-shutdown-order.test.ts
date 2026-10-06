@@ -104,6 +104,7 @@ it("server shutdown: the database closes only after the mail worker's running pa
     const stages = shutdownStages({
       topics: undefined,
       mail: delivery.stop,
+      conversations: undefined,
       database: async () => await database.close(),
       admin: undefined,
       broker: undefined,

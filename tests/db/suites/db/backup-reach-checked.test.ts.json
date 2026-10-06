@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "S0-3: the backup identity reads every schema the dump names, the made-up guard included, or the migration stops and names the gap; a platform-owned auth is left out"
+}

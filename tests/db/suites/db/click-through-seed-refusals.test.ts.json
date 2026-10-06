@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "SR-1: the click-through seed refuses another database, a role past row security, a missing or half key, a concurrent run, an item left halfway and a guard ledger entry, before its first write"
+}
