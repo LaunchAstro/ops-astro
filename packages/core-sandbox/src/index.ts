@@ -18,6 +18,22 @@ export {
   recordCandidateWait,
   writeBook,
 } from './candidate-book.ts';
+export {
+  admitContainerCreate,
+  admitContainerOp,
+  type ContainerBook,
+  containerDue,
+  deleteAnswered,
+  EMPTY_CONTAINERS,
+  GRACE_MS,
+  killAnswered,
+  noteAttachClosed,
+  noteAttachEnded,
+  noteWaitReturned,
+  readContainerBook,
+  recordContainer,
+  writeContainerBook,
+} from './container-book.ts';
 export { readBuildRequest, type BuildRequest, type SiteOf } from './build-request.ts';
 export {
   fixedCreateBody,
