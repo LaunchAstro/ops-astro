@@ -132,32 +132,51 @@ async function holdTaskRow(world: World, taskId: string) {
 }
 
 /**
+ * When the completion blocked on the task row began its transaction, against
+ * the gate's deadline: undefined until a backend is blocked by `holder`.
+ */
+async function blockedStart(world: World, gateId: string, holder: number) {
+  const [blocked] = await world.db.admin.execute<{ readonly before: boolean }>(
+    `select a.xact_start < g.expires_at as before
+       from pg_stat_activity a, public.gates g
+      where $3 = any(pg_blocking_pids(a.pid)) and g.business_id = $1 and g.id = $2`,
+    [world.alpha, gateId, holder],
+  );
+  return blocked?.before;
+}
+
+/**
  * Completes the task from behind a lock on its row that is held until the
- * gate's deadline has passed: the completion's transaction starts before the
- * deadline and reaches its gate check after it.
+ * gate's deadline has passed. The deadline is set once the row is held, and
+ * the completion's transaction is checked to have begun before it, so the
+ * gate check is reached only after a deadline that fell during the wait.
  */
 async function completeAcrossTheDeadline(world: World, taskId: string, gateId: string) {
-  await world.db.admin.execute(
-    `update public.gates set expires_at = clock_timestamp() + interval '1500 milliseconds'
-      where business_id = $1 and id = $2`,
-    [world.alpha, gateId],
-  );
   const expectedRevision = await revisionOf(world, taskId);
   const row = await holdTaskRow(world, taskId);
   try {
+    await world.db.admin.execute(
+      `update public.gates set expires_at = clock_timestamp() + interval '3 seconds'
+        where business_id = $1 and id = $2`,
+      [world.alpha, gateId],
+    );
     const completing = asAda(world, '/task/complete', {
       operationId: randomUUID(),
       recordId: taskId,
       expectedRevision,
     });
+    let before: boolean | undefined;
+    await waitUntil(
+      async () => (before = await blockedStart(world, gateId, row.pid)) !== undefined,
+    );
+    expect(before, 'the completion began before the deadline and waits on the row').toBe(true);
     await waitUntil(async () => {
-      const [ready] = await world.db.admin.execute<{ readonly ready: boolean }>(
-        `select clock_timestamp() > g.expires_at and exists (
-           select 1 from pg_stat_activity where $3 = any(pg_blocking_pids(pid))) as ready
-           from public.gates g where g.business_id = $1 and g.id = $2`,
-        [world.alpha, gateId, row.pid],
+      const [lapsed] = await world.db.admin.execute<{ readonly lapsed: boolean }>(
+        `select clock_timestamp() > expires_at as lapsed from public.gates
+          where business_id = $1 and id = $2`,
+        [world.alpha, gateId],
       );
-      return ready?.ready === true;
+      return lapsed?.lapsed === true;
     });
     await row.release();
     return (await completing).code;
