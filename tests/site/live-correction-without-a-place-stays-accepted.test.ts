@@ -115,7 +115,7 @@ it('an unrendered duplicate and a layout nav never make the unchanged heading re
 
 it('a correction with no observable place on its page raises a recovery task', async () => {
   const target = { path: 'src/pages/about.astro', word: 'alongside', replacement: 'beside' };
-  const before = '<p>We walk alongside you.</p>\n<!-- +++ -->\n';
+  const before = '<template><p>We walk alongside you.</p></template>\n';
   const after = before.replace('alongside', 'beside');
 
   const { observed, raised } = await publishAndObserve(target, before, after, before, after);
