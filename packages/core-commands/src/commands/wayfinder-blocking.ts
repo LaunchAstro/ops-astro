@@ -4,7 +4,12 @@
 // blocking set, its claim, and fog graduating into tickets. Each runs inside
 // the envelope (see `wayfinder-chart.ts`).
 
-import { isUuid, wayfinderFacts } from '../../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  isUuid,
+  subjectsOf,
+  wayfinderFacts,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -15,11 +20,38 @@ import { applyRevision, type Revision } from './wayfinder-revision.ts';
 import { fileTicket, linkBlocks, TICKET_LIMIT, ticketList } from './wayfinder-chart.ts';
 import { completed } from './wayfinder-resolve.ts';
 
+/** A blocker the caller may not name: the answer an absent id gets. */
+const NO_BLOCKER = refuseCommand(
+  'NOT_FOUND',
+  ['blockedBy'],
+  ['Block by live tickets of the same map.'],
+);
+
+/**
+ * `task:read` on a blocker, at its own scope or, refused there, at its map's,
+ * as the envelope asks the target's grant.
+ */
+async function readable(tx: TenantQuery, context: CommandContext, id: string): Promise<boolean> {
+  const map = (await wayfinderFacts(tx, id))?.mapId;
+  for (const scope of typeof map === 'string' ? [id, map] : [id]) {
+    // At most two: the blocker, then its map.
+    // oxlint-disable-next-line no-await-in-loop
+    const held = await checkAuthority(tx, subjectsOf(context.session), {
+      collection: context.declaration.collection,
+      action: 'read',
+      scope: { kind: 'record', id: scope },
+    });
+    if (held.ok) return true;
+  }
+  return false;
+}
+
 /**
  * Every blocker is a live ticket of the target's map (or, off a map, a live
- * task under the same parent), under the target's own client, and none
- * already waits on the target, which would close a cycle. Another client's
- * task is not found, the same answer as one that does not exist.
+ * task under the same parent), under the target's own client, never a map,
+ * readable by the caller, and none already waits on the target, which would
+ * close a cycle. Any other is not found, the same answer as one that does not
+ * exist. The blockers are held `for share`, so none moves before the link.
  */
 async function refuseBlockers(
   tx: TenantQuery,
@@ -32,14 +64,17 @@ async function refuseBlockers(
     `select id from records
       where business_id = $1 and id = any($2::uuid[]) and record_type_id = $3
         and deleted_at is null and uuid_4 is not distinct from $4::uuid
+        and coalesce(data ->> 'type', 'task') <> 'map'
         and uuid_7 is not distinct from
-            (select uuid_7 from records where business_id = $1 and id = $5)`,
+            (select uuid_7 from records where business_id = $1 and id = $5)
+      for share`,
     [tx.businessId, blockers, context.spine.taskTypeId, parent, targetId],
   );
-  if (found.length !== blockers.length) {
-    return refused(
-      refuseCommand('NOT_FOUND', ['blockedBy'], ['Block by live tickets of the same map.']),
-    );
+  if (found.length !== blockers.length) return refused(NO_BLOCKER);
+  for (const id of blockers) {
+    // Sequential, stopping at the first: the answer is the same whichever.
+    // oxlint-disable-next-line no-await-in-loop
+    if (!(await readable(tx, context, id))) return refused(NO_BLOCKER);
   }
   const downstream = await tx.query<{ readonly id: string }>(
     `with recursive down(id) as (
