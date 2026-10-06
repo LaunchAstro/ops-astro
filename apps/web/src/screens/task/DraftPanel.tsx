@@ -35,7 +35,6 @@ import type { OperationsClient } from '../../operations/client.ts';
 import { DraftFields, Missed } from './DraftFields.tsx';
 import type { Prefill } from './task-prefill.ts';
 import {
-  createFromDraft,
   dropDraft,
   emptyDraft,
   keepDraft,
@@ -45,9 +44,9 @@ import {
   readDraft,
   saveAttempt,
   type Attempt,
-  type CreateOutcome,
   type TaskDraft,
 } from './task-draft.ts';
+import { createFromDraft, type CreateOutcome } from './draft-parts.ts';
 
 /** Where the draft was filed from: the page's client, if it has one, and its name for the admission line. */
 export interface DraftScope {

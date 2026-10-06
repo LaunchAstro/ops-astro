@@ -534,7 +534,7 @@ reply, a tab or Cancel is chosen, so posting the unchanged box to the same
 reply again is that attempt. A draft's Create gives each part the id
 `<create id>.<index>`, and a new tag's `tag.create` the id `<part id>.tag`, so
 every run of one attempt sends the same ids (`record-incident.tsx`, `client-seam.ts`, `Subtasks.tsx`, `Time.tsx`,
-`Comments.tsx`, `task-draft.ts`).
+`Comments.tsx`, `draft-parts.ts`).
 
 The settings screen's writes go through `useCommand` too. `use-settings.ts`
 keeps only what settings does with each kind, and its memory of the last

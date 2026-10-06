@@ -17,7 +17,8 @@
 // with them: the server replays, answered parts are skipped, and a part with no
 // answer stops Create. An edit writes the draft without them; a drop drops all.
 //
-// **Create is the task first, then each part by its own command (DN-05).**
+// **Create is the task first, then each part by its own command (DN-05;
+// `draft-parts.ts`).**
 // `task.create` writes the task; the client, the category, the owner, the
 // note, the tags, the subtasks and the logged time then go through
 // `task.set_party`, `task.set_category`, `task.assign`, `task.comment`, the
@@ -26,9 +27,6 @@
 // refused once the task exists is named back to the person, never retried as
 // a second task.
 
-import type { OperationsClient } from '../../operations/client.ts';
-import { settle } from '../../records/use-command.ts';
-import { partsOf } from './draft-parts.ts';
 import type { Prefill } from './task-prefill.ts';
 
 export interface TaskDraft {
@@ -176,52 +174,4 @@ export function dropOtherDrafts(storage: Storage | null, person: string | null):
   } catch {
     // A blocked store kept nothing.
   }
-}
-
-export type CreateOutcome =
-  | { readonly kind: 'created'; readonly key: string; readonly missed: readonly string[] }
-  | { readonly kind: 'refused' | 'unknown'; readonly because: string };
-
-/**
- * Create the task, then each part the draft holds not yet answered under
- * `attempt`; `save` keeps each part's id before it goes out, and the count
- * once it answers.
- */
-export async function createFromDraft(
-  client: OperationsClient,
-  draft: TaskDraft,
-  attempt: Attempt,
-  save: (next: Attempt) => void,
-): Promise<CreateOutcome> {
-  const fields: Record<string, unknown> = { title: draft.title.trim() };
-  if (draft.due !== null) fields['due'] = draft.due;
-  if (draft.estimate !== null) fields['estimated_minutes'] = draft.estimate;
-  const created = settle(
-    await client.mutate('task.create', { fields, board: null }, { operationId: attempt.id }),
-  );
-  if (created.kind === 'unknown') return { kind: 'unknown', because: created.because };
-  if (created.kind !== 'ok') return { kind: 'refused', because: created.because };
-  const { recordId } = created.value;
-  const at = { revision: attempt.revision ?? created.value.revision };
-  const ids = [...attempt.parts];
-  const missed = [...attempt.missed];
-  let done = attempt.done;
-  const now = (): Attempt => ({ ...attempt, parts: [...ids], done, revision: at.revision, missed });
-  for (const [index, part] of partsOf(client, draft, recordId, at).entries()) {
-    if (index < done) continue;
-    const operationId = ids[index] ?? `${attempt.id}.${String(index)}`;
-    ids[index] = operationId;
-    save(now());
-    // eslint-disable-next-line no-await-in-loop -- in order: each part writes after the task, at its revision
-    const result = settle(await part.run(operationId));
-    if (result.kind === 'unknown') {
-      return { kind: 'unknown', because: `No answer for ${part.what}; Create again to finish.` };
-    }
-    if (result.kind === 'ok') at.revision = result.value.revision;
-    else missed.push(part.what);
-    done = index + 1;
-    save(now());
-  }
-  const key = created.value.detail?.['key'];
-  return { kind: 'created', key: typeof key === 'string' ? key : recordId, missed };
 }
