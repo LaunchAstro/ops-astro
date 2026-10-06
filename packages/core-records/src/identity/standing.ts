@@ -19,9 +19,8 @@ import { admitQuota, type QuotaRefusal } from './quota.ts';
  * the person has ended or a missing second factor still refuses, and nothing
  * is recorded: the attempt was recorded when the stream was opened, and a row
  * for every recheck would record who kept which task open rather than who came
- * through the door. A request that comes to no door of its own is charged
- * here; one charged already (a stream's recheck) is not charged again. Its
- * refusal is recorded, as every quota refusal is.
+ * through the door. A request with no door of its own is charged here, once (a
+ * stream's recheck is not); its refusal is recorded, as every quota refusal is.
  */
 export async function withStanding<T>(
   database: Database,
