@@ -13,7 +13,10 @@
 // fixture's doubles, not a real daemon.
 
 import { expect, it } from 'vitest';
-import { EMPTY_CONTAINERS } from '../../packages/core-sandbox/src/container-book.ts';
+import {
+  EMPTY_CONTAINERS,
+  recordContainer,
+} from '../../packages/core-sandbox/src/container-book.ts';
 import {
   ProxyState,
   readProxyRecord,
@@ -197,6 +200,39 @@ it('keeps an accepted id across a restart and drops it when the entry changes', 
   const state = await opened(w);
   expect(record(w).candidates.accepted).toEqual([]);
   expect(await state.handle(create(P, s1('p')))).toEqual(refused('candidate'));
+});
+
+it('refuses a record the proxy could not have written', () => {
+  const book = seededBook();
+  const [held] = book.candidates;
+  const [pin] = book.accepted;
+  if (held === undefined || pin === undefined) throw new Error('no seed');
+  const recorded = recordContainer(EMPTY_CONTAINERS, containerId(1), 5000, 1000, false);
+  const broken = [
+    { ...book, candidates: [held, { ...held, id: P }] },
+    { ...book, candidates: [held, { ...held, site: 't' }] },
+    { ...book, accepted: [pin, { ...pin, id: C }] },
+    { ...book, accepted: [{ ...pin, attempt: 0 }] },
+    {
+      ...book,
+      candidates: [{ ...held, createsLeft: 2, runs: [{ statusCode: null, inTime: true }] }],
+    },
+  ].map((candidates) => writeProxyRecord({ candidates, containers: EMPTY_CONTAINERS }));
+  const { container } = recorded;
+  if (container === null) throw new Error('no container');
+  broken.push(
+    writeProxyRecord({
+      candidates: book,
+      containers: { container: { ...container, deadline: 4999 } },
+    }),
+    new TextEncoder().encode(
+      new TextDecoder()
+        .decode(writeProxyRecord({ candidates: book, containers: recorded }))
+        .replace('"killed":false', '"killed":0'),
+    ),
+  );
+  const bad = { ok: false, reason: 'internal', why: 'proxy record' };
+  expect(broken.map((bytes) => readProxyRecord(bytes))).toEqual(broken.map(() => bad));
 });
 
 it('reads its one record file as a closed grammar', async () => {

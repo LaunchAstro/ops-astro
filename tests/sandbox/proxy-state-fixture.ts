@@ -119,6 +119,8 @@ export type World = {
   /** The created `Id` the daemon sends back is malformed. */
   badCreate: boolean;
   waitCode: number;
+  /** Daemon calls (`list` or a forwarded kind) that throw, as a reset socket does. */
+  readonly throws: Set<string>;
   /** Holds the next forwarded operation of each kind until the test releases it. */
   readonly holds: Map<string, Promise<void>>;
 };
@@ -137,6 +139,7 @@ export function world(stored: Uint8Array | null = seeded()): World {
     answer: {},
     badCreate: false,
     waitCode: 0,
+    throws: new Set(),
     holds: new Map(),
   };
 }
@@ -160,6 +163,7 @@ export function ports(w: World): ProxyPorts {
     daemon: {
       list: () => {
         w.calls.push('list');
+        if (w.throws.has('list')) return Promise.reject(new Error('socket reset'));
         if (w.listBroken) return Promise.resolve(reply(200, [{ Id: 'x' }]));
         return Promise.resolve(
           reply(
@@ -181,6 +185,7 @@ export function ports(w: World): ProxyPorts {
         const held = w.holds.get(step.kind);
         w.holds.delete(step.kind);
         await held;
+        if (w.throws.has(step.kind)) throw new Error('socket reset');
         const status = w.answer[step.kind];
         if (status !== undefined) return reply(status, { StatusCode: w.waitCode });
         if (step.kind === 'create') {
@@ -191,7 +196,7 @@ export function ports(w: World): ProxyPorts {
           return reply(201, { Id: w.badCreate ? id.slice(1) : id, Warnings: [] });
         }
         if (step.kind === 'delete') return removeAnswer(w, step.id);
-        if (step.kind === 'kill') return reply(204);
+        if (step.kind === 'kill' || step.kind === 'start') return reply(204);
         if (step.kind === 'wait') return reply(200, { StatusCode: w.waitCode });
         return reply(200, {});
       },

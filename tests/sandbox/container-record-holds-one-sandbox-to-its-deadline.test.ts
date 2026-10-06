@@ -71,6 +71,12 @@ it('kills at the deadline from the create record, even if never started, and del
   expect(containerDue(unkilled, DEADLINE + GRACE_MS)).toEqual({ kill: true, delete: true });
 });
 
+it('kills at the deadline even after a wait returned, until a kill lands', () => {
+  const waited = noteWaitReturned(held(), T0 + 10_000);
+  expect(containerDue(waited, DEADLINE)).toEqual({ kill: true, delete: false });
+  expect(containerDue(killAnswered(waited, 'not running'), DEADLINE)).toEqual(none);
+});
+
 it('deletes 30 s after the later of the wait returning and the attach ending', () => {
   const waited = noteWaitReturned(held(), T0 + 10_000);
   expect(containerDue(waited, T0 + 50_000)).toEqual(none);

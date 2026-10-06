@@ -106,6 +106,7 @@ it('deletes 30 s after the later of the wait and the attach end, and ignores ano
   const state = await opened(w);
   await state.handle(create(P, s1('p')));
   await state.attachClosed('e'.repeat(64));
+  await state.handle(op('start', ID));
   w.now = T0 + 1000;
   await state.handle(op('wait', ID));
   w.now = T0 + 5000;
@@ -136,6 +137,7 @@ it('lets no late answer about one container change the record of the next', asyn
   const w = world();
   const state = await opened(w);
   await state.handle(create(P, s1('p')));
+  await state.handle(op('start', ID));
   w.calls.length = 0;
   const [releaseDelete, releaseWait] = [hold(w, 'delete'), hold(w, 'wait')];
   const late = [state.handle(op('delete', ID)), state.handle(op('wait', ID))];
@@ -155,10 +157,45 @@ it('records no wait the daemon did not answer 200', async () => {
   const w = world();
   const state = await opened(w);
   await state.handle(create(C));
+  await state.handle(op('start', ID));
   w.answer.wait = 500;
   await state.handle(op('wait', ID));
   expect(candidateOf(w)?.runs).toEqual([{ statusCode: null, inTime: false }]);
   expect(record(w).containers.container?.waitAt).toBeNull();
+});
+
+it("counts no wait answered before its container's start, and still kills at the deadline", async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(C));
+  await state.handle(op('wait', ID));
+  expect(candidateOf(w)?.runs).toEqual([{ statusCode: null, inTime: false }]);
+  expect(record(w).containers.container?.waitAt).toBeNull();
+  w.answer.start = 500;
+  await state.handle(op('start', ID));
+  await state.handle(op('wait', ID));
+  expect(candidateOf(w)?.runs).toEqual([{ statusCode: null, inTime: false }]);
+  w.now = T0 + S1_WALL;
+  w.calls.length = 0;
+  await state.tick();
+  expect(w.calls).toEqual(['kill']);
+});
+
+it('takes a daemon call that throws as a failed sweep or a failed delete', async () => {
+  const w = world();
+  w.throws.add('list');
+  const state = await opened(w);
+  expect(await state.handle({ kind: 'ping' })).toEqual(UNAVAILABLE);
+  w.throws.clear();
+  w.now = T0 + GRACE;
+  await state.tick();
+  await state.handle(create(P, s1('p')));
+  w.throws.add('delete');
+  w.now += S1_WALL + GRACE;
+  w.calls.length = 0;
+  await state.tick();
+  expect(w.calls).toEqual(['kill', 'delete', 'list', 'remove', 'list', 'info']);
+  expect(heldId(w)).toBeNull();
 });
 
 it('starts a sweep when its own delete is answered 500, and the next create passes', async () => {
@@ -227,6 +264,7 @@ async function runC(code: number, late = -1) {
   const counted = async (n: number) => {
     w.now = T0 + n * 1_000_000;
     await state.handle(create(C));
+    await state.handle(op('start', containerId(n)));
     w.now += S1_WALL + late;
     await state.handle(op('wait', containerId(n)));
     await state.handle(op('delete', containerId(n)));
