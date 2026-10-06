@@ -64,6 +64,10 @@ const runOf = (recordId: string, runId: string, op: CommandName): Body =>
       ? { recordId, runId, expectedVersion: 0, knowledge: [NOBODY], unknowns: [] }
       : { recordId, runId, askId: randomUUID() };
 
+/** An onboarding start and a step result (C41-A), aimed abroad. */
+const START = (clientId: string): Body => ({ clientId, templateKey: 'standard' });
+const STEP = (recordId: string): Body => ({ recordId, outcome: 'done', result: 'aimed abroad' });
+
 /** An operand in its foreign and fabricated forms. */
 const pair = (
   operand: string,
@@ -73,6 +77,67 @@ const pair = (
   operand,
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
+
+/** C33's three identifier cells: a foreign version, activation and definition; then C52-A's. */
+function automationCells(f: IdentWorld['foreign']): [CommandName, ReturnType<typeof pair>][] {
+  const manual = { mode: 'manual', enabled: false } as const;
+  const release = {
+    contentDigest: 'e'.repeat(64),
+    contentSize: 1,
+    inputs: [],
+    operations: [],
+    modes: ['manual'],
+  } as const;
+  const { automation } = f;
+  return [
+    [
+      'activation.change',
+      pair('versionId', automation.versionId, (id) => ({ versionId: id, ...manual })),
+    ],
+    [
+      'activation.change',
+      pair('activationId', automation.activationId, (id) => ({
+        activationId: id,
+        versionId: f.alphaVersionId,
+        ...manual,
+        expectedRevision: 1,
+      })),
+    ],
+    [
+      'definition.release',
+      pair('definitionId', automation.definitionId, (id) => ({ definitionId: id, ...release })),
+    ],
+    ...approvalCells(f),
+  ];
+}
+
+/** An activation named at revision 1, as the seeded ones are. */
+const atFirst = (activationId: string): Body => ({ activationId, expectedRevision: 1 });
+
+/** C52-A's identifier cells: a foreign activation, version and approval. */
+function approvalCells(f: IdentWorld['foreign']): [CommandName, ReturnType<typeof pair>][] {
+  const at = atFirst;
+  const { automation } = f;
+  return [
+    [
+      'activation.adopt',
+      pair('activationId', automation.activationId, (id) => ({
+        ...at(id),
+        versionId: f.alphaVersionId,
+      })),
+    ],
+    [
+      'activation.adopt',
+      pair('versionId', automation.versionId, (id) => ({
+        ...at(f.alphaActivationId),
+        versionId: id,
+      })),
+    ],
+    ['activation.roll_back', pair('activationId', automation.activationId, at)],
+    ['activation.turn_off', pair('activationId', automation.activationId, at)],
+    ['approval.revoke', pair('approvalId', automation.approvalId, (id) => ({ approvalId: id }))],
+  ];
+}
 
 /** Every gate item recorded in alpha, the operator, so the mode may move to real (S0-5). */
 async function gateReady(w: IdentWorld, caller: Caller): Promise<void> {
@@ -326,6 +391,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       ],
       // C58: bravo's person named in an alpha ending.
       ['access.end', pair('holderId', person, (holderId) => ({ holderId }))],
+      // C59: bravo's person named in an alpha authenticator reset.
+      ['access.reset_factor', pair('holderId', person, (holderId) => ({ holderId }))],
       // C60: bravo's client named in an alpha privacy change.
       [
         'client.set_privacy',
@@ -352,6 +419,10 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.restore', pair('batchId', f.batchId, (batchId) => ({ batchId }))],
         ['grant.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
         ['secret.clear', pair('secretId', f.secretId, (secretId) => ({ secretId }))],
+        [
+          'connector.repair',
+          pair('connectionId', f.connectionId, (connectionId) => ({ connectionId })),
+        ],
         [
           'delegation.revoke',
           pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),
@@ -399,6 +470,10 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ],
         ['access.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
         ...accessGrantCells(f.admin.personId as string, f.clientId),
+        // An onboarding start on bravo's client and a result on bravo's step (C41-A).
+        ['onboarding.start', pair('clientId', f.clientId, (id) => START(id))],
+        ['onboarding.step_result', pair('recordId', f.stepTaskId, (id) => STEP(id))],
+        ...automationCells(f),
       );
       // AW-05's answers name the task and the run on it. Bravo's run is the
       // one its pickup claimed; alpha's task is named beside it, and then

@@ -96,7 +96,9 @@ export async function grantAccess(
 
 /**
  * How many people who can sign in hold business-wide `access:manage` by a
- * live grant other than the ones named. Asked under the access lock.
+ * live grant other than the ones named. A grant cut from a leaving one (named,
+ * or held by the leaving person) is not counted either: it stops being
+ * effective with its parent. Asked under the access lock.
  */
 export async function otherManagers(
   tx: TenantQuery,
@@ -104,7 +106,22 @@ export async function otherManagers(
   leavingPersonId: string | null = null,
 ): Promise<number> {
   const rows = await tx.query<{ readonly n: number }>(
-    `${EFFECTIVE}
+    `${EFFECTIVE},
+     gone as (
+       select g.id, 1 as depth
+         from public.grants g
+         left join public.actors ga
+           on g.subject_kind = 'actor' and ga.business_id = g.business_id and ga.id = g.subject_id
+        where g.business_id = $1
+          and (g.id = any($2::uuid[])
+               or (g.subject_kind = 'person' and g.subject_id = $3::uuid)
+               or ga.person_id = $3::uuid)
+       union all
+       select c.id, d.depth + 1
+         from public.grants c
+         join gone d on c.parent_grant_id = d.id
+        where d.depth < 8
+     )
      select count(distinct coalesce(a.person_id, e.subject_id))::int as n
        from effective e
        left join public.actors a
@@ -115,7 +132,7 @@ export async function otherManagers(
       where e.business_id = $1
         and e.collection = 'access' and e.action = 'manage' and e.scope_kind = 'business'
         and (e.subject_kind = 'person' or a.person_id is not null)
-        and not (e.id = any($2::uuid[]))
+        and not exists (select 1 from gone where gone.id = e.id)
         and coalesce(a.person_id, e.subject_id) is distinct from $3::uuid`,
     [tx.businessId, leaving, leavingPersonId],
   );

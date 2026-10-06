@@ -58,7 +58,6 @@ import {
 } from '../../packages/core-commands/src/index.ts';
 import {
   readServiceHealth,
-  settleAccessEndings,
   type FactorProvider,
   type HealthSources,
   type LoginProvider,
@@ -102,6 +101,8 @@ import {
   type Watching,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
+import { recordsIn } from './records-in.ts';
+import { settleAfterCommit } from './settle-after-commit.ts';
 import { mountFactorRoutes, mountPublicLegal } from './account-routes.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 import type { ErrorSinkLink } from './health/error-sink-link.ts';
@@ -454,18 +455,11 @@ export function createApi(options: ApiOptions): Hono {
     });
 
     if (isCommandRefusal(result)) return refuse(context, result);
-    // C58: the provider steps an ending owes are tried as soon as it commits,
-    // outside its transaction; what fails stays owed for the server's retry.
-    const { logins, sharedLogin } = options;
-    if (name === 'access.end' && logins !== undefined && sharedLogin !== undefined) {
-      const only = endingIdsOf(result);
-      const sharedElsewhere = async (subject: string) => await sharedLogin(subject, businessId);
-      if (only.length > 0) {
-        await settleAccessEndings(options.database, businessId, logins, { only, sharedElsewhere });
-      }
-    }
-    const reply = await replyTo(options, businessId, presented, result);
-    return context.json({ ...result, ...(reply === null ? {} : { reply }) }, 200);
+    // C58 and C59: the provider steps the act owes, tried as soon as it
+    // commits, outside its transaction; what fails stays owed for the retry.
+    const settled = await settleAfterCommit(options, businessId, name, result);
+    const reply = await replyTo(options, businessId, presented, settled);
+    return context.json({ ...settled, ...(reply === null ? {} : { reply }) }, 200);
   });
 
   // The second entry point. Same surface table, same paths, a different
@@ -917,13 +911,6 @@ const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
 const NO_CREDENTIAL = 'no-credential';
 
-/** How many records a read handed out: a task is one, a list (a search's hits too) is its length. */
-function recordsIn(read: object): number {
-  const lists = ['tasks', 'persons', 'queue', 'hits'].map((key): unknown => Reflect.get(read, key));
-  const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
-  if (listed !== undefined) return listed.length;
-  return 'task' in read || 'sharedTask' in read ? 1 : 0;
-}
 /** The answer's outcome, as the detector reads it: no content, only scopes and a code. */
 function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
   const presented = context.get(PRESENTED) as VerifiedSubject | undefined;
@@ -989,12 +976,4 @@ async function readLimited(request: Request, limit: number): Promise<string | un
   } catch {
     return undefined;
   }
-}
-
-/** The endings an `access.end` answer names (C58): ids, and nothing else. */
-function endingIdsOf(result: object): readonly string[] {
-  const detail = (result as { readonly detail?: unknown }).detail;
-  if (typeof detail !== 'object' || detail === null) return [];
-  const ids = (detail as { readonly endingIds?: unknown }).endingIds;
-  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
 }

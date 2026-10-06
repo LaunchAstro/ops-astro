@@ -549,7 +549,7 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
   Team panel; a client of the business is answered `NOT_FOUND`
 - `chat.conversations {}` → the reader's own team conversations (C71-D), each
   with its members and its unread, derived from the reader's own marker
-  (`team_conversation_members.last_read_at`, 20261005044122, set only by that person);
+  (`team_conversation_members.last_read_at`, 20261006074341, set only by that person);
   the reader's member row is the query's filter, so nobody else's is listed
 - `chat.messages { conversationId }` → one of the reader's conversations'
   messages: `task_comment` records with audience `direct`, anchored by their
@@ -690,8 +690,11 @@ That function is a security definer with its search path pinned, takes no
 argument and stamps the database's own time, never moving it back, so the
 drill cannot name a date. The drill takes the role by name on the owner's
 connection (`scripts/ops/tested-restore.ts`), as the business lookup takes
-0046's. The application may select the row and nothing more; PUBLIC holds
-nothing on the table or the function. `operations.read` serves it as
+0046's. Where the owner's login is not a superuser (hosted Supabase holds
+both with ADMIN OPTION alone), 20261005063514 grants it each of the two with
+SET and without INHERIT: it may take them by name and holds nothing of
+theirs otherwise. The application may select the row and nothing more;
+PUBLIC holds nothing on the table or the function. `operations.read` serves it as
 `lastTestedRestore` ([API.md](API.md)).
 
 ## Legal documents (0051, C81)
@@ -802,6 +805,17 @@ definer with its search path pinned and no argument, run as `ops_astro_upkeep`,
 a role no one logs in as that holds execute on it and nothing else. PUBLIC and the
 application may not run it.
 
+## Send Email hook messages claimed (20261005190651, C39-T)
+
+`ops.auth_hook_messages` holds one row per login-provider Send Email hook
+message that an invitation send took: a SHA-256 digest of the message id.
+Installation-wide, no business, person, address or invitation. The send
+inserts it in its own transaction, after every check and before its token
+and attempt; a second send of the same message, from any business or hook
+process, waits on the first's transaction, finds the row and is refused
+`REPLAYED`, writing nothing. A refused send claims nothing. The application
+may insert and read the digest; nothing changes or deletes a row.
+
 ## Overseas-services register (0052, C81)
 
 `overseas_services` holds one row per outside service that receives personal
@@ -862,8 +876,45 @@ each due time or event once (`activation_occurrences_due_once`,
 `activation_occurrences_event_once`), with its outcome and a version of its
 activation's own definition (`activation_occurrences_version_of_definition`),
 and names a run only when it started one, at most one occurrence per run. Nothing here starts a run:
-every occurrence is `activation_off` or `no_standing_approval` until C52-A's
-standing approval lands. The application may select and insert all four, and
-update an activation's setting, pin, switch and revision by column grant;
-nothing deletes a row. Tenancy-keyed with the restrictive policy. The records
-are `packages/core-records/src/automations/`.
+an occurrence is `activation_off` or `no_standing_approval` unless C52-A's
+standing approval (below) lets it through as `approved`. The application may
+select and insert all four, and update an activation's setting, pin, switch and
+revision by column grant; nothing deletes a row. Tenancy-keyed with the
+restrictive policy. The records are `packages/core-records/src/automations/`.
+
+## Standing approvals (20261005193201, C52-A)
+
+`standing_approvals` holds each adoption of an exact released version on an
+activation (`adopted`, or `rolled_back` for a rollback), its definition, the
+version pinned before it, the activation revision it wrote (`sequence`, unique
+per activation) and the person who decided it. The version and the previous
+one are of the activation's own definition (`standing_approvals_version_fkey`,
+`standing_approvals_previous_fkey`). `activations.approval_id` names the
+adoption that stands, which must be of the activation's own pin
+(`activations_approval_fkey`); a before-update trigger
+(`activations_approval_stands`) clears it when the pin, mode, schedule or
+event changes or the activation is switched off, unless the same write names
+the adoption that wrote this very revision, and refuses any other. A
+revocation is its own row (`standing_approval_revocations`, once per
+approval), and the approval stays. An occurrence that is `approved` names the
+approval it saw (`activation_occurrences_approved_names_approval`, of the same
+activation and version), and `occurrence_dispatches` records once per
+occurrence what dispatch found under the activation's lock: `started` with its
+run (unique per run), or `activation_off`, `approval_revoked` or
+`approval_ended`. The application may select and insert the three tables and
+update `activations.approval_id` by column grant; nothing changes or deletes an
+approval, revocation or dispatch. Tenancy-keyed with the restrictive policy.
+
+## Tripwires and the night round (20261005201200, MP-14-8)
+
+`tripwires` holds each stated check a business runs: what it watches, whether
+it is armed or cannot be armed (and why), how often it fired and what the last
+firing filed. One that cannot be armed carries no firing history
+(`tripwires_unarmed_never_fired`). `night_round_steps` holds each step of a
+night round, by the morning it hands over, with where the fact it reports
+lives (a section of the page, or a task by its key). Both may name a client of
+their own business by foreign key. Every column drawn as words is the
+`signal_text` domain, an explicit allow-list of characters refused whole. The
+application may only select both; the checks and the round write them (not
+built). Tenancy-keyed with the restrictive policy. The records are
+`packages/core-records/src/connections/signal.ts`.

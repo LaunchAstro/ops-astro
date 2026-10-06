@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#963): a stalled export's renewal asks for its own holder and version, so it sends nothing while another export holds the lease."
+}

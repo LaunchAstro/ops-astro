@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#475): three unanswered reads in a row end the pass's owed read-back."
+}

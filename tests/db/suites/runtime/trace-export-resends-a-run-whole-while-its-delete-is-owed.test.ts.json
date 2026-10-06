@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#475): while a run's delete is owed, an export holding any of its events sends its in-window tail whole."
+}

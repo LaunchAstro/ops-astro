@@ -23,8 +23,11 @@ const NOT_DRAWN = new Set([
   // them yet; the Team panel arrives in a later piece.
   'chat.conversations',
   'chat.messages',
-  // C31: the Keys panel that draws custody's list is P01b's.
-  'secret.list',
+  // WF-1: no screen draws a map until the WF-3/4 map views (P20).
+  'map.view',
+  'map.frontier',
+  // MP-14-8: grants, tripwires and the night round land before their screens (P04b).
+  'connection.signal',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {

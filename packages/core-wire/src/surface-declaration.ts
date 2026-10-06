@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A command's row on the surface, moved whole from `surface.ts` to keep it
-// under its line cap; `surface.ts` re-exports it.
+// The shape of one row of `surface.ts`'s command table, which re-exports it
+// (moved whole to keep that file under its line cap).
 
 import type { Action } from '../../core-records/src/index.ts';
 import type { CommandName } from './command-names.ts';

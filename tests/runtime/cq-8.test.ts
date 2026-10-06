@@ -99,6 +99,64 @@ describe('CQ-8 runtime structure', () => {
   });
 });
 
+/** The callers `advisoryLockCallers` must find, each a decision with its reason. */
+const ADVISORY_LOCK_CALLERS: readonly string[] = [
+  // The outbox forwarder's one lock, alone in its own transaction: no command order.
+  'apps/forwarder/forward.ts',
+  // C59: a login's one wrong-code lock, keyed by its subject's digest in
+  // every business, taken first in a factor route's check transaction.
+  'packages/core-commands/src/commands/account-factor-checks.ts',
+  // C52-A: a change's last ask after its session takes the business's audit
+  // chain key before `sessionEndedSince`, so no ending commits between them.
+  'packages/core-commands/src/commands/automation-approvals.ts',
+  'packages/core-commands/src/commands/conversation-lifecycle.ts',
+  // #932: the operation identity's key, first in every identified call.
+  'packages/core-commands/src/commands/envelope.ts',
+  'packages/core-commands/src/commands/occurrence-run.ts',
+  'packages/core-commands/src/commands/prepare.ts',
+  // #413: an agent assignment takes the audit chain's key after its write,
+  // where the envelope's audit write would, so its last liveness read
+  // comes after every wait.
+  'packages/core-commands/src/commands/tasks-agent.ts',
+  'packages/core-custody/src/broker-reserve.ts',
+  // AW-07b: the mail cap, counted under one lock per business and client or person.
+  'packages/core-custody/src/email-class.ts',
+  // C32: the business's one access lock, taken first by every change to
+  // who may do what (a grant given, a grant revoked, access ended),
+  // inside the handler's transaction.
+  'packages/core-records/src/authority/access.ts',
+  // C52-A (PRV-oa-984-R2.1): the session-ending keys, exclusive for an ending,
+  // in one order: the audit chain, the login's subject, each session sorted.
+  'packages/core-records/src/identity/ending-keys.ts',
+  // #770: a business's lock on one observed identifier, taken by
+  // `resolveIdentifier` only when its lookup finds nobody, so two first
+  // observations make one person.
+  'packages/core-records/src/identity/identifier-resolution.ts',
+  // C59: a login's one factor lock (`second-factor-subject:<digest>`), keyed
+  // by its subject's digest in every business, taken first in a factor
+  // route's record transaction, before the person's row.
+  'packages/core-records/src/identity/second-factor.ts',
+  // C52-A and C40: a write's last ask takes the subject's and the session's
+  // ending keys shared; a reset's window open takes the subject's alone, and a
+  // provider sign-out its session's alone, as neither writes an audit event.
+  'packages/core-records/src/identity/sessions.ts',
+  // C81: the overseas-services register's one lock per business, taken
+  // by a change and by a privacy policy's draft, approval and publication
+  // before reading the register, inside the handler's transaction.
+  'packages/core-records/src/operations/overseas-services.ts',
+  // Catalogue #463: the settings install lock (`<business id>:business_settings`),
+  // exclusive for the install and shared for the sign-off and four-eyes reads,
+  // so a first settings row cannot commit past a decision that found none.
+  'packages/core-records/src/records/business-settings.ts',
+  'packages/core-records/src/tasks/placement.ts',
+  // C71-D: a direct pair's one lock, so two first messages start one conversation, and a
+  // conversation's one lock, so a message and a read marker are stamped in commit order.
+  'packages/core-records/src/team/conversations.ts',
+  'packages/core-records/src/tenancy/database.ts',
+  'packages/core-records/src/tenancy/limit.ts',
+  'packages/core-runtime/src/locks.ts',
+];
+
 /**
  * The product files that call `advisoryLock`, sorted. A lock taken outside
  * `acquire` or `advisoryLock` fails the scan above; this names the callers, so
@@ -114,46 +172,7 @@ function advisoryLockCallers(): readonly string[] {
 
 describe('CQ-8 runtime structure', () => {
   it('CQ-8 one lock path: the runtime, the envelope and placement take advisory locks only through the helper', () => {
-    expect(advisoryLockCallers()).toEqual([
-      // The outbox forwarder's one lock, alone in its own transaction: no command order.
-      'apps/forwarder/forward.ts',
-      // C59: a login's one wrong-code lock, keyed by its subject's digest in
-      // every business, taken first in a factor route's check transaction.
-      'packages/core-commands/src/commands/account-factor-checks.ts',
-      'packages/core-commands/src/commands/conversation-lifecycle.ts',
-      // #932: the operation identity's key, first in every identified call.
-      'packages/core-commands/src/commands/envelope.ts',
-      'packages/core-commands/src/commands/occurrence-run.ts',
-      'packages/core-commands/src/commands/prepare.ts',
-      // #413: an agent assignment takes the audit chain's key after its write,
-      // where the envelope's audit write would, so its last liveness read
-      // comes after every wait.
-      'packages/core-commands/src/commands/tasks-agent.ts',
-      'packages/core-custody/src/broker-reserve.ts',
-      // C32: the business's one access lock, taken first by every change to
-      // who may do what (a grant given, a grant revoked, access ended),
-      // inside the handler's transaction.
-      'packages/core-records/src/authority/access.ts',
-      // #770: a business's lock on one observed identifier, taken by
-      // `resolveIdentifier` only when its lookup finds nobody, so two first
-      // observations make one person.
-      'packages/core-records/src/identity/identifier-resolution.ts',
-      // C59: a login's one factor lock (`second-factor-subject:<digest>`), keyed
-      // by its subject's digest in every business, taken first in a factor
-      // route's record transaction, before the person's row.
-      'packages/core-records/src/identity/second-factor.ts',
-      // C81: the overseas-services register's one lock per business, taken
-      // by a change and by a privacy policy's draft, approval and publication
-      // before reading the register, inside the handler's transaction.
-      'packages/core-records/src/operations/overseas-services.ts',
-      'packages/core-records/src/tasks/placement.ts',
-      // C71-D: a direct pair's one lock, so two first messages start one conversation, and a
-      // conversation's one lock, so a message and a read marker are stamped in commit order.
-      'packages/core-records/src/team/conversations.ts',
-      'packages/core-records/src/tenancy/database.ts',
-      'packages/core-records/src/tenancy/limit.ts',
-      'packages/core-runtime/src/locks.ts',
-    ]);
+    expect(advisoryLockCallers()).toEqual(ADVISORY_LOCK_CALLERS);
   });
 
   it('CQ-8 one lock path: locks.ts states where the command-layer locks sit in the order', () => {

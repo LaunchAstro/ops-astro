@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#475): retention reads the earliest sent owed span back, so a delete partway through a resend is found."
+}

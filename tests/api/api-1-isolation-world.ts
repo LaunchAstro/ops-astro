@@ -48,8 +48,14 @@ export let ownRunId = '';
 export let ownLease: { leaseId: string; fence: unknown };
 /** An agent of Alpha with no delegation of its own, the helper a hand-over names. */
 export let helperAgentId = '';
+/** The second Alpha person and its token, and the delegating person's: what later seeding (C41-A's steps) acts as. */
+export let other: { person: Member; token: string; alphaToken: string };
 /** Raw id or title to its label, so a leak is named and no record value is printed. */
 const labels = new Map<string, string>();
+
+export const labelAs = (raw: string, name: string): void => {
+  labels.set(raw, name);
+};
 
 export function label(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value ?? null), (_key, field: unknown) =>
@@ -169,20 +175,45 @@ async function seedDelegations(alphaToken: string): Promise<void> {
   foreignTaskId = theirs.delegatedTask;
   foreignRunId = theirs.runId;
   foreignLease = { leaseId: theirs.leaseId, fence: theirs.fence };
+  other = { person: otherPerson, token: otherToken, alphaToken };
 }
 
 /** An Alpha person proposes and approves one task: its reservation, held for pickup. */
 async function approve(personToken: string, owner: Owner): Promise<string> {
+  const title = `made-up ${owner} ${randomUUID()}`;
+  const made = (
+    await post(
+      api,
+      '/api/b/alpha/task/create',
+      { operationId: randomUUID(), fields: { title } },
+      authorised(personToken),
+    )
+  ).body;
+  labels.set(String(made['recordId']), `<${owner} task>`).set(title, `<${owner} title>`);
+  const reservationId = await approveOn(
+    personToken,
+    String(made['recordId']),
+    Number(made['revision']),
+    'api_1_isolation',
+  );
+  labels.set(reservationId, `<${owner} reservation>`);
+  return reservationId;
+}
+
+/** An Alpha person proposes and approves work on a task under a purpose: the held reservation. */
+export async function approveOn(
+  personToken: string,
+  taskId: string,
+  revision: number,
+  purpose: string,
+): Promise<string> {
   const asPerson = async (path: string, body: Record<string, unknown>) =>
     (await post(api, `/api/b/alpha${path}`, body, authorised(personToken))).body;
-  const title = `made-up ${owner} ${randomUUID()}`;
-  const made = await asPerson('/task/create', { operationId: randomUUID(), fields: { title } });
-  labels.set(String(made['recordId']), `<${owner} task>`).set(title, `<${owner} title>`);
   const proposed = await asPerson('/task/propose', {
     operationId: randomUUID(),
-    recordId: made['recordId'],
-    expectedRevision: made['revision'],
-    purpose: 'api_1_isolation',
+    recordId: taskId,
+    expectedRevision: revision,
+    purpose,
     maximumMinor: 2_500,
     currency: 'AUD',
     payload: { instruction: 'draft a made-up reply' },
@@ -197,7 +228,6 @@ async function approve(personToken: string, owner: Owner): Promise<string> {
   });
   const reservationId = detail(decided)['reservationId'];
   if (typeof reservationId !== 'string') throw new Error(JSON.stringify(decided));
-  labels.set(reservationId, `<${owner} reservation>`);
   return reservationId;
 }
 

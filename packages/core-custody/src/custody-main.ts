@@ -14,9 +14,10 @@
 // Every refusal and fault it writes names a kind, never a value.
 
 import { readFileSync } from 'node:fs';
-import { parseCredentials, type StoredCredential } from './credentials.ts';
+import { described, parseCredentials, type StoredCredential } from './credentials.ts';
 import { parseDestinations, send, type Destination, type OutboundRequest } from './egress.ts';
-import { METHODS } from './egress-routes.ts';
+import { METHODS, pathAllowed, type Extras } from './egress-routes.ts';
+import { cut, spans, spellingsOf } from './secret-spellings.ts';
 
 interface Loaded {
   readonly credentials: ReadonlyMap<string, StoredCredential>;
@@ -50,82 +51,6 @@ function load(): Loaded {
   // The file's path leaves the environment once read; a child of this process inherits neither.
   delete process.env['CUSTODY_CREDENTIALS_FILE'];
   return { credentials: credentials.credentials, destinations: destinations.destinations };
-}
-
-/** One way to spell one character of a secret; `fold` compares a percent escape's hex case-free. */
-interface Spelling {
-  readonly text: string;
-  readonly fold: boolean;
-}
-
-/** A character as itself, as JSON text writes it, and as its UTF-8 bytes percent-escaped. */
-function spellingsOf(character: string): readonly Spelling[] {
-  const json = JSON.stringify(character).slice(1, -1);
-  const escaped = [...Buffer.from(character, 'utf8')]
-    .map((byte) => `%${byte.toString(16).padStart(2, '0')}`)
-    .join('');
-  return [
-    { text: character, fold: false },
-    ...(json === character ? [] : [{ text: json, fold: false }]),
-    { text: escaped, fold: true },
-  ];
-}
-
-const spelledAt = (text: string, offset: number, spelling: Spelling): boolean => {
-  const part = text.slice(offset, offset + spelling.text.length);
-  return spelling.fold ? part.toLowerCase() === spelling.text : part === spelling.text;
-};
-
-/**
- * Where the text spells the secret, each character in any of its spellings,
- * in any mix: one pass that keeps, for each text offset ahead, how far into
- * the secret a spelling reaching it has got and the earliest start that got
- * there (steps that meet go on alike). Nothing is retried, so the cost is the
- * text's length times the secret's, and every spelling stays reachable.
- */
-function spans(
-  text: string,
-  groups: readonly (readonly Spelling[])[],
-): readonly (readonly [number, number])[] {
-  if (groups.length === 0) return [];
-  const ahead = new Map<number, Map<number, number>>();
-  const found: [number, number][] = [];
-  for (let offset = 0; offset <= text.length; offset += 1) {
-    const here = ahead.get(offset) ?? new Map<number, number>();
-    ahead.delete(offset);
-    here.set(0, offset);
-    for (const [step, start] of here) {
-      if (step === groups.length) {
-        found.push([start, offset]);
-        continue;
-      }
-      for (const spelling of groups[step] ?? []) {
-        if (!spelledAt(text, offset, spelling)) continue;
-        const next = offset + spelling.text.length;
-        const reached = ahead.get(next) ?? new Map<number, number>();
-        if ((reached.get(step + 1) ?? next) > start) reached.set(step + 1, start);
-        ahead.set(next, reached);
-      }
-    }
-  }
-  return found;
-}
-
-/** The text with every span, merged where they overlap, replaced by `[redacted]`. */
-function cut(text: string, found: readonly (readonly [number, number])[]): string {
-  const merged: [number, number][] = [];
-  for (const [start, end] of found.toSorted((a, b) => a[0] - b[0])) {
-    const last = merged.at(-1);
-    if (last !== undefined && start <= last[1]) last[1] = Math.max(last[1], end);
-    else merged.push([start, end]);
-  }
-  let out = '';
-  let from = 0;
-  for (const [start, end] of merged) {
-    out += `${text.slice(from, start)}[redacted]`;
-    from = end;
-  }
-  return out + text.slice(from);
 }
 
 /**
@@ -255,30 +180,41 @@ function isRequest(value: unknown): value is OutboundRequest {
   );
 }
 
+type Message = Record<string, unknown>;
+
 const loaded = load();
+
+/**
+ * A PUT its destination lists no route for, or a POST to a destination that
+ * takes none: custody never sends one, so it is no request.
+ */
+const unrouted = (asked: OutboundRequest): boolean => {
+  const destination: Extras = loaded.destinations.get(asked.destination) ?? {};
+  if (asked.method === 'PUT') return !pathAllowed(destination, 'PUT', asked.path);
+  return asked.method === 'POST' && destination.post === false;
+};
 
 process.on('uncaughtException', () => fail('internal fault'));
 
 process.on('message', (message: unknown) => {
-  const shape = (typeof message === 'object' && message !== null ? message : {}) as Record<
-    string,
-    unknown
-  >;
+  const shape = (typeof message === 'object' && message !== null ? message : {}) as Message;
   const id = typeof shape['id'] === 'string' ? shape['id'] : '';
-  const reply = (body: Record<string, unknown>): void => {
-    process.send?.({ id, ...body });
-  };
+  const reply = (body: Message): void => void process.send?.({ id, ...body });
+  const ref = shape['credentialRef'];
+  const credential = typeof ref === 'string' ? loaded.credentials.get(ref) : undefined;
+  if (shape['type'] === 'describe' && id !== '') {
+    reply(described(credential, shape['destination']));
+    return;
+  }
   if (shape['type'] !== 'dispatch' || id === '') {
     reply({ type: 'refused', code: 'CUSTODY_UNKNOWN_REQUEST' });
     return;
   }
   const request = shape['request'];
-  const ref = shape['credentialRef'];
-  if (!isRequest(request)) {
+  if (!isRequest(request) || unrouted(request)) {
     reply({ type: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' });
     return;
   }
-  const credential = typeof ref === 'string' ? loaded.credentials.get(ref) : undefined;
   if (credential === undefined || credential.destination !== request.destination) {
     reply({ type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' });
     return;

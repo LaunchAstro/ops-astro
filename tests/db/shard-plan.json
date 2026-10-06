@@ -2,7 +2,7 @@
   "comment": [
     "Read by scripts/db-shards.ts, which splits the database conformance run items across the CI shards.",
     "parts: a suite too long for one shard runs as k items, <path>#i/k, each with SUITE_PART=i/k; the suite registers only the cases inPart gives its part. d06-generated took 882.7s whole (run 36720906105).",
-    "seconds: each run item's time in a hosted shard, the median over the merge groups of 4 October 2026 (runs 37191365275, 37189614772, 37189341194, 37187728767, 37187285915; the 'moved the database counter by N in Ss' lines), every one of the 730 items then named. Only the balance reads them: an item missing here still runs, weighted at the median. Refresh from a recent run when the shards drift apart."
+    "seconds: each run item's time in a hosted shard, the median over the merge groups of 4 October 2026 (runs 37191365275, 37189614772, 37189341194, 37187728767, 37187285915; the 'moved the database counter by N in Ss' lines), every one of the 730 items then named. The eight broker and runtime items named on 5 October 2026 (four-eyes, launch gate and settings-wait suites) take their one time from merge group run 37284770513. Only the balance reads them: an item missing here still runs, weighted at the median. Refresh from a recent run when the shards drift apart."
   ],
   "parts": {
     "tests/acceptance/d06-generated.test.ts": 6
@@ -222,6 +222,7 @@
     "tests/broker/aw-11-child-graph.test.ts": 8.8,
     "tests/broker/aw-11-child-spend-isolation.test.ts": 6.6,
     "tests/broker/aw-11-child-spend.test.ts": 6.4,
+    "tests/broker/budget-stop-top-up-settings-wait-before-the-clock.test.ts": 6.6,
     "tests/broker/c60-egress-before-route.test.ts": 5.9,
     "tests/broker/c60-route-and-carry.test.ts": 7.2,
     "tests/broker/planfix-3a-settle-sec-b1.test.ts": 6.1,
@@ -625,6 +626,9 @@
     "tests/runtime/decided-gate-upgrade-race.test.ts": 8.2,
     "tests/runtime/decision-abort.test.ts": 4.3,
     "tests/runtime/decision-seq-race.test.ts": 5.5,
+    "tests/runtime/first-install-race-tests-catch-a-missing-reader-lock.test.ts": 52.1,
+    "tests/runtime/four-eyes-fractional-threshold.test.ts": 3.3,
+    "tests/runtime/four-eyes-threshold-first-install-race.test.ts": 3.2,
     "tests/runtime/gate-negatives.test.ts": 8.8,
     "tests/runtime/gate-pack-binding.test.ts": 13.7,
     "tests/runtime/gate.test.ts": 6.2,
@@ -634,6 +638,7 @@
     "tests/runtime/historical-handback-intake.test.ts": 12.9,
     "tests/runtime/l6-cases.test.ts": 6.0,
     "tests/runtime/l6-schedules.test.ts": 6.5,
+    "tests/runtime/launch-gate-first-sign-off-setting-race.test.ts": 3.1,
     "tests/runtime/lease-expiry-post-lock-clock.test.ts": 14.7,
     "tests/runtime/lease.test.ts": 7.5,
     "tests/runtime/lifecycle-authority-loss.test.ts": 6.8,
@@ -672,6 +677,8 @@
     "tests/runtime/schedules-w05.test.ts": 4.8,
     "tests/runtime/seed-revoke-in-flight.test.ts": 6.7,
     "tests/runtime/seed-revoke-live-lease.test.ts": 6.6,
+    "tests/runtime/settings-lock-wait-comes-before-the-locked-clock.test.ts": 10.0,
+    "tests/runtime/settings-wait-before-the-clock-launch-and-write-off.test.ts": 10.1,
     "tests/runtime/storage-backstop-migrations.test.ts": 16.4,
     "tests/runtime/successor-bounds-edge.test.ts": 5.2,
     "tests/runtime/successor-bounds-exact.test.ts": 4.0,
@@ -699,6 +706,7 @@
     "tests/runtime/t3e2-outage.test.ts": 19.3,
     "tests/runtime/t3f-expired-lease.test.ts": 7.0,
     "tests/runtime/t3f-lease-edges.test.ts": 8.2,
+    "tests/runtime/top-up-session-ended-during-the-settings-wait.test.ts": 3.8,
     "tests/runtime/trashed-task-work-and-notes.test.ts": 5.8,
     "tests/runtime/unstorable-operands.test.ts": 8.5,
     "tests/runtime/upgrade-guards.test.ts": 19.9,

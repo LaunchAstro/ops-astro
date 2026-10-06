@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "PORT-P11 (C52-A standing approvals): who may approve, up to commit: a session signed out while a change waits on the activation, or a grant that runs out while it waits on the audit chain, refuses the change and applies nothing; each request on its own connection."
+}
