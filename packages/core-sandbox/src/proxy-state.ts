@@ -158,7 +158,6 @@ export class ProxyState {
     }
     const reply = await this.#ports.daemon.forward(op);
     if (op.kind === 'wait') await this.#exclusive(() => this.#waited(op.id, reply));
-    if (op.kind === 'kill') await this.#exclusive(() => this.#killed(op.id, reply));
     if (op.kind === 'delete') await this.#exclusive(() => this.#deleted(op.id, reply));
     return { ok: true, reply };
   }
@@ -201,7 +200,6 @@ export class ProxyState {
     await this.#ports.store.write(writeProxyRecord({ candidates, containers }));
     this.#candidates = candidates;
     this.#containers = containers;
-    if (containers.container === null) this.#run = null;
   }
 
   /** The pin list with B8 applied to its site entries, the book's change written. */
