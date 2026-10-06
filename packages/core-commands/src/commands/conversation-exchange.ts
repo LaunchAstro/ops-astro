@@ -14,7 +14,8 @@
 //    conversation's page task is held for share and checked (no client, in
 //    the caller's grants), and the bounded earlier messages are read
 //    (`conversation-context.ts`).
-// 2. Its words, with the page's id and title and the earlier messages, go to AW-01's broker on the conversation seam
+// 2. Its words, with the page's id and title and the earlier messages, go to
+//    AW-01's broker on the conversation seam
 //    (`callModelInConversation`): the owner in their own session, a local
 //    route only, nothing held. A cloud route is refused there before anything
 //    is written or sent (AW-03 egress off).
