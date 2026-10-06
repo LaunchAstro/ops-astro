@@ -188,10 +188,10 @@ export async function startFakeUsers(): Promise<FakeUsers> {
       const path = request.url ?? '';
       const method = request.method ?? '';
       received.push({ method, path, authorization: request.headers['authorization'], body });
-      const work = kept.next;
+      const [work, gate] = [kept.next, kept.gate];
       kept.next = undefined;
       await work?.();
-      await kept.gate;
+      await gate;
       respond(current, { method, path, body }, response, kept);
     })();
   });

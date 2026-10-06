@@ -45,7 +45,8 @@ const route = (key: string, provider: string, credentialRef: string): object => 
   credentialRef,
   credentialKind: 'api_key',
   installation: 'here',
-  ceiling: 4,
+  // Far above any case's own calls: every file's accepts on one database share a route's ceiling.
+  ceiling: 64,
 });
 
 /** Custody again, holding both keys, the broker over it, and the route over the world. */
@@ -183,4 +184,16 @@ export async function spentOf(
     [invitationId],
   );
   return { state: String(row?.state), spent: Number(row?.spent), tokens: Number(row?.tokens) };
+}
+
+/**
+ * This world's live accept claims lapsed, as the passing of their bound would: a provider call
+ * that went unanswered keeps its claim until then, as its request may still be applied.
+ */
+export async function lapseClaims(): Promise<void> {
+  await w.db.admin.execute(
+    `update public.invitations set accept_claimed_until = clock_timestamp() - interval '1 second'
+      where business_id = any($1::uuid[]) and accept_claimed_until > clock_timestamp()`,
+    [[w.alpha, w.bravo]],
+  );
 }

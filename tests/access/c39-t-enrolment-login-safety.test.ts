@@ -11,7 +11,14 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { standingOf } from '../../packages/core-records/src/identity/index.ts';
-import { e, enrolVia, invited, passwordFor, useEnrolWorld } from './c39-t-enrol-world.ts';
+import {
+  e,
+  enrolVia,
+  invited,
+  lapseClaims,
+  passwordFor,
+  useEnrolWorld,
+} from './c39-t-enrol-world.ts';
 import { addressFor, as, c, codeOf, noDatabase, storedText, w } from './c39-t-world.ts';
 
 useEnrolWorld();
@@ -56,6 +63,7 @@ describe.skipIf(noDatabase)('C39-T enrolment login safety', () => {
     const stranded = await invited(c.admin, address);
     e.users.mode('made_late');
     expect((await enrolVia(stranded.token)).status).toBe(503);
+    await lapseClaims();
     e.users.mode('accept');
     const made = String(e.users.users.get(address));
     // Someone signed in to the stranded login before it was adopted.

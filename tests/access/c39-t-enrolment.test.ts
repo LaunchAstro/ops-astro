@@ -21,6 +21,7 @@ import {
   e,
   enrolVia,
   invited,
+  lapseClaims,
   mountOver,
   passwordFor,
   rowsIn,
@@ -275,7 +276,8 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
     });
     expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 1 });
 
-    // The link was spent on nothing, so its holder tries again and is enrolled.
+    // The link was spent on nothing, so once the lost call's claim lapses its holder is enrolled.
+    await lapseClaims();
     e.users.mode('accept');
     expect(await enrolVia(token)).toStrictEqual({
       status: 200,

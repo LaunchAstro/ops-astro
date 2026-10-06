@@ -16,10 +16,12 @@ import {
 } from '../../packages/core-commands/src/commands/invitation-accept.ts';
 import type { Broker } from '../../packages/core-custody/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
-import { e, invited, passwordFor, useEnrolWorld } from './c39-t-enrol-world.ts';
+import { e, invited, lapseClaims, passwordFor, useEnrolWorld } from './c39-t-enrol-world.ts';
 import { addressFor, c, noDatabase, w } from './c39-t-world.ts';
 
 useEnrolWorld();
+
+const UNAVAILABLE = { ok: false, code: 'ENROLMENT_UNAVAILABLE' } as const;
 
 const delay = async (ms: number): Promise<void> =>
   await new Promise((resolve) => {
@@ -92,6 +94,60 @@ describe.skipIf(noDatabase)('C39-T enrolment races', () => {
     expect(results.find((result) => result !== enrolled[0])).toMatchObject({ ok: false });
   }, 30_000);
 
+  it('C39-T enrolment: an accept whose provider call went unanswered keeps its claim, so a second accept asks nothing until it lapses', async () => {
+    const address = addressFor('unanswered');
+    const { token } = await invited(c.admin, address);
+    const [first, second] = [passwordFor(), passwordFor()];
+    e.users.mode('made_late');
+    expect(await acceptOwn(token, first)).toStrictEqual(UNAVAILABLE);
+    e.users.mode('accept');
+    const from = e.users.received.length;
+    // The lost create may still be applied: a second accept must not set a password meanwhile.
+    expect(await acceptOwn(token, second)).toStrictEqual(UNAVAILABLE);
+    expect(e.users.received).toHaveLength(from);
+    await lapseClaims();
+    expect(await acceptOwn(token, second)).toStrictEqual({ ok: true, state: 'enrolled' });
+    expect(e.users.passwords.get(String(e.users.users.get(address)))).toBe(second);
+  }, 30_000);
+
+  it('C39-T enrolment: an accept whose claim lapsed binds nothing once another accept holds the claim', async () => {
+    e.users.mode('accept');
+    const address = addressFor('lapsed-claim');
+    const { id, token } = await invited(c.admin, address);
+    const [first, second] = [passwordFor(), passwordFor()];
+    // Timeouts long enough that only the claim decides, never a slow answer.
+    const patient: Broker = {
+      ...w.broker,
+      operations: new Map(
+        [...w.broker.operations].map(([key, op]) => [key, { ...op, timeoutMs: 5_000 }]),
+      ),
+    };
+    let other: Promise<AcceptResult> | undefined;
+    let release: (() => void) | undefined;
+    // The first accept's create has reached the provider: its claim lapses, and a second accept
+    // claims and reaches the provider too, where it is held until the first has tried to bind.
+    e.users.beforeNext(async () => {
+      await w.db.admin.execute(
+        `update public.invitations set accept_claimed_until = clock_timestamp() - interval '1 second'
+          where id = $1`,
+        [id],
+      );
+      release = e.users.hold();
+      const from = e.users.received.length;
+      other = acceptOwn(token, second, patient);
+      for (let wait = 0; e.users.received.length === from && wait < 300; wait += 1) {
+        // oxlint-disable-next-line no-await-in-loop -- polling the stand-in
+        await delay(10);
+      }
+    });
+    const one = await acceptOwn(token, first, patient);
+    release?.();
+    const two = await (other as Promise<AcceptResult>);
+    expect(one, 'the lapsed claim binds nothing').toMatchObject({ ok: false });
+    expect(two).toStrictEqual({ ok: true, state: 'enrolled' });
+    expect(e.users.passwords.get(String(e.users.users.get(address)))).toBe(second);
+  }, 30_000);
+
   it('C39-T enrolment: five accepts at once in one business send no more creates than auth.create_user allows in flight', async () => {
     e.users.mode('accept');
     const links = [];
@@ -126,7 +182,9 @@ describe.skipIf(noDatabase)('C39-T enrolment races', () => {
             await acceptOwn(token, passwordFor(), narrow),
       ),
     );
-    expect(inFlight).toBe(1);
-    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    // At most one: another file's accept on the same database may hold the one place.
+    expect(inFlight).toBeLessThanOrEqual(1);
+    expect(results.filter((result) => result.ok).length).toBeLessThanOrEqual(1);
+    expect(results).toContainEqual({ ok: false, code: 'ENROLMENT_UNAVAILABLE' });
   }, 60_000);
 });

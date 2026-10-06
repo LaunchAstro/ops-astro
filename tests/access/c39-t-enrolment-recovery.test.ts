@@ -15,6 +15,7 @@ import {
   e,
   enrolVia,
   invited,
+  lapseClaims,
   passwordFor,
   rowsIn,
   spentOf,
@@ -64,6 +65,7 @@ async function identityRows(): Promise<readonly number[]> {
 async function strand(token: string, password: string = passwordFor()): Promise<void> {
   e.users.mode('made_late');
   expect((await enrolVia(token, password)).status).toBe(503);
+  await lapseClaims();
   e.users.mode('accept');
 }
 
@@ -269,7 +271,8 @@ describe.skipIf(noDatabase)('C39-T enrolment recovery', () => {
     // The provider made one user, under our id, and nothing here bound it.
     const made = String(e.users.users.get(address));
     expect(await boundTo(w.alpha, made)).toBeUndefined();
-    // The control: an honest answer, and the same link enrols with that user.
+    // The control: an honest answer once the slow call's claim lapses, and the link enrols.
+    await lapseClaims();
     e.users.mode('accept');
     expect((await enrolVia(token)).body).toStrictEqual({ state: 'enrolled' });
     expect(e.users.users.get(address)).toBe(made);
