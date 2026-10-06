@@ -117,17 +117,16 @@ function useUndoKeys<Row>(
   }, [setMachine, context, hidden]);
 }
 
-/** The card's width: the one handed in, else measured as it resizes. */
+/** The card's width: handed in, else measured as it resizes; a card drawn again is watched anew. */
 export function useMeasuredWidth(
   card: RefObject<HTMLDivElement | null>,
   width: number | undefined,
+  drawn: boolean,
 ): number {
   const [measured, setMeasured] = useState(FALLBACK_WIDTH);
   useEffect(() => {
     const element = card.current;
-    if (width !== undefined || element === null || typeof ResizeObserver === 'undefined') {
-      return;
-    }
+    if (width !== undefined || element === null || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(([entry]) => {
       if (entry !== undefined) setMeasured(entry.contentRect.width);
     });
@@ -135,7 +134,7 @@ export function useMeasuredWidth(
     return () => {
       observer.disconnect();
     };
-  }, [card, width]);
+  }, [card, width, drawn]);
   return width ?? measured;
 }
 

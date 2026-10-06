@@ -116,10 +116,12 @@ function ProjectBoard(
   useRereadOn(panel?.changes ?? 0, reload);
   // Once the board has drawn this grant's rows it stays drawn through an
   // empty reread, so a filter the person has on stays on and removable (#902);
-  // with none on, the board draws the page's empty state in its place.
+  // with none on, the board draws the page's empty state in its place. What
+  // one grant drew is forgotten under another: its first read is its own.
   const [drew, setDrew] = useState<string | null>(null);
   useEffect(() => {
     if (state.outcome === 'ready') setDrew(state.grantKey);
+    else setDrew((before) => (before === state.grantKey ? before : null));
   }, [state]);
   const board: ReadState<TaskBoardResult> =
     state.outcome === 'empty' && drew === state.grantKey ? { ...state, outcome: 'ready' } : state;

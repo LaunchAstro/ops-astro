@@ -91,14 +91,15 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const { machine, dispatch } = useBoardMachine(context, props, props);
   const held = heldOf(facets, props.facets.length, machine.view.ids);
   const card = useRef<HTMLDivElement>(null);
-  const available = useMeasuredWidth(card, props.width);
+  const bare = props.nothing !== undefined && isBare(props.rows, machine.view);
+  const available = useMeasuredWidth(card, props.width, !bare);
   const viewport =
     props.viewport ?? (typeof window === 'undefined' ? available : window.innerWidth);
   const drag = useColumnDrag(props.columns, { viewport, available }, machine.view.widths, dispatch);
   const menu = useFunnelMenu();
   const chipRow = useRef<HTMLDivElement>(null);
   useChipRowFit(chipRow, card);
-  if (props.nothing !== undefined && isBare(props.rows, machine.view)) return <>{props.nothing}</>;
+  if (bare) return <>{props.nothing}</>;
   const command = (
     <CommandBar
       facets={held}
