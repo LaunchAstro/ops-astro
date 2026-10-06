@@ -13,6 +13,7 @@ export type ConversationRequest =
       readonly title?: unknown;
       readonly subject?: unknown;
       readonly scope?: unknown;
+      readonly model?: unknown;
     } & Envelope)
   | ({
       readonly command: 'conversation.message';

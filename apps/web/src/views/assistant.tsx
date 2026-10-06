@@ -97,7 +97,7 @@ function replied(store: Store, key: string, reply: ConversationReply | undefined
   else store.line(key, 'failed', reply.words);
 }
 
-/** The tab's first question, its answer, then the page it was given before it started. */
+/** The tab's first question with its model, its answer, then the page it was given before it started. */
 async function startWith(
   client: OperationsClient,
   store: Store,
@@ -106,8 +106,17 @@ async function startWith(
 ): Promise<string | null> {
   const { chat, body, subject, scope } = opening;
   const { title, page, model } = store.chat(chat.key) ?? chat;
+  // A model chosen before the first question rides in the start, so the first
+  // answer is asked of it (CS-7.30); none chosen, the default.
+  const chosen = model === null ? {} : { model };
   const settled = settle(
-    await client.mutate('conversation.start', { body, title, subject: subject.label, scope }),
+    await client.mutate('conversation.start', {
+      body,
+      title,
+      subject: subject.label,
+      scope,
+      ...chosen,
+    }),
   );
   const id = settled.kind === 'ok' ? settled.value.detail?.['conversationId'] : undefined;
   if (typeof id !== 'string') {
@@ -121,7 +130,6 @@ async function startWith(
   store.update((current) => started(current, chat.key, id));
   replied(store, chat.key, settled.kind === 'ok' ? settled.value.reply : undefined);
   if (page !== null) await report(chat.key, setScope(client, id, page));
-  if (model !== null) await report(chat.key, setModel(client, id, model));
   return id;
 }
 

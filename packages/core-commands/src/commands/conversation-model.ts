@@ -6,7 +6,9 @@
 //
 // What is offered is one rule, asked by the picker's read
 // (`conversation.models`), by `conversation.set_model` under the
-// conversation's row lock, and again by the exchange before any call:
+// conversation's row lock, by `conversation.start` on the row it inserts (a
+// choice made before the first message), and again by the exchange before any
+// call:
 //
 // - the models this install's conversation operation runs, from the code
 //   catalogue (`conversation-models.ts` in core-connectors), the default first;
@@ -16,7 +18,8 @@
 // - on a conversation whose task this session cannot see, nothing, since its
 //   client cannot be known.
 //
-// `conversation.set_model` is the tab row's (`conversation-tabs.ts`).
+// `conversation.set_model` is the tab row's (`conversation-tabs.ts`); both
+// writes keep the choice through `keepModel`.
 
 import {
   conversationModelsOf,
@@ -25,6 +28,7 @@ import {
 } from '../../../core-connectors/src/index.ts';
 import { checkClientModelUse, slotOf, TASK_SPINE } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 
 /** What the offer turns on, from the caller's own conversation row. */
 export interface ModelFacts {
@@ -81,6 +85,42 @@ export async function offeredModels(
 
 /** This install's conversation provider, by the composition root's own rule. */
 export const installProvider = (): string => conversationProviderOf(process.env);
+
+/** A model not offered, or not a model id: by field name, never echoing what was sent. */
+export const MODEL_NOT_OFFERED: CommandRefusal = refuseCommand(
+  'FIELD_VALUE_INVALID',
+  ['model'],
+  [
+    'Choose one of the models conversation.models offers for this conversation, or null for the default.',
+  ],
+);
+
+/**
+ * Keeps `model` as the caller's own conversation's choice, if it is offered it
+ * (or null, the default), else the refusal, by field name and never echoing
+ * it. `conversation.set_model` asks it under the row lock; `conversation.start`
+ * asks it on the row it just inserted, before the commit and so before the
+ * first exchange reads the choice.
+ */
+export async function keepModel(
+  tx: TenantQuery,
+  session: Session,
+  conversationId: string,
+  model: unknown,
+): Promise<CommandRefusal | undefined> {
+  if (model !== null && typeof model !== 'string') return MODEL_NOT_OFFERED;
+  // What is offered turns on the conversation's own task and client, read here, never the body.
+  const facts = await modelFacts(tx, session, conversationId);
+  if (facts === undefined) return refuseNotFound();
+  const offered = await offeredModels(tx, installProvider(), facts);
+  if (model !== null && !offered.some((one) => one.id === model)) return MODEL_NOT_OFFERED;
+  await tx.query(`update conversations set model_id = $3 where business_id = $1 and id = $2`, [
+    tx.businessId,
+    conversationId,
+    model,
+  ]);
+  return undefined;
+}
 
 /**
  * The model the exchange asks for, asked again before any call: a choice no

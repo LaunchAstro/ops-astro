@@ -22,7 +22,7 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { bounded, conversationAddress, NOT_YOURS, PURGED, TITLE_LIMIT } from './conversations.ts';
-import { installProvider, modelFacts, offeredModels } from './conversation-model.ts';
+import { keepModel, MODEL_NOT_OFFERED } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
@@ -146,14 +146,6 @@ export async function setConversationScope(
   return applied(null, null, { conversationId, address: conversationAddress(conversationId) });
 }
 
-const NOT_OFFERED = refuseCommand(
-  'FIELD_VALUE_INVALID',
-  ['model'],
-  [
-    'Choose one of the models conversation.models offers for this conversation, or null for the default.',
-  ],
-);
-
 export interface ModelFields {
   readonly conversationId: unknown;
   readonly model: unknown;
@@ -165,22 +157,12 @@ export async function setModel(
   context: CommandContext,
   fields: ModelFields,
 ): Promise<HandlerOutcome> {
-  if (fields.model !== null && typeof fields.model !== 'string') return refused(NOT_OFFERED);
+  if (fields.model !== null && typeof fields.model !== 'string') return refused(MODEL_NOT_OFFERED);
   const refusal = await ownedForUpdate(tx, context, fields.conversationId);
   if (refusal !== undefined) return refused(refusal);
   const conversationId = fields.conversationId as string;
-  // Asked under the row lock, after the owner check: what is offered turns on
-  // the conversation's own task and client, read here, never the body.
-  const facts = await modelFacts(tx, context.session, conversationId);
-  if (facts === undefined) return refused(refuseNotFound());
-  const offered = await offeredModels(tx, installProvider(), facts);
-  if (fields.model !== null && !offered.some((model) => model.id === fields.model)) {
-    return refused(NOT_OFFERED);
-  }
-  await tx.query(`update conversations set model_id = $3 where business_id = $1 and id = $2`, [
-    tx.businessId,
-    conversationId,
-    fields.model,
-  ]);
+  // Asked under the row lock, after the owner check.
+  const notKept = await keepModel(tx, context.session, conversationId, fields.model);
+  if (notKept !== undefined) return refused(notKept);
   return applied(null, null, { conversationId, address: conversationAddress(conversationId) });
 }
