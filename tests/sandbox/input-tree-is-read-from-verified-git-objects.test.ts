@@ -166,17 +166,19 @@ it('refuses a symlink or a submodule without reading what it points at', async (
   );
 });
 
-it('refuses a name that is not UTF-8 or that holds a slash', async () => {
+it('refuses a name that is not UTF-8 or that holds a slash, before reading its blob', async () => {
   const fileId = blob('x');
   const raw = (name: Buffer) =>
     Buffer.concat([Buffer.from('100644 '), name, Buffer.from([0]), Buffer.from(fileId, 'hex')]);
   const tops = [Buffer.from([0x61, 0xff]), Buffer.from('a/b'), Buffer.from('')].map((name) =>
     commit(level([`040000 ${literal('tree', raw(name))} src`])),
   );
+  reads = [];
   await allRefused(
     tops.map((top) => assembleTree(read, top, EDIT)),
     'tree name',
   );
+  expect(reads).not.toContain(fileId);
 });
 
 it('refuses a name opening with a byte-order mark, never reading it as the name without one', async () => {
