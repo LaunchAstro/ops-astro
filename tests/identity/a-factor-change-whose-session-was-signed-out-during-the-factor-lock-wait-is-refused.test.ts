@@ -122,7 +122,9 @@ it('a factor removal whose session was signed out during the audit wait is refus
     });
     try {
       verified.release();
-      await waitingOn(db.admin, 'advisory', 'insert into audit_events');
+      // The chain is the removal's first wait since main's C52-A: ending the other
+      // sessions takes it (`holdEnding`, ending-keys.ts) before the audit event.
+      await waitingOn(db.admin, 'advisory', 'pg_advisory_xact_lock');
       expect(
         await signOutSession({ ...asked, businessId: elsewhere, database: other }, {}, to),
       ).not.toMatchObject({ refused: true });
