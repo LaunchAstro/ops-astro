@@ -73,7 +73,9 @@ export type Why =
   | 'record env'
   | 'base env'
   | 'candidate'
-  | 'candidate record';
+  | 'candidate record'
+  | 'container record'
+  | 'container count';
 
 /** R1's reasons (section 9), in the contract's order, `internal` last. */
 export const REASONS = [
