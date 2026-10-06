@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
+import { createClient } from '../../packages/core-records/src/index.ts';
 import { AUD, buildMandatesWorld, detail, inDays, type MandatesWorld } from './mandates-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -128,6 +129,19 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands', () => {
       revision: '2',
     });
     expect(await audited(w.admin.actorId, 'graduation.demote', mandateId)).toBe(1);
+  });
+
+  it('MP-14-10a a client with no graduation rows takes a whole-account mandate, the one choice the region offers it', async () => {
+    const bare = await w.controls.fixture.db.app.withBusiness(w.alpha, async (tx) => {
+      const made = await createClient(tx, 'Client with no classes yet', w.admin.actorId);
+      if (!made.ok) throw new Error('mp-14-10a: the client was not made');
+      return made.value;
+    });
+    const refusal = { clientId: bare, classes: ['*'], refuses: true, ceiling: undefined };
+    const filed = await w.file(w.admin, refusal);
+    expect(filed.status, JSON.stringify(filed.body)).toBe(200);
+    const narrower = await w.file(w.admin, { ...refusal, classes: ['social.post'] });
+    expect([narrower.status, narrower.body['code']]).toStrictEqual([422, 'FIELD_VALUE_INVALID']);
   });
 
   it('MP-14-10a nothing files until classes, client, ceiling and expiry are set, each from its list', async () => {

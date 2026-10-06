@@ -52,6 +52,16 @@ const REFUSED_LABELS: readonly [string, string][] = [
   ['hieroglyph format control', `a${at(0x13430)}b posts`],
   ['stacked combining marks', `Ok${at(0x336).repeat(5)}`],
   ['combining mark first', `${at(0x301)}Posts`],
+  // SEC-P05B-RB2: selectors only where they change what draws, and nothing blank or unassigned.
+  ['selector after a letter', `A${at(0xfe00)}cme posts`],
+  ['emoji selector after a letter', `A${at(0xfe0f)}${at(0x200d)}${at(0x1f44d)} posts`],
+  ['joiner before a letter', `${at(0x1f44d)}${at(0x200d)}a posts`],
+  ['trailing braille blank', `Acme${at(0x2800)}`],
+  ['hair space', `Ac${at(0x200a)}me posts`],
+  ['no-break space', `Acme${at(0xa0)}posts`],
+  ['Khitan filler', `Ac${at(0x16fe4)}me posts`],
+  ['private use', `Ac${at(0xe000)}me posts`],
+  ['unassigned', `Ac${at(0x378)}me posts`],
 ];
 
 // A joined, toned and keycap emoji, a red heart, and letters built from combining marks.

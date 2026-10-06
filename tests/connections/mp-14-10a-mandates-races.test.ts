@@ -40,13 +40,15 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate command races and is
     run: (via: ReturnType<MandatesWorld['pausedApi']>) => readonly Promise<Answer>[],
   ): Promise<{ readonly answers: readonly Answer[]; readonly met: number }> => {
     let reached = 0;
-    let met = 0;
+    // The fewest requests any one saw held when it went on: 2 only if neither
+    // went on alone after the gate's timeout.
+    let met = Number.POSITIVE_INFINITY;
     const both = gate();
     const via = w.pausedApi(2, async () => {
       reached += 1;
       if (reached >= 2) both.open();
       await both.wait();
-      met = Math.max(met, reached);
+      met = Math.min(met, reached);
     });
     const answers = await Promise.all(run(via)).finally(via.close);
     return { answers, met };
@@ -205,8 +207,10 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate command races and is
     ] as const) {
       // eslint-disable-next-line no-await-in-loop -- one crossing at a time
       const answer = await w.controls.asAgent(name, body, credential);
-      expect(answer.status, name).toBe(403);
-      expect(String(answer.body['code']), name).toMatch(/^(DELEGATION_|AUTH_|SCOPE_)/u);
+      expect([answer.status, answer.body['code']], name).toStrictEqual([
+        403,
+        'DELEGATION_EXCLUDES_OPERATION',
+      ]);
     }
     expect(await w.snapshot()).toBe(before);
   });

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The role-case matrix's positive bodies for setup's commands: custody (C31)
-// and the connector fleet (MP-14-7a).
+// The role-case matrix's positive bodies for setup's commands: custody (C31),
+// the connector fleet (MP-14-7a) and standing mandates (MP-14-10a).
 // `tableBody` answers these, the fixed literals (`role-case-fixed-bodies.ts`)
 // and team invitations (C39-T, `role-case-invitation-bodies.ts`)
 // in one call from `role-case-positive-body.ts`, so that file stays under the
