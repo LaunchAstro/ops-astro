@@ -34,7 +34,10 @@ export interface RunnerSettings {
   readonly codexHome: string;
   readonly codexBin: string;
   readonly capTokens: number;
-  /** OPS_LOCAL_AGENT_CAP_TOKENS was set: that figure is the cap, whatever approvals.json says. */
+  /**
+   * OPS_LOCAL_AGENT_CAP_TOKENS was set: that figure is the cap, whatever
+   * approvals.json says, except one above the default, which needs its yes kept (gate.ts).
+   */
   readonly capConfigured: boolean;
   /** What the child inherits, and nothing else. */
   readonly childEnv: {

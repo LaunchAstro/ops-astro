@@ -6,6 +6,7 @@
 // gate refuse before anything is spawned; the plan's usage limit has its own
 // refusal; a runner key or planted canary never leaves the runner.
 
+import { rmSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { createRunner } from '../../apps/local-agent/runner.ts';
@@ -159,6 +160,16 @@ describe('the cap the owner sets', () => {
     w.write('ledger.jsonl', used(90_000));
     expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
   });
+
+  it('a configured cap above 2,000,000 lapses to the default once its approval is gone', async () => {
+    const w = makeWorld();
+    w.write('approvals.json', { capTokens: 3_000_000 });
+    const { r } = await start({ OPS_LOCAL_AGENT_CAP_TOKENS: '3000000' }, w);
+    w.write('ledger.jsonl', used(1_990_000));
+    rmSync(`${w.agentHome}/approvals.json`);
+    expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
+    expect(w.calls()).toHaveLength(0);
+  });
 });
 
 describe('the model gate', () => {
@@ -212,6 +223,7 @@ describe('the runner’s door', () => {
 
   it('listens on loopback only', async () => {
     const { r } = await start();
+    expect(r.host).toBe('127.0.0.1');
     expect(new URL(r.origin).hostname).toBe('127.0.0.1');
   });
 

@@ -81,3 +81,29 @@ export async function offeredModels(
 
 /** This install's conversation provider, by the composition root's own rule. */
 export const installProvider = (): string => conversationProviderOf(process.env);
+
+/**
+ * The model the exchange asks for, asked again before any call: a choice no
+ * longer offered (the client's egress turned off since, or a model this
+ * install does not run) is null, and refused. No choice is the default.
+ */
+async function modelToAsk(
+  tx: TenantQuery,
+  provider: string,
+  facts: ModelFacts,
+): Promise<string | undefined | null> {
+  if (facts.model === null) return conversationModelsOf(provider)[0]?.id;
+  const offered = await offeredModels(tx, provider, facts);
+  return offered.some((model) => model.id === facts.model) ? facts.model : null;
+}
+
+/** The model the exchange asks for on the caller's own conversation: null for anyone else's. */
+export async function askedModel(
+  tx: TenantQuery,
+  session: Session,
+  conversationId: string,
+  provider: string,
+): Promise<string | undefined | null> {
+  const facts = await modelFacts(tx, session, conversationId);
+  return facts === undefined ? null : await modelToAsk(tx, provider, facts);
+}

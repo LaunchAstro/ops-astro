@@ -18,6 +18,8 @@ export interface FakeCall {
   readonly stdin: string;
   readonly env: Readonly<Record<string, string>>;
   readonly cwd: string;
+  /** The fake's own process, to see whether it outlived what stopped it. */
+  readonly pid: number;
 }
 
 export interface World {
