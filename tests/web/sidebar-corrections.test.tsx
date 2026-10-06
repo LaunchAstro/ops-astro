@@ -100,6 +100,8 @@ describe('the correction card says the state main’s read answers', () => {
     ['reverted', 'reverted', /reverted/iu],
     ['failed', 'failed', /failed/iu],
     ['unknown', 'unknown', /not known/iu],
+    ['rejected', 'declined', /declined: the site was not changed/iu],
+    ['cancelled', 'cancelled', /cancelled.*a person checks the live page/iu],
     ['some-state-not-named', 'unknown', /not known/iu],
   ];
   it.each(cases)('a read answering %s draws the card as %s', async (read, drawn, words) => {

@@ -33,7 +33,14 @@ export type ProposeAnswer =
 export type ProposePort = (ask: CorrectionAsk) => Promise<ProposeAnswer>;
 
 export type CardState =
-  'requested' | 'approved' | 'published' | 'reverted' | 'failed' | 'declined' | 'unknown';
+  | 'requested'
+  | 'approved'
+  | 'published'
+  | 'reverted'
+  | 'failed'
+  | 'declined'
+  | 'cancelled'
+  | 'unknown';
 
 const STATES: Readonly<Record<string, CardState>> = {
   requested: 'requested',
@@ -44,7 +51,7 @@ const STATES: Readonly<Record<string, CardState>> = {
   failed: 'failed',
   unknown: 'unknown',
   rejected: 'declined',
-  cancelled: 'declined',
+  cancelled: 'cancelled',
 };
 
 /** The card's state for the state `live_correction.read` answered. */
@@ -58,6 +65,8 @@ export const STATE_WORDS: Readonly<Record<CardState, string>> = {
   reverted: 'Reverted: the site reads as it did before.',
   failed: 'Failed: the site was not changed.',
   declined: 'Declined: the site was not changed.',
+  // Cancelled after a decision, the publish may already have gone out (correction-receipts.ts).
+  cancelled: 'Cancelled. If it was sent before it was cancelled, a person checks the live page.',
   unknown: 'Unknown: whether the site changed is not known. A person will check.',
 };
 
