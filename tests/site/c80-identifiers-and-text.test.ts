@@ -5,7 +5,9 @@
 // id that is no UUID names no correction, as a fabricated one does; and request
 // text the stores cannot hold (a NUL) is refused by name on the person and the
 // agent route, so none of them becomes a database fault. A quoted brace in
-// unchanged frontmatter leaves the paragraph below it body copy (Sol R2.2).
+// unchanged frontmatter leaves the paragraph below it body copy, a fence with
+// trailing whitespace still closes it, and a word in expression or frontmatter
+// code is refused with nothing stored.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -100,5 +102,38 @@ describe.skipIf(serverUrl === undefined)('C80 body copy after frontmatter', () =
     });
     expect(codeOf(made)).toBe('not-a-refusal');
     expect(await w.stateOf(String(detailOf(made)['correctionId']))).toBe('requested');
+  });
+
+  it('stores the correction below a closing fence that has trailing whitespace', async () => {
+    const before = "---\nconst marker = 'plain';\n--- \n<p>We are a friendly studio.</p>\n";
+    const made = await w.request(w.ava, {
+      path: 'src/pages/about.astro',
+      before,
+      after: before.replace('friendly', 'welcoming'),
+    });
+    expect(codeOf(made)).toBe('not-a-refusal');
+    expect(await w.stateOf(String(detailOf(made)['correctionId']))).toBe('requested');
+  });
+
+  it('refuses and stores nothing for a word in expression or frontmatter code', async () => {
+    const count = 'select count(*)::text as n from public.live_corrections';
+    const stored = await w.world.db.admin.execute<{ readonly n: string }>(count);
+    const sources = [
+      "<p>{'}' + 'friendly'}</p>\n",
+      '---\nconst message = `{\n---\nfriendly\n`;\n---\n<p>Unchanged.</p>\n',
+    ];
+    const made = await Promise.all(
+      sources.map(async (before) =>
+        codeOf(
+          await w.request(w.ava, {
+            path: 'src/pages/about.astro',
+            before,
+            after: before.replace('friendly', 'welcoming'),
+          }),
+        ),
+      ),
+    );
+    expect(made).toStrictEqual(['CHANGE_ENVELOPE_EXCEEDED', 'CHANGE_ENVELOPE_EXCEEDED']);
+    expect(await w.world.db.admin.execute<{ readonly n: string }>(count)).toStrictEqual(stored);
   });
 });
