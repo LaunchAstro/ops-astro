@@ -31,6 +31,7 @@
 // run's exit code.
 
 import { randomUUID } from 'node:crypto';
+import { C80_REQUEST } from './c80-bodies.ts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   COMMAND_SURFACE,
@@ -773,39 +774,42 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
                 ? 'DELEGATION_EXCLUDES_INTAKE'
                 : 'DELEGATION_EXCLUDES_OPERATION',
       );
+      // A heartbeat, a dispatch, an observe, a check or a model call, like a
+      // handback, names its task through the lease and never through a stray
+      // `recordId` (final review R1 #23), so the sibling is reached by its own
+      // lease. C80's request names its task through `taskId`, never a stray
+      // `recordId`, so the sibling is reached through that operand. AW-11's
+      // hand-over goes by the lease too; the helper's handback by its credential.
+      const probe = harness.probeBody(declaration);
+      const body = [
+        'task.heartbeat',
+        'task.dispatch',
+        'task.observe',
+        'task.check',
+        'model.call',
+        'run.delegate_child',
+      ].includes(declaration.name)
+        ? {
+            ...probe,
+            ...(declaration.name === 'task.check'
+              ? { name: 'a check on the sibling', outcome: 'passed' }
+              : {}),
+            leaseId: siblingLease['leaseId'],
+            fence: siblingLease['fence'],
+            ...(declaration.name === 'task.observe'
+              ? { attemptId: siblingLease['attemptId'] }
+              : {}),
+            ...(declaration.name === 'run.delegate_child'
+              ? childProbe(harness.world.agent.actorId)
+              : {}),
+          }
+        : declaration.name === 'run.child_handback'
+          ? probe
+          : declaration.name === 'live_correction.request'
+            ? { ...probe, ...C80_REQUEST, partyId: randomUUID(), taskId: sibling.id }
+            : { ...probe, recordId: sibling.id };
       // eslint-disable-next-line no-await-in-loop
-      const answer = await harness.asAgent(
-        declaration.name,
-        [
-          'task.heartbeat',
-          'task.dispatch',
-          'task.observe',
-          'task.check',
-          'model.call',
-          'run.delegate_child',
-        ].includes(declaration.name)
-          ? // A heartbeat, a dispatch, an observe, a check or a model call, like a handback, names its task
-            // through the lease and never through a stray `recordId` (final review R1 #23), so
-            // the sibling is reached by its own lease.
-            {
-              ...harness.probeBody(declaration),
-              ...(declaration.name === 'task.check'
-                ? { name: 'a check on the sibling', outcome: 'passed' }
-                : {}),
-              leaseId: siblingLease['leaseId'],
-              fence: siblingLease['fence'],
-              ...(declaration.name === 'task.observe'
-                ? { attemptId: siblingLease['attemptId'] }
-                : {}),
-              ...(declaration.name === 'run.delegate_child'
-                ? childProbe(harness.world.agent.actorId)
-                : {}),
-            }
-          : declaration.name === 'run.child_handback'
-            ? harness.probeBody(declaration)
-            : { ...harness.probeBody(declaration), recordId: sibling.id },
-        credential,
-      );
+      const answer = await harness.asAgent(declaration.name, body, credential);
       observe('agent-after-pickup', table, declaration.name, answer, expected);
       if (declaration.name === 'model.call') {
         // eslint-disable-next-line no-await-in-loop

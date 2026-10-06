@@ -6,6 +6,8 @@
 // grown diff never reaches a gate for someone to notice. The captures'
 // comparison is `captures.ts`.
 
+import { closingFence } from './fence.ts';
+
 export interface CorrectionTarget {
   readonly path: string;
   readonly word: string;
@@ -87,51 +89,184 @@ function replacedAt(before: string, after: string, target: CorrectionTarget): nu
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-/** Whether `offset` is in body copy: not frontmatter, a tag, a comment, an expression, a script or a style. */
-function inTextNode(source: string, offset: number): boolean {
-  if (source.startsWith('---\n')) {
-    const close = source.indexOf('\n---', 4);
-    if (close < 0 || offset <= close + 4) return false;
+// Body copy is read as a closed grammar that fails closed: a refused edit costs an approval.
+
+/** What carries JavaScript across a line: a template, a block comment, a line continuation. */
+const CARRIES_A_LINE = /`|\/\*|\\$/u;
+
+/** Where body copy starts: past the served page's closing fence, or 0; `undefined` for none. */
+function bodyStart(source: string): number | undefined {
+  const lines = source.split('\n');
+  // The served page's normalisation, line for line: no byte-order mark, no `\r` of a `\r\n`.
+  const plain = lines.map((line, index) => {
+    const bare = index === 0 ? line.replace(/^﻿/u, '') : line;
+    return index < lines.length - 1 && bare.endsWith('\r') ? bare.slice(0, -1) : bare;
+  });
+  const close = closingFence(plain);
+  if (close === undefined) return undefined;
+  if (plain.slice(0, close + 1).some((line) => CARRIES_A_LINE.test(line))) return undefined;
+  return lines.slice(0, close + 1).reduce((sum, line) => sum + line.length + 1, 0);
+}
+
+// An expression: names, numbers, space, these operators and elements; no string, comment or regex.
+const EXPRESSION = /[\p{L}\p{N}\s_$.,()[\]?:!=&|+\-*%>]/u;
+// A tag's name opens with an ASCII letter, as HTML's does; otherwise its `<` is text there.
+const TAG_NAME = /[A-Za-z][\p{L}\p{N}_.:-]*/uy;
+const ATTRIBUTE = /[\p{L}_@][\p{L}\p{N}_.:-]*/uy;
+// CommonMark's own tag and attribute names, for a Markdown page: ASCII, no `.`, `:` or `@` in a tag.
+const MD_TAG_NAME = /[A-Za-z][A-Za-z0-9-]*/uy;
+const MD_ATTRIBUTE = /[A-Za-z_:][A-Za-z0-9_.:-]*/uy;
+// Directives that leave children as written; any other (`is:raw`, `set:html`, ...) refuses.
+const DIRECTIVE = /^(?:client|class|transition|server):/u;
+// Elements whose content is not markup: everything up to their end tag is one construct.
+const RAW = new Set(
+  'script style textarea title xmp iframe noembed noframes noscript plaintext'.split(' '),
+);
+// Foreign content, where HTML reads `script` and `style` as markup: refused whole.
+const FOREIGN = new Set(['svg', 'math']);
+const SPACES = /\s*/uy;
+const END_TAG_FOLLOWS = /[\t\n\f\r />]/u;
+const BLANK_LINE = /\n[\t ]*(?:\n|$)/gu;
+// A Markdown word's run holds `.`, `:`, `/` or `@` only as closing punctuation: no autolink.
+const MARKDOWN_RUN = /^[\p{L}\p{M}\p{N}'’‘"“”()[\]*_~-]*[.,;:!?)\]"'’”*_~]*$/u;
+
+/** Lower case by ASCII only, as HTML matches an end tag's name. */
+const asciiLower = (text: string): string =>
+  text.replaceAll(/[A-Z]/gu, (letter) => letter.toLowerCase());
+
+function skipSpace(source: string, at: number): number {
+  SPACES.lastIndex = at;
+  SPACES.test(source);
+  return SPACES.lastIndex;
+}
+
+/** The end of the expression opening at `at` (`{`), or undefined where it holds anything else. */
+function expressionEnd(source: string, at: number): number | undefined {
+  let depth = 0;
+  for (let next = at; next < source.length; next += 1) {
+    const character = source.charAt(next);
+    if (character === '{') depth += 1;
+    else if (character === '}') {
+      depth -= 1;
+      if (depth === 0) return next + 1;
+    } else if (character === '<') {
+      const tag = tagEnd(source, next);
+      const name = tag === undefined ? '' : asciiLower(tag.name);
+      if (tag === undefined || RAW.has(name) || FOREIGN.has(name)) return undefined;
+      next = tag.end - 1;
+    } else if (!EXPRESSION.test(character)) return undefined;
   }
-  let state: 'text' | 'tag' | 'comment' | 'raw' = 'text';
-  let quote = '';
-  let braces = 0;
-  let rawClose = '';
-  for (let at = 0; at < offset; at += 1) {
-    const rest = source.slice(at);
-    const character = source.charAt(at);
-    if (state === 'comment') {
-      if (rest.startsWith('-->')) {
-        state = 'text';
-        at += 2;
-      }
-    } else if (state === 'raw') {
-      if (rest.toLowerCase().startsWith(rawClose)) {
-        state = 'tag';
-        rawClose = '';
-      }
-    } else if (state === 'tag') {
-      if (quote !== '') {
-        if (character === quote) quote = '';
-      } else if (character === '"' || character === "'") {
-        quote = character;
-      } else if (character === '>') {
-        state = rawClose === '' ? 'text' : 'raw';
-      }
-    } else if (rest.startsWith('<!--')) {
-      state = 'comment';
-    } else if (/^<\/?[a-z!]/iu.test(rest)) {
-      state = 'tag';
-      const raw = /^<(script|style)\b/iu.exec(rest);
-      rawClose = raw === null ? '' : `</${raw[1]?.toLowerCase() ?? ''}`;
-      if (rest.startsWith('</')) rawClose = '';
-    } else if (character === '{') {
-      braces += 1;
-    } else if (character === '}') {
-      braces = Math.max(0, braces - 1);
+  return undefined;
+}
+
+/** One attribute at `at`: an expression, or a name with a quoted or expression value or none. */
+function attributeEnd(source: string, at: number, markdown: boolean): number | undefined {
+  if (source.charAt(at) === '{') return markdown ? undefined : expressionEnd(source, at);
+  const grammar = markdown ? MD_ATTRIBUTE : ATTRIBUTE;
+  grammar.lastIndex = at;
+  const name = grammar.exec(source)?.[0];
+  if (name === undefined || (name.includes(':') && !DIRECTIVE.test(name))) return undefined;
+  const equals = skipSpace(source, at + name.length);
+  if (source.charAt(equals) !== '=') return equals;
+  const value = skipSpace(source, equals + 1);
+  const quote = source.charAt(value);
+  if (quote === '{') return markdown ? undefined : expressionEnd(source, value);
+  if (quote !== '"' && quote !== "'") return undefined;
+  const close = source.indexOf(quote, value + 1);
+  return close < 0 ? undefined : close + 1;
+}
+
+type Tag = { readonly end: number; readonly name: string };
+
+/** A tag opening at `at` (`<`): `<`, `/`?, a name, attributes, `/`?, `>`. Undefined otherwise. */
+function tagEnd(source: string, at: number, markdown = false): Tag | undefined {
+  let next = source.charAt(at + 1) === '/' ? at + 2 : at + 1;
+  const grammar = markdown ? MD_TAG_NAME : TAG_NAME;
+  grammar.lastIndex = next;
+  const name = grammar.exec(source)?.[0];
+  if (name === undefined) return undefined;
+  for (next = skipSpace(source, next + name.length); ; next = skipSpace(source, next)) {
+    if (source.charAt(next) === '>') return { end: next + 1, name };
+    if (source.startsWith('/>', next)) return { end: next + 2, name };
+    const end = attributeEnd(source, next, markdown);
+    if (end === undefined) return undefined;
+    next = end;
+  }
+}
+
+/** The end of the element opening at `at` when its content is raw text, through its end tag. */
+function rawEnd(source: string, start: number, name: string): number | undefined {
+  const close = `</${name}`;
+  for (let at = source.indexOf('</', start); at >= 0; at = source.indexOf('</', at + 1)) {
+    const candidate = asciiLower(source.slice(at, at + close.length));
+    if (candidate !== close || !END_TAG_FOLLOWS.test(source.charAt(at + close.length))) continue;
+    // HTML's script escape (`<!--` inside a script) can carry the script past this end tag.
+    return source.slice(start, at).includes('<!--') ? undefined : tagEnd(source, at)?.end;
+  }
+  return undefined;
+}
+
+/** The end of a Markdown link's destination at `at` (`(` after `]`): no space, quote or `<`. */
+function destinationEnd(source: string, at: number): number | undefined {
+  let depth = 0;
+  for (let next = at; next < source.length; next += 1) {
+    const character = source.charAt(next);
+    if (/[\s<"']/u.test(character)) return undefined;
+    if (character === '(') depth += 1;
+    else if (character === ')') {
+      depth -= 1;
+      if (depth === 0) return next + 1;
     }
   }
-  return state === 'text' && braces === 0;
+  return undefined;
+}
+
+/** The blank line ending the paragraph at `at`, or the source's end. */
+function paragraphEnd(source: string, at: number): number {
+  BLANK_LINE.lastIndex = at;
+  return BLANK_LINE.exec(source)?.index ?? source.length;
+}
+
+/** The end of the construct at `at`, `at + 1` for text, or undefined where it cannot be read. */
+function constructEnd(source: string, at: number, markdown: boolean): number | undefined {
+  const character = source.charAt(at);
+  if (source.startsWith('<!--', at)) {
+    const close = source.indexOf('-->', at + 4);
+    return close < 0 ? undefined : close + 3;
+  }
+  // Any other `<!` is a declaration HTML ends at its first `>`: only the HTML doctype is read.
+  if (source.startsWith('<!', at))
+    return asciiLower(source.slice(at, at + 15)) === '<!doctype html>' ? at + 15 : undefined;
+  if (character === '<') {
+    const tag = tagEnd(source, at, markdown);
+    if (tag === undefined || FOREIGN.has(asciiLower(tag.name))) return undefined;
+    const name = asciiLower(tag.name);
+    const raw = source.charAt(at + 1) !== '/' && RAW.has(name);
+    return raw ? rawEnd(source, tag.end, name) : tag.end;
+  }
+  if (character === '{') return expressionEnd(source, at);
+  if (character === '}') return undefined;
+  if (!markdown) return at + 1;
+  if (source.startsWith('](', at)) return destinationEnd(source, at + 1);
+  if (source.startsWith(']:', at) || source.startsWith('![', at)) return paragraphEnd(source, at);
+  return at + 1;
+}
+
+/** The run of non-space characters around `offset`. */
+const runAround = (source: string, offset: number): string =>
+  (/\S*$/u.exec(source.slice(0, offset))?.[0] ?? '') +
+  (/^\S*/u.exec(source.slice(offset))?.[0] ?? '');
+
+/** Whether `offset` is in body copy, read construct by construct from the body's start. */
+function inTextNode(source: string, offset: number, markdown: boolean): boolean {
+  let at = bodyStart(source);
+  if (at === undefined) return false;
+  while (at < offset) {
+    const end = constructEnd(source, at, markdown);
+    if (end === undefined) return false;
+    at = end;
+  }
+  return at === offset && (!markdown || MARKDOWN_RUN.test(runAround(source, offset)));
 }
 
 /** Refuses anything wider than the envelope, naming why. */
@@ -155,7 +290,8 @@ export function checkEnvelope(change: ProposedChange, target: CorrectionTarget):
   const at = replacedAt(before[index] ?? '', after[index] ?? '', target);
   if (at === undefined) return exceeded('not the one word replaced in place');
   const offset = before.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0) + at;
-  if (!inTextNode(file.before, offset)) return exceeded('the word is not in body copy');
+  if (!inTextNode(file.before, offset, file.path.endsWith('.md')))
+    return exceeded('the word is not in body copy');
   return {
     ok: true,
     value: { path: file.path, line: index + 1, before: target.word, after: target.replacement },

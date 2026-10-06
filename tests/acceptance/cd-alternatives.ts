@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 17 of the 72. For each of the other 55 this file
+// `recordId`, which reaches 17 of the 75. For each of the other 58 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -25,12 +25,13 @@ export const CASE = {
   tag: 'refuses a foreign and a fabricated task alike on the tag commands',
   duplicate: 'refuses a duplicate of a foreign and a fabricated task alike',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
+  liveCorrection: 'refuses a foreign and a fabricated correction or task alike (C80)',
   conversation:
     'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
 
 /**
- * The fifty-three operations that name no identifier, each with a minimal valid body.
+ * The fifty-four operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -42,6 +43,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['task.purge', {}],
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
+  ['settings.set_live_correction_approver', { value: null }],
   ['settings.set_money_step_up', { value: true }],
   ['settings.set_conversation_window', { value: 14 }],
   ['settings.set_retention_window', { value: 90 }],
@@ -162,7 +164,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The fifty-five identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The fifty-eight identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -188,6 +190,9 @@ export const IDENTIFIER_BEARING: Readonly<
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
   'budget.write_off': ['attemptId', 'control'],
+  'live_correction.request': ['taskId', 'liveCorrection'],
+  'live_correction.decide': ['correctionId', 'liveCorrection'],
+  'live_correction.read': ['correctionId', 'liveCorrection'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.

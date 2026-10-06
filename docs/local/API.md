@@ -92,6 +92,13 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
    `identity/agent-login.ts`.
 5. Anything else reaches the executor, and login resolution runs there,
    inside the serving transaction.
+6. Once login resolution admits the caller, the call is charged to its quotas
+   (API-3, `identity/quota.ts`, `QUOTAS` or `composeApi`'s `quota`): requests
+   in a window and calls at once, per credential, person and business. One over
+   is `QUOTA_EXCEEDED` 429, recorded in `authentication_attempts`; a refused
+   call is not charged, a request once (`withQuotaScope`), a live stream holds
+   its slot until it ends (`liveStream`), presence routes via `withStanding`.
+   Agent credentials have their own (`agent-quota.ts`, `AGENT_QUOTA_EXCEEDED`).
 
 `tests/api/boundary-body-admission.test.ts` holds the body refusal and what it
 writes. `tests/api/admission-enumeration.test.ts` compares the raw bytes for a
@@ -150,7 +157,7 @@ is read, and nothing is written (`FREE_OPERANDS` and
 in `commands/values.ts`). The agent prefix does not pass that door: the
 comment body is checked in `writeTaskComment` (`commands/tasks-comment.ts`),
 and a handback's `report` and `successor` among its operands, before authority
-(`handbackOperands`, `commands/agent-operations.ts`).
+(`handbackOperands`, `commands/agent-operands.ts`).
 
 **`task.purge` takes no window.** It reads the business's own
 `retention_window_days` setting inside the transaction the command is served in
@@ -1092,7 +1099,7 @@ it.
 authority.** A `reservationId` that is not a string is `COMMAND_BODY_INVALID`
 400, an `outcome` that is not a string or a `fence` that is not a number is
 `FIELD_VALUE_INVALID` 422, and nothing is claimed, settled or retained
-(`pickupOperands` and `handbackOperands`, `commands/agent-operations.ts`).
+(`pickupOperands` and `handbackOperands`, `commands/agent-operands.ts`).
 `tests/runtime/agent-operand-types.test.ts` holds it.
 
 **A payload naming a fact the server owns is refused** `FIELD_NOT_WRITABLE`

@@ -93,3 +93,81 @@ export async function hold(
     },
   };
 }
+
+/**
+ * After a revocation is sent while a writer waits on a row lock in
+ * `statement`: waits until the revocation has answered (`answered`), or until
+ * `pg_blocking_pids` names that writer's backend as what the revocation waits
+ * on. Taken on what the database shows, never on a poll running out.
+ */
+export async function revokedOrBehindWriter(
+  admin: Pick<AdminConnection, 'execute'>,
+  statement: string,
+  answered: () => boolean,
+): Promise<'revoked' | 'behind the writer'> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    if (answered()) return 'revoked';
+    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+    const rows = await admin.execute<{ behind: boolean }>(
+      `select exists (select 1 from pg_stat_activity w, pg_stat_activity r
+        where w.datname = current_database() and r.datname = current_database()
+          and w.wait_event_type = 'Lock' and w.wait_event = 'transactionid'
+          and strpos(w.query, $1) > 0 and r.pid <> w.pid
+          and w.pid = any(pg_blocking_pids(r.pid))) as behind`,
+      [statement],
+    );
+    if (rows[0]?.behind === true) return 'behind the writer';
+    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+    await delay(10);
+  }
+  throw new Error(`the revocation neither answered nor waited behind the writer in "${statement}"`);
+}
+
+/**
+ * After a revocation is sent while a command sits paused, idle in its
+ * transaction, straight after a statement containing `statement`: waits until
+ * the revocation has answered, or until `pg_blocking_pids` names that paused
+ * backend as what the revocation's advisory lock waits on.
+ */
+export async function revokedOrBehindHolder(
+  admin: Pick<AdminConnection, 'execute'>,
+  statement: string,
+  answered: () => boolean,
+): Promise<'revoked' | 'behind the holder'> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    if (answered()) return 'revoked';
+    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+    const rows = await admin.execute<{ behind: boolean }>(
+      `select exists (select 1 from pg_stat_activity h, pg_stat_activity r
+        where h.datname = current_database() and r.datname = current_database()
+          and h.state = 'idle in transaction' and strpos(h.query, $1) > 0
+          and r.wait_event_type = 'Lock' and r.wait_event = 'advisory'
+          and h.pid = any(pg_blocking_pids(r.pid))) as behind`,
+      [statement],
+    );
+    if (rows[0]?.behind === true) return 'behind the holder';
+    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+    await delay(10);
+  }
+  throw new Error(`the revocation neither answered nor waited behind the holder of "${statement}"`);
+}
+
+/**
+ * Where each operation's audit event stands in its business's chain. `seq` is
+ * given under a transaction-scoped advisory lock (migration 0093), so the
+ * order of two places is the order their transactions committed in.
+ */
+export async function chainPlaces(
+  admin: Pick<AdminConnection, 'execute'>,
+  operationIds: readonly string[],
+): Promise<readonly number[]> {
+  const rows = await admin.execute<{ operation_id: string; seq: number }>(
+    'select operation_id::text, seq::int as seq from public.audit_events where operation_id = any($1::text[])',
+    [operationIds],
+  );
+  return operationIds.map((id) => {
+    const found = rows.filter((row) => row.operation_id === id);
+    if (found.length !== 1) throw new Error(`chainPlaces: ${found.length} audit events for ${id}`);
+    return Number(found[0]?.seq);
+  });
+}
