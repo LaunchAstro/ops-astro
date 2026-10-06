@@ -4,7 +4,7 @@
 // gist, or closed as out of scope onto its map. Each runs inside the envelope
 // (see `wayfinder-chart.ts`).
 
-import { OWNER_TYPES, wayfinderFacts } from '../../../core-records/src/index.ts';
+import { OWNER_TYPES, wayfinderFacts, writeComment } from '../../../core-records/src/index.ts';
 import type { TenantQuery, WayfinderFacts } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -27,7 +27,9 @@ export function completed(context: Pick<CommandContext, 'spine'>, stateId: unkno
 
 /**
  * Complete a ticket and write what its closing records, in one update, so the
- * revision moves by exactly one as for every other command. The state is the
+ * revision moves by exactly one as for every other command. A reopened
+ * ticket's old `closed_as` goes, and the stamp is the write's own, taken after
+ * any wait, so Decisions so far keeps closing order. The state is the
  * installation's first `completed` one, as `task.complete` chooses it, and
  * `task.complete`'s guards and step archive run around it; a ticket an agent
  * holds goes to review through `task.complete` first. `before` runs once the
@@ -58,8 +60,9 @@ async function completeWith(
   await before?.();
   const rows = await tx.query<{ readonly revision: string }>(
     `update records
-        set data = data || jsonb_build_object('state', $3::text, 'completed_at', now()::text)
-                        || $4::jsonb,
+        set data = (data - 'closed_as')
+                   || jsonb_build_object('state', $3::text, 'completed_at', clock_timestamp()::text)
+                   || $4::jsonb,
             updated_at = now()
       where business_id = $1 and id = $2 and deleted_at is null
       returning revision::text as revision`,
@@ -131,9 +134,28 @@ async function resolveWith(
   }
   const refusal = await typeRule(facts);
   if (refusal !== undefined) return refused(refusal);
-  return await completeWith(tx, context, {
-    answer: (answer as string).trim(),
-    gist: (gist as string).trim(),
+  const said = (answer as string).trim();
+  const outcome = await completeWith(tx, context, { answer: said, gist: (gist as string).trim() });
+  if (!('refusal' in outcome)) await postAnswer(tx, context, target.id, said);
+  return outcome;
+}
+
+/** The answer is also the ticket's resolution comment, on its thread. */
+async function postAnswer(
+  tx: TenantQuery,
+  context: CommandContext,
+  taskId: string,
+  body: string,
+): Promise<void> {
+  const commentTypeId = context.spine.taskCommentTypeId;
+  if (commentTypeId === undefined) return;
+  await writeComment(tx, commentTypeId, {
+    taskId,
+    authorActorId: context.session.actorId,
+    commentType: 'note',
+    audience: 'internal',
+    body,
+    source: context.entryPoint,
   });
 }
 

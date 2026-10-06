@@ -843,7 +843,7 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
       // Another writer of the map holds its row, as a claim or resolve of a
       // sibling ticket does, and once this one waits takes the key-share lock
       // its frontier refresh takes on this ticket: free, since the waiter has
-      // not locked its ticket yet. The other order is the cycle (Sol F1).
+      // not locked its ticket yet. The other order is a deadlock cycle.
       const held = await hold(
         w.db,
         async (execute) => {
@@ -937,7 +937,6 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     const read = (await w.read(teammate, { read: 'task.read', recordId: r })) as {
       task?: { comments?: readonly { body?: string }[] };
     };
-    console.log('F2SHAPE', JSON.stringify(read).slice(0, 600));
     expect(read.task?.comments?.map((c) => c.body)).toStrictEqual([answer]);
     const view = (await w.read(teammate, { read: 'map.view', recordId: map })) as {
       map: { decisions: readonly { ticketId: string; gist: string }[] };

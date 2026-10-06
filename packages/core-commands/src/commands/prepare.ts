@@ -707,7 +707,9 @@ export async function prepareCommand(
     // Only here, where the target is read: a replay re-judges authority with
     // `targetsExistingRecord` off, and it locks no record (`withheldNow`).
     if (declaration.serialise !== undefined) await serialiseOn(tx, declaration.serialise);
-    if (declaration.serialise === WAYFINDER_MAP_LOCK) await holdMapOf(tx, recordId);
+    if (declaration.serialise === WAYFINDER_MAP_LOCK || MAP_FIRST.has(declaration.name)) {
+      await holdMapOf(tx, recordId);
+    }
     // A target the runtime locks in its own order is only read here. The
     // read takes nothing, and the handler compares the revision under the
     // runtime's locks; locking it here would be a task lock held before the
@@ -784,6 +786,13 @@ export async function serialiseOn(tx: TenantQuery, key: string): Promise<void> {
  * `no key update`, as the map's own update takes it, so a ticket filed under
  * the map meanwhile does not wait.
  */
+/**
+ * Ticket commands that refresh their map's frontier under no per-business
+ * lock. Each holds its map row first too, so two on tickets of one map queue
+ * there instead of each holding its ticket while the other's refresh needs it.
+ */
+const MAP_FIRST: ReadonlySet<string> = new Set(['task.claim', 'task.resolve']);
+
 async function holdMapOf(tx: TenantQuery, recordId: string | undefined): Promise<void> {
   if (!isUuid(recordId)) return;
   const map = (await wayfinderFacts(tx, recordId.toLowerCase()))?.mapId;
