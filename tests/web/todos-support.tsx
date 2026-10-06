@@ -61,22 +61,32 @@ export interface Sent {
   readonly body: Readonly<Record<string, unknown>>;
 }
 
-/** The reader's to-dos, every request recorded; the paths in `refuse` are refused. */
-export function serving(rows: readonly unknown[] = TODOS, refuse: readonly string[] = []) {
+/**
+ * The reader's to-dos, every request recorded; the paths in `refuse` are
+ * refused. A list read after the first waits for `held`, when given, so a
+ * test can look at the screen while its reread is in flight.
+ */
+export function serving(
+  rows: readonly unknown[] = TODOS,
+  refuse: readonly string[] = [],
+  held?: Promise<void>,
+) {
   const sent: Sent[] = [];
-  const fetch = ((url: string | URL, init?: RequestInit) => {
+  const fetch = (async (url: string | URL, init?: RequestInit) => {
     const to = String(url).replace(/^.*?(\/[a-z]+\/[a-z_]+)$/u, '$1');
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
     sent.push({ to, body });
-    if (to === '/task/todos') return Promise.resolve(json({ ok: true, todos: rows }));
+    const reread = sent.filter((one) => one.to === '/task/todos').length > 1;
+    if (to === '/task/todos' && reread && held !== undefined) await held;
+    if (to === '/task/todos') return json({ ok: true, todos: rows });
     // The scope switch's teammates and clients (MP-7-2).
-    if (to === '/person/list') return Promise.resolve(json({ ok: true, persons: [] }));
-    if (to === '/client/list') return Promise.resolve(json({ ok: true, clients: [] }));
+    if (to === '/person/list') return json({ ok: true, persons: [] });
+    if (to === '/client/list') return json({ ok: true, clients: [] });
     if (refuse.includes(to)) {
       const refusal = { refused: true, code: 'SCOPE_NOT_GRANTED', names: ['task'], fixes: [] };
-      return Promise.resolve(json(refusal, 403));
+      return json(refusal, 403);
     }
-    return Promise.resolve(json({ recordId: body['recordId'], revision: 4 }));
+    return json({ recordId: body['recordId'], revision: 4 });
   }) as unknown as typeof globalThis.fetch;
   return {
     client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),

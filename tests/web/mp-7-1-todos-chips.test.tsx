@@ -133,7 +133,11 @@ describe('MP-7-1 XC 2, 11 chips: Enter makes them, the cross and Backspace remov
 
 describe('#885 a reread keeps the search, the chips, the sort and the comment scope', () => {
   it('a tick reads the list again under the same chips, words and sort', async () => {
-    const server = serving();
+    const gate: { answer?: () => void } = {};
+    const held = new Promise<void>((resolve) => {
+      gate.answer = resolve;
+    });
+    const server = serving(undefined, [], held);
     const { view } = await todos({ client: server.client });
     await typeInto(view, SEARCH, 'tag:legal');
     await press(view, SEARCH, 'Enter');
@@ -141,7 +145,12 @@ describe('#885 a reread keeps the search, the chips, the sort and the comment sc
     await view.choose('#todos-sort', 'priority');
     await view.click('[data-todo-row="Proj-Alpha"] [data-todo-tick]');
     await tick();
+    // The reread is in flight: the list stays drawn under the same choices.
     expect(server.sent.filter((one) => one.to === '/task/todos')).toHaveLength(2);
+    expect(view.find('[data-outcome="loading"] [data-todo-row="Proj-Alpha"]')).not.toBeNull();
+    expect(chips(view)).toStrictEqual(['tag']);
+    gate.answer?.();
+    await tick();
     expect(chips(view)).toStrictEqual(['tag']);
     expect(view.host.querySelector<HTMLInputElement>(SEARCH)?.value).toBe('budget');
     expect(view.host.querySelector<HTMLSelectElement>('#todos-sort')?.value).toBe('priority');

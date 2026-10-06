@@ -67,6 +67,23 @@ async function assigned(recordId: string): Promise<void> {
   );
 }
 
+/** Opens a gate on the task: its run waits for a person's decision. */
+async function proposeOn(recordId: string | undefined): Promise<void> {
+  await applied(
+    {
+      command: 'task.propose',
+      recordId,
+      expectedRevision: await revisionOf(recordId ?? ''),
+      purpose: `draft_${randomUUID().slice(0, 8)}`,
+      maximumMinor: 3_000,
+      currency: 'AUD',
+      payload: { instruction: 'draft a reply' },
+      step: { kind: 'compose', payload: {} },
+    },
+    'task.propose',
+  );
+}
+
 async function todos(): Promise<ReadonlyMap<string, TodoView>> {
   const answer = await executeRead(world.db.app, world.business, reader.presented, {
     read: 'task.todos',
@@ -87,20 +104,26 @@ beforeAll(async () => {
     await grantTo(tx, reader, 'assign');
   });
   ids['gated'] = await created('waits on a person');
-  await applied(
-    {
-      command: 'task.propose',
-      recordId: ids['gated'],
-      expectedRevision: await revisionOf(ids['gated']),
-      purpose: `draft_${randomUUID().slice(0, 8)}`,
-      maximumMinor: 3_000,
-      currency: 'AUD',
-      payload: { instruction: 'draft a reply' },
-      step: { kind: 'compose', payload: {} },
-    },
-    'task.propose',
-  );
+  await proposeOn(ids['gated']);
   ids['leased'] = (await world.pickUp(reader, 'an agent holds it')).taskId;
+  // A gate waiting beside a live lease: the person's move comes first.
+  ids['both'] = (await world.pickUp(reader, 'held, and a new gate waits')).taskId;
+  await proposeOn(ids['both']);
+  // A pending gate past its expiry waits on nobody.
+  ids['lapsed'] = await created('its gate expired');
+  await proposeOn(ids['lapsed']);
+  await world.db.admin.execute(
+    `update public.gates g set expires_at = now() - interval '1 minute'
+       from public.planned_runs run
+      where run.business_id = g.business_id and run.id = g.run_id and run.task_id = $1`,
+    [ids['lapsed']],
+  );
+  // A lease no longer live holds nothing.
+  ids['released'] = (await world.pickUp(reader, 'its agent let go')).taskId;
+  await world.db.admin.execute(
+    `update public.leases set state = 'released', released_at = now() where task_id = $1`,
+    [ids['released']],
+  );
   ids['plain'] = await created('nobody else holds it');
   await applied(
     {
@@ -111,7 +134,7 @@ beforeAll(async () => {
     },
     'task.set_category',
   );
-  for (const name of ['gated', 'leased', 'plain']) {
+  for (const name of ['gated', 'leased', 'both', 'lapsed', 'released', 'plain']) {
     // eslint-disable-next-line no-await-in-loop -- each assign reads the revision it writes at
     await assigned(ids[name] ?? '');
   }
@@ -127,6 +150,17 @@ live('task.todos whose move (DP-14)', () => {
     expect(
       ['gated', 'leased', 'plain'].map((name) => rows.get(ids[name] ?? '')?.whoseMove),
     ).toStrictEqual(['Review', 'Agent', 'Team']);
+  });
+
+  it('a gate waiting beside a live lease is the person’s move', async () => {
+    expect((await todos()).get(ids['both'] ?? '')?.whoseMove).toBe('Review');
+  });
+
+  it('an expired gate and a released lease leave the move with the team', async () => {
+    const rows = await todos();
+    expect(
+      ['lapsed', 'released'].map((name) => rows.get(ids[name] ?? '')?.whoseMove),
+    ).toStrictEqual(['Team', 'Team']);
   });
 
   it('a decided gate leaves the move with the team', async () => {
