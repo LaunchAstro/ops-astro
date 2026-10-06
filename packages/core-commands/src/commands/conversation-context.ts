@@ -11,9 +11,10 @@
 //   A caller without the read is refused before the task is read or locked,
 //   so a revoked reader never waits behind the task's writer. A refusal is
 //   marked in the audit chain in the same transaction, as the broker marks
-//   its own, and a marked message is refused ever after: sent again with its
-//   operation id once the client is cleared or the task purged, it asks no
-//   model.
+//   its own, and so is a question kept while its page is a client's, in the
+//   transaction that keeps it. A marked message is refused ever after: sent
+//   again with its operation id once the client is cleared or the task
+//   purged, it asks no model.
 // - Earlier: this conversation's messages before the asked one, oldest
 //   first, each labelled by role, and only what a model already had: the
 //   agent's replies and the questions they answer. A question refused (a
@@ -153,6 +154,21 @@ export async function markRefusedForPage(
   return REFUSED;
 }
 
+/** At keep, in the message's own transaction: a question kept on a client's task is marked refused. */
+export async function markIfClients(
+  tx: TenantQuery,
+  session: Session,
+  asked: Asked,
+  taskId: string | null,
+): Promise<void> {
+  if (taskId === null) return;
+  const [task] = await tx.query<{ readonly client: string | null }>(
+    `select ${CLIENT} as client from records where business_id = $1 and id = $2`,
+    [tx.businessId, taskId],
+  );
+  if (task !== undefined && task.client !== null) await markRefusedForPage(tx, session, asked);
+}
+
 /** The page and earlier messages for the asked message, in the caller's transaction. */
 export async function contextOf(
   tx: TenantQuery,
@@ -160,9 +176,11 @@ export async function contextOf(
   asked: Asked & { readonly body: string },
   scopeRecordId: string | null,
 ): Promise<Context> {
-  if (await markedRefused(tx, asked)) return REFUSED;
   const page = scopeRecordId === null ? null : await pageOf(tx, session, scopeRecordId);
-  if (page === 'refused') return await markRefusedForPage(tx, session, asked);
+  // Asked once the page is held, so a twin's refusal committed while this waited is seen.
+  const marked = await markedRefused(tx, asked);
+  if (page === 'refused') return marked ? REFUSED : await markRefusedForPage(tx, session, asked);
+  if (marked) return REFUSED;
   const rows = await tx.query<{ readonly role: string; readonly body: string }>(
     `select role, body from (
        select m.role, m.body, m.created_at, m.id

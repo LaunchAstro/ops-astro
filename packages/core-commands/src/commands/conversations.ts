@@ -20,6 +20,7 @@ import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
+import { markIfClients } from './conversation-context.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
@@ -180,6 +181,7 @@ export async function startConversation(
      values ($1, $2, $3, 'person', $4, $5)`,
     [tx.businessId, messageId, conversationId, session.actorId, fields.body],
   );
+  await markIfClients(tx, session, { conversationId, messageId }, scope?.id ?? null);
   return applied(null, null, {
     conversationId,
     messageId,
@@ -228,8 +230,9 @@ export async function messageConversation(
   const rows = await tx.query<{
     readonly owner_actor_id: string;
     readonly body_purged_at: Date | null;
+    readonly scope_record_id: string | null;
   }>(
-    `select owner_actor_id, body_purged_at from conversations
+    `select owner_actor_id, body_purged_at, scope_record_id from conversations
       where business_id = $1 and id = $2
       for update`,
     [tx.businessId, fields.conversationId],
@@ -256,6 +259,8 @@ export async function messageConversation(
       where business_id = $1 and id = $2`,
     [tx.businessId, fields.conversationId, at],
   );
+  const asked = { conversationId: fields.conversationId, messageId };
+  await markIfClients(tx, context.session, asked, conversation.scope_record_id);
   return applied(null, null, {
     conversationId: fields.conversationId,
     messageId,
