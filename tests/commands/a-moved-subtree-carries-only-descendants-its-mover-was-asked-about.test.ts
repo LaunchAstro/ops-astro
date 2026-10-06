@@ -8,6 +8,7 @@
 // child, observed through pg_blocking_pids rather than slept through; the
 // grandchild commits before the wait ends. The mover's grants are record
 // grants cut from a delegable root grant, so each carries its parent link.
+// A descendant a trash commits while the move waits on it keeps its board.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -17,7 +18,11 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
-import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
+import {
+  connect,
+  type Database,
+  type TenantQuery,
+} from '../../packages/core-records/src/tenancy/database.ts';
 import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from './fixture.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
@@ -25,6 +30,7 @@ import { isCommandRefusal } from '../../packages/core-commands/src/commands/refu
 import { readTaskSpine } from '../../packages/core-commands/src/commands/context.ts';
 import { planTaskPlacement } from '../../packages/core-records/src/tasks/placement.ts';
 import { isRecordsRefusal } from '../../packages/core-records/src/records/refusals.ts';
+import { trashSubtree } from '../../packages/core-records/src/tasks/trash.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -78,13 +84,15 @@ async function read(recordId: string) {
     const rows = await tx.query<{
       readonly data: Record<string, unknown>;
       readonly revision: string;
-    }>(`select data, revision::text as revision from records where business_id = $1 and id = $2`, [
-      world.business,
-      recordId,
-    ]);
+      readonly deleted_at: Date | null;
+    }>(
+      `select data, revision::text as revision, deleted_at from records
+        where business_id = $1 and id = $2`,
+      [world.business, recordId],
+    );
     const row = rows[0];
     if (row === undefined) throw new Error('read: gone');
-    return { data: row.data, revision: Number(row.revision) };
+    return { data: row.data, revision: Number(row.revision), trashed: row.deleted_at !== null };
   });
 }
 
@@ -135,28 +143,35 @@ interface Race {
   readonly mover: Member;
 }
 
-/**
- * Hold the child `for share` as a creation does, start the move on the second
- * connection, wait until it is parked on the child, then commit the grandchild
- * under it. Answers the move.
- */
+/** Start the move on `second`, parked on a row lock `tx` holds (`db.app` is `max: 1`). */
+async function startMoveBehind(
+  tx: TenantQuery,
+  race: Race,
+): Promise<{ readonly move: Promise<Answer> }> {
+  const held = await tx.query<{ readonly pid: number; readonly revision: string }>(
+    `select pg_backend_pid() as pid, revision::text as revision from records
+      where business_id = $1 and id = $2`,
+    [world.business, race.root],
+  );
+  const move = executeCommand(world.second, world.business, race.mover.presented, 'api', {
+    command: 'task.move',
+    operationId: randomUUID(),
+    recordId: race.root,
+    expectedRevision: Number(held[0]?.revision),
+    board: race.boardB,
+  } as unknown as Request);
+  await awaitRowWaitOn(held[0]?.pid ?? 0, Date.now() + 3_000);
+  return { move };
+}
+
+/** Hold the child `for share` as a creation does, start the move, commit the grandchild. */
 async function moveWhileGrandchildCommits(race: Race): Promise<Answer | undefined> {
-  const rootRevision = (await read(race.root)).revision;
   let move: Promise<Answer> | undefined;
   await world.db.app.withBusiness(world.business, async (tx) => {
     const spine = await readTaskSpine(tx);
     const placement = await planTaskPlacement(tx, spine.taskTypeId, { parentId: race.child });
     if (isRecordsRefusal(placement)) throw new Error(placement.code);
-    const held = await tx.query<{ readonly pid: number }>(`select pg_backend_pid() as pid`);
-    move = executeCommand(world.second, world.business, race.mover.presented, 'api', {
-      command: 'task.move',
-      operationId: randomUUID(),
-      recordId: race.root,
-      expectedRevision: rootRevision,
-      board: race.boardB,
-    } as unknown as Request);
-    // Parked on the child's row, behind this creation: the descendant lock.
-    await awaitRowWaitOn(held[0]?.pid ?? 0, Date.now() + 3_000);
+    ({ move } = await startMoveBehind(tx, race));
     await tx.query(
       `insert into records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)`,
       [
@@ -173,6 +188,35 @@ async function moveWhileGrandchildCommits(race: Race): Promise<Answer | undefine
     );
   });
   return await move;
+}
+
+/**
+ * Root, child and grandchild on board A, moved to B by a mover who may write
+ * all four, while a trash of the grandchild holds it and then commits.
+ * Answers the move, the grandchild's revision as the trash left it, the ids.
+ */
+async function moveWhileGrandchildIsTrashed() {
+  const [boardA, boardB] = [await create(), await create()];
+  const root = await create({ board: boardA });
+  const child = await create({ parentId: root });
+  const grandchild = await create({ parentId: child });
+  const mover = await moverOn('trash-mover', [root, child, grandchild, boardB]);
+  const race = { root, child, grandchild, boardB, mover };
+  let move: Promise<Answer> | undefined;
+  const trashedAt = await world.db.app.withBusiness(world.business, async (tx) => {
+    const trashed = await trashSubtree(tx, {
+      rootId: race.grandchild,
+      actorId: world.worker.actorId,
+    });
+    if (isRecordsRefusal(trashed)) throw new Error(trashed.code);
+    ({ move } = await startMoveBehind(tx, race));
+    const rows = await tx.query<{ readonly revision: string }>(
+      `select revision::text as revision from records where business_id = $1 and id = $2`,
+      [world.business, race.grandchild],
+    );
+    return Number(rows[0]?.revision);
+  });
+  return { answer: await move, trashedAt, boardA, ...race };
 }
 
 type Tree = Omit<Race, 'mover'>;
@@ -230,6 +274,22 @@ describe.skipIf(serverUrl === undefined)(
       expect(isCommandRefusal(raced.answer)).toBe(false);
       const { boardB } = raced;
       expect(raced.boards).toStrictEqual([boardB, boardB, boardB, undefined, undefined]);
+    }, 20_000);
+
+    it('leaves a descendant trashed while the move waits on it where it was', async () => {
+      const raced = await moveWhileGrandchildIsTrashed();
+      const { root, child, grandchild, boardA, boardB } = raced;
+      expect(raced.answer !== undefined && isCommandRefusal(raced.answer)).toBe(false);
+      expect([(await read(root)).data['board'], (await read(child)).data['board']]).toStrictEqual([
+        boardB,
+        boardB,
+      ]);
+      const left = await read(grandchild);
+      expect([left.trashed, left.data['board'], left.revision]).toStrictEqual([
+        true,
+        boardA,
+        raced.trashedAt,
+      ]);
     }, 20_000);
   },
 );
