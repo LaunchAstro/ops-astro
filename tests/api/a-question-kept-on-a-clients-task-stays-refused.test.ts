@@ -135,6 +135,10 @@ describe.skipIf(serverUrl === undefined)('a question kept on a client’s task',
       body: `CANARY-${randomUUID()} asked unseen`,
     });
     const asked = { conversationId, messageId: String(detail(sent)['messageId']) };
+    const why = `select refusal_code as code from public.audit_events
+      where command = 'model.call_refused' and attempted ->> 'messageId' = $1`;
+    const marks = await db.admin.execute<{ readonly code: string }>(why, [asked.messageId]);
+    expect(marks.map((mark) => mark.code)).toEqual(['SCOPE_NOT_GRANTED']);
     await db.app.withBusiness(business, async (tx) => {
       await grantTo(tx, person, 'read', { kind: 'record', id: taskId });
     });
