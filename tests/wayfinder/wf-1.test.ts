@@ -782,9 +782,35 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       expect(await decisionItems(nested.id)).toBe(0);
     }
     // Bea retypes a map she nested under her own map.
-    const own = await w.create(bea, { title: "Bea's nested map" }, { taskType: 'map', parentId: map.id });
+    const own = await w.create(
+      bea,
+      { title: "Bea's nested map" },
+      { taskType: 'map', parentId: map.id },
+    );
     must(await retype(bea, own.id, 'grilling'), 'Bea retypes her own nested map');
     expect(await dataOf(own.id, 'type')).toBe('grilling');
+  });
+
+  it('WF-1 a map its owner demoted is made a map again by that owner alone', async () => {
+    const bea = owner;
+    const map = await newMap(bea, "Bea's demoted map");
+    must(await retype(bea, map.id, 'task'), 'Bea demotes her map to a task');
+    // Under a plain task the teammate files what they like; the map is gone.
+    await w.create(
+      teammate,
+      { title: 'filed while demoted' },
+      { taskType: 'grilling', parentId: map.id },
+    );
+    const revision = await w.revisionOf(map.id);
+    expect(await retype(teammate, map.id, 'map')).toMatchObject({
+      code: 'SCOPE_NOT_GRANTED',
+      fixes: ["Only the map's owner retypes to or from grilling, prototype or map."],
+    });
+    expect(await dataOf(map.id, 'type')).toBe('task');
+    expect(await w.revisionOf(map.id)).toBe(revision);
+    // Bea makes it her map again.
+    must(await retype(bea, map.id, 'map'), 'Bea re-promotes her map');
+    expect(await dataOf(map.id, 'map_owner')).toBe(bea.personId);
   });
 
   it("WF-1 graduating fog into a grilling ticket on someone else's map is refused, filing nothing", async () => {
