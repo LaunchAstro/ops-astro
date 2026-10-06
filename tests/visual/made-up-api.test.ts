@@ -21,6 +21,10 @@ const NOT_DRAWN = new Set([
   'harness.read',
   'privacy.draft_breach_notices',
   'live_correction.read',
+  // C71-D: the web client can reach team conversations, but no screen draws
+  // them yet; the Team panel arrives in a later piece.
+  'chat.conversations',
+  'chat.messages',
   // WF-1: no screen draws a map until the WF-3/4 map views (P20).
   'map.view',
   'map.frontier',

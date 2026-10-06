@@ -4,8 +4,9 @@
 // the preamble and P1). `JSON.parse` keeps the last of two equal keys, so a
 // body read here and a body read by the Docker daemon could disagree; this
 // parser refuses that and every other ambiguity instead: duplicate keys at
-// any depth, more than 1 MiB, more than 32 levels, input that is not UTF-8,
-// a byte-order mark and a lone surrogate.
+// any depth, more than 1 MiB (or the cap a caller names, such as I5's
+// lockfile), more than 32 levels, input that is not UTF-8, a byte-order mark
+// and a lone surrogate.
 //
 // A number is taken only when its text means the value read: an integer
 // written without a fraction or exponent and within 2^53, or a non-integer.
@@ -25,6 +26,17 @@ import { fault, type SandboxResult } from './refusal.ts';
 
 export type Json =
   null | boolean | number | string | readonly Json[] | { readonly [key: string]: Json };
+
+export type JsonObject = { readonly [key: string]: Json };
+
+export const isJsonObject = (value: Json | undefined): value is JsonObject =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** True when `value` is an object holding exactly `keys`, no more and no fewer. */
+export const hasExactKeys = (value: Json | undefined, keys: readonly string[]): boolean =>
+  isJsonObject(value) &&
+  Object.keys(value).length === keys.length &&
+  keys.every((key) => Object.hasOwn(value, key));
 
 export const MAX_JSON_BYTES: number = 1024 * 1024;
 export const MAX_JSON_DEPTH: number = 32;
@@ -198,9 +210,9 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 export function parseStrictJson(
   bytes: Uint8Array,
-  options: { readonly foldCase?: boolean } = {},
+  options: { readonly foldCase?: boolean; readonly maxBytes?: number } = {},
 ): SandboxResult<{ value: Json }> {
-  if (bytes.length > MAX_JSON_BYTES) return fault('too large');
+  if (bytes.length > (options.maxBytes ?? MAX_JSON_BYTES)) return fault('too large');
   let text: string;
   try {
     text = UTF8.decode(bytes);

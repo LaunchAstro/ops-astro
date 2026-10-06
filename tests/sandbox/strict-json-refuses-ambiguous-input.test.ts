@@ -63,6 +63,17 @@ it('takes exactly 1 MiB and refuses one byte more', () => {
   expect(parseStrictJson(bytes(`${at} `))).toMatchObject({ ok: false, why: 'too large' });
 });
 
+it('takes a larger cap only when the caller names one, and refuses one byte past it', () => {
+  const cap = 2 * 1024 * 1024;
+  const at = `"${'a'.repeat(cap - 2)}"`;
+  expect(parseStrictJson(bytes(at), { maxBytes: cap })).toMatchObject({ ok: true });
+  expect(parseStrictJson(bytes(`${at} `), { maxBytes: cap })).toMatchObject({
+    ok: false,
+    why: 'too large',
+  });
+  expect(parseStrictJson(bytes(at))).toMatchObject({ ok: false, why: 'too large' });
+});
+
 it.each([
   ['a byte-order mark', '\uFEFF{}'],
   ['a trailing comma', '{"a":1,}'],

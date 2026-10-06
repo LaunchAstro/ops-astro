@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 145 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 149 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 145; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 149; on
 // the two that are his own account (C23) he is refused for naming someone. For
 // the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
@@ -369,6 +369,15 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         // Self-scoped: noah holds `preference:write` like every signed-in
         // person, so the refusal is the item's. Another person's is NOT_FOUND.
         return personCell(noah, name, { itemId: randomUUID() }, 'NOT_FOUND');
+      case 'chat.mark_read':
+        // C71-D: the reader's own marker, no grant asked; a conversation noah is
+        // not in is NOT_FOUND, audited although an applied move is not (CS-7.25).
+        return personCell(
+          noah,
+          name,
+          { conversationId: randomUUID(), upTo: new Date().toISOString() },
+          'NOT_FOUND',
+        );
       case 'notifications.set_channel':
         // Self-scoped too (INB-1e): the refusal is the setting's. In-app is
         // always on, so switching it off is refused.
@@ -525,12 +534,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 145 exported operations both ways', () => {
+  it('covered all 149 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(145);
+    expect(names).toHaveLength(149);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 145.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 149.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

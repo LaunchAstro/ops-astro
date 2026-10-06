@@ -328,6 +328,11 @@ vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (
   decideLiveCorrection: recorder('decideLiveCorrection'),
   requestLiveCorrection: recorder('requestLiveCorrection'),
 }));
+vi.mock('../../packages/core-commands/src/commands/chat.ts', async (original) => ({
+  ...(await original<object>()),
+  sendDirect: recorder('sendDirect'),
+  markOwnRead: recorder('markOwnRead'),
+}));
 vi.mock('../../packages/core-commands/src/commands/invitations.ts', async (original) => ({
   ...(await original<object>()),
   invitationAct: recorder('invitationAct'),
@@ -441,6 +446,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'invitation.resend': ['invitationId'],
   'invitation.revoke': ['invitationId'],
   'notifications.set_channel': [],
+  'chat.send_direct': ['teammateId'],
+  'chat.mark_read': ['conversationId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'settings.set_money_step_up': [],
@@ -487,6 +494,10 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.set_planning_cap',
   'budget.top_up',
   'budget.write_off',
+  'chat.conversations',
+  'chat.mark_read',
+  'chat.messages',
+  'chat.send_direct',
   'client.create',
   'client.list',
   'client.set_privacy',
@@ -915,6 +926,8 @@ const REQUESTS: readonly CommandRequest[] = [
     version: 1,
   },
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
+  { command: 'chat.send_direct', operationId: 'op', teammateId: 'mate', body: 'hello' },
+  { command: 'chat.mark_read', operationId: 'op', conversationId: 'talk', upTo: 'then' },
   { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
   { command: 'invitation.create', operationId: 'op', name: 'N', email: 'e', role: 'member' },
   { command: 'invitation.resend', operationId: 'op', invitationId: 'i' },
@@ -1065,6 +1078,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
   'preference.dismiss_tip': ['dismissOwnTip', 'request'],
   'inbox.seen': ['stampOwnSeen', 'item'],
+  'chat.send_direct': ['sendDirect', 'mate', 'hello'],
+  'chat.mark_read': ['markOwnRead', 'talk', 'then'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
   'invitation.create': ['invitationAct', 'request'],
   'invitation.resend': ['invitationAct', 'request'],
@@ -1108,7 +1123,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and fifteen from an expected revision', () => {
+  it('exempts the same one hundred and twenty-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

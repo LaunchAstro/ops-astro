@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The operand table of each write on the command surface, moved whole from
-// `surface.ts` to keep that file under the 1,000-line limit for product source.
+// Each write's operand table, moved whole from `surface.ts` to keep it under the 1,000-line limit;
 // `surface.ts` reads it into each declaration and re-exports the operand types.
 
 import type { CommandName } from './command-names.ts';
@@ -10,10 +9,9 @@ import { SETUP_OPERANDS } from './surface-setup.ts';
 import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
 
 /**
- * The JSON kind of one operand: `id` and `text` are strings, `count` a finite
- * number, `flag` a boolean, `map` an object that is not an array, `any`
- * whatever the command checks by value itself. `?` admits absent, `|null`
- * admits null.
+ * The JSON kind of one operand: `id` and `text` are strings, `count` a finite number, `flag` a
+ * boolean, `map` an object that is not an array, `any` whatever the command checks by value
+ * itself. `?` admits absent, `|null` admits null.
  */
 export type OperandKind = 'id' | 'text' | 'count' | 'flag' | 'map' | 'any';
 export type Operand = `${OperandKind}${'' | '?'}${'' | '|null'}`;
@@ -266,6 +264,8 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
   'inbox.seen': { itemId: 'id' },
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
+  'chat.send_direct': { teammateId: 'id', body: 'any' },
+  'chat.mark_read': { conversationId: 'id', upTo: 'any' },
   'invitation.create': { name: 'text', email: 'text', role: 'text' },
   'invitation.resend': { invitationId: 'id' },
   'invitation.revoke': { invitationId: 'id' },

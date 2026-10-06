@@ -15,55 +15,17 @@
 import { describe, expect, it } from 'vitest';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { READ_CATALOGUE, type ReadName } from '../../packages/core-commands/src/reads/catalogue.ts';
+import { PINNED_SHAPE } from './read-catalogue-shape.ts';
 
 const rows = Object.entries(READ_CATALOGUE) as [ReadName, (typeof READ_CATALOGUE)[ReadName]][];
 const READ_IDENTIFIERS = Object.fromEntries(rows.map(([name, row]) => [name, row.identifiers]));
 const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([name]) => name);
 
-/** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
-const PINNED_SHAPE = {
-  'map.frontier': { spine: true, subject: true, authority: 'declared' },
-  'map.view': { spine: true, subject: true, authority: 'declared' },
-  'access.read': { spine: false, subject: false, authority: 'declared' },
-  'automation.registry': { spine: false, subject: false, authority: 'declared' },
-  'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'connection.fleet': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'connection.signal': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
-  'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
-  'harness.read': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'inbox.count': { spine: false, subject: false, authority: 'self' },
-  'inbox.read': { spine: false, subject: false, authority: 'self' },
-  'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
-  'live_correction.read': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'operations.read': { spine: false, subject: false, authority: 'declared' },
-  'person.list': { spine: false, subject: false, authority: 'declared' },
-  'preference.read': { spine: false, subject: false, authority: 'self' },
-  'preset.plan': { spine: false, subject: false, authority: 'from the request' },
-  'privacy.draft_breach_notices': { spine: false, subject: false, authority: 'declared' },
-  'secret.list': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'session.person': { spine: false, subject: false, authority: 'self' },
-  'settings.read': { spine: false, subject: false, authority: 'declared' },
-  'tag.list': { spine: false, subject: false, authority: 'declared' },
-  'task.board': { spine: true, subject: false, authority: 'declared-within' },
-  'task.execution': { spine: true, subject: true, authority: 'declared' },
-  'task.queue': { spine: false, subject: false, authority: 'declared' },
-  'task.read': { spine: true, subject: true, authority: 'declared' },
-  'task.receipt': { spine: true, subject: true, authority: 'declared' },
-  'task.todos': { spine: true, subject: false, authority: 'declared' },
-  'task.search': { spine: true, subject: false, authority: 'holds-any-grant' },
-  'task.ledger': { spine: true, subject: false, authority: 'declared' },
-  'team.list': { spine: false, subject: false, authority: 'declared' },
-  'trace.read': { spine: true, subject: true, authority: 'declared' },
-};
-
 const PINNED_IDENTIFIERS = {
   'access.read': [],
   'automation.registry': [],
+  'chat.conversations': [],
+  'chat.messages': ['conversationId'],
   'client.list': [],
   'connection.fleet': [],
   'connection.signal': [],
@@ -102,8 +64,11 @@ const PINNED_IDENTIFIERS = {
   'trace.read': ['recordId'],
 };
 
-// MP-7-10: `team.list` is staff only; a client is told NOT_FOUND.
+// MP-7-10: `team.list` is staff only; a client is told NOT_FOUND. So are
+// C71-D's two conversation reads.
 const PINNED_OUTSIDER_NOT_FOUND = [
+  'chat.conversations',
+  'chat.messages',
   'map.frontier',
   'map.view',
   'task.board',
@@ -254,6 +219,9 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   // C80's correction and AW-12's run, which none of these bodies carries.
   'live_correction.read': unsent('correctionId', 'Send correctionId as the correction.'),
   'harness.read': unsent('runId', 'Send runId as the run’s identifier.'),
+  // C71-D: a conversation is named by its id, which none of these bodies carries.
+  'chat.conversations': BODIES.map(() => null),
+  'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -265,7 +233,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same thirty-seven reads', () => {
+  it('names the same thirty-nine reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
@@ -273,7 +241,7 @@ describe('the per-read facts at 06ab232', () => {
     expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
   });
 
-  it('tells an outsider NOT_FOUND on the same six', () => {
+  it('tells an outsider NOT_FOUND on the same eleven', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 
