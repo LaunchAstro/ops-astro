@@ -7,10 +7,11 @@
 // "no such container" counts as removed; lists again, which must be empty;
 // and `GET /info` must report zero containers. A malformed list, any other
 // delete answer, a second list that is not empty, or a count above zero
-// fails the sweep, and the caller retries it every 30 s.
+// fails the sweep. The caller's 30 s retry is proved where it lives, in
+// proxy-deletes-and-sweeps-on-its-own.test.ts.
 
 import { expect, it } from 'vitest';
-import { sweep, SWEEP_RETRY_MS, type SweepDaemon } from '../../packages/core-sandbox/src/sweep.ts';
+import { sweep, type SweepDaemon } from '../../packages/core-sandbox/src/sweep.ts';
 
 const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
@@ -90,8 +91,4 @@ it('fails when the second list is not empty or the daemon still counts a contain
   expect(await sweep(counted.port)).toEqual(failed);
   expect(counted.calls).toEqual(['list', 'list', 'info']);
   expect(await sweep(daemon([reply(200, []), reply(200, [])], {}, 0, 500).port)).toEqual(failed);
-});
-
-it('retries a failed sweep every 30 s', () => {
-  expect(SWEEP_RETRY_MS).toBe(30_000);
 });
