@@ -131,7 +131,7 @@ describe('MP-7-1 XC 2, 11 chips: Enter makes them, the cross and Backspace remov
   });
 });
 
-describe('#885 a reread keeps the search, the chips, the sort and the comment scope', () => {
+describe('a reread keeps the search, the chips, the sort and the comment scope', () => {
   it('a tick reads the list again under the same chips, words and sort', async () => {
     const gate: { answer?: () => void } = {};
     const held = new Promise<void>((resolve) => {
