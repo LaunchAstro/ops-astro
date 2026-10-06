@@ -16,8 +16,10 @@
  * `expiresAt` is the earlier of its own expiry and its parent's, since it
  * stands only while its parent does. `expiresAt` is when a grant was due to
  * end. `endedAt` is when its parent ended it, or when it was taken back or
- * handed back; it is null for a grant that simply ran out, and can fall
- * before or after `expiresAt`.
+ * settled: handed back, or settled when its agent was next minted a grant
+ * for the same purpose after it ran out. It is null for a live grant and for
+ * one that ran out and was never settled, and can fall before or after
+ * `expiresAt`.
  */
 export interface GrantView {
   readonly id: string;
