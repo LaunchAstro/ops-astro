@@ -36,6 +36,7 @@ import {
   reparkStepMove,
   setTaskState,
   isWayfinderRecord,
+  wayfinderFacts,
 } from '../../../core-records/src/index.ts';
 import type {
   TenantQuery,
@@ -52,6 +53,7 @@ import type { CommandName } from '../../../core-wire/src/index.ts';
 import type { FieldValues } from './requests.ts';
 import { lockSteps, moveSteps, type StepMove } from './tasks-steps.ts';
 import { askedAgain } from './prepare.ts';
+import { refuseUnlessOwnerCloses } from './wayfinder-owner.ts';
 
 /**
  * The task fields whose value is a person of this business.
@@ -175,6 +177,48 @@ const notPermitted = (from: string, fixes: readonly string[]): Refused =>
   refuse('TRANSITION_NOT_PERMITTED', [from], fixes);
 
 /**
+ * What every command that completes a task asks first, so none completes one
+ * around another: the owner rule on a map's grilling or prototype ticket, then
+ * contract 4.3, no approval gate on it open. A gate past its deadline is not
+ * open (`task.read` shows it expired). Asked under the task lock, which
+ * `propose` takes before it raises a gate and `decide` before it closes one,
+ * so neither can move under this read.
+ */
+export async function refuseCompletion(
+  tx: TenantQuery,
+  context: CommandContext,
+  taskId: string,
+  held = false,
+): Promise<Refused | undefined> {
+  const owner = await refuseUnlessOwnerCloses(tx, context, await wayfinderFacts(tx, taskId));
+  if (owner !== undefined) return refused(owner);
+  // `held`: the envelope holds the task `for no key update` (a wayfinder
+  // write), which stands in for the runtime's task lock: a gate is raised only
+  // under that lock `for update`, which waits on this one, and closing a gate
+  // only loosens. Taking it `for update` here would block a sibling's
+  // frontier refresh again.
+  if (!held) await acquire(tx, [{ lockClass: 'task', id: taskId }]);
+  return (await openGateOn(tx, taskId)) ? refused(gatePending()) : undefined;
+}
+
+/**
+ * Completing archives the unfinished steps and reopening restores the ones it
+ * archived (MP-4-15): the steps locked and asked about before anything is
+ * written, then the parent's grant asked again once they are held, so one
+ * revoked while this waited for them moves nothing (#443).
+ */
+export async function holdSteps(
+  tx: TenantQuery,
+  context: CommandContext,
+  taskId: string,
+  move: StepMove,
+): Promise<readonly string[] | Refused> {
+  const steps = await lockSteps(tx, context, taskId, move);
+  if (!steps.ok) return refused(steps.refusal);
+  return (await askedAgain(tx, context, taskId)) ?? steps.ids;
+}
+
+/**
  * Move the lifecycle, and let the stamp follow.
  *
  * The state is chosen by machine category rather than by key, because the five
@@ -229,13 +273,9 @@ export async function setState(
     ]);
   }
 
-  // Contract 4.3: a task is not completed while an approval gate on it is
-  // open. A gate past its deadline is not open (`task.read` shows it expired).
-  // Asked under the task lock, which `propose` takes before it raises a gate
-  // and `decide` before it closes one, so neither can move under this read.
   if (category === 'completed') {
-    await acquire(tx, [{ lockClass: 'task', id: target.id }]);
-    if (await openGateOn(tx, target.id)) return refused(gatePending());
+    const refusal = await refuseCompletion(tx, context, target.id);
+    if (refusal !== undefined) return refusal;
   }
 
   // A task an agent holds is completed only after review (MP-4-15, BOARDS
@@ -260,18 +300,9 @@ export async function setState(
     );
   }
 
-  // Completing archives the unfinished steps and reopening restores the ones
-  // it archived (MP-4-15): locked and asked about before anything is written.
   const stepMove = review ? undefined : STEP_MOVE[category];
-  const steps =
-    stepMove === undefined
-      ? { ok: true as const, ids: [] }
-      : await lockSteps(tx, context, target.id, stepMove);
-  if (!steps.ok) return refused(steps.refusal);
-  // The parent's grant asked again once its steps are held: one revoked while
-  // this waited for them moves nothing (#443).
-  const lost = stepMove === undefined ? undefined : await askedAgain(tx, context, target.id);
-  if (lost !== undefined) return lost;
+  const steps = stepMove === undefined ? [] : await holdSteps(tx, context, target.id, stepMove);
+  if ('refusal' in steps) return steps;
 
   const moved = await setTaskState(tx, {
     taskId: target.id,
@@ -279,7 +310,7 @@ export async function setState(
     taskStateTypeId: context.spine.taskStateTypeId,
   });
   if (isRecordsRefusal(moved)) return refused(moved);
-  if (stepMove !== undefined) await moveSteps(tx, steps.ids, stepMove);
+  if (stepMove !== undefined) await moveSteps(tx, steps, stepMove);
 
   const rows = await tx.query<{ readonly revision: string }>(
     `select revision::text as revision from records where business_id = $1 and id = $2`,
