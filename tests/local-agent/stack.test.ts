@@ -6,9 +6,17 @@
 // through a symlink, and writes the API's settings for a `local-gpt` broker
 // that the composition root accepts as they stand.
 
-import { chmodSync, existsSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { brokerSettings } from '../../apps/api/model-broker.ts';
 import { startStack, type Stack } from '../../apps/local-agent/stack.ts';
@@ -24,8 +32,8 @@ afterEach(async () => {
   world = undefined;
 });
 
-const fresh = (): World => {
-  world = makeWorld();
+const fresh = (options?: { absentHome?: boolean }): World => {
+  world = makeWorld(options);
   return world;
 };
 
@@ -37,10 +45,31 @@ async function start(w: World, overrides: Record<string, string | undefined> = {
   return started;
 }
 
+/** Every path under the runner's home, or null while there is no home. */
+function tree(home: string): string[] | null {
+  if (!existsSync(home)) return null;
+  return readdirSync(home, { recursive: true, encoding: 'utf8' }).toSorted();
+}
+
+/** A Codex for a home that is not signed in, kept outside the runner's home. */
+function notSignedIn(w: World): string {
+  const bin = join(dirname(w.agentHome), 'codex-not-signed-in');
+  writeFileSync(bin, "#!/bin/sh\necho 'Not logged in'\nexit 1\n", { mode: 0o755 });
+  return bin;
+}
+
 describe('what the stack refuses before writing anything', () => {
+  it('refuses a first start with no Codex login, and the home it names stays absent', async () => {
+    const w = fresh({ absentHome: true });
+    expect(existsSync(w.agentHome)).toBe(false);
+    const overrides = { OPS_LOCAL_AGENT_CODEX_BIN: notSignedIn(w) };
+    expect(await start(w, overrides)).toMatchObject({ ok: false, code: 'CODEX_NOT_SIGNED_IN' });
+    expect(existsSync(w.agentHome)).toBe(false);
+  });
+
   it.each([
     ['off the laptop', { OPS_ENVIRONMENT: 'staging' }, {}, 'LOCAL_ONLY'],
-    ['with no Codex login', {}, { login: 'none' }, 'CODEX_NOT_SIGNED_IN'],
+    ['with a Codex home that is not signed in', {}, { login: 'none' }, 'CODEX_NOT_SIGNED_IN'],
     ['on an API-key login, which bills', {}, { login: 'apikey' }, 'CODEX_NOT_SIGNED_IN'],
     [
       'an installation with a quote',
@@ -51,10 +80,9 @@ describe('what the stack refuses before writing anything', () => {
   ])('refuses %s', async (_label, overrides, knobs, code) => {
     const w = fresh();
     w.knobs(knobs);
+    const before = tree(w.agentHome);
     expect(await start(w, overrides)).toMatchObject({ ok: false, code });
-    expect(existsSync(join(w.agentHome, 'credentials.json'))).toBe(false);
-    expect(existsSync(join(w.agentHome, 'api.env'))).toBe(false);
-    expect(existsSync(join(w.agentHome, 'runner.lock'))).toBe(false);
+    expect(tree(w.agentHome)).toEqual(before);
   });
 
   it.each([
@@ -64,10 +92,9 @@ describe('what the stack refuses before writing anything', () => {
   ])('refuses %s', async (_label, mode, overrides, code) => {
     const w = fresh();
     chmodSync(w.agentHome, mode);
+    const before = tree(w.agentHome);
     expect(await start(w, overrides)).toMatchObject({ ok: false, code });
-    expect(existsSync(join(w.agentHome, 'credentials.json'))).toBe(false);
-    expect(existsSync(join(w.agentHome, 'api.env'))).toBe(false);
-    expect(existsSync(join(w.agentHome, 'runner.lock'))).toBe(false);
+    expect(tree(w.agentHome)).toEqual(before);
   });
 });
 

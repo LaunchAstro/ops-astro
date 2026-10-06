@@ -6,10 +6,11 @@
 // closed grammar, so a tool call, a failed turn or an unknown event never
 // becomes an answer.
 
-import { existsSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  codexLogin,
   DISABLED_FEATURES,
   readCodexEvents,
   runCodex,
@@ -167,6 +168,40 @@ describe('what never becomes an answer', () => {
       expect(w.calls()).toEqual([]);
     },
   );
+});
+
+/** Whether a process of that pid still runs. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe('the login check', () => {
+  it('a login still unanswered at its deadline is no login, though a descendant holds its output', async () => {
+    const { w, settings } = setUp({ login: 'wrapper' });
+    const pidFile = join(w.codexHome, 'descendant.pid');
+    let timer: NodeJS.Timeout | undefined;
+    const pending = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        resolve('still pending');
+      }, 3_000);
+    });
+    try {
+      expect(await Promise.race([codexLogin(settings, 500), pending])).toBe(false);
+      const descendant = Number(readFileSync(pidFile, 'utf8'));
+      await expect.poll(() => alive(descendant)).toBe(false);
+    } finally {
+      clearTimeout(timer);
+      if (existsSync(pidFile)) {
+        const descendant = Number(readFileSync(pidFile, 'utf8'));
+        if (alive(descendant)) process.kill(descendant, 'SIGKILL');
+      }
+    }
+  });
 });
 
 describe('the event grammar', () => {

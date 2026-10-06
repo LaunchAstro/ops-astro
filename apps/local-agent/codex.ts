@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the one file the egress allowlist lets spawn codex: its call and its login check */
 //
 // One `codex exec` call (LA-1, GPT in Claude's place, owner 7 October 2026):
 // the prompt on stdin, the answer read from `--json`'s events. The child is
@@ -278,18 +279,29 @@ export async function runCodex(
 const PLAN_LOGIN = 'Logged in using ChatGPT';
 
 /** On the ChatGPT plan (an API key bills per call): `codex login status` exits 0 with that line. */
-export async function codexLogin(settings: RunnerSettings): Promise<boolean> {
-  mkdirSync(settings.codexHome, { recursive: true, mode: 0o700 });
+export async function codexLogin(settings: RunnerSettings, deadlineMs = 10_000): Promise<boolean> {
+  // Codex refuses a CODEX_HOME that is not there, so a missing one holds no login; nothing is made.
+  if (!existsSync(settings.codexHome)) return false;
   return await new Promise((resolve) => {
     const child = spawn(settings.codexBin, ['login', 'status'], {
       cwd: settings.codexHome,
       env: { ...settings.childEnv, CODEX_HOME: settings.codexHome },
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: false,
+      // Its own process group, so the deadline stops a wrapper's descendants with it.
+      detached: true,
     });
     const parts: Buffer[] = [];
     for (const out of [child.stdout, child.stderr]) out.on('data', (b: Buffer) => parts.push(b));
-    const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
+    // At the deadline it is no login, whatever still holds the output open.
+    const timer = setTimeout(() => {
+      resolve(false);
+      try {
+        if (child.pid !== undefined) process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        // The group has already gone.
+      }
+    }, deadlineMs);
     child.on('error', () => resolve(false));
     child.on('close', (code) => {
       clearTimeout(timer);

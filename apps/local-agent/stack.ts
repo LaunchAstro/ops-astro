@@ -12,7 +12,7 @@
 // credentials file; nothing prints it.
 
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { LOCAL_GPT_PROVIDER } from '../../packages/core-connectors/src/index.ts';
@@ -138,14 +138,14 @@ async function ready(
       message: 'OPS_LOCAL_AGENT_PORT is a port number',
     };
   }
-  mkdirSync(settings.home, { recursive: true, mode: 0o700 });
-  const home = statSync(settings.home);
+  // Nothing is made before the login is checked; a home not there yet holds no login.
+  const home = statSync(settings.home, { throwIfNoEntry: false });
   // A home someone else owns could hold their symlinks or read the key.
-  if (home.uid !== process.getuid?.()) {
+  if (home !== undefined && home.uid !== process.getuid?.()) {
     return { ok: false, code: 'HOME_NOT_OWNED', message: 'OPS_LOCAL_AGENT_HOME is not yours' };
   }
   // In a home others can write to, they could rename their own api.env over the one the owner sources.
-  if ((home.mode & 0o022) !== 0) {
+  if (home !== undefined && (home.mode & 0o022) !== 0) {
     return {
       ok: false,
       code: 'HOME_NOT_PRIVATE',
@@ -156,7 +156,7 @@ async function ready(
     return {
       ok: false,
       code: 'CODEX_NOT_SIGNED_IN',
-      message: `sign the runner's Codex home in to ChatGPT once: CODEX_HOME=${settings.codexHome} codex login`,
+      message: `sign the runner's Codex home in to ChatGPT once: mkdir -p -m 700 ${settings.home} ${settings.codexHome} && CODEX_HOME=${settings.codexHome} codex login`,
     };
   }
   return { ok: true, settings, port };

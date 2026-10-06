@@ -6,9 +6,11 @@
 // and its pid in its CODEX_HOME's calls.jsonl and answers as that folder's
 // fake.json says: a reply, extra event lines, a tool item, a failed turn, the
 // plan's usage limit, raw output, the tokens used, an exit code or a wait.
-// The login answers as its `login` knob says. It never reaches a model.
+// The login answers as its `login` knob says; `wrapper` is a wrapper whose
+// descendant holds its output open and never answers. It never reaches a model.
 
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const home = process.env.CODEX_HOME ?? '';
@@ -18,6 +20,13 @@ const knobs = existsSync(knobsFile) ? JSON.parse(readFileSync(knobsFile, 'utf8')
 // `codex login status`: the login fake.json names (ChatGPT unless it says otherwise).
 if (process.argv[2] === 'login') {
   const login = knobs.login ?? 'chatgpt';
+  if (login === 'wrapper') {
+    const descendant = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], {
+      stdio: ['ignore', 'inherit', 'inherit'],
+    });
+    writeFileSync(join(home, 'descendant.pid'), String(descendant.pid));
+    await new Promise(() => {});
+  }
   if (login === 'chatgpt') process.stdout.write('Logged in using ChatGPT\n');
   else if (login === 'apikey') process.stdout.write('Logged in using an API key - sk-proj-***\n');
   else process.stdout.write('Not logged in\n');
