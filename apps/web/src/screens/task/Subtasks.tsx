@@ -31,7 +31,7 @@ import { useCommand } from '../../records/use-command.ts';
 import { stepMarks } from './perspective-counts.ts';
 import { TeamWork, type PanelOpener } from './Perspectives.tsx';
 import { TimeLog } from './Time.tsx';
-import { useHeldOperations } from './held-operations.ts';
+import { holding, useHeldOperations } from './held-operations.ts';
 
 const REOPEN_REASON = 'Unticked on the parent task’s subtask list.';
 /** The add box's words where the page holds them above its read; the panel's box keeps its own. */
@@ -131,11 +131,11 @@ function AddStep(props: {
     const wanted = title.trim();
     if (wanted === '' || busy) return;
     const body = { fields: { title: wanted }, parentId: props.parentId };
-    const operationId = (held[JSON.stringify(body)] ??= props.client.newOperationId());
+    const hold = holding(held, 'task.create', body, () => props.client.newOperationId());
     run(
-      () => props.client.mutate('task.create', body, { operationId }),
+      () => props.client.mutate('task.create', body, { operationId: hold.id }),
       (settlement) => {
-        if (settlement.kind !== 'unknown') held[JSON.stringify(body)] = undefined;
+        hold.settle(settlement.kind);
         // A name typed since is the next one, not this one's to clear.
         if (settlement.kind === 'ok' && typed.current === title) setTitle('');
         if (settlement.kind === 'ok') props.onChanged();

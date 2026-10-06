@@ -14,7 +14,7 @@ import type { TaskTimeView, TimeEntryView } from '../../../../../packages/core-w
 import { useSignedInName } from '../../app-state.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
-import { useHeldOperations } from './held-operations.ts';
+import { holding, useHeldOperations } from './held-operations.ts';
 
 /** The entries shown before the fold (CS-4.31). */
 const LATEST = 3;
@@ -163,9 +163,9 @@ function LogBox(props: {
   const send = (): void => {
     const duration = typed.trim();
     if (duration === '' || props.busy) return;
-    const operationId = (held[duration] ??= props.mint());
-    props.log(duration, operationId, (kind) => {
-      if (kind !== 'unknown') held[duration] = undefined;
+    const hold = holding(held, 'time.log', duration, props.mint);
+    props.log(duration, hold.id, (kind) => {
+      hold.settle(kind);
       if (kind === 'ok') setTyped((now) => (now === typed ? '' : now));
     });
   };
