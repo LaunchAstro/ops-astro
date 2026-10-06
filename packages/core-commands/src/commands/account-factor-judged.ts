@@ -9,7 +9,7 @@
 import {
   ENDED_FIXES,
   endProviderSession,
-  sessionEnded,
+  sessionEndedSince,
   withSession,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -77,22 +77,37 @@ export async function judged(
       await tx.query('savepoint factor_act');
       const refusal = await settle(await check(tx, session));
       // The session asked again after the act's last wait (the factor lock,
-      // the audit chain): one signed out meanwhile undoes the act, whatever
-      // it decided (a refusal can change records too: a verify's losing
-      // enrolment is removed), and the refusal is recorded in its place (#443).
+      // the audit chain), its ending keys held (C52-A): one signed out
+      // meanwhile undoes the act, whatever it decided (a refusal can change
+      // records too: a verify's losing enrolment is removed), and the refusal
+      // is recorded in its place (#443); one ending now, in any business,
+      // waits for the act to commit.
       if (stage === 'before') return refusal;
       const { sessionId } = caller.presented;
-      if (sessionId === undefined || !(await sessionEnded(tx, caller.presented))) return refusal;
-      await tx.query('rollback to savepoint factor_act');
-      // The rollback also takes back the ending `sessionEnded` records for a
-      // session refused while a reset is open, so the session is ended here,
-      // whatever ended it: an ended session stays ended, and asking again
-      // could miss a reset that settled since.
-      await endProviderSession(tx, sessionId);
-      return await settle(refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES));
+      if (sessionId === undefined || !(await sessionEndedSince(tx, session))) return refusal;
+      return await undo(tx, sessionId, settle);
     },
     'enrolling',
   );
   if (outcome === undefined) return undefined;
   return asCallerVisible(outcome);
+}
+
+/**
+ * The act undone once its session ended: rolled back, the refusal recorded in
+ * its place, and the session ended here, whatever ended it. The rollback also
+ * takes back the ending `sessionEnded` records for a session refused while a
+ * reset is open; an ended session stays ended, and asking again could miss a
+ * reset that settled since. The refusal's audit event comes first, so the
+ * session's key follows the chain in the one order (ending-keys.ts).
+ */
+async function undo(
+  tx: TenantQuery,
+  sessionId: string,
+  settle: (refusal: CommandRefusal) => Promise<CommandRefusal | undefined>,
+): Promise<CommandRefusal | undefined> {
+  await tx.query('rollback to savepoint factor_act');
+  const expired = await settle(refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES));
+  await endProviderSession(tx, sessionId);
+  return expired;
 }
