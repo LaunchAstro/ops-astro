@@ -34,5 +34,6 @@ export async function readQueue(
     lineageId: entry.lineageId,
     purpose: entry.purpose,
     heldMinor: entry.heldMinor,
+    proposedByActorId: entry.proposedByActorId,
   }));
 }
