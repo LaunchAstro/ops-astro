@@ -16,12 +16,12 @@
 // check and on a failed delete of its recorded container. While no sweep
 // has passed every request is `unavailable`, and the sweep repeats every
 // 30 s; a run whose container a sweep removed stays `unavailable`. A throw
-// fails a sweep, kill or delete, and answers the launcher `internal`. A wait
-// counts only if sent after a start answered 204 (a created container's wait
-// answers at once). A start at the deadline is refused, and one answered at
-// or after it is killed again. `tick`
-// is the caller's timer for P4 and P6's kill and deletes. Loads and image
-// calls are P5's (piece 2d-ii).
+// fails a sweep or delete and answers the launcher `internal`. A wait counts
+// only if sent after a start answered 204 (a created container's wait
+// answers at once), and a start at the deadline is refused. `tick` is the
+// caller's timer: it kills at every tick from the deadline until the record
+// clears, whatever any answer, and deletes when P4 and P6 say so. Loads and
+// image calls are P5's (piece 2d-ii).
 
 import {
   candidateCreate,
@@ -40,8 +40,6 @@ import {
   type DeleteAnswer,
   deleteAnswered,
   EMPTY_CONTAINERS,
-  type KillAnswer,
-  killAnswered,
   noteAttachClosed,
   noteAttachEnded,
   noteWaitReturned,
@@ -75,7 +73,7 @@ export type ProxyPorts = {
 
 /** B6's wall clock per built class; a probe runs under the class it probes. */
 const WALL_MS = { 'site.build': 120_000, 'site.prepare': 600_000 } as const;
-const [OK, CREATED, NO_CONTENT, NOT_FOUND, NOT_RUNNING] = [200, 201, 204, 404, 409];
+const [OK, CREATED, NO_CONTENT, NOT_FOUND] = [200, 201, 204, 404];
 const UNAVAILABLE = unavailable('sweep');
 const THREW: Reply = { status: 0, body: new Uint8Array() };
 
@@ -86,8 +84,6 @@ function pinnedFor(pins: PinList, shape: CreateShape, image: string): boolean {
   return [...entries].some((entry) => entry.image === image && sameList(entry.env, shape.env));
 }
 
-const killAnswer = (status: number): KillAnswer =>
-  status === NO_CONTENT ? 'landed' : status === NOT_RUNNING ? 'not running' : 'failed';
 const deleteAnswer = (status: number): DeleteAnswer =>
   status === NO_CONTENT ? 'removed' : status === NOT_FOUND ? 'no such container' : 'failed';
 
@@ -139,10 +135,7 @@ export class ProxyState {
     }
     const started = 'id' in op && this.#started === op.id;
     const reply = await this.#call(op);
-    if (op.kind === 'start' && reply.status === NO_CONTENT) {
-      this.#started = op.id;
-      await this.#exclusive(() => this.#startedLate(op.id));
-    }
+    if (op.kind === 'start' && reply.status === NO_CONTENT) this.#started = op.id;
     if (op.kind === 'wait') await this.#exclusive(() => this.#waited(op.id, started, reply));
     if (op.kind === 'delete') await this.#exclusive(() => this.#deleted(op.id, reply));
     return reply === THREW ? fault('reply status') : { ok: true, reply };
@@ -158,7 +151,7 @@ export class ProxyState {
       const id = this.#containers.container?.id;
       if (id === undefined) return;
       const due = containerDue(this.#containers, this.#ports.now());
-      if (due.kill) await this.#killed(await this.#call({ kind: 'kill', id }));
+      if (due.kill) await this.#call({ kind: 'kill', id });
       if (due.delete) await this.#deleted(id, await this.#call({ kind: 'delete', id }));
     });
   }
@@ -248,18 +241,6 @@ export class ProxyState {
         ? this.#candidates
         : recordCandidateWait(this.#candidates, run.image, run.run, code, now < held.deadline);
     await this.#save(candidates, noteWaitReturned(this.#containers, now));
-  }
-
-  /** A start answered at or after the deadline may have run after the deadline kill: kill again. */
-  async #startedLate(id: string): Promise<void> {
-    const held = this.#containers.container;
-    if (held?.id !== id || this.#ports.now() < held.deadline) return;
-    await this.#killed(await this.#call({ kind: 'kill', id }));
-  }
-
-  /** The proxy's own deadline kill, under the lock that read the id. */
-  async #killed(reply: Reply): Promise<void> {
-    await this.#save(this.#candidates, killAnswered(this.#containers, killAnswer(reply.status)));
   }
 
   async #deleted(id: string, reply: Reply): Promise<void> {

@@ -7,9 +7,9 @@
 // caller starts a sweep. Run operations take only the recorded full id.
 //
 // The deadline runs from the durable create record, so a container never
-// started has one too. The kill is due at the deadline until it lands (a
-// kill refused because the container is not running counts as landed),
-// whatever the wait has answered. The delete is due 30 s after the later of the wait
+// started has one too. The kill is due at every tick from the deadline
+// until the record clears, whatever any kill, start or wait answered: a
+// repeat kill of a stopped container is harmless. The delete is due 30 s after the later of the wait
 // returning and the attach ending, 30 s after the launcher fully closes
 // its attach before the wait returns, and at the latest 30 s after the
 // deadline; a `wall` crossing's container (the probe's) not before then. The id
@@ -28,13 +28,11 @@ export type Recorded = {
   readonly createdAt: number;
   readonly deadline: number;
   readonly wall: boolean;
-  readonly killed: boolean;
   readonly waitAt: number | null;
   readonly attachAt: number | null;
   readonly closedAt: number | null;
 };
 export type ContainerBook = { readonly container: Recorded | null };
-export type KillAnswer = 'landed' | 'not running' | 'failed';
 export type DeleteAnswer = 'removed' | 'no such container' | 'failed';
 
 /** P4 and P6's 30 s. */
@@ -66,7 +64,6 @@ export const recordContainer = (
           createdAt: now,
           deadline: now + wallMs,
           wall,
-          killed: false,
           waitAt: null,
           attachAt: null,
           closedAt: null,
@@ -90,9 +87,6 @@ export const noteAttachClosed = (book: ContainerBook, now: number): ContainerBoo
     held.waitAt === null && held.closedAt === null ? { ...held, closedAt: now } : held,
   );
 
-export const killAnswered = (book: ContainerBook, answer: KillAnswer): ContainerBook =>
-  update(book, (held) => (answer === 'failed' ? held : { ...held, killed: true }));
-
 /** When the proxy's own delete falls due. */
 function deleteAt(held: Recorded): number {
   const latest = held.deadline + GRACE_MS;
@@ -109,7 +103,7 @@ export function containerDue(book: ContainerBook, now: number): { kill: boolean;
   const held = book.container;
   if (held === null) return { kill: false, delete: false };
   return {
-    kill: now >= held.deadline && !held.killed,
+    kill: now >= held.deadline,
     delete: now >= deleteAt(held),
   };
 }
@@ -123,7 +117,7 @@ export const deleteAnswered = (
 export const writeContainerBook = (book: ContainerBook): Uint8Array =>
   new TextEncoder().encode(JSON.stringify(book));
 
-const KEYS = ['id', 'createdAt', 'deadline', 'wall', 'killed', 'waitAt', 'attachAt', 'closedAt'];
+const KEYS = ['id', 'createdAt', 'deadline', 'wall', 'waitAt', 'attachAt', 'closedAt'];
 const isTime = (value: Json | undefined): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 const isTimeOrNull = (value: Json | undefined): value is number | null =>
@@ -131,7 +125,7 @@ const isTimeOrNull = (value: Json | undefined): value is number | null =>
 
 function readRecorded(value: Json | undefined): Recorded | null {
   if (!hasExactKeys(value, KEYS) || !isJsonObject(value)) return null;
-  const { id, createdAt, deadline, wall, killed, waitAt, attachAt, closedAt } = value;
+  const { id, createdAt, deadline, wall, waitAt, attachAt, closedAt } = value;
   const fits =
     typeof id === 'string' &&
     CONTAINER_ID.test(id) &&
@@ -139,11 +133,10 @@ function readRecorded(value: Json | undefined): Recorded | null {
     isTime(deadline) &&
     deadline >= createdAt &&
     typeof wall === 'boolean' &&
-    typeof killed === 'boolean' &&
     isTimeOrNull(waitAt) &&
     isTimeOrNull(attachAt) &&
     isTimeOrNull(closedAt);
-  return fits ? { id, createdAt, deadline, wall, killed, waitAt, attachAt, closedAt } : null;
+  return fits ? { id, createdAt, deadline, wall, waitAt, attachAt, closedAt } : null;
 }
 
 export function readContainerBook(bytes: Uint8Array): SandboxResult<{ book: ContainerBook }> {

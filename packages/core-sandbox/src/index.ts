@@ -26,7 +26,6 @@ export {
   deleteAnswered,
   EMPTY_CONTAINERS,
   GRACE_MS,
-  killAnswered,
   noteAttachClosed,
   noteAttachEnded,
   noteWaitReturned,
