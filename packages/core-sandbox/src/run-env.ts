@@ -43,16 +43,16 @@ export const S1_FIXED_NAMES: ReadonlySet<string> = new Set(S1_FIXED.map(([name])
 export const S1_OPENING: readonly string[] = S1_FIXED.map(([name, value]) => `${name}=${value}`);
 export const S2_OPENING: readonly string[] = S2_FIXED.map(([name, value]) => `${name}=${value}`);
 
-const BASE_NAME = /^[A-Z_][A-Z0-9_]*$/u;
-const VALUE = /^[ -~]*$/u;
+/** One `NAME=value` pair, whole: an uppercase name, then printable ASCII. */
+const PAIR = /^(?<name>[A-Z_][A-Z0-9_]*)=(?<value>[ -~]*)$/u;
 
 /** A base image variable as a pair, or null when it breaks uppercase NAME=value or is npm's. */
 export function basePair(item: string): Pair | null {
-  const at = item.indexOf('=');
-  const name = item.slice(0, at);
-  const value = item.slice(at + 1);
-  const fits = at > 0 && BASE_NAME.test(name) && VALUE.test(value);
-  return fits && !name.toLowerCase().startsWith('npm_config_') ? [name, value] : null;
+  const groups = PAIR.exec(item)?.groups;
+  if (groups === undefined) return null;
+  const { name, value } = groups;
+  if (name === undefined || value === undefined) return null;
+  return name.toLowerCase().startsWith('npm_config_') ? null : [name, value];
 }
 
 function pairs(env: readonly string[]): Pair[] | null {

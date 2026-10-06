@@ -51,7 +51,7 @@ function envList(value: Json | undefined, opening: readonly string[]): string[] 
   if (!Array.isArray(value)) return null;
   const items = value.filter((item): item is string => typeof item === 'string');
   if (items.length !== value.length || opening.some((item, at) => items[at] !== item)) return null;
-  const names = new Set(opening.map((item) => item.slice(0, item.indexOf('='))));
+  const names = new Set(opening.map((item) => item.split('=', 1)[0]));
   for (const item of items.slice(opening.length)) {
     const pair = basePair(item);
     if (pair === null || names.has(pair[0])) return null;
