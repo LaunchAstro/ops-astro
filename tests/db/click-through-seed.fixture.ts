@@ -53,12 +53,14 @@ export interface World extends Cast {
   readonly bravo: readonly [Snapshot, Snapshot];
 }
 
-/** Every table the seed could write, history, audit and receipts included. */
-const TABLES: readonly string[] = (
-  'records clients actors logins actor_logins grants planned_runs gates gate_decisions ' +
-  'proposal_versions leases delegations attempts reservations budget_asks handback_reports ' +
-  'operations audit_events live_changes run_events live_correction_receipts'
-).split(' ');
+/**
+ * Every table outside the system schemas, so a write anywhere is seen. The
+ * made-up guard's own schema is `guardState`'s. No table is left out: none
+ * of these changes by the clock alone while the seed is not running.
+ */
+const TABLES = `select format('%I.%I', schemaname, tablename) as name from pg_tables
+   where schemaname not in ('pg_catalog', 'information_schema', 'ops_astro_made_up')
+   order by 1`;
 
 export interface SeedOptions {
   readonly admin: FreshDatabase;
@@ -95,7 +97,7 @@ export function runSeed(script: string, options: SeedOptions): Ran {
 /** Every table, whole or one business's rows. */
 export async function snapshot(db: FreshDatabase, business?: string): Promise<Snapshot> {
   const out: Record<string, readonly unknown[]> = {};
-  for (const name of TABLES.map((table) => `public.${table}`)) {
+  for (const { name } of await db.admin.execute<{ name: string }>(TABLES)) {
     // One owner connection; the reads are sequential by construction.
     // oxlint-disable-next-line no-await-in-loop
     out[name] = await db.admin.execute(
