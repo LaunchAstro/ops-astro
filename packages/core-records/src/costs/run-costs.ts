@@ -2,9 +2,10 @@
 //
 // What agent runs cost (MP-14-9, MP-14-6), in money minor units, from the
 // broker's own model calls (AW-01). One row per run, agent and currency: the
-// spend of the run's settled calls, and how many of its started calls have no
-// settled cost yet (in flight, or their liability unknown), so a run with any
-// such call is unpriced rather than cheaper than it was. A call's currency is
+// spend of the run's settled calls, and how many of its started calls are
+// still open (in flight, or their liability unknown), so a run with any such
+// call is unpriced rather than cheaper than it was. A released call is a known
+// zero: the broker released it on proof that nothing happened. A call's currency is
 // its reservation's envelope's. A run's client is its task's client link,
 // named in `clients` (0055); its skill is the definition its
 // `definition_version` pin names, when that definition is a skill. Its units
@@ -15,10 +16,12 @@
 // `listRunCosts` filters by the scopes the caller holds `finance:read` at,
 // inside the statement, in the serving transaction: a business-wide holder
 // sees every run, a client-scoped holder only the runs whose task names that
-// client (never the agency's own runs), and row security keeps every table to
-// the caller's business.
+// client (never the agency's own runs) and, as the client view shows tasks,
+// never a run on a trashed task, a map or a map's ticket. Row security keeps
+// every table to the caller's business.
 
 import type { Scope } from '../authority/grants.ts';
+import { wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 export interface RunCostRow {
@@ -28,7 +31,7 @@ export interface RunCostRow {
   readonly currency: string;
   /** The settled calls' spend, as text: a bigint sum. */
   readonly settledMinor: string;
-  /** Started calls with no settled cost: in flight or liability unknown. */
+  /** Started calls still open: in flight or liability unknown. */
   readonly openCalls: number;
   /** The settled calls' input and output units, as text: bigint sums. */
   readonly inputUnits: string;
@@ -66,11 +69,16 @@ interface Row {
   readonly skill_name: string | null;
 }
 
-/** One row per run, agent and currency: `$1` business-wide, `$2` parties, `$3`-`$4` the window. */
+/**
+ * One row per run, agent and currency: `$1` business-wide, `$2` parties,
+ * `$3`-`$4` the window, and one row past `$5`, when given, so a caller can
+ * tell there were more.
+ */
 const RUN_COSTS = `with spent as (
      select c.business_id, c.run_id, d.agent_actor_id, e.currency,
             coalesce(sum(c.actual_minor), 0)::text as settled_minor,
-            (count(*) filter (where c.state <> 'settled'))::int as open_calls,
+            (count(*) filter (where c.state in ('reserved', 'dispatched', 'liability_unknown')))::int
+              as open_calls,
             coalesce(sum(c.input_units), 0)::text as input_units,
             coalesce(sum(c.output_units), 0)::text as output_units,
             (count(*) filter (where c.state = 'settled' and c.input_units is null))::int
@@ -110,10 +118,12 @@ const RUN_COSTS = `with spent as (
        on v.business_id = pin.business_id and v.id = pin.definition_version_id
      left join public.automation_definitions sd
        on sd.business_id = v.business_id and sd.id = v.definition_id and sd.kind = 'skill'
-    where ($1::boolean or t.uuid_7 = any($2::uuid[]))
+    where ($1::boolean or (t.uuid_7 = any($2::uuid[]) and t.deleted_at is null
+                           and not ${wayfinderCondition('t')}))
       and ($3::timestamptz is null or s.started_at >= $3)
       and ($4::timestamptz is null or s.started_at < $4)
-    order by s.started_at, s.run_id, s.agent_actor_id nulls last, s.currency`;
+    order by s.started_at, s.run_id, s.agent_actor_id nulls last, s.currency
+    limit $5::int + 1`;
 
 const rowOf = (row: Row): RunCostRow => ({
   runId: row.run_id,
@@ -139,6 +149,8 @@ const rowOf = (row: Row): RunCostRow => ({
 export interface CostPeriod {
   readonly from: Date | null;
   readonly to: Date | null;
+  /** The rows wanted; one more comes back when there are more. */
+  readonly rows?: number;
 }
 
 const ALL_TIME: CostPeriod = { from: null, to: null };
@@ -151,6 +163,7 @@ export async function listRunCosts(
 ): Promise<readonly RunCostRow[]> {
   const whole = scopes.some((scope) => scope.kind === 'business');
   const parties = scopes.filter((scope) => scope.kind === 'party').map((scope) => scope.id);
-  const rows = await tx.query<Row>(RUN_COSTS, [whole, parties, period.from, period.to]);
+  const bound = period.rows ?? null;
+  const rows = await tx.query<Row>(RUN_COSTS, [whole, parties, period.from, period.to, bound]);
   return rows.map((row) => rowOf(row));
 }

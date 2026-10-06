@@ -17,34 +17,51 @@ import type {
   CostAttachment,
 } from '../../../core-wire/src/index.ts';
 import { invalid } from '../commands/operands.ts';
-import type { CommandRefusal } from '../commands/refusal.ts';
-import { financeScopes, groupBy, rowModels, sum } from './costs.ts';
+import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
+import {
+  financeScopes,
+  groupBy,
+  parseNoCostOperands,
+  rowModels,
+  sum,
+  type CostOperands,
+} from './costs.ts';
 
 const UNPRICED = 'A call’s cost is not known yet: it is still running or its liability is unknown.';
 
-/** The window a cost log reads: an ISO start before an ISO end. */
-export interface CostPeriodOperands {
+/** The window a cost log reads, an ISO start before an ISO end, and any key it does not take. */
+export interface CostPeriodOperands extends CostOperands {
   readonly from: string;
   readonly to: string;
 }
 
-/** An ISO date-time's instant, or NaN for anything else. */
+/**
+ * The whole of an ISO date-time with its zone, `Z` or an offset: one without
+ * would be read in the server's own zone, so the same request would cover
+ * different runs on different hosts.
+ */
+const ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/u;
+
+/** A zoned ISO date-time's instant, or NaN for anything else. */
 const instant = (value: unknown): number =>
-  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/u.test(value) ? Date.parse(value) : Number.NaN;
+  typeof value === 'string' && ZONED.test(value) ? Date.parse(value) : Number.NaN;
+
+/** The most rows one log answers, so no period hands out every run there is. */
+const LOG_ROWS = 1000;
 
 const PERIOD_FIX = 'Send from and to as ISO date-times, from before to.';
+const LOG_ROWS_FIX = `Ask for a shorter period: more than ${String(LOG_ROWS)} runs fall in this one.`;
 
 export function parseCostPeriod(
   body: Readonly<Record<string, unknown>>,
 ):
   | { readonly ok: true; readonly operands: CostPeriodOperands }
   | { readonly ok: false; readonly refusal: CommandRefusal } {
-  const { from, to } = body;
-  if (Number.isNaN(instant(from))) return { ok: false, refusal: invalid('from', PERIOD_FIX) };
-  if (Number.isNaN(instant(to)) || instant(to) <= instant(from)) {
-    return { ok: false, refusal: invalid('to', PERIOD_FIX) };
-  }
-  return { ok: true, operands: { from: String(from), to: String(to) } };
+  const [from, to] = [instant(body['from']), instant(body['to'])];
+  if (Number.isNaN(from)) return { ok: false, refusal: invalid('from', PERIOD_FIX) };
+  if (Number.isNaN(to) || to <= from) return { ok: false, refusal: invalid('to', PERIOD_FIX) };
+  const { unknown } = parseNoCostOperands(body, ['from', 'to']).operands;
+  return { ok: true, operands: { from: String(body['from']), to: String(body['to']), unknown } };
 }
 
 function attachmentOf(row: RunCostRow): CostAttachment {
@@ -88,10 +105,14 @@ export async function readAgentCosts(
   session: Session,
   period: CostPeriodOperands,
 ): Promise<AgentCostsResult | CommandRefusal> {
-  const scopes = await financeScopes(tx, session);
+  const scopes = await financeScopes(tx, session, period);
   if (!Array.isArray(scopes)) return scopes as CommandRefusal;
   const window = { from: new Date(period.from), to: new Date(period.to) };
-  const runs = (await listRunCosts(tx, scopes, window)).map((row) => logRow(row));
+  const found = await listRunCosts(tx, scopes, { ...window, rows: LOG_ROWS });
+  if (found.length > LOG_ROWS) {
+    return refuseCommand('FIELD_VALUE_INVALID', ['from', 'to'], [LOG_ROWS_FIX]);
+  }
+  const runs = found.map((row) => logRow(row));
   return {
     ok: true,
     period: { from: window.from.toISOString(), to: window.to.toISOString() },

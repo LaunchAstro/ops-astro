@@ -9,9 +9,10 @@
 // are shapes of one statement (`listRunCosts`), filtered inside it: a
 // business-wide holder sees every run, a client-scoped holder that client's
 // runs only, in rows and in every total, since each total is summed from the
-// same rows. A caller holding the key nowhere is refused rather than shown
-// an empty page. A run with a call whose cost is not known yet is unpriced:
-// counted, in no figure and no total, and it says so.
+// same rows. A caller holding the key at no business or client scope (a
+// record scope names no run) is refused rather than shown an empty page. A
+// run with a call whose cost is not known yet is unpriced: counted, in no
+// figure and no total, and it says so.
 //
 // A skill's figure follows the mockup's attribution rule: its mean only from
 // runs that used it alone and only from more than one priced run, with the
@@ -45,22 +46,45 @@ const DOCUMENT: Unavailable = {
   reason: 'Process documents open at their Docs address once Docs exists.',
 };
 
-/** The scopes the caller reads costs at, or the refusal for holding them nowhere. */
+/** The keys a cost read's body carries that it does not take. */
+export interface CostOperands {
+  readonly unknown: readonly string[];
+}
+
+/**
+ * A cost read's body, closed: every key but the envelope's and `takes`, the
+ * read's own, is named, and the read refuses it rather than ignore a filter
+ * the caller believes it applied.
+ */
+export function parseNoCostOperands(
+  body: Readonly<Record<string, unknown>>,
+  takes: readonly string[] = [],
+): { readonly ok: true; readonly operands: CostOperands } {
+  const known = new Set(['read', 'operationId', ...takes]);
+  return { ok: true, operands: { unknown: Object.keys(body).filter((key) => !known.has(key)) } };
+}
+
+/**
+ * The business and client scopes the caller reads costs at, or the refusal
+ * for holding no such scope, then for a key the read does not take.
+ */
 export async function financeScopes(
   tx: TenantQuery,
   session: Session,
+  { unknown = [] }: Partial<CostOperands>,
 ): Promise<readonly Scope[] | CommandRefusal> {
-  const scopes = await heldScopes(tx, subjectsOf(session), {
-    collection: 'finance',
-    action: 'read',
-  });
-  return scopes.length > 0
-    ? scopes
-    : refuseCommand(
-        'SCOPE_NOT_GRANTED',
-        ['finance:read'],
-        ['no live grant covers it', 'ask a holder who may delegate'],
-      );
+  const held = await heldScopes(tx, subjectsOf(session), { collection: 'finance', action: 'read' });
+  const scopes = held.filter((scope) => scope.kind !== 'record');
+  if (scopes.length === 0) {
+    return refuseCommand(
+      'SCOPE_NOT_GRANTED',
+      ['finance:read'],
+      ['no live grant covers it', 'ask a holder who may delegate'],
+    );
+  }
+  return unknown.length > 0
+    ? refuseCommand('COMMAND_BODY_INVALID', unknown, ['Send only the fields this read takes.'])
+    : scopes;
 }
 
 /** One run in one currency: its agents' rows summed. */
@@ -213,8 +237,9 @@ function splitOf(runs: readonly Run[]): AttributionSplitView {
 export async function readSkillCosts(
   tx: TenantQuery,
   session: Session,
+  operands: Partial<CostOperands>,
 ): Promise<SkillCostsResult | CommandRefusal> {
-  const scopes = await financeScopes(tx, session);
+  const scopes = await financeScopes(tx, session, operands);
   if (!Array.isArray(scopes)) return scopes as CommandRefusal;
   const runs = runsOf(await listRunCosts(tx, scopes));
   if (runs.length === 0) return { ok: true, costing: null };

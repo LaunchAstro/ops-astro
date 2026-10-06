@@ -48,7 +48,7 @@ import { readConnectionFleet } from './connections.ts';
 import { readConnectionSignal } from './signal.ts';
 import { readConnectionGraduation } from './graduation.ts';
 import { parseCostPeriod, readAgentCosts } from './agent-costs.ts';
-import { readSkillCosts } from './costs.ts';
+import { parseNoCostOperands, readSkillCosts } from './costs.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
@@ -667,14 +667,15 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   // What agent runs cost, asked per row by the scopes the caller holds
   // `finance:read` at, as `connection.fleet` is by `connection:read`: a caller
-  // holding it nowhere is refused inside the read.
+  // holding it nowhere, or sending a key the read does not take, is refused
+  // inside the read.
   'finance.skill_costs': {
     identifiers: [],
-    parse: NONE,
+    parse: parseNoCostOperands,
     spine: false,
     authority: 'holds-any-grant',
     outsiderNotFound: false,
-    serve: async (tx, session) => await readSkillCosts(tx, session),
+    serve: async (tx, session, operands) => await readSkillCosts(tx, session, operands),
   },
   'finance.agent_costs': {
     identifiers: [],

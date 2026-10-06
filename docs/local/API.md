@@ -3808,13 +3808,18 @@ Skill costing on Connections & signal (MP-14-9) and what our agents cost us
 (`listRunCosts`, `costs/run-costs.ts`). Both reads are asked by the scopes the
 caller holds `finance:read` at, filtered inside the statement: a business-wide
 holder sees every run, a client-scoped holder only the runs whose task names
-that client, never the agency's own; a caller holding it nowhere is refused
-`SCOPE_NOT_GRANTED`. A person's reads only: no agent route. A run's client is
+that client, never the agency's own and, as the client view shows tasks, never
+one on a trashed task, a map or a map's ticket. A caller holding it at no
+business or client scope (a record scope names no run) is refused
+`SCOPE_NOT_GRANTED`; then a key the read does not take is refused
+`COMMAND_BODY_INVALID` 400 naming it, never ignored. A person's reads only: no
+agent route. A run's client is
 its task's client link, named in `clients`.
 
-A run's cost is the sum of its settled calls; a run with any started call not
-settled (in flight, or its liability unknown) is unpriced, counted and in no
-figure or total. A skill's runs are those whose `definition_version` pin names
+A run's cost is the sum of its settled calls; a run with any started call
+still open (in flight, or its liability unknown) is unpriced, counted and in no
+figure or total. A released call is a known zero, released on proof that
+nothing happened. A skill's runs are those whose `definition_version` pin names
 one of its versions; a run names one definition, so none is shared yet. Its
 figure is a mean with the spread `lo` to `hi` from more than one priced run
 (and `finishedMean` from more than one handed back), `one` for a single priced
@@ -3826,10 +3831,10 @@ them. `models: { ids, unnamedCalls }`, on a skill and on each log row, lists
 every exact model id its calls named and counts the settled calls that named
 none. The process document is `{ available: false, reason }` until Docs exists.
 
-| Operation             | Route                  | Body           | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| --------------------- | ---------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `finance.skill_costs` | `/finance/skill_costs` | `{}`           | `{ ok: true, costing: { skills: [{ skillId, name, currency, runs, soloRuns, sharedRuns, unpricedRuns, tasks, figure, soloTotal, usage, models, document }], split: [{ currency, runs, total, solo: { runs, total }, shared, unattributed, unpricedRuns }] } \| null }`, `null` when nothing the caller may see has run; `SCOPE_NOT_GRANTED` 403                                                                                                          |
-| `finance.agent_costs` | `/finance/agent_costs` | `{ from, to }` | `{ ok: true, period: { from, to }, runs: [{ runId, taskId, agentActorId, attachment: { kind: 'client', id, name } \| { kind: 'agency' }, currency, cost, unpriced, startedAt, models }], byAgent: [{ agentActorId, currency, runs, unpricedRuns, total }], byAttachment: [{ attachment, currency, runs, unpricedRuns, total }] }`; `FIELD_VALUE_INVALID` 422 naming `from` or `to` unless both are ISO date-times, `from` first; `SCOPE_NOT_GRANTED` 403 |
+| Operation             | Route                  | Body           | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | ---------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `finance.skill_costs` | `/finance/skill_costs` | `{}`           | `{ ok: true, costing: { skills: [{ skillId, name, currency, runs, soloRuns, sharedRuns, unpricedRuns, tasks, figure, soloTotal, usage, models, document }], split: [{ currency, runs, total, solo: { runs, total }, shared, unattributed, unpricedRuns }] } \| null }`, `null` when nothing the caller may see has run; `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                              |
+| `finance.agent_costs` | `/finance/agent_costs` | `{ from, to }` | `{ ok: true, period: { from, to }, runs: [{ runId, taskId, agentActorId, attachment: { kind: 'client', id, name } \| { kind: 'agency' }, currency, cost, unpriced, startedAt, models }], byAgent: [{ agentActorId, currency, runs, unpricedRuns, total }], byAttachment: [{ attachment, currency, runs, unpricedRuns, total }] }`; `FIELD_VALUE_INVALID` 422 naming `from` or `to` unless both are ISO date-times with `Z` or an offset, `from` first, and naming both when more than 1,000 rows fall in the period; `SCOPE_NOT_GRANTED` 403 |
 
 ## Grants, tripwires and the night round (MP-14-8)
 
