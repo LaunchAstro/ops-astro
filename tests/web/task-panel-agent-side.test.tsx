@@ -13,96 +13,16 @@
 
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { StepUpContext } from '../../apps/web/src/records/use-money-command.ts';
+import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
-import { TaskPanel } from '../../apps/web/src/screens/task/Panel.tsx';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import type { RunScope } from '../../packages/ui/src/index.ts';
 import { DIGEST, lineage, running, version } from '../surfaces/mp-6-1-agent-fixtures.tsx';
-import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
-import { TASK_ID, task, tick } from './task-page-stub.tsx';
+import { typeInto, unmountAll } from './perspective-support.tsx';
+import { AGENT, KEY, PANE, agentSide, serving } from './task-panel-agent-support.tsx';
+import { TASK_ID, tick } from './task-page-stub.tsx';
 
 afterEach(unmountAll);
-
-const KEY = 'Proj-Verity-Pacing';
-const AGENT = '#panel-perspective-panel-agent';
-const PANE = `${AGENT} [data-section="agent"]`;
-
-const ignore = (): void => {
-  /* The case reads nothing from this call. */
-};
-
-interface Sent {
-  readonly to: string;
-  readonly body: Readonly<Record<string, unknown>>;
-}
-
-/** What `run.top_up` answers: accepted, or refused with this code. */
-type TopUp = 'ok' | 'STEP_UP_REQUIRED';
-
-/** A server answering one task with `over`, recording every command by its path. */
-function serving(
-  over: Readonly<Record<string, unknown>>,
-  topUp: TopUp = 'ok',
-  persons: readonly { readonly personId: string; readonly name: string }[] = [],
-) {
-  const sent: Sent[] = [];
-  const fetch = ((url: string | URL, init?: RequestInit) => {
-    const where = String(url);
-    if (where.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: task(over) }));
-    if (where.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons }));
-    // The drawer's planning allowance (AW-04): none to show here.
-    if (where.endsWith('/conversation/allowance'))
-      return Promise.resolve(json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404));
-    if (where.endsWith('/task/queue')) {
-      return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
-    }
-    if (where.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
-    if (where.endsWith('/preference/read'))
-      return Promise.resolve(json({ ok: true, preferences: {} }));
-    if (where.endsWith('/client/list')) return Promise.resolve(json({ ok: true, clients: [] }));
-    if (where.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [] }));
-    if (/\/live(\/task\/|\?|$)/u.test(where))
-      return Promise.resolve(new Response(null, { status: 404 }));
-    const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
-    const to = where.slice(where.indexOf('/', where.indexOf('/api/b/') + 7));
-    sent.push({ to, body });
-    if (to === '/run/top_up' && topUp !== 'ok') {
-      return Promise.resolve(json({ refused: true, code: topUp, names: [], fixes: [] }, 403));
-    }
-    return Promise.resolve(json({ ok: true, recordId: 'r', revision: 5 }));
-  }) as unknown as typeof globalThis.fetch;
-  return {
-    client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
-    sent,
-  };
-}
-
-/** The panel on its Agent side, counting the changes it asks the host to count. */
-async function agentSide(client: OperationsClient, element?: ReactElement) {
-  let changes = 0;
-  const view = await mount(
-    <StepUpContext.Provider
-      value={() => Promise.resolve({ ok: false, because: 'Not here.' } as const)}
-    >
-      {element}
-      <TaskPanel
-        client={client}
-        grantKey="alpha:member"
-        opening={{ taskKey: KEY, door: 'open', tab: null }}
-        onChanged={() => {
-          changes += 1;
-        }}
-        onClose={ignore}
-      />
-    </StepUpContext.Provider>,
-  );
-  await tick();
-  await view.click('#panel-perspective-tab-agent');
-  await tick();
-  return { view, changes: () => changes };
-}
 
 const stop = {
   askId: 'ask-1',
@@ -189,7 +109,7 @@ describe('S3 the dock panel Agent side', () => {
   it('DA-09 a money write refused for a second factor asks for the code in the panel', async () => {
     const proposals = [lineage({ reservations: [running] })];
     const over = { proposals, ledger: { envelopes: [], stops: [stop] } };
-    const { client } = serving(over, 'STEP_UP_REQUIRED');
+    const { client } = serving(over, { '/run/top_up': { code: 'STEP_UP_REQUIRED' } });
     const { view } = await agentSide(client);
     await typeInto(view, `${PANE} [data-stop="amount"]`, '5');
     await view.click(`${PANE} [data-stop="top-up"]`);
@@ -230,7 +150,7 @@ describe('S3 the dock panel Agent side', () => {
       }),
     ];
     const people = [{ personId: 'p-grace', name: 'Grace' }];
-    const { client, sent } = serving({ proposals }, 'ok', people);
+    const { client, sent } = serving({ proposals }, {}, people);
     const { view } = await agentSide(client);
     expect(view.find(`${PANE} [data-gate-action="request_changes"]`)).toBeNull();
     await view.choose(`${PANE} [data-gate-escalate="recipient"]`, 'p-grace');
@@ -243,6 +163,39 @@ describe('S3 the dock panel Agent side', () => {
       decision: 'escalate',
       recipientPersonId: 'p-grace',
     });
+  });
+
+  it('DA-07 a recipient the server refuses leaves the decider’s choice, approve and reject open', async () => {
+    const gate = { id: 'g-3', state: 'pending', round: 3, expiresAt: null, expired: false };
+    const proposals = [
+      lineage({
+        versions: [version({ versionId: 'v-3', gate: { ...gate, payloadDigest: DIGEST } })],
+      }),
+    ];
+    const people = [
+      { personId: 'p-xavier', name: 'Xavier' },
+      { personId: 'p-yara', name: 'Yara' },
+    ];
+    // Xavier lacks decide across the business: the refusal names the recipient field.
+    const refusals = {
+      '/task/decide': { code: 'SCOPE_NOT_GRANTED', names: ['recipientPersonId'] },
+    };
+    const { client, sent } = serving({ proposals }, refusals, people);
+    const { view, changes } = await agentSide(client);
+    await view.choose(`${PANE} [data-gate-escalate="recipient"]`, 'p-xavier');
+    await view.click(`${PANE} [data-gate-action="escalate"]`);
+    await tick();
+    expect(changes()).toBeGreaterThan(0);
+    expect(view.find(`${PANE} [data-agent="refusal"]`)).not.toBeNull();
+    expect(view.find(`${PANE} [data-gate="closed"]`)).toBeNull();
+    const recipient = view.find(`${PANE} [data-gate-escalate="recipient"]`) as HTMLSelectElement;
+    expect(recipient.value).toBe('p-xavier');
+    for (const control of ['[data-gate-action="approve"]', '[data-agent="reject"]']) {
+      expect((view.find(`${PANE} ${control}`) as HTMLButtonElement | null)?.disabled).toBe(false);
+    }
+    await view.click(`${PANE} [data-gate-action="approve"]`);
+    await tick();
+    expect(sent.map((call) => call.body['decision'])).toStrictEqual(['escalate', 'approve']);
   });
 
   it('S3 beside the task page, the two Agent panes repeat no id', async () => {
