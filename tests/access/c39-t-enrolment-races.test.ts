@@ -110,6 +110,15 @@ describe.skipIf(noDatabase)('C39-T enrolment races', () => {
     expect(e.users.passwords.get(String(e.users.users.get(address)))).toBe(second);
   }, 30_000);
 
+  it('C39-T enrolment: a provider that answered with a fault lets the claim go, so the same link enrols at once', async () => {
+    const address = addressFor('answered-fault');
+    const { token } = await invited(c.admin, address);
+    e.users.mode('fault');
+    expect(await acceptOwn(token, passwordFor())).toStrictEqual(UNAVAILABLE);
+    e.users.mode('accept');
+    expect(await acceptOwn(token, passwordFor())).toStrictEqual({ ok: true, state: 'enrolled' });
+  }, 30_000);
+
   it('C39-T enrolment: an accept whose claim lapsed binds nothing once another accept holds the claim', async () => {
     e.users.mode('accept');
     const address = addressFor('lapsed-claim');
