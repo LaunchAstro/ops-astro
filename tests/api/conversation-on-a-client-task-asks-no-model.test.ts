@@ -43,6 +43,7 @@ async function clientTask(w: ConversationWorld): Promise<string> {
   return taskId;
 }
 
+// eslint-disable-next-line max-lines-per-function -- one world, both cases on it
 describe.skipIf(serverUrl === undefined)('a conversation on a client’s task', () => {
   let w: ConversationWorld;
   let model: LocalModel;
