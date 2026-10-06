@@ -505,12 +505,11 @@ const NO_ROOM = "this run's spend and holds already fill the version's approved 
  * by the run's applied top-ups, less what its reservations of the version
  * committed (a live hold whole, a closed one at its spend). A closed hold
  * custody counted (`countedHold`: a top-up moved its spend, or the end) is at
- * its calls as `spentOn` counts them plus its actual: the top-up put the calls
- * on the envelope's actual, and every later close of the hold (a write-off,
- * an outcome, the classifier) charges only what it adds, leaving the counted
- * calls out (`modelCallsOn`). Any other closed hold is at its actual, its
- * unsent calls never counted. Read under the run lock. A replacement is held
- * at most this, whatever the newest-hold order says.
+ * its calls plus its actual: a later close charges only what it adds
+ * (`modelCallsOn`). One the classifier settled at its calls (`actual`, with
+ * its cause) before the top-up is at the greater, counted once. Any other is
+ * at its actual, its unsent calls never counted. Read under the run lock. A
+ * replacement is held at most this, whatever the newest-hold order says.
  */
 async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
   const [row] = await tx.query<{ readonly room: string }>(
@@ -520,7 +519,9 @@ async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
                             and a.kind = 'top_up'), 0)
              - coalesce((select sum(case when r.state in ('held', 'quarantined') then r.held_minor
                                          when ${countedHold('$4')}
-                                           then coalesce(r.actual_minor, 0) + ${callsSpentOf('r')}
+                                           then case when r.state = 'actual' and r.classified_cause is not null
+                                                     then greatest(r.actual_minor, ${callsSpentOf('r')})
+                                                     else coalesce(r.actual_minor, 0) + ${callsSpentOf('r')} end
                                          else coalesce(r.actual_minor, 0) end)
                            from public.reservations r
                           where r.business_id = ver.business_id and r.version_id = ver.id
