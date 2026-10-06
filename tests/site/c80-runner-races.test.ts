@@ -7,14 +7,18 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it, vi } from 'vitest';
 import { doubles } from './c80-runner-doubles.ts';
-import { runLiveRevert } from '../../packages/core-commands/src/index.ts';
+import { runLivePublish, runLiveRevert } from '../../packages/core-commands/src/index.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   approved,
   at,
+  expireLease,
+  handBack,
   latch,
   publish,
+  receipt,
   serverUrl,
+  takeOver,
   useRegisterWorld,
   w,
 } from './c80-register-world.ts';
@@ -114,5 +118,70 @@ describe.skipIf(serverUrl === undefined)('C80 publish, unknown retries at once',
     release();
     await running;
     expect(tasks).toEqual(['OUTCOME_UNKNOWN']);
+  });
+});
+
+/** An approved correction left unknown by a worker lost after the take, nothing registered. */
+async function leftUnknown(): Promise<string> {
+  const id = await approved();
+  const crashed = doubles({
+    publish: (input) => {
+      crashed.seen.dispatched.push(input);
+      return Promise.reject(new Error('worker lost after the take'));
+    },
+  });
+  await expect(publish(id, crashed)).rejects.toThrow('worker lost');
+  return id;
+}
+
+/** Healthy retries, counting the tasks they raise. */
+const healthy = (tasks: string[]) =>
+  doubles({
+    raiseTask: (reason) => {
+      tasks.push(reason);
+      return Promise.resolve();
+    },
+  });
+
+describe.skipIf(serverUrl === undefined)('C80 publish, an ask whose task was never made', () => {
+  it('asks again on the next healthy retry when raising the task failed', async () => {
+    const id = await leftUnknown();
+    const failing = doubles({ raiseTask: () => Promise.reject(new Error('task service down')) });
+    await expect(publish(id, failing)).rejects.toThrow('task service down');
+    expect((await receipt(id, 'publish'))['waits_on']?.observed).not.toBe('person');
+    const tasks: string[] = [];
+    const [first, second] = [healthy(tasks), healthy(tasks)];
+    const waits = { kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' };
+    expect([await publish(id, first), await publish(id, second)]).toEqual([waits, waits]);
+    expect(tasks).toEqual(['OUTCOME_UNKNOWN']);
+    const touched = [first, second].map((ports) => [
+      ports.seen.sourceReads,
+      ports.seen.dispatched.length,
+    ]);
+    expect(touched).toEqual([
+      [0, 0],
+      [0, 0],
+    ]);
+  });
+
+  it('asks again under a new lease when the worker was lost while raising the task', async () => {
+    const id = await leftUnknown();
+    const lost = doubles({
+      raiseTask: async () => {
+        await expireLease();
+        throw new Error('worker lost while raising the task');
+      },
+    });
+    await expect(publish(id, lost)).rejects.toThrow('worker lost while raising');
+    const next = await takeOver();
+    try {
+      const tasks: string[] = [];
+      const run = { ...at(id), ...next };
+      await runLivePublish(w.world.db.app, run, healthy(tasks));
+      await runLivePublish(w.world.db.app, run, healthy(tasks));
+      expect(tasks).toEqual(['OUTCOME_UNKNOWN']);
+    } finally {
+      await handBack(next.leaseId);
+    }
   });
 });

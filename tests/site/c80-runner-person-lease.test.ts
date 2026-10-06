@@ -12,7 +12,18 @@ import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { c80World, type C80World } from './c80-world.ts';
 import { doubles } from './c80-runner-doubles.ts';
 import { runLivePublish } from '../../packages/core-commands/src/index.ts';
-import { readCorrectionForRun } from '../../packages/core-records/src/site/index.ts';
+import {
+  readCorrectionForRun,
+  recordObservedResult,
+} from '../../packages/core-records/src/site/index.ts';
+import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
+import {
+  connect,
+  type Database,
+  type TenantQuery,
+} from '../../packages/core-records/src/tenancy/database.ts';
+import { WHOLE_BUSINESS, grantTo } from '../commands/fixture.ts';
+import postgres from 'postgres';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined)
@@ -97,6 +108,105 @@ async function personLease() {
     actorId: lease.holder,
   };
 }
+
+/** A revocation on another connection that gives up after 250 ms; true when it committed. */
+async function revokeElsewhere(revoker: Database, grantId: string): Promise<boolean> {
+  try {
+    return await revoker.withBusiness(w.world.business, async (other) => {
+      await other.query("set local lock_timeout = '250ms'");
+      await revokeGrant(other, grantId);
+      return true;
+    });
+  } catch (error) {
+    if (!(error instanceof postgres.PostgresError) || error.code !== '55P03') throw error;
+    return false;
+  }
+}
+
+/** An approved correction on a task Cal holds under a person lease. */
+async function approvedUnderPersonLease() {
+  const held = await personLease();
+  const detail = detailOf(await w.request(w.ava, { taskId: held.taskId }));
+  const id = String(detail['correctionId']);
+  expect(codeOf(await w.approve(w.ben, id, String(detail['versionId'])))).toBe('not-a-refusal');
+  return { ...held, id };
+}
+
+type Held = Awaited<ReturnType<typeof approvedUnderPersonLease>>;
+
+/** The holder's live publish receipt, with `onQuery` run before each of its statements. */
+async function recordLive(held: Held, onQuery: (sql: string) => Promise<void>) {
+  return await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+    const scheduled: TenantQuery = {
+      businessId: tx.businessId,
+      async query<Row>(sql: string, parameters?: readonly unknown[]): Promise<readonly Row[]> {
+        await onQuery(sql);
+        return await tx.query<Row>(sql, parameters);
+      },
+    };
+    const { id, leaseId, fence, actorId } = held;
+    const live = { step: 'publish', outcome: 'live', observations: { seen: 'live' } } as const;
+    return await recordObservedResult(scheduled, {
+      correctionId: id,
+      leaseId,
+      fence,
+      actorId,
+      ...live,
+    });
+  });
+}
+
+/** Every task write Cal holds, revoked on the other connection. */
+async function revokeOwnTaskWrites(revoker: Database): Promise<void> {
+  const old = await w.world.db.admin.execute<{ id: string }>(
+    `select id from public.grants where business_id = $1 and subject_id = any($2::uuid[])
+        and collection = 'task' and action = 'write' and revoked_at is null`,
+    [w.world.business, [w.cal.personId, w.cal.actorId]],
+  );
+  for (const grant of old) {
+    // oxlint-disable-next-line no-await-in-loop -- one connection
+    expect(await revokeElsewhere(revoker, grant.id)).toBe(true);
+  }
+}
+
+describe.skipIf(serverUrl === undefined)(
+  'C80 receipt under a person lease, a grant it never held',
+  () => {
+    it('refuses a receipt carried by a grant issued after its hold and revoked before its write', async () => {
+      const held = await approvedUnderPersonLease();
+      const revoker = connect(w.world.db.appUrl, { source: 'runtime' });
+      let issued: string | undefined;
+      let revoked = false;
+      try {
+        await revokeOwnTaskWrites(revoker);
+        const result = await recordLive(held, async (sql) => {
+          if (issued === undefined && /for share of l/u.test(sql)) {
+            const task = { kind: 'record', id: held.taskId } as const;
+            issued = await revoker.withBusiness(w.world.business, (other) =>
+              grantTo(other, w.cal, 'write', task),
+            );
+          }
+          if (issued !== undefined && /update public\.live_corrections/u.test(sql))
+            revoked = await revokeElsewhere(revoker, issued);
+        });
+        expect(issued).toBeDefined();
+        expect({
+          writeOk: result.ok,
+          state: await w.stateOf(held.id),
+          receipts: await w.receiptsOf(held.id),
+        }).toStrictEqual({ writeOk: false, state: 'approved', receipts: 0 });
+        expect(revoked).toBe(true);
+      } finally {
+        // Cal's writes back, for the next case's pickup.
+        await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+          await grantTo(tx, w.cal, 'write');
+          await grantTo(tx, w.cal, 'write', WHOLE_BUSINESS, false, 'run');
+        });
+        await revoker.close();
+      }
+    });
+  },
+);
 
 describe.skipIf(serverUrl === undefined)('C80 runner under a person lease', () => {
   it('refuses the read and the send once the holder’s write grants expired', async () => {
