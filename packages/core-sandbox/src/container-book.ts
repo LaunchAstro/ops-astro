@@ -100,8 +100,8 @@ function deleteAt(held: Recorded): number {
   const ends =
     held.waitAt !== null && held.attachAt !== null
       ? Math.max(held.waitAt, held.attachAt) + GRACE_MS
-      : latest;
-  const closed = held.closedAt === null ? latest : held.closedAt + GRACE_MS;
+      : Number.POSITIVE_INFINITY;
+  const closed = held.closedAt === null ? Number.POSITIVE_INFINITY : held.closedAt + GRACE_MS;
   return Math.min(ends, closed, latest);
 }
 
