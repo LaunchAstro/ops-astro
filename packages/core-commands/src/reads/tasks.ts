@@ -28,7 +28,7 @@ import {
   isUuid,
   readTaskTime,
   tagsOfTask,
-  isWayfinderRecord,
+  wayfinderCondition,
   INTERNAL_ROLE_KEYS,
   EFFECTIVE_GRANTS,
 } from '../../../core-records/src/index.ts';
@@ -361,7 +361,7 @@ export async function readSharedTask(
     `select r.revision::text as revision, ${slots.map((slot) => `r.${slot}, `).join('')}
             (select coalesce(jsonb_object_agg(e.key, e.value), '{}'::jsonb)
                from jsonb_each(r.data) e where e.key = any($4::text[])) as data,
-            s.data ->> 'label' as shared_state_label
+            s.data ->> 'label' as shared_state_label, ${wayfinderCondition('r')} as wayfinder
        from public.records r${STATE_JOIN}
       where r.business_id = $1 and r.record_type_id = $2 and r.id = $3
         and r.deleted_at is null`,
@@ -369,9 +369,9 @@ export async function readSharedTask(
   );
   const row = rows[0];
   if (row === undefined) return undefined;
-  // A map, its tickets and their threads never reach a client surface (WF-1),
-  // even under a read grant written behind the share path's back.
-  if (await isWayfinderRecord(tx, recordId)) return undefined;
+  // A map, its tickets and their threads never reach a client surface (WF-1), even
+  // under a grant written behind the share path's back; asked in the query above.
+  if (row['wayfinder'] === true) return undefined;
   const data = (row['data'] ?? {}) as Readonly<Record<string, unknown>>;
   const fields: Record<string, unknown> = {};
   for (const field of shared) {
