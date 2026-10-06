@@ -8,7 +8,8 @@
 // next tick, so a killed container never runs on, a failed sweep's wait
 // included. A launcher call the
 // daemon drops (a throw) answers `internal`, and a dropped delete of the
-// recorded container starts a sweep as any failed delete does. Every case
+// recorded container starts a sweep as any failed delete does. An attach
+// is taken only before its container's start was sent. Every case
 // runs against the fixture's doubles, not a real daemon.
 
 import { expect, it } from 'vitest';
@@ -26,6 +27,7 @@ import {
   refused,
   S1_WALL,
   s1,
+  settle,
   T0,
   UNAVAILABLE,
   world,
@@ -99,4 +101,21 @@ it('answers a dropped launcher call internal, and sweeps after a dropped delete'
   expect(await state.handle(op('delete', ID))).toEqual(dropped);
   expect(w.calls).toEqual(['delete', 'list', 'remove', 'list', 'info']);
   expect(heldId(w)).toBeNull();
+});
+
+it('takes an attach only before the start of its container was sent, answered or not', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(P, s1('p')));
+  const attach = { kind: 'attach', id: ID, bodyStart: 0 } as const;
+  expect(await state.handle(attach)).toEqual({ ok: true, reply: expect.anything() });
+  const release = hold(w, 'start');
+  const started = state.handle(op('start', ID));
+  await settle();
+  w.calls.length = 0;
+  expect(await state.handle(attach)).toEqual(refused('run order'));
+  release();
+  await started;
+  expect(await state.handle(attach)).toEqual(refused('run order'));
+  expect(w.calls).toEqual([]);
 });
