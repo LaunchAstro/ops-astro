@@ -40,6 +40,12 @@ export const LOCAL_GPT_NOTHING_HAPPENED: readonly string[] = [
   'LOCAL_MODEL_NOT_APPROVED',
   'LOCAL_PLAN_LIMIT',
   'LOCAL_GPT_FAILED',
+  // The runner's door refuses these before any work: a wrong key, path or method, a bad body.
+  'http_400',
+  'http_401',
+  'http_404',
+  'http_405',
+  'http_413',
 ];
 
 /** The adapter: fields in, a request for the default model with neither origin nor credential out. */

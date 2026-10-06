@@ -193,5 +193,10 @@ it('LA-1 operations: both register with all twelve declarations, on the local_gp
     'LOCAL_MODEL_NOT_APPROVED',
     'LOCAL_PLAN_LIMIT',
     'LOCAL_GPT_FAILED',
+    'http_400',
+    'http_401',
+    'http_404',
+    'http_405',
+    'http_413',
   ]);
 });

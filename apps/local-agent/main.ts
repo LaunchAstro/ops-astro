@@ -32,4 +32,10 @@ export async function main(
 if (import.meta.main) {
   const started = await main(process.env);
   if (typeof started === 'number') process.exit(started);
+  // A stop kills the call in flight and writes its row before the home is let go.
+  const stop = (): void => {
+    void started.close().then(() => process.exit(0));
+  };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
 }

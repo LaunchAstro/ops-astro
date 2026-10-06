@@ -89,6 +89,8 @@ interface Reading {
   usage: { readonly input: number; readonly output: number } | undefined;
   failed: boolean;
   limited: boolean;
+  /** A turn began: work may have been done, so an unreadable end is never nothing. */
+  started: boolean;
 }
 
 /** Codex's own words for a plan at its limit; they only choose the refusal, never let a call through. */
@@ -111,6 +113,7 @@ function readEvent(event: Record<string, unknown>, reading: Reading): boolean {
     reading.failed = true;
     if (USAGE_LIMIT.test(failureMessage(event))) reading.limited = true;
   }
+  if (type === 'turn.started' || type.startsWith('item.')) reading.started = true;
   if (type === 'turn.completed') {
     const usage = record(event['usage']);
     const input = count(usage?.['input_tokens']);
@@ -133,7 +136,13 @@ function readEvent(event: Record<string, unknown>, reading: Reading): boolean {
 
 /** Codex's events as one result, or nothing if they are not the grammar above. */
 export function readCodexEvents(stdout: string, requested: string): CodexResult | undefined {
-  const reading: Reading = { text: undefined, usage: undefined, failed: false, limited: false };
+  const reading: Reading = {
+    text: undefined,
+    usage: undefined,
+    failed: false,
+    limited: false,
+    started: false,
+  };
   for (const line of stdout.split('\n')) {
     if (line.trim() === '') continue;
     let parsed: unknown;
@@ -147,8 +156,8 @@ export function readCodexEvents(stdout: string, requested: string): CodexResult 
   }
   const { usage } = reading;
   if (usage === undefined) {
-    // A plan at its limit may end with no turn at all: nothing was used.
-    return reading.limited
+    // A plan at its limit before any turn began used nothing; after, what it used is unknown.
+    return reading.limited && !reading.started
       ? { text: '', model: requested, inputTokens: 0, outputTokens: 0, failed: true, limited: true }
       : undefined;
   }

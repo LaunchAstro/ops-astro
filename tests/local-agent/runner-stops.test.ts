@@ -37,6 +37,8 @@ describe('a call stopped part way', () => {
     await r.close();
     opened.length = 0;
     expect(Date.now() - began).toBeLessThan(3_000);
+    // close() waited for the call's own row before letting the home go.
+    expect(w.ledger()).toHaveLength(2);
     await pending;
     expect(w.ledger().at(-1)).toMatchObject({ inputTokens: 50_000 });
     const read = readSettings(w.env, w.userHome);
