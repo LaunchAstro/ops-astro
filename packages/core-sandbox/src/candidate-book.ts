@@ -18,11 +18,15 @@
 // Any other id reads as no image id. A changed or emptied entry clears its
 // accepted id.
 //
+// A create that is no candidate's names an image the pin list holds for its
+// class (`pinnedFor`, given the sites B8 left usable): a site's only with
+// its own entry's `Env`, the base's with its own, the probe's as pinned.
+//
 // The record is read back as text, so `readBook` is a closed reader: exact
 // keys, the pin list's own entry grammar, and the counts that check allows.
 
 import type { CreateShape } from './create-body.ts';
-import { SITE_ID, type SiteEntry, siteEntry } from './pin-list.ts';
+import { type PinList, SITE_ID, type SiteEntry, siteEntry } from './pin-list.ts';
 import { fault, refuse, type SandboxResult } from './refusal.ts';
 import { hasExactKeys, isJsonObject, type Json, parseStrictJson } from './strict-json.ts';
 
@@ -84,6 +88,13 @@ export function admitCandidateLoad(
   );
   const loaded = { site, entry, id, createsLeft: F2_CREATES, runs: [] };
   return { ok: true, book: { ...book, candidates: [...superseded, loaded] } };
+}
+
+/** Whether the pin list holds `image` for this create's class and, for a site, its `Env`. */
+export function pinnedFor(pins: PinList, shape: CreateShape, image: string): boolean {
+  if (shape.runClass === 'probe') return image === pins.probe;
+  const entries = shape.runClass === 'site.build' ? pins.sites.values() : pins.base.values();
+  return [...entries].some((entry) => entry.image === image && sameList(entry.env, shape.env));
 }
 
 /** The site whose open candidate this create is, with that entry's own S1 body, else refused. */

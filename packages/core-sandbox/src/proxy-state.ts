@@ -1,40 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // P3, P4 and P6 (docs/plan/sandbox-contract.md, section 6): the proxy's one
-// decision point over its two durable records, both in one file so that a
-// create's container id and its candidate count land in one write.
+// decision point over its two durable records, kept in one file so that a
+// create's container id and candidate count land in one write. A create is
+// taken alone, from its count check until that write, and answered after
+// it, so one the daemon made but the record never held counts nothing and
+// is swept. Its image is pinned for its class (a site's only with its own
+// entry's `Env`, once B8 accepted it) or, for S1 only, a pin's open
+// candidate. B8 runs on every pin-list read, open included.
 //
-// A create is taken one at a time, from its count check until the returned
-// id is durable, and answered only after that write: a create the daemon
-// made but the proxy never recorded counts nothing and is swept at the next
-// start or count check. Its image is one the pin list holds for its class,
-// a site image only with its own entry's `Env` and only once B8 accepted it,
-// or, for the S1 body only, the open candidate of a pin being made. B8 runs
-// on every read of the pin list, start included.
-//
-// The proxy sweeps on start before it takes a request, on a failed count
-// check and on a failed delete of its recorded container. While no sweep
-// has passed every request is `unavailable`, and the sweep repeats every
-// 30 s; a run whose container a sweep removed stays `unavailable`, an
-// answer that lands after that sweep included (a delete's own sweep is its
-// answer). A throw anywhere in a create, sweep or delete answers the
-// launcher `internal`. A wait counts only if sent after a start answered
-// 204 (a created container's wait answers at once), and is judged when its
-// answer lands. An attach is refused once its start was sent, and a start
-// at the deadline is refused. `tick` is the caller's
-// timer: it kills at every tick from the deadline until the record clears,
-// whatever any answer, and deletes when P4 and P6 say so, without waiting
-// for a create's I/O. A deadline once reached stays reached when the clock
-// steps back. Loads and image calls are P5's (piece 2d-ii).
+// The proxy sweeps on open, on a count mismatch and on a failed delete;
+// until a sweep passes every request is `unavailable` and it repeats every
+// 30 s. A run whose container a sweep removed, or answered while a failed
+// sweep waits, is `unavailable`; a delete only when another sweep removed
+// it. A throw in a request answers `internal`; in the timer or a note it
+// leaves the record for the next tick. A wait counts only after a 204 start
+// and is judged when it lands; an attach once its start was sent and a
+// start at the deadline are refused. `tick` kills at every tick from the
+// deadline, latched against a clock step back (a container held across a
+// restart is past it), and deletes when P4 and P6 say so, its daemon calls
+// without the lock. Loads and image calls are P5's (piece 2d-ii).
 
 import {
   candidateCreate,
   type CandidateBook,
   countCandidateCreate,
   EMPTY_BOOK,
+  pinnedFor,
   readDeployed,
   recordCandidateWait,
-  sameList,
 } from './candidate-book.ts';
 import {
   admitContainerCreate,
@@ -49,7 +43,6 @@ import {
   noteWaitReturned,
   recordContainer,
 } from './container-book.ts';
-import type { CreateShape } from './create-body.ts';
 import { readContainerCount, readCreatedId, readWaitStatus } from './daemon-reply.ts';
 import { type PinList, readPinList } from './pin-list.ts';
 import type { ProxyOp } from './proxy-request.ts';
@@ -61,6 +54,7 @@ type Reply = { readonly status: number; readonly body: Uint8Array };
 /** The operations this flow decides: everything but P5's loads and image calls (piece 2d-ii). */
 export type StateOp = Exclude<ProxyOp, { kind: 'load' | 'image-inspect' | 'image-delete' }>;
 type CreateOp = Extract<StateOp, { kind: 'create' }>;
+type Note = (book: ContainerBook, now: number) => ContainerBook;
 type Landed = { readonly started: boolean; readonly at: number; readonly late: boolean };
 export type ProxyPorts = {
   /** The one file holding both records; `read` gives null before the first write. */
@@ -82,13 +76,6 @@ const [OK, CREATED, NO_CONTENT, NOT_FOUND] = [200, 201, 204, 404];
 const UNAVAILABLE = unavailable('sweep');
 const THREW: Reply = { status: 0, body: new Uint8Array() };
 
-/** Whether the pin list holds `image` for this create's class and, for a site, its `Env`. */
-function pinnedFor(pins: PinList, shape: CreateShape, image: string): boolean {
-  if (shape.runClass === 'probe') return image === pins.probe;
-  const entries = shape.runClass === 'site.build' ? pins.sites.values() : pins.base.values();
-  return [...entries].some((entry) => entry.image === image && sameList(entry.env, shape.env));
-}
-
 const deleteAnswer = (status: number): DeleteAnswer =>
   status === NO_CONTENT ? 'removed' : status === NOT_FOUND ? 'no such container' : 'failed';
 
@@ -105,8 +92,8 @@ export class ProxyState {
   #startSent: string | null = null;
   /** The last id whose start the daemon answered 204. */
   #started: string | null = null;
-  /** The recorded id whose deadline came: it stays come, whatever the clock does after. */
-  #expired: string | null = null;
+  /** The recorded id whose deadline came, whatever the clock says after; or held at a restart. */
+  #expired: string | null;
   /** The recorded container's counted candidate run, if it is one. */
   #run: { readonly image: string; readonly run: number } | null = null;
 
@@ -114,6 +101,7 @@ export class ProxyState {
     this.#ports = ports;
     this.#candidates = record.candidates;
     this.#containers = record.containers;
+    this.#expired = record.containers.container?.id ?? null;
   }
 
   /** Reads the record, applies B8 to the pin list and sweeps, before any request. */
@@ -132,9 +120,14 @@ export class ProxyState {
     return { ok: true, state };
   }
 
-  async handle(op: StateOp): Promise<SandboxResult<{ reply: Reply }>> {
-    if (op.kind === 'create')
-      return this.#exclusive(() => this.#create(op)).catch(() => fault('reply status'));
+  /** A launcher request; a throw anywhere on its path (daemon or store) answers `internal`. */
+  handle(op: StateOp): Promise<SandboxResult<{ reply: Reply }>> {
+    const answer =
+      op.kind === 'create' ? this.#exclusive(() => this.#create(op)) : this.#operate(op);
+    return answer.catch(() => fault('reply status'));
+  }
+
+  async #operate(op: Exclude<StateOp, CreateOp>): Promise<SandboxResult<{ reply: Reply }>> {
     if (this.#retryAt !== null) return UNAVAILABLE;
     if ('id' in op) {
       if (this.#swept.has(op.id)) return UNAVAILABLE;
@@ -152,13 +145,19 @@ export class ProxyState {
       const late = this.#reached(op.id, at);
       await this.#exclusive(() => this.#waited(op.id, reply, { started, at, late }));
     }
-    if (op.kind === 'delete') await this.#exclusive(() => this.#deleted(op.id, reply));
-    if ('id' in op && op.kind !== 'delete' && this.#swept.has(op.id)) return UNAVAILABLE;
+    if (op.kind === 'delete') {
+      if (await this.#exclusive(() => this.#deleted(op.id, reply))) return UNAVAILABLE;
+    } else if (this.#retryAt !== null || ('id' in op && this.#swept.has(op.id))) return UNAVAILABLE;
     return reply === THREW ? fault('reply status') : { ok: true, reply };
   }
 
-  /** The caller's timer: a due kill, then a due sweep or delete; the daemon calls skip the lock. */
+  /** The caller's timer; a throw (a dead store) leaves the record as it was for the next tick. */
   async tick(): Promise<void> {
+    await this.#tick().catch(() => null);
+  }
+
+  /** A due kill, then a due sweep or delete; the daemon calls skip the lock. */
+  async #tick(): Promise<void> {
     const id = this.#containers.container?.id;
     const now = this.#ports.now();
     const due = containerDue(this.#containers, now);
@@ -259,7 +258,7 @@ export class ProxyState {
   async #waited(id: string, reply: Reply, { started, at, late }: Landed): Promise<void> {
     const held = this.#containers.container;
     const status = reply.status === OK ? readWaitStatus(reply.body) : null;
-    if (held?.id !== id || !started || status?.ok !== true) return;
+    if (held?.id !== id || !started || status?.ok !== true || this.#retryAt !== null) return;
     const [run, code] = [this.#run, status.statusCode];
     const candidates =
       run === null
@@ -268,18 +267,22 @@ export class ProxyState {
     await this.#save(candidates, noteWaitReturned(this.#containers, at));
   }
 
-  async #deleted(id: string, reply: Reply): Promise<void> {
-    if (this.#containers.container?.id !== id) return;
+  /** A delete's answer; true when a sweep other than its own removed the container first. */
+  async #deleted(id: string, reply: Reply): Promise<boolean> {
+    if (this.#containers.container?.id !== id) return this.#swept.has(id);
     const after = deleteAnswered(this.#containers, deleteAnswer(reply.status));
     await this.#save(this.#candidates, after.book);
     if (after.sweep) await this.#sweep();
+    return false;
   }
 
-  #note(id: string, step: (book: ContainerBook, now: number) => ContainerBook): Promise<void> {
-    return this.#exclusive(async () => {
+  /** A note timed when reported, not when its write takes the lock; a dead store drops it. */
+  async #note(id: string, step: Note): Promise<void> {
+    const at = this.#ports.now();
+    await this.#exclusive(async () => {
       if (this.#containers.container?.id !== id) return;
-      await this.#save(this.#candidates, step(this.#containers, this.#ports.now()));
-    });
+      await this.#save(this.#candidates, step(this.#containers, at));
+    }).catch(() => null);
   }
 
   /** P6's sweep: on a pass the container record clears; on a failure it repeats in 30 s. */
