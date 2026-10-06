@@ -13,7 +13,8 @@ import { ProjectsBoard } from '../../packages/ui/src/surfaces/ProjectsBoard.tsx'
 import type { ProjectRow } from '../../packages/ui/src/board/project-row.ts';
 import { mount, type Mounted } from './mount.tsx';
 
-const CARD = 1400;
+/** The width a drawn card reports; a test may resize the window between draws. */
+let card = 1400;
 
 class Observer {
   static live: Observer[] = [];
@@ -35,7 +36,7 @@ class Observer {
       (target) =>
         ({
           target,
-          contentRect: { width: target.isConnected ? CARD : 0, height: 0 },
+          contentRect: { width: target.isConnected ? card : 0, height: 0 },
         }) as unknown as ResizeObserverEntry,
     );
     this.callback(entries, this as unknown as ResizeObserver);
@@ -44,6 +45,7 @@ class Observer {
 
 beforeEach(() => {
   Observer.live = [];
+  card = 1400;
   (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = Observer;
 });
 
@@ -94,11 +96,17 @@ const layout = (view: Mounted) => ({
   columns: view.all('table.cbd__tbl col').map((col) => col.getAttribute('style')),
 });
 
-it('rows back after the empty words lay the table out at the card’s real width', async () => {
+/** The layout a board mounted with rows draws at the card's width now. */
+async function freshLayout(): Promise<ReturnType<typeof layout>> {
   const fresh = await mount(board([task]));
   await measure();
   const real = layout(fresh);
   await fresh.unmount();
+  return real;
+}
+
+it('rows back after the empty words lay the table out at the card’s real width', async () => {
+  const real = await freshLayout();
   // A 1400px card fits the table: it draws at the card's width, with no fixed width.
   expect(real.table).toBeNull();
 
@@ -110,4 +118,29 @@ it('rows back after the empty words lay the table out at the card’s real width
   await view.render(board([task]));
   await measure();
   expect(layout(view), 'the table is laid out for a card that is no longer drawn').toEqual(real);
+});
+
+it('a window resized while the board is bare lays the returning table out at the new width', async () => {
+  const view = await mount(board([task]));
+  await measure();
+  await view.render(board([]));
+  await measure();
+  card = 700;
+  await measure();
+  await view.render(board([task]));
+  await measure();
+  const drawn = layout(view);
+  await view.unmount();
+  expect(drawn, 'the table kept the width from before the resize').toEqual(await freshLayout());
+});
+
+it('a board that mounts bare lays its first rows out at the card’s real width', async () => {
+  card = 700;
+  const view = await mount(board([]));
+  await measure();
+  await view.render(board([task]));
+  await measure();
+  const drawn = layout(view);
+  await view.unmount();
+  expect(drawn, 'the table took the fallback width, not the card').toEqual(await freshLayout());
 });
