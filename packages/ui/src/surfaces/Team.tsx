@@ -138,14 +138,17 @@ function OpenConversation(props: {
         to={group.name}
         thread={group}
         me={me}
-        onRead={onRead}
+        onRead={group.left ? null : onRead}
         onSend={sendTo(talk, group)}
       />
     </>
   );
 }
 
-/** Read the selected conversation: the direct marker by `onMarkRead`, a group's by its `read` action. */
+/**
+ * Read the selected conversation: the direct marker by `onMarkRead`, a group's
+ * by its `read` action, and a group the reader has left not at all.
+ */
 function reader(talk: TeamConversations, me: string): (which: Selected) => void {
   return (which) => {
     if (which?.kind === 'person') {
@@ -154,13 +157,12 @@ function reader(talk: TeamConversations, me: string): (which: Selected) => void 
         talk.onMarkRead(which.id, upTo);
       });
     } else if (which?.kind === 'group') {
-      markRead(
-        talk.groups.find((g) => g.id === which.id),
-        me,
-        (upTo) => {
-          talk.onGroup({ do: 'read', id: which.id, upTo });
-        },
-      );
+      const group = talk.groups.find((g) => g.id === which.id);
+      // A group the reader has left keeps no marker for them: the server refuses one.
+      if (group?.left === true) return;
+      markRead(group, me, (upTo) => {
+        talk.onGroup({ do: 'read', id: which.id, upTo });
+      });
     }
   };
 }

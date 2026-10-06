@@ -72,7 +72,8 @@ export function Conversation(props: {
   readonly to: string;
   readonly thread: TeamConversation | undefined;
   readonly me: string;
-  readonly onRead: () => void;
+  /** Null where the reader keeps no read marker: a group they have left. */
+  readonly onRead: (() => void) | null;
   /** Null where the reader may not send: a group they have left. */
   readonly onSend: ((body: string) => void) | null;
 }): ReactElement {
@@ -87,7 +88,7 @@ export function Conversation(props: {
     <>
       {/* A click into the conversation reads it; by keyboard the face and the composer do. */}
       {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div className="tmc__scroll" ref={scroller} onClick={props.onRead}>
+      <div className="tmc__scroll" ref={scroller} onClick={props.onRead ?? undefined}>
         <div className="thread">
           {messages.map((message) => (
             <Message key={message.id} message={message} me={props.me} />
