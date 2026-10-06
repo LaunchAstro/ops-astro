@@ -149,6 +149,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // so a first settings row cannot commit past a decision that found none.
   'packages/core-records/src/records/business-settings.ts',
   'packages/core-records/src/tasks/placement.ts',
+  // C71-D: a direct pair's one lock, so two first messages start one conversation, and a
+  // conversation's one lock, so a message and a read marker are stamped in commit order.
+  'packages/core-records/src/team/conversations.ts',
   'packages/core-records/src/tenancy/database.ts',
   'packages/core-records/src/tenancy/limit.ts',
   'packages/core-runtime/src/locks.ts',

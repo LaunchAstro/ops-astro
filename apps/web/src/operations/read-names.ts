@@ -83,6 +83,10 @@ export const READ_NAMES = [
   // the command line serve; the working minimum draws them in INB-1g.
   'inbox.read',
   'inbox.count',
+  // The caller's team conversations and one conversation's messages (C71-D),
+  // membership-filtered on the server; the Team panel draws them in C71's web piece.
+  'chat.conversations',
+  'chat.messages',
   // Items no path reaches (INB-1e), for `operations:read`; the operations view
   // (C55) draws them.
   'inbox.unattended',

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "client access cannot share a task with a person whose client standing was revoked before the share insert"
+}

@@ -9,7 +9,8 @@
 import { createHash } from 'node:crypto';
 import type { TarEntry } from './ustar-reader.ts';
 
-const length8 = (value: number): Buffer => {
+/** A length as 8 bytes, big-endian, as O4 and I4 write it. */
+export const length8 = (value: number): Buffer => {
   const out = Buffer.alloc(8);
   out.writeBigUInt64BE(BigInt(value));
   return out;

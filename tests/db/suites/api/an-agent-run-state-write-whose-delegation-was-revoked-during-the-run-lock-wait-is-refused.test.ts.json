@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an agent run-state write whose delegation was revoked during the run lock wait is refused, and appends nothing"
+}

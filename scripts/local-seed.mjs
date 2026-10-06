@@ -148,6 +148,9 @@ const GRANTS_BY_ROLE = {
     // `spend:decide`, so C59's step-up judges it. Client sign-off and the
     // step-up switch stay `settings:manage` above.
     ['spend', 'decide'],
+    // Team conversations (C71-D): `chat:comment`, an agency member's key;
+    // within a conversation the query holds it to its members.
+    ['chat', 'comment'],
     // Settings ▸ Workflow triggers (C33): releasing a definition version is
     // `automation:manage`, the owner's and administrators' and never an agent's.
     ['automation', 'manage'],
@@ -162,6 +165,9 @@ const GRANTS_BY_ROLE = {
     // their own work stops at a second approver. The write is the admin's:
     // `settings:manage` is not widened by this line.
     ['settings', 'read'],
+    // Team conversations (C71-D): `chat:comment` is every agency member's
+    // key (the catalogue's default holders), not the administrators' alone.
+    ['chat', 'comment'],
   ],
   none: [],
   // The external party holds no business grant, and must not: a person with no

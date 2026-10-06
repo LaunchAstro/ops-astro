@@ -30,7 +30,7 @@ export const CASE = {
 } as const;
 
 /**
- * The fifty-one operations that name no identifier, each with a minimal valid body.
+ * The fifty-two operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -152,6 +152,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['inbox.count', {}],
   ['inbox.unattended', {}],
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
+  // The reader's own team conversations (C71-D).
+  ['chat.conversations', {}],
   // C39-T: a new invitation names a person and an address, no record.
   ['invitation.create', { name: 'Invited Ivy', email: 'ivy@example.test', role: 'member' }],
   // C39-T: the business's invitations, which names no record.
@@ -227,6 +229,16 @@ export const IDENTIFIER_BEARING: Readonly<
 };
 
 /**
+ * Identifier-bearing operations whose foreign-against-fabricated comparison is
+ * in their own isolation suite rather than in identifier-negatives.
+ */
+const OWN_SUITE: Readonly<Partial<Record<CommandName, string>>> = {
+  'chat.send_direct': 'teammateId',
+  'chat.messages': 'conversationId',
+  'chat.mark_read': 'conversationId',
+};
+
+/**
  * The named row for an operation the (c) and (d) cells do not reach, or
  * `undefined` for one this file does not know, which the matrix throws on.
  */
@@ -259,6 +271,13 @@ export function alternativeFor(name: CommandName): string | undefined {
     return (
       'executed alternative: c39-t-invitation-refusals.test.ts "C39-T isolation" compares ' +
       "another business's invitation and a fabricated one by code and raw bytes"
+    );
+  }
+  const own = OWN_SUITE[name];
+  if (own !== undefined) {
+    return (
+      `executed alternative: c71-d-isolation.test.ts compares a foreign and a fabricated ` +
+      `${own} by status and raw bytes, audited at home`
     );
   }
   if (TARGET_FREE.some(([op]) => op === name)) {

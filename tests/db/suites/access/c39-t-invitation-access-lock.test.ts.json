@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an invitation act asks its grants again under the business's access lock, so a revocation in flight is waited for and then refuses the act (C39-T)"
+}

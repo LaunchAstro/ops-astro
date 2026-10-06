@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "ending a budget-stopped run on a trashed task is refused to a person without gate:decide on it, to a second business and to a caller naming another task, with nothing named and nothing moved"
+}

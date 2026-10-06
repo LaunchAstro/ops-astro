@@ -7,8 +7,9 @@
 // another business so either commits before the ask reads the endings, or
 // waits for the asking write to commit. A reset's window (C40) is an ending
 // of the subject: its open takes the subject's key alone, as it writes no
-// audit event; its settle, which ends sessions signed in after the window's
-// bound too, takes the keys first (`holdSubjectEnding`).
+// audit event; its ending in each business and its settle, which ends
+// sessions signed in after the window's bound too, take the keys first
+// (`holdSubjectEnding`).
 
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 
@@ -32,8 +33,8 @@ export async function holdEnding(
 
 /**
  * The subject's ending keys, exclusively, for a transaction that ends the
- * login's sessions as a whole (C40's settle): taken first, before any session
- * key, in `holdEnding`'s order.
+ * login's sessions as a whole (C40's ending in each business, and its settle):
+ * taken first, before any session key, in `holdEnding`'s order.
  */
 export async function holdSubjectEnding(tx: TenantQuery, subject: string): Promise<void> {
   await holdEnding(tx, subject, []);

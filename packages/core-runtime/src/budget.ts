@@ -355,6 +355,9 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
     { lockClass: 'envelope', id: found.id },
     { lockClass: 'task', id: request.taskId },
   ]);
+  if (!(await taskLive(tx, request.taskId))) {
+    return refused('NOT_FOUND', 'the task is in the trash', 'Restore the task to top it up.');
+  }
   const envelope = await openEnvelopeOf(tx, request.taskId);
   if (envelope?.id !== found.id || BigInt(envelope.maximumMinor) !== request.fromMaximumMinor) {
     return refused('VERSION_STALE', "the task's envelope has moved", 'Read the task again.');
@@ -404,6 +407,15 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
   );
   const maximumMinor = figure.fromMaximumMinor + figure.amountMinor;
   return { ok: true, value: { ...figure, state: 'applied', maximumMinor, approvers: by } };
+}
+
+/** The task out of the trash, read under its lock: a trash that committed since discovery is seen. */
+async function taskLive(tx: TenantQuery, taskId: string): Promise<boolean> {
+  const live = await tx.query(
+    `select 1 from public.records where business_id = $1 and id = $2 and deleted_at is null`,
+    [tx.businessId, taskId],
+  );
+  return live.length > 0;
 }
 
 /** The first approvals waiting on exactly this figure. */
