@@ -5,7 +5,7 @@
 // due time or event id holds that, so a claimer that races another commits
 // one row and learns the other's, never a second. An occurrence under a
 // standing approval (C52-A, migration 20261005193201) names it. C33's rates
-// and intake bound (migration 20261005203620) are AW-01's durable limit.
+// and intake bound (migration 20261006092531) are AW-01's durable limit.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';

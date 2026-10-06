@@ -8,7 +8,7 @@
 // `occurrenceRunStarter` in core-commands), which reads its approval and
 // version facts here. A start the writer refuses writes nothing and records
 // no dispatch, so the worker may dispatch again. C33's run ceiling (migration
-// 20261005203620) is AW-01's durable limit.
+// 20261006092531) is AW-01's durable limit.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';

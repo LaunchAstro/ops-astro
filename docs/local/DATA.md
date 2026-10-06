@@ -911,7 +911,7 @@ application may only select both; the checks and the round write them (not
 built). Tenancy-keyed with the restrictive policy. The records are
 `packages/core-records/src/connections/signal.ts`.
 
-## Occurrence intake (20261005203620, C33)
+## Occurrence intake (20261006092531, C33)
 
 An occurrence may also be `over_activation_rate`, `over_business_rate` or
 `over_intake_bound` (`activation_occurrences_outcome_known`): past its
