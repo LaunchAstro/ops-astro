@@ -126,6 +126,28 @@ describe.skipIf(serverUrl === undefined)('a top-up on a closed hold with a call 
   });
 });
 
+describe.skipIf(serverUrl === undefined)('a pickup after a top-up on a closed hold', () => {
+  it('counts the closed hold once, at the spend it closed at, so the topped-up step is held again for what it has left', async () => {
+    // Approved 500, raised to 600. The first hold closed at 300 with 200 unsent,
+    // the second at 200, and the top-up's hold spends 40 and stops: 540 spent.
+    const { work, versionId, first } = await roomyWork(s);
+    await spend(s, first, 300);
+    await unsentCall(s, first, 200);
+    expect(await stopForRoom(work, first, 200)).toBe('BUDGET_UNAVAILABLE');
+    expect(codeOf(await topUp(s, work, first, 100))).toBe('applied');
+    const fresh = (await holdsOf(s, versionId)).find((hold) => hold.state === 'held');
+    const third = await pickup(s, fresh?.id);
+    await spend(s, third['reservationId'], 40);
+    await stopWorker(s, third);
+
+    const again = await claim(fresh?.id);
+    expect({ code: codeOf(again), live: await liveOf(versionId) }).toEqual({
+      code: 'applied',
+      live: ['60'],
+    });
+  });
+});
+
 describe.skipIf(serverUrl === undefined)('a top-up on an abandoned hold with a call unsent', () => {
   it('releases the unsent call uncounted when a top-up answers a no-room stop on a hold its lease left unspent, so the sweep gives nothing back', async () => {
     const { work, first } = await roomyWork(s);
