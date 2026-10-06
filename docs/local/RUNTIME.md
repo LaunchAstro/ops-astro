@@ -2154,9 +2154,11 @@ route, command-line verb or agent operation reaches it.
   occurrence's advisory lock makes a second start answer the first as
   replayed, and past the code the database's unique index holds it.
 - **Who writes it.** An active worker of the business, never a person or an
-  agent (`WORKER_REQUIRED`). The worker's row is read `for share` and held to
-  commit, so a stop in flight waits for the start, and a stop that landed
-  first refuses it. The run row goes in through
+  agent (`WORKER_REQUIRED`). The worker's row is read `for share` under the
+  occurrence lock and held to commit: a stop that arrives during the start
+  waits for it to commit, a stop already committed refuses it, and a start
+  that meets a stop still in flight waits for it, then is refused. The run
+  row goes in through
   `ops_astro_occurrence`, taken for the one insert with
   `set_config('role', ..., true)`; 0097's trigger refuses an origin written by
   any other role, and any change to an origin after the insert.
