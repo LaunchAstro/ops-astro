@@ -201,9 +201,15 @@ class Follower {
     for (const watch of this.#stops.keys()) this.want(watch, 'check');
   }
 
-  /** Resolves once the delivery in flight, and its question, is done. */
+  /**
+   * Resolves once the delivery in flight, and its question, is done; while the
+   * stream is open and a task is neither sat nor closed, each check queued again too.
+   */
   async settled(): Promise<void> {
-    await this.#chain;
+    const before = this.#chain;
+    await before;
+    const unsat = [...this.#stops.keys()].some((watch) => !this.#leaves.has(watch));
+    if (before !== this.#chain && unsat && !this.#stream.aborted) await this.settled();
   }
 
   stopAll(): void {
