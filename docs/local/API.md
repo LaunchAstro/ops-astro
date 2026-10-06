@@ -3241,10 +3241,10 @@ under the lock, and one revoked or lapsed during the wait is
 A person or client-wait step that opens is parked with an inbox item
 (`assignment`, on the step's task) to whoever owns its move: the task's
 assignee, else the person who started the onboarding. Assigning or unassigning
-the task parks it again under that rule and withdraws any open item held by
-someone other than its owner or assignee (`reparkStepMove`, from `task.assign`
+the task parks it again under that rule and withdraws any open `assignment`
+item held by someone other than its owner or assignee (`reparkStepMove`, from `task.assign`
 and `task.set_party`); moving the task to another client parks nobody and
-withdraws every open item on it but the assignee's. A done result closes the
+withdraws every open `assignment` item on it but the assignee's. A done result closes the
 item (`closeStepMove`); a first failure leaves it open, since the step is still
 ready. A step that opens while its task is in the
 trash is parked with nobody, and is parked under that rule when `task.restore`
