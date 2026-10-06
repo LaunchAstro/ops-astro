@@ -25,8 +25,6 @@ const NOT_DRAWN = new Set([
   // them yet; the Team panel arrives in a later piece.
   'chat.conversations',
   'chat.messages',
-  // MP-14-10a: the graduation data lands before the screens that draw it (P06).
-  'connection.graduation',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
