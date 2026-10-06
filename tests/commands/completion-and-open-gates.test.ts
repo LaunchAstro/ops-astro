@@ -7,7 +7,9 @@
 // so it does not hold the task open.
 
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, describe, expect, it } from 'vitest';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   bearer,
   call,
@@ -80,6 +82,90 @@ async function gateState(world: World, gateId: string): Promise<string | undefin
   return rows[0]?.state;
 }
 
+/** Resolves when `check` holds, polling the database's own clock and locks. */
+async function waitUntil(check: () => Promise<boolean>, milliseconds = 10_000): Promise<void> {
+  const until = Date.now() + milliseconds;
+  // oxlint-disable-next-line no-await-in-loop
+  while (!(await check())) {
+    if (Date.now() >= until) throw new Error('timed out waiting for the database schedule');
+    // oxlint-disable-next-line no-await-in-loop
+    await delay(20);
+  }
+}
+
+const nothing = (): void => {};
+
+function latch(): { readonly promise: Promise<void>; release: () => void } {
+  const made = { promise: Promise.resolve(), release: nothing };
+  made.promise = new Promise<void>((resolve) => {
+    made.release = resolve;
+  });
+  return made;
+}
+
+/** The task's row held `for update` on a connection of its own until `release`. */
+async function holdTaskRow(world: World, taskId: string) {
+  const blocker = connect(world.db.appUrl);
+  const held = latch();
+  const release = latch();
+  let pid = 0;
+  const holder = blocker.withBusiness(world.alpha, async (tx) => {
+    const [row] = await tx.query<{ readonly pid: number }>('select pg_backend_pid() as pid');
+    pid = row?.pid ?? 0;
+    await tx.query('select 1 from public.records where business_id = $1 and id = $2 for update', [
+      tx.businessId,
+      taskId,
+    ]);
+    held.release();
+    await release.promise;
+  });
+  await held.promise;
+  let closed: Promise<void> | undefined;
+  return {
+    pid,
+    release: async (): Promise<void> => {
+      release.release();
+      closed ??= holder.then(async () => await blocker.close());
+      await closed;
+    },
+  };
+}
+
+/**
+ * Completes the task from behind a lock on its row that is held until the
+ * gate's deadline has passed: the completion's transaction starts before the
+ * deadline and reaches its gate check after it.
+ */
+async function completeAcrossTheDeadline(world: World, taskId: string, gateId: string) {
+  await world.db.admin.execute(
+    `update public.gates set expires_at = clock_timestamp() + interval '1500 milliseconds'
+      where business_id = $1 and id = $2`,
+    [world.alpha, gateId],
+  );
+  const expectedRevision = await revisionOf(world, taskId);
+  const row = await holdTaskRow(world, taskId);
+  try {
+    const completing = asAda(world, '/task/complete', {
+      operationId: randomUUID(),
+      recordId: taskId,
+      expectedRevision,
+    });
+    await waitUntil(async () => {
+      const [ready] = await world.db.admin.execute<{ readonly ready: boolean }>(
+        `select clock_timestamp() > g.expires_at and exists (
+           select 1 from pg_stat_activity where $3 = any(pg_blocking_pids(pid))) as ready
+           from public.gates g where g.business_id = $1 and g.id = $2`,
+        [world.alpha, gateId, row.pid],
+      );
+      return ready?.ready === true;
+    });
+    await row.release();
+    return (await completing).code;
+  } finally {
+    await row.release();
+  }
+}
+
 if (serverUrl === undefined) {
   console.warn('commands/completion-and-open-gates: DATABASE_URL is unset, so nothing ran.');
 }
@@ -129,5 +215,20 @@ describe.skipIf(serverUrl === undefined)('completing a task waits only on an ope
     }
     expect(await gateState(world, on.gateId), 'the gate is left pending').toBe('pending');
     expect(await complete(world, taskId)).toBe('ok');
+  }, 60_000);
+});
+
+describe.skipIf(serverUrl === undefined)('a gate that lapses while completion waits', () => {
+  let world: World | undefined;
+
+  afterEach(async () => {
+    await world?.close();
+    world = undefined;
+  });
+
+  it('completes once a gate that lapsed while the completion waited for the task no longer holds it', async () => {
+    world = await createWorld('opengate');
+    const { taskId, on } = await proposedTask(world);
+    expect(await completeAcrossTheDeadline(world, taskId, on.gateId)).toBe('ok');
   }, 60_000);
 });

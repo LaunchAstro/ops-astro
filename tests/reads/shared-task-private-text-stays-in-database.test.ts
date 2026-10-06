@@ -32,6 +32,8 @@ const INTERNAL = `internal-note-${randomUUID()}`;
 const TITLE = `shared-title-${randomUUID()}`;
 const CLIENT = `client-message-${randomUUID()}`;
 const SOURCE = `client-comment-source-${randomUUID()}`;
+/** The task's client: a real link, classified internal like the rest. */
+const CLIENT_LINK = randomUUID();
 
 let db: FreshDatabase;
 let alpha: BusinessId;
@@ -77,9 +79,10 @@ async function seed(): Promise<void> {
     task = await createTask(tx, spine, { title: TITLE, parentId: null });
     await tx.query(
       `update public.records
-          set data = data || jsonb_build_object('lane', $3::text, 'description', $4::text)
+          set data = data || jsonb_build_object(
+                'lane', $3::text, 'description', $4::text, 'client', $5::text)
         where business_id = $1 and id = $2`,
-      [tx.businessId, task, SLOTTED, UNSLOTTED],
+      [tx.businessId, task, SLOTTED, UNSLOTTED, CLIENT_LINK],
     );
     for (const [audience, body] of [
       ['internal', INTERNAL],
@@ -121,6 +124,7 @@ describe.skipIf(serverUrl === undefined)('a shared task read from outside the bu
       ['a private unslotted field', UNSLOTTED],
       ['an internal comment', INTERNAL],
       ["a client comment's private field", SOURCE],
+      ['the private client link', CLIENT_LINK],
     ] as const) {
       expect.soft(answer, `${what} reached the answer`).not.toContain(marker);
       expect.soft(received, `${what} was returned to the serving process`).not.toContain(marker);
