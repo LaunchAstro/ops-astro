@@ -80,6 +80,10 @@ it('deletes 30 s after the later of the wait returning and the attach ending', (
   const reversed = noteWaitReturned(noteAttachEnded(held(), T0 + 5000), T0 + 15_000);
   expect(containerDue(reversed, T0 + 15_000 + GRACE_MS - 1)).toEqual(none);
   expect(containerDue(reversed, T0 + 15_000 + GRACE_MS).delete).toBe(true);
+  const again = noteWaitReturned(ended, T0 + 40_000);
+  expect(containerDue(again, T0 + 20_000 + GRACE_MS).delete).toBe(true);
+  const late = noteAttachEnded(noteWaitReturned(held(), DEADLINE + 20_000), DEADLINE + 25_000);
+  expect(containerDue(late, DEADLINE + GRACE_MS).delete).toBe(true);
 });
 
 it('deletes 30 s after a full close before the wait returns, not after one once it has', () => {
@@ -126,4 +130,5 @@ it('reads the record back whole after a restart, and refuses any other shape', (
   expect(bad((t) => t.replace('"wall":true', '"wall":1'))).toEqual(fault);
   expect(bad((t) => t.replace('{"container"', '{"x":1,"container"'))).toEqual(fault);
   expect(bad((t) => t.replace(`"deadline":${String(DEADLINE)}`, '"deadline":-1'))).toEqual(fault);
+  expect(bad((t) => t.replace(`"createdAt":${String(T0)}`, '"createdAt":-1'))).toEqual(fault);
 });
