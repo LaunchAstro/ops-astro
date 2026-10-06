@@ -101,7 +101,7 @@ describe.skipIf(serverUrl === undefined)('C41-A step result: the represented per
       [taskId],
     );
 
-  it('#414 an agent’s step results and the stop report record the person its delegation acts for', async () => {
+  it('an agent’s step results and the stop report record the person its delegation acts for', async () => {
     const steps = await onboard('Made-up Client Represented Agent');
     const welcome = String(steps.get('welcome-email'));
     const by = await delegator();
@@ -122,7 +122,7 @@ describe.skipIf(serverUrl === undefined)('C41-A step result: the represented per
     expect(by.personId).not.toBe(the.admin.personId);
   }, 60_000);
 
-  it('#414 an API-2 credential’s step result records the credential’s person', async () => {
+  it('an API-2 credential’s step result records the credential’s person', async () => {
     const steps = await onboard('Made-up Client Represented Credential');
     const welcome = String(steps.get('welcome-email'));
     const issued = await as(the.assignee, 'credential.issue', issueBody());
@@ -133,7 +133,7 @@ describe.skipIf(serverUrl === undefined)('C41-A step result: the represented per
     expect(written.map((one) => one.person)).toStrictEqual([the.assignee.personId]);
   }, 60_000);
 
-  it('#414 a person’s own step result records no one', async () => {
+  it('a person’s own step result records no one', async () => {
     const steps = await onboard('Made-up Client Represented None');
     const welcome = String(steps.get('welcome-email'));
     const answer = await as(the.admin, 'onboarding.step_result', {

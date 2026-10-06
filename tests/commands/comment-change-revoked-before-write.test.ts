@@ -35,7 +35,7 @@ it.each([
   ['task.edit_comment', 'child delegation.revoke'],
   ['task.delete_comment', 'child delegation.revoke'],
 ] as const)(
-  'Sol proof, criterion 5: %s cannot apply after %s commits between the final check and write',
+  '%s cannot apply after %s commits between the final check and write',
   // oxlint-disable-next-line max-lines-per-function -- one concurrent schedule
   async (command, revocation) => {
     const writer = await w.world.decider(`writer_${randomUUID()}`);
