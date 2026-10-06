@@ -23,7 +23,7 @@ let server: Server;
 let custody: Custody;
 let folder: string;
 /** A stored credential spelled as one short lower-case token. */
-const SECRET = `custody_canary_secret_${'abcdefghij'.charAt(randomBytes(1)[0]! % 10)}`;
+const SECRET = 'custody_canary_secret_token';
 
 beforeAll(async () => {
   server = createServer((request, response) => {

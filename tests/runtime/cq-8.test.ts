@@ -112,6 +112,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   'packages/core-commands/src/commands/conversation-lifecycle.ts',
   // #932: the operation identity's key, first in every identified call.
   'packages/core-commands/src/commands/envelope.ts',
+  // C39-T P3A: the accept claims' one key (`enrolment_claims`), taken last in the claim's
+  // transaction, after the invitation's row, before counting every business's claims.
+  'packages/core-commands/src/commands/invitation-accept.ts',
   'packages/core-commands/src/commands/occurrence-run.ts',
   'packages/core-commands/src/commands/prepare.ts',
   // #413: an agent assignment takes the audit chain's key after its write,
