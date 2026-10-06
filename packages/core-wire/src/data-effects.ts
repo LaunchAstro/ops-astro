@@ -211,8 +211,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...client('attempts', 'budget_answers', 'budget_approvals', 'planned_runs', 'reservations'),
     ...client('task_envelopes'),
   ]),
+  // The end also closes the attempt of each unstarted hold it releases.
   'run.end_at_budget_stop': writing(
-    client('budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
+    client('attempts', 'budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
   ),
   'run.revise_state': writing(client('run_states')),
   // MP-6-1's check on a task's run.

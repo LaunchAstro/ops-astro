@@ -168,6 +168,8 @@ const EXACT: ReadonlySet<string> = new Set([
 const ON_A_PATH: Readonly<Record<string, readonly string[]>> = {
   // At a hold its calls spent whole: `s0-5-effect-money-paths`.
   'run.top_up': ['attempts'],
+  // Releasing an unstarted replacement: `budget-top-up-refuses-a-step-reopened-after-the-stop`.
+  'run.end_at_budget_stop': ['attempts'],
 };
 
 /**
