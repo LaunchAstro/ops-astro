@@ -7,7 +7,13 @@
 
 import { LOCAL_GPT_DEFAULT_MODEL } from '../../packages/core-connectors/src/index.ts';
 import { ledgerTotal } from './ledger.ts';
-import { MAX_CAP_TOKENS, readApprovals, type Approvals, type RunnerSettings } from './settings.ts';
+import {
+  DEFAULT_CAP_TOKENS,
+  MAX_CAP_TOKENS,
+  readApprovals,
+  type Approvals,
+  type RunnerSettings,
+} from './settings.ts';
 
 export const DEFAULT_MODEL: string = LOCAL_GPT_DEFAULT_MODEL;
 
@@ -36,16 +42,22 @@ export type Decision =
   | { readonly ok: false; readonly code: CallRefusal };
 
 /**
- * The cap in force. A cap the owner configured is the cap. Unset, the owner's
+ * The cap in force. A cap the owner configured is the cap, but one above the
+ * default holds only while approvals.json still names that figure: the yes
+ * withdrawn, the default is the cap from the next call on. Unset, the owner's
  * yes on a raise is the cap from the next call on, never past MAX_CAP_TOKENS.
  */
 export function capInForce(
   settings: GateSettings,
   approved: Approvals = readApprovals(settings.home),
 ): number {
-  return settings.capConfigured
-    ? settings.capTokens
-    : Math.min(approved.capTokens ?? settings.capTokens, MAX_CAP_TOKENS);
+  if (!settings.capConfigured) {
+    return Math.min(approved.capTokens ?? settings.capTokens, MAX_CAP_TOKENS);
+  }
+  if (settings.capTokens > DEFAULT_CAP_TOKENS && approved.capTokens !== settings.capTokens) {
+    return DEFAULT_CAP_TOKENS;
+  }
+  return settings.capTokens;
 }
 
 /** Checked in this order, every call, before anything is spawned. */
