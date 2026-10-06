@@ -205,3 +205,28 @@ it('kills a container the record held across a restart at every tick while its s
   await restarted.tick();
   expect(w.calls).toEqual(['kill', 'kill']);
 });
+
+it('refuses a delete that lands while the sweep that removed its container waits to repeat', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(P, s1('p')));
+  await state.handle(op('start', ID));
+  const release = hold(w, 'delete');
+  const deleted = state.handle(op('delete', ID));
+  await settle();
+  w.answer.info = 500;
+  expect(await state.handle(create(P, s1('p')))).toEqual(refused('container count'));
+  release();
+  expect([await deleted, heldId(w)]).toEqual([UNAVAILABLE, ID]);
+});
+
+it('sweeps after a failed delete even when the store is dead', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(P, s1('p')));
+  w.answer.delete = 500;
+  w.crash = true;
+  w.calls.length = 0;
+  await state.handle(op('delete', ID));
+  expect(w.calls).toEqual(['delete', 'list', 'remove', 'list', 'info']);
+});
