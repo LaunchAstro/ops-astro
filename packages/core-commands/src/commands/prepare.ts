@@ -58,6 +58,7 @@ import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import {
   admitsSelfWrite,
   declarationOf,
+  WAYFINDER_MAP_LOCK,
   type CommandDeclaration,
 } from '../../../core-wire/src/index.ts';
 import type { CommandRequest, UncheckedRequest } from './requests.ts';
@@ -700,6 +701,7 @@ export async function prepareCommand(
     // Only here, where the target is read: a replay re-judges authority with
     // `targetsExistingRecord` off, and it locks nothing (`withheldNow`).
     if (declaration.serialise !== undefined) await serialiseOn(tx, declaration.serialise);
+    if (declaration.serialise === WAYFINDER_MAP_LOCK) await holdMapOf(tx, recordId);
     // A target the runtime locks in its own order is only read here. The
     // read takes nothing, and the handler compares the revision under the
     // runtime's locks; locking it here would be a task lock held before the
@@ -767,6 +769,23 @@ const TENANT_PREDICATE = 'business_id = $1';
 /** The per-business lock a declaration's `serialise` names, to the end of the transaction. */
 export async function serialiseOn(tx: TenantQuery, key: string): Promise<void> {
   await advisoryLock(tx, `${key}:${tx.businessId}`);
+}
+
+/**
+ * A ticket's map row, held before the ticket: the order an update of the map
+ * takes them in, since its summary refresh then reads the map's tickets. The
+ * other way round, a close out of scope and an edit of its map deadlock.
+ * `no key update`, as the map's own update takes it, so a ticket filed under
+ * the map meanwhile does not wait.
+ */
+async function holdMapOf(tx: TenantQuery, recordId: string | undefined): Promise<void> {
+  if (!isUuid(recordId)) return;
+  const map = (await wayfinderFacts(tx, recordId.toLowerCase()))?.mapId;
+  if (map === null || map === undefined || map === recordId.toLowerCase()) return;
+  await tx.query(`select 1 from records where business_id = $1 and id = $2 for no key update`, [
+    tx.businessId,
+    map,
+  ]);
 }
 
 /**
