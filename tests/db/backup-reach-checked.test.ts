@@ -108,6 +108,8 @@ function hostedAuthLeftOut(): void {
       await db.admin.execute(`create schema auth authorization "${platform}"`);
       await db.admin.execute('create table auth.users (id uuid primary key)');
       await db.admin.execute(`alter table auth.users owner to "${platform}"`);
+      // Made by the owner, so 0045's default privileges granted it: the platform's would not.
+      await db.admin.execute('revoke all on auth.users from ops_astro_backup');
       // Hosted Supabase: our owner may use auth, not grant on it; the backup reads nothing there.
       await db.admin.execute(`grant usage on schema auth to "${owner}"`);
       expect(await migrateAs(owner)).toBe('ok');
