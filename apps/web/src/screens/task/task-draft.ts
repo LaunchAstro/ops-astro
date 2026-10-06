@@ -55,8 +55,8 @@ export interface TaskDraft {
   readonly from: string | null;
   /** When the draft's running timer started, ISO, or null (DN-05). */
   readonly timerFrom: string | null;
-  /** Whole minutes the draft's timer has timed, logged on the task at Create. */
-  readonly timed: number;
+  /** Milliseconds the draft's timer has run; rounded once, at Create (`timedMinutes`). */
+  readonly timedMs: number;
 }
 
 export const emptyDraft = (clientId: string | null): TaskDraft => ({
@@ -73,15 +73,30 @@ export const emptyDraft = (clientId: string | null): TaskDraft => ({
   why: null,
   from: null,
   timerFrom: null,
-  timed: 0,
+  timedMs: 0,
 });
 
-/** The draft with its running timer stopped at `now`, its whole minutes added; as it was if none runs. */
+/** The draft with its running timer stopped at `now`, the time it ran added; as it was if none runs. */
 export function stopTimer(draft: TaskDraft, now: number): TaskDraft {
   if (draft.timerFrom === null) return draft;
-  const minutes = Math.max(0, Math.floor((now - Date.parse(draft.timerFrom)) / 60_000));
-  return { ...draft, timerFrom: null, timed: draft.timed + minutes };
+  const ran = now - Date.parse(draft.timerFrom);
+  const timedMs = Number.isFinite(draft.timedMs) ? draft.timedMs : 0;
+  return {
+    ...draft,
+    timerFrom: null,
+    timedMs: timedMs + (Number.isFinite(ran) ? Math.max(0, ran) : 0),
+  };
 }
+
+/** A day in minutes: the most one logged entry holds, as the task timer caps it. */
+const DAY_MINUTES = 1440;
+
+/**
+ * The minutes Create logs for the draft's timer, as `time.stop` rounds the
+ * task timer: rounded up, never fewer than one, at most a day; 0 if it never ran.
+ */
+export const timedMinutes = (draft: TaskDraft): number =>
+  draft.timedMs > 0 ? Math.min(DAY_MINUTES, Math.max(1, Math.ceil(draft.timedMs / 60_000))) : 0;
 
 /** A fresh draft with the page's guesses in it (DN-02). */
 export const prefilledDraft = (prefill: Prefill): TaskDraft => ({

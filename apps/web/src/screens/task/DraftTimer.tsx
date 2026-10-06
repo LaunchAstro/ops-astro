@@ -2,14 +2,15 @@
 //
 // The timer on a new-task draft (MP-4-13, DN-05). The draft has no task yet,
 // so its timer is the draft's own: Start keeps when it started with the
-// draft, so a reload or Back keeps it running; Stop adds its whole minutes to
-// what the draft has timed. Create stops a running timer and logs the timed
+// draft, so a reload or Back keeps it running; Stop adds the time it ran to
+// what the draft has timed. The minutes are rounded once, as `time.stop`
+// rounds the task timer: up, never fewer than one, at most a day. Create stops a running timer and logs the timed
 // minutes on the new task through `time.log` (`draft-parts.ts`), beside the
 // time spent typed on the draft. The app
 // strip's timer (MP-3-1) is drawn disabled until it is built.
 
 import type { ReactElement } from 'react';
-import { stopTimer, type TaskDraft } from './task-draft.ts';
+import { stopTimer, timedMinutes, type TaskDraft } from './task-draft.ts';
 import { minutesText } from './Time.tsx';
 
 const startedAt = (iso: string): string =>
@@ -45,9 +46,9 @@ function DraftTimer(props: {
           Running since {startedAt(draft.timerFrom)}
         </span>
       )}
-      {draft.timed > 0 ? (
+      {timedMinutes(draft) > 0 ? (
         <p className="card__sub" data-draft-timer>
-          Timed on this draft: {minutesText(draft.timed)}
+          Timed on this draft: {minutesText(timedMinutes(draft))}
         </p>
       ) : null}
     </div>

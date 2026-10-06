@@ -12,7 +12,7 @@ import {
   type CommandOutcome,
   type OperationsClient,
 } from '../../operations/client.ts';
-import type { TaskDraft } from './task-draft.ts';
+import { timedMinutes, type TaskDraft } from './task-draft.ts';
 
 type Result = CallResult<CommandOutcome>;
 
@@ -109,12 +109,12 @@ function timeParts(client: OperationsClient, draft: TaskDraft, recordId: string)
       run: (operationId) =>
         client.mutate('time.log', { taskId: recordId, duration: time }, { operationId }),
     }),
-    ...when(draft.timed > 0, {
+    ...when(timedMinutes(draft) > 0, {
       what: 'the timed time',
       run: (operationId) =>
         client.mutate(
           'time.log',
-          { taskId: recordId, duration: `${String(draft.timed)}m` },
+          { taskId: recordId, duration: `${String(timedMinutes(draft))}m` },
           { operationId },
         ),
     }),
