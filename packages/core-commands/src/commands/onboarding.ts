@@ -170,7 +170,12 @@ function parseResult(
   return { outcome, text, commentTypeId };
 }
 
-/** A step's result on its own task, authority asked again under the lock; agents record agent steps only (ORCH79). */
+/**
+ * A step's result on its own task, authority asked again under the lock;
+ * agents record agent steps only (ORCH79). The result and any stop report
+ * record `onBehalfOfPersonId`, the person an agent's result is written for
+ * (catalogue #414); null for a person's own.
+ */
 export async function writeStepResult(
   tx: TenantQuery,
   author: {
@@ -179,7 +184,6 @@ export async function writeStepResult(
     readonly entryPoint: EntryPoint;
     readonly commentTypeId: string | undefined;
     readonly stillHolds: StillHolds;
-    /** The person an agent's result is written for (catalogue #414); null for a person's own. */
     readonly onBehalfOfPersonId: string | null;
   },
   request: { readonly recordId: string; readonly outcome?: unknown; readonly result?: unknown },
