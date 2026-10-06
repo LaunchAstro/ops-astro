@@ -44,6 +44,10 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
+      "files": ["tests/api/c71-mention-email-after-access-end.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
       "files": [
         "tests/web/settings-late-step-up-refusal-stays-with-its-business.test.tsx",
         "tests/web/settings-lost-save-intent-stays-with-its-business.test.tsx",
