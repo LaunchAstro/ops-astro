@@ -164,22 +164,10 @@ async function questionOf(
   };
 }
 
-/**
- * Whether the caller may still read the conversation's task: the records
- * policies do not hold task grants, so the join above finds a task whose read
- * was revoked. No task is no question.
- */
-async function readsTask(
-  tx: TenantQuery,
-  session: Session,
-  taskId: string | null,
-): Promise<boolean> {
-  if (taskId === null) return true;
-  const read = {
-    collection: 'task',
-    action: 'read',
-    scope: { kind: 'record', id: taskId },
-  } as const;
+/** The caller may still read the task: the records policies do not hold task grants. */
+async function readsTask(tx: TenantQuery, session: Session, id: string | null): Promise<boolean> {
+  if (id === null) return true;
+  const read = { collection: 'task', action: 'read', scope: { kind: 'record', id } } as const;
   return (await checkAuthority(tx, subjectsOf(session), read)).ok;
 }
 
@@ -208,8 +196,7 @@ async function keep(
   const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
   const at = await lockedInstant(tx);
   if (!(await holdsOwnConversations(tx, session, { at, held }))) return undefined;
-  // A write after its last wait: a session ended meanwhile keeps nothing, and
-  // an ending not yet committed waits for this reply (the ending keys held shared).
+  // After the last wait: an ended session keeps nothing; an ending in flight waits for this.
   if (await sessionEndedSince(tx, session)) return undefined;
   const id = randomUUID();
   // The reply and the activity are stamped at that same instant, so a reply
