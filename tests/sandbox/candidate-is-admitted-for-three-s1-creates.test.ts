@@ -111,6 +111,12 @@ it('ends the admission when a deploy changes the entry', () => {
     expect(candidateCreate(after, sites({ a: changed }), s1(changed.env), C)).toEqual(refused);
   }
   expect(candidateCreate(readDeployed(book, sites({})).book, sites({}), s1(), C)).toEqual(refused);
+  const back = readDeployed(
+    readDeployed(book, sites({ a: making(2) })).book,
+    sites({ a: making() }),
+  );
+  expect(candidateCreate(back.book, back.sites, s1(), C)).toEqual(refused);
+  expect(candidateCreate(book, sites({ a: making(2) }), s1(), C)).toEqual(refused);
 });
 
 it('refuses a load for an entry with an image id, an unknown site, or the id of an open candidate', () => {
@@ -132,6 +138,8 @@ it('lets a raised attempt load again after a failed F2, and the old image be del
   const reload = admitCandidateLoad(book, raised, 'a', D);
   expect(reload.ok).toBe(true);
   if (!reload.ok) return;
+  const unread = admitCandidateLoad(loaded(), raised, 'a', D);
+  expect(unread.ok && readBook(writeBook(unread.book)).ok).toBe(true);
   expect(holdsCandidateImage(reload.book, C)).toBe(true);
   expect(holdsCandidateImage(dropCandidateImage(reload.book, C), C)).toBe(false);
   expect(holdsCandidateImage(dropCandidateImage(reload.book, D), D)).toBe(true);
@@ -176,7 +184,7 @@ it('reads the book back whole after a restart, and refuses any other shape', () 
   const text = new TextDecoder().decode(writeBook(book.book));
   const bad = (edit: (value: string) => string) => readBook(new TextEncoder().encode(edit(text)));
   const fault = { ok: false, reason: 'internal', why: 'candidate record' };
-  expect(bad((t) => t.replace('"accepted"', '"accepted","x":1,"y"'))).toEqual(fault);
+  expect(bad((t) => t.replace('{"candidates"', '{"x":1,"candidates"'))).toEqual(fault);
   expect(bad((t) => t.replace('"createsLeft":3', '"createsLeft":4'))).toEqual(fault);
   expect(bad((t) => t.replace('"site":"b"', '"site":"B"'))).toEqual(fault);
   expect(bad((t) => t.replace(`"id":"${D}"`, '"id":"sha256:x"'))).toEqual(fault);
