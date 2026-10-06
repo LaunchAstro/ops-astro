@@ -5,7 +5,7 @@
 // and a runner lets go of its own hold only.
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync as readText, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync as readText, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createRunner, type Runner } from '../../apps/local-agent/runner.ts';
@@ -13,8 +13,14 @@ import { readSettings, type RunnerSettings } from '../../apps/local-agent/settin
 import { runnerWorld } from './runner-world.ts';
 import { makeWorld, type World } from './world.ts';
 
-/** Run once just after the next read of a runner lock, before its reader acts on what it read. */
-const hooks = vi.hoisted(() => ({ afterLockRead: undefined as (() => void) | undefined }));
+/**
+ * Run once just after the next read of a runner lock, before its reader acts on
+ * what it read, or just after the next move of a runner lock off its path.
+ */
+const hooks = vi.hoisted(() => ({
+  afterLockRead: undefined as (() => void) | undefined,
+  afterLockMove: undefined as (() => void) | undefined,
+}));
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
@@ -27,7 +33,15 @@ vi.mock('node:fs', async (importOriginal) => {
     }
     return text;
   }) as typeof actual.readFileSync;
-  return { ...actual, readFileSync };
+  const renameSync = ((...args: Parameters<typeof actual.renameSync>) => {
+    actual.renameSync(...args);
+    if (String(args[0]).endsWith('runner.lock')) {
+      const hook = hooks.afterLockMove;
+      hooks.afterLockMove = undefined;
+      hook?.();
+    }
+  }) as typeof actual.renameSync;
+  return { ...actual, readFileSync, renameSync };
 });
 
 const { opened, own, start } = runnerWorld();
@@ -67,6 +81,28 @@ async function stillHeld(settings: RunnerSettings): Promise<void> {
   ]);
 }
 
+/**
+ * Three runners on a gone runner's home: the first reads the gone runner and
+ * pauses, the second takes the home over meanwhile, then the first goes on and
+ * the third starts the moment the first moves the lock (or after it, if it never does).
+ */
+function lateTakeover(settings: RunnerSettings): Promise<Runner>[] {
+  let second: Promise<Runner> | undefined;
+  let third: Promise<Runner> | undefined;
+  const startThird = (): void => {
+    third ??= createRunner(settings, () => null);
+  };
+  hooks.afterLockRead = () => {
+    second = createRunner(settings, () => null);
+    hooks.afterLockMove = startThird;
+  };
+  const first = createRunner(settings, () => null);
+  startThird();
+  hooks.afterLockMove = undefined;
+  if (second === undefined || third === undefined) throw new Error('a runner never started');
+  return [first, second, third];
+}
+
 describe('a home left by a runner that has gone', () => {
   it('is taken over by one of two runners started on it at once', async () => {
     const settings = settingsOf(deadLock());
@@ -90,6 +126,37 @@ describe('a home left by a runner that has gone', () => {
     expect(started.filter((outcome) => outcome === 'started')).toHaveLength(1);
     expect(started.find((outcome) => outcome !== 'started')).toContain('LOCAL_HOME_IN_USE');
     await stillHeld(settings);
+  });
+
+  it('is held by one runner when a third starts while a late takeover is under way', async () => {
+    const settings = settingsOf(deadLock());
+    const started = await outcomes(lateTakeover(settings));
+    expect(started.filter((outcome) => outcome === 'started')).toHaveLength(1);
+    for (const outcome of started.filter((one) => one !== 'started')) {
+      expect(outcome).toContain('LOCAL_HOME_IN_USE');
+    }
+    await stillHeld(settings);
+    // The lock is the started runner's own: closing it lets the home go.
+    const holder = opened.pop();
+    await holder?.close();
+    expect(existsSync(join(settings.home, 'runner.lock'))).toBe(false);
+  });
+});
+
+describe('a home whose takeover was left unfinished', () => {
+  it('refuses, names the takeover lock to remove, and writes nothing', async () => {
+    const w = deadLock();
+    const settings = settingsOf(w);
+    const takeover = join(settings.home, 'runner.lock.takeover');
+    writeFileSync(takeover, '1 left');
+    const before = readdirSync(settings.home).toSorted();
+    const lockBefore = readText(join(settings.home, 'runner.lock'), 'utf8');
+    const [outcome] = await outcomes([createRunner(settings, () => null)]);
+    expect(outcome).toContain('LOCAL_HOME_IN_USE');
+    expect(outcome).toContain(takeover);
+    expect(readdirSync(settings.home).toSorted()).toEqual(before);
+    expect(readText(join(settings.home, 'runner.lock'), 'utf8')).toBe(lockBefore);
+    expect(readText(takeover, 'utf8')).toBe('1 left');
   });
 });
 
