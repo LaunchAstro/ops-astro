@@ -15,8 +15,9 @@
 // - on a conversation opened on a client's task, only those the client's
 //   model-egress setting allows (CS-7.40, `checkClientModelUse`): egress off,
 //   nothing; a providers list, those providers only, each assessed;
-// - on a conversation whose task this session cannot see, nothing, since its
-//   client cannot be known.
+// - on a conversation whose task this session cannot see (gone, or its read
+//   grant revoked since the conversation was opened), nothing, so the offer
+//   tells nothing of its client, and a model chosen for it is refused.
 //
 // `conversation.set_model` is the tab row's (`conversation-tabs.ts`); both
 // writes keep the choice through `keepModel`.
@@ -26,7 +27,13 @@ import {
   conversationProviderOf,
   type ConversationModel,
 } from '../../../core-connectors/src/index.ts';
-import { checkClientModelUse, slotOf, TASK_SPINE } from '../../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  checkClientModelUse,
+  slotOf,
+  subjectsOf,
+  TASK_SPINE,
+} from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 
@@ -42,6 +49,17 @@ export interface ModelFacts {
 
 const CLIENT = slotOf(TASK_SPINE, 'client');
 
+/** The caller may still read the task: the records policies do not hold task grants. */
+export async function readsTask(
+  tx: TenantQuery,
+  session: Session,
+  id: string | null,
+): Promise<boolean> {
+  if (id === null) return true;
+  const read = { collection: 'task', action: 'read', scope: { kind: 'record', id } } as const;
+  return (await checkAuthority(tx, subjectsOf(session), read)).ok;
+}
+
 /** The caller's own conversation's facts, or undefined for anyone else's or none. */
 export async function modelFacts(
   tx: TenantQuery,
@@ -51,9 +69,10 @@ export async function modelFacts(
   const [found] = await tx.query<{
     readonly model_id: string | null;
     readonly client_id: string | null;
+    readonly scope_record_id: string | null;
     readonly unseen: boolean;
   }>(
-    `select c.model_id, t.${CLIENT}::text as client_id,
+    `select c.model_id, t.${CLIENT}::text as client_id, c.scope_record_id,
             (c.scope_record_id is not null and t.id is null) as unseen
        from conversations c
        left join records t on t.business_id = c.business_id and t.id = c.scope_record_id
@@ -61,7 +80,9 @@ export async function modelFacts(
     [tx.businessId, conversationId, session.actorId],
   );
   if (found === undefined) return undefined;
-  return { model: found.model_id, clientId: found.client_id, unseen: found.unseen };
+  // Asked as the exchange asks it: a task this session may no longer read is unseen.
+  const unseen = found.unseen || !(await readsTask(tx, session, found.scope_record_id));
+  return { model: found.model_id, clientId: found.client_id, unseen };
 }
 
 /** The models offered on `provider`'s conversation operation: all of them, or the client's allowed. */

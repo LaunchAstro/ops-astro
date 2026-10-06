@@ -34,7 +34,7 @@ export const DEFAULT_TITLE = 'New conversation';
 export const conversationAddress = (conversationId: string): string => `/agent/${conversationId}`;
 
 /** `conversation:write` across the business: the owner's key to their own conversations. */
-const OWN_WRITE = {
+export const OWN_WRITE = {
   collection: 'conversation',
   action: 'write',
   scope: { kind: 'business', id: null },

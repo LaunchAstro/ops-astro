@@ -37,7 +37,6 @@ import {
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
 import {
-  checkAuthority,
   isUuid,
   sessionEndedSince,
   slotOf,
@@ -54,7 +53,7 @@ import type {
 } from '../../../core-records/src/index.ts';
 import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
 import { bounded, holdsOwnConversations } from './conversations.ts';
-import { askedModel } from './conversation-model.ts';
+import { askedModel, readsTask } from './conversation-model.ts';
 import {
   answered,
   refusedWith,
@@ -142,13 +141,6 @@ async function questionOf(
     clientOrUnseen:
       found.client_or_unseen || !(await readsTask(tx, session, found.scope_record_id)),
   };
-}
-
-/** The caller may still read the task: the records policies do not hold task grants. */
-async function readsTask(tx: TenantQuery, session: Session, id: string | null): Promise<boolean> {
-  if (id === null) return true;
-  const read = { collection: 'task', action: 'read', scope: { kind: 'record', id } } as const;
-  return (await checkAuthority(tx, subjectsOf(session), read)).ok;
 }
 
 /** The answer, kept as the reply to the message, or the reply already kept. */

@@ -19,9 +19,17 @@
 // stores the answer and the audit event the payload's digest, so the title
 // and the page are kept on the conversation and nowhere else.
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { subjectsOf, type TenantQuery } from '../../../core-records/src/index.ts';
+import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { bounded, conversationAddress, NOT_YOURS, PURGED, TITLE_LIMIT } from './conversations.ts';
+import {
+  bounded,
+  conversationAddress,
+  NOT_YOURS,
+  OWN_WRITE,
+  PURGED,
+  TITLE_LIMIT,
+} from './conversations.ts';
 import { keepModel, MODEL_NOT_OFFERED } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -59,7 +67,10 @@ function pageOf(value: unknown): Page | null | undefined {
 /**
  * The caller's own conversation, locked: the row lock `conversation.message`,
  * the wrap-up and the purge take, so a pointer never lands on a body being
- * purged. Another business's and a made-up id are the same `NOT_FOUND`.
+ * purged. Another business's and a made-up id are the same `NOT_FOUND`. The
+ * grant the door asked is asked again at the clock after the lock, as
+ * `conversation.message` asks it: one that lapsed while this waited no longer
+ * counts.
  */
 export async function ownedForUpdate(
   tx: TenantQuery,
@@ -80,7 +91,13 @@ export async function ownedForUpdate(
   if (conversation === undefined) return refuseNotFound();
   if (conversation.owner_actor_id !== context.session.actorId) return NOT_YOURS;
   if (conversation.body_purged_at !== null) return PURGED;
-  return undefined;
+  const still = await checkAuthorityAt(
+    tx,
+    subjectsOf(context.session),
+    OWN_WRITE,
+    await lockedInstant(tx),
+  );
+  return still.ok ? undefined : still.refusal;
 }
 
 export interface RenameFields {
