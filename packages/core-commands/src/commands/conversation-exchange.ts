@@ -23,8 +23,8 @@
 //    a grant being changed at that moment keeps nothing.
 //
 // A message has at most one reply. A repeat of the request finds the reply
-// kept and answers with it, and the model is not asked again; two repeats at
-// once can each ask it, and only the first answer is kept. The model's words
+// kept and answers with it, and the model is not asked again; a repeat while
+// the answer is with the model, in the same process, waits for it. The model's words
 // are kept in the reply's row and nowhere else: a refusal answers in fixed
 // words, never the model's or the person's.
 

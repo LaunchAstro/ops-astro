@@ -5,7 +5,8 @@
 // and a runner lets go of its own hold only.
 
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync as readText, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createRunner, type Runner } from '../../apps/local-agent/runner.ts';
 import { readSettings, type RunnerSettings } from '../../apps/local-agent/settings.ts';
@@ -56,6 +57,16 @@ async function outcomes(starts: readonly Promise<Runner>[]): Promise<string[]> {
   });
 }
 
+/** The home is still held: its lock names this process, and a third start is refused. */
+async function stillHeld(settings: RunnerSettings): Promise<void> {
+  expect(readText(join(settings.home, 'runner.lock'), 'utf8')).toMatch(
+    new RegExp(`^${String(process.pid)} `, 'u'),
+  );
+  expect(await outcomes([createRunner(settings, () => null)])).toEqual([
+    expect.stringContaining('LOCAL_HOME_IN_USE'),
+  ]);
+}
+
 describe('a home left by a runner that has gone', () => {
   it('is taken over by one of two runners started on it at once', async () => {
     const settings = settingsOf(deadLock());
@@ -78,6 +89,7 @@ describe('a home left by a runner that has gone', () => {
     const started = await outcomes([first, second]);
     expect(started.filter((outcome) => outcome === 'started')).toHaveLength(1);
     expect(started.find((outcome) => outcome !== 'started')).toContain('LOCAL_HOME_IN_USE');
+    await stillHeld(settings);
   });
 });
 
