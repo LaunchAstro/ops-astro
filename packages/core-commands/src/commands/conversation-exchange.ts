@@ -35,7 +35,9 @@ import {
   type ConversationScope,
 } from '../../../core-custody/src/index.ts';
 import {
+  checkAuthority,
   isUuid,
+  sessionEndedSince,
   slotOf,
   subjectsOf,
   TASK_SPINE,
@@ -135,9 +137,10 @@ async function questionOf(
   const [found] = await tx.query<{
     readonly owner_person_id: string;
     readonly body: string;
+    readonly scope_record_id: string | null;
     readonly client_or_unseen: boolean;
   }>(
-    `select c.owner_person_id, m.body,
+    `select c.owner_person_id, m.body, c.scope_record_id,
             (t.${CLIENT} is not null or (c.scope_record_id is not null and t.id is null))
               as client_or_unseen
        from conversations c
@@ -156,8 +159,28 @@ async function questionOf(
     },
     body: found.body,
     reply: await replyTo(tx, asked),
-    clientOrUnseen: found.client_or_unseen,
+    clientOrUnseen:
+      found.client_or_unseen || !(await readsTask(tx, session, found.scope_record_id)),
   };
+}
+
+/**
+ * Whether the caller may still read the conversation's task: the records
+ * policies do not hold task grants, so the join above finds a task whose read
+ * was revoked. No task is no question.
+ */
+async function readsTask(
+  tx: TenantQuery,
+  session: Session,
+  taskId: string | null,
+): Promise<boolean> {
+  if (taskId === null) return true;
+  const read = {
+    collection: 'task',
+    action: 'read',
+    scope: { kind: 'record', id: taskId },
+  } as const;
+  return (await checkAuthority(tx, subjectsOf(session), read)).ok;
 }
 
 /** The answer, kept as the reply to the message, or the reply already kept. */
@@ -185,6 +208,9 @@ async function keep(
   const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
   const at = await lockedInstant(tx);
   if (!(await holdsOwnConversations(tx, session, { at, held }))) return undefined;
+  // A write after its last wait: a session ended meanwhile keeps nothing, and
+  // an ending not yet committed waits for this reply (the ending keys held shared).
+  if (await sessionEndedSince(tx, session)) return undefined;
   const id = randomUUID();
   // The reply and the activity are stamped at that same instant, so a reply
   // that waited behind a message is listed and dated after it (#444). The

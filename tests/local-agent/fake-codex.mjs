@@ -23,6 +23,16 @@ process.stdin.on('end', () => {
     join(home, 'calls.jsonl'),
     `${JSON.stringify({ argv: process.argv.slice(2), stdin, env: process.env, cwd: process.cwd() })}\n`,
   );
+  // As codex 0.160.1 does under `forced_login_method="chatgpt"` (probed with a
+  // worthless key): a saved API-key login is logged out, and nothing is asked.
+  if (knobs.login === 'apikey' && process.argv.includes('forced_login_method="chatgpt"')) {
+    process.stderr.write(
+      'ChatGPT login is required, but an API key is currently being used. Logging out.\n',
+    );
+    process.exit(1);
+  }
+  if (knobs.login === 'apikey')
+    appendFileSync(join(home, 'billed.jsonl'), `${JSON.stringify(stdin)}\n`);
   const answer = () => {
     if (knobs.limit) {
       const limit = { type: 'error', message: "You've hit your usage limit. Try again later." };
