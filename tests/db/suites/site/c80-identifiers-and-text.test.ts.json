@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's operands: an upper-case UUID names what its lower-case spelling names, a malformed correction id is NOT_FOUND, and unstorable request text is refused by name, never a database fault."
+}

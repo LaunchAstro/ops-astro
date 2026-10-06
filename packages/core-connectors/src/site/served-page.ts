@@ -7,6 +7,7 @@
 import { html as markup, type DefaultTreeAdapterTypes as Tree } from 'parse5';
 import { readDocument } from '../capture/page.ts';
 import { admittedTree } from '../capture/tree.ts';
+import { closingFence } from './fence.ts';
 // Elements that start a rendered block of their own.
 const BLOCK = new Set(
   (
@@ -58,13 +59,6 @@ function rendered(html: string): string[] | undefined {
   return visible(page.join(' ')) === whole.text ? page : undefined;
 }
 
-// The frontmatter fence, read as a closed grammar over whole lines: a plain fence, a blank line,
-// and no other line holding `---` or `+++` anywhere, since a build reads a fence after any prefix
-// and closes one after code on its line.
-const FENCE = /^[\t ]*---[\t ]*$/u;
-const BLANK = /^[\t ]*$/u;
-const FENCE_LIKE = /---|\+\+\+/u;
-
 /**
  * The source's page as its build serves it: the frontmatter between two plain `---` lines, the
  * first opening the file (after any byte-order mark or blank lines), never renders. Any other
@@ -72,12 +66,10 @@ const FENCE_LIKE = /---|\+\+\+/u;
  * fence, or one after other text leaves no page.
  */
 export function served(source: string): string[] | undefined {
-  const text = source.replace(/^\uFEFF/u, '').replaceAll('\r\n', '\n');
-  const lines = text.split('\n');
-  if (lines.some((line) => FENCE_LIKE.test(line) && !FENCE.test(line))) return undefined;
-  const fences = lines.flatMap((line, at) => (FENCE.test(line) ? [at] : []));
-  if (fences.length === 0) return rendered(text);
-  const opens = lines.findIndex((line) => !BLANK.test(line));
-  if (fences.length !== 2 || fences[0] !== opens) return undefined;
-  return rendered(lines.slice((fences[1] ?? 0) + 1).join('\n'));
+  const lines = source
+    .replace(/^\uFEFF/u, '')
+    .replaceAll('\r\n', '\n')
+    .split('\n');
+  const close = closingFence(lines);
+  return close === undefined ? undefined : rendered(lines.slice(close + 1).join('\n'));
 }

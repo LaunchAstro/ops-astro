@@ -38,6 +38,7 @@ import type {
   OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
+  LiveCorrectionReadResult,
   PersonListResult,
   TagListResult,
   TaskTodosResult,
@@ -207,6 +208,8 @@ export interface ReadOperands {
   readonly 'trace.read': { readonly recordId: string };
   /** The run whose harness test result is read (AW-12). */
   readonly 'harness.read': { readonly runId: string };
+  /** One live correction's decision, read again for its card (C80). */
+  readonly 'live_correction.read': { readonly correctionId: string };
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
   readonly 'automation.registry': NoOperands;
 }
@@ -260,6 +263,7 @@ export type ReadResult =
   | AttributionResult
   | InboxReadResult
   | InboxCountResult
+  | LiveCorrectionReadResult
   | MapViewResult
   | MapFrontierResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }

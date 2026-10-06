@@ -120,7 +120,9 @@ async function serveRead<K extends ReadName>(
 ): Promise<ServedRead> {
   const admission = await admit(tx, session, request);
   if (!('serve' in admission)) return admission;
-  return { outcome: await admission.serve(), subjectRecordId: admission.recordId ?? null };
+  const outcome = await admission.serve();
+  const disclosed = isCommandRefusal(outcome) ? undefined : admission.disclosed?.(outcome);
+  return { outcome, subjectRecordId: admission.recordId ?? disclosed ?? null };
 }
 
 /**
@@ -252,6 +254,8 @@ interface Readied {
   /** A list read's own admission (`SpineRow.listRefusal`); absent, it refuses nothing. */
   readonly listRefusal?: () => Promise<CommandRefusal | undefined>;
   readonly serve: () => Promise<ReadResult | CommandRefusal>;
+  /** A business row's record its answer disclosed (`BusinessRow.disclosed`), for the audit. */
+  readonly disclosed?: ((answer: ReadResult) => string | undefined) | undefined;
 }
 
 /**
@@ -270,6 +274,7 @@ async function ready<K extends ReadName>(
       recordId: undefined,
       admits: async () => await Promise.resolve(true),
       serve: async () => await business.serve(tx, session, operands),
+      disclosed: business.disclosed,
     };
   }
   const spineRow = row;

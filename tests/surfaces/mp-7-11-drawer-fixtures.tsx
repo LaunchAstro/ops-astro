@@ -14,11 +14,13 @@ import { mount, type Mounted } from './mount.tsx';
 
 const live: Mounted[] = [];
 
+/** Unmounts every drawer, and forgets the tabs they kept for their session, so each case opens fresh. */
 export async function unmountAll(): Promise<void> {
   for (const page of live.splice(0)) {
     // eslint-disable-next-line no-await-in-loop -- one act() scope at a time
     await page.unmount();
   }
+  sessionStorage.clear();
 }
 
 export function track(page: Mounted): Mounted {
