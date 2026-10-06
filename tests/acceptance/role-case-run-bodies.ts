@@ -33,6 +33,22 @@ type ConversationCommand = Extract<
   | 'conversation.set_model'
 >;
 
+/** The admin's own conversation's commands (AW-03, MP-7-11, CS-7.30): `conversationBody`'s. */
+const CONVERSATION_COMMANDS: readonly ConversationCommand[] = [
+  'conversation.start',
+  'conversation.message',
+  'conversation.read',
+  'conversation.list',
+  'conversation.allowance',
+  'conversation.rename',
+  'conversation.set_scope',
+  'conversation.models',
+  'conversation.set_model',
+];
+
+export const isConversationCommand = (name: string): name is ConversationCommand =>
+  (CONVERSATION_COMMANDS as readonly string[]).includes(name);
+
 export async function leaseBody(name: LeaseCommand, context: BodyContext): Promise<Prepared> {
   switch (name) {
     case 'task.heartbeat':
