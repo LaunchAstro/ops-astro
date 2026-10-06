@@ -129,3 +129,67 @@ describe.skipIf(noDatabase)('C39-T a resend judges expiry again once its locks a
     },
   );
 });
+
+/**
+ * `run` started while the access lock is held on another connection, seen
+ * waiting on it, held a second longer, then let go. The database clock at the
+ * moment of letting go, then `run`'s answer.
+ */
+async function pastAccessWait<T>(run: () => Promise<T>): Promise<{ letGo: string; result: T }> {
+  const blocker = connect(w.db.appUrl);
+  const held = latch();
+  const release = latch();
+  let pid = 0;
+  const holding = blocker.withBusiness(w.alpha, async (tx) => {
+    const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
+    pid = row?.pid ?? 0;
+    await lockAccess(tx);
+    held.release();
+    await release.promise;
+  });
+  try {
+    await held.promise;
+    const running = run();
+    await waitUntil(async () => {
+      const [row] = await w.db.admin.execute<{ waiting: boolean }>(
+        'select exists (select 1 from pg_stat_activity where $1 = any(pg_blocking_pids(pid))) as waiting',
+        [pid],
+      );
+      return row?.waiting === true;
+    });
+    await delay(1000);
+    const [now] = await w.db.admin.execute<{ at: string }>('select clock_timestamp()::text as at');
+    release.release();
+    return { letGo: now?.at ?? '', result: await running };
+  } finally {
+    release.release();
+    await holding;
+    await blocker.close();
+  }
+}
+
+/** Whether the invitation's expiry is at least 7 days after `letGo`. */
+const lifetimeFrom = async (id: string, letGo: string): Promise<boolean | undefined> => {
+  const [row] = await w.db.admin.execute<{ after: boolean }>(
+    `select expires_at >= $2::timestamptz + interval '7 days' as after
+       from public.invitations where id = $1`,
+    [id, letGo],
+  );
+  return row?.after;
+};
+
+describe.skipIf(noDatabase)('C39-T a lifetime is set on the clock at the write', () => {
+  it('a resend that waited for the access lock runs its 7 days from the write', async () => {
+    const id = await invite(c.admin);
+    const { letGo, result } = await pastAccessWait(
+      async () => await as(c.admin, 'invitation.resend', { invitationId: id }),
+    );
+    expect(codeOf(result)).toBe('applied');
+    expect(await lifetimeFrom(id, letGo)).toBe(true);
+  });
+
+  it('a create that waited for the access lock runs its 7 days from the write', async () => {
+    const { letGo, result } = await pastAccessWait(async () => await invite(c.admin));
+    expect(await lifetimeFrom(result, letGo)).toBe(true);
+  });
+});
