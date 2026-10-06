@@ -80,7 +80,8 @@ export type Why =
   | 'container count'
   | 'sweep'
   | 'proxy record'
-  | 'deadline';
+  | 'deadline'
+  | 'run order';
 
 /** R1's reasons (section 9), in the contract's order, `internal` last. */
 export const REASONS = [

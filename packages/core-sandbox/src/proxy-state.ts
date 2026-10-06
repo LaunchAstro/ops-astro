@@ -20,7 +20,8 @@
 // answer). A throw anywhere in a create, sweep or delete answers the
 // launcher `internal`. A wait counts only if sent after a start answered
 // 204 (a created container's wait answers at once), and is judged when its
-// answer lands. A start at the deadline is refused. `tick` is the caller's
+// answer lands. An attach is refused once its start was sent, and a start
+// at the deadline is refused. `tick` is the caller's
 // timer: it kills at every tick from the deadline until the record clears,
 // whatever any answer, and deletes when P4 and P6 say so, without waiting
 // for a create's I/O. A deadline once reached stays reached when the clock
@@ -99,6 +100,8 @@ export class ProxyState {
   #retryAt: number | null = null;
   /** Recorded ids a sweep removed; a run on one is `unavailable`. */
   readonly #swept = new Set<string>();
+  /** The last id whose start was sent; an attach to it comes too late (P4). */
+  #startSent: string | null = null;
   /** The last id whose start the daemon answered 204. */
   #started: string | null = null;
   /** The recorded id whose deadline came: it stays come, whatever the clock does after. */
@@ -137,6 +140,8 @@ export class ProxyState {
       const admitted = admitContainerOp(this.#containers, op.id);
       if (!admitted.ok) return admitted;
       if (op.kind === 'start' && this.#reached(op.id, this.#ports.now())) return refuse('deadline');
+      if (op.kind === 'attach' && this.#startSent === op.id) return refuse('run order');
+      if (op.kind === 'start') this.#startSent = op.id;
     }
     const started = 'id' in op && this.#started === op.id;
     const reply = await this.#call(op);
