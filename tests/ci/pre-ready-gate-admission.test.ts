@@ -99,7 +99,7 @@ const SEES_NO_CALLER_ENV = [
 
 describe('pnpm check, run by the gate, sees none of the caller’s tokens', () => {
   it(
-    'keeps GH_TOKEN and CHECK_SCOPE from pnpm check',
+    'keeps GH_TOKEN, CHECK_SCOPE and CHECK_SHARD from pnpm check',
     () => {
       const dir = mkdtempSync(join(tmpdir(), 'pre-ready-env-'));
       try {
@@ -110,13 +110,16 @@ describe('pnpm check, run by the gate, sees none of the caller’s tokens', () =
             private: true,
             scripts: {
               check:
-                'node -e "const e = process.env; process.exit(e.GH_TOKEN === undefined && e.CHECK_SCOPE === undefined ? 0 : 1)"',
+                'node -e "const e = process.env; process.exit(e.GH_TOKEN ?? e.CHECK_SCOPE ?? e.CHECK_SHARD ? 1 : 0)"',
             },
           }),
         );
-        const result = withEnv({ GH_TOKEN: 'caller-token-marker', CHECK_SCOPE: 'light' }, () =>
-          wholeCheck({ cwd: dir, skip: false }),
-        );
+        const caller = {
+          GH_TOKEN: 'caller-token-marker',
+          CHECK_SCOPE: 'light',
+          CHECK_SHARD: '1/3',
+        };
+        const result = withEnv(caller, () => wholeCheck({ cwd: dir, skip: false }));
         expect(result.ok, result.message).toBe(true);
       } finally {
         rmSync(dir, { recursive: true, force: true });

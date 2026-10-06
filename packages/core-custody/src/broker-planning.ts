@@ -31,6 +31,7 @@ import {
   WAIT_SECONDS,
   type ReservedCall,
 } from './broker-reserve.ts';
+import { sendingAccount } from './broker-carrier.ts';
 import { hold, release, settlementOf, settlePriced } from './broker-settle.ts';
 import type {
   Broker,
@@ -148,6 +149,7 @@ async function holdPlanning(
   request: ConversationCallRequest,
   operation: ModelOperation,
   route: BrokerRoute,
+  account: string | null,
 ): Promise<Held> {
   const cap = await lockedOrDefault(tx);
   if (await atCeiling(tx, operation, route)) {
@@ -162,8 +164,9 @@ async function holdPlanning(
   await tx.query(
     `insert into public.model_calls
        (business_id, id, conversation_id, planning_envelope_id, operation_key, state,
-        reserved_minor, route_key, route_reach, credential_kind, started_at)
-     values ($1, $2, $3, $4, $5, 'dispatched', $6, $7, $8, $9, clock_timestamp())`,
+        reserved_minor, route_key, route_reach, credential_kind, provider, credential_ref,
+        account, started_at)
+     values ($1, $2, $3, $4, $5, 'dispatched', $6, $7, $8, $9, $10, $11, $12, clock_timestamp())`,
     [
       tx.businessId,
       callId,
@@ -174,6 +177,9 @@ async function holdPlanning(
       route.key,
       route.reach,
       route.credentialKind,
+      route.provider,
+      route.credentialRef,
+      account,
     ],
   );
   await registerPromptCopy(tx, callId);
@@ -246,9 +252,11 @@ export async function callModelForPlanning(
   const fields = outsideFields(request.fields);
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
+  const { route } = chosen;
+  const account = await sendingAccount(broker, route, operation.destination);
   const held = await database.withBusiness(
     businessId,
-    async (tx) => await holdPlanning(tx, request, operation, chosen.route),
+    async (tx) => await holdPlanning(tx, request, operation, route, account),
   );
   if (!('reserved' in held)) return held;
   return await sendPlanning(database, businessId, held.reserved, fields, broker);

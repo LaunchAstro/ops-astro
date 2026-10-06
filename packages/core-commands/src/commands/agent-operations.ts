@@ -35,7 +35,9 @@ import { checkLease } from './tasks-check.ts';
 import { reviseRunState } from './run-state.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
-import { writeTaskComment } from './tasks-comment.ts';
+import { writeStepResult } from './onboarding.ts';
+import { delegationStillHolds } from './onboarding-authority.ts';
+import { AGENT_AUDIENCES, writeTaskComment } from './tasks-comment.ts';
 import { proposeFor, type ProposeFields } from './tasks-propose.ts';
 import { deleteTaskComment, editTaskComment, type CommentChange } from './tasks-comment-edit.ts';
 import { setScores } from './tasks-scores.ts';
@@ -184,9 +186,6 @@ export function isOperandRefusal<O extends object>(parsed: O | Refused): parsed 
 
 /** The operands of a row that reads none beyond its identifiers. */
 const NONE = (): NoOperands => ({});
-
-/** What a delegated agent may write a comment in: its team's notes, not the client's thread. */
-const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);
 
 /**
  * The operands' shape rules. A present operand of the wrong shape is refused
@@ -773,6 +772,31 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       replay: 'reauthorise',
       operands: recordIdOperand(() => refuseNotFound()),
       serve: servePropose,
+    }),
+  ],
+  [
+    // C41-A: an agent step's result goes on its delegated task only (purpose scope and the person's `task:write`).
+    'onboarding.step_result',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: async (tx, { session, request }, _operands, delegation, taskId) => {
+        if (taskId === undefined) return NOT_FOUND();
+        const spine = await readTaskSpine(tx);
+        return await writeStepResult(
+          tx,
+          {
+            actorId: session.actorId,
+            actorKind: 'agent',
+            entryPoint: 'api',
+            commentTypeId: spine.taskCommentTypeId,
+            stillHolds: await delegationStillHolds(tx, delegation),
+          },
+          { recordId: taskId, outcome: request['outcome'], result: request['result'] },
+        );
+      },
     }),
   ],
   [

@@ -11,7 +11,9 @@ import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { EMAIL_SUBJECT } from '../../packages/core-connectors/src/index.ts';
 import { sendInboxEmail } from '../../packages/core-custody/src/index.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { MAIL_HOOK_PATH, mountMailHook } from '../../apps/api/mail-hook.ts';
+import { insertActor, insertPerson } from '../identity/fixture.ts';
 import { itemFor, MAIL, w } from './email-world.ts';
 
 /** A made-up hook secret in the provider's form. Never a real credential. */
@@ -101,4 +103,30 @@ export async function sentItem(business?: {
   const messageId = w.provider.outbox.at(-1)?.id;
   if (messageId === undefined) throw new Error('hook world: the outbox is empty');
   return { item, messageId };
+}
+
+let cleo = '';
+/** A second person in the first business, reading its every task, with a confirmed address. */
+export async function secondPerson(): Promise<string> {
+  if (cleo !== '') return cleo;
+  cleo = await w.db.app.withBusiness(w.alpha, async (tx) => {
+    const person = await insertPerson(tx, 'Cleo');
+    const granted = await issueGrant(tx, [], {
+      subject: { kind: 'person', id: person },
+      scope: { kind: 'business', id: null },
+      collection: 'task',
+      action: 'read',
+      parentGrantId: null,
+      grantedByActorId: await insertActor(tx, person),
+    });
+    if (!granted.ok) throw new Error('hook isolation: the read grant was refused');
+    await tx.query(
+      `insert into public.person_identifiers
+         (business_id, id, person_id, kind, value, observed_value, source_system, review_state)
+       values ($1, gen_random_uuid(), $2, 'email', $3, $3, 'test', 'confirmed')`,
+      [tx.businessId, person, `cleo-${w.canary}`],
+    );
+    return person;
+  });
+  return cleo;
 }

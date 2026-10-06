@@ -127,11 +127,17 @@ export type CommandName =
   // and the lease owner's heartbeat. None is a new actor power; each asks for
   // authority the caller already holds (see each row below).
   | 'client.create'
+  // New client onboarding (C41-A): record.create, onboarding.start and onboarding.step_result.
+  | 'record.create'
+  | 'onboarding.start'
+  | 'onboarding.step_result'
   // C60: a client's privacy settings, on its record.
   | 'client.set_privacy'
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'
+  // C59 (ORCH65-Q3): the owner clears a member's lost authenticator.
+  | 'access.reset_factor'
   | 'grant.revoke'
   | 'delegation.revoke'
   | 'task.cancel'
@@ -231,5 +237,22 @@ export type CommandName =
   | 'trace.read'
   // The harness adoption test's result on one run (AW-12): the team's.
   | 'harness.read'
+  // C39-T: a team invitation made, sent again and withdrawn under
+  // `access:share`; its expiry is the business's worker's, never a command.
+  | 'invitation.create'
+  | 'invitation.resend'
+  | 'invitation.revoke'
+  // Settings ▸ Workflow triggers (C33): the registry is one read by
+  // `settings:read`; changing an activation is `settings:manage` and releasing
+  // a definition version `automation:manage`, neither an agent's.
+  | 'automation.registry'
+  | 'activation.change'
+  | 'definition.release'
+  // Standing approvals (C52-A): adopting a version, rolling back, turning off
+  // and revoking an approval, each `automation:manage` and never an agent's.
+  | 'activation.adopt'
+  | 'activation.roll_back'
+  | 'activation.turn_off'
+  | 'approval.revoke'
   // Setup's operations (C31 on), in `surface-setup.ts`.
   | SetupCommandName;

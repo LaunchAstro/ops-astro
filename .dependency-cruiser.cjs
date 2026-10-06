@@ -81,13 +81,24 @@ module.exports = {
       to: { path: '^packages/', pathNot: '^packages/core-digest/' },
     },
     {
+      name: 'sandbox-imports-no-package',
+      severity: 'error',
+      comment:
+        "The sandbox's grammars decide what reaches the Docker daemon, so they read only " +
+        'their own modules: no record, credential or connector code can widen them.',
+      from: { path: '^packages/core-sandbox/' },
+      to: { path: '^packages/', pathNot: '^packages/core-sandbox/' },
+    },
+    {
       name: 'custody-process-imports-no-package',
       severity: 'error',
       comment:
         "Custody's process holds every provider credential, so adapter, connector and " +
-        'database code never load in it (AW-01): its entry and the two modules it runs on ' +
+        'database code never load in it (AW-01): its entry and every module it runs on ' +
         'import no other package.',
-      from: { path: '^packages/core-custody/src/(custody-main|egress|credentials)\\.ts$' },
+      from: {
+        path: '^packages/core-custody/src/(custody-main|egress|egress-routes|credentials|secret-spellings)\\.ts$',
+      },
       to: { path: '^packages/', pathNot: '^packages/core-custody/' },
     },
     {

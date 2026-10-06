@@ -14,6 +14,7 @@ const decoyBefore: PageObservation = {
   status: 200,
   documentDigest: 'sha256:decoy',
   text: 'We work alongside your team.',
+  html: 'We work alongside your team.',
   stylesheets: {},
 };
 
@@ -28,9 +29,10 @@ it.each([
       status: 200,
       documentDigest: 'sha256:before',
       text: beforeText,
+      html: beforeText,
       stylesheets: {},
     };
-    const after = { ...before, documentDigest: 'sha256:after', text: afterText };
+    const after = { ...before, documentDigest: 'sha256:after', text: afterText, html: afterText };
     expect(
       compareCaptures({ before, after, decoyBefore, decoyAfter: { ...decoyBefore }, target }),
     ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['page'] });
@@ -43,10 +45,20 @@ it('fails the decoy when its only occurrence sits inside a longer word', () => {
     status: 200,
     documentDigest: 'sha256:before',
     text: 'We walk alongside you.',
+    html: 'We walk alongside you.',
     stylesheets: {},
   };
-  const after = { ...before, documentDigest: 'sha256:after', text: 'We walk beside you.' };
-  const decoy = { ...decoyBefore, text: 'We work \u{1D400}alongside your team.' };
+  const after = {
+    ...before,
+    documentDigest: 'sha256:after',
+    text: 'We walk beside you.',
+    html: 'We walk beside you.',
+  };
+  const decoy = {
+    ...decoyBefore,
+    text: 'We work \u{1D400}alongside your team.',
+    html: 'We work \u{1D400}alongside your team.',
+  };
   expect(
     compareCaptures({ before, after, decoyBefore: decoy, decoyAfter: { ...decoy }, target }),
   ).toEqual({ ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: ['decoy'] });

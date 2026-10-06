@@ -111,6 +111,8 @@ const GRANTS_BY_ROLE = {
     // administrators, never an agent. Without it no seeded identity could set
     // or clear a key on Settings ▸ Keys.
     ['custody', 'manage'],
+    // The connector fleet on Connections & signal (MP-14-7a).
+    ['connection', 'read'],
     // A person's own conversations with the agent (AW-03): the owner and
     // administrators hold `conversation:write` (the permission key catalogue).
     // `conversation:read`, the read-any grant, is seeded to nobody: it is given
@@ -146,6 +148,9 @@ const GRANTS_BY_ROLE = {
     // `spend:decide`, so C59's step-up judges it. Client sign-off and the
     // step-up switch stay `settings:manage` above.
     ['spend', 'decide'],
+    // Settings ▸ Workflow triggers (C33): releasing a definition version is
+    // `automation:manage`, the owner's and administrators' and never an agent's.
+    ['automation', 'manage'],
   ],
   member: [
     ['task', 'read'],

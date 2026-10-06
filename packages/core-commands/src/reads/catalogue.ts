@@ -46,6 +46,8 @@ import { readAwaitingReview } from './awaiting-review.ts';
 import { readPlanningCap } from '../../../core-custody/src/index.ts';
 import { readSettings } from './settings.ts';
 import { listCustodySecrets } from './custody.ts';
+import { readConnectionFleet } from './connections.ts';
+import { readConnectionSignal } from './signal.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
@@ -55,6 +57,7 @@ import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { readHarnessTrigger } from './harness-trigger.ts';
+import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
@@ -725,6 +728,24 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session) => await listCustodySecrets(tx, session),
   },
+  // By the scopes `connection:read` is held at; held nowhere is refused, not empty.
+  'connection.fleet': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionFleet(tx, session),
+  },
+  // Grants, tripwires and the night round, by the same scopes (MP-14-8).
+  'connection.signal': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionSignal(tx, session),
+  },
   // No subject record, for the reason `task.queue` gives: the settings are
   // the business's own configuration rather than one record, and there is no
   // `settings` row in `records` to name in the column even if there were.
@@ -937,6 +958,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const harness = await readHarnessTrigger(tx, session, runId);
       return 'refused' in harness ? harness : { ok: true, harness };
     },
+  },
+  // The business's definitions, versions and activations (C33): asked like
+  // `settings.read`, at the business, since no row carries a client.
+  'automation.registry': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => await readAutomationRegistry(tx),
   },
 };
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* eslint-disable require-await -- the proof bodies are kept as written */
 import { expect, it } from 'vitest';
+import { readDocument } from '../../packages/core-connectors/src/capture/page.ts';
 import {
   contentDigest,
   observeLanded,
@@ -47,6 +48,13 @@ function job(source = before): PublishJob {
   };
 }
 
+/** Visible text of the served page, as the fenced capture reads it. */
+function seen(html: string): string {
+  const reading = readDocument(html);
+  if (typeof reading === 'string') throw new Error(`capture refused: ${reading}`);
+  return reading.text;
+}
+
 function ports(overrides: Partial<PublishPorts> = {}, source = before): PublishPorts {
   return {
     readSource: async () => ({ kind: 'ok', value: { content: source, revision: 'base-revision' } }),
@@ -54,6 +62,7 @@ function ports(overrides: Partial<PublishPorts> = {}, source = before): PublishP
     publish: async () => ({ kind: 'ok', value: published }),
     cancellation: async () => 'none',
     raiseTask: async () => {},
+    capture: async () => ({ ok: true, value: { text: seen(source), url: published.liveUrl } }),
     ...overrides,
   };
 }
@@ -110,7 +119,14 @@ it('concurrent absent reads cannot dispatch the same revert twice', async () => 
   const input = {
     publishedRevision: published.revision,
     target,
-    change: job().change,
+    occurrence: {
+      left: 'We walk ',
+      right: ' you.',
+      index: 0,
+      observed: ['beside'],
+      offsets: [0],
+      liveAt: published.liveUrl,
+    },
     seam: 'revert-1',
     decidedAt,
   };
@@ -130,6 +146,7 @@ it('concurrent absent reads cannot dispatch the same revert twice', async () => 
       value: { revision: reverted.revision, served: false },
     }),
     capture: async () => ({ ok: false }),
+    raiseTask: async () => {},
   };
   await Promise.all([revertCorrection(input, p), revertCorrection(input, p)]);
   expect(sends).toBe(1);
@@ -142,6 +159,7 @@ it('an isolated text node does not make unrelated words block publish or revert 
   const accepted = await publishCorrection(approved, ports({}, isolated));
   if (accepted.state !== 'accepted') throw new Error('fixture was not accepted');
   const live = await observeLanded(accepted, target, {
+    raiseTask: async () => {},
     readDeployment: async () => ({
       kind: 'ok',
       value: { revision: published.revision, served: true },
@@ -150,6 +168,7 @@ it('an isolated text node does not make unrelated words block publish or revert 
       ok: true,
       value: {
         text: 'We walk beside you. Alongside our office is a park. We work alongside friends.',
+        url: published.liveUrl,
       },
     }),
   });
@@ -157,7 +176,7 @@ it('an isolated text node does not make unrelated words block publish or revert 
     {
       publishedRevision: published.revision,
       target,
-      change: approved.change,
+      occurrence: live.occurrence,
       seam: 'revert-1',
       decidedAt,
     },
@@ -171,8 +190,12 @@ it('an isolated text node does not make unrelated words block publish or revert 
       }),
       capture: async () => ({
         ok: true,
-        value: { text: 'We walk alongside you. The park is beside our office.' },
+        value: {
+          text: 'We walk alongside you. The park is beside our office.',
+          url: published.liveUrl,
+        },
       }),
+      raiseTask: async () => {},
     },
   );
   expect({ publish: live.state, revert: restored.state }).toEqual({
@@ -186,11 +209,15 @@ it('observation compares rendered entity text rather than source spellings', asy
   const accepted = await publishCorrection(job(source), ports({}, source));
   if (accepted.state !== 'accepted') throw new Error('fixture was not accepted');
   const observed = await observeLanded(accepted, target, {
+    raiseTask: async () => {},
     readDeployment: async () => ({
       kind: 'ok',
       value: { revision: published.revision, served: true },
     }),
-    capture: async () => ({ ok: true, value: { text: 'We & our friends walk beside you.' } }),
+    capture: async () => ({
+      ok: true,
+      value: { text: 'We & our friends walk beside you.', url: published.liveUrl },
+    }),
   });
   expect(observed.state).toBe('live');
 });
@@ -200,13 +227,14 @@ it('an unchanged duplicate sentence does not block the approved occurrence becom
   const accepted = await publishCorrection(job(source), ports({}, source));
   if (accepted.state !== 'accepted') throw new Error('fixture was not accepted');
   const observed = await observeLanded(accepted, target, {
+    raiseTask: async () => {},
     readDeployment: async () => ({
       kind: 'ok',
       value: { revision: published.revision, served: true },
     }),
     capture: async () => ({
       ok: true,
-      value: { text: 'We walk beside you. We walk alongside you.' },
+      value: { text: 'We walk beside you. We walk alongside you.', url: published.liveUrl },
     }),
   });
   expect(observed.state).toBe('live');

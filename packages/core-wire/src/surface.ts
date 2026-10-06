@@ -16,7 +16,7 @@
 // does not exist is a field nobody can change". Specification 2.2's second
 // observable result asks a person to assign a task and move it through stages,
 // which are two of those ten. So the owning operations are declared here with
-// the nine, and `CONTRACT_NINE` below names the nine so the two sets stay
+// the nine, and `CONTRACT_NINE` (re-exported below) names the nine so the two sets stay
 // distinguishable rather than merged. The three trash-family operations are here for the same
 // reason: specification 14.3 requires the purge to write an audit event, and
 // an audit event is written by a command.
@@ -101,6 +101,7 @@ const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
+const RECORD_WRITE = { collection: 'record', targetsExistingRecord: false } as const;
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -464,6 +465,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
+  // C41-A (RC-13): `record:write` business-wide; the start and a step result ask `task:write` too.
+  declare('record.create', 'write', { ...RECORD_WRITE, untargetedIdentifiers: [] }),
+  declare('onboarding.start', 'write', { ...RECORD_WRITE, untargetedIdentifiers: ['clientId'] }),
+  declare('onboarding.step_result', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['recordId'],
+    agent: 'delegated',
+  }),
   // C32: the tracked action `grant changed` on Settings ▸ Access, under
   // `access:manage` (the owner and administrators), never an agent's. A grant
   // names a person of the business and a client of it, or the whole business;
@@ -483,6 +493,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // person of the business; the provider steps it owes run after it commits.
   declare('access.end', 'manage', {
     collection: 'access',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['holderId'],
+  }),
+  // C59 (ORCH65-Q3): the tracked action `second factor reset (person, by)`
+  // under `settings:manage`, never an agent's. It names a member of the
+  // business; the provider's removal of the factor runs after it commits.
+  declare('access.reset_factor', 'manage', {
+    collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: ['holderId'],
   }),
@@ -510,6 +528,16 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: ['secretId'],
+  }),
+
+  // The connector fleet (MP-14-7a): `connection:read`, asked per row of the caller's scopes. A
+  // repair touches the credential's custody, so `custody:manage` business-wide, never an agent.
+  read('connection.fleet', 'connection'),
+  read('connection.signal', 'connection'),
+  declare('connector.repair', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['connectionId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this
@@ -787,6 +815,55 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'self',
     untargetedIdentifiers: [],
   }),
+
+  // C39-T: `access:share` on the whole business, a person's key no agent holds
+  // (the permission key catalogue). Another business's invitation is
+  // NOT_FOUND from the handler, as an id nobody issued. An administrator's
+  // invitation, created or resent, also asks `access:manage` in the handler.
+  ...(['invitation.create', 'invitation.resend', 'invitation.revoke'] as const).map((name) =>
+    declare(name, 'share', {
+      collection: 'access',
+      targetsExistingRecord: false,
+      untargetedIdentifiers: name === 'invitation.create' ? [] : ['invitationId'],
+    }),
+  ),
+  // Settings ▸ Workflow triggers (C33). The registry is a business fact read
+  // like `settings.read`; an activation is changed under `settings:manage` and
+  // a version released under `automation:manage`, both business-wide and
+  // never an agent's (the key catalogue: owner and administrators).
+  read('automation.registry', SETTINGS_COLLECTION),
+  declare('activation.change', 'manage', {
+    collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId', 'versionId'],
+  }),
+  declare('definition.release', 'manage', {
+    collection: 'automation',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['definitionId'],
+  }),
+  // Standing approvals (C52-A): adopting a version, rolling back, turning off
+  // and revoking are `automation:manage`, business-wide, never an agent's.
+  declare('activation.adopt', 'manage', {
+    collection: 'automation',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId', 'versionId'],
+  }),
+  declare('activation.roll_back', 'manage', {
+    collection: 'automation',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId'],
+  }),
+  declare('activation.turn_off', 'manage', {
+    collection: 'automation',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId'],
+  }),
+  declare('approval.revoke', 'manage', {
+    collection: 'automation',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['approvalId'],
+  }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
@@ -827,18 +904,8 @@ export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set(
   ),
 );
 
-/** The contract's nine, the first nine names of `CommandName`. */
-export const CONTRACT_NINE: readonly CommandName[] = [
-  'task.create',
-  'task.update',
-  'task.complete',
-  'task.reopen',
-  'task.comment',
-  'task.propose',
-  'task.decide',
-  'task.pickup',
-  'task.handback',
-];
+// The contract's nine, in its own file.
+export { CONTRACT_NINE } from './surface-contract-nine.ts';
 
 // An attempt's effect identity (T2c2), in its own file.
 export { effectAttemptOf, effectOperationId } from './effect-identity.ts';
@@ -860,27 +927,10 @@ export {
   SESSION_PATH,
 } from './paths.ts';
 
+// The writes an external party (R4) may reach, in their own file.
+export { EXTERNAL_WRITES, admitsSelfWrite } from './surface-external.ts';
+
 /** The reads, which no caller may reach through the command envelope. */
-/**
- * The writes an external party (R4) may reach: a comment, only in the client audience; signing
- * out, which writes only the record that this person's session ended (C23); opening their
- * own inbox item; and their own preference rows, which every signed-in person writes
- * (`preference:write`, CAPABILITY-SLICES.md; ORCH50's ruling). `commands/prepare.ts` refuses
- * every other write to a person without a membership, and `session.capabilities` and
- * discovery read this same list.
- */
-export const EXTERNAL_WRITES: readonly CommandName[] = [
-  'task.comment',
-  'session.end',
-  'inbox.seen',
-  'preference.save',
-  'preference.dismiss_tip',
-];
-
-/** Whether a person of this standing may send this write: the envelope and discovery ask it. */
-export const admitsSelfWrite = (member: boolean, command: CommandName): boolean =>
-  member || EXTERNAL_WRITES.includes(command);
-
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
   (command) => command.kind === 'read',
 ).map((command) => command.name);

@@ -59,8 +59,8 @@ created since is refused `VERSION_STALE` naming its revision, not replaced. A
 revision past a safe integer is refused `FIELD_VALUE_INVALID` on
 `expectedRevision`. The tests are `tests/custody/c31-credentials.test.ts`, `c31-secret-set-absent.test.ts`,
 `c31-secret-set-guards.test.ts`, `c31-two-setters-overlap.test.ts`,
-`c31-revoked-list-and-revision-range.test.ts` and
-`tests/surfaces/c31-keys-panel.test.tsx`.
+`c31-revoked-list-and-revision-range.test.ts`, `tests/surfaces/c31-keys-panel.test.tsx`
+and `c31-keys-panel-first-set-refused.test.tsx`.
 
 `markSecretUsed` moves a row's last-used time to the moment of use
 (`clock_timestamp()`), never backwards, so an older transaction committing a

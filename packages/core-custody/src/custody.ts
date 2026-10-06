@@ -32,6 +32,11 @@ export type CustodyOutcome =
   | { readonly kind: 'refused'; readonly started: false; readonly code: string }
   | { readonly kind: 'worker_lost'; readonly started: boolean; readonly fault: 'ours' };
 
+export interface Carrier {
+  readonly credentialKind: StorableKind;
+  readonly account: string | null;
+}
+
 export interface CustodyConfig {
   readonly credentialsFile: string;
   readonly destinations: readonly Destination[];
@@ -40,6 +45,12 @@ export interface CustodyConfig {
 export interface Custody {
   readonly pid: number;
   dispatch(credentialRef: string, request: OutboundRequest): Promise<CustodyOutcome>;
+  /**
+   * The kind and account of the credential custody would present to
+   * `destination` under `credentialRef`, or null when it holds none there:
+   * what the broker records on a call before sending it (AW-10, catalogue #439).
+   */
+  describe(credentialRef: string, destination: string): Promise<Carrier | null>;
   /** Everything custody wrote to stderr, for the canary proofs. */
   stderr(): string;
   /** Send a raw message, for the no-borrow proof: answers what custody replied. */
@@ -154,6 +165,14 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
         started = true;
       });
       return outcomeOf(reply, started);
+    },
+    describe: async (credentialRef, destination) => {
+      const reply = await exchange({ type: 'describe', credentialRef, destination });
+      if (reply === 'lost' || reply['type'] !== 'described') return null;
+      return {
+        credentialKind: reply['kind'] as StorableKind,
+        account: (reply['account'] as string | null) ?? null,
+      };
     },
     stderr: () => errors,
     raw: async (message) => {

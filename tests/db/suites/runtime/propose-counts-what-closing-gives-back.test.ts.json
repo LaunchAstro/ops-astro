@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a proposal's preflight counts only what superseding the live version gives back, so a settled call's spend stays committed and an open or marked hold stays whole"
+}

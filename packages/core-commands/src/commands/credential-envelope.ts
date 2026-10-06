@@ -21,10 +21,12 @@
 //
 // **What it reaches.** The surface rows an agent may reach under a delegation
 // that need no lease: not a lease's own work (a claim) and not a person-only
-// row. So `task.create`, under the ticked `task:write`, and
-// `session.capabilities`, whose answer is the ticked keys the person's grants
-// still cover (`readCapabilities` asks within them) and the agent actor as the
-// acting identity. `run.revise_state` is excluded by name (`OUTSIDE_REACH`).
+// row (`CREDENTIAL_REACH`: the task reads and writes an agent makes, comment
+// changes, `run.child_handback`). Among them `task.create`, under the ticked
+// `task:write`, and `session.capabilities`, whose answer is the ticked keys the
+// person's grants still cover (`readCapabilities` asks within them) and the
+// agent actor as the acting identity. A shared person handler holds the agent's
+// limits itself (`updateTask`, `assignTask`, `commentOnTask`, #420). `run.revise_state` is excluded by name (`OUTSIDE_REACH`).
 // Anything else is refused `DELEGATION_EXCLUDES_OPERATION`, recorded against
 // the agent.
 
@@ -54,6 +56,7 @@ import {
   type CommandRefusal,
 } from './refusal.ts';
 import type { CommandResult } from './register-store.ts';
+import { credentialNotLive } from './credential-not-live.ts';
 import type { UncheckedRequest } from './requests.ts';
 
 /** Rows the rule below would admit that a credential still never reaches. */
@@ -116,11 +119,6 @@ export interface CredentialCall {
   readonly quota?: CredentialQuota;
 }
 
-const NOT_LIVE_FIXES: readonly string[] = [
-  'This agent credential is not live: it was revoked, it has expired, or it was never issued here.',
-  'Ask the person it acts for to issue a new one on Settings ▸ Access.',
-];
-
 const OUTSIDE_FIXES: readonly string[] = [
   'An agent credential reads, adds and comments on tasks, proposes changes and asks what it may do, within the keys it was issued for.',
   'Every other operation belongs to a person.',
@@ -132,10 +130,6 @@ const LIMITED_FIXES: readonly string[] = [
 ];
 
 const limited = (): CommandRefusal => refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES);
-
-/** The one answer for a credential not served: unknown, revoked, expired, or a key nobody holds. */
-const credentialNotLive = (): CommandRefusal =>
-  refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
 
 /**
  * A credential at a business key nobody holds. It takes a place at that key's

@@ -62,9 +62,10 @@ export async function taskAccess(
 /**
  * A read grant on the task's map covers it (W12), never a nested map, as
  * `task.read` admits it. The task is then held `for share` and read again, as
- * that read holds it, so no move commits before the caller has used the answer.
+ * that read holds it, so no move commits before the caller has used the answer,
+ * and a placement is never paired with grants read after it changed.
  */
-async function readsThroughMap(
+export async function readsThroughMap(
   tx: TenantQuery,
   personId: string,
   taskId: string,

@@ -161,7 +161,7 @@ export async function purgeHold(
 }
 
 /** The business's worker actor, minted once under a lock so two passes share it. */
-async function workerActor(tx: TenantQuery): Promise<string> {
+export async function workerActor(tx: TenantQuery): Promise<string> {
   // Its own key, taken last and by nothing that then waits on a conversation,
   // so it joins no cycle with the row locks above it.
   await advisoryLock(tx, `worker-actor:${tx.businessId}`);

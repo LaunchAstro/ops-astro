@@ -32,7 +32,7 @@ const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
 import { loginHasVerifiedFactor } from './second-factor.ts';
-import { sessionEnded } from './sessions.ts';
+import { sessionEnded, sessionEndedHeld } from './sessions.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
@@ -58,6 +58,8 @@ export interface Session {
   /** Agent credential calls only (API-2): its ticked `collection:action` keys, which every
    *  grant check also asks within (`subjectsOf`); `actorId` is the agent, `personId` its person. */
   readonly credentialScope?: readonly string[];
+  /** The verified token a person's session was resolved from (C58), for `sessionEndedSince`. */
+  readonly presented?: VerifiedSubject;
 }
 
 /**
@@ -179,7 +181,19 @@ export async function standingOf(
     actorId: found.actor_id,
     roleKey: found.role_key,
     assurance,
+    presented,
   };
+}
+
+/**
+ * Whether the person's session has ended since it was resolved (C58), asked
+ * by a write after its last wait, the business's audit chain held: an ending
+ * committed meanwhile is seen here, as the door would see it on the next call,
+ * and one not yet committed waits for the write (`sessionEndedHeld`). An agent
+ * credential's session, which no person's token resolved, has none to end.
+ */
+export async function sessionEndedSince(tx: TenantQuery, session: Session): Promise<boolean> {
+  return session.presented !== undefined && (await sessionEndedHeld(tx, session.presented));
 }
 
 /** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */
