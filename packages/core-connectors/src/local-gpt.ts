@@ -12,8 +12,8 @@
 // The adapter half below is what runs in the broker's process. Its price is
 // always nothing: the plan is paid for already and the local mode spends no
 // money. The tokens a call used are kept in the runner's ledger, which also
-// holds the cap; the runner's refusals (the cap, an unapproved model, a failed
-// run) answer before any work, or after a run whose answer is not used, and
+// holds the cap; the runner's refusals (the cap, an unapproved model, the
+// plan at its usage limit, a failed run) answer before any work, or after a run whose answer is not used, and
 // are positive proof that nothing was kept, so the broker releases the call
 // and holds nothing.
 
@@ -38,7 +38,14 @@ export const LOCAL_GPT_DEFAULT_MODEL = 'gpt-6.1-sol';
 export const LOCAL_GPT_NOTHING_HAPPENED: readonly string[] = [
   'LOCAL_CAP_REACHED',
   'LOCAL_MODEL_NOT_APPROVED',
+  'LOCAL_PLAN_LIMIT',
   'LOCAL_GPT_FAILED',
+  // The runner's door refuses these before any work: a wrong key, path or method, a bad body.
+  'http_400',
+  'http_401',
+  'http_404',
+  'http_405',
+  'http_413',
 ];
 
 /** The adapter: fields in, a request for the default model with neither origin nor credential out. */
