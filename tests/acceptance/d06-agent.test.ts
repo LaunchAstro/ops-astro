@@ -43,6 +43,7 @@ import { agentHold } from './d06-agent-fixture.ts';
 import { revisedState } from './d06-run-state.ts';
 import { ownWriteBody, proposalBody } from './d06-agent-own-writes.ts';
 import { c80AgentBody, c80AgentPickup } from './c80-bodies.ts';
+import { stepResultBody } from './d06-agent-step.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
@@ -82,6 +83,8 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'run.child_handback',
   'task.pickup',
   'task.handback',
+  // An onboarding step's result (C41-A), on a step the agent picked up.
+  'onboarding.step_result',
 ];
 
 /** A business-internal field the replay operation may take to its cloud route. */
@@ -147,6 +150,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       return { body: { operationId, reservationId: await hold.reservation() } };
     }
     if (name === 'task.handback') await hold.release();
+    if (name === 'onboarding.step_result') return await stepResultBody(harness, hold, operationId);
     // A call holds 500 and spends 100 of the reservation's 3,000, so each gets
     // a lease of its own rather than draining one.
     if (name === 'model.call') await hold.release();

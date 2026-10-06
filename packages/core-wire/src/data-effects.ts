@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S0-5: what each command does to data, declared beside its permission key.
-// Its shapes, the class the gate reads (derived from it and never set by
-// hand) and the three constructors below are in `data-effects-types.ts`.
+// S0-5: each command's effect on data, declared beside its permission key. Its shapes, the class
+// the gate reads (derived, never set by hand) and its constructors are in `data-effects-types.ts`.
 
 import type { CommandName } from './surface.ts';
-import type { DataEffects } from './data-effects-types.ts';
-import { business, client, writing } from './data-effects-types.ts';
+import { business, client, writing, type DataEffects } from './data-effects-types.ts';
+import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
 
 export type {
@@ -45,19 +44,17 @@ const LEGAL = writing(business('legal_document_versions'));
 // A grant names a client only by its scope; it holds no content and admits
 // no one, and a party-scoped grant needs a client, which is gated itself.
 const GRANTS = writing(business('grants'));
-// A task shared with its client is that client's data reaching the client's
-// existing people: S0-5 classes it client-data, never an invitation, as it
-// enrols no one (MP-4-10). Taking the share back gives no one
-// anything, so `task.revoke_client_share` stays a business grant write.
+// A task shared with its client is that client's data reaching the client's existing people: S0-5
+// classes it client-data, never an invitation, as it enrols no one (MP-4-10). Taking the share back
+// gives no one anything, so `task.revoke_client_share` stays a business grant write.
 const SHARE = writing(client('grants'));
 const CREDENTIAL = writing(business('agent_credentials', 'actors'));
 
 /**
- * Every command's effects, one entry each: the type is keyed by every command
- * name, so a command added without an entry does not compile. Record kinds
- * are tables. Each is proved against the rows its fixture actually changes
- * (`tests/operations/s0-5-effect-metadata.test.ts`); reads write only the
- * act's audit, which is no record kind.
+ * Every command's effects, one entry each: the type is keyed by every command name, so a command
+ * added without an entry does not compile. Record kinds are tables. Each is proved against the rows
+ * its fixture actually changes (`tests/operations/s0-5-effect-metadata.test.ts`); reads write only
+ * the act's audit, which is no record kind.
  */
 export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = {
   'task.create': TASK,
@@ -93,8 +90,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
   'task.triage': TASK,
   'task.set_stage': TASK,
-  // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10) and
-  // the category (MP-4-8).
+  // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10), the category (MP-4-8).
   'task.set_state': TASK,
   'task.set_scores': TASK,
   'task.set_adhoc': TASK,
@@ -104,7 +100,6 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // Client access (MP-4-10): a share grant on the task for its client's people.
   'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
-  'task.set_party': TASK,
   'task.set_audience': TASK,
   'task.reparent': TASK,
   'task.move': TASK,
@@ -186,8 +181,10 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.set': writing(client('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
   'connection.fleet': READ,
+  'connection.signal': READ,
   'connector.repair': writing(business('connection_repairs')),
   'client.create': writing(client('clients')),
+  ...ONBOARDING_EFFECTS,
   'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
   // content once scoped to it, so its rows count as client-scoped.
@@ -260,6 +257,15 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
       'grants',
       'delegations',
     ),
+    [{ provider: 'identity', forClient: false }],
+  ),
+  // C59: a factor cleared here and at the provider, kept by subject and session (0061, 0063, 0064).
+  'access.reset_factor': writing(
+    [
+      ...business('factor_resets', 'second_factors', 'people', 'ended_sessions'),
+      ...business('ops.second_factor_subjects', 'ops.ended_subject_sessions'),
+      ...business('ops.ended_provider_sessions'),
+    ],
     [{ provider: 'identity', forClient: false }],
   ),
   'grant.revoke': GRANTS,

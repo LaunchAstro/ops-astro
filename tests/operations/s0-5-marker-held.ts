@@ -32,8 +32,8 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   'run.top_up',
   'run.end_at_budget_stop',
   'run.revise_state',
-  // The task's own rows beside it (MP-4-5 comments, MP-4-6 time, MP-4-11 tags):
-  // a comment's edit or removal, a time entry, a tag on the task.
+  // The task's own rows beside it (MP-4-5 comments, MP-4-6 time, MP-4-11 tags, C41-A):
+  // a comment's edit or removal, a time entry, a tag, a step's result as a comment.
   'task.edit_comment',
   'task.delete_comment',
   'time.start',
@@ -43,6 +43,7 @@ export const MARKER_HELD: ReadonlySet<string> = new Set([
   'time.delete',
   'task.add_tag',
   'task.remove_tag',
+  'onboarding.step_result',
   // SL11 (batch 3b): approves the proposal's gate as `task.decide` does, then pins and binds.
   'task.accept_plan',
   // C80: a request files a correction naming the task, and a decision moves it.

@@ -152,6 +152,10 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
   'operations.change_installation_mode': { mode: 'any' },
   'client.create': { name: 'any' },
+  // Type and outcome are checked by value in the command; `recordId` is `any` so a missing one is refused by name.
+  'record.create': { type: 'any', fields: 'map' },
+  'onboarding.start': { clientId: 'id', templateKey: 'any' },
+  'onboarding.step_result': { recordId: 'any', outcome: 'any', result: 'any' },
   'client.set_privacy': {
     clientId: 'id',
     modelEgress: 'any',
@@ -165,6 +169,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
   'access.revoke': { grantId: 'id' },
   'access.end': { holderId: 'id' },
+  'access.reset_factor': { holderId: 'id' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },

@@ -288,6 +288,15 @@ vi.mock('../../packages/core-commands/src/commands/access-write.ts', async (orig
   createClientRecord: recorder('createClientRecord'),
   grantOnAccess: recorder('grantOnAccess'),
 }));
+vi.mock('../../packages/core-commands/src/commands/record-create.ts', async (original) => ({
+  ...(await original<object>()),
+  createRecord: recorder('createRecord'),
+}));
+vi.mock('../../packages/core-commands/src/commands/onboarding.ts', async (original) => ({
+  ...(await original<object>()),
+  startOnboarding: recorder('startOnboarding'),
+  recordStepResult: recorder('recordStepResult'),
+}));
 vi.mock('../../packages/core-commands/src/commands/client-privacy-write.ts', async (original) => ({
   ...(await original<object>()),
   setClientPrivacy: recorder('setClientPrivacy'),
@@ -295,6 +304,10 @@ vi.mock('../../packages/core-commands/src/commands/client-privacy-write.ts', asy
 vi.mock('../../packages/core-commands/src/commands/access-end.ts', async (original) => ({
   ...(await original<object>()),
   endAccessOnSettings: recorder('endAccessOnSettings'),
+}));
+vi.mock('../../packages/core-commands/src/commands/factor-reset.ts', async (original) => ({
+  ...(await original<object>()),
+  resetFactorOnSettings: recorder('resetFactorOnSettings'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-time.ts', async (original) => ({
   ...(await original<object>()),
@@ -385,9 +398,13 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.top_up': ['recordId'],
   'budget.write_off': ['recordId', 'attemptId'],
   'access.end': ['holderId'],
+  'access.reset_factor': ['holderId'],
   'access.grant': ['holderId', 'clientId'],
   'access.revoke': ['grantId'],
   'client.create': [],
+  'record.create': [],
+  'onboarding.start': ['clientId'],
+  'onboarding.step_result': ['recordId'],
   'client.set_privacy': ['clientId'],
   'conversation.message': ['conversationId'],
   'conversation.rename': ['conversationId'],
@@ -458,6 +475,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'access.end',
   'access.grant',
   'access.read',
+  'access.reset_factor',
   'access.revoke',
   'activation.adopt',
   'activation.change',
@@ -473,6 +491,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'client.list',
   'client.set_privacy',
   'connection.fleet',
+  'connection.signal',
   'connector.repair',
   'conversation.allowance',
   'conversation.list',
@@ -506,6 +525,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'map.view',
   'model.call',
   'notifications.set_channel',
+  'onboarding.start',
+  'onboarding.step_result',
   'operations.change_installation_mode',
   'operations.read',
   'operations.record_gate_item',
@@ -518,6 +539,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'privacy.record_incident',
   'privacy.set_data_class',
   'privacy.set_overseas_service',
+  'record.create',
   'run.child_handback',
   'run.delegate_child',
   'run.end_at_budget_stop',
@@ -574,6 +596,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 const PINNED_AGENT_SURFACE = [
   'live_correction.request',
   'model.call',
+  'onboarding.step_result',
   'run.child_handback',
   'run.delegate_child',
   'run.revise_state',
@@ -742,6 +765,9 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'operations.record_gate_item', operationId: 'op', item: 'i', evidence: 'e' },
   { command: 'operations.change_installation_mode', operationId: 'op', mode: 'm' },
   { command: 'client.create', operationId: 'op', name: 'n' },
+  { command: 'record.create', operationId: 'op', type: 'client', fields: { name: 'n' } },
+  { command: 'onboarding.start', operationId: 'op', clientId: 'c', templateKey: 'standard' },
+  { command: 'onboarding.step_result', operationId: 'op', recordId: 'r', outcome: 'done' },
   {
     command: 'client.set_privacy',
     operationId: 'op',
@@ -763,6 +789,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'access.end', operationId: 'op', holderId: 'person' },
   { command: 'secret.set', operationId: 'op', name: 'n', value: 'v' },
   { command: 'secret.clear', operationId: 'op', secretId: 's' },
+  { command: 'access.reset_factor', operationId: 'op', holderId: 'person' },
   { command: 'connector.repair', operationId: 'op', connectionId: 'c' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
@@ -976,12 +1003,16 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'operations.record_gate_item': ['recordGateItem', 'request'],
   'operations.change_installation_mode': ['changeInstallationMode', 'request'],
   'client.create': ['createClientRecord', 'request'],
+  'record.create': ['createRecord', 'request'],
+  'onboarding.start': ['startOnboarding', 'request'],
+  'onboarding.step_result': ['recordStepResult', 'request'],
   'client.set_privacy': ['setClientPrivacy', 'request'],
   'access.grant': ['grantOnAccess', 'request'],
   'access.revoke': ['revokeGrantOnAccess', 'grant'],
   'access.end': ['endAccessOnSettings', 'request'],
   'secret.set': ['setCustodySecret', 'request'],
   'secret.clear': ['clearCustodySecret', 'request'],
+  'access.reset_factor': ['resetFactorOnSettings', 'request'],
   'connector.repair': ['startConnectorRepair', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
@@ -1077,13 +1108,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and ten from an expected revision', () => {
+  it('exempts the same one hundred and fifteen from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same twenty-four, two of them before a pickup', () => {
+  it('lets an agent reach the same twenty-five, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

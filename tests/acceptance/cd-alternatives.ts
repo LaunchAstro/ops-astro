@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 17 of the 65. For each of the other 48 this file
+// `recordId`, which reaches 17 of the 75. For each of the other 58 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -31,7 +31,7 @@ export const CASE = {
 } as const;
 
 /**
- * The fifty-five operations that name no identifier, each with a minimal valid body.
+ * The fifty-two operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -70,6 +70,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['secret.set', { name: 'target-free.key', value: 'target-free-value' }],
   // The connector fleet (MP-14-7a) names no row.
   ['connection.fleet', {}],
+  ['connection.signal', {}],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
   // AW-04: a digest names a file's bytes, not a record of any business.
@@ -93,6 +94,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['operations.read', {}],
   ['client.list', {}],
   ['client.create', { name: 'A made-up client made while bravo is watched' }],
+  // The one record-create command (C41-A) names no row; a name of its own each run.
+  ['record.create', { type: 'client', fields: { name: `a target-free client ${randomUUID()}` } }],
   [
     'privacy.draft_breach_notices',
     {
@@ -157,7 +160,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The fifty-two identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The fifty-eight identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -208,6 +211,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'access.grant': ['holderId and clientId', 'control'],
   'access.revoke': ['grantId', 'control'],
   'access.end': ['holderId', 'control'],
+  'access.reset_factor': ['holderId', 'control'],
   // C60: a client's privacy settings, by its client.
   'client.set_privacy': ['clientId', 'control'],
   'task.duplicate': ['recordId', 'duplicate'],
@@ -215,6 +219,9 @@ export const IDENTIFIER_BEARING: Readonly<
   // C33: a version and an activation, and a definition to release on.
   'activation.change': ['versionId and activationId', 'control'],
   'definition.release': ['definitionId', 'control'],
+  // New client onboarding (C41-A): the client a start names, the step task a result names.
+  'onboarding.start': ['clientId', 'control'],
+  'onboarding.step_result': ['recordId', 'control'],
   // C52-A: an activation and the version it adopts, and an approval to revoke.
   'activation.adopt': ['activationId and versionId', 'control'],
   'activation.roll_back': ['activationId', 'control'],

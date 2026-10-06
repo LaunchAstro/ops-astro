@@ -56,6 +56,7 @@ import {
   type CommandRefusal,
 } from './refusal.ts';
 import type { CommandResult } from './register-store.ts';
+import { credentialNotLive } from './credential-not-live.ts';
 import type { UncheckedRequest } from './requests.ts';
 
 /** Rows the rule below would admit that a credential still never reaches. */
@@ -120,11 +121,6 @@ export interface CredentialCall {
   readonly quota?: CredentialQuota;
 }
 
-const NOT_LIVE_FIXES: readonly string[] = [
-  'This agent credential is not live: it was revoked, it has expired, or it was never issued here.',
-  'Ask the person it acts for to issue a new one on Settings ▸ Access.',
-];
-
 const OUTSIDE_FIXES: readonly string[] = [
   'An agent credential reads, adds and comments on tasks, proposes changes and asks what it may do, within the keys it was issued for.',
   'Every other operation belongs to a person.',
@@ -136,10 +132,6 @@ const LIMITED_FIXES: readonly string[] = [
 ];
 
 const limited = (): CommandRefusal => refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES);
-
-/** The one answer for a credential not served: unknown, revoked, expired, or a key nobody holds. */
-const credentialNotLive = (): CommandRefusal =>
-  refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
 
 /**
  * A credential at a business key nobody holds. It takes a place at that key's

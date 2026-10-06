@@ -394,6 +394,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       action: 'read',
     }));
     byAda('access.end', 'holderId', f.admin.personId as string, (holderId) => ({ holderId }));
+    // C59: bravo's person named in an alpha authenticator reset.
+    byAda('access.reset_factor', 'holderId', f.admin.personId as string, (holderId) => ({
+      holderId,
+    }));
     // C60: bravo's client named in an alpha privacy change.
     byAda('client.set_privacy', 'clientId', f.clientId, (clientId) => ({
       clientId,
@@ -412,6 +416,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('legal.publish_version', 'versionId', f.legalVersionId, (versionId) => ({ versionId }));
     byAda('credential.revoke', 'credentialId', f.credentialId, (credentialId) => ({
       credentialId,
+    }));
+    byAda('onboarding.start', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      templateKey: 'standard',
+    }));
+    byAda('onboarding.step_result', 'recordId', f.stepTaskId, (recordId) => ({
+      recordId,
+      outcome: 'done',
+      result: 'a result aimed abroad',
     }));
     // C33: bravo's version and definition named in an alpha change and release.
     byAda('activation.change', 'versionId', f.automation.versionId, (versionId) => ({
