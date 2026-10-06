@@ -5,7 +5,11 @@
 // lock; the timer's deadline kill and delete reach the daemon while a create
 // holds the lock on its own I/O; a run whose container a sweep removed is
 // `unavailable`, an answer that lands after that sweep included; and a deadline once reached stays reached
-// when the wall clock steps back. Each interleaving is driven by the
+// when the wall clock steps back, and across a restart whose sweep fails.
+// A store that dies under a run operation answers `internal` and stops no
+// timer; a late answer while a failed sweep waits to repeat, or a delete
+// whose container another sweep removed, is `unavailable`; an attach end is
+// timed when it is reported. Each interleaving is driven by the
 // fixture's gates (a held store write, pin read or wait) and `settle()`, never
 // by a sleep. Every case runs against the fixture's doubles, not a real
 // daemon.
@@ -120,4 +124,84 @@ it('keeps the deadline once reached when the clock steps back: kills, refuses a 
   expect(await state.handle(op('start', ID))).toEqual(refused('deadline'));
   await state.handle(op('wait', ID));
   expect(candidateOf(w)?.runs).toEqual([{ statusCode: 0, inTime: false }]);
+});
+
+it('answers internal when the store dies under a wait or a delete, and the timer goes on', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(C));
+  await state.handle(op('start', ID));
+  const dropped = { ok: false, reason: 'internal', why: 'reply status' };
+  w.crash = true;
+  expect(await state.handle(op('wait', ID))).toEqual(dropped);
+  await state.attachEnded(ID);
+  expect(await state.handle(op('delete', ID))).toEqual(dropped);
+  w.now = T0 + S1_WALL + GRACE;
+  await state.tick();
+  w.crash = false;
+  w.calls.length = 0;
+  await state.tick();
+  expect([heldId(w), w.calls]).toEqual([null, ['kill', 'delete']]);
+});
+
+it('refuses a run answer that lands while a failed sweep waits to repeat, and records nothing', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(C));
+  await state.handle(op('start', ID));
+  const release = hold(w, 'wait');
+  const waited = state.handle(op('wait', ID));
+  await settle();
+  w.answer.delete = 500;
+  w.answer.info = 500;
+  await state.handle(op('delete', ID));
+  release();
+  expect(await waited).toEqual(UNAVAILABLE);
+  expect(candidateOf(w)?.runs).toEqual([{ statusCode: null, inTime: false }]);
+});
+
+it('answers a delete unavailable when another sweep removed its container first', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(P, s1('p')));
+  await state.handle(op('start', ID));
+  const release = hold(w, 'delete');
+  const deleted = state.handle(op('delete', ID));
+  await settle();
+  w.held.add('d'.repeat(64));
+  expect(await state.handle(create(P, s1('p')))).toEqual(refused('container count'));
+  release();
+  expect(await deleted).toEqual(UNAVAILABLE);
+});
+
+it('times an attach end when it is reported, not when its write takes the lock', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(C));
+  await state.handle(op('start', ID));
+  await state.handle(op('wait', ID));
+  const release = hold(w, 'pins');
+  const second = state.handle(create(P, s1('p')));
+  await settle();
+  w.now = T0 + 10;
+  const ended = state.attachEnded(ID);
+  await settle();
+  w.now = T0 + 100_000;
+  release();
+  await Promise.all([second, ended]);
+  expect(record(w).containers.container?.attachAt).toBe(T0 + 10);
+});
+
+it('kills a container the record held across a restart at every tick while its sweep fails', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(P, s1('p')));
+  await state.handle(op('start', ID));
+  w.listBroken = true;
+  w.now = T0 + S1_WALL - 60_000;
+  const restarted = await opened(w);
+  w.calls.length = 0;
+  await restarted.tick();
+  await restarted.tick();
+  expect(w.calls).toEqual(['kill', 'kill']);
 });
