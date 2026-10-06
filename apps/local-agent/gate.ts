@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // What the runner checks before it spawns anything (LA-1): the model and the
-// cap. GPT-6.1-Sol, the model Codex runs on this laptop, runs by default; any
+// cap. The model Codex runs on this laptop runs by default; any
 // other model needs the owner's yes, as does a cap above the default
 // (settings.ts). The yes is a line in `approvals.json`, written by hand.
 
