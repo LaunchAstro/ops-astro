@@ -17,11 +17,8 @@ import {
   EMPTY_CONTAINERS,
   recordContainer,
 } from '../../packages/core-sandbox/src/container-book.ts';
-import {
-  ProxyState,
-  readProxyRecord,
-  writeProxyRecord,
-} from '../../packages/core-sandbox/src/proxy-state.ts';
+import { readProxyRecord, writeProxyRecord } from '../../packages/core-sandbox/src/proxy-record.ts';
+import { ProxyState } from '../../packages/core-sandbox/src/proxy-state.ts';
 import {
   BASE,
   C,

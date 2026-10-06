@@ -18,12 +18,14 @@ import {
 import type { CreateShape } from '../../packages/core-sandbox/src/create-body.ts';
 import type { SiteEntry } from '../../packages/core-sandbox/src/pin-list.ts';
 import {
-  type ProxyPorts,
   type ProxyRecord,
-  ProxyState,
   readProxyRecord,
-  type StateOp,
   writeProxyRecord,
+} from '../../packages/core-sandbox/src/proxy-record.ts';
+import {
+  type ProxyPorts,
+  ProxyState,
+  type StateOp,
 } from '../../packages/core-sandbox/src/proxy-state.ts';
 import { S1_OPENING, S2_OPENING } from '../../packages/core-sandbox/src/run-env.ts';
 
