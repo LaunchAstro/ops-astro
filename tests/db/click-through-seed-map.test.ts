@@ -65,6 +65,7 @@ describe.skipIf(serverUrl === undefined)('SR-1 click-through seed map', () => {
 
   mapCases();
   readerCases();
+  guardCases();
 });
 
 function mapCases() {
@@ -136,5 +137,45 @@ function readerCases() {
       ),
     );
     expect(answers).toEqual(Array.from({ length: 6 }, () => 'refused'));
+  });
+}
+
+const READ_MODEL_FUNCTIONS = [
+  'map_summary_refresh',
+  'map_summary_on_record',
+  'map_summary_on_map_part',
+  'map_summary_on_link',
+];
+
+function guardCases() {
+  it('moves the read models without a made-up guard entry, so the seed runs again', async () => {
+    expect(world.guards[1]['ledger']).toEqual([]);
+    expect(world.second.status, world.second.out).toBe(0);
+    const [moved] = await world.db.admin.execute<{ n: number }>(
+      `select count(*)::int as n from public.map_frontier where map_id = $1`,
+      [await taskId(world, MAP)],
+    );
+    expect(moved?.n).toBe(2);
+  });
+
+  it('runs the four map read-model functions as a role that is no owner and passes no row security', async () => {
+    const owners = await world.db.admin.execute<{
+      fn: string;
+      definer: boolean;
+      owner: string;
+      past: boolean;
+    }>(
+      `select p.proname as fn, p.prosecdef as definer, r.rolname as owner,
+              r.rolsuper or r.rolbypassrls or r.rolcanlogin
+                or pg_has_role(r.oid, d.datdba, 'member') as past
+         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         join pg_roles r on r.oid = p.proowner
+         join pg_database d on d.datname = current_database()
+        where n.nspname = 'public' and p.proname = any($1) order by 1`,
+      [READ_MODEL_FUNCTIONS],
+    );
+    expect(owners.map((row) => [row.fn, row.definer, row.owner, row.past])).toEqual(
+      READ_MODEL_FUNCTIONS.toSorted().map((fn) => [fn, true, 'ops_astro_map_path', false]),
+    );
   });
 }
