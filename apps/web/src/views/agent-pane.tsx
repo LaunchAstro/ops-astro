@@ -2,19 +2,18 @@
 //
 // The Agent pane on the task page (MP-6-1), wired to the real commands.
 //
-// `AgentPane` draws what `task.read` stored and returned; this view hands its
-// controls to the same paths the rest of the page uses. A decision names the
-// gate and the version the pane drew, from the same read that showed the
-// evidence, and the server compares that version under its locks: a page that
-// has gone stale is told so and reads again, never decides by accident.
-// Reject is the decide path's `reject`, pressed from the proposal header.
+// `AgentPane` draws what `task.read` returned; its controls take the page's own
+// paths. A decision names the gate and version the pane drew, from the read
+// that showed the evidence, and the server compares that version under its
+// locks: a stale page is told so and reads again, never decides by accident.
+// Reject is the decide path's `reject`, from the proposal header; escalate,
+// past the rounds of changes, names the person chosen (DA-07).
 // Cancel is `task.cancel`, which asks `gate:decide`. A person's word on an
 // unknown effect (C54) is `budget.record_outcome` (T3d1) or `budget.write_off`
 // (T3c), naming the attempt the read showed; both ask `billing:decide`, and the
-// write-off's second approver above the band is the server's. The top-up is
-// the task page's own (T2e). A run stopped at its ceiling (AW-05) is answered
-// with `run.top_up` (`billing:decide`) or `run.end_at_budget_stop`
-// (`gate:decide`), naming the task, the run and the stop the read showed.
+// write-off's second approver above the band is the server's. A run stopped at
+// its ceiling (AW-05) is answered with `run.top_up` (`billing:decide`) or
+// `run.end_at_budget_stop` (`gate:decide`), naming the task, run and stop read.
 // Every outcome ends in a reread, as the proposals section's does. The
 // operational log (MP-6-2) is `task.execution`'s events and their runs' plans,
 // read again with each new task read, as the run's own section reads them; a
@@ -85,6 +84,7 @@ interface AgentControls {
   readonly decide: (
     gate: { readonly gateId: string; readonly versionId: string },
     decision: GateDecision | 'reject',
+    recipientPersonId?: string,
   ) => void;
   readonly cancel: (lineageId: string) => void;
   readonly recordOutcome: (attemptId: string, outcome: RecordedOutcome) => void;
@@ -134,16 +134,16 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
     setStopAwaiting(state === 'awaiting_second' ? STOP_AWAITING : null);
     props.onChanged();
   };
-  const decide: AgentControls['decide'] = (gate, decision) => {
+  const decide: AgentControls['decide'] = (gate, decision, recipientPersonId) => {
     if (busy || props.note?.closed === true) return;
     props.onDecided(null);
+    const exact = { gateId: gate.gateId, versionId: gate.versionId, decision };
     run(
       (client) =>
         client.mutate('task.decide', {
-          gateId: gate.gateId,
-          versionId: gate.versionId,
-          decision,
+          ...exact,
           note: `Decided from the Agent pane (${decision}).`,
+          ...(recipientPersonId === undefined ? {} : { recipientPersonId }),
         }),
       (settlement) => {
         if (settlement.kind === 'closed') {
@@ -252,9 +252,8 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         refusal={refusal}
         decideClosed={props.note?.closed === true}
         onDecide={decide}
-        onReject={(gate) => {
-          decide(gate, 'reject');
-        }}
+        onReject={(gate) => decide(gate, 'reject')}
+        people={props.people}
         onCancel={cancel}
         // Each grant the stamp names leads to the access ledger, Settings ▸ Access (F71).
         ledgerHref={() => pathTo('agency:access')}
