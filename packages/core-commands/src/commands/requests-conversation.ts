@@ -13,6 +13,7 @@ export type ConversationRequest =
       readonly title?: unknown;
       readonly subject?: unknown;
       readonly scope?: unknown;
+      readonly model?: unknown;
     } & Envelope)
   | ({
       readonly command: 'conversation.message';
@@ -28,4 +29,9 @@ export type ConversationRequest =
       readonly command: 'conversation.set_scope';
       readonly conversationId: unknown;
       readonly page: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'conversation.set_model';
+      readonly conversationId: unknown;
+      readonly model: unknown;
     } & Envelope);

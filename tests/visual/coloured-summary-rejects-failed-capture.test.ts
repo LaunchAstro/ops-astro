@@ -1,25 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
+import { unpackHead } from './head-snapshot.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
 it('the coloured summary check rejects a named capture that fails before taking a screenshot', () => {
   const directory = mkdtempSync(join(tmpdir(), 'failed-named-capture-'));
   try {
-    const archive = spawnSync('git', ['archive', 'HEAD'], {
-      cwd: root,
-      maxBuffer: 32 * 1024 * 1024,
-    });
-    expect(archive.status, archive.stderr.toString()).toBe(0);
-    const extracted = spawnSync('tar', ['-x', '-C', directory], { input: archive.stdout });
-    expect(extracted.status, extracted.stderr.toString()).toBe(0);
-    symlinkSync(join(root, 'node_modules'), join(directory, 'node_modules'), 'dir');
+    unpackHead(root, directory);
 
     writeFileSync(
       join(directory, 'tests/surfaces/mp-1-1-tokens.test.tsx'),

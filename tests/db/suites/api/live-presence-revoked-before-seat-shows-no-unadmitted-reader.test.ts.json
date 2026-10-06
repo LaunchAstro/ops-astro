@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a stream sits only once a recheck admitted the person who sits, so a reader revoked after its door admission never shows on the task"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "#714 and #715 across another client: map A client A's and map B client B's, every ticket carrying its map's client (asserted non-null); a map grant reaches its own map's tickets on the unattended list (recipient and operator), task.rank's neighbour and the live board digest, never the other client's, and a client-view operator of client A is shown client A's ordinary task and no map ticket of it"
+}
