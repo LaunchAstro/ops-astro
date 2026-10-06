@@ -33,8 +33,8 @@ type Party = { readonly id: BusinessId; readonly member: Member; readonly tasks:
 /** The grant check the person path runs before any handler, at the command package's boundary. */
 const GRANT_CHECK = {
   file: 'packages/core-commands/src/commands/prepare.ts',
-  from: '  if (!authorised.ok) return refused(authorised.refusal);',
-  to: '  void authorised;',
+  from: '  if (map === undefined || !again.ok) return refused(authorised.refusal);',
+  to: '  return {};',
 };
 
 /** The codes a missing grant and an agent outside its delegation answer with, before the move. */

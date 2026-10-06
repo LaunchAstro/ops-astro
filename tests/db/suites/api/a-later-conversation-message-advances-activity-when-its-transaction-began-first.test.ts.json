@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a later message advances activity even when its transaction began before the message before it"
+}
