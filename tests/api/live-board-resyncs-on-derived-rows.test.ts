@@ -178,4 +178,32 @@ describe.skipIf(serverUrl === undefined)('an open board resyncs on what its rows
       await tab.stop();
     }
   });
+
+  it('a write to the assignee or state that a served row does not show says nothing', async () => {
+    const task = await c.createTask('its assignee steps up a sign-in');
+    const assigned = await c.asPerson('task.assign', {
+      recordId: task.id,
+      expectedRevision: task.revision,
+      fields: { assignee: c.manager.personId },
+    });
+    expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
+    const tab = await openQuiet(c.reader);
+    try {
+      const before = tab.resyncs();
+      // What a second factor verified, removed or reset writes on the person's row.
+      await c.fixture.db.admin.execute(
+        'update public.people set second_factor_verified = not second_factor_verified where id = $1',
+        [c.manager.personId],
+      );
+      await c.fixture.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('description', $2::text)
+          where id = (select uuid_1 from public.records where id = $1)`,
+        [task.id, `unshown ${randomUUID().slice(0, 8)}`],
+      );
+      await sleep(600);
+      expect(tab.resyncs()).toBe(before);
+    } finally {
+      await tab.stop();
+    }
+  });
 });
