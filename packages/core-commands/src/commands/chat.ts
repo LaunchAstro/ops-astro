@@ -150,7 +150,7 @@ export async function markOwnRead(
  * then the declaration's grant (none for the reader's own marker), then the
  * recipient is still staff. Nothing, or the refusal the next call would get.
  */
-async function standsNow(
+export async function standsNow(
   tx: TenantQuery,
   context: CommandContext,
   recipientId: string | null,
