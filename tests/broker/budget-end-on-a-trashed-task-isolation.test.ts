@@ -4,15 +4,16 @@
 // the task in the trash, `run.end_at_budget_stop` through the command entry is
 // refused to a person of this business without `gate:decide` on it; to a
 // second business's decider naming this run under their own task or this one;
-// to a person naming another task they hold; and to a person granted on another
-// client of this business, naming this client's run under their client's task
-// or this one; each with the same bytes as a made-up run. No refusal names this
-// run, its task, ask, title or amount, and neither client's money moves.
+// to a person naming another task they hold; and to a person who holds it on
+// another client's task of this business, naming this client's run under that
+// task (the run-to-task guard answers, as for a made-up run) or this one (no
+// authority on it). No refusal names this run, its task, ask, title or amount,
+// and neither client's money moves.
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it as vitestIt } from 'vitest';
 import { executeCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
-import { statusOf } from '../../packages/core-records/src/index.ts';
+import { checkAuthority, statusOf } from '../../packages/core-records/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
@@ -165,7 +166,10 @@ async function clientAWork(): Promise<{ readonly theirs: Work; readonly clientA:
   return { theirs, clientA: await underNewClient(theirs.taskId) };
 }
 
-/** Client A's person, granted gate:decide on client A, naming client B's run under each task. */
+/**
+ * Client A's person, holding gate:decide on client A's own task, naming client B's run under
+ * that task and under B's. The first passes authority, so only the run-to-task guard answers.
+ */
 async function fromAnotherClient(
   named: Named,
   { theirs, clientA }: Awaited<ReturnType<typeof clientAWork>>,
@@ -180,19 +184,32 @@ async function fromAnotherClient(
     [theirs.picked['leaseId']],
   );
   const theirMoney = await moneyOf(theirRun);
+  const bMoney = await moneyOf(named.runId);
   const onA = await enrol(s.db.app, s.business, 'on-client-a');
-  await s.db.app.withBusiness(s.business, async (tx) => {
+  const authorised = await s.db.app.withBusiness(s.business, async (tx) => {
     await grantTo(tx, onA, 'decide', { kind: 'party', id: clientA }, false, 'gate');
+    return await checkAuthority(
+      tx,
+      [
+        { kind: 'person', id: onA.personId },
+        { kind: 'actor', id: onA.actorId },
+      ],
+      { collection: 'gate', action: 'decide', scope: { kind: 'record', id: theirs.taskId } },
+    );
   });
+  // The authorised side: the caller may decide on client A's own task.
+  expect(authorised.ok).toBe(true);
   const underA = await endAs(onA, s.business, s.db, { ...named, taskId: theirs.taskId });
   const underB = await endAs(onA, s.business, s.db, named);
   const madeUpA = await endAs(onA, s.business, s.db, madeUp(theirs.taskId));
   const madeUpB = await endAs(onA, s.business, s.db, madeUp(named.taskId));
-  expect(underA.code).not.toBe('applied');
-  expect(underB.code).not.toBe('applied');
+  expect(madeUpA.code, 'past authority on A, a made-up run is not found').toBe('NOT_FOUND');
+  expect(underA.code).toBe('NOT_FOUND');
   expect(underA.bytes, 'the same bytes as a made-up run').toBe(madeUpA.bytes);
+  expect(underB).toMatchObject({ code: 'SCOPE_NOT_GRANTED', status: 403 });
   expect(underB.bytes, 'the same bytes as a made-up run').toBe(madeUpB.bytes);
   expect(await moneyOf(theirRun), "client A's money").toStrictEqual(theirMoney);
+  expect(await moneyOf(named.runId), "client B's money").toStrictEqual(bMoney);
   return [underA, underB];
 }
 
