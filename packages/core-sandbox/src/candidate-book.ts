@@ -221,8 +221,7 @@ function readCandidate(value: Json): Candidate | null {
     entry.image !== '' ||
     typeof id !== 'string' ||
     !IMAGE.test(id) ||
-    !isCount(createsLeft, F2_CREATES) ||
-    createsLeft + runs.length > F2_CREATES ||
+    !isCount(createsLeft, F2_CREATES - runs.length) ||
     runs.some((run) => run === null)
   )
     return null;
