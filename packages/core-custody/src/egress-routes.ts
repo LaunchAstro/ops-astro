@@ -125,11 +125,12 @@ export function pathAllowed(extras: Extras, method: Method, path: string): boole
 }
 
 // How a request that did not succeed comes back: the fault's kind and the
-// status, and for a provider's refusal its `error_code` when that is one short
-// lower-case token. One status can mean more than one thing (the login
-// provider's 422 is an address holding a login, or a password its rules
+// status, and for a provider's refusal its `error_code` when that is one of
+// the few codes listed here. One status can mean more than one thing (the
+// login provider's 422 is an address holding a login, or a password its rules
 // refuse, C39-T SEC-P3A-1 S1); the code says which. Nothing else of the
-// answer leaves custody: its message may carry anything.
+// answer leaves custody: it may carry anything, a credential among it, so a
+// code is never one custody did not name.
 
 export type OutboundFault =
   | 'unlisted'
@@ -145,9 +146,12 @@ export interface OutboundFailure {
   readonly ok: false;
   readonly fault: OutboundFault;
   readonly status: number | null;
-  /** A refusal's `error_code`, one short lower-case token; never the answer itself. */
+  /** A refusal's `error_code`, one of `REFUSAL_CODES`; never the answer itself. */
   readonly code?: string;
 }
+
+/** The login provider's refusals that say what a 4xx meant (C39-T). */
+const REFUSAL_CODES = new Set<unknown>(['email_exists', 'user_not_found', 'weak_password']);
 
 /** A status outside 2xx as a failure, naming its refusal's code when the answer holds one. */
 export function statusFault(status: number, text: string): OutboundFailure {
@@ -159,5 +163,5 @@ export function statusFault(status: number, text: string): OutboundFailure {
     return failure;
   }
   const code = (answer as Record<string, unknown> | null)?.['error_code'];
-  return typeof code === 'string' && /^[a-z_]{1,64}$/u.test(code) ? { ...failure, code } : failure;
+  return REFUSAL_CODES.has(code) ? { ...failure, code: code as string } : failure;
 }
