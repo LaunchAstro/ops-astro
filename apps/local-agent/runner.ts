@@ -11,11 +11,10 @@
 // operation lists as proof that nothing happened, so it moves no money. Calls
 // run one at a time: the ledger's total is read and the cap checked with no
 // other call in flight, so two calls never both start under the cap. One
-// runner holds a home at a time (its lock file). A call whose caller has gone,
+// runner holds a home at a time (home-lock.ts). A call whose caller has gone,
 // or whose turn comes as the runner closes, is never run.
 
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { setImmediate as nextTurn } from 'node:timers/promises';
@@ -28,6 +27,7 @@ import {
   UNKNOWN_CALL_TOKENS,
   type CallRefusal,
 } from './gate.ts';
+import { holdHome } from './home-lock.ts';
 import { appendLedger, type LedgerRow } from './ledger.ts';
 import type { RunnerSettings } from './settings.ts';
 
@@ -196,37 +196,6 @@ function goneWatch(response: ServerResponse): AbortController {
     if (!response.writableFinished) gone.abort();
   });
   return gone;
-}
-
-/**
- * Hold the home for this runner: a second runner on the same ledger would read
- * the same total and both start under the cap. A lock left by a process that
- * has gone is taken over.
- */
-function holdHome(home: string): () => void {
-  mkdirSync(home, { recursive: true });
-  const lock = `${home}/runner.lock`;
-  try {
-    writeFileSync(lock, String(process.pid), { flag: 'wx' });
-  } catch {
-    const holder = Number(readFileSync(lock, 'utf8'));
-    if (Number.isSafeInteger(holder) && holder > 0 && alive(holder)) {
-      throw new Error('LOCAL_HOME_IN_USE: another runner holds this OPS_LOCAL_AGENT_HOME');
-    }
-    writeFileSync(lock, String(process.pid));
-  }
-  return () => {
-    rmSync(lock, { force: true });
-  };
-}
-
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** The one route: checked, read, then queued behind the call in flight. */
