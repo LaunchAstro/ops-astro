@@ -28,7 +28,19 @@ export interface World {
   readonly env: Record<string, string | undefined>;
   knobs(knobs: Record<string, unknown>): void;
   calls(): readonly FakeCall[];
+  ledger(): readonly Record<string, unknown>[];
+  /** A file in the runner's home: a string as it is, anything else as JSON. */
+  write(name: string, value: unknown): void;
   remove(): void;
+}
+
+/** A JSON-lines file's rows; none when it does not exist. */
+function readLines(file: string): unknown[] {
+  if (!existsSync(file)) return [];
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => JSON.parse(line) as unknown);
 }
 
 export function makeWorld(): World {
@@ -54,13 +66,14 @@ export function makeWorld(): World {
     knobs: (knobs) => {
       writeFileSync(join(codexHome, 'fake.json'), JSON.stringify(knobs));
     },
-    calls: () =>
-      existsSync(calls)
-        ? readFileSync(calls, 'utf8')
-            .split('\n')
-            .filter((line) => line !== '')
-            .map((line) => JSON.parse(line) as FakeCall)
-        : [],
+    calls: () => readLines(calls) as FakeCall[],
+    ledger: () => readLines(join(agentHome, 'ledger.jsonl')) as Record<string, unknown>[],
+    write: (name, value) => {
+      writeFileSync(
+        join(agentHome, name),
+        typeof value === 'string' ? value : JSON.stringify(value),
+      );
+    },
     remove: () => {
       rmSync(root, { recursive: true, force: true });
     },

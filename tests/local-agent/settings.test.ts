@@ -2,7 +2,8 @@
 //
 // LA-1 (#859): the local runner's settings. It starts only on the owner's
 // laptop (OPS_ENVIRONMENT=local), with a runner key, on its own Codex home
-// under an absolute runner home, never the owner's ~/.codex.
+// under an absolute runner home, never the owner's ~/.codex, under a token
+// cap that only the owner's approval raises.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { join } from 'node:path';
@@ -75,5 +76,23 @@ describe('the runner key', () => {
     const text = JSON.stringify(read);
     expect(text).not.toContain(w.env['OPS_LOCAL_AGENT_KEY']);
     expect(text).not.toContain(w.env['OPENAI_API_KEY']);
+  });
+});
+
+const capOf = (w: World, cap: string): ReturnType<typeof readSettings> =>
+  readSettings({ ...w.env, OPS_LOCAL_AGENT_CAP_TOKENS: cap }, w.userHome);
+
+describe('the cap', () => {
+  it('refuses a cap above 2,000,000 tokens the approval does not name, and above 10,000,000 always', () => {
+    const w = fresh();
+    expect(capOf(w, '3000000')).toMatchObject({ code: 'CAP_NOT_APPROVED' });
+    w.write('approvals.json', { capTokens: 3_000_000 });
+    expect(capOf(w, '3000000')).toMatchObject({ ok: true });
+    w.write('approvals.json', { capTokens: 20_000_000 });
+    expect(capOf(w, '20000000')).toMatchObject({ code: 'CAP_NOT_APPROVED' });
+  });
+
+  it.each([['lots'], ['0'], ['-1'], ['1e6'], ['1000000000']])('refuses the cap %j', (cap) => {
+    expect(capOf(fresh(), cap)).toMatchObject({ ok: false });
   });
 });

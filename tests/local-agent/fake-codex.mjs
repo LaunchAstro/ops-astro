@@ -4,7 +4,8 @@
 // A stand-in for `codex exec --json` (LA-1). It records what it was given
 // (argv, stdin, environment, working folder) in its CODEX_HOME's calls.jsonl
 // and answers as that folder's fake.json says: a reply, extra event lines,
-// a tool item, a failed turn, raw output, an exit code or a wait. It never
+// a tool item, a failed turn, the plan's usage limit, raw output, the
+// tokens used, an exit code or a wait. It never
 // reaches a model.
 
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
@@ -23,7 +24,10 @@ process.stdin.on('end', () => {
     `${JSON.stringify({ argv: process.argv.slice(2), stdin, env: process.env, cwd: process.cwd() })}\n`,
   );
   const answer = () => {
-    if (typeof knobs.raw === 'string') {
+    if (knobs.limit) {
+      const limit = { type: 'error', message: "You've hit your usage limit. Try again later." };
+      process.stdout.write(`${JSON.stringify(limit)}\n`);
+    } else if (typeof knobs.raw === 'string') {
       process.stdout.write(knobs.raw);
     } else {
       const lines = [
@@ -36,7 +40,10 @@ process.stdin.on('end', () => {
         },
         knobs.failed
           ? { type: 'turn.failed', error: { message: 'failed' } }
-          : { type: 'turn.completed', usage: { input_tokens: 120, output_tokens: 7 } },
+          : {
+              type: 'turn.completed',
+              usage: knobs.usage ?? { input_tokens: 120, output_tokens: 7 },
+            },
       ];
       if (knobs.failed)
         lines.push({ type: 'turn.completed', usage: { input_tokens: 90, output_tokens: 0 } });

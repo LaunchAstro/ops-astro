@@ -10,12 +10,21 @@
 // owner's `~/.codex`: that one holds the owner's own instructions (AGENTS.md)
 // and memories, which every call would read. The owner signs in to it once
 // with `CODEX_HOME=<home>/codex codex login`; the runner never reads the login.
-// A refusal names the setting, never its value: the runner key is one of them.
+//
+// The plan reports no dollar cost, so the cap counts tokens: 2,000,000 unless
+// the owner's yes in `approvals.json` names a higher figure, 10,000,000 at
+// most. A refusal names the setting, never its value: the runner key is one of them.
 
+import { readFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
 const MIN_KEY_LENGTH = 32;
+
+/** The cap with no approval, in tokens in and out. */
+export const DEFAULT_CAP_TOKENS = 2_000_000;
+/** The highest cap the owner's yes can raise to. */
+export const MAX_CAP_TOKENS = 10_000_000;
 
 export interface RunnerSettings {
   readonly key: string;
@@ -24,6 +33,9 @@ export interface RunnerSettings {
   /** The child's CODEX_HOME: the runner's own login, and nothing of the owner's. */
   readonly codexHome: string;
   readonly codexBin: string;
+  readonly capTokens: number;
+  /** OPS_LOCAL_AGENT_CAP_TOKENS was set: that figure is the cap, whatever approvals.json says. */
+  readonly capConfigured: boolean;
   /** What the child inherits, and nothing else. */
   readonly childEnv: {
     readonly PATH: string;
@@ -35,7 +47,8 @@ export interface RunnerSettings {
   readonly timeoutMs: number;
 }
 
-export type StartRefusal = 'LOCAL_ONLY' | 'KEY_REFUSED' | 'HOME_NOT_ABSOLUTE';
+export type StartRefusal =
+  'LOCAL_ONLY' | 'KEY_REFUSED' | 'HOME_NOT_ABSOLUTE' | 'CAP_MALFORMED' | 'CAP_NOT_APPROVED';
 
 export type SettingsResult =
   | { readonly ok: true; readonly settings: RunnerSettings }
@@ -46,6 +59,43 @@ const refuse = (code: StartRefusal, message: string): SettingsResult => ({
   code,
   message,
 });
+
+export interface Approvals {
+  readonly capTokens: number | null;
+  readonly models: readonly string[];
+}
+
+/**
+ * The owner's approvals, `{ "capTokens": n, "models": [...] }`, written by
+ * hand and read fresh each time: a missing or unreadable file approves nothing.
+ */
+export function readApprovals(home: string): Approvals {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(join(home, 'approvals.json'), 'utf8'));
+  } catch {
+    return { capTokens: null, models: [] };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { capTokens: null, models: [] };
+  }
+  const shape = parsed as Record<string, unknown>;
+  const cap = shape['capTokens'];
+  const models = shape['models'];
+  return {
+    capTokens: typeof cap === 'number' && Number.isSafeInteger(cap) && cap > 0 ? cap : null,
+    models: Array.isArray(models)
+      ? models.filter((model): model is string => typeof model === 'string')
+      : [],
+  };
+}
+
+/** A cap as the owner writes it: a whole number of tokens above nothing. */
+function capOf(text: string | undefined): number | undefined {
+  if (text === undefined || text === '') return DEFAULT_CAP_TOKENS;
+  if (!/^[1-9]\d{0,8}$/u.test(text)) return undefined;
+  return Number(text);
+}
 
 /** The only environment the codex child gets: nothing of the runner's own settings or keys. */
 function childEnvOf(
@@ -81,6 +131,18 @@ export function readSettings(
   if (!isAbsolute(home)) {
     return refuse('HOME_NOT_ABSOLUTE', 'OPS_LOCAL_AGENT_HOME is an absolute path');
   }
+  const capTokens = capOf(env['OPS_LOCAL_AGENT_CAP_TOKENS']);
+  if (capTokens === undefined) {
+    return refuse('CAP_MALFORMED', 'OPS_LOCAL_AGENT_CAP_TOKENS is a whole number of tokens');
+  }
+  const approved = readApprovals(home).capTokens;
+  if (capTokens > MAX_CAP_TOKENS || (capTokens > DEFAULT_CAP_TOKENS && approved !== capTokens)) {
+    return refuse(
+      'CAP_NOT_APPROVED',
+      `a cap above ${String(DEFAULT_CAP_TOKENS)} tokens needs the owner's yes in approvals.json, ` +
+        `${String(MAX_CAP_TOKENS)} at most`,
+    );
+  }
   return {
     ok: true,
     settings: {
@@ -88,6 +150,8 @@ export function readSettings(
       home,
       codexHome: join(home, 'codex'),
       codexBin: env['OPS_LOCAL_AGENT_CODEX_BIN'] || 'codex',
+      capTokens,
+      capConfigured: (env['OPS_LOCAL_AGENT_CAP_TOKENS'] ?? '') !== '',
       childEnv: childEnvOf(env, userHome),
       // Under custody's 120 s for the call, so the runner gives up first.
       timeoutMs: 100_000,

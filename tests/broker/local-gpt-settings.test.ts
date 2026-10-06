@@ -166,6 +166,7 @@ it('LA-1 operations: both register with all twelve declarations, on the local_gp
   expect(LOCAL_GPT_NOTHING_HAPPENED).toEqual([
     'LOCAL_CAP_REACHED',
     'LOCAL_MODEL_NOT_APPROVED',
+    'LOCAL_PLAN_LIMIT',
     'LOCAL_GPT_FAILED',
   ]);
 });

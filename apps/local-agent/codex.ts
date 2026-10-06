@@ -60,6 +60,8 @@ export interface CodexResult {
   readonly outputTokens: number;
   /** The turn failed, or the model reached for a tool; its tokens still count. */
   readonly failed: boolean;
+  /** Codex said the plan is at its usage limit: the owner's stop, not a fault. */
+  readonly limited: boolean;
 }
 
 const EVENTS: ReadonlySet<string> = new Set([
@@ -86,13 +88,27 @@ interface Reading {
   text: string | undefined;
   usage: { readonly input: number; readonly output: number } | undefined;
   failed: boolean;
+  limited: boolean;
+}
+
+/** Codex's own words for a plan at its limit; they only choose the refusal, never let a call through. */
+const USAGE_LIMIT = /usage limit/iu;
+
+/** The message of an `error` or `turn.failed` event, if it has one. */
+function failureMessage(event: Record<string, unknown>): string {
+  const direct = event['message'];
+  const nested = record(event['error'])?.['message'];
+  return [direct, nested].filter((part) => typeof part === 'string').join(' ');
 }
 
 /** One event into the reading; false when it is not one this grammar knows. */
 function readEvent(event: Record<string, unknown>, reading: Reading): boolean {
   const type = event['type'];
   if (typeof type !== 'string' || !EVENTS.has(type)) return false;
-  if (type === 'turn.failed' || type === 'error') reading.failed = true;
+  if (type === 'turn.failed' || type === 'error') {
+    reading.failed = true;
+    if (USAGE_LIMIT.test(failureMessage(event))) reading.limited = true;
+  }
   if (type === 'turn.completed') {
     const usage = record(event['usage']);
     const input = count(usage?.['input_tokens']);
@@ -115,7 +131,7 @@ function readEvent(event: Record<string, unknown>, reading: Reading): boolean {
 
 /** Codex's events as one result, or nothing if they are not the grammar above. */
 export function readCodexEvents(stdout: string, requested: string): CodexResult | undefined {
-  const reading: Reading = { text: undefined, usage: undefined, failed: false };
+  const reading: Reading = { text: undefined, usage: undefined, failed: false, limited: false };
   for (const line of stdout.split('\n')) {
     if (line.trim() === '') continue;
     let parsed: unknown;
@@ -128,7 +144,12 @@ export function readCodexEvents(stdout: string, requested: string): CodexResult 
     if (event === undefined || !readEvent(event, reading)) return undefined;
   }
   const { usage } = reading;
-  if (usage === undefined) return undefined;
+  if (usage === undefined) {
+    // A plan at its limit may end with no turn at all: nothing was used.
+    return reading.limited
+      ? { text: '', model: requested, inputTokens: 0, outputTokens: 0, failed: true, limited: true }
+      : undefined;
+  }
   const failed = reading.failed || reading.text === undefined;
   return {
     text: failed ? '' : (reading.text ?? ''),
@@ -136,6 +157,7 @@ export function readCodexEvents(stdout: string, requested: string): CodexResult 
     inputTokens: usage.input,
     outputTokens: usage.output,
     failed,
+    limited: reading.limited,
   };
 }
 
