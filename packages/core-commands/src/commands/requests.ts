@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What a caller sends. One discriminated union, so a surface cannot grow a
-// shape of its own (minimum contract 4.2: "one shape, so that no surface can
-// grow its own").
+// What a caller sends. One discriminated union, so a surface cannot grow a shape of its own
+// (minimum contract 4.2: "one shape, so that no surface can grow its own").
 //
 // Two things are deliberately *not* in the type.
 //

@@ -235,19 +235,10 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
   'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
   'run.child_handback': writing([...client('run_events'), ...business('delegations')]),
-  'task.accept_plan': writing(
-    client(
-      'attempts',
-      'gate_decisions',
-      'gates',
-      'inbox_items',
-      'plan_records',
-      'reservations',
-      'run_definition_pins',
-      'run_events',
-      'task_envelopes',
-    ),
-  ),
+  'task.accept_plan': writing([
+    ...client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'plan_records'),
+    ...client('reservations', 'run_definition_pins', 'run_events', 'task_envelopes'),
+  ]),
   'access.grant': GRANTS,
   'access.revoke': GRANTS,
   // C58: the team member signed out and deactivated at the identity provider.
