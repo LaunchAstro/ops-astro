@@ -1890,8 +1890,12 @@ or delete.
   The version room a replacement is sized by (`versionRoom`, `pickup.ts`)
   counts a hold topped up while `held` and closed later at its actual plus its
   calls, since the top-up moved the calls' spend and the close charges only
-  what it adds. A hold settled at its calls before its top-up, or one whose
-  top-up was written before the column (null), counts once, at the greater.
+  what it adds. A hold settled at its calls before its top-up counts once, at
+  the greater. The migration gives every earlier top-up its state: one on a
+  closed hold made the step's fresh hold in its own transaction, so that
+  hold's attempt is stamped at the answer's `answered_at`, and the closed hold
+  keeps the state it closed in; any other found its hold `held`. No top-up is
+  left without a state.
 - **The end** (`endAtBudgetStop`, `gate:decide` on the task, a person). One
   call with no confirmation (U7). The hold becomes `abandoned` with the cause
   `budget_stop_ended`; the envelope releases the unspent part and keeps the
