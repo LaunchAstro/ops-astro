@@ -106,7 +106,7 @@ async function ownGroup(
  * A group the caller may rename or change the members of, locked: its creator
  * while a member, or a holder of `chat:manage` over the business, in it or
  * not. A member who is neither gets the grant refusal; anyone else outside it
- * NOT_FOUND, as for a group never issued.
+ * NOT_FOUND, as for a group never issued, a lost standing included.
  */
 async function managedGroup(
   tx: TenantQuery,
@@ -115,10 +115,11 @@ async function managedGroup(
 ): Promise<Locked> {
   const found = await lockedGroup(tx, context, conversationId);
   if ('refusal' in found) return found;
-  const lost = await standsNow(tx, context, null);
-  if (lost !== undefined) return { refusal: refused(lost) };
   const { session } = context;
   const member = found.group.members.includes(session.personId);
+  // A lost standing tells an outsider nothing of the group: NOT_FOUND.
+  const lost = await standsNow(tx, context, null);
+  if (lost !== undefined) return { refusal: refused(member ? lost : refuseNotFound()) };
   if (member && found.group.creator === session.personId) return found;
   const asked = await checkAuthority(tx, subjectsOf(session), {
     collection: 'chat',
