@@ -45,7 +45,7 @@ const ana = { id: 'p-ana', name: 'Ana', agent: false };
 const shown = (board: Awaited<ReturnType<typeof mount>>) =>
   board.all('tr[data-row]').map((one) => (one as HTMLElement).dataset['row'] ?? null);
 
-it('#902 a reread that drops the last row of an active filter shows no task, and keeps the filter', async () => {
+it('a reread that drops the last row of an active filter shows no task, and keeps the filter', async () => {
   const board = (rows: readonly ProjectRow[]) => (
     <ProjectsBoard
       rows={rows}
@@ -88,7 +88,7 @@ const clockBoard = (rows: readonly ProjectRow[], changedAt: string) => (
   />
 );
 
-it('#903 a board on the real clock judges overdue on the new day once fresh rows arrive', async () => {
+it('a board on the real clock judges overdue on the new day once fresh rows arrive', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(2026, 9, 4, 23, 59));
   const due = '2026-10-04';
@@ -103,7 +103,7 @@ it('#903 a board on the real clock judges overdue on the new day once fresh rows
   }
 });
 
-it('#902 Review still drops a held assignee filter', async () => {
+it('Review still drops a held assignee filter', async () => {
   const board = (rows: readonly ProjectRow[]) => (
     <ProjectsBoard
       rows={rows}
