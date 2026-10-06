@@ -3,8 +3,9 @@
 // Provider operations: what a model call is, what it may carry and to where
 // (AW-01); the catalogue's registration rule, the one guarded provider call
 // over the pinned transport, the fenced page capture, and the live
-// correction's catalogued operations, envelope check, receipts and publish
-// and revert executable (C80).
+// correction's catalogued operations, envelope check, receipts, publish
+// and revert executable, and the binding and proposal that reach its
+// providers (C80).
 //
 // Nothing here holds a credential: custody does (`core-custody`), and adapter
 // code never runs in its process; a connector borrows through a port the
@@ -174,6 +175,15 @@ export {
   type RevertOutcome,
 } from './site/publish.ts';
 export type { Occurrence, ReadBack } from './site/reconcile.ts';
+export {
+  mergeAndFind,
+  readServed,
+  readSiteSource,
+  revertForward,
+  type BindingDependencies,
+  type SiteBinding,
+} from './site/binding.ts';
+export { proposeSource, type ProposeInput } from './site/propose.ts';
 export {
   ACCEPTANCE_CASES,
   PRECONDITIONS,
