@@ -143,8 +143,10 @@ export type OccurrenceClaim =
 /**
  * Writes the occurrence for one due time or one event, once. Called by the
  * scheduler and the event intake under the worker lease (AW-01), never by a
- * person's grant. The activation is share-locked, so a person's change waits
- * for the claim and the claim sees the setting it records.
+ * person's grant. The activation is locked for update, as dispatch locks it,
+ * so a person's change waits for the claim, the claim sees the setting it
+ * records, and a worker that claims and then dispatches in one transaction
+ * never upgrades its lock under another claimer (Sol PRV-oa-1048-R1.1).
  *
  * A second claim of the same cause, whether a replayed event, a restarted
  * scheduler or a racing one, commits nothing and answers `replayed` with the
@@ -164,7 +166,7 @@ export async function claimOccurrence(
 ): Promise<OccurrenceClaim> {
   const found = await tx.query<ActivationDbRow>(
     `select ${ACTIVATION_COLUMNS} from public.activations
-      where business_id = $1 and id = $2 for share`,
+      where business_id = $1 and id = $2 for update`,
     [tx.businessId, activationId],
   );
   if (found[0] === undefined) return { kind: 'unknown' };
