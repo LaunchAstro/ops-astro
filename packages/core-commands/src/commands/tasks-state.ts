@@ -188,10 +188,14 @@ export async function refuseCompletion(
   tx: TenantQuery,
   context: CommandContext,
   taskId: string,
+  held = false,
 ): Promise<Refused | undefined> {
   const owner = await refuseUnlessOwnerCloses(tx, context, await wayfinderFacts(tx, taskId));
   if (owner !== undefined) return refused(owner);
-  await acquire(tx, [{ lockClass: 'task', id: taskId }]);
+  // `held`: the envelope holds the task `for no key update` (a wayfinder
+  // write), which already excludes that task lock; taking it `for update`
+  // here would block a sibling's frontier refresh again.
+  if (!held) await acquire(tx, [{ lockClass: 'task', id: taskId }]);
   return (await openGateOn(tx, taskId)) ? refused(gatePending()) : undefined;
 }
 

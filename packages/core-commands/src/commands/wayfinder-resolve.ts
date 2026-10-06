@@ -53,7 +53,7 @@ async function completeWith(
       refuseCommand('NOT_FOUND', ['completed'], ['This installation seeds no completed state.']),
     );
   }
-  const guarded = await refuseCompletion(tx, context, target.id);
+  const guarded = await refuseCompletion(tx, context, target.id, true);
   if (guarded !== undefined) return guarded;
   const steps = await holdSteps(tx, context, target.id, 'archive');
   if ('refusal' in steps) return steps;
@@ -140,7 +140,11 @@ async function resolveWith(
   return outcome;
 }
 
-/** The answer is also the ticket's resolution comment, on its thread. */
+/**
+ * The answer is also the ticket's resolution comment, on its thread
+ * (CS-15.9): part of resolving, under the resolve's own grant rather than
+ * `task:comment`, and internal, so a client never reads it.
+ */
 async function postAnswer(
   tx: TenantQuery,
   context: CommandContext,

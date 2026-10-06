@@ -629,7 +629,7 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
       },
       picked.credential,
     );
-    expect(codeOf(elsewhere)).toBe('ELSEWHERE_CODE_PROBE');
+    expect(codeOf(elsewhere)).toBe('DELEGATION_OUT_OF_PURPOSE');
     clean(elsewhere);
     for (const [command, extra] of [
       ['task.claim', {}],
