@@ -60,6 +60,7 @@ async function personOf(invitationId: string): Promise<string> {
   return String(row?.person_id);
 }
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(noDatabase)('C39-T enrolment login safety', () => {
   it('C39-T enrolment: adopting a stranded login ends the sessions it had, so an earlier sign-in never stands as the newly admitted person', async () => {
     const address = addressFor('stranded-session');

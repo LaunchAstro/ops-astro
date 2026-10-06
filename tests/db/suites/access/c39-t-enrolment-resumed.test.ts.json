@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C39-T enrolment resumed accepts: an accept paused between its claim and its provider call sets no password over the enrolled person's, nor outside the limits, whatever happened meanwhile"
+}
