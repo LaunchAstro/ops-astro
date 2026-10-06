@@ -25,6 +25,7 @@ import {
 import {
   lookupBody,
   operationOf,
+  lookupStateOf,
   type LookupState,
   REPLAY_LOOKUP_PATH,
   type ReplayLookupMode,
@@ -257,11 +258,6 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
   // Received and refused before any work began: the only calls a lookup proves unbegun.
   const refused = new Set<string>();
   const timers = new Set<NodeJS.Timeout>();
-  const stateOf = (operation: string | null): LookupState => {
-    if (operation === null) return 'unseen';
-    if (processed.has(operation)) return 'begun';
-    return refused.has(operation) ? 'refused' : 'unseen';
-  };
   const server: Server = createServer((request, response) => {
     void (async (): Promise<void> => {
       const body = await readAll(request);
@@ -269,7 +265,7 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
       seen.push({ path: request.url ?? '', authorization, body });
       const operation = operationOf(body);
       if (request.url === REPLAY_LOOKUP_PATH) {
-        lookedUp(lookup, stateOf(operation), response, timers);
+        lookedUp(lookup, lookupStateOf(processed, refused, operation), response, timers);
         return;
       }
       if (operation !== null) (NOT_BEGUN.has(current) ? refused : processed).add(operation);

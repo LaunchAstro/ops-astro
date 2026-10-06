@@ -67,3 +67,14 @@ export function lookupBody(mode: ReplayLookupMode, state: LookupState): unknown 
   if (mode === 'claims_success') return { code: 'not_found' };
   return undefined;
 }
+
+/** What an honest lookup knows of a call: its work begun, refused before any began, or unseen. */
+export function lookupStateOf(
+  processed: ReadonlySet<string>,
+  refused: ReadonlySet<string>,
+  operation: string | null,
+): LookupState {
+  if (operation === null) return 'unseen';
+  if (processed.has(operation)) return 'begun';
+  return refused.has(operation) ? 'refused' : 'unseen';
+}
