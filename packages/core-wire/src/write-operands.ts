@@ -4,6 +4,7 @@
 // `surface.ts` reads it into each declaration and re-exports the operand types.
 
 import type { CommandName } from './command-names.ts';
+import { CONVERSATION_OPERANDS } from './write-operands-conversation.ts';
 import { LIVE_CORRECTION_OPERANDS } from './surface-live-correction.ts';
 import { SETUP_OPERANDS } from './surface-setup.ts';
 import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
@@ -215,17 +216,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     outcome: 'any',
     note: 'any',
   },
-  'conversation.start': {
-    body: 'any',
-    title: 'any',
-    subject: 'any',
-    scope: 'any',
-    model: 'any',
-  },
-  'conversation.message': { conversationId: 'any', body: 'any' },
-  'conversation.rename': { conversationId: 'any', title: 'any' },
-  'conversation.set_scope': { conversationId: 'any', page: 'any' },
-  'conversation.set_model': { conversationId: 'any', model: 'any' },
+  ...CONVERSATION_OPERANDS,
   'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
   'run.top_up': {
     recordId: 'any',
