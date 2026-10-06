@@ -9,7 +9,7 @@
 // records every call, so the cases can prove the sections send nothing.
 
 import { act } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RollupFloor } from '../../apps/web/src/data/rollup-floor.ts';
 import { ConnectionsScreen } from '../../apps/web/src/screens/Connections.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -539,6 +539,54 @@ describe('MP-14-8 Connections & signal: grants, tripwires and the night round', 
       '/task/T-7',
     );
     await page.unmount();
+  });
+
+  it('MP-14-8 the countdown reads the clock at each signal refresh while the fleet read is held', async () => {
+    // PRV-oa-1046-R1.1: the signal sections refresh on their own, so a fleet
+    // read that never answers must not hold the countdown at its first clock.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    try {
+      const fleetHeld = gate();
+      const scripted = (async (url: string | URL): Promise<Response> => {
+        if (String(url).endsWith('/connection/signal')) {
+          return json(signalBody([grant('soon', 'live', 61)]));
+        }
+        await fleetHeld.hold;
+        return json({ ok: true, connections: [], counts: {} });
+      }) as typeof fetch;
+      const refreshers: (() => void)[] = [];
+      const rollup: RollupFloor = {
+        follow: (onRefresh) => {
+          refreshers.push(onRefresh);
+          return () => null;
+        },
+      };
+      const page = await mount(
+        <ConnectionsScreen
+          client={clientOf('alpha', scripted)}
+          grantKey="alpha:a@x:0"
+          rollup={rollup}
+        />,
+      );
+      opened.push(page);
+      await tick();
+      const ttl = (): HTMLElement | null =>
+        page.find('[data-grant="soon"] [data-grant-ttl]') as HTMLElement | null;
+      expect(ttl()?.textContent).toBe('1h 1m left');
+      for (let refreshes = 1; refreshes <= 4; refreshes += 1) {
+        vi.setSystemTime(NOW + refreshes * 30_000);
+        // eslint-disable-next-line no-await-in-loop -- each floor read settles before the next
+        await act(() => {
+          for (const refresh of refreshers) refresh();
+        });
+        // eslint-disable-next-line no-await-in-loop -- as above
+        await tick();
+      }
+      expect([ttl()?.textContent, ttl()?.dataset['tone']]).toStrictEqual(['59m left', 'warn']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('MP-14-8 SEC-P04B.6 a live grant under a minute from its end never reads Ran out', async () => {
