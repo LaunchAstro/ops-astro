@@ -371,6 +371,22 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     name: `restricted calls seed ${randomUUID()}`,
     created_by_actor_id: randomUUID(),
   },
+  // C41-A (20261005200007): no journey starts an onboarding.
+  'public.onboardings': {
+    client_id: randomUUID(),
+    template_key: 'restricted-calls',
+    template_version: 1,
+    started_by_actor_id: randomUUID(),
+  },
+  'public.onboarding_steps': {
+    onboarding_id: randomUUID(),
+    step_key: 'restricted-calls',
+    task_id: randomUUID(),
+    position: 0,
+    phase: 'restricted calls',
+    kind: 'agent',
+    state: 'ready',
+  },
   // C60: no journey records a client's written request.
   'public.client_model_requests': {
     client_id: randomUUID(),
@@ -386,6 +402,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     person_id: randomUUID(),
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
+  },
+  // 20261005235557 (C59): no journey resets a factor.
+  'public.factor_resets': {
+    person_id: randomUUID(),
+    login_id: randomUUID(),
+    reset_by_actor_id: randomUUID(),
+    provider_factor_id: 'restricted-calls-seed',
   },
   // 0057 (C58): no journey here signs out.
   'public.ended_sessions': {
@@ -426,6 +449,24 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     activation_id: randomUUID(),
     version_id: randomUUID(),
     due_at: '2026-09-29T00:00:00Z',
+    outcome: 'activation_off',
+  },
+  // Standing approvals (C52-A, 20261005193201): the journey adopts, revokes and dispatches none.
+  'public.standing_approvals': {
+    activation_id: randomUUID(),
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    previous_version_id: randomUUID(),
+    act: 'adopted',
+    sequence: 2,
+    decided_by_actor_id: randomUUID(),
+  },
+  'public.standing_approval_revocations': {
+    approval_id: randomUUID(),
+    revoked_by_actor_id: randomUUID(),
+  },
+  'public.occurrence_dispatches': {
+    occurrence_id: randomUUID(),
     outcome: 'activation_off',
   },
   // WF-1: the journey charts no map.

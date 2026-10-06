@@ -797,6 +797,17 @@ definer with its search path pinned and no argument, run as `ops_astro_upkeep`,
 a role no one logs in as that holds execute on it and nothing else. PUBLIC and the
 application may not run it.
 
+## Send Email hook messages claimed (20261005190651, C39-T)
+
+`ops.auth_hook_messages` holds one row per login-provider Send Email hook
+message that an invitation send took: a SHA-256 digest of the message id.
+Installation-wide, no business, person, address or invitation. The send
+inserts it in its own transaction, after every check and before its token
+and attempt; a second send of the same message, from any business or hook
+process, waits on the first's transaction, finds the row and is refused
+`REPLAYED`, writing nothing. A refused send claims nothing. The application
+may insert and read the digest; nothing changes or deletes a row.
+
 ## Overseas-services register (0052, C81)
 
 `overseas_services` holds one row per outside service that receives personal
@@ -857,11 +868,34 @@ each due time or event once (`activation_occurrences_due_once`,
 `activation_occurrences_event_once`), with its outcome and a version of its
 activation's own definition (`activation_occurrences_version_of_definition`),
 and names a run only when it started one, at most one occurrence per run. Nothing here starts a run:
-every occurrence is `activation_off` or `no_standing_approval` until C52-A's
-standing approval lands. The application may select and insert all four, and
-update an activation's setting, pin, switch and revision by column grant;
-nothing deletes a row. Tenancy-keyed with the restrictive policy. The records
-are `packages/core-records/src/automations/`.
+an occurrence is `activation_off` or `no_standing_approval` unless C52-A's
+standing approval (below) lets it through as `approved`. The application may
+select and insert all four, and update an activation's setting, pin, switch and
+revision by column grant; nothing deletes a row. Tenancy-keyed with the
+restrictive policy. The records are `packages/core-records/src/automations/`.
+
+## Standing approvals (20261005193201, C52-A)
+
+`standing_approvals` holds each adoption of an exact released version on an
+activation (`adopted`, or `rolled_back` for a rollback), its definition, the
+version pinned before it, the activation revision it wrote (`sequence`, unique
+per activation) and the person who decided it. The version and the previous
+one are of the activation's own definition (`standing_approvals_version_fkey`,
+`standing_approvals_previous_fkey`). `activations.approval_id` names the
+adoption that stands, which must be of the activation's own pin
+(`activations_approval_fkey`); a before-update trigger
+(`activations_approval_stands`) clears it when the pin, mode, schedule or
+event changes or the activation is switched off, unless the same write names
+the adoption that wrote this very revision, and refuses any other. A
+revocation is its own row (`standing_approval_revocations`, once per
+approval), and the approval stays. An occurrence that is `approved` names the
+approval it saw (`activation_occurrences_approved_names_approval`, of the same
+activation and version), and `occurrence_dispatches` records once per
+occurrence what dispatch found under the activation's lock: `started` with its
+run (unique per run), or `activation_off`, `approval_revoked` or
+`approval_ended`. The application may select and insert the three tables and
+update `activations.approval_id` by column grant; nothing changes or deletes an
+approval, revocation or dispatch. Tenancy-keyed with the restrictive policy.
 
 ## Tripwires and the night round (20261005201200, MP-14-8)
 

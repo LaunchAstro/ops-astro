@@ -145,6 +145,12 @@ const pause = async (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+/** An activation named at revision 1, as the seeded ones are (C52-A's cells). */
+const atFirst = (activationId: string): Record<string, unknown> => ({
+  activationId,
+  expectedRevision: 1,
+});
+
 describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
   let w: IdentWorld;
 
@@ -353,6 +359,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       action: 'read',
     }));
     byAda('access.end', 'holderId', f.admin.personId as string, (holderId) => ({ holderId }));
+    // C59: bravo's person named in an alpha authenticator reset.
+    byAda('access.reset_factor', 'holderId', f.admin.personId as string, (holderId) => ({
+      holderId,
+    }));
     // C60: bravo's client named in an alpha privacy change.
     byAda('client.set_privacy', 'clientId', f.clientId, (clientId) => ({
       clientId,
@@ -372,6 +382,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('credential.revoke', 'credentialId', f.credentialId, (credentialId) => ({
       credentialId,
     }));
+    byAda('onboarding.start', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      templateKey: 'standard',
+    }));
+    byAda('onboarding.step_result', 'recordId', f.stepTaskId, (recordId) => ({
+      recordId,
+      outcome: 'done',
+      result: 'a result aimed abroad',
+    }));
     // C33: bravo's version and definition named in an alpha change and release.
     byAda('activation.change', 'versionId', f.automation.versionId, (versionId) => ({
       versionId,
@@ -385,6 +404,17 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       inputs: [],
       operations: [],
       modes: ['manual'],
+    }));
+    // C52-A: bravo's activation and approval named in an alpha adoption, rollback, turn-off and revoke.
+    const at = atFirst;
+    byAda('activation.adopt', 'activationId', f.automation.activationId, (activationId) => ({
+      ...at(activationId),
+      versionId: f.alphaVersionId,
+    }));
+    byAda('activation.roll_back', 'activationId', f.automation.activationId, at);
+    byAda('activation.turn_off', 'activationId', f.automation.activationId, at);
+    byAda('approval.revoke', 'approvalId', f.automation.approvalId, (approvalId) => ({
+      approvalId,
     }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
@@ -500,11 +530,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 83 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 90 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(83);
-    expect(names).toHaveLength(83);
+    expect(new Set(names).size, 'distinct operations').toBe(90);
+    expect(names).toHaveLength(90);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

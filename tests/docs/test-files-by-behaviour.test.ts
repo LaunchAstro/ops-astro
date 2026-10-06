@@ -253,6 +253,8 @@ describe('test files named by what they prove', () => {
 });
 
 describe('test files named by what they prove', () => {
+  // Reads every test file's titles: 2.0 to 4.1 s on the hosted runner in October
+  // 2026, against vitest's 5 s default, so it names its own.
   it('no test file name contains final-r, review-fixes or a round number, and no test title cites a review id', () => {
     const files = testFiles();
     expect(files.length).toBeGreaterThan(200);
@@ -268,7 +270,7 @@ describe('test files named by what they prove', () => {
     }
     expect(seen).toBeGreaterThan(2000);
     expect({ named, cited }).toEqual({ named: [], cited: [] });
-  });
+  }, 12_000);
 });
 
 /** Each workspace package's name, and the file its bare name resolves to. */

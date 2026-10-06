@@ -508,7 +508,11 @@ export async function purgeTrashedRecords(
              or exists (select 1 from public.leases s
                          where s.business_id = r.business_id and s.task_id = r.id)
              or exists (select 1 from public.live_corrections c
-                         where c.business_id = r.business_id and c.task_id = r.id)) as held
+                         where c.business_id = r.business_id and c.task_id = r.id)
+             -- An onboarding's step (C41-A) keys to its task and keeps it: the
+             -- onboarding counts its steps, so the task stays with its step.
+             or exists (select 1 from public.onboarding_steps o
+                         where o.business_id = r.business_id and o.task_id = r.id)) as held
        from records r
       where r.business_id = $1 and r.id = any ($2::uuid[])
       order by r.id`,
