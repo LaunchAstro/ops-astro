@@ -212,7 +212,7 @@ const reachOf = (scopes: readonly Scope[]): [boolean, readonly (string | null)[]
 
 // One statement, so the client list, the graduation rows and the mandates
 // come from one snapshot: a client committed mid-read is in all three or in
-// none (Sol 1017 R2). Each list is a JSON array in the statement's order.
+// none. Each list is a JSON array in the statement's order.
 const GRADUATION_SQL = `select
   (select coalesce(json_agg(c order by c.label, c.id), '[]'::json)
      from (select k.id, k.name as label from public.clients k
