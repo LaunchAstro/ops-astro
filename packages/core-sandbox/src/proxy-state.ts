@@ -285,15 +285,13 @@ export class ProxyState {
     }).catch(() => null);
   }
 
-  /** P6's sweep; the held id is swept from its start. A pass clears the record; a fail repeats. */
+  /** P6's sweep: from its start the held id is swept and a repeat due; a recorded pass clears. */
   async #sweep(): Promise<void> {
     const held = this.#containers.container;
     if (held !== null) this.#swept.add(held.id);
+    this.#retryAt = this.#ports.now() + SWEEP_RETRY_MS;
     const passed = await sweep(this.#ports.daemon).catch(() => fault('sweep'));
-    if (!passed.ok) {
-      this.#retryAt = this.#ports.now() + SWEEP_RETRY_MS;
-      return;
-    }
+    if (!passed.ok) return;
     await this.#save(this.#candidates, EMPTY_CONTAINERS);
     this.#retryAt = null;
   }
