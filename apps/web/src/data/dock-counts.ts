@@ -55,16 +55,18 @@ function useBoardFigure(
   useEffect(() => {
     if (session === null || !shown) return;
     let current = true;
-    // Only the newest read lands: an older answer never overwrites a newer figure.
-    let reads = 0;
+    // Reads overlap; an answer older than the one drawn is dropped, any newer one lands.
+    let asked = 0;
+    let drawn = 0;
     const read = (): void => {
-      reads += 1;
-      const sequence = reads;
+      const ask = ++asked;
       // An answer the figure cannot take (a malformed body) is no figure.
       void readFigure(client)
         .catch(() => null)
         .then((n) => {
-          if (current && reads === sequence) setFigure(n === null ? null : { of: session, n });
+          if (!current || ask < drawn) return n;
+          drawn = ask;
+          setFigure(n === null ? null : { of: session, n });
           return n;
         });
     };
