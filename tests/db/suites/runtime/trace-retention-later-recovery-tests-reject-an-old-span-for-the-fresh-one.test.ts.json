@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#963): the later recovery tests fail when only an old span, not the fresh one, comes back."
+}

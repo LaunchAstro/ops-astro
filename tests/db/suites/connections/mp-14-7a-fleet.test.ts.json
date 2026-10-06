@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "MP-14-7a connector fleet: custody reads and repair stay inside one business and one client's reach"
+}

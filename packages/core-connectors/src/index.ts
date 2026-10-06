@@ -25,6 +25,11 @@ export {
   type SettleLevel,
 } from './operation.ts';
 export {
+  AUTH_UPDATE_USER_PASSWORD,
+  authPasswordAdapter,
+  PASSWORD_REFUSED_STATUS,
+} from './auth-password.ts';
+export {
   effectiveClass,
   eligibleRoutes,
   LOCAL_MODEL_REQUIRED_WORDS,
@@ -35,6 +40,7 @@ export {
   type RouteChoice,
   type RouteReach,
 } from './data-class.ts';
+export { readAuthMessage, type AuthMessage } from './auth-message.ts';
 export {
   EMAIL_NOTHING_HAPPENED,
   EMAIL_PATH,
@@ -55,8 +61,12 @@ export {
   EMAIL_HOOK_MAX_BYTES,
   EMAIL_HOOK_TOLERANCE_S,
   isEmailHookSecret,
+  STANDARD_WEBHOOK_HEADERS,
+  SVIX_HEADERS,
   verifyEmailHook,
+  verifySignedHook,
   type EmailHookEvent,
+  type HookHeaderNames,
   type EmailHookRefusal,
   type EmailHookVerdict,
 } from './email-hook.ts';

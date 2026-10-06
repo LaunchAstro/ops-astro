@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "PORT-P11 (C52-A standing approvals): an occurrence dispatches only under a live standing approval of its pinned version; revoke, turn-off and a newer adoption between claim and dispatch start nothing."
+}

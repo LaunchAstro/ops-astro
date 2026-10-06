@@ -29,6 +29,7 @@ import { commentOnTask } from './tasks-comment.ts';
 import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
 import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
 import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
+import { startConnectorRepair } from './connector-repair.ts';
 import { recordIncident } from './privacy-write.ts';
 import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { issueCredential, revokeCredential } from './credential-write.ts';
@@ -36,8 +37,11 @@ import { setService } from './overseas-write.ts';
 import { setClass } from './data-class-write.ts';
 import { changeInstallationMode, recordGateItem } from './gate-write.ts';
 import { createClientRecord, grantOnAccess } from './access-write.ts';
+import { recordStepResult, startOnboarding } from './onboarding.ts';
+import { createRecord } from './record-create.ts';
 import { setClientPrivacy } from './client-privacy-write.ts';
 import { endAccessOnSettings } from './access-end.ts';
+import { resetFactorOnSettings } from './factor-reset.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { acceptPlanOnGate } from './plan-accept.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
@@ -68,9 +72,16 @@ import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
+import { invitationAct } from './invitations.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
 import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
 import { reviseMap } from './wayfinder-revision.ts';
+import {
+  adoptActivationVersion,
+  revokeStandingApproval,
+  rollBackActivation,
+  turnOffActivationAsPerson,
+} from './automation-approvals.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -145,6 +156,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   'secret.set': (tx, context, request) => setCustodySecret(tx, context, request),
   'secret.clear': (tx, context, request) => clearCustodySecret(tx, context, request),
+  'connector.repair': (tx, context, request) => startConnectorRepair(tx, context, request),
 
   'privacy.record_incident': recordIncident,
   'legal.draft_version': draftVersion,
@@ -163,10 +175,14 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.accept_plan': acceptPlanOnGate,
 
   'client.create': createClientRecord,
+  'record.create': (tx, context, request) => createRecord(tx, context, request),
+  'onboarding.start': (tx, context, request) => startOnboarding(tx, context, request),
+  'onboarding.step_result': (tx, context, request) => recordStepResult(tx, context, request),
   'client.set_privacy': setClientPrivacy,
   'access.grant': grantOnAccess,
   'access.revoke': (tx, context, request) => revokeGrantOnAccess(tx, context, request.grantId),
   'access.end': endAccessOnSettings,
+  'access.reset_factor': resetFactorOnSettings,
   'grant.revoke': (tx, context, request) => revokeGrantAsManager(tx, context, request.grantId),
   'delegation.revoke': (tx, context, request) =>
     revokeDelegationAsManager(tx, context, request.delegationId),
@@ -238,9 +254,18 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
+  // C39-T: a person's acts on a team invitation, under `access:share`.
+  'invitation.create': invitationAct,
+  'invitation.resend': invitationAct,
+  'invitation.revoke': invitationAct,
   // Settings ▸ Workflow triggers (C33), in `automations.ts`.
   'activation.change': changeActivationAsPerson,
   'definition.release': releaseDefinitionVersion,
+  // Standing approvals (C52-A), in `automation-approvals.ts`.
+  'activation.adopt': adoptActivationVersion,
+  'activation.roll_back': rollBackActivation,
+  'activation.turn_off': turnOffActivationAsPerson,
+  'approval.revoke': revokeStandingApproval,
 };
 
 function writeOwned(

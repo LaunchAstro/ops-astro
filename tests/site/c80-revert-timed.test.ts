@@ -26,6 +26,7 @@ const INPUT = {
     right: ' you.',
     index: 0,
     observed: ['beside'],
+    offsets: [0],
     liveAt: LIVE,
   },
   seam: 'revert-of-def456',

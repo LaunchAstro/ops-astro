@@ -30,6 +30,8 @@ const PINNED_SHAPE = {
   'access.read': { spine: false, subject: false, authority: 'declared' },
   'automation.registry': { spine: false, subject: false, authority: 'declared' },
   'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.fleet': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.signal': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
@@ -65,6 +67,8 @@ const PINNED_IDENTIFIERS = {
   'access.read': [],
   'automation.registry': [],
   'client.list': [],
+  'connection.fleet': [],
+  'connection.signal': [],
   'conversation.allowance': ['conversationId'],
   'conversation.list': [],
   'conversation.read': ['conversationId'],
@@ -221,6 +225,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   // C33: the Workflow triggers registry takes nothing.
   'automation.registry': BODIES.map(() => null),
   'secret.list': BODIES.map(() => null),
+  'connection.fleet': BODIES.map(() => null),
+  'connection.signal': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
@@ -259,7 +265,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same thirty-four reads', () => {
+  it('names the same thirty-five reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

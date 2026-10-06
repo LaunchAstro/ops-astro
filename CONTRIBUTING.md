@@ -117,7 +117,7 @@ the next line.
 
 A pull request's checks are the light set, and they flag issues early. Every
 required check still reports on a pull request under its own name, but there
-`local checks` runs every step of `pnpm check`, the build before the tests
+`local checks` runs every step of `pnpm check` across its shards, the build before the tests
 because tests read its bundle, with the tests the change reaches in place of
 the full test run; the full test run,
 `isolation tests` and the database conformance shards run in the merge queue,

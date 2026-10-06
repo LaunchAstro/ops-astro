@@ -31,11 +31,15 @@
 // C59's login-wide keys, `second-factor-codes:<digest>` and
 // `second-factor-subject:<digest>`, are command-layer locks too, and the only
 // installation-wide ones: each names a sign-in login, not a business, and is
-// taken first in its transaction, before any row or chain lock.
+// taken first in its transaction, before any row or chain lock. The Send
+// Email hook's message claim (`ops.auth_hook_messages`, C39-T) is the one
+// other wait across businesses: a unique key, taken last, after the
+// invitation's row and the business's email limit.
 // The grant rows an operation's authority rests on are the other class outside
-// the list, also taken first: decide, pickup and cancellation hold theirs `for
-// share` (`holdCoveringGrants`) and `grant.revoke` its own `for update`, before
-// `acquire`. A handler that re-reads a row this set already holds, as
+// the list, also taken first: decide, pickup, cancellation and an onboarding
+// step result (a person's own, or a delegated agent's delegating person's)
+// hold theirs `for share` (`holdCoveringGrants`) and `grant.revoke` its own
+// `for update`, before `acquire`. A handler that re-reads a row this set already holds, as
 // `task.propose` re-reads its task `for update` to compare the revision,
 // takes no new lock.
 // A model call (AW-01) takes none of these: its run's task `for share` (the
