@@ -58,7 +58,10 @@ function catalogueMatchesCode(): void {
     const { rows, failures } = real();
     expect(failures).toEqual([]);
     expect(rows.map((row) => row.command)).toEqual(COMMAND_SURFACE.map((one) => one.name));
-    const handlers = readFileSync('packages/core-commands/src/commands/handlers.ts', 'utf8');
+    // Team chat's entries are spread into the table from `chat-handlers.ts`.
+    const handlers = ['handlers.ts', 'chat-handlers.ts']
+      .map((file) => readFileSync(`packages/core-commands/src/commands/${file}`, 'utf8'))
+      .join('\n');
     for (const row of rows.filter((one) => one.kind === 'write')) {
       expect(handlers).toContain(`'${row.command}':`);
     }
