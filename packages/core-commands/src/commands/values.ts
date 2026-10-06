@@ -189,8 +189,9 @@ const READABLE: readonly Span[] = [
 // annotation and hieroglyph format controls, every variation selector but
 // U+FE0E-FE0F, the tag characters, and so the non-joiner: all can carry text no
 // one sees. Also every space but U+0020, and the characters that draw blank
-// (U+2800, U+16FE4, U+1D159), which pass for a space or for nothing. The
-// joiner (U+200D) and U+FE0E-FE0F stay, only where `labelText` places them.
+// (U+2800, U+13441-13442, U+16FE4, U+1D159), which pass for a space or for
+// nothing. The joiner (U+200D) and U+FE0E-FE0F stay, only where `labelText`
+// places them.
 const UNSEEN: readonly Span[] = [
   [0xa0, 0xa0],
   [0xad, 0xad],
@@ -210,6 +211,7 @@ const UNSEEN: readonly Span[] = [
   [0xff_a0, 0xff_a0],
   [0xff_f0, 0xff_fb],
   [0x1_34_30, 0x1_34_3f],
+  [0x1_34_41, 0x1_34_42],
   [0x1_6f_e4, 0x1_6f_e4],
   [0x1_bc_a0, 0x1_bc_a3],
   [0x1_d1_59, 0x1_d1_59],

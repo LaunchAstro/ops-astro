@@ -9,7 +9,9 @@
 // grant check is not held to the write, so each command asks it again with
 // the caller's `mandate` grants held for share, after its own row lock and
 // before it answers anything about the row: a revocation that committed first
-// refuses the command, and one that comes second waits for it to commit.
+// refuses the command, and one that comes second waits for it to commit. Once
+// its rows are written, each takes the audit chain's lock, its last wait, and
+// asks a last time at that clock, its session included (`mandate-authority.ts`).
 //
 // What is left is the value: classes picked from the client's own scope list,
 // a ceiling in whole minor units of one currency, an expiry at least a minute
@@ -41,15 +43,10 @@ import {
   promotingMandate,
   revokeMandate,
   scopeChoices,
-  subjectsOf,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
-import {
-  checkAuthorityAt,
-  holdCoveringGrants,
-  lockedInstant,
-} from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
+import { notGranted, standsAtCommit, stillManagesMandates } from './mandate-authority.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { ceilingOf, classesOf, expiryOf, isRevision, labelOf, shownAs } from './mandate-inputs.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -67,15 +64,6 @@ const FIXES: Readonly<Record<string, string>> = {
 const invalid = (field: string): HandlerOutcome =>
   refused(refuseCommand('FIELD_VALUE_INVALID', [field], [FIXES[field] ?? '']));
 
-const notGranted = (): HandlerOutcome =>
-  refused(
-    refuseCommand(
-      'SCOPE_NOT_GRANTED',
-      [],
-      ['no live grant covers it', 'ask a holder who may delegate'],
-    ),
-  );
-
 const stale = (revision: number): HandlerOutcome =>
   refused(
     refuseCommand(
@@ -87,20 +75,6 @@ const stale = (revision: number): HandlerOutcome =>
 
 const notPermitted = (state: string, fix: string): HandlerOutcome =>
   refused(refuseCommand('TRANSITION_NOT_PERMITTED', [`state=${state}`], [fix]));
-
-/** `mandate:manage` business-wide, judged at the instant the grants are held. */
-async function stillManagesMandates(tx: TenantQuery, context: CommandContext): Promise<boolean> {
-  const subjects = subjectsOf(context.session);
-  await holdCoveringGrants(tx, subjects, 'mandate');
-  const at = await lockedInstant(tx);
-  const decision = await checkAuthorityAt(
-    tx,
-    subjects,
-    { collection: 'mandate', action: 'manage', scope: { kind: 'business', id: null } },
-    at,
-  );
-  return decision.ok;
-}
 
 /** The class's client's row, then the class's row, both locked; null when not this business's. */
 async function lockClassInOrder(tx: TenantQuery, classId: string) {
@@ -154,6 +128,8 @@ export async function fileMandate(
     actorId: context.session.actorId,
   });
   if (mandate === null) return invalid('expiresAt');
+  const last = await standsAtCommit(tx, context);
+  if (last !== null) return last;
   return applied(mandate.id, mandate.revision, { mandateId: mandate.id, refuses });
 }
 
@@ -183,6 +159,8 @@ export async function revokeStandingMandate(
   }
   const revision = await revokeMandate(tx, mandate.id, context.session.actorId);
   if (classId !== null) await bumpGraduationClass(tx, classId);
+  const last = await standsAtCommit(tx, context);
+  if (last !== null) return last;
   return applied(mandate.id, revision, { mandateId: mandate.id, state: 'revoked' });
 }
 
@@ -228,6 +206,8 @@ export async function promoteClass(
   });
   if (mandate === null) return invalid('expiresAt');
   const revision = await bumpGraduationClass(tx, row.id);
+  const last = await standsAtCommit(tx, context);
+  if (last !== null) return last;
   // The class is the handle the caller writes against; the audit names the mandate filed.
   return {
     ...applied(row.id, revision, { classId: row.id, mandateId: mandate.id, state: 'promoted' }),
@@ -265,6 +245,8 @@ export async function demoteClass(
     row,
     mandates.filter((one) => one.id !== promotedBy.id),
   );
+  const last = await standsAtCommit(tx, context);
+  if (last !== null) return last;
   return {
     ...applied(row.id, revision, { classId: row.id, mandateId: promotedBy.id, state: after.state }),
     auditSubjectId: promotedBy.id,

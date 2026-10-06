@@ -3721,7 +3721,12 @@ person's act and never an agent's, and in C59's money set, so a sign-in without
 a second factor inside sixty minutes is refused `STEP_UP_REQUIRED`. Each command
 locks the client's row, then the class's graduation row, then the mandate
 (core's order), then asks `mandate:manage` again with the caller's grants held,
-so a grant revoked before it refuses it. A mandate is never edited: filed at
+so a grant revoked before it refuses it. Once its rows are written, each takes
+the business's audit chain lock, its last wait, and asks once more at that
+clock: a grant that ran out meanwhile refuses `SCOPE_NOT_GRANTED`, and a session
+signed out by then through any business its login reaches refuses
+`AUTH_SESSION_EXPIRED`, holding the session's ending keys to commit, so a later
+sign-out waits for it. Nothing is kept. A mandate is never edited: filed at
 revision 1, revoked once at revision 2. Promoting files a one-class mandate for
 a class that shows `ready`; demoting revokes the mandate that promoted it, also
 while a refusal holds the class or its record has since turned `never`, so the

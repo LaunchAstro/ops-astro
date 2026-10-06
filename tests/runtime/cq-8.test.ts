@@ -112,6 +112,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   'packages/core-commands/src/commands/conversation-lifecycle.ts',
   // #932: the operation identity's key, first in every identified call.
   'packages/core-commands/src/commands/envelope.ts',
+  // MP-14-10a: a mandate command's last ask takes the audit chain key after
+  // its write, as C52-A's does, before `sessionEndedSince` (PRV-oa-1053-R1).
+  'packages/core-commands/src/commands/mandate-authority.ts',
   'packages/core-commands/src/commands/occurrence-run.ts',
   'packages/core-commands/src/commands/prepare.ts',
   // #413: an agent assignment takes the audit chain's key after its write,
