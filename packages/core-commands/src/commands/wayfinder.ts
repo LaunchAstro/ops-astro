@@ -143,14 +143,13 @@ async function refuseRetypeOntoMap(
   recordId: string,
 ): Promise<CommandRefusal | undefined> {
   const rows = await tx.query<{ readonly parent: string | null }>(
-    `select uuid_4 as parent from records where business_id = $1 and id = $2`,
+    `select uuid_4 as parent from public.records where business_id = $1 and id = $2`,
     [tx.businessId, recordId],
   );
   const parentId = rows[0]?.parent ?? null;
   if (parentId === null) return undefined;
-  // Parent held `for share` before its type is read: a retype in flight is seen.
-  await wayfinderFacts(tx, parentId, true);
-  const parent = await wayfinderFacts(tx, parentId);
+  // Parent held `for share` as its type is read: a retype in flight is seen.
+  const parent = await wayfinderFacts(tx, parentId, true);
   if (parent?.type !== 'map') return undefined;
   return await refuseFilingOnMap(tx, context, parent);
 }
