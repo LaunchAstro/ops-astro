@@ -46,6 +46,21 @@ describe('a call stopped part way', () => {
     opened.push(await createRunner(read.settings, () => null));
   });
 
+  it('a call queued when the runner closes is refused and answered, never run', async () => {
+    const { w, r } = await start();
+    w.knobs({ waitMs: 5_000 });
+    const running = call(r, message).catch(() => null);
+    await spawned(w, 1);
+    const queued = call(r, message);
+    await sleep(50);
+    await r.close();
+    opened.length = 0;
+    expect((await queued).body).toMatchObject({ code: 'LOCAL_GPT_FAILED' });
+    await running;
+    expect(w.calls()).toHaveLength(1);
+    expect(w.ledger()).toHaveLength(2);
+  });
+
   it('a caller that leaves mid-call stops its codex, charged as unknown', async () => {
     const { w, r } = await start();
     w.knobs({ waitMs: 5_000 });

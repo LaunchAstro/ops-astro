@@ -191,8 +191,11 @@ describe('the event grammar', () => {
     const other = line({ type: 'turn.failed', error: { message: 'stream disconnected' } });
     expect(readCodexEvents(other + completed, MODEL)).toMatchObject({ limited: false });
     expect(readCodexEvents(line({ type: 'error', message: 'boom' }), MODEL)).toBeUndefined();
-    // After a turn began, work may have been done: unknown, never nothing.
-    const late = line({ type: 'turn.started' }) + limit;
+    // The limit stopping the turn before the model gave anything back used nothing.
+    const first = line({ type: 'turn.started' }) + limit;
+    expect(readCodexEvents(first, MODEL)).toMatchObject({ limited: true, inputTokens: 0 });
+    // After the model gave something back, work was done: unknown, never nothing.
+    const late = first + line({ type: 'item.completed', item: { type: 'reasoning' } }) + limit;
     expect(readCodexEvents(late, MODEL)).toBeUndefined();
   });
 

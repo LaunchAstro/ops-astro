@@ -89,7 +89,7 @@ interface Reading {
   usage: { readonly input: number; readonly output: number } | undefined;
   failed: boolean;
   limited: boolean;
-  /** A turn began: work may have been done, so an unreadable end is never nothing. */
+  /** The model gave something back: work was done, so an unreadable end is never nothing. */
   started: boolean;
 }
 
@@ -113,7 +113,8 @@ function readEvent(event: Record<string, unknown>, reading: Reading): boolean {
     reading.failed = true;
     if (USAGE_LIMIT.test(failureMessage(event))) reading.limited = true;
   }
-  if (type === 'turn.started' || type.startsWith('item.')) reading.started = true;
+  // Work began once the model gave anything back; a turn the plan's limit stopped first gave nothing.
+  if (type.startsWith('item.')) reading.started = true;
   if (type === 'turn.completed') {
     const usage = record(event['usage']);
     const input = count(usage?.['input_tokens']);
