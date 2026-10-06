@@ -87,6 +87,7 @@
 // revoked share empties the page the same way a revoked grant does.
 
 import { useRef, useState, type FormEvent, type ReactElement, type RefObject } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type { CallResult, OperationsClient, WireRefusal } from '../operations/client.ts';
 import type {
   InternalTaskDetail as Task,
@@ -119,6 +120,7 @@ import {
   type Perspective,
 } from './task/Perspectives.tsx';
 import { StepTitleHeld, TeamSubtasks } from './task/Subtasks.tsx';
+import { HeldOperations, type Held } from './task/held-operations.ts';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RunProgress } from '../views/run-progress.tsx';
@@ -192,6 +194,8 @@ function TaskPage(props: TaskDetailProps): ReactElement {
   const client = props.client;
   const hub = hubOf(client);
   const [draft, setDraft] = useState<Draft | null>(null);
+  // Lost writes' operation ids, kept above the read for this task and grant (#461).
+  const operations = useRef<Held>({});
   const { state, reload, live } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
@@ -245,98 +249,106 @@ function TaskPage(props: TaskDetailProps): ReactElement {
       {state.outcome === 'denied' && state.refusal.code === 'NOT_FOUND' ? (
         <TaskUnknown typed={props.taskKey} refusal={state.refusal} />
       ) : (
-        <RecordState state={state} subject="task" onRetry={reload} keep={keep || live}>
-          {(value) =>
-            'sharedTask' in value ? (
-              <SharedTaskDetail task={value.sharedTask} />
-            ) : (
-              <Loaded
-                client={client}
-                grantKey={props.grantKey}
-                task={withPageDefaults(value.task)}
-                states={statesOf(value)}
-                draft={held}
-                note={note}
-                onDecided={setNote}
-                commentRefusal={commentRefusal}
-                onCommentRefused={setCommentRefusal}
-                proposeRefusal={proposeRefusal}
-                onProposeRefused={setProposeRefusal}
-                moved={moved}
-                onMoved={setMoved}
-                commentDraft={commentDraft}
-                onCommentDraft={setCommentDraft}
-                commentEdit={commentEdit}
-                onCommentEdit={setCommentEdit}
-                proposeDraft={proposeDraft}
-                onProposeDraft={setProposeDraft}
-                topUpNote={topUpNote}
-                onTopUpNote={setTopUpNote}
-                perspective={perspective ?? 'team'}
-                onPerspective={setPerspective}
-                showAllTime={showAllTime ?? false}
-                onShowAllTime={setShowAllTime}
-                showFinished={showFinished}
-                onShowFinished={setShowFinished}
-                stepTitle={stepTitle}
-                onStepTitle={setStepTitle}
-                onOpenPanel={props.onOpenPanel}
-                onAttempt={(attempt) => {
-                  setDraft((current) =>
-                    current !== null && current.identity === identity
-                      ? { ...current, attempt }
-                      : current,
-                  );
-                }}
-                onDraft={(next, base) => {
-                  if (next === null) {
+        <HeldOperations value={operations.current}>
+          <RecordState state={state} subject="task" onRetry={reload} keep={keep || live}>
+            {(value) =>
+              'sharedTask' in value ? (
+                <SharedTaskDetail task={value.sharedTask} />
+              ) : (
+                <Loaded
+                  client={client}
+                  grantKey={props.grantKey}
+                  task={withPageDefaults(value.task)}
+                  states={statesOf(value)}
+                  draft={held}
+                  note={note}
+                  onDecided={setNote}
+                  commentRefusal={commentRefusal}
+                  onCommentRefused={setCommentRefusal}
+                  proposeRefusal={proposeRefusal}
+                  onProposeRefused={setProposeRefusal}
+                  moved={moved}
+                  onMoved={setMoved}
+                  commentDraft={commentDraft}
+                  onCommentDraft={setCommentDraft}
+                  commentEdit={commentEdit}
+                  onCommentEdit={setCommentEdit}
+                  proposeDraft={proposeDraft}
+                  onProposeDraft={setProposeDraft}
+                  topUpNote={topUpNote}
+                  onTopUpNote={setTopUpNote}
+                  perspective={perspective ?? 'team'}
+                  onPerspective={setPerspective}
+                  showAllTime={showAllTime ?? false}
+                  onShowAllTime={setShowAllTime}
+                  showFinished={showFinished}
+                  onShowFinished={setShowFinished}
+                  stepTitle={stepTitle}
+                  onStepTitle={setStepTitle}
+                  onOpenPanel={props.onOpenPanel}
+                  {...draftCallbacks(identity, setDraft)}
+                  onDiscard={() => {
                     setDraft(null);
-                    return;
-                  }
-                  setDraft((current) =>
-                    current !== null && current.identity === identity
-                      ? {
-                          ...current,
-                          title: next.title,
-                          due: next.due,
-                          generation: current.generation + 1,
-                        }
-                      : {
-                          identity,
-                          generation: 1,
-                          base,
-                          title: next.title,
-                          due: next.due,
-                          attempt: null,
-                        },
-                  );
-                }}
-                onSaved={(generation) => {
-                  // Only the generation that was submitted. A save that settles
-                  // after further typing has answered a question nobody is asking
-                  // any more, and clearing the newer draft here would make the
-                  // person's newer text disappear.
-                  setDraft((current) =>
-                    current !== null &&
-                    current.identity === identity &&
-                    current.generation === generation
-                      ? null
-                      : current,
-                  );
-                }}
-                onDiscard={() => {
-                  setDraft(null);
-                  reload();
-                }}
-                onChanged={reload}
-                onStepUp={setStepUp}
-              />
-            )
-          }
-        </RecordState>
+                    reload();
+                  }}
+                  onChanged={reload}
+                  onStepUp={setStepUp}
+                />
+              )
+            }
+          </RecordState>
+        </HeldOperations>
       )}
     </div>
   );
+}
+
+/** The draft's callbacks for `Loaded`, bound to one task under one grant. */
+function draftCallbacks(
+  identity: string,
+  setDraft: Dispatch<SetStateAction<Draft | null>>,
+): Pick<LoadedProps, 'onAttempt' | 'onDraft' | 'onSaved'> {
+  return {
+    onAttempt: (attempt) => {
+      setDraft((current) =>
+        current !== null && current.identity === identity ? { ...current, attempt } : current,
+      );
+    },
+    onDraft: (next, base) => {
+      if (next === null) {
+        setDraft(null);
+        return;
+      }
+      setDraft((current) =>
+        current !== null && current.identity === identity
+          ? {
+              ...current,
+              title: next.title,
+              due: next.due,
+              generation: current.generation + 1,
+            }
+          : {
+              identity,
+              generation: 1,
+              base,
+              title: next.title,
+              due: next.due,
+              attempt: null,
+            },
+      );
+    },
+    onSaved: (generation) => {
+      // Only the generation that was submitted. A save that settles
+      // after further typing has answered a question nobody is asking
+      // any more, and clearing the newer draft here would make the
+      // person's newer text disappear.
+      setDraft((current) =>
+        current !== null && current.identity === identity && current.generation === generation
+          ? null
+          : current,
+      );
+    },
+  };
 }
 
 /**

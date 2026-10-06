@@ -39,6 +39,7 @@ import {
   type Subject,
 } from './grants.ts';
 import { isUuid } from '../tenancy/ids.ts';
+import { EFFECTIVE } from './effective.ts';
 
 /** Who is sharing: the person, and the actor the grant row names as granter. */
 export interface Sharer {
@@ -96,8 +97,8 @@ export async function issueShare(
   granterActorId: string,
   request: ShareRequest,
 ): Promise<string> {
-  const live = await liveShares(tx, request);
-  if (live[0] !== undefined) return live[0];
+  const standing = await liveShares(tx, request, true);
+  if (standing[0] !== undefined) return standing[0];
 
   const issued = await issueGrant(tx, [], {
     subject: { kind: 'person', id: request.personId },
@@ -188,9 +189,19 @@ async function refuseShare(
   return undefined;
 }
 
-async function liveShares(tx: TenantQuery, request: ShareRequest): Promise<readonly string[]> {
+/**
+ * This record's live share rows with this person. `standing` keeps only those
+ * whose whole chain is live (`EFFECTIVE`): a share is reused only when it
+ * still grants, while a withdrawal revokes every live row.
+ */
+async function liveShares(
+  tx: TenantQuery,
+  request: ShareRequest,
+  standing = false,
+): Promise<readonly string[]> {
   const rows = await tx.query<{ readonly id: string }>(
-    `select id from public.grants
+    `${standing ? EFFECTIVE : ''}
+     select id from ${standing ? 'effective' : 'public.grants'}
       where business_id = $1 and subject_kind = 'person' and subject_id = $2
         and scope_kind = 'record' and scope_id = $3 and collection = $4 and action = 'read'
         and revoked_at is null and (expires_at is null or expires_at > now())

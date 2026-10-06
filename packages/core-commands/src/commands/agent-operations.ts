@@ -29,7 +29,7 @@ import { dispatchLease } from './tasks-dispatch.ts';
 import { observeLease } from './tasks-observe.ts';
 import { checkLease } from './tasks-check.ts';
 import { reviseRunState } from './run-state.ts';
-import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
+import { holdCoveringGrants, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeStepResult } from './onboarding.ts';
 import { delegationStillHolds } from './onboarding-authority.ts';
@@ -305,6 +305,7 @@ async function serveComment(
       audiences: AGENT_AUDIENCES,
       operationId: String(request['operationId']),
       delegationId: delegation.id,
+      onBehalfOfPersonId: delegation.delegatePersonId,
     },
     request['body'],
     request['audience'],
@@ -350,7 +351,11 @@ async function servePropose(
 /**
  * An agent's edit or delete of its own comment on its own task (MP-4-5,
  * CS-4.34). The task is locked as `serveComment` locks it; the comment is
- * read through it and must be the agent's own actor's (`tasks-comment-edit.ts`).
+ * read through it and must be the agent's own actor's, written for the person
+ * this delegation acts for (`tasks-comment-edit.ts`, OW-036.1). Once the
+ * comment is locked, the delegation and the delegating person's covering
+ * grant are asked again (`askedAgain`): a revocation that committed while the
+ * change waited on a lock refuses it, and one that has not waits for it.
  */
 const serveCommentChange =
   (
@@ -366,8 +371,15 @@ const serveCommentChange =
     delegation: Delegation,
     taskId: string | undefined,
   ) => ReturnType<typeof editTaskComment>) =>
-  async (tx, { session, request, declaration }, _operands, _delegation, taskId) => {
+  async (tx, call, _operands, delegation, taskId) => {
     if (taskId === undefined) return NOT_FOUND();
+    // The delegating person's grants, and the chain each was delegated under,
+    // held `for share` before the task, as pickup holds them: a `grant.revoke`
+    // takes its row `for update` first, so it either commits before this
+    // change and the check refuses, or waits for it. A helper stands on its
+    // parent's person, the same person.
+    const person = { kind: 'person', id: delegation.delegatePersonId } as const;
+    await holdCoveringGrants(tx, [person], call.declaration.collection);
     const spine = await readTaskSpine(tx);
     const task = await lockTask(tx, spine.taskTypeId, taskId);
     if (task === undefined) return NOT_FOUND();
@@ -375,13 +387,53 @@ const serveCommentChange =
       tx,
       {
         commentTypeId: spine.taskCommentTypeId,
-        declaration,
+        declaration: call.declaration,
         target: task,
-        actorId: session.actorId,
+        actorId: call.session.actorId,
+        onBehalfOfPersonId: delegation.delegatePersonId,
+        stillAuthorised: async () => await askedAgain(tx, call, delegation, task),
       },
-      request,
+      call.request,
     );
   };
+
+/**
+ * The agent entry's authority asked again once the comment is locked, as
+ * `authorise` asked it. The delegation and, for a helper, its parent are held
+ * `for share` first, after the task (the global order's delegation class): a
+ * `delegation.revoke` writes the row, so one that has not committed waits for
+ * the change. A helper has no lease of its own and revoking it takes no task
+ * lock, so nothing else orders that revocation with this change. A delegation
+ * the locked task names as its agent is left to the task lock: revoking it
+ * clears that agent (`revokeDelegation`), so it waits on the task anyway, and
+ * having written its own row first it would deadlock against a hold here.
+ */
+async function askedAgain(
+  tx: TenantQuery,
+  { session, declaration, credential }: AgentCall,
+  delegation: Delegation,
+  task: { readonly id: string; readonly data: Readonly<Record<string, unknown>> },
+): Promise<CommandRefusal | undefined> {
+  const agent = typeof task.data['agent'] === 'string' ? task.data['agent'].toLowerCase() : null;
+  const chain = [delegation.id, delegation.parentDelegationId].filter(
+    (id): id is string => id !== null && id.toLowerCase() !== agent,
+  );
+  await tx.query(
+    `select id from public.delegations
+      where business_id = $1 and id = any($2::uuid[])
+      order by id
+      for share`,
+    [tx.businessId, chain],
+  );
+  const again = await resolveDelegation(tx, session.actorId, credential ?? '');
+  if (!again.ok) return again.refusal;
+  const decision = await checkDelegatedAuthority(tx, again.value, {
+    collection: declaration.collection,
+    action: declaration.action,
+    scope: { kind: 'record', id: task.id },
+  });
+  return decision.ok ? undefined : decision.refusal;
+}
 
 /**
  * A field write an agent makes on its own task: the three marks
@@ -715,6 +767,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             entryPoint: 'api',
             commentTypeId: spine.taskCommentTypeId,
             stillHolds: await delegationStillHolds(tx, delegation),
+            onBehalfOfPersonId: delegation.delegatePersonId,
           },
           { recordId: taskId, outcome: request['outcome'], result: request['result'] },
         );

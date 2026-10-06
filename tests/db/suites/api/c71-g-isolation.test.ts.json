@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "group conversations are isolated across another business, two clients with one grant each, an administrator outside the group and an agent under a live delegation, canaries in no foreign answer"
+}

@@ -17,11 +17,16 @@ import {
 
 export const DEFAULT_MODEL: string = LOCAL_GPT_DEFAULT_MODEL;
 
-/** A call needs this much left under the cap: one call reads about 11,000 tokens of instructions. */
-export const MIN_CALL_TOKENS = 20_000;
-
-/** What a call killed or unreadable is charged: its usage is unknown, so never nothing. */
+/** What a call killed or unreadable is charged besides its prompt: its usage is unknown, never nothing. */
 export const UNKNOWN_CALL_TOKENS = 50_000;
+
+/**
+ * What a call is charged before codex runs, and if it is killed or unreadable:
+ * 50,000 and its prompt's UTF-8 bytes (a token is at least one byte). It is
+ * let in only with this much left, so that charge never passes the cap.
+ */
+export const callNeed = (prompt: string): number =>
+  UNKNOWN_CALL_TOKENS + Buffer.byteLength(prompt, 'utf8');
 
 export type CallRefusal =
   'LOCAL_CAP_REACHED' | 'LOCAL_MODEL_NOT_APPROVED' | 'LOCAL_PLAN_LIMIT' | 'LOCAL_GPT_FAILED';
@@ -60,14 +65,14 @@ export function capInForce(
   return settings.capTokens;
 }
 
-/** Checked in this order, every call, before anything is spawned. */
-export function decide(settings: GateSettings, model: string): Decision {
+/** Checked in this order, every call, before anything is spawned; `need` is callNeed's. */
+export function decide(settings: GateSettings, model: string, need: number): Decision {
   const approved = readApprovals(settings.home);
   if (model !== DEFAULT_MODEL && !approved.models.includes(model)) {
     return { ok: false, code: 'LOCAL_MODEL_NOT_APPROVED' };
   }
   const cap = capInForce(settings, approved);
   const left = cap - ledgerTotal(settings.home, cap);
-  if (left < MIN_CALL_TOKENS) return { ok: false, code: 'LOCAL_CAP_REACHED' };
+  if (left < need) return { ok: false, code: 'LOCAL_CAP_REACHED' };
   return { ok: true, tokensLeft: left };
 }
