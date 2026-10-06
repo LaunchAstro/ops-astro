@@ -6,8 +6,9 @@
 // kept in the tab's `sessionStorage` (the rule the session lives under), under
 // the session's own grant key, so a reload brings the tabs back and another
 // person's sign-in reads its own key, not these. No title or words are kept: a
-// copy left in the tab after sign-out is opaque ids that only their owner may
-// read back (`conversation.read` is owner-only). A tab not yet started holds
+// copy left in the tab after sign-out is opaque ids, readable back only by
+// their owner or a holder of the read-any grant (`conversation.read`'s own
+// rule), who may read that conversation anyway. A tab not yet started holds
 // nothing the server has and is not kept. What comes back from storage is read
 // through a closed shape (the exact keys, a bounded list, ids in the uuid form)
 // and anything else brings back nothing.
