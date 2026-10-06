@@ -180,7 +180,7 @@ async function create(
      insert into invitations
        (business_id, id, person_id, role_key, address, expires_at, created_by_actor_id)
      select $1, gen_random_uuid(), person.id, $3, $4,
-            now() + make_interval(days => $5::int), $6
+            clock_timestamp() + make_interval(days => $5::int), $6
        from person
      returning id`,
     [tx.businessId, name, request.role, address, INVITATION_LIFETIME_DAYS, context.session.actorId],
@@ -244,10 +244,11 @@ async function move(
   const gone = await noLongerHeld(tx, context, resend ? found.role_key : '');
   if (gone !== undefined) return gone;
   // The limit and access locks may have been waited on: a resend is judged
-  // live again by its own write, on the clock, with every lock held.
+  // live again by its own write, and its new lifetime runs from that write,
+  // both on the clock, with every lock held.
   const [moved] = resend
     ? await tx.query<{ revision: number; state: string }>(
-        `update invitations set expires_at = now() + make_interval(days => $3::int),
+        `update invitations set expires_at = clock_timestamp() + make_interval(days => $3::int),
                 revision = revision + 1
           where business_id = $1 and id = $2 and expires_at > clock_timestamp()
           returning revision, state`,
