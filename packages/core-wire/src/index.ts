@@ -29,6 +29,8 @@ export {
   type OperandKind,
   type OperandSpec,
 } from './surface.ts';
+// The key a map's structural writes serialise on, which the envelope asks about.
+export { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 // A currency's minor digits, the ISO 4217 table the server and the browser share.
 export { minorDigits } from './currency.ts';
 // What a task's page link may hold, for the server's check and the web's door.

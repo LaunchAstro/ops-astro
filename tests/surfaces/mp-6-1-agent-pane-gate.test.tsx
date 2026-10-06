@@ -32,11 +32,18 @@ describe('MP-6-1 agent pane', () => {
     expect(page.find('[data-gate-action="approve"]')?.textContent).toBe('Approve exact v1');
     expect(page.find('[data-gate="digest"]')?.getAttribute('title')).toBe(DIGEST);
 
-    const rounds = await pane({
+    // Two formal rounds of changes (DA-07): the second is still requested;
+    // past them, escalate to a person takes its place.
+    const second = await pane({
       lineages: [lineage({ versions: [version({ gate: { ...version().gate!, round: 2 } })] })],
     });
-    expect(rounds.find('[data-gate-action="request_changes"]')).toBeNull();
-    expect(rounds.find('[data-gate-action="escalate"]')).not.toBeNull();
+    expect(second.find('[data-gate-action="request_changes"]')).not.toBeNull();
+    expect(second.find('[data-gate-action="escalate"]')).toBeNull();
+    const past = await pane({
+      lineages: [lineage({ versions: [version({ gate: { ...version().gate!, round: 3 } })] })],
+    });
+    expect(past.find('[data-gate-action="request_changes"]')).toBeNull();
+    expect(past.find('[data-gate-action="escalate"]')).not.toBeNull();
 
     const decided = await pane({
       lineages: [

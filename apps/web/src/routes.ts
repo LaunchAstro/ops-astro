@@ -98,6 +98,17 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // A Wayfinder map (WF-3, WF-4): its sections edited in place, and its
+  // tickets, frontier and fog views. Keyed like a task, by the map's own key.
+  // Its look waits on the accepted prototype W4, so `surface` is `none` rather
+  // than a letter it has not earned; the manifest has no page for it.
+  'agency:map': {
+    namespace: 'agency',
+    path: '/map/:key',
+    title: 'Map',
+    surface: 'none',
+    authenticated: true,
+  },
   // Connections & signal, the fleet (MP-14-7a). The mockup's `/connections/`
   // page; it has no pinned surface letter, so `surface` is `none`. The
   // manifest places it in the Hub rail.

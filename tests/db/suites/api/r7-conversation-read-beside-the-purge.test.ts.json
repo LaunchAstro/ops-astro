@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "R7: an owner's conversation read that overlaps the scheduled purge answers the transcript before it or the wrap-up after it, never an empty transcript marked unpurged"
+}

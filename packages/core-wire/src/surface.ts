@@ -650,6 +650,16 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
   read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // WF-2. A chart is a business write: it files the map and its tickets.
+  declare('map.chart', 'write', { targetsExistingRecord: false, untargetedIdentifiers: [] }),
+  declare('task.set_blocking', 'write', { serialise: WAYFINDER_MAP_LOCK }),
+  // First-come: the envelope locks the ticket and compares its revision; a
+  // second claim on one revision is VERSION_STALE, on the next it is claimed.
+  declare('task.claim', 'assign'),
+  declare('map.graduate', 'write', { serialise: WAYFINDER_MAP_LOCK }),
+  // `write`; grilling and prototype ask the map owner's `decide` in the handler.
+  declare('task.resolve', 'write'),
+  declare('task.close_out_of_scope', 'decide', { serialise: WAYFINDER_MAP_LOCK }),
   // `billing:decide` on the whole business (AW-04, U10): owners and
   // administrators set the planning cap; no agent route serves it.
   declare('budget.set_planning_cap', 'decide', {

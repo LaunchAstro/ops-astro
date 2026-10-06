@@ -16,7 +16,11 @@ import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/s
 import { task, tick } from './task-page-stub.tsx';
 import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
 
-afterEach(unmountAll);
+afterEach(() => {
+  unmountAll();
+  // The open task is kept in the tab's storage across a reload (S1): each test starts clean.
+  window.sessionStorage.clear();
+});
 
 const KEY = 'Proj-Verity-Pacing';
 const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };

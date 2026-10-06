@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the WF-2 commands (map.chart, task.set_blocking, task.claim, map.graduate, task.resolve, task.close_out_of_scope) through the envelope: the chart's tickets, links and first version, the blocking set's same-map same-client rule and cycle refusal, first-come claims, fog graduating into tickets, resolve and out-of-scope closing, a refusal per key and the isolation crossings"
+}

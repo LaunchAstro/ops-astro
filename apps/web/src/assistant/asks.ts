@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-04: an ask from a page that is not an entry-point sparkle, carried to the
-// dock's drawer. The Agent pane's "Start a new attempt" is the one today: a
+// dock's drawer. The Agent pane's "Start a new attempt" is one: a
 // new attempt is a new plan, and a plan is accepted in the drawer, so the pane
-// asks the drawer to plan it (`AW-04 start from the pane`).
+// asks the drawer to plan it (`AW-04 start from the pane`). The task panel's
+// Ask about this task (DP-09) is the other.
 //
 // The pane sits deep in the task page and the drawer is the dock's, so the ask
 // travels as one window event rather than a prop threaded through the shell.
@@ -75,6 +76,16 @@ export function newAttemptAsk(task: NonNullable<ScopeInput['task']>): AskEntry {
     row: 'DA-07',
     widget: { id: 'start-attempt', label: 'Start a new attempt' },
     question: `Plan a new attempt at ${task.title}.`,
+    scope: { client: null, task },
+  };
+}
+
+/** The panel head's Ask about this task (DP-09): where it is up to, the task in scope. */
+export function taskAsk(task: NonNullable<ScopeInput['task']>): AskEntry {
+  return {
+    row: 'DP-09',
+    widget: { id: 'ask-task', label: 'Ask about this task' },
+    question: `Where is the task “${task.title}” up to, and what should happen next?`,
     scope: { client: null, task },
   };
 }
