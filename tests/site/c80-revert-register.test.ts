@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C80 on the effect register, the edges a security review found: a revert
-// whose answer never reached the register is never sent blind again, an entry
-// from another business is never this correction's effect, and an entry under
-// the right identity with a token the publish never sent is not its
-// acceptance. Every provider here is a double: nothing reaches a live system.
+// C80 on the effect register, the edges security reviews found: around the
+// dispatch taken under the lease, a revert answer the register never held, and
+// entries that are not the effect. Every provider here is a double.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { BEFORE, PAGE } from './c80-world.ts';
 import { doubles } from './c80-runner-doubles.ts';
 import { runLivePublish } from '../../packages/core-commands/src/index.ts';
 import { dispatchToken } from '../../packages/core-connectors/src/index.ts';
@@ -27,6 +26,7 @@ import {
   approved,
   at,
   expireLease,
+  latch,
   lease,
   publish,
   receipt,
@@ -60,7 +60,7 @@ describe.skipIf(serverUrl === undefined)('C80 revert, an answer the register nev
       expect(await revert(id, lost)).toMatchObject({ kind: 'unrecorded' });
       await renewLease();
       expect([await revert(id, lost), lost.seen.reverted]).toEqual([
-        { kind: 'refused', code: 'OUTCOME_UNKNOWN' },
+        { kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' },
         1,
       ]);
     } finally {
@@ -79,7 +79,7 @@ describe.skipIf(serverUrl === undefined)('C80 revert, an answer the register nev
     });
     await expect(revert(id, crashed)).rejects.toThrow('worker lost');
     expect([await revert(id, crashed), crashed.seen.reverted]).toEqual([
-      { kind: 'refused', code: 'OUTCOME_UNKNOWN' },
+      { kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' },
       1,
     ]);
   });
@@ -224,5 +224,77 @@ describeWorld('C80 publish runner, a narrowed delegation', 'c80narrow', () => {
     expect(ports.seen.raised).toEqual(['DELEGATION_NARROWED']);
     expect([ports.seen.sourceReads, ports.seen.dispatched.length]).toEqual([0, 0]);
     expect([await lowsState(id), await countOf(RECEIPTS, id)]).toEqual(['approved', 0]);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C80 publish, after the dispatch was taken', () => {
+  it('records failed, never a stuck unknown, when a check after the take refuses the send', async () => {
+    const id = await approved();
+    const ports = doubles({
+      readSource: () => {
+        ports.seen.sourceReads += 1;
+        const read = { kind: 'ok', value: { content: BEFORE, revision: 'rev-1' } } as const;
+        const lost = { kind: 'unknown', code: 'PROVIDER_TIMEOUT' } as const;
+        return Promise.resolve(ports.seen.sourceReads === 1 ? read : lost);
+      },
+    });
+    expect(await publish(id, ports)).toMatchObject({ kind: 'recorded', state: 'failed' });
+    expect(ports.seen.dispatched).toEqual([]);
+    expect(ports.seen.raised).toEqual(['CONTENT_DRIFT_UNCHECKED']);
+    const observed = await receipt(id, 'publish');
+    expect(observed['refusals_raised']).toEqual({ observed: 'CONTENT_DRIFT_UNCHECKED' });
+    expect(observed['attempt_and_dispatch_token']).toBeUndefined();
+  });
+
+  it('asks a person once when later runs find the publish unknown with nothing registered', async () => {
+    const id = await approved();
+    const crashed = doubles({
+      publish: (input) => {
+        crashed.seen.dispatched.push(input);
+        return Promise.reject(new Error('worker lost after the take'));
+      },
+    });
+    await expect(publish(id, crashed)).rejects.toThrow('worker lost');
+    const later = doubles();
+    const waits = { kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' };
+    expect([await publish(id, later), await publish(id, later)]).toEqual([waits, waits]);
+    expect([later.seen.raised, later.seen.dispatched.length]).toEqual([['OUTCOME_UNKNOWN'], 0]);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C80 publish, one job run twice', () => {
+  it('sends once when two runs of one job both read the correction approved', async () => {
+    const id = await approved();
+    // A redelivered job in another process (same lease, own module) sends after this read.
+    vi.resetModules();
+    const other = await import('../../packages/core-commands/src/index.ts');
+    const [sending, inFlight] = latch();
+    const [gate, release] = latch();
+    const second = doubles({
+      publish: async (input) => {
+        second.seen.dispatched.push(input);
+        inFlight();
+        await gate;
+        return { kind: 'ok', value: { revision: 'rev-2', deploymentId: 'dep-2', liveUrl: PAGE } };
+      },
+    });
+    let secondRun: Promise<unknown> = Promise.resolve();
+    const first = doubles({
+      readSource: async () => {
+        first.seen.sourceReads += 1;
+        if (first.seen.sourceReads === 1) {
+          secondRun = other.runLivePublish(w.world.db.app, at(id), second);
+          await sending;
+        }
+        return { kind: 'ok', value: { content: BEFORE, revision: 'rev-1' } };
+      },
+    });
+    const answer = await publish(id, first);
+    release();
+    expect([answer, await secondRun]).toMatchObject([
+      { kind: 'refused', code: 'OUTCOME_UNKNOWN' },
+      { kind: 'recorded', state: 'live' },
+    ]);
+    expect([first.seen.dispatched.length, second.seen.dispatched.length]).toEqual([0, 1]);
   });
 });

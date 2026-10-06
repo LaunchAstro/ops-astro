@@ -129,7 +129,11 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, rec
       observed: correctionEffectId(id, 'publish'),
     });
     expect(await entries(id)).toEqual([]);
-    expect(await publish(id, timeout)).toEqual({ kind: 'refused', code: 'OUTCOME_UNKNOWN' });
+    expect(await publish(id, timeout)).toEqual({
+      kind: 'refused',
+      code: 'OUTCOME_UNKNOWN',
+      waitsOn: 'person',
+    });
 
     const sent = (await receipt(id, 'publish'))['attempt_and_dispatch_token']?.observed;
     const correction = { id, taskId: lease.taskId };
@@ -192,7 +196,11 @@ describe.skipIf(serverUrl === undefined)('C80 revert on the effect register', ()
     });
     expect(await revert(id, lost)).toMatchObject({ kind: 'recorded', state: 'live' });
     expect(lost.seen.raised).toEqual(['PROVIDER_TIMEOUT']);
-    expect(await revert(id, lost)).toEqual({ kind: 'refused', code: 'OUTCOME_UNKNOWN' });
+    expect(await revert(id, lost)).toEqual({
+      kind: 'refused',
+      code: 'OUTCOME_UNKNOWN',
+      waitsOn: 'person',
+    });
     expect([lost.seen.reverted, await w.receiptsOf(id)]).toEqual([1, 4]);
   });
 });
@@ -234,6 +242,19 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, cro
       'accepted',
     ]);
   });
+});
+
+describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, leases', () => {
+  it('registers nothing under a lease its caller does not hold', async () => {
+    const id = await approved();
+    const answer = { revision: 'rev-x', deploymentId: 'dep-x' };
+    const correction = { id, taskId: lease.taskId };
+    const other = { ...at(id), actorId: w.ava.actorId };
+    expect(
+      await registerCorrectionEffect(w.world.db.app, other, correction, 'publish', answer),
+    ).toBe(false);
+    expect(await entries(id)).toEqual([]);
+  });
 
   it('registers nothing under a lease of another task', async () => {
     const id = await approved();
@@ -270,7 +291,7 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, two
     } finally {
       if (second !== undefined) await handBack(second.leaseId);
     }
-    expect(answered).toEqual({ kind: 'refused', code: 'OUTCOME_UNKNOWN' });
+    expect(answered).toEqual({ kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' });
     expect([first.seen.dispatched.length, late.seen.dispatched.length]).toEqual([1, 0]);
   });
 });
