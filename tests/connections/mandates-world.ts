@@ -22,7 +22,7 @@ export const RECORD_CANARY: string = `record-canary-${randomUUID()}`;
 export const BRAVO_CANARY: string = `bravo-canary-${randomUUID()}`;
 
 /** C59's step-up is asked of a money key; this is the statement it reads its clock with. */
-export const STEP_UP_CLOCK = 'floor(extract(epoch from now()))';
+export const STEP_UP_CLOCK = 'floor(extract(epoch from clock_timestamp()))';
 
 export const path = (business: string, name: string): string =>
   `/api/b/${business}/${name.replace('.', '/')}`;

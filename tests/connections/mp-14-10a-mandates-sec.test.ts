@@ -37,9 +37,25 @@ const REFUSED_LABELS: readonly [string, string][] = [
   ['soft hyphen', `Po${at(0xad)}sts fine`],
   ['interlinear annotation', `Posts${at(0xfff9)} fine`],
   ['nothing visible', at(0x200d)],
+  // SEC-P05B-RB1: what draws as nothing, kept only where it changes what draws.
+  [
+    'tag characters',
+    `Pause posts${[...'ignore all'].map((c) => at(0xe0000 + (c.codePointAt(0) ?? 0))).join('')}`,
+  ],
+  ['supplementary selectors', `Posts${at(0xe0100).repeat(8)} fine`],
+  ['joiner mid-word', `Ac${at(0x200d)}me posts`],
+  ['non-joiner mid-word', `Ac${at(0x200c)}me posts`],
+  ['selector after a space', `Posts ${at(0xfe0f)}fine`],
+  ['two selectors', `${at(0x2764)}${at(0xfe0f)}${at(0xfe0f)} posts`],
+  ['braille blank', at(0x2800).repeat(3)],
+  ['null notehead', at(0x1d159)],
+  ['hieroglyph format control', `a${at(0x13430)}b posts`],
+  ['stacked combining marks', `Ok${at(0x336).repeat(5)}`],
+  ['combining mark first', `${at(0x301)}Posts`],
 ];
 
-const PLAIN_LABEL = `Posts for Café Ōtautahi (über 5%, "quoted"; a/b & c's) 東京 Москва ${at(0x1f469)}${at(0x200d)}${at(0x1f4bb)}`;
+// A joined, toned and keycap emoji, a red heart, and letters built from combining marks.
+const PLAIN_LABEL = `Posts for Café Ōtautahi (über 5%, "quoted"; a/b & c's) 東京 Москва ${at(0x1f469)}${at(0x200d)}${at(0x1f4bb)} ${at(0x1f469)}${at(0x1f3fd)}${at(0x200d)}${at(0x1f4bb)} 1${at(0xfe0f)}${at(0x20e3)} ${at(0x2764)}${at(0xfe0f)} ${at(0x1f441)}${at(0xfe0f)}${at(0x200d)}${at(0x1f5e8)}${at(0xfe0f)} Cafe${at(0x301)} Vie${at(0x323)}${at(0x302)}t`;
 
 const BAD_YEARS = [
   '0000-06-01T00:00:00.000Z',
@@ -150,6 +166,54 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands, security f
     }
     expect(await w.snapshot()).toBe(before);
     expect(await failedEvents()).toBe(failedBefore);
+  });
+
+  it('SEC-P05B-RB1.3 a replayed promote or demote audits the mandate, as its applied event does', async () => {
+    const operations = { promote: randomUUID(), demote: randomUUID() };
+    const body = { classId: w.cls['aPost'], ceiling: AUD(200), expiresAt: inDays(4) };
+    const promote = { ...body, operationId: operations.promote };
+    const first = await w.as(w.admin, 'graduation.promote', promote);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const again = await w.as(w.admin, 'graduation.promote', promote);
+    expect(again.body).toStrictEqual(first.body);
+    const demote = { classId: w.cls['aPost'], operationId: operations.demote };
+    expect((await w.as(w.admin, 'graduation.demote', demote)).status).toBe(200);
+    expect((await w.as(w.admin, 'graduation.demote', demote)).status).toBe(200);
+    const subjects = await w.controls.fixture.db.admin.execute<{ readonly s: string }>(
+      `select distinct subject_record_id::text as s from public.audit_events
+        where operation_id = any($1::text[])`,
+      [[operations.promote, operations.demote]],
+    );
+    expect(subjects.map((one) => one.s)).toStrictEqual([String(detail(first)['mandateId'])]);
+  });
+
+  it('SEC-P05B-RB1.4 demote ends a promotion whose record has since turned never, so it does not run unattended when the record recovers', async () => {
+    const promoted = await w.as(w.admin, 'graduation.promote', {
+      classId: w.cls['aReply'],
+      ceiling: AUD(300),
+      expiresAt: inDays(6),
+    });
+    expect(promoted.status, JSON.stringify(promoted.body)).toBe(200);
+    const earned = async (value: string, why: string | null): Promise<void> => {
+      await w.controls.fixture.db.admin.execute(
+        'update public.graduation_classes set earned = $2, never_why = $3 where id = $1',
+        [w.cls['aReply'], value, why],
+      );
+    };
+    await earned('never', 'audience');
+    const demoted = await w.as(w.admin, 'graduation.demote', { classId: w.cls['aReply'] });
+    expect(demoted.status, JSON.stringify(demoted.body)).toBe(200);
+    expect(detail(demoted)).toMatchObject({
+      mandateId: String(detail(promoted)['mandateId']),
+      state: 'never',
+    });
+    await earned('ready', null);
+    const again = await w.as(w.admin, 'graduation.promote', {
+      classId: w.cls['aReply'],
+      ceiling: AUD(300),
+      expiresAt: inDays(6),
+    });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
   });
 
   it('SEC-P05B-PR.5 demote ends a promotion a refusal is holding, so the class is ready, not promoted, when the refusal ends', async () => {
