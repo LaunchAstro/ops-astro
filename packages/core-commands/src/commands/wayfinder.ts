@@ -21,6 +21,7 @@ import { outsideHolders } from '../reads/tasks.ts';
 import type { CommandRequest } from './requests.ts';
 import { setPartyWhileEmpty } from './task-client-lock.ts';
 import { refuseUnlessOwner } from './wayfinder-owner.ts';
+import { refuseFilingOnMap, refuseRetypeOntoMap } from './wayfinder-filing.ts';
 
 export type RequestOf<K extends CommandRequest['command']> = Extract<
   CommandRequest,
@@ -138,30 +139,6 @@ export async function setTaskType(
   return applied(target.id, Number(rows[0]?.revision), { type: to, from });
 }
 
-/**
- * A retype into grilling or prototype files the record on the map it sits
- * under, as a create or a move there would: the filing rule judges that map
- * too. A map nested under someone else's map is its creator's, so the
- * record's own rule alone would let a non-owner turn it into the outer map's
- * grilling or prototype ticket.
- */
-async function refuseRetypeOntoMap(
-  tx: TenantQuery,
-  context: CommandContext,
-  recordId: string,
-): Promise<CommandRefusal | undefined> {
-  const rows = await tx.query<{ readonly parent: string | null }>(
-    `select uuid_4 as parent from public.records where business_id = $1 and id = $2`,
-    [tx.businessId, recordId],
-  );
-  const parentId = rows[0]?.parent ?? null;
-  if (parentId === null) return undefined;
-  // Parent held `for share` as its type is read: a retype in flight is seen.
-  const parent = await wayfinderFacts(tx, parentId, true);
-  if (parent?.type !== 'map') return undefined;
-  return await refuseFilingOnMap(tx, context, parent);
-}
-
 /** The data a retype writes: the type, one more history entry, and an owner for a new map. */
 function retypeChange(
   context: CommandContext,
@@ -256,28 +233,6 @@ export async function refuseOwnerTicketMove(
   const shared = await refuseSharedIntoMap(tx, recordId);
   if (shared !== undefined || !guarded) return shared;
   return await refuseFilingOnMap(tx, context, into);
-}
-
-/**
- * A grilling or prototype ticket arriving on a map, moved or created there:
- * `task:decide` and the map's owner, and a map with no owner recorded refuses.
- */
-async function refuseFilingOnMap(
-  tx: TenantQuery,
-  context: CommandContext,
-  // The facts the owner rule reads, typed through it: this file's imports stay as they are.
-  map: Parameters<typeof refuseUnlessOwner>[2],
-): Promise<CommandRefusal | undefined> {
-  return await refuseUnlessOwner(
-    tx,
-    context,
-    map,
-    {
-      decide: 'Filing a grilling or prototype ticket on a map needs task:decide.',
-      owner: "Only the map's owner files a grilling or prototype ticket on the map.",
-    },
-    'refuse',
-  );
 }
 
 /**
