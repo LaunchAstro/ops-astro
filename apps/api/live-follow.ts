@@ -106,10 +106,11 @@ const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
 /**
- * One open stream: `seat` when it is seated, `resync` for each watched task
- * once subscribed, then each signal once the caller is asked again, and
- * `closed` the first time the answer is no. An ended session answers no for
- * every task on the next check, and the stream ends with its last task.
+ * One open stream: `resync` for each watched task once subscribed, `seat` when
+ * it is seated, once each task's first recheck has sat or closed it, then each
+ * signal once the caller is asked again, and `closed` the first time the
+ * answer is no. An ended session answers no for every task on the next check,
+ * and the stream ends with its last task.
  */
 export async function follow(
   stream: LiveStream,
@@ -137,11 +138,15 @@ export async function follow(
   for (const watch of watches) follower.watch(watch, live.topics, stop);
   const timer = setInterval(() => follower.checkAll(), live.recheckMs ?? RECHECK_MS);
   try {
-    if (seated !== undefined)
-      await stream.writeSSE({ event: 'seat', data: seated.session.sessionId });
     for (const watch of watches) {
       // eslint-disable-next-line no-await-in-loop -- written in order.
       await stream.writeSSE({ event: 'resync', data: watch.label });
+    }
+    if (seated !== undefined) {
+      // The door's answer is not enough to sit: each task is asked again first.
+      follower.checkAll();
+      await follower.settled();
+      await stream.writeSSE({ event: 'seat', data: seated.session.sessionId });
     }
     await ended;
   } finally {
@@ -190,16 +195,21 @@ class Follower {
       async () => await stop(),
     );
     this.#stops.set(watch, unsubscribe);
-    this.#sit(watch);
   }
 
   checkAll(): void {
     for (const watch of this.#stops.keys()) this.want(watch, 'check');
   }
 
-  /** Resolves once the delivery in flight, and its question, is done. */
+  /**
+   * Resolves once the delivery in flight, and its question, is done; while the
+   * stream is open and a task is neither sat nor closed, each check queued again too.
+   */
   async settled(): Promise<void> {
-    await this.#chain;
+    const before = this.#chain;
+    await before;
+    const unsat = [...this.#stops.keys()].some((watch) => !this.#leaves.has(watch));
+    if (before !== this.#chain && unsat && !this.#stream.aborted) await this.settled();
   }
 
   stopAll(): void {
