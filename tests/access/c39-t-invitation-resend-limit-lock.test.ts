@@ -26,6 +26,46 @@ async function waitUntil(check: () => Promise<boolean>, milliseconds = 8000): Pr
   }
 }
 
+interface Holder {
+  readonly pid: number;
+  readonly letGo: () => void;
+  readonly close: () => Promise<void>;
+}
+
+/** `hold` taken on another connection in alpha, kept until `letGo` or `close`. */
+async function holdOn(hold: (tx: TenantQuery) => Promise<void>): Promise<Holder> {
+  const blocker = connect(w.db.appUrl);
+  const held = latch();
+  const release = latch();
+  let pid = 0;
+  const holding = blocker.withBusiness(w.alpha, async (tx) => {
+    const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
+    pid = row?.pid ?? 0;
+    await hold(tx);
+    held.release();
+    await release.promise;
+  });
+  await Promise.race([held.promise, holding]);
+  return {
+    pid,
+    letGo: release.release,
+    close: async () => {
+      release.release();
+      await holding;
+      await blocker.close();
+    },
+  };
+}
+
+/** Whether `pid` holds a lock some other backend is waiting on. */
+async function blocking(pid: number): Promise<boolean> {
+  const [row] = await w.db.admin.execute<{ waiting: boolean }>(
+    'select exists (select 1 from pg_stat_activity where $1 = any(pg_blocking_pids(pid))) as waiting',
+    [pid],
+  );
+  return row?.waiting === true;
+}
+
 /**
  * `run` started while `hold` is held on another connection, seen waiting on it
  * while the invitation is still live, and let go only once it has lapsed.
@@ -41,45 +81,27 @@ async function pastExpiry<T>(
       where id = $1 returning expires_at::text as expires`,
     [id],
   );
-  const blocker = connect(w.db.appUrl);
-  const held = latch();
-  const release = latch();
-  let pid = 0;
-  const holding = blocker.withBusiness(w.alpha, async (tx) => {
-    const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
-    pid = row?.pid ?? 0;
-    await hold(tx);
-    held.release();
-    await release.promise;
-  });
-  const state = async (): Promise<{ waiting: boolean; lapsed: boolean }> => {
-    const [row] = await w.db.admin.execute<{ waiting: boolean; lapsed: boolean }>(
-      `select exists (select 1 from pg_stat_activity where $2 = any(pg_blocking_pids(pid))) as waiting,
-              clock_timestamp() > expires_at as lapsed
-         from public.invitations where id = $1`,
-      [id, pid],
+  const holder = await holdOn(hold);
+  const lapsed = async (): Promise<boolean> => {
+    const [row] = await w.db.admin.execute<{ lapsed: boolean }>(
+      'select clock_timestamp() > expires_at as lapsed from public.invitations where id = $1',
+      [id],
     );
-    return { waiting: row?.waiting === true, lapsed: row?.lapsed === true };
+    return row?.lapsed === true;
   };
   try {
-    await held.promise;
     const running = run();
     let waitedLive = false;
     await waitUntil(async () => {
-      const now = await state();
-      waitedLive ||= now.waiting && !now.lapsed;
-      return now.waiting;
+      const waiting = await blocking(holder.pid);
+      waitedLive ||= waiting && !(await lapsed());
+      return waiting;
     });
-    await waitUntil(async () => {
-      const now = await state();
-      return now.waiting && now.lapsed;
-    });
-    release.release();
+    await waitUntil(async () => (await blocking(holder.pid)) && (await lapsed()));
+    holder.letGo();
     return { saved: set?.expires ?? '', waitedLive, result: await running };
   } finally {
-    release.release();
-    await holding;
-    await blocker.close();
+    await holder.close();
   }
 }
 
@@ -136,35 +158,18 @@ describe.skipIf(noDatabase)('C39-T a resend judges expiry again once its locks a
  * moment of letting go, then `run`'s answer.
  */
 async function pastAccessWait<T>(run: () => Promise<T>): Promise<{ letGo: string; result: T }> {
-  const blocker = connect(w.db.appUrl);
-  const held = latch();
-  const release = latch();
-  let pid = 0;
-  const holding = blocker.withBusiness(w.alpha, async (tx) => {
-    const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
-    pid = row?.pid ?? 0;
+  const holder = await holdOn(async (tx) => {
     await lockAccess(tx);
-    held.release();
-    await release.promise;
   });
   try {
-    await held.promise;
     const running = run();
-    await waitUntil(async () => {
-      const [row] = await w.db.admin.execute<{ waiting: boolean }>(
-        'select exists (select 1 from pg_stat_activity where $1 = any(pg_blocking_pids(pid))) as waiting',
-        [pid],
-      );
-      return row?.waiting === true;
-    });
+    await waitUntil(async () => await blocking(holder.pid));
     await delay(1000);
     const [now] = await w.db.admin.execute<{ at: string }>('select clock_timestamp()::text as at');
-    release.release();
+    holder.letGo();
     return { letGo: now?.at ?? '', result: await running };
   } finally {
-    release.release();
-    await holding;
-    await blocker.close();
+    await holder.close();
   }
 }
 
