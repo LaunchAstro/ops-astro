@@ -1270,7 +1270,7 @@ conversation provider's models; on a conversation opened on a client's task,
 only those the client's model egress allows (CS-7.40: off offers nothing, a
 providers list only those providers, each assessed); on one whose task the
 caller cannot see, nothing. The write keeps the choice on the conversation
-(`conversations.model_id`, migration 20261006150000) under its row lock. A
+(`conversations.model_id`, migration 20261006205800) under its row lock. A
 model chosen before the first message goes in `conversation.start` as `model`,
 asked by the same rule on the row the start inserts and kept before it
 commits, so the first exchange asks for it; one not offered refuses the start

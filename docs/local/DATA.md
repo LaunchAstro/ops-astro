@@ -948,7 +948,7 @@ own occurrence started (`occurrence_dispatches_run_fkey` on business, run and
 occurrence). That the origin occurrence was approved is still the code's
 check, under the activation lock.
 
-## A conversation's model (20261006150000, CS-7.30)
+## A conversation's model (20261006205800, CS-7.30)
 
 `conversations.model_id` is the model the conversation runs on, null until
 `conversation.set_model` sets it from the models offered it (null is the
