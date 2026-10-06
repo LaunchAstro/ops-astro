@@ -84,11 +84,23 @@ const approvalOf = (row: ApprovalDbRow): StandingApprovalRow => ({
   revoked: row.revoked,
 });
 
-/** The activation, locked for this transaction's change, or null. */
+/**
+ * The activation, locked for this transaction's change, or null. A
+ * transaction locks one activation: each writer takes its row, then
+ * business-wide locks held to commit (C33's rates, intake and run ceiling),
+ * so a second activation's row after them could close a cycle with that
+ * activation's own writer. Any other is refused before its row is touched.
+ */
 export async function lockActivation(
   tx: TenantQuery,
   activationId: string,
 ): Promise<ActivationRow | null> {
+  const one = await tx.query<{ readonly id: string }>(
+    `select set_config('ops_astro.activation', lower($1), true) as id
+      where coalesce(current_setting('ops_astro.activation', true), '') in ('', lower($1))`,
+    [activationId],
+  );
+  if (one[0] === undefined) throw new Error('one transaction locks one activation');
   const rows = await tx.query<ActivationDbRow>(
     `select ${ACTIVATION_COLUMNS} from public.activations
       where business_id = $1 and id = $2 for update`,

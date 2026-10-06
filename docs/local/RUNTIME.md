@@ -2149,9 +2149,12 @@ in core-records `automations/dispatch.ts`); the worker hands dispatch
 `occurrenceRunStarter(workerActorId)` (core-commands
 `commands/automation-run.ts`). Before the start, dispatch takes C33's run
 ceiling on the durable limit: at five runs in flight it answers `waiting` and
-writes nothing. A start J refuses records no dispatch. Tests:
-`aw-01-occurrence-run`, `aw-01-occurrence-run-isolation`, `c52a-run-start`
-and `c33-intake`.
+writes nothing. A start J refuses records no dispatch. A claim locks the
+activation as dispatch does, and one transaction locks one activation
+(`lockActivation`), so no writer upgrades a lock or takes a second activation
+after the business-wide keys. Tests: `aw-01-occurrence-run`,
+`aw-01-occurrence-run-isolation`, `c52a-run-start`, `c33-intake` and
+`c52a-dispatch-claim-races`.
 
 ## The harness adoption test's trigger
 

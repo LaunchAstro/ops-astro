@@ -3609,7 +3609,11 @@ nothing. Its event intake holds at most 1,000 approved events not yet
 dispatched: past that, the claim records the event `over_intake_bound`
 (migration 20261006092531) and starts nothing. `waitingOccurrences` lists the
 approved occurrences with no dispatch, oldest first: the queued events and the
-runs waiting, which the worker dispatches again as runs finish.
+runs waiting, which the worker dispatches again as runs finish, one
+transaction per occurrence. A transaction claims and dispatches for one
+activation only: each takes the activation's row, then these business-wide
+locks, so a second activation's row after them is refused (`lockActivation`)
+rather than left to deadlock with that activation's own writer.
 
 | Operation              | Route                   | Body                                            | Answer or refusals                                                                                                                                                                                                                                                 |
 | ---------------------- | ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

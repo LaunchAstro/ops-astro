@@ -10,13 +10,8 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { hasRoom, type DurableLimit } from '../tenancy/limit.ts';
-import { readStandingApproval } from './approvals.ts';
-import {
-  ACTIVATION_COLUMNS,
-  activationOf,
-  type ActivationDbRow,
-  type ActivationMode,
-} from './automations.ts';
+import { lockActivation, readStandingApproval } from './approvals.ts';
+import type { ActivationMode } from './automations.ts';
 
 export type OccurrenceOutcome =
   | 'started'
@@ -146,7 +141,8 @@ export type OccurrenceClaim =
  * person's grant. The activation is locked for update, as dispatch locks it,
  * so a person's change waits for the claim, the claim sees the setting it
  * records, and a worker that claims and then dispatches in one transaction
- * never upgrades its lock under another claimer.
+ * never upgrades its lock under another claimer. One transaction claims and
+ * dispatches for one activation only (`lockActivation`).
  *
  * A second claim of the same cause, whether a replayed event, a restarted
  * scheduler or a racing one, commits nothing and answers `replayed` with the
@@ -164,13 +160,8 @@ export async function claimOccurrence(
   activationId: string,
   cause: OccurrenceCause,
 ): Promise<OccurrenceClaim> {
-  const found = await tx.query<ActivationDbRow>(
-    `select ${ACTIVATION_COLUMNS} from public.activations
-      where business_id = $1 and id = $2 for update`,
-    [tx.businessId, activationId],
-  );
-  if (found[0] === undefined) return { kind: 'unknown' };
-  const activation = activationOf(found[0]);
+  const activation = await lockActivation(tx, activationId);
+  if (activation === null) return { kind: 'unknown' };
   const scheduled = 'dueAt' in cause;
   if (activation.mode !== (scheduled ? 'scheduled' : 'event')) {
     return { kind: 'not_firing', mode: activation.mode };
