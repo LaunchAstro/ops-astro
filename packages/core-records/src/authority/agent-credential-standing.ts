@@ -47,6 +47,8 @@ export async function resolveAgentCredential(
   secret: string,
   now: Date,
 ): Promise<CredentialStanding | CredentialNotLive> {
+  // A secret not live holds nothing (#784): screened unlocked, then resolved under the locks.
+  if (!(await isAgentCredentialLive(tx, secret, now))) return 'not-live';
   await lockAccess(tx, 'shared');
   const row = await standingRow(tx, secret, 'for share of c');
   if (row === undefined || !liveAt(row, now)) return 'not-live';
