@@ -487,27 +487,33 @@
     "connections.switch-said": {
       "1480-light": {
         "font-size": "13px",
-        "color": "rgba(140,133,127,255)"
+        "color": "rgba(140,133,127,255)",
+        "overflow-wrap": "normal"
       },
       "1480-dark": {
         "font-size": "13px",
-        "color": "rgba(248,248,248,140)"
+        "color": "rgba(248,248,248,140)",
+        "overflow-wrap": "normal"
       },
       "900-light": {
         "font-size": "13px",
-        "color": "rgba(140,133,127,255)"
+        "color": "rgba(140,133,127,255)",
+        "overflow-wrap": "normal"
       },
       "900-dark": {
         "font-size": "13px",
-        "color": "rgba(248,248,248,140)"
+        "color": "rgba(248,248,248,140)",
+        "overflow-wrap": "normal"
       },
       "390-light": {
         "font-size": "13px",
-        "color": "rgba(140,133,127,255)"
+        "color": "rgba(140,133,127,255)",
+        "overflow-wrap": "normal"
       },
       "390-dark": {
         "font-size": "13px",
-        "color": "rgba(248,248,248,140)"
+        "color": "rgba(248,248,248,140)",
+        "overflow-wrap": "normal"
       }
     },
     "connections.count-n": {
@@ -610,6 +616,42 @@
         "border-left-color": "rgba(245,245,245,26)",
         "padding-left": "16px",
         "background-color": "rgba(15,15,18,255)"
+      }
+    },
+    "connections.promote-form": {
+      "390-light": {
+        "box.x": "41",
+        "box.width": "308"
+      },
+      "390-dark": {
+        "box.x": "41",
+        "box.width": "308"
+      }
+    },
+    "connections.promote-ceiling": {
+      "390-light": {
+        "box.width": "308"
+      },
+      "390-dark": {
+        "box.width": "308"
+      }
+    },
+    "connections.promote-expiry": {
+      "390-light": {
+        "box.width": "308"
+      },
+      "390-dark": {
+        "box.width": "308"
+      }
+    },
+    "connections.promote-confirm": {
+      "390-light": {
+        "box.x": "41",
+        "box.width": "308"
+      },
+      "390-dark": {
+        "box.x": "41",
+        "box.width": "308"
       }
     },
     "connections.mandate-text": {

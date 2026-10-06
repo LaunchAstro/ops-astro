@@ -56,6 +56,40 @@ const region = (
   more: Partial<LookProbe> = {},
 ): LookProbe => probe(id, `${panel.mockup} ${selector}`, `${panel.app} ${selector}`, props, more);
 
+// The promote form opens from the first row that can be promoted. The mockup
+// has no such form (it asks in a prompt), so its mandate form stands in for the
+// element and each value is the build's own: at 390 every field takes the whole
+// row, wide enough to read, and the buttons end inside the form.
+const PROMOTE = [
+  ['promote-form', '[data-promote-form]', { 'box.x': '41', 'box.width': '308' }],
+  ['promote-ceiling', '[data-promote-ceiling]', { 'box.width': '308' }],
+  ['promote-expiry', '[data-promote-expiry]', { 'box.width': '308' }],
+  ['promote-confirm', '[data-promote-confirm]', { 'box.x': '41', 'box.width': '71' }],
+] as const;
+const promoteProbe = (
+  id: string,
+  selector: string,
+  want: Readonly<Record<string, string>>,
+): LookProbe => {
+  const base = probe(
+    id,
+    '#gradPanel .psadd > input',
+    `#graduation ${selector}`,
+    Object.keys(want),
+    {
+      widths: [390],
+      ruled: (['light', 'dark'] as const).flatMap((theme) =>
+        Object.entries(want).map(([prop, value]) => ({
+          at: `${prop}@${theme}`,
+          want: value,
+          why: 'the mockup draws no promote form',
+        })),
+      ),
+    },
+  );
+  return { ...base, app: { ...base.app, open: '#graduation [data-grad="g-1"] [data-auto]' } };
+};
+
 const SCOPE = { mockup: '#agScopeBar', app: '[data-client-scope]' } as const;
 const GRAD = { mockup: '#gradPanel', app: '#graduation' } as const;
 const CHAN = { mockup: '#chanPanel', app: '[data-mock="channels"]' } as const;
@@ -129,7 +163,14 @@ export const CONNECTIONS: LookScreen = {
       'background-color',
     ]),
     region('knob', GRAD, '.autosw__k', ['box.width', 'border-top-color', 'background-color']),
-    region('switch-said', GRAD, '.autosw__lbl', ['font-size', 'color']),
+    // A held-by label carries a mandate's id, a UUID that has no space to break at.
+    region('switch-said', GRAD, '.autosw__lbl', ['font-size', 'color', 'overflow-wrap'], {
+      ruled: (['light', 'dark'] as const).map((theme) => ({
+        at: `overflow-wrap@${theme}`,
+        want: 'anywhere',
+        why: 'a held-by id is a UUID',
+      })),
+    }),
     region('count-n', GRAD, '.grad__n b', TYPE),
     region('grad-note', GRAD, '.grad__note', ['font-size', 'color']),
     region('mandate', GRAD, '.ps', [
@@ -138,6 +179,7 @@ export const CONNECTIONS: LookScreen = {
       'padding-left',
       'background-color',
     ]),
+    ...PROMOTE.map(([id, selector, want]) => promoteProbe(id, selector, want)),
     region('mandate-text', GRAD, '.ps__text', ['font-size', 'color']),
     region('mandate-meta', GRAD, '.ps__meta', ['font-size', 'text-transform', 'color'], {
       ruled: FAINT_DARK,
