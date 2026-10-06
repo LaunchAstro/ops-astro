@@ -14,7 +14,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { press, typeInto, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
-import { keysOf, serving, todos } from './todos-support.tsx';
+import { TODOS, keysOf, serving, todos } from './todos-support.tsx';
 
 afterEach(unmountAll);
 
@@ -83,6 +83,25 @@ describe('MP-7-1 XC 9, 10 waiting reply and whose move', () => {
     expect(keysOf(view)).toStrictEqual(['Proj-Bravo']);
     await typeInto(view, SEARCH, 'team');
     expect(keysOf(view)).toStrictEqual(['Proj-Charlie', 'Proj-Delta', 'Proj-Echo', 'Proj-Foxtrot']);
+  });
+});
+
+describe('a word that names an inherited object property is a name word', () => {
+  it('constructor keeps the task named with it, reads as a name, and commits a words chip', async () => {
+    const rows = [
+      { ...TODOS[5], id: 'id-Proj-A', key: 'Proj-A', title: 'Fix constructor' },
+      { ...TODOS[2], id: 'id-Proj-B', key: 'Proj-B', title: 'Audit links', tags: [] },
+    ];
+    const { view } = await todos({ client: serving(rows).client });
+    await typeInto(view, SEARCH, 'constructor');
+    expect(keysOf(view)).toStrictEqual(['Proj-A']);
+    expect(reading(view)).toBe('Reading this as: name “constructor”');
+    await press(view, SEARCH, 'Enter');
+    expect(chips(view)).toStrictEqual(['words']);
+    expect(keysOf(view)).toStrictEqual(['Proj-A']);
+    // Lower-cased, toString, valueOf and hasOwnProperty are no inherited keys; __proto__ is.
+    await typeInto(view, SEARCH, '__proto__');
+    expect(reading(view)).toBe('Reading this as: name “constructor”, name “__proto__”');
   });
 });
 
@@ -165,5 +184,25 @@ describe('a reread keeps the search, the chips, the sort and the comment scope',
     expect(server.sent.filter((one) => one.to === '/task/todos')).toHaveLength(2);
     expect(keysOf(view)).toStrictEqual(['Proj-Alpha']);
     expect(reading(view)).toBe('Reading this as: waiting comments on Proj-Alpha');
+  });
+});
+
+describe('a completed row kept while the list rereads', () => {
+  it('cannot be ticked again', async () => {
+    const gate: { answer?: () => void } = {};
+    const held = new Promise<void>((resolve) => {
+      gate.answer = resolve;
+    });
+    const server = serving(undefined, [], held);
+    const { view } = await todos({ client: server.client });
+    await view.click('[data-todo-row="Proj-Alpha"] [data-todo-tick]');
+    await tick();
+    expect(view.find('[data-outcome="loading"] [data-todo-row="Proj-Alpha"]')).not.toBeNull();
+    await view.click('[data-todo-row="Proj-Alpha"] [data-todo-tick]');
+    await tick();
+    gate.answer?.();
+    await tick();
+    expect(server.sent.filter((one) => one.to === '/task/complete')).toHaveLength(1);
+    expect(view.find('[data-todos-refusal]')).toBeNull();
   });
 });
