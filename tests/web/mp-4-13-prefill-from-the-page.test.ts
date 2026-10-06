@@ -65,7 +65,7 @@ describe('MP-4-13 the draft’s due, owner and client come from the page', () =>
     door.dataset['newTaskUrgent'] = '';
     door.dataset['newTaskClient'] = 'c-9';
     door.dataset['newTaskOwner'] = 'p-1';
-    door.dataset['newTaskOwnerName'] = 'Ryan';
+    door.dataset['newTaskOwnerName'] = 'Sam Example';
     expect(doorContext(door)).toEqual({
       from: 'Site health',
       subject: 'Checkout down',
@@ -74,7 +74,7 @@ describe('MP-4-13 the draft’s due, owner and client come from the page', () =>
       category: undefined,
       urgent: true,
       clientId: 'c-9',
-      owner: { id: 'p-1', name: 'Ryan' },
+      owner: { id: 'p-1', name: 'Sam Example' },
     });
   });
 });
