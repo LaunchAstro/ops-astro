@@ -75,7 +75,8 @@ export type Why =
   | 'candidate'
   | 'candidate record'
   | 'container record'
-  | 'container count';
+  | 'container count'
+  | 'sweep';
 
 /** R1's reasons (section 9), in the contract's order, `internal` last. */
 export const REASONS = [
