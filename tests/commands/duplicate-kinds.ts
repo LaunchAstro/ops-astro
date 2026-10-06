@@ -164,6 +164,7 @@ export const DECLARED: Readonly<
   'access.grant': { carry: 'not carried', plant: 'authority, not task content' },
   'access.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'access.end': { carry: 'not carried', plant: 'authority, not task content' },
+  'access.reset_factor': { carry: 'not carried', plant: 'a sign-in factor, not task content' },
   'invitation.create': { carry: 'not carried', plant: 'a team invitation, not task content' },
   'invitation.resend': { carry: 'not carried', plant: 'a team invitation, not task content' },
   'invitation.revoke': { carry: 'not carried', plant: 'a team invitation, not task content' },

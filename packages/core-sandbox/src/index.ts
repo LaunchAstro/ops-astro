@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The sandbox's grammars' one way in (docs/plan/sandbox-contract.md, ADR
-// 0048). It imports nothing of the product and runs no container.
+// 0048): requests, replies and a run's output. It imports nothing of the
+// product and runs no container.
 
 export { AttachFrames, type AttachEnd } from './attach-frames.ts';
 export {
@@ -11,6 +12,8 @@ export {
   type Crossing,
 } from './create-body.ts';
 export * from './daemon-reply.ts';
+export { writeLayer } from './layer-writer.ts';
+export { outputDigest } from './output-digest.ts';
 export { forwardBytes, forwardLoadHead } from './proxy-forward.ts';
 export {
   type More,
@@ -20,5 +23,21 @@ export {
   type ProxyGrammar,
   type ProxyOp,
 } from './proxy-request.ts';
-export type { Refused, SandboxResult, Why } from './refusal.ts';
+export {
+  readReason,
+  REASONS,
+  type Reason,
+  type Refused,
+  type SandboxResult,
+  type Why,
+} from './refusal.ts';
+export { runOutcome, type RunEnd, type RunOutcome } from './run-outcome.ts';
 export { parseStrictJson, type Json } from './strict-json.ts';
+export {
+  OUTPUT_CAP,
+  readOutput,
+  type OutputGrammar,
+  type OutputRead,
+  type TarEntry,
+  UstarReader,
+} from './ustar-reader.ts';

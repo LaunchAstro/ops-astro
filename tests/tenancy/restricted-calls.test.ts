@@ -236,6 +236,14 @@ const UNREACHED: Readonly<Record<string, string>> = {
        from public.person_logins pl
        join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
       where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
+  // C59: no journey resets a factor, so a reset is written here for a person's
+  // own login, as `access.reset_factor` writes one.
+  'public.factor_resets': `insert into public.factor_resets
+       (business_id, person_id, login_id, reset_by_actor_id, provider_factor_id)
+     select pl.business_id, pl.person_id, pl.login_id, a.id, 'restricted-calls-seed'
+       from public.person_logins pl
+       join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
+      where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
   // C58: an ended session, as signing out writes one for a person's own session.
   'public.ended_sessions': `insert into public.ended_sessions
        (business_id, person_id, session_id, reason)
@@ -273,6 +281,16 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join lateral (
          select id from public.actors where business_id = $1 order by id limit 1) a on true
      returning 1`,
+  // Tripwires and the night round (MP-14-8): nothing the journey does writes
+  // one, so each is written here.
+  'public.tripwires': `insert into public.tripwires
+       (business_id, id, what, rule, watching, state)
+     values ($1, gen_random_uuid(), 'restricted calls', 'restricted calls', 'restricted calls',
+             'armed') returning 1`,
+  'public.night_round_steps': `insert into public.night_round_steps
+       (business_id, id, round_on, at, tone, what, who, say)
+     values ($1, gen_random_uuid(), '2026-09-29', '2026-09-28T23:00:00Z', 'plain',
+             'restricted calls', 'restricted calls', 'restricted calls') returning 1`,
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
   // C80's two tables: the journey requests no live correction. The receipt
@@ -622,6 +640,7 @@ async function roleClasses(
  * the application only reads them.
  */
 const DEFINERS: readonly string[] = [
+  'factor_login_live_elsewhere(uuid)',
   'handback_reports_append_only()',
   'map_summary_on_link()',
   'map_summary_on_map_part()',
@@ -863,7 +882,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted five run', async () => {
+  it('calls every function as every caller, and only the granted six run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -884,7 +903,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Eleven, each for a named reason. The map read models' four (WF-1) and the
+  // Twelve, each for a named reason. The map read models' four (WF-1) and the
   // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
@@ -899,13 +918,14 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // across businesses, made with no business: two ids for a hash exactly one business holds,
   // nulls otherwise, and only the application group runs it. The pickup path (SL11-30,
   // 20261004040200) is the one way a lease is written, in the caller's own business
-  // (tests/db/take-lease-path.test.ts).
+  // (tests/db/take-lease-path.test.ts). The live-elsewhere check (C59) answers one boolean
+  // for a login of the caller's own business, never a subject.
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly eleven, each with its search path pinned', () => {
+    it('are exactly twelve, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -995,6 +1015,21 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       );
       expect(fn?.trigger).toBe(false);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, pg_temp']);
+      expect(fn?.firedBy).toStrictEqual([]);
+    });
+  });
+
+  describe('the live-elsewhere definer (20261005235557, C59)', () => {
+    // The sixth definer: one boolean for a login of the caller's own business,
+    // never a subject; the application's group may execute it
+    // (c59-factor-reset-settle).
+    it('takes a login id, fired by nothing and pinned to read every business', () => {
+      const fn = functions.find(
+        (each) => each.definer && each.signature === 'factor_login_live_elsewhere(uuid)',
+      );
+      expect(fn?.trigger).toBe(false);
+      expect(fn?.argumentTypes).toStrictEqual(['uuid']);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
       expect(fn?.firedBy).toStrictEqual([]);
     });
   });

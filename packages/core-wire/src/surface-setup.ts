@@ -24,4 +24,7 @@ export type SetupCommandName =
   // The connector fleet (MP-14-7a): read by `connection:read`, and a repair
   // started by `custody:manage`, which records it and sends nothing.
   | 'connection.fleet'
-  | 'connector.repair';
+  | 'connector.repair'
+  // Grants, tripwires and the night round (MP-14-8): one read by
+  // `connection:read`, the same page's key. The sections change nothing.
+  | 'connection.signal';

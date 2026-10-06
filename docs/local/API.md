@@ -1671,6 +1671,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.signal`                        | `readConnectionSignal` (`reads/signal.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.log`                                 | `logTimeEntry` (`commands/tasks-time.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -3333,6 +3334,48 @@ failed, so a scheduler sees the backlog. It refuses to start without `DATABASE_U
 calling the provider at once, and a step done is stamped once and never asked
 again (`settleAccessEndings`, `commands/access-end.ts`).
 
+### Resetting a member's authenticator (C59)
+
+`access.reset_factor` takes `{ operationId, holderId }` under `settings:manage`,
+never an agent's: the tracked action `second factor reset (person, by)`,
+audited against the caller with the member as its subject. It asks the
+caller's own step-up, a sign-in with the second factor inside the last 60
+minutes, whatever `money_step_up_required` holds (`STEP_UP_REQUIRED` 403). A
+malformed id is `FIELD_VALUE_INVALID` 422; a holder with no active membership
+in this business, another business's included, is `NOT_FOUND` 404 naming
+`holderId`; a member with no verified factor here is `FACTOR_NOT_ENROLLED` 409.
+The caller's own person, a member holding a business-wide grant the caller
+does not hold (no reset upward: an owner may reset another owner, a peer an
+equal-grant peer, never a lesser `settings:manage` holder the owner,
+ORCH66-FACTORM2), a member whose sign-in login is not exactly one, and a login
+still live in another business (mapped there, its access not ended) are
+`FACTOR_RESET_REFUSED` 409, in one set of words for every reason, which never
+say where else the login is; nothing is written or sent.
+
+In one transaction, under the access lock, the member's live factor is
+recorded removed (here and by subject, 0064), every session of theirs is ended
+(0057, 0063), and one reset row owes the provider GoTrue's admin removal of
+that factor (`DELETE /admin/users/<subject>/factors/<factor id>`, 20261004091551). It
+answers `{ resetId, providerStep }`: `owed` from the act, `done` when the local
+server, holding the admin key, sent the removal as soon as the act committed.
+Hosted, the endings loop sends it each `ACCESS_ENDING_RETRY_SECONDS`
+(`retryOwedSteps`, beside the access endings). Each owed row is claimed for 30
+seconds just before its own call, so two settles never call at once for one
+reset and a slow pass never lets a later row's claim lapse; done is stamped
+once and never asked again, and an answer that comes back after the row is
+done stamps nothing. Done is the factor named back by its id, or GoTrue's 404
+with `error_code` `mfa_factor_not_found` (the factor already gone, an earlier
+answer lost); anything else, any other 404 included, is a fault by its kind
+alone, with the step left owed (`settleFactorResets`,
+`commands/factor-reset-settle.ts`). The live-elsewhere check runs inside the
+command's transaction through `public.factor_login_live_elsewhere(login)`, a
+security definer that takes a login id of the transaction's own business,
+never a subject, reads the subject itself and answers one boolean: true with
+no business set or an id that is not a login here. PUBLIC may not execute it;
+the application role may. Any path that ever maps a login into a business must
+first take the `second-factor-subject` lock the reset holds, so the check
+holds to the commit.
+
 ### The overseas-services register (C81, SP-25)
 
 `privacy.set_overseas_service` takes `{ operationId, service, receives, where,
@@ -3609,3 +3652,37 @@ value, never any part of one. No sealed column is read. It is shown only for a
 secret the caller's scopes reach (a business-wide reader, a business-wide
 secret, or one of the caller's clients'); a secret scoped to another client the
 connection serves shows as `{ secretId: null, state: 'not set' }`.
+
+## Grants, tripwires and the night round (MP-14-8)
+
+Connections & signal sections 006 to 008, one read on `connection:read`, never
+an agent. Each list is filtered in its statement by the scopes the caller holds
+the key at. A business-wide reader sees every row; a client-scoped reader sees
+only the rows bound to one of their clients (a grant whose task carries that
+client, a tripwire or a night round step naming it), never a fleet row nor a
+grant on a trashed task, a map or a map's ticket, and a roster of only the
+agents holding a grant it can see. The night round is the
+latest round among the steps the caller can see. Every count is derived from
+the rows beside it, and every row handed out counts toward the export-volume
+signal.
+
+A grant is a delegation, live while it stands as a call through it would: a
+child whose parent ended first is taken back or ran out by what ended the
+parent first, at that time and for that cause, and counts calls only until
+then. Its client is its
+purpose task's client, shown by its name (`label` null when no client row
+answers the id); its `redemptions` are the applied calls its agent made on that task while
+it held it, less the pickup that minted it. Nothing records what each call
+reached, and the credential is never read. Tripwires and night round steps are
+written by the checks and the round itself (`tripwires`, `night_round_steps`,
+migration 20261005201200); the application role only reads them. Every
+tripwire and step column drawn as words is `signal_text`, an explicit
+allow-list (printable ASCII, Latin letters and signs, visible punctuation,
+currency signs and arrows; a space only inside); a task cite is a task key
+and a filed item a display id; a client named is a client of the same
+business by foreign key. A grant's client label is the client's name as
+`clients` holds it, outside that grammar.
+
+| Operation           | Route                | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------- | -------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.signal` | `/connection/signal` | `{}` | `{ ok: true, grants: [{ id, agentId, purpose, collections, access: 'read' \| 'exec', client: { id, label \| null } \| null, grantedAt, expiresAt, endedAt, revocationCause, state: 'live' \| 'ran_out' \| 'taken_back', redemptions }], grantCounts: { live, ranOut, takenBack, liveExec }, tripwires: [{ id, what, rule, watching, state, blockedReason, firedCount, lastFiredAt, filedItem, filedNothing, note }], tripwireCounts: { armed, cannotBeArmed }, nightRound: { roundOn, steps: [{ id, at, tone, what, who, say, cite: { kind, ref, label } \| null }], notClean } \| null, roster: [{ agentId, active, liveGrants }] }`; `SCOPE_NOT_GRANTED` 403 |

@@ -180,8 +180,7 @@ export function createPositiveBody(
         // The person's own lease, handed back by that person. The agent's
         // own-lease handback is case (h), `k-handback` rows.
         return { body: { ...(await ownLease(context)), outcome: 'completed' } };
-      // `trace.read` (AW-13 readers) asks `operations:read`, which the seed
-      // grants the admin (C55).
+      // `trace.read` (AW-13 readers) asks `operations:read`, which the seed grants the admin (C55).
       case 'task.read':
       case 'task.execution':
       case 'trace.read':
@@ -191,6 +190,7 @@ export function createPositiveBody(
       case 'access.grant':
       case 'access.revoke':
       case 'access.end':
+      case 'access.reset_factor':
         return await accessBody(declaration.name, context);
       case 'inbox.seen': {
         // The caller's own item: a proposal raises a decision item for every

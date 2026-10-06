@@ -496,6 +496,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['holderId'],
   }),
+  // C59 (ORCH65-Q3): the tracked action `second factor reset (person, by)`
+  // under `settings:manage`, never an agent's. It names a member of the
+  // business; the provider's removal of the factor runs after it commits.
+  declare('access.reset_factor', 'manage', {
+    collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['holderId'],
+  }),
   // C60: the tracked action `client privacy setting changed (model egress,
   // providers, health, no agent edits)`, under `privacy:manage` on the named
   // client (party scope), never an agent's.
@@ -525,6 +533,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The connector fleet (MP-14-7a): `connection:read`, asked per row of the caller's scopes. A
   // repair touches the credential's custody, so `custody:manage` business-wide, never an agent.
   read('connection.fleet', 'connection'),
+  read('connection.signal', 'connection'),
   declare('connector.repair', 'manage', {
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,
