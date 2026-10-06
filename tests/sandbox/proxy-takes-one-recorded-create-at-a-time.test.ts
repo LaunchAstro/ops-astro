@@ -26,6 +26,7 @@ import {
   containerId,
   create,
   heldId,
+  hold,
   op,
   opened,
   P,
@@ -71,6 +72,9 @@ it('takes a create only for an image the pin list holds for its class and entry'
   expect(await state.handle(create(P, s1('s')))).toEqual(refused('candidate'));
   expect(await state.handle(create(P, S2))).toEqual(refused('image id'));
   expect(await state.handle(create(BASE, s1('p')))).toEqual(refused('candidate'));
+  expect(
+    await state.handle(create(P, { runClass: 'probe', probed: 'site.build', env: [] })),
+  ).toEqual(refused('image id'));
   expect(w.calls.filter((call) => call === 'create')).toHaveLength(2);
 });
 
@@ -120,13 +124,10 @@ it('leaves creates left unchanged when the store dies between the daemon create 
 it('refuses a second create while the record holds a container, even one sent at once', async () => {
   const w = world();
   const state = await opened(w);
-  const gate = { open: (): void => undefined };
-  w.gate = new Promise((resolve) => {
-    gate.open = resolve;
-  });
+  const release = hold(w, 'create');
   const first = state.handle(create(P, s1('p')));
   const second = state.handle(create(P, s1('p')));
-  gate.open();
+  release();
   expect(await first).toEqual(CREATED);
   expect(await second).toEqual(refused('container record'));
   expect(await state.handle(create(BASE, S2))).toEqual(refused('container record'));
@@ -142,6 +143,35 @@ it('refuses a create when the daemon counts a container the record lacks, and sw
   expect(await state.handle(create(P, s1('p')))).toEqual(refused('container count'));
   expect(w.calls).toEqual(['info', 'list', 'remove', 'list', 'info']);
   expect(await state.handle(create(P, s1('p')))).toEqual(CREATED);
+});
+
+it('passes a create the daemon refused with nothing recorded, and sweeps on an unreadable id', async () => {
+  const w = world();
+  const state = await opened(w);
+  w.answer.create = 500;
+  expect(await state.handle(create(C))).toEqual({
+    ok: true,
+    reply: expect.objectContaining({ status: 500 }),
+  });
+  expect([heldId(w), candidateOf(w)?.createsLeft]).toEqual([null, 3]);
+  delete w.answer.create;
+  w.badCreate = true;
+  w.calls.length = 0;
+  expect(await state.handle(create(C))).toEqual({
+    ok: false,
+    reason: 'internal',
+    why: 'reply body',
+  });
+  expect(w.calls).toEqual(['info', 'create', 'list', 'remove', 'list', 'info']);
+  expect([heldId(w), candidateOf(w)?.createsLeft, w.held.size]).toEqual([null, 3, 0]);
+});
+
+it('reads the daemon count only from a 200 answer', async () => {
+  const w = world();
+  const state = await opened(w);
+  w.answer.info = 500;
+  expect(await state.handle(create(P, s1('p')))).toEqual(refused('container count'));
+  expect(w.calls).not.toContain('create');
 });
 
 it('admits no create from a pin list that breaks its grammar', async () => {

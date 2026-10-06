@@ -22,11 +22,14 @@ import {
   create,
   GRACE,
   heldId,
+  hold,
   op,
   opened,
   P,
   pinList,
   pinnedEntry,
+  PROBE,
+  record,
   refused,
   S1_WALL,
   s1,
@@ -73,7 +76,7 @@ it('kills at the deadline, once, and deletes 30 s after it', async () => {
   await state.tick();
   expect(w.calls).toEqual([]);
   w.now = T0 + S1_WALL;
-  w.killStatus = 409;
+  w.answer.kill = 409;
   await state.tick();
   await state.tick();
   expect(w.calls).toEqual(['kill']);
@@ -98,11 +101,71 @@ it('deletes 30 s after the launcher closes its attach before the wait', async ()
   expect(heldId(w)).toBeNull();
 });
 
+it('deletes 30 s after the later of the wait and the attach end, and ignores another id', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(P, s1('p')));
+  await state.attachClosed('e'.repeat(64));
+  w.now = T0 + 1000;
+  await state.handle(op('wait', ID));
+  w.now = T0 + 5000;
+  await state.attachEnded(ID);
+  w.now += GRACE - 1;
+  await state.tick();
+  expect(heldId(w)).toBe(ID);
+  w.now += 1;
+  await state.tick();
+  expect(heldId(w)).toBeNull();
+});
+
+it("keeps a wall crossing's container until 30 s after its deadline", async () => {
+  const w = world();
+  const state = await opened(w);
+  const shape = { runClass: 'probe', probed: 'site.build', crossing: 'wall', env: [] } as const;
+  await state.handle(create(PROBE, shape));
+  await state.attachClosed(ID);
+  w.now = T0 + S1_WALL + GRACE - 1;
+  await state.tick();
+  expect([heldId(w), w.calls.at(-1)]).toEqual([ID, 'kill']);
+  w.now += 1;
+  await state.tick();
+  expect(heldId(w)).toBeNull();
+});
+
+it('lets no late answer about one container change the record of the next', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(P, s1('p')));
+  w.calls.length = 0;
+  const [releaseDelete, releaseWait] = [hold(w, 'delete'), hold(w, 'wait')];
+  const late = [state.handle(op('delete', ID)), state.handle(op('wait', ID))];
+  w.now = T0 + S1_WALL + GRACE;
+  await state.tick();
+  expect(await state.handle(create(P, s1('p')))).toEqual(CREATED);
+  w.answer.delete = 409;
+  releaseDelete();
+  releaseWait();
+  await Promise.all(late);
+  expect(heldId(w)).toBe(containerId(2));
+  expect(record(w).containers.container?.waitAt).toBeNull();
+  expect(w.calls).not.toContain('list');
+});
+
+it('records no wait the daemon did not answer 200', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(C));
+  w.answer.wait = 500;
+  await state.handle(op('wait', ID));
+  expect(candidateOf(w)?.runs).toEqual([{ statusCode: null, inTime: false }]);
+  expect(record(w).containers.container?.waitAt).toBeNull();
+});
+
 it('starts a sweep when its own delete is answered 500, and the next create passes', async () => {
   const w = world();
   const state = await opened(w);
   await state.handle(create(P, s1('p')));
-  w.deleteStatus = 500;
+  w.answer.delete = 500;
   w.now = T0 + S1_WALL + GRACE;
   w.calls.length = 0;
   await state.tick();
@@ -120,7 +183,7 @@ it('clears the record on a launcher delete answered "no such container", and kee
   expect(heldId(w)).toBeNull();
   await state.handle(create(P, s1('p')));
   const second = containerId(2);
-  w.deleteStatus = 409;
+  w.answer.delete = 409;
   w.listBroken = true;
   await state.handle(op('delete', second));
   expect(heldId(w)).toBe(second);
@@ -148,7 +211,7 @@ it('refuses a run whose container a sweep removed as unavailable', async () => {
   const w = world();
   const state = await opened(w);
   await state.handle(create(P, s1('p')));
-  w.deleteStatus = 500;
+  w.answer.delete = 500;
   w.now = T0 + S1_WALL + GRACE;
   await state.tick();
   expect(await state.handle(op('wait', ID))).toEqual(UNAVAILABLE);

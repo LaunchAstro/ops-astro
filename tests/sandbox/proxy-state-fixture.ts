@@ -114,12 +114,13 @@ export type World = {
   made: number;
   /** A broken list leaves every sweep failing. */
   listBroken: boolean;
-  /** The answer to a forwarded delete or kill, else the daemon's own. */
-  deleteStatus: number | null;
-  killStatus: number;
+  /** A status that overrides the daemon's own answer to `info` or to a forwarded operation. */
+  readonly answer: Partial<Record<'info' | StateOp['kind'], number>>;
+  /** The created `Id` the daemon sends back is malformed. */
+  badCreate: boolean;
   waitCode: number;
-  /** Holds each create until the test releases it. */
-  gate: Promise<void> | null;
+  /** Holds the next forwarded operation of each kind until the test releases it. */
+  readonly holds: Map<string, Promise<void>>;
 };
 
 export function world(stored: Uint8Array | null = seeded()): World {
@@ -133,10 +134,10 @@ export function world(stored: Uint8Array | null = seeded()): World {
     now: T0,
     made: 0,
     listBroken: false,
-    deleteStatus: null,
-    killStatus: 204,
+    answer: {},
+    badCreate: false,
     waitCode: 0,
-    gate: null,
+    holds: new Map(),
   };
 }
 
@@ -173,21 +174,24 @@ export function ports(w: World): ProxyPorts {
       },
       info: () => {
         w.calls.push('info');
-        return Promise.resolve(reply(200, { Containers: w.held.size }));
+        return Promise.resolve(reply(w.answer['info'] ?? 200, { Containers: w.held.size }));
       },
       forward: async (step) => {
         w.calls.push(step.kind);
+        const held = w.holds.get(step.kind);
+        w.holds.delete(step.kind);
+        await held;
+        const status = w.answer[step.kind];
+        if (status !== undefined) return reply(status, { StatusCode: w.waitCode });
         if (step.kind === 'create') {
-          await w.gate;
           w.made += 1;
           const id = containerId(w.made);
           w.held.add(id);
           if (w.crashAfterCreate) w.crash = true;
-          return reply(201, { Id: id, Warnings: [] });
+          return reply(201, { Id: w.badCreate ? id.slice(1) : id, Warnings: [] });
         }
-        if (step.kind === 'delete')
-          return w.deleteStatus === null ? removeAnswer(w, step.id) : reply(w.deleteStatus);
-        if (step.kind === 'kill') return reply(w.killStatus);
+        if (step.kind === 'delete') return removeAnswer(w, step.id);
+        if (step.kind === 'kill') return reply(204);
         if (step.kind === 'wait') return reply(200, { StatusCode: w.waitCode });
         return reply(200, {});
       },
@@ -209,4 +213,15 @@ export function record(w: World): ProxyRecord {
 }
 export const candidateOf = (w: World): Candidate | undefined =>
   record(w).candidates.candidates.at(-1);
+/** Holds the next forwarded `kind` until the returned function is called. */
+export function hold(w: World, kind: string): () => void {
+  const gate = { open: (): void => undefined };
+  w.holds.set(
+    kind,
+    new Promise((resolve) => {
+      gate.open = resolve;
+    }),
+  );
+  return () => gate.open();
+}
 export const heldId = (w: World): string | null => record(w).containers.container?.id ?? null;
