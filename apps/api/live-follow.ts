@@ -105,11 +105,10 @@ const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
 /**
- * One open stream: `resync` for each watched task once subscribed, `seat` when
- * it is seated, once each task's first recheck has sat or closed it, then each
- * signal once the caller is asked again, and `closed` the first time the
- * answer is no. An ended session answers no for every task on the next check,
- * and the stream ends with its last task.
+ * One open stream: `resync` for each watched task once subscribed, `seat` when it
+ * is seated, once each task's first recheck has sat or closed it, then each signal
+ * once the caller is asked again, and `closed` the first time the answer is no. An
+ * ended session answers no for every task on the next check; the stream ends with its last.
  */
 export async function follow(
   stream: LiveStream,

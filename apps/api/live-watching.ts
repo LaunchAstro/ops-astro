@@ -49,8 +49,7 @@ export function watching(
   businessId: string,
 ): DoorWatching {
   let admitted: string | undefined;
-  // At the door a task's answer is its topic, and the person it admitted is
-  // the stream's; on a recheck it is the person admitted now.
+  // Door: the task's topic, its person kept as the stream's. Recheck: the person admitted now.
   const topics = (
     answers: readonly (Watched | CommandRefusal)[] | CommandRefusal,
     at: AdmissionAt,
