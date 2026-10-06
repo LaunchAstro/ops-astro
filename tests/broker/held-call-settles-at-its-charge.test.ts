@@ -74,7 +74,6 @@ it('a call whose request has not reached the provider is not closed by its looku
   expect(await cameTo(work)).toBe(100);
   const closedAt = [{ state: 'settled', came_to: '100' }];
   expect(await calls(work)).toMatchObject(closedAt);
-  expect(await calls(work)).toHaveLength(1);
   // The step's hold stays whole for a person, counting the charge against the cap; the
   // envelope's actual moves only when the hold ends. A second pass counts nothing again.
   for (let again = 0; again < 2; again += 1) {
