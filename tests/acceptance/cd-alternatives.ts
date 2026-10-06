@@ -233,10 +233,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'approval.revoke': ['approvalId', 'control'],
 };
 
-/**
- * Identifier-bearing operations whose foreign-against-fabricated comparison is
- * in their own isolation suite rather than in identifier-negatives.
- */
+/** Identifier-bearing operations compared in their own isolation suite, not identifier-negatives. */
 const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string, suite: string]>>> =
   {
     'chat.send_direct': ['teammateId', 'c71-d'],
