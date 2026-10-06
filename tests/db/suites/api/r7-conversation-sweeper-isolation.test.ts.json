@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "R7: one business's scheduled sweep and its raised failures never touch or name another business's conversations"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "task.todos carries each to-do's category and whose move it is (Review at a waiting gate, Agent under a live lease, Team otherwise), the facts the to-do chips filter on"
+}

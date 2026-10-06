@@ -9,10 +9,6 @@ import { business, client, writing } from './data-effects-types.ts';
 export const READ: DataEffects = writing([]);
 // A task is a row of `records`, with its unique values beside it.
 export const TASK: DataEffects = writing(client('records', 'record_unique_values'));
-// A map or its ticket: the task, and the map's derived summary and frontier.
-export const MAP_TASK: DataEffects = writing(
-  TASK.writes.concat(client('map_summaries', 'map_frontier')),
-);
 // A proposal raises the decision's inbox items (INB-1b).
 export const PROPOSAL: DataEffects = writing(
   client(

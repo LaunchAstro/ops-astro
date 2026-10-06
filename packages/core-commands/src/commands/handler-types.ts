@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The types `handlers.ts` keys its table by, moved whole from it to keep that
-// file under the per-file line cap.
+// The shape of a write's handler, shared by `handlers.ts` and the blocks it
+// spreads in (`handlers-wayfinder.ts`), so neither imports the other's types.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';

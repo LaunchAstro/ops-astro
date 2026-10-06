@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "SR-1: the click-through seed makes each made-up item in its stated state as the cast, a second run changes nothing, and an unmarked database is refused with nothing written"
+}

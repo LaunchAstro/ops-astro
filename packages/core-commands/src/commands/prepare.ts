@@ -59,6 +59,7 @@ import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import {
   admitsSelfWrite,
   declarationOf,
+  WAYFINDER_MAP_LOCK,
   type CommandDeclaration,
 } from '../../../core-wire/src/index.ts';
 import type { CommandRequest, UncheckedRequest } from './requests.ts';
@@ -720,12 +721,14 @@ export async function prepareCommand(
     // Only here, where the target is read: a replay re-judges authority with
     // `targetsExistingRecord` off, and it locks no record (`withheldNow`).
     if (declaration.serialise !== undefined) await serialiseOn(tx, declaration.serialise);
+    if (declaration.serialise === WAYFINDER_MAP_LOCK) await holdMapOf(tx, recordId);
     // A target the runtime locks in its own order is only read here. The
     // read takes nothing, and the handler compares the revision under the
     // runtime's locks; locking it here would be a task lock held before the
     // cap and envelope the runtime then asks for.
     target = await lockTask(tx, spine.taskTypeId, recordId ?? '', {
       forUpdate: declaration.targetLock === 'command',
+      keepKeys: declaration.serialise === WAYFINDER_MAP_LOCK || KEY_SHARED.has(declaration.name),
     });
     if (target === undefined) {
       // Not there, or there in another business: one answer, deliberately.
@@ -790,6 +793,32 @@ export async function serialiseOn(tx: TenantQuery, key: string): Promise<void> {
 }
 
 /**
+ * Wayfinder writes, these and the map-serialised ones, hold their target `for
+ * no key update`, the lock their own update takes. A sibling ticket's frontier
+ * refresh holds its map's summary lock while it key-shares this ticket, so a
+ * `for update` here would wait it out while this command's own refresh waits
+ * on that summary lock: two writes on one map's tickets would deadlock.
+ */
+const KEY_SHARED: ReadonlySet<string> = new Set(['task.claim', 'task.resolve']);
+
+/**
+ * A ticket's map row, held before the ticket: the order an update of the map
+ * takes them in, since its summary refresh then reads the map's tickets. The
+ * other way round, a close out of scope and an edit of its map deadlock.
+ * `no key update`, as the map's own update takes it, so a ticket filed under
+ * the map meanwhile does not wait.
+ */
+async function holdMapOf(tx: TenantQuery, recordId: string | undefined): Promise<void> {
+  if (!isUuid(recordId)) return;
+  const map = (await wayfinderFacts(tx, recordId.toLowerCase()))?.mapId;
+  if (map === null || map === undefined || map === recordId.toLowerCase()) return;
+  await tx.query(`select 1 from records where business_id = $1 and id = $2 for no key update`, [
+    tx.businessId,
+    map,
+  ]);
+}
+
+/**
  * The target, held for the rest of the transaction.
  *
  * `for update` is the whole of the lost-update fix. A second caller presenting
@@ -808,7 +837,7 @@ export async function lockTask(
   tx: TenantQuery,
   taskTypeId: string,
   recordId: string,
-  options: { readonly forUpdate?: boolean } = {},
+  options: { readonly forUpdate?: boolean; readonly keepKeys?: boolean } = {},
 ): Promise<TaskRow | undefined> {
   if (!isUuid(recordId)) return undefined;
   // `revision` is `bigint`, and this driver hands a bigint back as a string.
@@ -818,7 +847,7 @@ export async function lockTask(
     `select id, revision::text as revision, data, deleted_at, trash_batch_id
        from records
       where ${TENANT_PREDICATE} and record_type_id = $2 and id = $3
-        ${options.forUpdate === false ? '' : 'for update'}`,
+        ${options.forUpdate === false ? '' : options.keepKeys === true ? 'for no key update' : 'for update'}`,
     [tx.businessId, taskTypeId, recordId],
   );
   const row = rows[0];

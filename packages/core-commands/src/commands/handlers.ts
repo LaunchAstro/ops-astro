@@ -11,8 +11,8 @@
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
-import type { Handler, RequestOf, WriteName } from './handler-types.ts';
 import type { HandlerOutcome } from './outcome.ts';
+import type { Handler, RequestOf, WriteName } from './handler-types.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
@@ -76,15 +76,14 @@ import { decideLiveCorrection, requestLiveCorrection, setApprover } from './live
 import { stampOwnSeen } from './inbox-seen.ts';
 import { CHAT_HANDLERS } from './chat-handlers.ts';
 import { invitationAct } from './invitations.ts';
-import { scopeMap, setTaskType } from './wayfinder.ts';
 import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
-import { reviseMap } from './wayfinder-revision.ts';
 import {
   adoptActivationVersion,
   revokeStandingApproval,
   rollBackActivation,
   turnOffActivationAsPerson,
 } from './automation-approvals.ts';
+import { WAYFINDER_HANDLERS } from './handlers-wayfinder.ts';
 
 const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.create': createTask,
@@ -204,9 +203,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
 
-  'task.set_type': setTaskType,
-  'map.revise': reviseMap,
-  'map.scope': scopeMap,
+  // Wayfinder (WF-1, WF-2), in their own file.
+  ...WAYFINDER_HANDLERS,
   // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
   'budget.set_planning_cap': setPlanningCap,
   // AW-03: the conversation's first message mints it; later ones are its owner's.
