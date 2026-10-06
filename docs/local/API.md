@@ -556,7 +556,8 @@ task.update names task.triage; task.create keeps SOURCE_SPOOFED".
 **A top-level key naming a system field is `FIELD_NOT_WRITABLE` 422**, by name.
 The list is the envelope's own (`SYSTEM_OWNED_FIELDS`) plus every installed
 field whose `field_defs.write_mode` is `system`, which today adds
-`completed_at`, `key`, `task`, `edited_at` and `machine_category`
+`completed_at`, `key`, `task`, `edited_at`, `on_behalf_of` and
+`machine_category`
 (`SYSTEM_OWNED_FIELDS` and `claimedSystemFields`, `commands/prepare.ts`). It
 applies on the person prefix, on the agent prefix and on every read. A nested
 key is the operation's own question: `fields.completed_at` is the field engine's
@@ -1640,7 +1641,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.complete`                            | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.reopen`                              | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.comment`                             | `commentOnTask` (`commands/tasks-comment.ts`)                                             | served under a live delegation, `internal` audience only (the row's `serve`, `AGENT_AUDIENCES`)                                                                                        |
-| `task.edit_comment`, `task.delete_comment` | `editTaskComment`, `deleteTaskComment` (`commands/tasks-comment-edit.ts`)                 | served under a live delegation, on its own task, on its own actor's comments only (`serveCommentChange`)                                                                               |
+| `task.edit_comment`, `task.delete_comment` | `editTaskComment`, `deleteTaskComment` (`commands/tasks-comment-edit.ts`)                 | served under a live delegation, on its own task, on comments its own actor wrote for the person this delegation acts for (`on_behalf_of`, `serveCommentChange`)                        |
 | `task.propose`                             | `proposeOnTask` (`commands/tasks-propose.ts`)                                             | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.decide`                              | `decideOnGate` (`commands/tasks-decide.ts`)                                               | refused `DELEGATION_EXCLUDES_DECISION` (`authorise`, `decideAsAgent`)                                                                                                                  |
 | `task.accept_plan`                         | `acceptPlanOnGate` (`commands/plan-accept.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -1843,7 +1844,9 @@ their own messages and replies through `task.edit_comment` and
 `task.delete_comment`; a deleted comment leaves every read and its replies
 stay. An internal reader's comments also carry `own`, true where the
 reader's own actor wrote it, so the page draws the edit and delete controls
-on those rows only; the two commands check the author again. An @ in a comment notifies nobody yet: there is no notification model.
+on those rows only; the two commands check the author again, and an agent's
+change asks its delegation and covering grant again once the comment is
+locked. An @ in a comment notifies nobody yet: there is no notification model.
 
 For the agent bundles, `readConversation` (`reads/task-conversation.ts`) reads a
 task's thread at three detail levels in one statement each: `brief` (the

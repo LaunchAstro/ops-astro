@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an agent's comment edit or delete after its delegation or the delegating person's grant was revoked is refused, and writes nothing (catalogue #414)"
+}
