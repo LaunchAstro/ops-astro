@@ -70,7 +70,7 @@ export const KEPT = 'Kept in this conversation. The agent does not answer here y
 /** The business's models, empty until its price book is readable here. */
 const CATALOGUE: readonly ModelChoice[] = [];
 
-export interface AssistantViewProps extends CorrectionHost {
+export interface AssistantViewProps {
   readonly client: OperationsClient;
   readonly route: RouteId;
   /** The address of the page being drawn: what "Add page to context" points at. */
@@ -232,7 +232,7 @@ const answering =
     }
   };
 
-export function AssistantView(props: AssistantViewProps): ReactElement {
+export function AssistantView(props: AssistantViewProps & CorrectionHost): ReactElement {
   const store = useKeptStore(props.client, props.grantKey);
   const { state, update } = store;
   useEffect(() => {
