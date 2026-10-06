@@ -74,7 +74,8 @@ describe.skipIf(serverUrl === undefined)('the answer to a person whose access en
     const { person: lapsed, token: lapsedToken } = await teammate('lapsed');
     await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
       await tx.query(
-        `update public.memberships set active = false where business_id = $1 and person_id = $2`,
+        `update public.memberships set active = false, ended_at = now()
+          where business_id = $1 and person_id = $2`,
         [harness.world.alpha, lapsed.personId],
       );
     });

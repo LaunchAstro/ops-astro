@@ -89,6 +89,9 @@ export const NO_MEMBERSHIP_FIXES = [
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
 export const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
+const ACCESS_ENDED_FIXES = [
+  'ask an administrator of this business to restore your access',
+] as const;
 const SECOND_FACTOR_FIXES = [
   'enter the code from your authenticator app to finish signing in',
 ] as const;
@@ -124,7 +127,8 @@ const RESOLUTION = `
  *
  * Order matters and is the contract's: membership before actor. A login with
  * no active mapping, or a mapping to a person who is no longer a member, is
- * `AUTH_NO_MEMBERSHIP` — a refusal, not an empty projection. The one mapped
+ * `AUTH_NO_MEMBERSHIP` — a refusal, not an empty projection — or, for a login
+ * whose access here was ended (C58), `AUTH_ACCESS_ENDED`. The one mapped
  * non-member who is not refused there is an external party standing on a live
  * share and holding no business grant, whose `roleKey` is null. A person with
  * standing but no active acting identity is `ACTOR_INACTIVE`, which says more
@@ -150,11 +154,10 @@ export async function standingOf(
   const rows = await tx.query<ResolutionRow>(RESOLUTION, [presented.provider, presented.subject]);
   const found = rows[0];
 
-  if (found === undefined || found.person_id === null) {
-    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
-  }
+  if (found === undefined) return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
+  if (found.person_id === null) return await noMembership(tx, found.login_id);
   if (found.membership_id === null && !(await standsOnShares(tx, found.person_id))) {
-    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
+    return await noMembership(tx, found.login_id);
   }
   if (found.actor_id === null) return refuse('ACTOR_INACTIVE', INACTIVE_FIXES);
 
@@ -195,6 +198,22 @@ export async function standingOf(
  */
 export async function sessionEndedSince(tx: TenantQuery, session: Session): Promise<boolean> {
   return session.presented !== undefined && (await sessionEndedHeld(tx, session.presented));
+}
+
+/**
+ * A login here with no standing: `AUTH_ACCESS_ENDED` when its access was ended
+ * here (C58), so a client that never saw it served (a reload) still signs the
+ * person out; otherwise `AUTH_NO_MEMBERSHIP`. Only this business's endings of
+ * this login are read, so it says nothing the login did not already hold.
+ */
+async function noMembership(tx: TenantQuery, loginId: string): Promise<Refusal> {
+  const ended = await tx.query(
+    `select 1 from public.access_endings where business_id = $1 and login_id = $2 limit 1`,
+    [tx.businessId, loginId],
+  );
+  return ended.length > 0
+    ? refuse('AUTH_ACCESS_ENDED', ACCESS_ENDED_FIXES)
+    : refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
 }
 
 /** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */
