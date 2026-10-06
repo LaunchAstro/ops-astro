@@ -72,7 +72,11 @@ describe.skipIf(noDatabase)('C39-T enrolment login safety', () => {
     // Someone signed in to the stranded login before it was adopted: on a provider clock in step,
     // and on one 30 seconds ahead, which the door allows a sign-in time (Sol R2 F2).
     const before = await dbSeconds();
-    const [inStep, ahead] = [before - 5, before + 30];
+    const [inStep, ahead, edge] = [
+      before - 5,
+      before + 30,
+      before + SIGN_IN_CLOCK_SKEW_SECONDS - 1,
+    ];
     expect(codeOf(await as(c.admin, 'invitation.revoke', { invitationId: stranded.id }))).toBe(
       'applied',
     );
@@ -80,6 +84,10 @@ describe.skipIf(noDatabase)('C39-T enrolment login safety', () => {
     expect(await enrolVia(fresh.token, passwordFor())).toStrictEqual(ENROLLED);
     expect(await standingAt(made, inStep)).toBe('AUTH_SESSION_EXPIRED');
     expect(await standingAt(made, ahead)).toBe('AUTH_SESSION_EXPIRED');
+    expect(await standingAt(made, edge)).toBe('AUTH_SESSION_EXPIRED');
+    // The cost, chosen (SEC-P3A-5 L3): a sign-in in the minute after the adoption is taken as
+    // possibly before it, so even the admitted person's own is refused until the minute passes.
+    expect(await standingAt(made, (await dbSeconds()) + 5)).toBe('AUTH_SESSION_EXPIRED');
     // The person the fresh invitation admits signs in afresh, past the clock the door allows,
     // and stands as themselves.
     const afresh = (await dbSeconds()) + SIGN_IN_CLOCK_SKEW_SECONDS + 1;

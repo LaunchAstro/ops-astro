@@ -238,6 +238,31 @@ describe.skipIf(noDatabase)('C39-T enrolment races', () => {
     expect(askedEarly).toBe(0);
   }, 30_000);
 
+  it('C39-T enrolment: a paused accept whose claim lapsed, its invitation revoked and replaced, changes no password once the replacement enrols (SEC-P3A-5 I2)', async () => {
+    e.users.mode('accept');
+    const address = addressFor('lapsed-revoked');
+    const old = await invited(c.admin, address);
+    const [p1, p2] = [passwordFor(), passwordFor()];
+    const paused = pausedBeforeCall();
+    const first = acceptOwn(old.token, p1, paused.broker);
+    await paused.reached;
+    expect(codeOf(await as(c.admin, 'invitation.revoke', { invitationId: old.id }))).toBe(
+      'applied',
+    );
+    await w.db.admin.execute(
+      `update public.invitations set accept_claimed_until = clock_timestamp() - interval '1 second'
+        where id = $1`,
+      [old.id],
+    );
+    const fresh = await invited(c.admin, address);
+    expect(await acceptOwn(fresh.token, p2)).toStrictEqual(ENROLLED);
+    const from = e.users.received.length;
+    paused.resume();
+    expect(await first).toMatchObject({ ok: false });
+    expect(putsSince(from), 'the revoked accept sets no password').toBe(0);
+    expect(e.users.passwords.get(String(e.users.users.get(address)))).toBe(p2);
+  }, 30_000);
+
   it('C39-T enrolment: an accept whose claim lapsed, though no other accept took it, sets no password outside the limits (SEC-P3A-5 L2)', async () => {
     const address = addressFor('lapsed-untaken');
     const { id, token } = await invited(c.admin, address);
