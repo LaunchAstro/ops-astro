@@ -146,7 +146,7 @@ export type OccurrenceClaim =
  * person's grant. The activation is locked for update, as dispatch locks it,
  * so a person's change waits for the claim, the claim sees the setting it
  * records, and a worker that claims and then dispatches in one transaction
- * never upgrades its lock under another claimer (Sol PRV-oa-1048-R1.1).
+ * never upgrades its lock under another claimer.
  *
  * A second claim of the same cause, whether a replayed event, a restarted
  * scheduler or a racing one, commits nothing and answers `replayed` with the
