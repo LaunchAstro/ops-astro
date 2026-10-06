@@ -84,11 +84,11 @@ export async function lockConfiguredApprover(tx: TenantQuery): Promise<string | 
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-/** Whether a person is an active member of this business (an approver must be). */
+/** Whether a person is an active member here in a staff role, as `isInternalReader` admits. */
 export async function isActiveMember(tx: TenantQuery, personId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly present: boolean }>(
-    `select true as present from public.memberships
-      where business_id = $1 and person_id = $2 and active and ended_at is null`,
+    `select true as present from public.memberships where business_id = $1 and person_id = $2
+        and active and ended_at is null and role_key in ('owner', 'admin', 'member')`,
     [tx.businessId, personId],
   );
   return rows.length > 0;

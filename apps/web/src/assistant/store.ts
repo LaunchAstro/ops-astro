@@ -37,8 +37,9 @@ function placed(state: AssistantState, key: string, after?: string): AssistantSt
   return { ...state, chats };
 }
 
-export function useStore(): Store {
-  const [state, setState] = useState(initial);
+/** The drawer's store, starting from `start` (one fresh tab unless told otherwise). */
+export function useStore(start: () => AssistantState = initial): Store {
+  const [state, setState] = useState(start);
   const latest = useRef(state);
   const count = useRef(0);
   const update = (move: Move): void => {

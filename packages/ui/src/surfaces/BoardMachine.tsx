@@ -25,7 +25,7 @@ import { Empty } from '../primitives/Absence.tsx';
 import { rankFacets } from '../board/funnel.ts';
 import { narrowRows, readingLine } from '../board/filters.ts';
 import { sortRows } from '../board/sort.ts';
-import type { BoardAction, BoardContext, BoardView } from '../board/types.ts';
+import type { BoardAction, BoardContext, BoardView, Facet } from '../board/types.ts';
 import type { BoardMachineProps } from './board-props.ts';
 import {
   useBoardMachine,
@@ -40,16 +40,40 @@ import { Table } from './BoardTable.tsx';
 
 export type { BoardMachineProps, BoardMode } from './board-props.ts';
 
+/**
+ * Every facet offered in this mount, the current ones first (#902). The
+ * machine reads a filter's kind from these, so a filter still on after a
+ * reread dropped the rows that offered it narrows to nothing and keeps its
+ * kind, rather than silently widening. A filter never offered here (an
+ * unknown one in the address) is not among them.
+ */
+function useKnownFacets<Row>(offered: readonly Facet<Row>[]): readonly Facet<Row>[] {
+  const seen = useRef(new Map<string, Facet<Row>>());
+  return useMemo(() => {
+    for (const facet of offered) seen.current.set(facet.id, facet);
+    const gone = [...seen.current.values()].filter((one) => !offered.includes(one));
+    return gone.length === 0 ? offered : [...offered, ...gone];
+  }, [offered]);
+}
+
+/**
+ * What the bar, the chips and the body draw: the offered facets and the gone
+ * ones still on. Row counts (`rankFacets`) stay on the offered ones, once per
+ * set of rows, never per drag move.
+ */
+const heldOf = <Row,>(known: readonly Facet<Row>[], offered: number, on: readonly string[]) =>
+  known.filter((facet, at) => at < offered || on.includes(facet.id));
+
 export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
-  const { facets, columns, presets, modes } = props;
+  const facets = useKnownFacets(props.facets);
+  const { columns, presets, modes } = props;
   const context = useMemo<BoardContext<Row>>(
     () => ({ facets, columns, presets: presets ?? [], modes: modes ?? [] }),
     [facets, columns, presets, modes],
   );
-  // Every filter's row count, once per set of rows: a drag redraws on each
-  // pointer move and must not recount.
   const ranked = useMemo(() => rankFacets(props.rows, props.facets), [props.rows, props.facets]);
   const { machine, dispatch } = useBoardMachine(context, props, props);
+  const held = heldOf(facets, props.facets.length, machine.view.ids);
   const card = useRef<HTMLDivElement>(null);
   const available = useMeasuredWidth(card, props.width);
   const viewport =
@@ -60,7 +84,7 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   useChipRowFit(chipRow, card);
   const command = (
     <CommandBar
-      facets={props.facets}
+      facets={held}
       names={props.rows.map((row) => props.name(row))}
       noun={props.noun}
       machine={machine}
@@ -81,12 +105,12 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
         rows={props.rows}
         presets={props.presets ?? []}
         modes={props.modes ?? []}
-        facets={props.facets}
+        facets={held}
         hay={props.hay}
         view={machine.view}
         dispatch={dispatch}
       />
-      <BoardBody {...props} view={machine.view} drag={drag} dispatch={dispatch} />
+      <BoardBody {...props} facets={held} view={machine.view} drag={drag} dispatch={dispatch} />
     </div>
   );
 }
