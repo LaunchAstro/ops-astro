@@ -26,6 +26,15 @@ const serverUrl = databaseUrlFromEnvironment();
 const value = (page: Mounted, selector: string) =>
   (page.all(selector)[0] as HTMLInputElement | HTMLTextAreaElement | undefined)?.value;
 
+/** A promise and the call that settles it. */
+function signal(): { readonly fired: Promise<void>; readonly fire: () => void } {
+  let fire: (() => void) | undefined;
+  const fired = new Promise<void>((resolve) => {
+    fire = resolve;
+  });
+  return { fired, fire: () => fire?.() };
+}
+
 const revisionShown = (page: Mounted) =>
   (page.find('[data-map]') as HTMLElement | null)?.dataset['revision'];
 
@@ -55,21 +64,15 @@ describe.skipIf(serverUrl === undefined)('A map save keeps the words typed after
    * at once but answered only on `release`: `stored` settles when it is in.
    */
   async function openHeld(member: Member, mapKey: string, command: CommandName) {
-    let release = () => {};
-    const released = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let stored = () => {};
-    const isStored = new Promise<void>((resolve) => {
-      stored = resolve;
-    });
+    const released = signal();
+    const stored = signal();
     let held = false;
     const fetch = asBrowser(await tokenFor(member.presented.subject), async (url, init) => {
       const answer = await w.api.fetch(new Request(url, init));
       if (!held && url.endsWith(pathOf(command))) {
         held = true;
-        stored();
-        await released;
+        stored.fire();
+        await released.fired;
       }
       return answer;
     });
@@ -84,7 +87,7 @@ describe.skipIf(serverUrl === undefined)('A map save keeps the words typed after
     );
     open.push(page);
     await until(page, () => page.find('[data-map-section="destination"]') !== null, 'the map');
-    return { page, stored: isStored, release };
+    return { page, stored: stored.fired, release: released.fire };
   }
 
   it('notes typed while their save is on its way stay in the editor after that save applies', async () => {

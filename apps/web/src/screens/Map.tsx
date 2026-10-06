@@ -28,14 +28,16 @@ import { useState, type ReactElement } from 'react';
 import type { MapViewResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { useRead } from '../data/use-read.ts';
+import type { ReadState } from '../data/authorised-read.ts';
 import { useCommand } from '../records/use-command.ts';
-import { needsKey } from '../records/needs-key.ts';
+import { keyOf, needsKey } from '../records/needs-key.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { MapViews } from './map/Views.tsx';
 import {
   NO_FILTERS,
   type Filters,
   type Drafts,
+  type Locked,
   type MapCommand,
   type MapViewName,
   type Send,
@@ -48,25 +50,50 @@ export interface MapScreenProps {
   readonly mapKey: string;
 }
 
-/** The page's writes: one at a time, each followed by a reread unless refused. */
+/** Whether two graduate forms hold the same patch and lines. */
+const sameForm = (one: Drafts['graduating'], two: Drafts['graduating']) =>
+  JSON.stringify(one) === JSON.stringify(two);
+
+/** What a `SCOPE_NOT_GRANTED` closes: the command's key on that one record. */
+const latch = (name: MapCommand, recordId: string) => `${keyOf(name) ?? name} ${recordId}`;
+
+/**
+ * The page's writes: one at a time, each followed by a reread unless refused.
+ *
+ * An applied save drops its draft only if the draft still holds what was
+ * sent; words typed while the save was on its way stay in the editor. A
+ * `SCOPE_NOT_GRANTED` closes the refused key on the refused record only, so a
+ * ticket the reader may not write leaves the ones they may write open.
+ */
 function useWrites(client: OperationsClient, reload: () => void) {
   const command = useCommand();
   const [sent, setSent] = useState<MapCommand>('map.revise');
   const [texts, setTexts] = useState<Readonly<Record<string, string>>>({});
   const [graduating, setGraduating] = useState<Drafts['graduating']>(null);
   const [conflict, setConflict] = useState<string | null>(null);
+  const [shut, setShut] = useState<ReadonlySet<string>>(new Set());
   const setText = (slot: string, text: string | null) => {
     setTexts(({ [slot]: _dropped, ...rest }) => (text === null ? rest : { ...rest, [slot]: text }));
   };
   const send: Send = (name, recordId, revision, body, slot) => {
+    const sentText = slot === undefined ? undefined : texts[slot];
+    const sentForm = graduating;
     setSent(name);
     setConflict(null);
     command.run(
       () => client.mutate(name, { recordId, ...body }, { expectedRevision: revision }),
       (settlement) => {
-        if (settlement.kind === 'ok' && slot !== undefined) {
-          if (slot === 'graduate') setGraduating(null);
-          else setText(slot, null);
+        if (settlement.kind === 'ok' && slot === 'graduate') {
+          setGraduating((now) => (sameForm(now, sentForm) ? null : now));
+        } else if (settlement.kind === 'ok' && slot !== undefined) {
+          setTexts((now) => {
+            if (now[slot] !== sentText) return now;
+            const { [slot]: _saved, ...rest } = now;
+            return rest;
+          });
+        }
+        if (settlement.kind === 'closed') {
+          setShut((now) => new Set(now).add(latch(name, recordId)));
         }
         if (settlement.kind === 'stale' && slot !== undefined) setConflict(slot);
         // Applied, or stale: either way the map on screen is no longer the
@@ -75,10 +102,23 @@ function useWrites(client: OperationsClient, reload: () => void) {
       },
     );
   };
+  const locked: Locked = (name, recordId) => command.busy || shut.has(latch(name, recordId));
   const text = (slot: string) => texts[slot] ?? null;
   const drafts: Drafts = { text, setText, graduating, setGraduating, conflict };
   const open = graduating !== null || Object.keys(texts).length > 0;
-  return { command, sent, send, drafts, open };
+  return { command, sent, send, locked, drafts, open };
+}
+
+/**
+ * The graduate form's patch is not on the map as last read: someone else
+ * graduated or removed it. The form is then kept to copy or dismiss, and no
+ * second save is offered (`Frontier.tsx`).
+ */
+function patchGone(state: ReadState<MapViewResult>, drafts: Drafts): boolean {
+  const form = drafts.graduating;
+  const shown = state.outcome === 'loading' ? state.previous : state.value;
+  if (drafts.conflict !== 'graduate' || form === null || shown === null) return false;
+  return !shown.map.fog.some((patch) => patch.id === form.patch);
 }
 
 export function MapScreen(props: MapScreenProps): ReactElement {
@@ -88,7 +128,7 @@ export function MapScreen(props: MapScreenProps): ReactElement {
     run: () => client.read<MapViewResult>('map.view', { recordId: props.mapKey }),
     deps: [props.mapKey],
   });
-  const { command, sent, send, drafts, open } = useWrites(client, reload);
+  const { command, sent, send, locked, drafts, open } = useWrites(client, reload);
   // Held above the read, so a reread after a write keeps the view and filters.
   const [view, setView] = useState<MapViewName>('map');
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
@@ -101,7 +141,7 @@ export function MapScreen(props: MapScreenProps): ReactElement {
           {needsKey(sent, 'refusal' in command.failure ? command.failure.refusal : undefined)}
         </p>
       )}
-      {drafts.conflict === null ? null : (
+      {drafts.conflict === null || patchGone(state, drafts) ? null : (
         <p className="field__error" data-map-conflict="">
           Someone else changed this map while you were typing. What you typed is kept; save it again
           to write it over the latest version.
@@ -117,7 +157,7 @@ export function MapScreen(props: MapScreenProps): ReactElement {
             onView={setView}
             filters={filters}
             onFilters={setFilters}
-            busy={command.locked}
+            locked={locked}
             send={send}
             drafts={drafts}
           />
