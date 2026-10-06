@@ -26,6 +26,7 @@ function daemon(
   lists: readonly Reply[],
   deletes: Readonly<Record<string, number>> = {},
   containers = 0,
+  infoStatus = 200,
 ) {
   const calls: string[] = [];
   let listed = 0;
@@ -41,7 +42,7 @@ function daemon(
     },
     info: () => {
       calls.push('info');
-      return Promise.resolve(reply(200, { Containers: containers, Images: 3 }));
+      return Promise.resolve(reply(infoStatus, { Containers: containers, Images: 3 }));
     },
   };
   return { port, calls };
@@ -88,6 +89,7 @@ it('fails when the second list is not empty or the daemon still counts a contain
   const counted = daemon([reply(200, []), reply(200, [])], {}, 1);
   expect(await sweep(counted.port)).toEqual(failed);
   expect(counted.calls).toEqual(['list', 'list', 'info']);
+  expect(await sweep(daemon([reply(200, []), reply(200, [])], {}, 0, 500).port)).toEqual(failed);
 });
 
 it('retries a failed sweep every 30 s', () => {
