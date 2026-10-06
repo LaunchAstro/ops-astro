@@ -264,7 +264,7 @@ it('reads its one record file as a closed grammar', async () => {
   const text = new TextDecoder().decode(book);
   const bad = { ok: false, reason: 'internal', why: 'proxy record' };
   for (const broken of [
-    text.replace('{', '{"extra":1,'),
+    `{"extra":1,${text.slice(1)}`,
     text.replace('"containerBook"', '"containers"'),
     text.replace('"container":null', '"container":{}'),
     text.replace('"createsLeft":3', '"createsLeft":4'),
