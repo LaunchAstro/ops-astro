@@ -53,7 +53,7 @@ const MAX_ATTEMPT = 2 ** 31 - 1;
 
 export const EMPTY_BOOK: CandidateBook = { candidates: [], accepted: [] };
 
-const sameList = (a: readonly string[], b: readonly string[]) =>
+export const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((item, at) => item === b[at]);
 const sameEntry = (a: SiteEntry, b: SiteEntry) =>
   a.lockfile === b.lockfile &&

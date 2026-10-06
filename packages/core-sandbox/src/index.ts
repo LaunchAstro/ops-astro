@@ -59,6 +59,14 @@ export {
   type ProxyOp,
 } from './proxy-request.ts';
 export {
+  type ProxyPorts,
+  type ProxyRecord,
+  ProxyState,
+  readProxyRecord,
+  type StateOp,
+  writeProxyRecord,
+} from './proxy-state.ts';
+export {
   readReason,
   REASONS,
   type Reason,
