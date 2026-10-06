@@ -3,7 +3,9 @@
 // change queued on the conversation's lock while the caller's grant is revoked
 // or their access ends. Each write is held on the real advisory lock by
 // another connection (`c71-d-lock-world.ts`), the change commits, then the
-// lock is let go: the write reads the caller's authority again and refuses.
+// lock is let go: the write reads the caller's authority again and refuses,
+// to an outsider NOT_FOUND, as for a group never issued. A start, which waits
+// on no conversation, is held on the business's access lock instead.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { enrolCaller, type Caller } from '../acceptance/cast.ts';
@@ -17,6 +19,8 @@ const REVOKE_COMMENT = `update public.grants set revoked_at = greatest(now(), gr
     and action = 'comment' and revoked_at is null returning id`;
 const END_ACCESS = `update public.memberships set active = false, ended_at = now()
   where business_id = $1 and person_id = $2 and active returning id`;
+const RESTORE_ACCESS = `update public.memberships set active = true, ended_at = null
+  where business_id = $1 and person_id = $2 and not active returning id`;
 
 interface Group {
   readonly who: Caller;
@@ -117,6 +121,66 @@ async function endedCreator(
   expect(outcomes.map((event) => event.outcome)).not.toContain('applied');
 }
 
+/**
+ * An outsider's member change, queued on a group's lock while their access
+ * ends, then the same, access restored, on an id never issued: both NOT_FOUND,
+ * so the lost standing does not tell them the group exists.
+ */
+async function endedOutsider(g: GroupWorld): Promise<void> {
+  const group = await groupFor(g, 'outsider-group', false);
+  const { world } = g.chat.harness;
+  const outsider = await enrolCaller(world.db, world.alpha, 'alpha', 'ended-outsider', CHAT);
+  const before = await g.viewOf(world.ada, group.conversationId);
+  const change = async (conversationId: string) =>
+    await g.as(outsider, 'chat.change_members', { conversationId, add: [g.zed.personId] });
+  const real = await queued(
+    g,
+    group,
+    async () => await change(group.conversationId),
+    END_ACCESS,
+    outsider.personId,
+  );
+  expect(real.code, real.text).toBe('NOT_FOUND');
+  expect(await g.viewOf(world.ada, group.conversationId)).toEqual(before);
+  const restored = await world.db.admin.execute(RESTORE_ACCESS, [world.alpha, outsider.personId]);
+  expect(restored).toHaveLength(1);
+  const never = { ...group, conversationId: randomUUID() };
+  const unissued = await queued(
+    g,
+    never,
+    async () => await change(never.conversationId),
+    END_ACCESS,
+    outsider.personId,
+  );
+  expect([unissued.status, unissued.text]).toStrictEqual([real.status, real.text]);
+}
+
+/**
+ * A start queued on the business's access lock, held as a change of grants
+ * holds it, while the starter's `chat:comment` is revoked: no group is made.
+ */
+async function revokedStarter(g: GroupWorld): Promise<void> {
+  const { world } = g.chat.harness;
+  const who = await enrolCaller(world.db, world.alpha, 'alpha', 'revoked-starter', CHAT);
+  const name = `revoked-starter crew ${randomUUID().slice(0, 8)}`;
+  const answer = await writeAcrossChange(
+    g.chat,
+    `access:${world.alpha}`,
+    async () => await g.start(who, [world.ada.personId, world.mia.personId], name),
+    async () => {
+      const rows = await world.db.admin.execute(REVOKE_COMMENT, [world.alpha, who.personId]);
+      expect(rows).toHaveLength(1);
+    },
+  );
+  expect(answer.code, answer.text).toBe('SCOPE_NOT_GRANTED');
+  const listed = (await g.as(world.ada, 'chat.conversations')).body['conversations'];
+  expect((listed as readonly { readonly name?: unknown }[]).map((one) => one.name)).not.toContain(
+    name,
+  );
+  const outcomes = await g.auditOf('chat.start_group', who.actorId);
+  expect(outcomes.map((event) => event.outcome)).not.toContain('applied');
+}
+
 async function keptSender(g: GroupWorld): Promise<void> {
   const group = await groupFor(g, 'kept-sender', false);
   const { world } = g.chat.harness;
@@ -150,6 +214,12 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
     });
     it("C71-G a creator's queued member change after their access ends changes nothing", async () => {
       await endedCreator(g, 'chat.change_members');
+    });
+    it("C71-G an outsider's queued member change after their access ends is NOT_FOUND, as for a group never issued", async () => {
+      await endedOutsider(g);
+    });
+    it("C71-G a group start after the creator's chat:comment is revoked starts nothing", async () => {
+      await revokedStarter(g);
     });
     it('C71-G a queued group send by a member who keeps chat:comment is written', async () => {
       await keptSender(g);
