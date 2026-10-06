@@ -156,7 +156,10 @@ function offMachineProblem(
   ) {
     return 'MODEL_BROKER_DESTINATIONS has a plain http origin off this machine; use https';
   }
-  const local = routes.filter((route) => route.reach === 'local');
+  // The GPT runner is on this machine whatever its reach says: its key must never leave it.
+  const local = routes.filter(
+    (route) => route.reach === 'local' || route.provider === LOCAL_GPT_PROVIDER,
+  );
   const leaves = [...OPERATIONS[provider].values()].some((operation) => {
     const destination = listed.get(operation.destination);
     return (

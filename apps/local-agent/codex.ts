@@ -172,6 +172,16 @@ export function codexArgs(model: string, cwd: string): string[] {
   ];
 }
 
+/** The runner's folders, private to it, and the child's empty working folder. */
+function folders(settings: RunnerSettings): string {
+  const cwd = join(settings.home, 'cwd');
+  mkdirSync(settings.home, { recursive: true, mode: 0o700 });
+  mkdirSync(settings.codexHome, { recursive: true, mode: 0o700 });
+  mkdirSync(settings.childEnv.HOME, { recursive: true, mode: 0o700 });
+  mkdirSync(cwd, { recursive: true });
+  return cwd;
+}
+
 /** A call that ran but whose answer cannot be read: killed, or ended with no result. */
 export const UNKNOWN = 'unknown';
 
@@ -188,11 +198,7 @@ export async function runCodex(
 ): Promise<CodexResult | typeof UNKNOWN | null> {
   if (!MODEL.test(model)) return null;
   if (HOME_INSTRUCTIONS.some((name) => existsSync(join(settings.codexHome, name)))) return null;
-  const cwd = join(settings.home, 'cwd');
-  mkdirSync(settings.home, { recursive: true, mode: 0o700 });
-  mkdirSync(settings.codexHome, { recursive: true, mode: 0o700 });
-  mkdirSync(settings.childEnv.HOME, { recursive: true, mode: 0o700 });
-  mkdirSync(cwd, { recursive: true });
+  const cwd = folders(settings);
   return await new Promise((resolve) => {
     const child = spawn(settings.codexBin, codexArgs(model, cwd), {
       cwd,
@@ -209,18 +215,15 @@ export async function runCodex(
       clearTimeout(timer);
       resolve(result);
     };
-    const timer = setTimeout(() => {
+    const stop = (): void => {
       child.kill('SIGKILL');
       finish(UNKNOWN);
-    }, settings.timeoutMs);
+    };
+    const timer = setTimeout(stop, settings.timeoutMs);
     child.stdout.on('data', (chunk: Buffer) => {
       bytes += chunk.length;
-      if (bytes > MAX_STDOUT_BYTES) {
-        child.kill('SIGKILL');
-        finish(UNKNOWN);
-        return;
-      }
-      parts.push(chunk);
+      if (bytes > MAX_STDOUT_BYTES) stop();
+      else parts.push(chunk);
     });
     child.on('error', () => finish(null));
     child.on('close', (code) => {

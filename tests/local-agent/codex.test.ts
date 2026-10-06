@@ -107,6 +107,7 @@ describe('a message answered through codex exec', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one case per way a call can fail
 describe('what never becomes an answer', () => {
   it('a turn in which the model reached for a tool fails, its tokens still counted', async () => {
     const { settings } = setUp({
