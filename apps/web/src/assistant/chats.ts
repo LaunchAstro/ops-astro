@@ -167,12 +167,25 @@ export const said = (
 ): AssistantState =>
   change(state, key, (chat) => ({ ...chat, messages: [...chat.messages, message] }));
 
-/** The tab's first question started its conversation. */
-export const started = (
+/**
+ * The tab's first question started its conversation. A tab the history
+ * reopened for that same conversation while the start was out folds into it,
+ * so it is never open twice.
+ */
+export function started(
   state: AssistantState,
   key: string,
   conversationId: string,
-): AssistantState => change(state, key, (chat) => ({ ...chat, conversationId }));
+): AssistantState {
+  const twin = state.chats.find(
+    (chat) => chat.key !== key && chat.conversationId === conversationId,
+  );
+  const single =
+    twin === undefined ? state : { ...state, chats: state.chats.filter((chat) => chat !== twin) };
+  const chosen =
+    twin !== undefined && state.selected === twin.key ? selecting(single, key) : single;
+  return change(chosen, key, (chat) => ({ ...chat, conversationId }));
+}
 
 /** A question for tab `key` went out (+1) or came back (-1). */
 export const asking = (state: AssistantState, key: string, by: 1 | -1): AssistantState => ({
@@ -209,14 +222,14 @@ export function reopened(
   return next;
 }
 
-/** The started tab's transcript, as its conversation's read gave it. */
+/** A kept tab's transcript and title, as its conversation's read gave them. */
 export const transcript = (
   state: AssistantState,
   conversationId: string,
-  messages: Chat['messages'],
+  read: Pick<Chat, 'messages'> & { readonly title?: string },
 ): AssistantState => ({
   ...state,
   chats: state.chats.map((chat) =>
-    chat.conversationId === conversationId ? { ...chat, messages } : chat,
+    chat.conversationId === conversationId ? { ...chat, ...read } : chat,
   ),
 });

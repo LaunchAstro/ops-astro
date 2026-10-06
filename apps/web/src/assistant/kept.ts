@@ -2,20 +2,24 @@
 //
 // MP-7-11 CS-7.33, C36: the drawer's history and the tabs it keeps.
 //
-// **Kept for the session.** Each started tab's conversation id and title are
+// **Kept for the session, as ids only.** Each started tab's conversation id is
 // kept in the tab's `sessionStorage` (the rule the session lives under), under
-// the session's own grant key, so a reload brings them back and another sign-in
-// in the same tab gets none of them. Nothing else is kept: a tab not yet
-// started holds nothing the server has. What comes back from storage is read
+// the session's own grant key, so a reload brings the tabs back and another
+// person's sign-in reads its own key, not these. No title or words are kept: a
+// copy left in the tab after sign-out is opaque ids that only their owner may
+// read back (`conversation.read` is owner-only). A tab not yet started holds
+// nothing the server has and is not kept. What comes back from storage is read
 // through a closed shape (the exact keys, a bounded list, ids in the uuid form)
 // and anything else brings back nothing.
 //
 // **Read again when they come back.** A kept tab's transcript is never stored:
 // it is `conversation.read`'s, read as the drawer opens, so a reply that landed
-// after its response was lost is there. A conversation reopened from the
-// history list is read the same way. Reading writes nothing.
+// after its response was lost is there, with its title. A question asked in a
+// kept tab waits for that read, so the transcript never lands over it. A
+// conversation reopened from the history list is read the same way. Reading
+// writes nothing.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AssistantHistory, AssistantMessage, AssistantPast } from '@launchastro/ui';
 import type {
   ConversationListResult,
@@ -27,21 +31,15 @@ import {
   initial,
   reopened,
   select,
-  TAB_TITLE_LIMIT,
   transcript,
   type AssistantState,
   type Reopened,
 } from './chats.ts';
 import { useStore, type Store } from './store.ts';
 
-interface KeptTab {
-  readonly conversationId: string;
-  readonly title: string;
-}
-
 interface Kept {
   readonly selected: string | null;
-  readonly tabs: readonly KeptTab[];
+  readonly tabs: readonly string[];
 }
 
 /** At most this many started tabs come back. */
@@ -54,13 +52,6 @@ const isId = (value: unknown): value is string => typeof value === 'string' && U
 const exactly = (value: object, keys: readonly string[]): boolean =>
   Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 
-function isTab(value: unknown): value is KeptTab {
-  if (typeof value !== 'object' || value === null) return false;
-  if (!exactly(value, ['conversationId', 'title'])) return false;
-  const { conversationId, title } = value as Record<string, unknown>;
-  return isId(conversationId) && typeof title === 'string' && title.length <= TAB_TITLE_LIMIT;
-}
-
 function isKept(value: unknown): value is Kept {
   if (typeof value !== 'object' || value === null || !exactly(value, ['selected', 'tabs'])) {
     return false;
@@ -70,7 +61,7 @@ function isKept(value: unknown): value is Kept {
     (selected === null || isId(selected)) &&
     Array.isArray(tabs) &&
     tabs.length <= KEPT_LIMIT &&
-    tabs.every((tab) => isTab(tab))
+    tabs.every((tab) => isId(tab))
   );
 }
 
@@ -84,7 +75,7 @@ function keptState(grantKey: string | undefined): AssistantState {
   const empty: AssistantState = { ...initial(), chats: [], selected: '', next: 1 };
   const tabs = reopened(
     empty,
-    kept.tabs.map((tab) => ({ ...tab, messages: [] })),
+    kept.tabs.map((conversationId) => ({ conversationId, title: READING, messages: [] })),
   );
   const chosen = tabs.chats.find((chat) => chat.conversationId === kept.selected);
   return chosen === undefined ? tabs : select(tabs, chosen.key);
@@ -95,12 +86,12 @@ function keptOf(state: AssistantState): Kept {
   const selected = state.chats.find((chat) => chat.key === state.selected)?.conversationId ?? null;
   return {
     selected: started.some((chat) => chat.conversationId === selected) ? selected : null,
-    tabs: started.map((chat) => ({
-      conversationId: chat.conversationId ?? '',
-      title: chat.title.slice(0, TAB_TITLE_LIMIT),
-    })),
+    tabs: started.map((chat) => chat.conversationId ?? ''),
   };
 }
+
+/** A kept tab's title until its read lands. */
+const READING = 'Reading…';
 
 const PURGED = 'This conversation’s messages have been cleared; its wrap-up is at its address.';
 
@@ -129,21 +120,24 @@ async function readOne(
   return { conversationId, title: conversation.title, messages: linesOf(answer.value) };
 }
 
+/** The drawer's store, and each kept tab's read: a question asked there waits for it. */
+export type KeptStore = Store & { readonly settled: (key: string) => Promise<void> };
+
 /** The drawer's store from the session's kept tabs, read again on open, every change kept. */
-export function useKeptStore(client: OperationsClient, grantKey: string | undefined): Store {
+export function useKeptStore(client: OperationsClient, grantKey: string | undefined): KeptStore {
   const store = useStore(() => keptState(grantKey));
+  const reads = useRef(new Map<string, Promise<void>>());
   useEffect(() => {
     for (const chat of store.now().chats) {
       const id = chat.conversationId;
       if (id === null || chat.messages.length > 0) continue;
-      void (async () => {
+      const landed = (async () => {
         const read = await readOne(client, id);
-        const lines: AssistantMessage[] =
-          typeof read === 'string'
-            ? [{ id: `kept-failed-${id}`, role: 'failed', body: read, cites: [] }]
-            : [...read.messages];
-        store.update((current) => transcript(current, id, lines));
+        const failed = { id: `kept-failed-${id}`, role: 'failed' as const, body: '', cites: [] };
+        const into = typeof read === 'string' ? { messages: [{ ...failed, body: read }] } : read;
+        store.update((current) => transcript(current, id, into));
       })();
+      reads.current.set(chat.key, landed);
     }
     // Once, as the drawer opens: later tabs are read as they are reopened.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
@@ -151,7 +145,7 @@ export function useKeptStore(client: OperationsClient, grantKey: string | undefi
   useEffect(() => {
     if (grantKey !== undefined) slotFor(grantKey).write(keptOf(store.state));
   }, [grantKey, store.state]);
-  return store;
+  return { ...store, settled: async (key) => await reads.current.get(key) };
 }
 
 /** The history list: read when shown; a row reopens its conversation as a tab. */

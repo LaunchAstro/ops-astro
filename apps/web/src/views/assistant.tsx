@@ -51,7 +51,7 @@ import {
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
 import { useAsks } from '../assistant/asks.ts';
-import { useHistoryList, useKeptStore } from '../assistant/kept.ts';
+import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import type { Store } from '../assistant/store.ts';
 import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
 import type {
@@ -186,11 +186,13 @@ function useWrites(
   readonly addPage: (key: string) => void;
 } {
   const written = (key: string, write: (conversationId: string) => Sent): void => {
-    const turn = sender.starts.get(key)?.then(async (id) => {
+    // A tab kept or reopened was started elsewhere: its conversation is known.
+    const known = Promise.resolve(store.chat(key)?.conversationId ?? null);
+    const turn = (sender.starts.get(key) ?? known).then(async (id) => {
       if (id !== null) await sender.report(key, write(id));
       return id;
     });
-    if (turn !== undefined) sender.starts.set(key, turn);
+    sender.starts.set(key, turn);
   };
   return {
     rename: (key, title) => {
@@ -216,12 +218,13 @@ function allowanceFor(client: OperationsClient, chat: Chat | undefined): ReactEl
   return <AllowanceLine client={client} conversationId={conversationId} settled={settled} />;
 }
 
-/** The send, with the tab answering while its question is out. */
+/** The send, with the tab answering while its question is out; a kept tab's read lands first. */
 const answering =
-  (store: Store, send: (key: string, body: string) => Promise<void>) =>
+  (store: KeptStore, send: (key: string, body: string) => Promise<void>) =>
   async (key: string, body: string): Promise<void> => {
     store.update((current) => asking(current, key, 1));
     try {
+      await store.settled(key);
       await send(key, body);
     } finally {
       store.update((current) => asking(current, key, -1));
