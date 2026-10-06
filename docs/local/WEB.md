@@ -371,9 +371,10 @@ is not connected until the assistant is. Its head names the task, links to
 its page and opens a new-task draft (MP-4-13, `screens/task/DraftPanel.tsx`)
 in the same panel: name, due, estimate, category, the owner the page named,
 tags, subtasks, time spent and a note, kept in this browser under the business
-and the person until Create or Cancel (X and Escape keep it). Signed in, the
-dock's Task tab is on the rail with nothing open and opens a draft filed from
-the page; any `[data-new-task]` control opens one prefilled from the door
+and the person until Create or Cancel (X and Escape keep it). The Projects
+(to-dos) panel's head New opens a draft filed from the page (DP-02); the rail
+keeps the registry's doors, and the Task tab shows only while the panel holds
+something. Any `[data-new-task]` control opens one prefilled from the door
 (`screens/task/task-prefill.ts`: category from the door, its board or Admin,
 the category's usual estimate, due in 7 days or 3 when urgent, client and
 owner only when named), with one sentence saying what was guessed. Create
