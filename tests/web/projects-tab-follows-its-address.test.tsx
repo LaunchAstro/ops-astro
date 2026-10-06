@@ -67,6 +67,23 @@ describe('Projects tab in a dock panel', () => {
     expect(api.asked).toHaveLength(0);
     await view.unmount();
   });
+
+  it('a tab picked in the panel holds while its address does', async () => {
+    window.history.replaceState(null, '', '/clients/');
+    const api = server([{ body: FIRST }]);
+    const draw = at(api.fetch, true);
+    const view = await mount(draw('/projects/'));
+    await tick();
+
+    await view.click(`${TAB}:nth-child(2)`);
+    await tick();
+    expect(selected(view)).toBe('Work log');
+    await view.render(draw('/projects/'));
+    expect(selected(view)).toBe('Work log');
+    expect(drawn(view)).toEqual(['e1', 'e2']);
+    expect(window.location.pathname).toBe('/clients/');
+    await view.unmount();
+  });
 });
 
 describe('Projects Work log opened by its address', () => {
@@ -79,6 +96,7 @@ describe('Projects Work log opened by its address', () => {
     expect(selected(view)).toBe('Work log');
 
     await view.click(`${TAB}:nth-child(1)`);
+    expect(selected(view)).toBe('Board');
     await view.click(`${TAB}:nth-child(2)`);
     await tick();
     expect(selected(view)).toBe('Work log');
