@@ -11,7 +11,6 @@ import { isTaskType } from '../../../core-records/src/index.ts';
 import type { TenantQuery, TaskType } from '../../../core-records/src/index.ts';
 import { applied, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
-import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
 import { createTask } from './tasks-write.ts';
 import { invalid, textOk, type RequestOf } from './wayfinder.ts';
 import { applyRevision, parseRevision, type Revision } from './wayfinder-revision.ts';
@@ -197,7 +196,6 @@ export async function chartMap(
     `select revision::text as revision from records where business_id = $1 and id = $2`,
     [tx.businessId, mapId],
   );
-  await raiseFrontierDecisions(tx, mapId);
   return applied(mapId, Number(current[0]?.revision), {
     tickets: ids,
     version: written?.version ?? 0,

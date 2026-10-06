@@ -17,7 +17,6 @@ import type { TenantQuery, TaskType } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
-import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
 import { outsideHolders } from '../reads/tasks.ts';
 import type { CommandRequest } from './requests.ts';
 import { setPartyWhileEmpty } from './task-client-lock.ts';
@@ -114,7 +113,6 @@ export async function setTaskType(
       where business_id = $1 and id = $2 returning revision::text as revision`,
     [tx.businessId, target.id, retypeChange(context, from, to)],
   );
-  await raiseFrontierDecisions(tx, target.id);
   return applied(target.id, Number(rows[0]?.revision), { type: to, from });
 }
 

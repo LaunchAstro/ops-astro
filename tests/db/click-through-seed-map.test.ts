@@ -155,6 +155,7 @@ const READ_MODEL_FUNCTIONS = [
   'map_summary_on_record',
   'map_summary_on_map_part',
   'map_summary_on_link',
+  'map_frontier_raise_decision',
 ];
 
 function guardCases() {
@@ -183,7 +184,7 @@ const FUNCTION_FACTS = `select p.proname as fn, p.prosecdef as definer, p.procon
         where n.nspname = 'public' and p.proname = any($1) order by 1`;
 
 function roleCases() {
-  it('runs the four map read-model functions as their own pinned role, which no caller becomes or calls', async () => {
+  it('runs the five map read-model functions as their own pinned role, which no caller becomes or calls', async () => {
     const functions = await world.db.admin.execute<Record<string, unknown>>(FUNCTION_FACTS, [
       READ_MODEL_FUNCTIONS,
     ]);
@@ -206,7 +207,7 @@ function roleCases() {
     );
   });
 
-  it("gives the map read models' role reads of what they count and writes to the two read models only", async () => {
+  it("gives the map read models' role reads of what they count, writes to the two read models and the owner's decision items only", async () => {
     const held = await world.db.admin.execute<{ held: string }>(
       `select c.relname || ':' || string_agg(lower(a.action), ',' order by a.action) as held
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
@@ -216,10 +217,12 @@ function roleCases() {
         group by c.relname order by 1`,
     );
     expect(held.map((row) => row.held)).toStrictEqual([
+      'inbox_items:insert,select',
       'map_components:select',
       'map_frontier:delete,insert,select',
       'map_summaries:delete,insert,select,update',
       'map_versions:select',
+      'people:select',
       'record_links:select',
       'record_types:select',
       'records:select',
