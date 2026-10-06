@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C41-A races: a helper's stopping step result and a revocation that locks another ready step's task, then the delegations the result holds for share, each on its own connection: the result takes every step's task before any delegation, so neither side deadlocks"
+}
