@@ -11,8 +11,9 @@
 // entries against I3's cap and refusing a symlink, submodule or any other
 // mode before anything under it is read; the blobs follow, each read with
 // what is left of I3's 50 MB. A name is UTF-8 of at most 255 bytes with no
-// slash, a path at most 4,096 bytes. The changed file must replace a
-// regular file at `baseRevision`, and the edited tree is judged by I3.
+// slash, a path at most 4,096 bytes, read with any byte-order mark kept.
+// The edited tree is judged by I3 first; then the changed file must have
+// replaced a regular file at `baseRevision`.
 // A broker failure is thrown to the caller, which names its R1 reason (2e).
 // The sha1 here has no collision detection (git and GitHub use SHA-1DC), so
 // the broker must read only from a host that rejects known collision objects.
@@ -37,7 +38,8 @@ const MODES: ReadonlyMap<string, string> = new Map([
   ['40000', '040000'],
 ]);
 const DIRECTORY = '040000';
-const utf8 = new TextDecoder('utf-8', { fatal: true });
+/** Keeps a leading byte-order mark, so I3 sees the name's own bytes and refuses it. */
+const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 type Blob = { readonly path: string; readonly mode: string; readonly oid: string };
 type Walk = { readonly directories: TreeEntry[]; readonly blobs: Blob[] };
@@ -137,7 +139,8 @@ export async function assembleTree(
     files.set(blob.path, replaced);
     entries.push({ path: blob.path, mode: blob.mode, size: replaced.length });
   }
-  if (!walk.blobs.some((blob) => blob.path === edit.path)) return refusal('request path');
   const tree = checkTree(entries);
-  return tree.ok ? { ok: true, files, entries } : tree;
+  if (!tree.ok) return tree;
+  if (!walk.blobs.some((blob) => blob.path === edit.path)) return refusal('request path');
+  return { ok: true, files, entries };
 }
