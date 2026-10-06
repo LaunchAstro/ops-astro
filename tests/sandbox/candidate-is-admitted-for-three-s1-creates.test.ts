@@ -145,6 +145,19 @@ it('lets a raised attempt load again after a failed F2, and the old image be del
   expect(holdsCandidateImage(dropCandidateImage(reload.book, D), D)).toBe(true);
 });
 
+it('refuses a reload of an attempt whose failed candidate image was deleted, or a lower one', () => {
+  const list = sites({ a: making() });
+  const back = readBook(writeBook(dropCandidateImage(ran(3, 1), C)));
+  expect(back.ok).toBe(true);
+  if (!back.ok) return;
+  expect(admitCandidateLoad(back.book, list, 'a', C)).toEqual(refused);
+  expect(candidateCreate(back.book, list, s1(), C)).toEqual(refused);
+  const raised = sites({ a: making(2) });
+  const reload = admitCandidateLoad(readDeployed(ran(3, 1), raised).book, raised, 'a', D);
+  if (!reload.ok) throw new Error('load refused');
+  expect(admitCandidateLoad(dropCandidateImage(reload.book, C), list, 'a', C)).toEqual(refused);
+});
+
 it('takes a deployed id only as the candidate whose three runs exited 0 in time', () => {
   const copied = sites({ a: pinned(C) });
   expect(effective(ran(3), copied)).toBe(C);
