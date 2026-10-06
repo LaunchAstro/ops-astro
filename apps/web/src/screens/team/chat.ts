@@ -196,6 +196,7 @@ export function useChat(
   const [held, setHeld] = useState<Held>({});
   const reads = useReads(client, grantKey, setList, setHeld);
   useMessageReads(reads, list, held);
+
   useTopics(client, reads, topicsOf(list));
 
   const settledRef = useRef(false);
@@ -267,11 +268,8 @@ export function talkOf(chat: ChatModel, me: string): TeamConversations | null {
     // while that read agrees with it, all read: no marker is kept there to clear its unread.
     const since = timeOf(view.joinedAt) ?? -Infinity;
     const left = departed(view);
-    const messages = !left
-      ? held.messages.filter((message) => Date.parse(message.at) >= since)
-      : held.departed && !stale(view, held)
-        ? held.messages
-        : [];
+    const archive = held.departed && !stale(view, held) ? held.messages : [];
+    const messages = left ? archive : held.messages.filter((m) => Date.parse(m.at) >= since);
     const readable = { lastRead: left ? (messages.at(-1)?.at ?? null) : held.lastRead, messages };
     const other = view.members.find((id) => id !== me);
     if (view.kind === 'direct' && other !== undefined) threads.push({ with: other, ...readable });

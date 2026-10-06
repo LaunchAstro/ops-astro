@@ -17,6 +17,23 @@ import { mount, settle } from './mount.tsx';
 
 const session = { businessKey: 'alpha', email: 'ana@example.test' };
 
+const list = (unread: number): Response =>
+  Response.json({
+    ok: true,
+    conversations: [
+      {
+        conversationId: '11111111-1111-4111-8111-111111111111',
+        kind: 'direct',
+        name: null,
+        members: ['p-me', 'p-bo'],
+        joinedAt: '2026-10-01T09:00:00.000Z',
+        lastRead: null,
+        lastMessageAt: '2026-10-01T10:00:00.000Z',
+        unread,
+      },
+    ],
+  });
+
 function held(ends: string) {
   const pending: ((answer: Response) => void)[] = [];
   const client = new OperationsClient({
@@ -46,10 +63,14 @@ it('an inbox count answers while a newer count is still out and the bell draws i
       await settle();
     });
     expect(pending).toHaveLength(2);
-    await act(async () => pending[0]?.(Response.json({ owed: 3 })));
+    await act(() => {
+      pending[0]?.(Response.json({ owed: 3 }));
+    });
     await settle();
     expect(view.text()).toBe('3');
-    await act(async () => pending[1]?.(Response.json({ owed: 4 })));
+    await act(() => {
+      pending[1]?.(Response.json({ owed: 4 }));
+    });
     await settle();
     expect(view.text()).toBe('4');
   } finally {
@@ -60,22 +81,6 @@ it('an inbox count answers while a newer count is still out and the bell draws i
 
 it('a Team unread answers while a newer read is still out and the chip draws it', async () => {
   const { pending, client } = held('/chat/conversations');
-  const list = (unread: number): Response =>
-    Response.json({
-      ok: true,
-      conversations: [
-        {
-          conversationId: '11111111-1111-4111-8111-111111111111',
-          kind: 'direct',
-          name: null,
-          members: ['p-me', 'p-bo'],
-          joinedAt: '2026-10-01T09:00:00.000Z',
-          lastRead: null,
-          lastMessageAt: '2026-10-01T10:00:00.000Z',
-          unread,
-        },
-      ],
-    });
   function Chip(): ReactElement {
     return <output>{useTeamUnread(client, session, true) ?? 'none'}</output>;
   }
@@ -85,10 +90,14 @@ it('a Team unread answers while a newer read is still out and the chip draws it'
       nudgeTeamUnread(client);
     });
     expect(pending).toHaveLength(2);
-    await act(async () => pending[0]?.(list(2)));
+    await act(() => {
+      pending[0]?.(list(2));
+    });
     await settle();
     expect(view.text()).toBe('2');
-    await act(async () => pending[1]?.(list(1)));
+    await act(() => {
+      pending[1]?.(list(1));
+    });
     await settle();
     expect(view.text()).toBe('1');
   } finally {
