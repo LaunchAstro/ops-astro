@@ -85,16 +85,16 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
        where i.business_id = $1 and c.data ->> 'body' = $2`,
         [world.alpha, after],
       );
+      // The door refused that send, so no handler ran: no message, no mention.
       expect(written).toEqual([]);
-      // Nor is the member it names raised a mention of it.
-      const mentioned = await world.db.admin.execute(
-        `select i.id from public.inbox_items i join public.records c
+      // The queued send that landed raised the member it named one mention, of its own body.
+      const mentioned = await world.db.admin.execute<{ body: string }>(
+        `select c.data ->> 'body' as body from public.inbox_items i join public.records c
         on c.business_id = i.business_id and c.id = i.fact_id
-       where i.business_id = $1 and i.recipient_person_id = $2 and i.reason = 'mention'
-         and c.data ->> 'body' = $3`,
-        [world.alpha, g.chat.tess.personId, after],
+       where i.business_id = $1 and i.recipient_person_id = $2 and i.reason = 'mention'`,
+        [world.alpha, g.chat.tess.personId],
       );
-      expect(mentioned).toEqual([]);
+      expect(mentioned).toEqual([{ body: queued }]);
     } finally {
       await sending?.catch(settled);
       await revoking?.catch(settled);
