@@ -3,8 +3,8 @@
 // P3, P4 and P6 (docs/plan/sandbox-contract.md, section 6): the proxy's
 // durable container record. It holds at most one container (B7: one
 // sandbox at a time). A create needs an empty record and a daemon count of
-// zero; a count that differs from the record refuses the create, and the
-// caller starts a sweep. Run operations take only the recorded full id.
+// zero; a count that differs from the record (zero for an empty one, one
+// for a held one) refuses the create first, and the caller starts a sweep. Run operations take only the recorded full id.
 //
 // The deadline runs from the durable create record, so a container never
 // started has one too. The kill is due at every tick from the deadline
@@ -43,8 +43,8 @@ export function admitContainerCreate(
   book: ContainerBook,
   daemonCount: number,
 ): SandboxResult<object> {
-  if (book.container !== null) return refuse('container record');
-  return daemonCount === 0 ? { ok: true } : refuse('container count');
+  if (daemonCount !== (book.container === null ? 0 : 1)) return refuse('container count');
+  return book.container === null ? { ok: true } : refuse('container record');
 }
 
 export const admitContainerOp = (book: ContainerBook, id: string): SandboxResult<object> =>
