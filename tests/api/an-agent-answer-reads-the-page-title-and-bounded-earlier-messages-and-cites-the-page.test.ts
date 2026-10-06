@@ -7,7 +7,10 @@
 // - the page: the task's id and title reach the model, its body never does,
 //   and the answer cites the task by its own key;
 // - earlier: this conversation's earlier messages only, the last ten, under
-//   the character bound with the oldest dropped first;
+//   the character bound and the GPT runner's request bytes, the oldest
+//   dropped first;
+// - a question refused on a client's task stays refused when it is sent
+//   again with its operation id after the client is cleared;
 // - a page task the caller can no longer read, or one in another business,
 //   is never read, sent or cited.
 
@@ -17,6 +20,7 @@ import {
   contextOf,
   EARLIER_LIMIT,
 } from '../../packages/core-commands/src/commands/conversation-context.ts';
+import { LOCAL_GPT_BODY_LIMIT, localGptAdapter } from '../../packages/core-connectors/src/index.ts';
 import { revokeGrant, withSession } from '../../packages/core-records/src/index.ts';
 import { addClient, enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -157,6 +161,55 @@ describe.skipIf(serverUrl === undefined)('an agent answer’s context and cites'
     expect(model.provider.seen.length).toBe(seen + 1);
     expect(lastFields()['earlier']).toContain('before any client');
     expect(model.provider.seen.map((request) => request.body).join('')).not.toContain(canary);
+  }, 60_000);
+
+  it('replay: a question refused on a client’s task, sent again with its operation id once the task has no client, reaches no model then or later', async () => {
+    const { db, business } = w.fixture;
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, w.owner, 'share');
+    });
+    const clientId = randomUUID();
+    await addClient(db.app, business, clientId, w.owner);
+    const made = await w.as(w.owner, 'task.create', { fields: { title: 'a client for a while' } });
+    const taskId = String(made.body['recordId']);
+    const opened = await w.as(w.owner, 'conversation.start', {
+      body: 'before the client',
+      scope: { kind: 'task', id: taskId },
+    });
+    const conversationId = String(detail(opened)['conversationId']);
+    const party = async (client: string | null, revision: unknown): Promise<Answer> =>
+      await w.as(w.owner, 'task.set_party', {
+        operationId: randomUUID(),
+        recordId: taskId,
+        expectedRevision: revision,
+        fields: { client },
+      });
+    const linked = await party(clientId, made.body['revision']);
+    expect(linked.status).toBe(200);
+    const canary = `CANARY-${randomUUID()}`;
+    const request = { operationId: randomUUID(), conversationId, body: `${canary} for the client` };
+    const refused = await w.as(w.owner, 'conversation.message', request);
+    expect(replyOf(refused)).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+    expect((await party(null, linked.body['revision'])).status).toBe(200);
+    const seen = model.provider.seen.length;
+    const replayed = await w.as(w.owner, 'conversation.message', request);
+    expect(replayed.status).toBe(200);
+    expect(replyOf(replayed)).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+    expect(model.provider.seen.length).toBe(seen);
+    expect(replyOf(await say(conversationId, 'and next?'))).toMatchObject({ answered: true });
+    expect(model.provider.seen.map((one) => one.body).join('')).not.toContain(canary);
+  }, 60_000);
+
+  it('earlier bytes: history is cut so the whole GPT request fits the runner, the message whole', async () => {
+    const conversationId = await started(w, w.owner, { body: '界'.repeat(3_000) });
+    const asked = '界'.repeat(20_000);
+    await say(conversationId, asked);
+    const fields = lastFields();
+    expect(fields['message']).toBe(asked);
+    expect(fields['earlier'] ?? '').not.toContain('界');
+    expect(Buffer.byteLength(localGptAdapter(fields).body)).toBeLessThanOrEqual(
+      LOCAL_GPT_BODY_LIMIT,
+    );
   }, 60_000);
 
   it('earlier bound: a long history is sent under the character bound, the oldest dropped first', async () => {

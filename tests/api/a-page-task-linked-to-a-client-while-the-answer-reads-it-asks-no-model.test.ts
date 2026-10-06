@@ -7,14 +7,24 @@
 // sees the client and asks no model, so a title that was a client's when
 // it was read is never sent. Through a fresh Postgres and the replay
 // stand-in on loopback, the link written by `task.set_party` itself.
+//
+// A person whose read of the page was revoked before they ask is refused
+// before the task is read: their exchange never waits behind the task's
+// writer, and so learns nothing of its timing.
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { addClient, grantTo } from '../commands/fixture.ts';
+import { revokeGrant } from '../../packages/core-records/src/index.ts';
+import { addClient, enrol, grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { conversationWorld, detail, type ConversationWorld } from './aw-03-fixture.ts';
+import {
+  CONVERSATION,
+  conversationWorld,
+  detail,
+  type ConversationWorld,
+} from './aw-03-fixture.ts';
 import { composedWith, localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
 import { createApiFixture, type Answer } from './fixture.ts';
 
@@ -116,4 +126,42 @@ describe.skipIf(serverUrl === undefined)('a page task linked to a client mid-rea
       await Promise.allSettled([holder, reader].map(async (one) => await one.close()));
     }
   });
+  it('a revoked reader: a message asked after the page read was revoked is refused without waiting on the task', async () => {
+    const { db, business } = w.fixture;
+    const made = await w.as(w.owner, 'task.create', { fields: { title: `Held ${randomUUID()}` } });
+    const taskId = String(made.body['recordId']);
+    const person = await enrol(db.app, business, `revoked-${randomUUID().slice(0, 8)}`);
+    const grant = await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, person, 'write', undefined, false, CONVERSATION);
+      return await grantTo(tx, person, 'read', { kind: 'record', id: taskId });
+    });
+    const opened = await w.as(person, 'conversation.start', {
+      body: 'What is this?',
+      scope: { kind: 'task', id: taskId },
+    });
+    const conversationId = String(detail(opened)['conversationId']);
+    await db.app.withBusiness(business, async (tx) => await revokeGrant(tx, grant));
+    const sent = await w.as(person, 'conversation.message', { conversationId, body: 'and now?' });
+    const asked = { conversationId, messageId: String(detail(sent)['messageId']) };
+    const before = model.provider.seen.length;
+    const holder = connect(db.appUrl, { source: 'runtime' });
+    const reader = connect(db.appUrl, { source: 'runtime' });
+    let replying: Promise<unknown> | undefined;
+    try {
+      const answer = await holder.withBusiness(business, async (tx) => {
+        await tx.query(`select id from records where business_id = $1 and id = $2 for update`, [
+          business,
+          taskId,
+        ]);
+        replying = model.exchange(reader, business, person.presented, asked);
+        // Still holding the row: an exchange that waited on it would lose this race.
+        return await Promise.race([replying, sleep(5_000).then(() => 'waited' as const)]);
+      });
+      expect(answer).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+      expect(model.provider.seen.length).toBe(before);
+    } finally {
+      await replying?.catch(() => null);
+      await Promise.allSettled([holder, reader].map(async (one) => await one.close()));
+    }
+  }, 30_000);
 });
