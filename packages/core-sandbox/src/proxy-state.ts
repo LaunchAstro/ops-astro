@@ -12,8 +12,8 @@
 // The proxy sweeps on open, on a count mismatch and on a failed delete;
 // until a sweep passes every request is `unavailable` and it repeats every
 // 30 s. A run whose container a sweep removed, or answered while a failed
-// sweep waits, is `unavailable`; a delete only when another sweep removed
-// it. A throw in a request answers `internal`; in the timer or a note it
+// sweep waits, is `unavailable`; a delete only when another sweep, passed
+// or not, took it. A throw in a request answers `internal`; in the timer or a note it
 // leaves the record for the next tick. A wait counts only after a 204 start
 // and is judged when it lands; an attach once its start was sent and a
 // start at the deadline are refused. `tick` kills at every tick from the
@@ -86,7 +86,7 @@ export class ProxyState {
   #lock: Promise<unknown> = Promise.resolve();
   /** While no sweep has passed: when to sweep again. */
   #retryAt: number | null = null;
-  /** Recorded ids a sweep removed; a run on one is `unavailable`. */
+  /** Recorded ids a sweep set out to remove, passed or not; a run on one is `unavailable`. */
   readonly #swept = new Set<string>();
   /** The last id whose start was sent; an attach to it comes too late (P4). */
   #startSent: string | null = null;
@@ -269,10 +269,10 @@ export class ProxyState {
 
   /** A delete's answer; true when a sweep other than its own removed the container first. */
   async #deleted(id: string, reply: Reply): Promise<boolean> {
-    if (this.#containers.container?.id !== id) return this.#swept.has(id);
+    if (this.#containers.container?.id !== id || this.#swept.has(id)) return this.#swept.has(id);
     const after = deleteAnswered(this.#containers, deleteAnswer(reply.status));
-    await this.#save(this.#candidates, after.book);
     if (after.sweep) await this.#sweep();
+    else await this.#save(this.#candidates, after.book);
     return false;
   }
 
@@ -285,15 +285,15 @@ export class ProxyState {
     }).catch(() => null);
   }
 
-  /** P6's sweep: on a pass the container record clears; on a failure it repeats in 30 s. */
+  /** P6's sweep; the held id is swept from its start. A pass clears the record; a fail repeats. */
   async #sweep(): Promise<void> {
+    const held = this.#containers.container;
+    if (held !== null) this.#swept.add(held.id);
     const passed = await sweep(this.#ports.daemon).catch(() => fault('sweep'));
     if (!passed.ok) {
       this.#retryAt = this.#ports.now() + SWEEP_RETRY_MS;
       return;
     }
-    const held = this.#containers.container;
-    if (held !== null) this.#swept.add(held.id);
     await this.#save(this.#candidates, EMPTY_CONTAINERS);
     this.#retryAt = null;
   }
