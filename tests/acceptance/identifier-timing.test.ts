@@ -18,6 +18,7 @@
 // Postgres, so the time measured is the handler, the tenancy wrapper and the
 // database lookups the two forms would differ in. It is not network timing.
 
+import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -156,8 +157,9 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_timing');
-    // MP-6-2's revision asks run:write, which the cast's admin holds on no
-    // run; on the whole business, so a foreign task is judged by the handler.
+    // MP-6-2's revision and C80's decision read ask run:write, which the cast's
+    // admin holds on no run; on the whole business, so a foreign task or
+    // correction is judged by the handler.
     await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
       await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
     });
@@ -317,6 +319,39 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       code: 'NOT_FOUND',
       foreign: () => ({ gateId: f.proposal.gateId, versionId: f.proposal.versionId, ...decision }),
       fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...decision }),
+    });
+    // C80: a correction of bravo's, and a request worked under bravo's task.
+    const theirs = await seedLiveCorrection(w.h.world.db.app, w.h.world.bravo, f.task.id, f.admin);
+    out.push(
+      {
+        op: 'live_correction.decide',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ ...theirs, decision: 'approve' }),
+        fabricated: () => ({
+          correctionId: randomUUID(),
+          versionId: randomUUID(),
+          decision: 'approve',
+        }),
+      },
+      {
+        op: 'live_correction.read',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ correctionId: theirs.correctionId }),
+        fabricated: () => ({ correctionId: randomUUID() }),
+      },
+    );
+    const request = { ...C80_REQUEST, partyId: randomUUID() };
+    out.push({
+      op: 'live_correction.request',
+      operand: 'taskId',
+      by: ada,
+      code: 'NOT_FOUND',
+      foreign: () => ({ ...request, taskId: f.task.id }),
+      fabricated: () => ({ ...request, taskId: randomUUID() }),
     });
     const accept = { ...ACCEPTED_PLAN, note: NOBODY };
     out.push({
@@ -561,17 +596,18 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 98 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 101 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(98);
-    expect(names).toHaveLength(98);
+    expect(new Set(names).size, 'distinct operations').toBe(101);
+    expect(names).toHaveLength(101);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the twelve target-free ones').toStrictEqual(
-      bearing,
-    );
+    expect(
+      names.toSorted(),
+      'every declaration outside the forty-five target-free ones',
+    ).toStrictEqual(bearing);
     const outside: string[] = [];
     for (const cell of table) {
       // eslint-disable-next-line no-await-in-loop -- one operation at a time, so arms share load
@@ -585,6 +621,28 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     }
     expect(outside).toStrictEqual([]);
   }, 600_000);
+
+  it('times a correction at another party of the same business like a fabricated id', async () => {
+    // C80: the cross-business cell above never finds the row. Here it is found,
+    // in mia's own business, and only her grant at another party turns it away.
+    const { alpha, ada, mia, db } = w.h.world;
+    await db.app.withBusiness(alpha, async (tx) => {
+      await grantTo(tx, mia as Member, 'write', { kind: 'party', id: randomUUID() }, false, 'run');
+    });
+    const onA = await seedLiveCorrection(db.app, alpha, w.h.alphaTask.id, ada);
+    const cell: Cell = {
+      op: 'live_correction.read',
+      operand: 'correctionId (in tenant, another party)',
+      by: { kind: 'person', caller: mia },
+      code: 'NOT_FOUND',
+      foreign: () => ({ correctionId: onA.correctionId }),
+      fabricated: () => ({ correctionId: randomUUID() }),
+    };
+    const { foreign, fabricated } = await sample(cell);
+    const verdict = compare(foreign, fabricated);
+    console.log(line(cell, PAIRS, verdict));
+    expect(verdict.within).toBe(true);
+  }, 120_000);
 
   it('flags an injected delay, so the comparison is not vacuous', async () => {
     // Synthetic first: the comparator on its own says within for one

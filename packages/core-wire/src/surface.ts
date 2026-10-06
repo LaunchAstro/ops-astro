@@ -93,6 +93,8 @@ const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const RUN_COLLECTION = 'run';
+const GATE_COLLECTION = 'gate';
 const CUSTODY_COLLECTION = 'custody';
 const CONVERSATION_COLLECTION = 'conversation';
 const TIME_COLLECTION = 'time';
@@ -662,6 +664,30 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // administrators set the planning cap; no agent route serves it.
   declare('budget.set_planning_cap', 'decide', {
     collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // C80, each asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS; the
+  // read inside its query), so one client's grant reaches no other client's
+  // correction. The request is `run:write`, an agent's inside its delegation; the
+  // read asks the request's own `run:write` (ORCH33) and the approval `gate:decide`,
+  // never an agent's, and only the configured approver who is not the requester.
+  read('live_correction.read', RUN_COLLECTION, { action: 'write' }),
+  declare('live_correction.request', 'write', {
+    collection: RUN_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['partyId', 'taskId'],
+    agent: 'delegated',
+  }),
+  declare('live_correction.decide', 'decide', {
+    collection: GATE_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['correctionId', 'versionId'],
+  }),
+  declare('settings.set_live_correction_approver', 'manage', {
+    collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),

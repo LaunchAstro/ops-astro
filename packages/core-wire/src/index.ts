@@ -105,6 +105,7 @@ export type {
   InboxEntry,
   InboxReadResult,
   UnattendedView,
+  LiveCorrectionReadResult,
   InternalCommentView,
   InternalTaskDetail,
   InternalTaskRead,

@@ -40,6 +40,8 @@ export interface AssistantState {
   readonly draft: string;
   /** The selected conversation's scope; none means the route's own. */
   readonly scope: StandingScope;
+  /** Each tab's questions still out, by key: a tab with one out is answering. */
+  readonly answering: Readonly<Record<string, number>>;
 }
 
 export interface AskEntry {
@@ -72,6 +74,7 @@ export const initial = (): AssistantState => ({
   citation: null,
   draft: '',
   scope: NO_SCOPE,
+  answering: {},
 });
 
 export function fresh(state: AssistantState): AssistantState {
@@ -153,6 +156,7 @@ export const openDirect = (state: AssistantState): AssistantState => ({
   citation: null,
   draft: '',
   scope: NO_SCOPE,
+  answering: {},
 });
 
 /** A line added to a tab's transcript. */
@@ -163,9 +167,69 @@ export const said = (
 ): AssistantState =>
   change(state, key, (chat) => ({ ...chat, messages: [...chat.messages, message] }));
 
-/** The tab's first question started its conversation. */
-export const started = (
+/**
+ * The tab's first question started its conversation. A tab the history
+ * reopened for that same conversation while the start was out folds into it,
+ * so it is never open twice.
+ */
+export function started(
   state: AssistantState,
   key: string,
   conversationId: string,
-): AssistantState => change(state, key, (chat) => ({ ...chat, conversationId }));
+): AssistantState {
+  const twin = state.chats.find(
+    (chat) => chat.key !== key && chat.conversationId === conversationId,
+  );
+  const single =
+    twin === undefined ? state : { ...state, chats: state.chats.filter((chat) => chat !== twin) };
+  const chosen =
+    twin !== undefined && state.selected === twin.key ? selecting(single, key) : single;
+  return change(chosen, key, (chat) => ({ ...chat, conversationId }));
+}
+
+/** A question for tab `key` went out (+1) or came back (-1). */
+export const asking = (state: AssistantState, key: string, by: 1 | -1): AssistantState => ({
+  ...state,
+  answering: { ...state.answering, [key]: Math.max(0, (state.answering[key] ?? 0) + by) },
+});
+
+/** A conversation as `conversation.read` gave it: its id, title and transcript. */
+export interface Reopened {
+  readonly conversationId: string;
+  readonly title: string;
+  readonly messages: Chat['messages'];
+}
+
+/**
+ * Tabs for conversations kept or reopened (CS-7.33, C36): a conversation
+ * already open is selected, never opened twice; the rest open after the tabs
+ * there are, the last one selected.
+ */
+export function reopened(
+  state: AssistantState,
+  conversations: readonly Reopened[],
+): AssistantState {
+  let next = state;
+  for (const one of conversations) {
+    const open = next.chats.find((chat) => chat.conversationId === one.conversationId);
+    if (open !== undefined) {
+      next = selecting(next, open.key);
+      continue;
+    }
+    const chat = { ...blank(next.next, one.messages, NO_SCOPE), ...one, key: `chat-${next.next}` };
+    next = selecting({ ...next, chats: [...next.chats, chat], next: next.next + 1 }, chat.key);
+  }
+  return next;
+}
+
+/** A kept tab's transcript and title, as its conversation's read gave them. */
+export const transcript = (
+  state: AssistantState,
+  conversationId: string,
+  read: Pick<Chat, 'messages'> & { readonly title?: string },
+): AssistantState => ({
+  ...state,
+  chats: state.chats.map((chat) =>
+    chat.conversationId === conversationId ? { ...chat, ...read } : chat,
+  ),
+});

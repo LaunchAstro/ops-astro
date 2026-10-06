@@ -26,7 +26,8 @@ import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
-import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
+import { setNotificationChannel } from './settings-write.ts';
+import { setting } from './handlers-setting.ts';
 import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
 import { startConnectorRepair } from './connector-repair.ts';
 import { recordIncident } from './privacy-write.ts';
@@ -70,6 +71,7 @@ import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './
 import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts';
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
+import { decideLiveCorrection, requestLiveCorrection, setApprover } from './live-corrections.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 import { markOwnRead, sendDirect } from './chat.ts';
 import { invitationAct } from './invitations.ts';
@@ -173,6 +175,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
     revokeDelegationAsManager(tx, context, request.delegationId),
   'task.cancel': cancelOnTask,
   'task.restart': restartOnTask,
+  'live_correction.request': requestLiveCorrection,
+  'live_correction.decide': decideLiveCorrection,
+  'settings.set_live_correction_approver': setApprover,
 
   // EX-01. A person picks up, renews and hands back as themselves, on a lease that carries no
   // delegation; the agent does the same on its own entry point in `agent-envelope.ts`, with the
@@ -259,20 +264,6 @@ function writeOwned(
   request: RequestOf<'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_audience'>,
 ): Promise<HandlerOutcome> {
   return writeOwnedFields(tx, context, request.command, request.fields);
-}
-
-function setting(
-  tx: TenantQuery,
-  context: CommandContext,
-  request: RequestOf<
-    | 'settings.set_four_eyes_threshold'
-    | 'settings.set_client_sign_off'
-    | 'settings.set_money_step_up'
-    | 'settings.set_conversation_window'
-    | 'settings.set_retention_window'
-  >,
-): Promise<HandlerOutcome> {
-  return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);
 }
 
 export async function handleCommand<K extends WriteName>(

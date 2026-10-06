@@ -8,6 +8,7 @@ import { business, client, writing, type DataEffects } from './data-effects-type
 import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
 import { WAYFINDER_EFFECTS } from './data-effects-wayfinder.ts';
+import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -161,6 +162,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_money_step_up': SETTINGS,
   'settings.set_conversation_window': SETTINGS,
   'settings.set_retention_window': SETTINGS,
+  ...LIVE_CORRECTION_EFFECTS,
   'privacy.record_incident': writing(business('privacy_incidents')),
   'legal.draft_version': LEGAL,
   'legal.approve_version': LEGAL,
