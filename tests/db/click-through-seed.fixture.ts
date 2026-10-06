@@ -92,15 +92,15 @@ export function runSeed(script: string, options: SeedOptions): Ran {
   return { status: result.status, out: `${result.stdout}\n${result.stderr}` };
 }
 
-/** The tables above, whole or one business's rows. */
+/** Every table, whole or one business's rows. */
 export async function snapshot(db: FreshDatabase, business?: string): Promise<Snapshot> {
   const out: Record<string, readonly unknown[]> = {};
-  for (const table of TABLES) {
+  for (const name of TABLES.map((table) => `public.${table}`)) {
     // One owner connection; the reads are sequential by construction.
     // oxlint-disable-next-line no-await-in-loop
-    out[table] = await db.admin.execute(
-      `select to_jsonb(t) as row from public.${table} t
-        where $1::uuid is null or t.business_id = $1::uuid order by to_jsonb(t)::text`,
+    out[name] = await db.admin.execute(
+      `select to_jsonb(t) as row from ${name} t
+        where $1::text is null or to_jsonb(t) ->> 'business_id' = $1 order by to_jsonb(t)::text`,
       [business ?? null],
     );
   }
@@ -172,12 +172,17 @@ export async function closeWorld(world: Cast | undefined): Promise<void> {
 
 /** Ada, the cast's admin, signed in with her second factor. */
 export function ada(world: Cast): VerifiedSubject {
+  return person(world, 'ada@alpha.local');
+}
+
+/** One of the cast, by address, signed in with a second factor. */
+export function person(world: Cast, email: string): VerifiedSubject {
   const file = join(world.root, '.local/synthetic-users.json');
   const users = JSON.parse(readFileSync(file, 'utf8')) as { email: string; subject: string }[];
   const now = Math.floor(Date.now() / 1000);
   return {
     provider: 'supabase',
-    subject: users.find((user) => user.email === 'ada@alpha.local')?.subject ?? '',
+    subject: users.find((user) => user.email === email)?.subject ?? '',
     assurance: { level: 'aal2', signedInAt: now, factorAt: now },
   };
 }

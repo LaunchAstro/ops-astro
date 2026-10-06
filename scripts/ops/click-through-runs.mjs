@@ -6,9 +6,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
-import { raiseBudgetWait } from '../../packages/core-custody/src/broker-wait.ts';
-import { spentOn } from '../../packages/core-runtime/src/budget-stop.ts';
 import { sweepExpiredLeases } from '../../packages/core-runtime/src/recovery/sweep.ts';
+import { stopAtCeiling } from './click-through-stop.ts';
 
 /** A plain step, and the product's synthetic effect a launched run dispatches. */
 const COMPOSE = { kind: 'compose', payload: { tone: 'plain' } };
@@ -74,33 +73,10 @@ export async function reviewWaiting(w, id) {
   await handBack(w, await working(w, id), EFFECT);
 }
 
-/**
- * Stopped at its ceiling as the broker stops it (`stopAtCeiling`), under the
- * run, lease and reservation held locked: the run waits for a person.
- */
+/** Stopped at its ceiling as the broker stops it: the run waits for a person. */
 export async function stopAtCap(w, id) {
   const picked = await working(w, id, COMPOSE, SMALL_CEILING);
-  await w.database.withBusiness(w.cast.businessId, async (tx) => {
-    const [held] = await tx.query(
-      `select l.run_id, l.delegation_id, r.id as reservation_id, r.version_id,
-              r.held_minor::text as held
-         from public.planned_runs run
-         join public.leases l on l.business_id = run.business_id and l.run_id = run.id
-         join public.reservations r on r.business_id = l.business_id and r.id = l.reservation_id
-        where l.business_id = $1 and l.id = $2
-          for update of run, l, r`,
-      [tx.businessId, picked.leaseId],
-    );
-    await raiseBudgetWait(tx, {
-      runId: held.run_id,
-      leaseId: picked.leaseId,
-      delegationId: held.delegation_id,
-      reservationId: held.reservation_id,
-      versionId: held.version_id,
-      ceilingMinor: Number(held.held),
-      spentMinor: (await spentOn(tx, held.reservation_id)).spent,
-    });
-  });
+  await stopAtCeiling(w.database, w.cast.businessId, picked.leaseId);
 }
 
 /** The reviewed output approved and launched on a short lease, its effect dispatched. */

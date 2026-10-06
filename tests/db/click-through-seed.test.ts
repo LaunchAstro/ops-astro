@@ -6,10 +6,17 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFreshDatabase } from '../support/fresh-database.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import {
+  checkDelegatedAuthority,
+  resolveLiveById,
+} from '../../packages/core-records/src/authority/delegations.ts';
 import {
   closeWorld,
   guardState,
   openWorld,
+  person,
   pendingFor,
   readTask,
   runSeed,
@@ -55,6 +62,8 @@ describe.skipIf(serverUrl === undefined)('SR-1 click-through seed', () => {
   taskCases();
   runCases();
   rerunCases();
+  crossingCases();
+  snapshotCases();
 });
 
 function taskCases() {
@@ -173,8 +182,8 @@ function rerunCases() {
   it('a second run makes nothing and changes nothing, history, audit and receipts included', () => {
     expect(world.second.status, world.second.out).toBe(0);
     expect(world.second.out).toContain('already seeded, nothing made');
-    expect(world.before['records']!.length).toBeGreaterThan(20);
-    expect(world.before['audit_events']!.length).toBeGreaterThan(0);
+    expect(world.before['public.records']!.length).toBeGreaterThan(20);
+    expect(world.before['public.audit_events']!.length).toBeGreaterThan(0);
     expect(world.after).toEqual(world.before);
   });
 
@@ -184,7 +193,7 @@ function rerunCases() {
   });
 
   it("the first run leaves bravo's rows untouched", () => {
-    expect(world.bravo[0]['actors']!.length).toBeGreaterThan(0);
+    expect(world.bravo[0]['public.actors']!.length).toBeGreaterThan(0);
     expect(world.bravo[1]).toEqual(world.bravo[0]);
   });
 
@@ -200,4 +209,67 @@ function rerunCases() {
       await bare.drop();
     }
   }, 120_000);
+}
+
+function crossingCases() {
+  it("refuses the helper's delegation on another client's task, admitting its own", async () => {
+    const [own, south] = [
+      await taskId(world, 'Collect quotes for printing'),
+      await taskId(world, 'Plan the client workshop'),
+    ];
+    const [child] = await world.db.admin.execute<{ id: string; agent: string }>(
+      `select child.id, child.agent_actor_id as agent from public.delegations child
+         join public.leases l on l.delegation_id = child.parent_delegation_id
+         join public.planned_runs r on r.id = l.run_id where r.task_id = $1`,
+      [own],
+    );
+    const answers = await world.db.app.withBusiness(world.business, async (tx) => {
+      const helper = await resolveLiveById(tx, child!.agent, child!.id);
+      if (helper === undefined) throw new Error('the helper delegation is not live');
+      const ask = (id: string) =>
+        checkDelegatedAuthority(tx, helper, {
+          collection: 'task',
+          action: 'read',
+          scope: { kind: helper.purposeScope.kind, id } as never,
+        });
+      return [await ask(own), await ask(south)];
+    });
+    expect(answers.map((answer) => answer.ok)).toEqual([true, false]);
+    expect(JSON.stringify(answers[1])).not.toContain(south);
+  });
+
+  it('refuses Noah, who holds no task grant, any seeded task or pending gate', async () => {
+    const noah = person(world, 'noah@alpha.local');
+    for (const title of ['Draft the spring newsletter', 'Book the team photo shoot']) {
+      // oxlint-disable-next-line no-await-in-loop
+      const recordId = await taskId(world, title);
+      // oxlint-disable-next-line no-await-in-loop
+      const read = await executeRead(world.db.app, world.business, noah, {
+        read: 'task.read',
+        recordId,
+      } as never);
+      expect(isCommandRefusal(read), title).toBe(true);
+      expect(JSON.stringify(read)).not.toContain(title);
+    }
+    const pending = await executeRead(world.db.app, world.business, noah, {
+      read: 'gate.pending',
+    } as never);
+    const awaiting = isCommandRefusal(pending)
+      ? []
+      : (pending as { awaiting?: unknown[] }).awaiting;
+    expect(awaiting ?? []).toEqual([]);
+  });
+}
+
+function snapshotCases() {
+  // Last: it writes as the owner, which the made-up guard notes.
+  it("sees a change to a seeded task's envelope maximum", async () => {
+    const was = await snapshot(world.db);
+    await world.db.admin.execute(
+      `update public.task_envelopes set maximum_minor = maximum_minor + 1
+        where task_id = $1`,
+      [await taskId(world, 'Research venue options')],
+    );
+    expect(await snapshot(world.db)).not.toEqual(was);
+  });
 }
