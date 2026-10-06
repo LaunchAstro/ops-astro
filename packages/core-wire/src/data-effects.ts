@@ -210,7 +210,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...client('task_envelopes'),
   ]),
   'run.end_at_budget_stop': writing(
-    client('budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
+    client('attempts', 'budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
   ),
   'run.revise_state': writing(client('run_states')),
   // MP-6-1's check on a task's run.

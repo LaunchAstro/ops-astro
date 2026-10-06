@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a budget-stop top-up pairs with the plan approver's waiting approval ahead of an earlier one"
+}

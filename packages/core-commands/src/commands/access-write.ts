@@ -24,6 +24,7 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { isGrantableKey, SELF_SCOPED_COLLECTIONS } from '../../../core-wire/src/index.ts';
+import { lockAccessAsManager } from './authority-controls.ts';
 import type { CommandContext } from './context.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
@@ -84,6 +85,10 @@ export async function grantOnAccess(
   if (!isGrantableKey(collection, action)) {
     return invalid(hasAnyKey(collection) ? 'action' : 'collection');
   }
+  // The access lock, then the caller's manage right asked again under it: a
+  // revocation that committed while this waited gives nothing (#443).
+  const lost = await lockAccessAsManager(tx, context);
+  if (lost !== undefined) return lost;
   const given = await grantAccess(
     tx,
     {

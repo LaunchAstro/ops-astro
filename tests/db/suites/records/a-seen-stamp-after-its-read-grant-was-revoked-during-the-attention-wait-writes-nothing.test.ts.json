@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a seen stamp admitted before its read grant was revoked during the attention wait writes nothing"
+}
