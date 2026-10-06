@@ -50,9 +50,19 @@ export function operationOf(body: string): string | null {
   }
 }
 
+/** What the stand-in knows of one operation: begun, refused unbegun, or not yet received. */
+export type LookupState = 'begun' | 'refused' | 'unseen';
+
+/** The honest code for each state; an unseen call may still arrive, so it proves nothing. */
+const HONEST: Readonly<Record<LookupState, string>> = {
+  begun: 'completed',
+  refused: NOT_BEGUN_CODE,
+  unseen: 'not_yet_received',
+};
+
 /** The stand-in's lookup body for the honest answer and the false claim; others it answers itself. */
-export function lookupBody(mode: ReplayLookupMode, begun: boolean): unknown {
-  if (mode === 'honest') return { code: begun ? 'completed' : NOT_BEGUN_CODE };
+export function lookupBody(mode: ReplayLookupMode, state: LookupState): unknown {
+  if (mode === 'honest') return { code: HONEST[state] };
   // Claims nothing happened in its own word, never the declared code.
   if (mode === 'claims_success') return { code: 'not_found' };
   return undefined;
