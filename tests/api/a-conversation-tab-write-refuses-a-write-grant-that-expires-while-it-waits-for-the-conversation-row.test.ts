@@ -7,9 +7,10 @@
 // wait no longer counts: each write is refused and nothing changes, as
 // `conversation.message` is refused across the same wait.
 //
-// Each conversation row is held on another connection, which holds no grant;
-// each write is seen waiting on its holder with its transaction begun before
-// the grant's expiry; the holders let go once the database clock is past it.
+// One write at a time: the conversation row is held on another connection,
+// which holds no grant; the write is seen waiting on that holder with its
+// transaction begun before the grant's expiry; the holder lets go once the
+// database clock is past it. Each write sets the grant to end afresh.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { REPLAY_MODEL_WINDOW } from '../../packages/core-connectors/src/index.ts';
@@ -21,6 +22,7 @@ import {
   started,
   type ConversationWorld,
 } from './aw-03-fixture.ts';
+import type { Member } from '../commands/fixture.ts';
 import type { Answer } from './fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -34,33 +36,30 @@ const WRITES = [
 const KEPT = 'select model_id, title, page_address from public.conversations where id = $1';
 
 /**
- * Holds each conversation row, sends `send` for each, sees each waiting on its
- * holder from before `expiry`, and lets go once the database clock is past it.
+ * Sets `person`'s only covering conversation:write grant to end in three
+ * seconds, holds the conversation row, sends `write` on it, sees it waiting on the
+ * holder from before the expiry, and lets go once the database clock is past it.
  */
 async function acrossTheExpiry(
   w: ConversationWorld,
-  ids: readonly string[],
-  expiry: string,
-  send: (id: string, at: number) => Promise<Answer>,
-): Promise<{ readonly startedLive: boolean[]; readonly answers: Answer[] }> {
+  person: Member,
+  id: string,
+  [name, fields]: (typeof WRITES)[number],
+): Promise<{ readonly startedLive: boolean; readonly answer: Answer }> {
   const db = w.fixture.db;
-  const holders = await Promise.all(
-    ids.map(
-      async (id) =>
-        await holdRow(db, 'select id from public.conversations where id = $1 for update', [id]),
-    ),
-  );
-  const sending = ids.map(async (id, at) => await send(id, at));
-  let startedLive: boolean[] = [];
+  const { expiry } = await expiringSoon(w, person.personId, 'conversation', 'write');
+  const held = await holdRow(db, 'select id from public.conversations where id = $1 for update', [
+    id,
+  ]);
+  const sending = w.as(person, name, { conversationId: id, ...fields });
+  let startedLive = false;
   try {
-    startedLive = await Promise.all(
-      holders.map(async (held) => await blockedBefore(db, held, expiry)),
-    );
+    startedLive = await blockedBefore(db, held, expiry);
     await waitPast(db, expiry);
   } finally {
-    await Promise.all(holders.map(async (held) => await held.letGo()));
+    await held.letGo();
   }
-  return { startedLive, answers: await Promise.all(sending) };
+  return { startedLive, answer: await sending };
 }
 
 describe.skipIf(serverUrl === undefined)(
@@ -85,21 +84,26 @@ describe.skipIf(serverUrl === undefined)(
       const kept = async (): Promise<unknown[]> =>
         await Promise.all(ids.map(async (id) => (await db.admin.execute(KEPT, [id]))[0]));
       const before = await kept();
-      // The colleague's only covering conversation:write grant, ending in three seconds.
-      const { expiry } = await expiringSoon(w, person.personId, 'conversation', 'write');
-      const { startedLive, answers } = await acrossTheExpiry(w, ids, expiry, async (id, at) => {
-        const [name, fields] = WRITES[at] ?? WRITES[0];
-        return await w.as(person, name, { conversationId: id, ...fields });
-      });
-      expect({
-        startedLive,
-        answers: answers.map((answer) => [answer.status, answer.body['code']]),
-        kept: await kept(),
-      }).toEqual({
-        startedLive: [true, true, true],
-        answers: WRITES.map(() => [403, 'SCOPE_NOT_GRANTED']),
+      const seen: unknown[] = [];
+      for (const [at, write] of WRITES.entries()) {
+        // oxlint-disable-next-line no-await-in-loop -- one expiry at a time
+        const { startedLive, answer } = await acrossTheExpiry(w, person, ids[at] ?? '', write);
+        seen.push({
+          name: write[0],
+          startedLive,
+          status: answer.status,
+          code: answer.body['code'],
+        });
+      }
+      expect({ seen, kept: await kept() }).toEqual({
+        seen: WRITES.map(([name]) => ({
+          name,
+          startedLive: true,
+          status: 403,
+          code: 'SCOPE_NOT_GRANTED',
+        })),
         kept: before,
       });
-    }, 30_000);
+    }, 60_000);
   },
 );
