@@ -33,10 +33,11 @@ export function useModels(
       const body = conversationId === null ? {} : { conversationId };
       const answer = await client.read<ConversationModelsResult>('conversation.models', body);
       if (!current) return;
-      const models =
-        isRefusal(answer) || isUnavailable(answer)
-          ? NONE
-          : answer.value.models.map((model) => ({ id: model.id, label: model.id }));
+      // A refused, unavailable or malformed answer offers nothing.
+      const offered = isRefusal(answer) || isUnavailable(answer) ? undefined : answer.value.models;
+      const models = Array.isArray(offered)
+        ? offered.map((model) => ({ id: model.id, label: model.id }))
+        : NONE;
       setHeld({ client, conversationId, models });
     };
     void load();

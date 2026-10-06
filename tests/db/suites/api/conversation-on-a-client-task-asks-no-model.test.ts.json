@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a conversation opened on a client's task keeps the message and asks no model, nothing sent and no reply kept (owner line 72)"
+}

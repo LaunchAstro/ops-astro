@@ -102,6 +102,7 @@ vi.mock('../../packages/core-commands/src/commands/conversation-tabs.ts', async 
   ...(await original<object>()),
   renameConversation: recorder('renameConversation'),
   setConversationScope: recorder('setConversationScope'),
+  setModel: recorder('setModel'),
 }));
 vi.mock('../../packages/core-commands/src/commands/session-end.ts', async (original) => ({
   ...(await original<object>()),

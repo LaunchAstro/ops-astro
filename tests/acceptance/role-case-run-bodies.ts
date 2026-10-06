@@ -5,6 +5,7 @@
 // under the line limit. Moved whole from its switch: same bodies, same order.
 
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
+import { REPLAY_MODEL_WINDOW } from '../../packages/core-connectors/src/index.ts';
 import { ownConversation } from './foreign-conversation.ts';
 import {
   type Prepared,
@@ -89,10 +90,13 @@ export async function conversationBody(
           page: { address: '/settings', shows: 'Settings' },
         },
       };
-    // CS-7.30: the picker's offer and a choice back to the default.
+    // CS-7.30: the picker's offer and a choice of the install's own model, which
+    // writes the row (null on a fresh conversation would change nothing).
     case 'conversation.models':
       return { body: { conversationId: await ownConversation(context) } };
     case 'conversation.set_model':
-      return { body: { conversationId: await ownConversation(context), model: null } };
+      return {
+        body: { conversationId: await ownConversation(context), model: REPLAY_MODEL_WINDOW.model },
+      };
   }
 }
