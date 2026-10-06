@@ -29,6 +29,14 @@ export { raiseBudgetWait, stopWords } from './broker-wait.ts';
 export { giveBack, giveBackReleased } from './broker-give-back.ts';
 export { setLoginPassword, type LoginPasswordSet } from './broker-login-password.ts';
 export {
+  ENROL_PATH,
+  INVITATION_SEND_ACTS,
+  sendInvitation,
+  type InvitationSendRefusal,
+  type InvitationSendResult,
+} from './broker-invitation.ts';
+export { deliverAuthMessage, type AuthMessageOutcome } from './broker-auth-email.ts';
+export {
   callModelInConversation,
   type ConversationCallRequest,
   type ConversationScope,
@@ -48,7 +56,7 @@ export {
   type EmailResult,
   type MailSettings,
 } from './broker-email.ts';
-export { fromVerifiedSender } from './email-class.ts';
+export { fromVerifiedSender } from './broker-email-route.ts';
 export { landEmailEvent, type EmailHookOutcome } from './broker-email-hook.ts';
 export { tellCommentClients } from './broker-email-mention.ts';
 export {

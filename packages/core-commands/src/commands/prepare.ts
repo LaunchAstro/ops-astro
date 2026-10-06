@@ -432,6 +432,20 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
     'client',
     (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
   ],
+  // C41-A: a step result is asked at its task's client while that is the onboarding's client, else the business.
+  'onboarding.step_result': [
+    'recordId',
+    (tx, id) =>
+      firstRow(
+        tx,
+        `select 'party' as kind, r.uuid_7 as id
+           from public.onboarding_steps s
+           join public.onboardings o on o.business_id = s.business_id and o.id = s.onboarding_id
+           join public.records r on r.business_id = s.business_id and r.id = s.task_id
+          where s.business_id = $1 and s.task_id = $2 and r.uuid_7 = o.client_id`,
+        id,
+      ),
+  ],
   // C60: a client's privacy settings are asked of that client, at party scope.
   'client.set_privacy': [
     'clientId',
@@ -451,7 +465,9 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
 /**
  * The target field of another revoke, on a `target` command. Refused and not
  * ignored, for the reason `refuseIrrelevantTarget` gives: a field the server
- * drops is a field the caller believes was honoured.
+ * drops is a field the caller believes was honoured. A field the command
+ * names as one of its own identifiers is its own, not another's: the task
+ * `task.duplicate` copies is its `recordId`, which a step result's target is.
  */
 function refuseOtherTarget(
   request: UncheckedRequest,
@@ -462,7 +478,8 @@ function refuseOtherTarget(
   const own = TARGET_LOOKUPS[declaration.name]?.[0];
   const other = Object.values(TARGET_LOOKUPS)
     .map(([field]) => field)
-    .filter((field) => field !== own && named[field] !== undefined);
+    .filter((field) => field !== own && named[field] !== undefined)
+    .filter((field) => !(declaration.untargetedIdentifiers ?? []).includes(field));
   if (other.length === 0) return undefined;
   return refused(refuseCommand('COMMAND_BODY_INVALID', other, BODY_FIXES));
 }
@@ -502,7 +519,8 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  *   its gate is on (the runtime asks decide again). A grant is asked about at the
  *   scope it was issued on and a delegation at its purpose scope, so a manager
  *   whose `manage` covers exactly that scope reaches the handler, which then
- *   asks the full ceiling (`authority-controls.ts`).
+ *   asks the full ceiling (`authority-controls.ts`). An onboarding step's
+ *   result is asked at its task's client.
  * - `claim`: the task the body's reservation or lease belongs to, asked at
  *   record scope as the runtime asks it under its locks.
  */

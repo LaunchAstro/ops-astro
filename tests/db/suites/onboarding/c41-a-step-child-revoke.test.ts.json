@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C41-A races: a revocation of a helper's parent delegation, made after the helper's step result has read its child delegation live, waits for that result (the child and its parent are held for share), each on its own connection"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#963): a business whose cursor row exists but never advanced is asked no delete, and its pass does not fail."
+}

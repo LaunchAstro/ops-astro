@@ -172,6 +172,7 @@ export type {
   AutomationDefinitionView,
   AutomationRegistryResult,
   DefinitionVersionView,
+  StandingApprovalView,
 } from './views-automations.ts';
 // Custody's secrets as Settings ▸ Keys reads them (C31), and the connector
 // fleet as Connections & signal reads it (MP-14-7a).
@@ -181,6 +182,14 @@ export type {
   SecretListResult,
   SecretView,
 } from './connection-views.ts';
+// Grants, tripwires and the night round on the same page (MP-14-8).
+export type {
+  ConnectionSignalResult,
+  GrantView,
+  NightStepView,
+  RosterView,
+  TripwireView,
+} from './signal-views.ts';
 // AW-04: a plan version as a planning reply offers it in the chat
 export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
 // the command catalogue and its parity check (API-1)

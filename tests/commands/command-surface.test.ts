@@ -41,7 +41,7 @@ if (serverUrl === undefined) {
 
 /** Every path is a collection and an operation; the collections are named in the case below. */
 const PATH_SHAPE =
-  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation)\/[a-z_]+$/u;
+  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation|approval|invitation|record|onboarding)\/[a-z_]+$/u;
 
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
@@ -88,8 +88,8 @@ describe('the surface as a table', () => {
     // and `privacy` are C55's view and its incident record, and `legal` is C81's
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
-    // `tag` is MP-4-11's: the business's tag vocabulary.
-    // `map` is the wayfinder's (WF-1); `automation` and `activation` C33's.
+    // `tag` is MP-4-11's: the business's tag vocabulary; `invitation` C39-T's; `map` the wayfinder's
+    // (WF-1); `automation`, `activation` C33's; `approval` C52-A's; `record`, `onboarding` C41-A's.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
@@ -100,6 +100,7 @@ const DECLARED_READS = [
   'automation.registry',
   'client.list',
   'connection.fleet',
+  'connection.signal',
   'conversation.allowance',
   'conversation.list',
   'conversation.read',
