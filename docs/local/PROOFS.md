@@ -701,14 +701,14 @@ lane does not own.
   decision and so every pickup was unreachable. The seed now gives the admin
   `task:decide` (`scripts/local-seed.mjs:97`); a member still does not hold it.
 - **The fixture's member and the seed's member differ.** The seed's `member`
-  holds `['task:read', 'task:write', 'task:assign', 'person:read', 'settings:read']`;
+  holds `['task:read', 'task:write', 'task:assign', 'person:read', 'settings:read', 'chat:comment']`;
   the `MEMBER_ACTIONS` that `world.ts` grants (from `tests/acceptance/cast.ts`)
   is `read`, `write`, `assign` and `comment` on `task` only. The matrix does
   not depend on it, because it reads grants back out of the `grants` table
   rather than trusting the list, but `mia` is not the same person in the two
   places. `tests/acceptance/seeded-role-grants.test.ts` now pins that
-  difference: `task:comment` added and the `person` and `settings` reads left
-  out. It also checks that the seeded admin holds every grant a
+  difference: `task:comment` added, and `chat:comment` and the `person` and
+  `settings` reads left out. It also checks that the seeded admin holds every grant a
   `COMMAND_SURFACE` declaration asks for.
 - **Closed: `lockTask` was not exported.** It is exported from
   `packages/core-commands/src/commands/prepare.ts` now, and
