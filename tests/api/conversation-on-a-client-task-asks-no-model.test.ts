@@ -9,9 +9,15 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { addClient, grantTo } from '../commands/fixture.ts';
+import { revokeGrant } from '../../packages/core-records/src/index.ts';
+import { addClient, enrol, grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { conversationWorld, detail, type ConversationWorld } from './aw-03-fixture.ts';
+import {
+  CONVERSATION,
+  conversationWorld,
+  detail,
+  type ConversationWorld,
+} from './aw-03-fixture.ts';
 import { composedWith, localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
 import { createApiFixture } from './fixture.ts';
 
@@ -74,5 +80,40 @@ describe.skipIf(serverUrl === undefined)('a conversation on a client’s task', 
     );
     expect(rows).toEqual({ calls: '0', agent: '0' });
     expect(model.provider.seen).toEqual([]);
+  });
+
+  it('a conversation on a task its owner may no longer read asks no model', async () => {
+    const { db, business } = w.fixture;
+    const reader = await enrol(db.app, business, 'reader');
+    const made = await w.as(w.owner, 'task.create', { fields: { title: 'a task with no client' } });
+    const taskId = String(made.body['recordId']);
+    const readGrant = await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, reader, 'write', undefined, false, CONVERSATION);
+      return await grantTo(tx, reader, 'read', { kind: 'record', id: taskId });
+    });
+    const opened = await w.as(reader, 'conversation.start', {
+      body: 'while I can read it',
+      scope: { kind: 'task', id: taskId },
+    });
+    expect(opened.status).toBe(200);
+    const conversationId = String(detail(opened)['conversationId']);
+    await db.app.withBusiness(business, async (tx) => {
+      await revokeGrant(tx, readGrant);
+    });
+    const seen = model.provider.seen.length;
+    const canary = `CANARY-${randomUUID()}`;
+    const sent = await w.as(reader, 'conversation.message', { conversationId, body: canary });
+    expect(sent.status).toBe(200);
+    expect((sent.body as Record<string, unknown>)['reply']).toMatchObject({
+      answered: false,
+      code: 'CLIENT_MODEL_USE_OFF',
+    });
+    expect(
+      model.provider.seen
+        .slice(seen)
+        .map((request) => request.body)
+        .join(''),
+    ).not.toContain(canary);
+    expect(model.provider.seen).toHaveLength(seen);
   });
 });

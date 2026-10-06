@@ -6,7 +6,7 @@
 // closed grammar, so a tool call, a failed turn or an unknown event never
 // becomes an answer.
 
-import { realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -109,6 +109,14 @@ describe('a message answered through codex exec', () => {
 
 // eslint-disable-next-line max-lines-per-function -- one case per way a call can fail
 describe('what never becomes an answer', () => {
+  it('a saved API-key login is refused before anything is asked, so nothing bills', async () => {
+    const { w, settings } = setUp();
+    w.knobs({ login: 'apikey' });
+    const result = await runCodex(settings, MODEL, 'hi');
+    expect(result).not.toMatchObject({ ok: true });
+    expect(existsSync(join(w.codexHome, 'billed.jsonl'))).toBe(false);
+  });
+
   it('a turn in which the model reached for a tool fails, its tokens still counted', async () => {
     const { settings } = setUp({
       before: [{ type: 'item.completed', item: { type: 'command_execution', command: 'ls /' } }],
