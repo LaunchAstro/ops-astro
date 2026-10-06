@@ -1674,6 +1674,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.set`                               | `setCustodySecret` (`commands/custody-secrets.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.graduation`                    | `readConnectionGraduation` (`reads/graduation.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connection.signal`                        | `readConnectionSignal` (`reads/signal.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -3667,6 +3668,50 @@ value, never any part of one. No sealed column is read. It is shown only for a
 secret the caller's scopes reach (a business-wide reader, a business-wide
 secret, or one of the caller's clients'); a secret scoped to another client the
 connection serves shows as `{ secretId: null, state: 'not set' }`.
+
+### Graduation and standing mandates (MP-14-10a)
+
+The per-client region of the same page. `connection.graduation` is
+`connection:read`, filtered in each of its statements by the scopes the caller
+holds it at, and answers every client those scopes reach at once, one with no
+graduation row included, so choosing a client on the scope bar asks the server
+nothing. Each client is a client of this
+business by foreign key, shown by its name, with the scope list a mandate picks
+from: the whole-account word `*`, one family word per class family
+(`social.*`), then each class. A row's `state` is what its class earned
+(`ready`, `short`, `mixed`, `never`, `none`) unless a live mandate changes it:
+a live mandate filed by promoting that class shows `promoted`, and a live
+refusal whose words cover the class holds a `ready` or `promoted` class as
+`held`, naming the refusal in `heldBy`. Live is not revoked and not past
+`expiresAt` on the database's clock. Graduation rows are written by the agent
+loops (AW-01) and mandates by the mandate commands (next piece); this build only
+reads them.
+
+| Operation               | Route                    | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------- | ------------------------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.graduation` | `/connection/graduation` | `{}` | `{ ok: true, clients: [{ id, label, scopes }], rows: [{ id, clientId, actionClass, classLabel, clearance, state, heldBy, neverWhy, promotedAt, approved, edited, rejected, since, note, revision }], mandates: [{ id, clientId, classes, refuses, ceiling: { amountMinor, currency } \| null, expiresAt, expired, label, graduationClass, authoredBy, createdAt, revision }] }`; `SCOPE_NOT_GRANTED` 403 |
+
+Core's check at an effect (`standingMandateVerdict`, core-runtime) share-locks
+the client's row, the class's graduation row and the client's not-revoked
+mandates, in that order. Every mandate's insert takes the client's row `for no
+key update` (`standing_mandates_lock_client`), and the mandate writers take it
+first, so a revoke or a refusal being filed waits for an effect already past its
+check, and the next check sees it. Its place in the global lock order is in
+`core-runtime/src/locks.ts`. Expiry is judged on the database's clock
+after that lock wait. A mandate word is `*`, a family word or an action class,
+compared whole; the database refuses any other word
+(`standing_mandate_words_known`). A live matching refusal wins
+(`refused`); an approval covers only a class on the client's own list whose
+record is not `never` (otherwise `not-graduable`), and only a value within its
+ceiling in the same currency (`over-ceiling`, `other-currency`); anything else
+is left to the ordinary gate (`none`). A malformed class, currency, client or
+value throws before anything is read. A mandate is written once: the
+application role may revoke it, never edit, backdate or revive it; each update
+must move the revision by exactly one, and the database stamps the revocation's
+time (`standing_mandates_written_once`). A graduation row's revision moves by one
+or not at all. A class whose record is `never` shows
+`never` in the region whatever is filed, as core treats it. No effect names an action class yet
+(AW-01/AW-02), so today no mandate pre-approves anything.
 
 ## Grants, tripwires and the night round (MP-14-8)
 

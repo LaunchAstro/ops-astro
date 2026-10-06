@@ -7,7 +7,6 @@ import type { CommandName } from './surface.ts';
 import { business, client, writing, type DataEffects } from './data-effects-types.ts';
 import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
-
 export type {
   ClassedEffects,
   DataClass,
@@ -183,6 +182,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.set': writing(client('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
   'connection.fleet': READ,
+  'connection.graduation': READ,
   'connection.signal': READ,
   'connector.repair': writing(business('connection_repairs')),
   'client.create': writing(client('clients')),
