@@ -142,6 +142,17 @@ it('refuses a second create while the record holds a container, even one sent at
   expect(w.held.size).toBe(1);
 });
 
+it('sweeps when the daemon lost the recorded container, and the next create passes', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(P, s1('p')));
+  w.held.clear();
+  w.calls.length = 0;
+  expect(await state.handle(create(P, s1('p')))).toEqual(refused('container count'));
+  expect([w.calls, heldId(w)]).toEqual([['info', 'list', 'list', 'info'], null]);
+  expect(await state.handle(create(P, s1('p')))).toEqual(CREATED);
+});
+
 it('answers a create internal when its forward or its count check throws', async () => {
   const w = world();
   const state = await opened(w);

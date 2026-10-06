@@ -38,13 +38,20 @@ const DEADLINE = T0 + WALL;
 const held = (wall = false): ContainerBook => recordContainer(EMPTY_CONTAINERS, ID, T0, WALL, wall);
 const none = { kill: false, delete: false };
 
-it('takes a create only with an empty record and a daemon count of zero', () => {
+it('takes a create only with an empty record and a daemon count of zero, else names the count first', () => {
   expect(admitContainerCreate(EMPTY_CONTAINERS, 0)).toEqual({ ok: true });
   expect(admitContainerCreate(held(), 1)).toEqual({
     ok: false,
     reason: 'proxy refused',
     why: 'container record',
   });
+  for (const count of [0, 2]) {
+    expect(admitContainerCreate(held(), count)).toEqual({
+      ok: false,
+      reason: 'proxy refused',
+      why: 'container count',
+    });
+  }
   expect(admitContainerCreate(EMPTY_CONTAINERS, 1)).toEqual({
     ok: false,
     reason: 'proxy refused',
