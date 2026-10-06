@@ -6,7 +6,7 @@
 // (`agent-envelope.ts`) runs every row through the same pipeline, so adding an
 // operation is adding a row here rather than a branch in each step of it.
 
-import { checkDelegatedAuthority } from '../../../core-records/src/index.ts';
+import { checkDelegatedAuthority, resolveDelegation } from '../../../core-records/src/index.ts';
 import type { TenantQuery, AgentSession, Delegation } from '../../../core-records/src/index.ts';
 import { readQueue } from '../reads/queue.ts';
 import { READ_CATALOGUE } from '../reads/catalogue.ts';
@@ -924,7 +924,15 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       operands: recordIdOperand(() => refuseNotFound()),
       // The task checked under the delegation (`run:write`, which the mint
       // grants only where the person holds it); the agent is the recorded actor.
-      serve: async (tx, { session, request }, _operands, _delegation, taskId) => {
+      serve: async (
+        tx,
+        { session, request, declaration, credential },
+        _operands,
+        _delegation,
+        taskId,
+      ) => {
+        if (credential === undefined)
+          throw new Error('agent run state: served without a credential');
         const spine = await readTaskSpine(tx);
         return await reviseRunState(
           tx,
@@ -935,7 +943,22 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             knowledge: request['knowledge'],
             unknowns: request['unknowns'],
           },
-          session.actorId,
+          {
+            id: session.actorId,
+            // The delegation resolved again, not the one read before the wait:
+            // one revoked or expired while this waited for the run refuses the
+            // write (#443).
+            askAgain: async (task) => {
+              const again = await resolveDelegation(tx, session.actorId, credential);
+              if (!again.ok) return refused(again.refusal);
+              const still = await checkDelegatedAuthority(tx, again.value, {
+                collection: declaration.collection,
+                action: declaration.action,
+                scope: { kind: 'record', id: task },
+              });
+              return still.ok ? undefined : refused(still.refusal);
+            },
+          },
         );
       },
     }),

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a duplicate by a caller who cannot read the source is refused without waiting on its row"
+}

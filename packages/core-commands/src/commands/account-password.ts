@@ -221,7 +221,12 @@ async function setAndEnd(
       // with the settle, below.
       for (const { business, session } of mapped.filter((one) => one !== own)) {
         // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
-        await database.withBusiness(business, async (tx) => await endIn(tx, session, unset()));
+        await database.withBusiness(business, async (tx) => {
+          // The subject's ending keys first, as the settle takes them, so a
+          // factor change holding them and asking its session commits first.
+          await holdSubjectEnding(tx, found.subject);
+          return await endIn(tx, session, unset());
+        });
       }
     }
     ended = true;

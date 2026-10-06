@@ -488,11 +488,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:749-775`, run at `:908-916`). It gets a login and an acting identity,
-  and no membership and no business grant (`:167-170`, `:320-322`). The seed
+  user (`:755-781`, run at `:914-922`). It gets a login and an acting identity,
+  and no membership and no business grant (`:173-176`, `:326-328`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:777-806`, `:945-954`).
+  (`:783-812`, `:951-960`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -576,6 +576,28 @@ trash and restore need it. `writeTaskComment` (`commands/tasks-comment.ts`),
 which both entries call, answers a trashed task `NOT_FOUND` in the same bytes
 as a missing one and writes nothing (Nathan's ruling, OWNER-CARD section 6;
 `tests/acceptance/comment-rulings.test.ts`).
+
+### Team conversations (C71-D)
+
+A direct message is a `task_comment` record with the audience `direct`,
+anchored by its `conversation` field to a `team_conversation` record instead of
+a task. No other table holds its body (RA-12). `chat.send_direct` writes it
+through the same comment writer as `task.comment` (`writeComment`) under
+`chat:comment`, the catalogue key the agency's members hold, and a delegated
+agent never: the surface row is `agent: never`. A person with no membership is
+refused at the door, and a teammate who is not staff here (a client's person,
+the sender, another business's person) is `NOT_FOUND`, so a client is never a
+member. The audit event records that a message was sent and never what it says.
+
+Within a conversation, its members only. Every conversation read
+(`chat.conversations`, `chat.messages`) filters by the reader's own member row
+inside the query (`core-records/src/team/conversations.ts`), so the owner and
+administrators read only their own. A member reads nothing written before they
+joined or after they left. The read marker (`chat.mark_read`) is the reader's
+own member row, self-scoped like `inbox.seen`, and not audited (CS-7.25). The
+client projection refuses a `direct` comment, as it refuses an internal note.
+`tests/api/c71-d-direct-messages.test.ts` and `tests/api/c71-d-isolation.test.ts`
+hold it.
 
 ## preset.plan
 

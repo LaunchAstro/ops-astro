@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What `s0-5-client-lock.test.ts` runs: the task-content commands read from
-// the catalogue, each fixture's marker or the rows that name its task, the
-// client change through the CLI and the API, and the interleaving of a
-// content write with a client change under the task's row lock.
+// What `s0-5-client-lock.test.ts` runs: the catalogue's task-content commands, each fixture's
+// marker, the client change by CLI and API, and a content write racing it under the row lock.
 
 import { randomUUID } from 'node:crypto';
 import {

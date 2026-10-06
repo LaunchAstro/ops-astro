@@ -46,7 +46,13 @@ import {
   wayfinderFacts,
   isUuid,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-records/src/index.ts';
+import type {
+  TenantQuery,
+  Session,
+  Scope,
+  ScopeRequest,
+  EntryPoint,
+} from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
@@ -545,6 +551,51 @@ const SCOPE_OF: Readonly<
 };
 
 /**
+ * The grant asked at its own scope and, refused there, at the covering map's
+ * (W12): the first refusal stands when that fails too. `viaMap` is the map
+ * whose grant admitted it, with the refusal that stands if the target leaves it.
+ */
+async function askCovered(
+  tx: TenantQuery,
+  session: Session,
+  request: UncheckedRequest,
+  declaration: CommandDeclaration,
+  asked: ScopeRequest,
+): Promise<Refused | { readonly viaMap?: { readonly id: string; readonly refusal: Refused } }> {
+  const authorised = await checkAuthority(tx, subjectsOf(session), asked);
+  if (authorised.ok) return {};
+  const map = await coveringMap(tx, request, declaration);
+  const again =
+    map === undefined
+      ? authorised
+      : await checkAuthority(tx, subjectsOf(session), {
+          ...asked,
+          scope: { kind: 'record', id: map },
+        });
+  if (map === undefined || !again.ok) return refused(authorised.refusal);
+  return { viaMap: { id: map, refusal: refused(authorised.refusal) } };
+}
+
+/**
+ * A command on this task asks its write grant again under the locks its
+ * handler has taken since `prepareCommand` asked (#443): the refusal, or nothing.
+ */
+export async function askedAgain(
+  tx: TenantQuery,
+  context: CommandContext,
+  recordId: string,
+): Promise<Refused | undefined> {
+  const { declaration } = context;
+  const request = { command: declaration.name, recordId };
+  const still = await askCovered(tx, context.session, request, declaration, {
+    collection: declaration.collection,
+    action: declaration.action,
+    scope: { kind: 'record', id: recordId },
+  });
+  return 'refusal' in still ? still : undefined;
+}
+
+/**
  * The map whose record-scoped grant also covers this request: the map a
  * targeted ticket belongs to, or the map a new task is filed under. Only a
  * task collection command, and never the record itself (its own scope was
@@ -612,32 +663,19 @@ export async function prepareCommand(
   // The map whose grant admitted this, and the refusal that stands if the
   // target has left it by the time it is locked.
   let viaMap: { readonly id: string; readonly refusal: Refused } | undefined;
+  let asked: ScopeRequest | undefined;
   // A `self` row asks no grant: its handler reaches the caller's own rows only.
   if (declaration.authorisedOn !== 'self') {
     await lockAccess(tx, ACCESS_LOCKERS.test(declaration.name) ? undefined : 'shared');
-    const asked = {
+    asked = {
       // From the declaration, never written in here: see `CommandDeclaration`.
       collection: declaration.collection,
       action: declaration.action,
       scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
     };
-    let authorised = await checkAuthority(tx, subjectsOf(session), asked);
-    // A grant scoped to a map covers the map and its tickets (W12): asked again
-    // at the map's scope, and the first refusal stands when that fails too.
-    if (!authorised.ok) {
-      const map = await coveringMap(tx, request, declaration);
-      if (map !== undefined) {
-        const again = await checkAuthority(tx, subjectsOf(session), {
-          ...asked,
-          scope: { kind: 'record', id: map },
-        });
-        if (again.ok) {
-          viaMap = { id: map, refusal: refused(authorised.refusal) };
-          authorised = again;
-        }
-      }
-    }
-    if (!authorised.ok) return refused(authorised.refusal);
+    const authorised = await askCovered(tx, session, request, declaration, asked);
+    if ('refusal' in authorised) return authorised;
+    viaMap = authorised.viaMap;
   }
   // The one step-up (C59), inside the grant check and straight after it: only
   // a key in the money set, and the switch when switching it off, is asked, so
@@ -685,14 +723,12 @@ export async function prepareCommand(
     if (viaMap !== undefined && (await coveringMap(tx, request, declaration)) !== viaMap.id) {
       return viaMap.refusal;
     }
-    // OWNER-3 A: authority read before the lock wait is judged again after it, as a replay is;
-    // a refused body is answered after the revision (CQ-6); a revocation waits on the access lock (expiry: #1020).
-    if (declaration.targetLock === 'command' && !('refusal' in parsed)) {
-      const again = await prepareCommand(tx, session, entryPoint, request, {
-        ...declaration,
-        targetsExistingRecord: false,
-      });
-      if ('refusal' in again) return again;
+    // The grant was asked before the wait for the row: asked again, map and
+    // all, now it is held, so a revocation that committed meanwhile refuses
+    // the write (#443).
+    if (asked !== undefined && declaration.targetLock === 'command') {
+      const still = await askCovered(tx, session, request, declaration, asked);
+      if ('refusal' in still) return still;
     }
     // A comment on a trashed task is answered as one on a missing task, before
     // the revision: the trash bumped it, and naming the current revision would

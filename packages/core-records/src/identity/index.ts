@@ -15,6 +15,7 @@ export { admitQuota, createQuotaGate, holdQuotaSlot, pageSizes } from './quota.t
 export { QUOTAS, withQuotaScope } from './quota.ts';
 export type { QuotaLimits, QuotaOptions, QuotaRefusal } from './quota.ts';
 export {
+  ENDED_FIXES,
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
   standingOf,
@@ -50,6 +51,7 @@ export {
   endOwnSession,
   listSeenSessions,
   openResetWindow,
+  sessionEnded,
   settleResetWindow,
   waitForNextSecond,
   type SeenSession,

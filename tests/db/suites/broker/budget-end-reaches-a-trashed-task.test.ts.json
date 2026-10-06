@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "ending a budget-stopped run on a trashed task releases its hold, and a trashed task takes no top-up"
+}

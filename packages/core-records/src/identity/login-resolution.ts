@@ -88,7 +88,7 @@ export const NO_MEMBERSHIP_FIXES = [
 ] as const;
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
-const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
+export const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
 const SECOND_FACTOR_FIXES = [
   'enter the code from your authenticator app to finish signing in',
 ] as const;
