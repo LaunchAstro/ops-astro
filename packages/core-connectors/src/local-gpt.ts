@@ -34,6 +34,9 @@ export const LOCAL_GPT_PATH = '/v1/local-gpt/complete';
 /** The model Codex runs on the owner's laptop, unless the owner approves another; the runner's gate holds that. */
 export const LOCAL_GPT_DEFAULT_MODEL = 'gpt-6.1-sol';
 
+/** The most bytes the runner takes in one request body; a larger one is refused 413. */
+export const LOCAL_GPT_BODY_LIMIT: number = 64 * 1024;
+
 /** The runner's refusals, each answered with nothing kept. */
 export const LOCAL_GPT_NOTHING_HAPPENED: readonly string[] = [
   'LOCAL_CAP_REACHED',

@@ -13,7 +13,7 @@
 //    nothing, a reply already kept included. In the same transaction the
 //    conversation's page task is held for share and checked (no client, in
 //    the caller's grants), and the bounded earlier messages are read
-//    (`conversation-context.ts`).
+//    (`conversation-context.ts`); a message once refused there stays refused.
 // 2. Its words, with the page's id and title and the earlier messages, go to
 //    AW-01's broker on the conversation seam
 //    (`callModelInConversation`): the owner in their own session, a local
@@ -162,7 +162,7 @@ async function questionOf(
     },
     body: found.body,
     reply: await replyTo(tx, asked),
-    context: await contextOf(tx, session, asked, found.scope_record_id),
+    context: await contextOf(tx, session, { ...asked, body: found.body }, found.scope_record_id),
   };
 }
 

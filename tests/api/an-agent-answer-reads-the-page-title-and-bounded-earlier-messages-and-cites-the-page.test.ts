@@ -276,7 +276,12 @@ describe.skipIf(serverUrl === undefined)('an agent answer’s context and cites'
       business,
       member.presented,
       async (tx, session) =>
-        await contextOf(tx, session, { conversationId, messageId: String(asked?.id) }, foreign),
+        await contextOf(
+          tx,
+          session,
+          { conversationId, messageId: String(asked?.id), body: 'mine' },
+          foreign,
+        ),
     );
     expect(context).toEqual({ refused: true, fields: [], cites: [] });
     expect(JSON.stringify(model.provider.seen)).not.toContain(foreignTitle);
