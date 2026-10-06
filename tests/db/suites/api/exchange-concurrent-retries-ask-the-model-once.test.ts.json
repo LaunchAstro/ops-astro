@@ -1,5 +1,5 @@
 {
-  "kind": "invariant",
+  "kind": "conformance",
   "isolation": false,
-  "why": "two requests for one message's answer while the first is with the model ask it once, and both get the first's outcome"
+  "why": "a retry while the answer is with the model, or whose read came back after it was kept, asks the model once"
 }

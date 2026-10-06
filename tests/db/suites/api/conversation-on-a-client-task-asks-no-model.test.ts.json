@@ -1,5 +1,5 @@
 {
-  "kind": "invariant",
+  "kind": "conformance",
   "isolation": false,
-  "why": "a conversation opened on a client's task keeps the message and asks no model, nothing sent and no reply kept (owner line 72)"
+  "why": "a conversation on a client's task, or one whose task read was revoked, asks no model"
 }

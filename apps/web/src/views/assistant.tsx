@@ -26,7 +26,9 @@
 // the tab says so in plain words: the server's own, for a refusal.
 //
 // A started tab links to the conversation's own address (C36), where it stays
-// after it is taken out of the tab row.
+// after it is taken out of the tab row. The history reopens it as a tab, and
+// started tabs come back after a reload, read again (`assistant/kept.ts`); a
+// tab with a question out says it is answering.
 //
 // AW-04: the allowance line sits above the transcript from the start (`allowance-line.tsx`); a
 // reply's plan is a card whose one click is `task.accept_plan` (`assistant/plans.ts`); the Agent
@@ -37,6 +39,7 @@ import { AssistantPanel, type AssistantPage } from '@launchastro/ui';
 import {
   addPage,
   ask,
+  asking,
   chooseModel,
   fresh,
   rename,
@@ -48,7 +51,8 @@ import {
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
 import { useAsks } from '../assistant/asks.ts';
-import { useStore, type Store } from '../assistant/store.ts';
+import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
+import type { Store } from '../assistant/store.ts';
 import { useModels } from '../assistant/models.ts';
 import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
 import type {
@@ -185,11 +189,13 @@ function useWrites(
   readonly chooseModel: (key: string, model: string) => void;
 } {
   const written = (key: string, write: (conversationId: string) => Sent): void => {
-    const turn = sender.starts.get(key)?.then(async (id) => {
+    // A tab kept or reopened was started elsewhere: its conversation is known.
+    const known = Promise.resolve(store.chat(key)?.conversationId ?? null);
+    const turn = (sender.starts.get(key) ?? known).then(async (id) => {
       if (id !== null) await sender.report(key, write(id));
       return id;
     });
-    if (turn !== undefined) sender.starts.set(key, turn);
+    sender.starts.set(key, turn);
   };
   return {
     rename: (key, title) => {
@@ -219,8 +225,21 @@ function allowanceFor(client: OperationsClient, chat: Chat | undefined): ReactEl
   return <AllowanceLine client={client} conversationId={conversationId} settled={settled} />;
 }
 
+/** The send, with the tab answering while its question is out; a kept tab's read lands first. */
+const answering =
+  (store: KeptStore, send: (key: string, body: string) => Promise<void>) =>
+  async (key: string, body: string): Promise<void> => {
+    store.update((current) => asking(current, key, 1));
+    try {
+      await store.settled(key);
+      await send(key, body);
+    } finally {
+      store.update((current) => asking(current, key, -1));
+    }
+  };
+
 export function AssistantView(props: AssistantViewProps): ReactElement {
-  const store = useStore();
+  const store = useKeptStore(props.client, props.grantKey);
   const { state, update } = store;
   useEffect(() => {
     const made = props.entry === null ? null : entryFor(props.entry);
@@ -248,6 +267,8 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
       citation={state.citation}
       allowance={allowanceFor(props.client, chat)}
       draft={state.draft}
+      answering={(state.answering[state.selected] ?? 0) > 0}
+      history={useHistoryList(props.client, store)}
       onSelect={(key) => {
         update((current) => select(current, key));
       }}
@@ -260,7 +281,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
       }}
       onModel={writes.chooseModel}
       onAddPage={writes.addPage}
-      onSend={sender.send}
+      onSend={answering(store, sender.send)}
       onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}
       onClose={props.onClose}
     />

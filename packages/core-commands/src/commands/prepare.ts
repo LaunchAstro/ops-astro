@@ -415,6 +415,20 @@ const GATE_TASK: ScopeLookup = [
 ];
 
 const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
+  // C80: the party a request names is its scope as named; an approval's is
+  // the party of the correction it names, read in this business only, so a
+  // correction elsewhere falls back to the business like any unknown target.
+  'live_correction.request': ['partyId', (_tx, id) => Promise.resolve({ kind: 'party', id })],
+  'live_correction.decide': [
+    'correctionId',
+    (tx, id) =>
+      firstRow(
+        tx,
+        `select 'party' as kind, party_id as id from public.live_corrections
+          where business_id = $1 and id = $2`,
+        id,
+      ),
+  ],
   'grant.revoke': [
     'grantId',
     (tx, id) =>
