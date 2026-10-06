@@ -7,64 +7,14 @@
 // refusal; a runner key or planted canary never leaves the runner.
 
 import { setTimeout as sleep } from 'node:timers/promises';
-import { afterEach, describe, expect, it } from 'vitest';
-import { createRunner, type Runner } from '../../apps/local-agent/runner.ts';
+import { describe, expect, it } from 'vitest';
+import { createRunner } from '../../apps/local-agent/runner.ts';
 import { readSettings } from '../../apps/local-agent/settings.ts';
-import { LOCAL_GPT_COMPOSE, LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
-import { CANARY, makeWorld, RUNNER_KEY, type World } from './world.ts';
+import { LOCAL_GPT_COMPOSE } from '../../packages/core-connectors/src/index.ts';
+import { runnerWorld } from './runner-world.ts';
+import { CANARY, makeWorld, RUNNER_KEY } from './world.ts';
 
-const logged: string[] = [];
-const opened: Runner[] = [];
-let world: World | undefined;
-afterEach(async () => {
-  logged.length = 0;
-  await Promise.all(opened.splice(0).map(async (runner) => await runner.close()));
-  world?.remove();
-  world = undefined;
-});
-
-async function start(
-  overrides: Readonly<Record<string, string | undefined>> = {},
-  w: World = makeWorld(),
-): Promise<{ w: World; r: Runner }> {
-  world = w;
-  const read = readSettings({ ...w.env, ...overrides }, w.userHome);
-  if (!read.ok) throw new Error(`settings refused: ${read.code}`);
-  const r = await createRunner(read.settings, (line) => logged.push(line));
-  opened.push(r);
-  return { w, r };
-}
-
-interface Reply {
-  readonly status: number;
-  readonly body: Record<string, unknown> | undefined;
-  readonly raw: string;
-}
-
-async function call(
-  r: Runner,
-  body: unknown,
-  init: { key?: string | null; path?: string; method?: string; signal?: AbortSignal } = {},
-): Promise<Reply> {
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
-  const key = init.key === undefined ? RUNNER_KEY : init.key;
-  if (key !== null) headers['authorization'] = `Bearer ${key}`;
-  const method = init.method ?? 'POST';
-  const response = await fetch(`${r.origin}${init.path ?? LOCAL_GPT_PATH}`, {
-    method,
-    headers,
-    ...(init.signal === undefined ? {} : { signal: init.signal }),
-    ...(method === 'GET' ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
-  });
-  const raw = await response.text();
-  let parsed: Record<string, unknown> | undefined;
-  try {
-    parsed = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    parsed = undefined;
-  }
-  return { status: response.status, body: parsed, raw };
-}
+const { logged, opened, start, call } = runnerWorld();
 
 const message = { fields: { message: 'What is on the board today?' } };
 const used = (tokens: number): string =>
@@ -83,9 +33,11 @@ describe('a message answered through codex exec', () => {
       code: null,
     });
     expect(w.calls()[0]?.stdin).toBe('What is on the board today?');
-    expect(w.ledger()).toEqual([
-      { at: expect.any(String) as string, model: 'gpt-6.1-sol', inputTokens: 120, outputTokens: 7 },
-    ]);
+    // Charged as unknown before codex runs, then what it used, both under the call's id.
+    const [charged, used_] = w.ledger();
+    expect(charged).toMatchObject({ model: 'gpt-6.1-sol', inputTokens: 50_000, outputTokens: 0 });
+    expect(used_).toMatchObject({ id: charged?.['id'], inputTokens: 120, outputTokens: 7 });
+    expect(w.ledger()).toHaveLength(2);
   });
 
   it("gives up before custody's own timeout for the call", async () => {
@@ -103,7 +55,7 @@ describe('a call that does not answer', () => {
     const { w, r } = await start();
     w.knobs(knobs);
     expect((await call(r, message)).body).toMatchObject({ text: '', code: 'LOCAL_GPT_FAILED' });
-    expect(w.ledger()[0]).toMatchObject({ inputTokens: input });
+    expect(w.ledger().at(-1)).toMatchObject({ inputTokens: input });
   });
 
   it('answers the plan at its usage limit LOCAL_PLAN_LIMIT, in plain words', async () => {
@@ -128,7 +80,7 @@ describe('a call that does not answer', () => {
     const lone = await createRunner({ ...read.settings, timeoutMs: 200 }, () => null, 0);
     opened.push(lone);
     expect((await call(lone, message)).body).toMatchObject({ code: 'LOCAL_GPT_FAILED' });
-    expect(w.ledger()[0]).toMatchObject({ inputTokens: 50_000, outputTokens: 0 });
+    expect(w.ledger().at(-1)).toMatchObject({ inputTokens: 50_000, outputTokens: 0 });
   });
 });
 
@@ -156,6 +108,15 @@ describe('the cap stops a run', () => {
     expect(w.calls()).toHaveLength(1);
   });
 
+  it("replaces a call's unknown charge with what it used, never adds the two", async () => {
+    const { w, r } = await start();
+    w.write('ledger.jsonl', used(1_940_000));
+    w.knobs({ usage: { input_tokens: 15_000, output_tokens: 0 } });
+    expect((await call(r, message)).body?.['code']).toBeNull();
+    // 1,955,000 used, 45,000 left: added, the 50,000 charge would have reached the cap.
+    expect((await call(r, message)).body?.['code']).toBeNull();
+  });
+
   it.each([
     ['a line that is not JSON', 'not json\n'],
     ['a row with no token counts', `${JSON.stringify({ costUsd: 0 })}\n`],
@@ -167,14 +128,14 @@ describe('the cap stops a run', () => {
     expect(w.calls()).toHaveLength(0);
   });
 
-  it('spawns nothing after a ledger row could not be written', async () => {
+  it('spawns nothing once a ledger row cannot be written', async () => {
     const { w, r } = await start();
     w.write('ledger.jsonl', '');
     const { chmodSync } = await import('node:fs');
     chmodSync(`${w.agentHome}/ledger.jsonl`, 0o400);
     expect((await call(r, message)).body?.['code']).toBe('LOCAL_GPT_FAILED');
     expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
-    expect(w.calls()).toHaveLength(1);
+    expect(w.calls()).toHaveLength(0);
   });
 });
 

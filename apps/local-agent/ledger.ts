@@ -9,6 +9,11 @@ import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface LedgerRow {
+  /**
+   * The call's id. A call's first row is written before codex is spawned and
+   * charged as unknown; its last row is what it used. Rows with one id count once.
+   */
+  readonly id?: string;
   readonly at: string;
   readonly model: string;
   readonly inputTokens: number;
@@ -30,6 +35,7 @@ export function ledgerTotal(home: string, capTokens: number): number {
     return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 0 : capTokens;
   }
   let total = 0;
+  const calls = new Map<string, number>();
   for (const line of text.split('\n')) {
     if (line.trim() === '') continue;
     let row: unknown;
@@ -39,10 +45,12 @@ export function ledgerTotal(home: string, capTokens: number): number {
       return capTokens;
     }
     if (row === null || typeof row !== 'object') return capTokens;
-    const { inputTokens, outputTokens } = row as Record<string, unknown>;
+    const { id, inputTokens, outputTokens } = row as Record<string, unknown>;
     if (!whole(inputTokens) || !whole(outputTokens)) return capTokens;
-    total += inputTokens + outputTokens;
+    if (typeof id === 'string') calls.set(id, inputTokens + outputTokens);
+    else total += inputTokens + outputTokens;
   }
+  for (const tokens of calls.values()) total += tokens;
   return total;
 }
 
