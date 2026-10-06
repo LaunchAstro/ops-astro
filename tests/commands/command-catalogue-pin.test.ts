@@ -220,6 +220,13 @@ vi.mock('../../packages/core-commands/src/commands/connector-repair.ts', async (
   ...(await original<object>()),
   startConnectorRepair: recorder('startConnectorRepair'),
 }));
+vi.mock('../../packages/core-commands/src/commands/mandates.ts', async (original) => ({
+  ...(await original<object>()),
+  fileMandate: recorder('fileMandate'),
+  revokeStandingMandate: recorder('revokeStandingMandate'),
+  promoteClass: recorder('promoteClass'),
+  demoteClass: recorder('demoteClass'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -445,6 +452,10 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'secret.clear': ['secretId'],
   'secret.set': ['clientId'],
   'connector.repair': ['connectionId'],
+  'mandate.file': ['clientId'],
+  'mandate.revoke': ['mandateId'],
+  'graduation.promote': ['classId'],
+  'graduation.demote': ['classId'],
   'preference.save': [],
   'preference.dismiss_tip': [],
   'session.end': [],
@@ -552,6 +563,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'definition.release',
   'delegation.revoke',
   'gate.pending',
+  'graduation.demote',
+  'graduation.promote',
   'grant.revoke',
   'harness.read',
   'inbox.count',
@@ -567,6 +580,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'live_correction.decide',
   'live_correction.read',
   'live_correction.request',
+  'mandate.file',
+  'mandate.revoke',
   'map.chart',
   'map.frontier',
   'map.view',
@@ -838,6 +853,10 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'secret.clear', operationId: 'op', secretId: 's' },
   { command: 'access.reset_factor', operationId: 'op', holderId: 'person' },
   { command: 'connector.repair', operationId: 'op', connectionId: 'c' },
+  { command: 'mandate.file', operationId: 'op', clientId: 'c' },
+  { command: 'mandate.revoke', operationId: 'op', mandateId: 'm' },
+  { command: 'graduation.promote', operationId: 'op', classId: 'g' },
+  { command: 'graduation.demote', operationId: 'op', classId: 'g' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -1074,6 +1093,10 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'secret.clear': ['clearCustodySecret', 'request'],
   'access.reset_factor': ['resetFactorOnSettings', 'request'],
   'connector.repair': ['startConnectorRepair', 'request'],
+  'mandate.file': ['fileMandate', 'request'],
+  'mandate.revoke': ['revokeStandingMandate', 'request'],
+  'graduation.promote': ['promoteClass', 'request'],
+  'graduation.demote': ['demoteClass', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -1181,7 +1204,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and thirty from an expected revision', () => {
+  it('exempts the same one hundred and thirty-four from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

@@ -10,8 +10,9 @@
 // click: tasks across three made-up clients in each state, an untitled task,
 // a worker's proposal waiting for approval, finished work, a run parked at
 // its spending cap, two runs whose outcome nobody knows yet, a helper the
-// agent handed part of its work to, and Ada's question to the agent with its
-// reply kept, for the side panel (`click-through-work.mjs` makes them).
+// agent handed part of its work to, Ada's question to the agent with its
+// reply kept, for the side panel, and a Wayfinder map with its tickets,
+// frontier and fog (`click-through-work.mjs` makes them).
 //
 // This file decides whether it may write at all: it refuses a database the
 // made-up check does not admit, one DATABASE_URL does not reach, and one
