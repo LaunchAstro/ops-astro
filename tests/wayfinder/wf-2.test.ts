@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { addClient } from '../commands/fixture.ts';
+import { hold, waiterOf } from '../support/lock-wait-race.ts';
 import {
   codeOf,
   must,
@@ -102,7 +103,7 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     if (fog.length > 0) {
       must(await w.as(owner, { command: 'map.revise', ...(await at(map)), addFog: fog }), 'fog');
     }
-    return { map, tickets: { a: ticket.id } as Record<string, string> };
+    return { map, client, tickets: { a: ticket.id } as Record<string, string> };
   };
 
   beforeAll(async () => {
@@ -605,5 +606,191 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
       clean(answer);
     }
     expect((await frontierOf(owner, mapB.map)).frontier.map((t) => t.id)).toStrictEqual([ticketB]);
+  });
+
+  /** The ticket's row as the closing commands leave it. */
+  const stateOf = async (id: string) =>
+    (
+      await w.db.admin.execute<{ readonly state: string | null; readonly gist: string | null }>(
+        `select data->>'state' as state, data->>'gist' as gist from public.records
+          where business_id = $1 and id = $2`,
+        [w.business, id],
+      )
+    )[0];
+
+  it('WF-2 resolve and out of scope are refused while an approval gate on the ticket is open', async () => {
+    const { tickets } = await charted(owner, {
+      title: 'gated map',
+      tickets: [{ ref: 'r', title: 'gated research', type: 'research' }],
+    });
+    const r = tickets['r'] as string;
+    // A proposal on the ticket raises its approval gate, pending until decided.
+    must(
+      await w.as(owner, {
+        command: 'task.propose',
+        ...(await at(r)),
+        purpose: `draft_${randomUUID().slice(0, 8)}`,
+        maximumMinor: 3_000,
+        currency: 'AUD',
+        payload: { instruction: 'draft a reply' },
+        step: { kind: 'compose', payload: {} },
+      }),
+      'task.propose',
+    );
+    const revision = await w.revisionOf(r);
+    const before = await stateOf(r);
+    expect(codeOf(await resolve(writer, r))).toBe('GATE_PENDING');
+    expect(
+      codeOf(await w.as(owner, { command: 'task.close_out_of_scope', ...(await at(r)) })),
+    ).toBe('GATE_PENDING');
+    expect(await w.revisionOf(r)).toBe(revision);
+    expect(await stateOf(r)).toStrictEqual(before);
+  });
+
+  it('WF-2 claim takes only a live ticket of a map that no one holds', async () => {
+    const { map, tickets } = await charted(owner, {
+      title: 'held claim map',
+      tickets: [
+        { ref: 'a', title: 'an agent holds this', type: 'research' },
+        { ref: 't', title: 'trashed', type: 'research' },
+      ],
+    });
+    const [held, trashed] = [tickets['a'] as string, tickets['t'] as string];
+    // An agent assignee, as task.assign leaves it: no person assignee, no delegate.
+    await w.db.admin.execute(
+      `update public.records set data = data || jsonb_build_object('agent', $3::text)
+        where business_id = $1 and id = $2`,
+      [w.business, held, randomUUID()],
+    );
+    expect(codeOf(await claim(teammate, held))).toBe('TRANSITION_NOT_PERMITTED');
+    const assignee = await w.db.admin.execute<{ readonly assignee: string | null }>(
+      `select data->>'assignee' as assignee from public.records where business_id = $1 and id = $2`,
+      [w.business, held],
+    );
+    expect(assignee[0]?.assignee).toBeNull();
+    // A trashed ticket is answered as one that is not there.
+    must(await w.as(owner, { command: 'task.trash', ...(await at(trashed)) }), 'trash');
+    expect(codeOf(await claim(teammate, trashed))).toBe('NOT_FOUND');
+    // A map, and a task on no map, are not tickets to claim.
+    const loose = (await w.create(owner, { title: 'on no map' })).id;
+    for (const id of [map, loose]) {
+      const revision = await w.revisionOf(id);
+      expect(codeOf(await claim(teammate, id))).toBe('TRANSITION_NOT_PERMITTED');
+      expect(await w.revisionOf(id)).toBe(revision);
+    }
+  });
+
+  it("WF-2 completing a grilling or prototype ticket is the map owner's alone", async () => {
+    const { tickets } = await charted(owner, {
+      title: 'complete map',
+      tickets: [
+        { ref: 'g', title: 'which way', type: 'grilling' },
+        { ref: 'p', title: 'try it', type: 'prototype' },
+      ],
+    });
+    const complete = async (who: Member, id: string) =>
+      await w.as(who, { command: 'task.complete', ...(await at(id)) });
+    for (const ref of ['g', 'p']) {
+      const id = tickets[ref] as string;
+      const revision = await w.revisionOf(id);
+      const noDecide = await complete(writer, id);
+      expect(codeOf(noDecide)).toBe('SCOPE_NOT_GRANTED');
+      expect(JSON.stringify(noDecide)).toContain('task:decide');
+      const notOwner = await complete(teammate, id);
+      expect(codeOf(notOwner)).toBe('SCOPE_NOT_GRANTED');
+      expect(JSON.stringify(notOwner)).toContain('map owner');
+      expect(await w.revisionOf(id)).toBe(revision);
+    }
+    expect(codeOf(await complete(owner, tickets['g'] as string))).toBe('applied');
+  });
+
+  it("WF-2 closing a grilling or prototype ticket out of scope is the map owner's alone", async () => {
+    const { tickets } = await charted(owner, {
+      title: 'owner scope map',
+      tickets: [
+        { ref: 'g', title: 'which way', type: 'grilling' },
+        { ref: 'p', title: 'try it', type: 'prototype' },
+        { ref: 'r', title: 'look it up', type: 'research' },
+      ],
+    });
+    const close = async (who: Member, id: string) =>
+      await w.as(who, { command: 'task.close_out_of_scope', ...(await at(id)) });
+    for (const ref of ['g', 'p']) {
+      const id = tickets[ref] as string;
+      const revision = await w.revisionOf(id);
+      const refused = await close(teammate, id);
+      expect(codeOf(refused)).toBe('SCOPE_NOT_GRANTED');
+      expect(JSON.stringify(refused)).toContain('map owner');
+      expect(await w.revisionOf(id)).toBe(revision);
+    }
+    // Any other ticket type stays the decide holder's.
+    expect(codeOf(await close(teammate, tickets['r'] as string))).toBe('applied');
+    expect(codeOf(await close(owner, tickets['g'] as string))).toBe('applied');
+  });
+
+  it('WF-2 a blocker the caller cannot read, or a map, is not found and links nothing', async () => {
+    const scoped = await scopedMap('blocker reach map', 'A1');
+    const a1 = scoped.tickets['a'] as string;
+    // A top-level task of the same client, outside the one map the caller holds.
+    const loose = (await w.create(owner, { title: 'same client, no map' })).id;
+    must(
+      await w.as(owner, {
+        command: 'task.set_party',
+        ...(await at(loose)),
+        fields: { client: scoped.client },
+      }),
+      'set_party',
+    );
+    const onMap = await w.member('on-blocker-map', ['read', 'write'], {
+      kind: 'record',
+      id: scoped.map,
+    });
+    // A map filed under the map: same parent and client as its tickets.
+    const nested = (
+      await w.create(owner, { title: 'nested map' }, { taskType: 'map', parentId: scoped.map })
+    ).id;
+    const links = async () =>
+      (
+        await w.db.admin.execute<{ readonly n: string }>(
+          `select count(*)::text as n from public.record_links
+            where business_id = $1 and link_type = 'blocks' and to_record_id = any($2::uuid[])`,
+          [w.business, [scoped.map, a1]],
+        )
+      )[0]?.n;
+    expect(codeOf(await block(onMap, scoped.map, [loose]))).toBe('NOT_FOUND');
+    expect(codeOf(await block(owner, a1, [nested]))).toBe('NOT_FOUND');
+    expect(await links()).toBe('0');
+  });
+
+  it('WF-2 out of scope waits for a map row another writer holds, and both commit', async () => {
+    const { map, tickets } = await charted(owner, {
+      title: 'held map',
+      tickets: [{ ref: 'a', title: 'not now', type: 'task' }],
+    });
+    const body = { command: 'task.close_out_of_scope', ...(await at(tickets['a'] as string)) };
+    // Another writer holds the map row as an update of it does, and writes the
+    // map once the close is seen waiting on it. The holder looks for a deadlock
+    // first, so a cycle fails its write rather than the close's first attempt,
+    // which the envelope retries once.
+    const held = await hold(
+      w.db,
+      async (execute) => {
+        await execute(`set local deadlock_timeout = '10ms'`);
+        await execute(`select set_config('app.business_id', $1, true)`, [w.business]);
+        await execute(
+          `select 1 from public.records where business_id = $1 and id = $2 for no key update`,
+          [w.business, map],
+        );
+      },
+      async (execute) =>
+        await execute(`update public.records set data = data where business_id = $1 and id = $2`, [
+          w.business,
+          map,
+        ]),
+    );
+    const closing = w.asOnSecond(owner, body).then(codeOf, String);
+    await waiterOf(w.db, held);
+    const written = await held.letGo().then(() => 'committed', String);
+    expect([written, await closing]).toStrictEqual(['committed', 'applied']);
   });
 });
