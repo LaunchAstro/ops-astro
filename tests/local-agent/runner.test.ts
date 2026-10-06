@@ -84,6 +84,7 @@ describe('a call that does not answer', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one case per way a call does not answer
 describe('the cap stops a run', () => {
   it('refuses with under 20,000 tokens left, in plain words, and never spawns codex', async () => {
     const { w, r } = await start();
