@@ -30,12 +30,16 @@ process.stdin.on('end', () => {
         { type: 'thread.started', thread_id: 't-1' },
         { type: 'turn.started' },
         ...(knobs.before ?? []),
-        { type: 'item.completed', item: { id: 'i-1', type: 'agent_message', text: knobs.text ?? 'Local reply.' } },
+        {
+          type: 'item.completed',
+          item: { id: 'i-1', type: 'agent_message', text: knobs.text ?? 'Local reply.' },
+        },
         knobs.failed
           ? { type: 'turn.failed', error: { message: 'failed' } }
           : { type: 'turn.completed', usage: { input_tokens: 120, output_tokens: 7 } },
       ];
-      if (knobs.failed) lines.push({ type: 'turn.completed', usage: { input_tokens: 90, output_tokens: 0 } });
+      if (knobs.failed)
+        lines.push({ type: 'turn.completed', usage: { input_tokens: 90, output_tokens: 0 } });
       for (const line of lines) process.stdout.write(`${JSON.stringify(line)}\n`);
     }
     process.exit(knobs.exit ?? 0);

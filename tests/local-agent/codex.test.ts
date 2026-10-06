@@ -40,6 +40,7 @@ const completed = line({ type: 'turn.completed', usage: { input_tokens: 5, outpu
 const message = (text: string): string =>
   line({ type: 'item.completed', item: { id: 'i', type: 'agent_message', text } });
 
+// eslint-disable-next-line max-lines-per-function -- one call's prompt, arguments and environment
 describe('a message answered through codex exec', () => {
   it('answers with the agent message and the tokens the turn used', async () => {
     const { w, settings } = setUp({ text: 'Hello from GPT.' });

@@ -157,7 +157,6 @@ describe.skipIf(serverUrl === undefined)('AW-03 the exchange', () => {
     }
   });
 
-  // eslint-disable-next-line max-lines-per-function -- every crossing against one owned message
   it('owner line 72: a conversation opened on a client’s task asks no model and keeps no reply', async () => {
     const task = await c.createTask('a task for a client');
     const made = await c.asPerson('client.create', { name: `Client ${randomUUID()}` });
@@ -180,6 +179,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 the exchange', () => {
     expect(await agentRows(String(detail(opened)['conversationId']))).toBe(0);
   });
 
+  // eslint-disable-next-line max-lines-per-function -- every crossing against one owned message
   it('AW-03 exchange isolation: another business, another client, another person and the owner’s agent get no answer, and nothing is sent', async () => {
     const opened = await w.as(w.owner, 'conversation.start', { body: `${canary} private` });
     const conversationId = String(detail(opened)['conversationId']);

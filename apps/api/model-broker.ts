@@ -167,6 +167,17 @@ function offMachineProblem(
     : undefined;
 }
 
+/** The routes setting's entries, each a route or undefined; undefined when it is not a list. */
+function routesOf(
+  text: string,
+  provider: AgentProvider,
+): readonly (BrokerRoute | undefined)[] | undefined {
+  const entries = parsedJson(text)?.value;
+  return Array.isArray(entries)
+    ? entries.map((entry: unknown) => routeOf(entry, provider))
+    : undefined;
+}
+
 const LOCAL_WITHOUT_BROKER = `${AGENT_PROVIDER_SETTING} local-gpt needs the credential broker's four settings`;
 
 /** The install's provider, or why the setting is refused (never echoing its value). */
@@ -209,11 +220,7 @@ export function brokerSettings(
     );
   }
 
-  const routesJson = parsedJson(value('MODEL_BROKER_ROUTES'));
-  const entries = routesJson?.value;
-  const routes = Array.isArray(entries)
-    ? entries.map((entry: unknown) => routeOf(entry, provider))
-    : undefined;
+  const routes = routesOf(value('MODEL_BROKER_ROUTES'), provider);
   if (routes === undefined || routes.length === 0 || routes.includes(undefined)) {
     return invalid(
       'MODEL_BROKER_ROUTES is not a list of routes, each exactly { key, reach, provider, ' +
