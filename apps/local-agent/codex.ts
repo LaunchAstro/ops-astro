@@ -60,6 +60,8 @@ export interface CodexResult {
   readonly outputTokens: number;
   /** The turn failed, or the model reached for a tool; its tokens still count. */
   readonly failed: boolean;
+  /** Codex said the plan is at its usage limit: the owner's stop, not a fault. */
+  readonly limited: boolean;
 }
 
 const EVENTS: ReadonlySet<string> = new Set([
@@ -86,6 +88,19 @@ interface Reading {
   text: string | undefined;
   usage: { readonly input: number; readonly output: number } | undefined;
   failed: boolean;
+  limited: boolean;
+  /** The model gave something back: work was done, so an unreadable end is never nothing. */
+  started: boolean;
+}
+
+/** Codex's own words for a plan at its limit; they only choose the refusal, never let a call through. */
+const USAGE_LIMIT = /usage limit/iu;
+
+/** The message of an `error` or `turn.failed` event, if it has one. */
+function failureMessage(event: Record<string, unknown>): string {
+  const direct = event['message'];
+  const nested = record(event['error'])?.['message'];
+  return [direct, nested].filter((part) => typeof part === 'string').join(' ');
 }
 
 /** One event into the reading; false when it is not one this grammar knows. */
@@ -94,7 +109,12 @@ function readEvent(event: Record<string, unknown>, reading: Reading): boolean {
   if (typeof type !== 'string' || !EVENTS.has(type)) return false;
   // The turn's usage ends the turn: nothing may follow it and replace its answer.
   if (reading.usage !== undefined) return false;
-  if (type === 'turn.failed' || type === 'error') reading.failed = true;
+  if (type === 'turn.failed' || type === 'error') {
+    reading.failed = true;
+    if (USAGE_LIMIT.test(failureMessage(event))) reading.limited = true;
+  }
+  // Work began once the model gave anything back; a turn the plan's limit stopped first gave nothing.
+  if (type.startsWith('item.')) reading.started = true;
   if (type === 'turn.completed') {
     const usage = record(event['usage']);
     const input = count(usage?.['input_tokens']);
@@ -117,7 +137,13 @@ function readEvent(event: Record<string, unknown>, reading: Reading): boolean {
 
 /** Codex's events as one result, or nothing if they are not the grammar above. */
 export function readCodexEvents(stdout: string, requested: string): CodexResult | undefined {
-  const reading: Reading = { text: undefined, usage: undefined, failed: false };
+  const reading: Reading = {
+    text: undefined,
+    usage: undefined,
+    failed: false,
+    limited: false,
+    started: false,
+  };
   for (const line of stdout.split('\n')) {
     if (line.trim() === '') continue;
     let parsed: unknown;
@@ -130,7 +156,12 @@ export function readCodexEvents(stdout: string, requested: string): CodexResult 
     if (event === undefined || !readEvent(event, reading)) return undefined;
   }
   const { usage } = reading;
-  if (usage === undefined) return undefined;
+  if (usage === undefined) {
+    // A plan at its limit before any turn began used nothing; after, what it used is unknown.
+    return reading.limited && !reading.started
+      ? { text: '', model: requested, inputTokens: 0, outputTokens: 0, failed: true, limited: true }
+      : undefined;
+  }
   const failed = reading.failed || reading.text === undefined;
   return {
     text: failed ? '' : (reading.text ?? ''),
@@ -138,6 +169,7 @@ export function readCodexEvents(stdout: string, requested: string): CodexResult 
     inputTokens: usage.input,
     outputTokens: usage.output,
     failed,
+    limited: reading.limited,
   };
 }
 
@@ -191,15 +223,17 @@ export const UNKNOWN = 'unknown';
 /**
  * Run one call. Resolves with Codex's result; `unknown` when the call ran and
  * its output cannot be read (killed at the timeout or the output cap, or ended
- * out of grammar); null when nothing was started (a malformed model, an
- * instruction file in the runner's Codex home, or no binary).
+ * out of grammar, or stopped by `signal`); null when nothing was started (a
+ * malformed model, an instruction file in the runner's Codex home, a signal
+ * already aborted, or no binary).
  */
 export async function runCodex(
   settings: RunnerSettings,
   model: string,
   prompt: string,
+  signal?: AbortSignal,
 ): Promise<CodexResult | typeof UNKNOWN | null> {
-  if (!MODEL.test(model)) return null;
+  if (!MODEL.test(model) || signal?.aborted === true) return null;
   if (HOME_INSTRUCTIONS.some((name) => existsSync(join(settings.codexHome, name)))) return null;
   const cwd = folders(settings);
   return await new Promise((resolve) => {
@@ -223,6 +257,7 @@ export async function runCodex(
       finish(UNKNOWN);
     };
     const timer = setTimeout(stop, settings.timeoutMs);
+    signal?.addEventListener('abort', stop, { once: true });
     child.stdout.on('data', (chunk: Buffer) => {
       bytes += chunk.length;
       if (bytes > MAX_STDOUT_BYTES) stop();

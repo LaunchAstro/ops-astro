@@ -51,6 +51,7 @@ describe('a message answered through codex exec', () => {
       inputTokens: 120,
       outputTokens: 7,
       failed: false,
+      limited: false,
     });
     const [call] = w.calls();
     expect(call?.stdin).toBe('Say hello.');
@@ -188,6 +189,22 @@ describe('the event grammar', () => {
     ['an answer after the turn ended', message('hi') + completed + message('swapped')],
   ])('refuses %s', (_label, stdout) => {
     expect(readCodexEvents(stdout, MODEL)).toBeUndefined();
+  });
+
+  it("reads Codex's usage-limit error as the plan's limit, with or without a turn", () => {
+    const limit = line({ type: 'error', message: "You've hit your usage limit." });
+    expect(readCodexEvents(limit, MODEL)).toMatchObject({ failed: true, limited: true });
+    const failed = line({ type: 'turn.failed', error: { message: 'Usage limit reached' } });
+    expect(readCodexEvents(failed + completed, MODEL)).toMatchObject({ limited: true });
+    const other = line({ type: 'turn.failed', error: { message: 'stream disconnected' } });
+    expect(readCodexEvents(other + completed, MODEL)).toMatchObject({ limited: false });
+    expect(readCodexEvents(line({ type: 'error', message: 'boom' }), MODEL)).toBeUndefined();
+    // The limit stopping the turn before the model gave anything back used nothing.
+    const first = line({ type: 'turn.started' }) + limit;
+    expect(readCodexEvents(first, MODEL)).toMatchObject({ limited: true, inputTokens: 0 });
+    // After the model gave something back, work was done: unknown, never nothing.
+    const late = first + line({ type: 'item.completed', item: { type: 'reasoning' } }) + limit;
+    expect(readCodexEvents(late, MODEL)).toBeUndefined();
   });
 
   it('a turn with no agent message fails', () => {
