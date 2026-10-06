@@ -119,7 +119,9 @@ async function reachedThroughMap(
  * only on the next pass: the child is asked about then, or refuses the move.
  * Once every row is locked no child can be added under one, so the rewrite
  * touches exactly the rows asked about, and a later creation waits and
- * inherits the new board.
+ * inherits the new board. A row a trash committed while a pass waited on it
+ * is still in that list (the lock re-checks the row, not the walk), so the
+ * rewrite skips trashed rows as the walk does.
  */
 async function carryBoardToDescendants(
   tx: TenantQuery,
@@ -165,7 +167,7 @@ async function carryBoardToDescendants(
     `update records
         set data = case when $3::text is null then data - 'board'
                         else jsonb_set(data, '{board}', to_jsonb($3::text)) end
-      where business_id = $1 and id = any($2::uuid[])
+      where business_id = $1 and id = any($2::uuid[]) and deleted_at is null
         and (data ->> 'board') is distinct from $3::text`,
     [tx.businessId, asked, board],
   );
