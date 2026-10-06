@@ -124,6 +124,35 @@ export async function revokedOrBehindWriter(
 }
 
 /**
+ * After a revocation is sent while a command sits paused, idle in its
+ * transaction, straight after a statement containing `statement`: waits until
+ * the revocation has answered, or until `pg_blocking_pids` names that paused
+ * backend as what the revocation's advisory lock waits on.
+ */
+export async function revokedOrBehindHolder(
+  admin: Pick<AdminConnection, 'execute'>,
+  statement: string,
+  answered: () => boolean,
+): Promise<'revoked' | 'behind the holder'> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    if (answered()) return 'revoked';
+    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+    const rows = await admin.execute<{ behind: boolean }>(
+      `select exists (select 1 from pg_stat_activity h, pg_stat_activity r
+        where h.datname = current_database() and r.datname = current_database()
+          and h.state = 'idle in transaction' and strpos(h.query, $1) > 0
+          and r.wait_event_type = 'Lock' and r.wait_event = 'advisory'
+          and h.pid = any(pg_blocking_pids(r.pid))) as behind`,
+      [statement],
+    );
+    if (rows[0]?.behind === true) return 'behind the holder';
+    // oxlint-disable-next-line no-await-in-loop -- polls, one look at a time
+    await delay(10);
+  }
+  throw new Error(`the revocation neither answered nor waited behind the holder of "${statement}"`);
+}
+
+/**
  * Where each operation's audit event stands in its business's chain. `seq` is
  * given under a transaction-scoped advisory lock (migration 0093), so the
  * order of two places is the order their transactions committed in.
