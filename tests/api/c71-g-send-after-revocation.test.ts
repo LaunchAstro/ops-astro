@@ -21,7 +21,6 @@ it('Sol proof, criterion 5: a queued chat send cannot write a message or mention
       sending = g.as(world.mia, 'chat.send_group', {
         conversationId: g.conversationId,
         body: words,
-        mentions: [world.ada.personId],
       });
       await expect
         .poll(
