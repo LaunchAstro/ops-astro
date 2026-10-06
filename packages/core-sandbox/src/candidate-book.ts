@@ -181,19 +181,20 @@ export const dropCandidateImage = (book: CandidateBook, id: string): CandidateBo
   candidates: book.candidates.filter((held) => isOpen(held) || held.id !== id),
 });
 
+/** The book as the JSON value its record holds. */
+export const bookValue = (book: CandidateBook): Json => ({
+  candidates: book.candidates.map(({ site, entry, id, createsLeft, runs }) => ({
+    site,
+    entry: { ...entry, env: [...entry.env] },
+    id,
+    createsLeft,
+    runs: runs.map((run) => ({ ...run })),
+  })),
+  accepted: book.accepted.map((pin) => ({ ...pin })),
+});
+
 export const writeBook = (book: CandidateBook): Uint8Array =>
-  new TextEncoder().encode(
-    JSON.stringify({
-      candidates: book.candidates.map(({ site, entry, id, createsLeft, runs }) => ({
-        site,
-        entry: { ...entry, env: [...entry.env] },
-        id,
-        createsLeft,
-        runs,
-      })),
-      accepted: book.accepted,
-    }),
-  );
+  new TextEncoder().encode(JSON.stringify(bookValue(book)));
 
 const isCount = (value: Json | undefined, max: number): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= max;
@@ -246,8 +247,11 @@ function readAccepted(value: Json): AcceptedPin | null {
 
 export function readBook(bytes: Uint8Array): SandboxResult<{ book: CandidateBook }> {
   const read = parseStrictJson(bytes);
-  if (!read.ok) return fault('candidate record');
-  const { value } = read;
+  return read.ok ? bookOf(read.value) : fault('candidate record');
+}
+
+/** The book a parsed record holds, read as `readBook` reads its bytes. */
+export function bookOf(value: Json): SandboxResult<{ book: CandidateBook }> {
   if (!hasExactKeys(value, ['candidates', 'accepted']) || !isJsonObject(value))
     return fault('candidate record');
   const { candidates: listed, accepted: pins } = value;

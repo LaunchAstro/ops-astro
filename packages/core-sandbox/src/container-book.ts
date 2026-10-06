@@ -148,9 +148,13 @@ function readRecorded(value: Json | undefined): Recorded | null {
 
 export function readContainerBook(bytes: Uint8Array): SandboxResult<{ book: ContainerBook }> {
   const read = parseStrictJson(bytes);
-  if (!read.ok || !hasExactKeys(read.value, ['container']) || !isJsonObject(read.value))
-    return fault('container record');
-  const held = read.value['container'];
+  return read.ok ? containerBookOf(read.value) : fault('container record');
+}
+
+/** The book a parsed record holds, read as `readContainerBook` reads its bytes. */
+export function containerBookOf(value: Json): SandboxResult<{ book: ContainerBook }> {
+  if (!hasExactKeys(value, ['container']) || !isJsonObject(value)) return fault('container record');
+  const held = value['container'];
   if (held === null) return { ok: true, book: EMPTY_CONTAINERS };
   const container = readRecorded(held);
   return container === null ? fault('container record') : { ok: true, book: { container } };
