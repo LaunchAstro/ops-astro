@@ -235,15 +235,18 @@ export const IDENTIFIER_BEARING: Readonly<
   'approval.revoke': ['approvalId', 'control'],
 };
 
-/**
- * Identifier-bearing operations whose foreign-against-fabricated comparison is
- * in their own isolation suite rather than in identifier-negatives.
- */
-const OWN_SUITE: Readonly<Partial<Record<CommandName, string>>> = {
-  'chat.send_direct': 'teammateId',
-  'chat.messages': 'conversationId',
-  'chat.mark_read': 'conversationId',
-};
+/** Identifier-bearing operations compared in their own isolation suite, not identifier-negatives. */
+const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string, suite: string]>>> =
+  {
+    'chat.send_direct': ['teammateId', 'c71-d'],
+    'chat.messages': ['conversationId', 'c71-d'],
+    'chat.mark_read': ['conversationId', 'c71-d'],
+    'chat.start_group': ['members', 'c71-g'],
+    'chat.send_group': ['conversationId', 'c71-g'],
+    'chat.rename_group': ['conversationId', 'c71-g'],
+    'chat.change_members': ['conversationId', 'c71-g'],
+    'chat.leave': ['conversationId', 'c71-g'],
+  };
 
 /**
  * The named row for an operation the (c) and (d) cells do not reach, or
@@ -256,6 +259,13 @@ export function alternativeFor(name: CommandName): string | undefined {
     return (
       `executed alternative: identifier-negatives.test.ts "${CASE[kase]}" compares a foreign ` +
       `and a fabricated ${operand} by status and raw bytes, audited at home (ledger I03)`
+    );
+  }
+  const own = OWN_SUITE[name];
+  if (own !== undefined) {
+    return (
+      `executed alternative: ${own[1]}-isolation.test.ts compares a foreign and a fabricated ` +
+      `${own[0]} by status and raw bytes, audited at home`
     );
   }
   if (name === 'run.child_handback') {
@@ -278,13 +288,6 @@ export function alternativeFor(name: CommandName): string | undefined {
     return (
       'executed alternative: c39-t-invitation-refusals.test.ts "C39-T isolation" compares ' +
       "another business's invitation and a fabricated one by code and raw bytes"
-    );
-  }
-  const own = OWN_SUITE[name];
-  if (own !== undefined) {
-    return (
-      `executed alternative: c71-d-isolation.test.ts compares a foreign and a fabricated ` +
-      `${own} by status and raw bytes, audited at home`
     );
   }
   if (TARGET_FREE.some(([op]) => op === name)) {

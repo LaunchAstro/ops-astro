@@ -30,11 +30,10 @@
 // `handlers.ts`, keyed by the same name,
 // because the web client imports this table and must not import the database.
 
-import type { Action } from '../../core-records/src/index.ts';
 import type { CommandName } from './command-names.ts';
 import type { CommandDeclaration } from './surface-declaration.ts';
 import { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
-import { WRITE_OPERANDS } from './write-operands.ts';
+import { declare, read, TASK_COLLECTION } from './surface-builders.ts';
 
 export type { CommandName } from './command-names.ts';
 
@@ -49,46 +48,6 @@ export type { Operand, OperandKind, OperandSpec } from './write-operands.ts';
  */
 const TASK_PLACEMENT_LOCK = 'task.placement';
 
-function declare(
-  name: CommandName,
-  action: Action,
-  options: {
-    readonly collection?: string;
-    readonly targetsExistingRecord?: boolean;
-    readonly authorisedOn?: CommandDeclaration['authorisedOn'];
-    readonly targetLock?: CommandDeclaration['targetLock'];
-    readonly serialise?: string;
-    readonly untargetedIdentifiers?: readonly string[];
-    readonly runtimeShaped?: string;
-    readonly agent?: CommandDeclaration['agent'];
-    readonly authority?: readonly string[];
-    readonly rule?: string;
-    readonly audited?: boolean;
-  } = {},
-): CommandDeclaration {
-  const targetsExistingRecord = options.targetsExistingRecord ?? true;
-  return {
-    operands: WRITE_OPERANDS[name] ?? {},
-    ...(options.untargetedIdentifiers === undefined
-      ? {}
-      : { untargetedIdentifiers: options.untargetedIdentifiers }),
-    ...(options.runtimeShaped === undefined ? {} : { runtimeShaped: options.runtimeShaped }),
-    ...(options.serialise === undefined ? {} : { serialise: options.serialise }),
-    ...(options.authority === undefined ? {} : { authority: options.authority }),
-    ...(options.rule === undefined ? {} : { rule: options.rule }),
-    name,
-    kind: 'write',
-    collection: options.collection ?? TASK_COLLECTION,
-    targetsExistingRecord,
-    authorisedOn: options.authorisedOn ?? (targetsExistingRecord ? 'record' : 'business'),
-    targetLock: options.targetLock ?? 'command',
-    action,
-    agent: options.agent ?? 'never',
-    audited: options.audited ?? true,
-  };
-}
-
-const TASK_COLLECTION = 'task';
 const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
@@ -103,41 +62,10 @@ const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
+const CHAT_COLLECTION = 'chat';
+const GROUP_MANAGER =
+  'a member of the group, then its creator or a holder of chat:manage (C71-G); else NOT_FOUND or SCOPE_NOT_GRANTED';
 const RECORD_WRITE = { collection: 'record', targetsExistingRecord: false } as const;
-
-/**
- * A read. It takes the `read` action on the collection it names, targets no
- * revision. It is authorised on the business unless it
- * names one task, which `reads/dispatch.ts` asks about at record scope; the
- * read path decides that from its catalogue row, and
- * `tests/commands/read-authorised-on.test.ts` holds this field to it.
- */
-function read(
-  name: CommandName,
-  collection: string,
-  options: {
-    readonly action?: Action;
-    readonly agent?: CommandDeclaration['agent'];
-    readonly authorisedOn?: 'record' | 'business' | 'self';
-    readonly authority?: readonly string[];
-    readonly audited?: boolean;
-  } = {},
-): CommandDeclaration {
-  return {
-    ...(options.authority === undefined ? {} : { authority: options.authority }),
-    name,
-    kind: 'read',
-    collection,
-    targetsExistingRecord: false,
-    authorisedOn: options.authorisedOn ?? 'business',
-    targetLock: 'command',
-    action: options.action ?? 'read',
-    agent: options.agent ?? 'never',
-    // Every read writes its event (`reads/dispatch.ts`, I13), but a person's
-    // own preferences (CS-2.8).
-    audited: options.audited ?? true,
-  };
-}
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent credential's under its person's business-wide `task:write`
@@ -870,6 +798,42 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'self',
     untargetedIdentifiers: ['conversationId'],
     audited: false,
+  }),
+  // Group conversations (C71-G). Starting one and writing in one are
+  // `chat:comment`, the second a member's only (the handler's own filter).
+  declare('chat.start_group', 'comment', {
+    collection: CHAT_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('chat.send_group', 'comment', {
+    collection: CHAT_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
+  // `chat:manage` is its creator's, or the owner's and administrators': the
+  // envelope cannot know who started a conversation, so the handler asks,
+  // after it has found the caller a member. Never an agent's.
+  declare('chat.rename_group', 'manage', {
+    collection: CHAT_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['conversationId'],
+    rule: GROUP_MANAGER,
+  }),
+  declare('chat.change_members', 'manage', {
+    collection: CHAT_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['conversationId'],
+    rule: GROUP_MANAGER,
+  }),
+  // The leaver's own member row only; audited, as a change of members.
+  declare('chat.leave', 'write', {
+    collection: ACCOUNT_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['conversationId'],
   }),
 
   // C39-T: `access:share` on the whole business, a person's key no agent holds

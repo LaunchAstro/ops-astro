@@ -547,14 +547,18 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 - `team.list {}` → the staff with an active membership and each one's
   availability (`person_availability`, 0066, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`
-- `chat.conversations {}` → the reader's own team conversations (C71-D), each
-  with its members and its unread, derived from the reader's own marker
+- `chat.conversations {}` → the reader's own team conversations, direct
+  (C71-D) and group (C71-G), each with its kind, a group's name, its current
+  members and its unread, derived from the reader's own marker
   (`team_conversation_members.last_read_at`, 20261006074341, set only by that person);
-  the reader's member row is the query's filter, so nobody else's is listed
+  the reader's member row is the query's filter, so nobody else's is listed.
+  To a member who has left or been removed, a group shows no name and no
+  members: nothing of it changed after they left
 - `chat.messages { conversationId }` → one of the reader's conversations'
-  messages: `task_comment` records with audience `direct`, anchored by their
-  `conversation` field, written while the reader was a member; any other is
-  `NOT_FOUND`
+  messages: `task_comment` records with audience `direct` or `group`, anchored
+  by their `conversation` field, written while the reader was a member (from
+  `joined_at` to `left_at`; a re-added member's window starts again at the new
+  join); any other is `NOT_FOUND`
 
 The other six, `task.queue`, `task.ledger`, `preset.plan`, `settings.read`,
 `session.capabilities` and `access.read` (Settings ▸ Access, C32, under
