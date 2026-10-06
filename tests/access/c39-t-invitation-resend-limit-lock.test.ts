@@ -45,21 +45,22 @@ async function holdOn(hold: (tx: TenantQuery) => Promise<void>): Promise<Holder>
     held.release();
     await release.promise;
   });
+  // Closes the pool whether or not the holder's transaction failed; a failure rethrows.
+  const close = async (): Promise<void> => {
+    release.release();
+    try {
+      await holding;
+    } finally {
+      await blocker.close();
+    }
+  };
   try {
     await Promise.race([held.promise, holding]);
   } catch (error) {
-    await blocker.close();
+    await close();
     throw error;
   }
-  return {
-    pid,
-    letGo: release.release,
-    close: async () => {
-      release.release();
-      await holding;
-      await blocker.close();
-    },
-  };
+  return { pid, letGo: release.release, close };
 }
 
 /** Whether `pid` holds a lock some other backend is waiting on. */
