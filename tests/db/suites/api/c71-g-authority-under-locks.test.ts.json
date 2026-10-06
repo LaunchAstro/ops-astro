@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a group send, rename or member change queued on the conversation's lock reads the caller's membership and grant again after the wait, so a revocation or an ended access committed meanwhile writes nothing"
+}
