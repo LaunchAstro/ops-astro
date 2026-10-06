@@ -254,18 +254,10 @@ describe.skipIf(serverUrl === undefined)('WF-4 the tickets, frontier and fog vie
       recordId: string,
       body: object,
     ) => {
-      const revision = await w.revisionOf(recordId);
-      const cliAnswer = await reader.run(name, {
-        operationId: crypto.randomUUID(),
-        recordId,
-        expectedRevision: revision,
-        ...body,
-      });
-      const page = await browser.mutate(
-        name,
-        { recordId, ...body },
-        { expectedRevision: revision },
-      );
+      const sent = await at(recordId);
+      const cliAnswer = await reader.run(name, { ...sent, ...body });
+      const { expectedRevision } = sent;
+      const page = await browser.mutate(name, { recordId, ...body }, { expectedRevision });
       return {
         cli: (cliAnswer.body as { code?: string } | undefined)?.code,
         browser: (page as { code?: string }).code,
