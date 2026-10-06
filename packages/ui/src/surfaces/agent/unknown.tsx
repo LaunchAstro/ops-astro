@@ -8,7 +8,7 @@
 // it hands the attempt the read showed to the caller, which sends it through
 // `budget.record_outcome` or `budget.write_off`.
 
-import { useState, type ReactElement } from 'react';
+import { useId, useState, type ReactElement } from 'react';
 import type { RunStory } from '../../state/agent-run.ts';
 import { major, minorOf } from './format.ts';
 
@@ -123,15 +123,17 @@ function Fields(props: {
   readonly onAmount: (amount: string) => void;
   readonly onReason: (reason: string) => void;
 }): ReactElement {
+  // The task page and the dock's task panel can each draw these fields at once.
+  const id = useId();
   return (
     <>
       <div className="field">
-        <label className="tf__k" htmlFor="write-off-amount">
+        <label className="tf__k" htmlFor={`${id}amount`}>
           Write off, charging ({props.currency})
         </label>
         <input
           className="input"
-          id="write-off-amount"
+          id={`${id}amount`}
           inputMode="decimal"
           disabled={props.busy}
           data-write-off="amount"
@@ -142,12 +144,12 @@ function Fields(props: {
         />
       </div>
       <div className="field">
-        <label className="tf__k" htmlFor="write-off-reason">
+        <label className="tf__k" htmlFor={`${id}reason`}>
           Why
         </label>
         <textarea
           className="input"
-          id="write-off-reason"
+          id={`${id}reason`}
           disabled={props.busy}
           data-write-off="reason"
           value={props.reason}

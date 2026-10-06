@@ -8,7 +8,7 @@
 // the read showed to the caller, which sends `run.top_up` or
 // `run.end_at_budget_stop`, and the four-eyes band is the server's.
 
-import { useState, type ReactElement } from 'react';
+import { useId, useState, type ReactElement } from 'react';
 import { STOP_LIMIT, type LedgerStop } from '../../state/token-ledger.ts';
 import { minorOf, money } from './format.ts';
 
@@ -133,7 +133,8 @@ function Amount(props: {
   readonly amount: string;
   readonly onAmount: (amount: string) => void;
 }): ReactElement {
-  const id = `stop-amount-${props.stop.askId}`;
+  // One per drawing: the task page and the dock's task panel can both draw the stop.
+  const id = `${useId()}stop-amount`;
   return (
     <div className="field">
       <label className="tf__k" htmlFor={id}>
