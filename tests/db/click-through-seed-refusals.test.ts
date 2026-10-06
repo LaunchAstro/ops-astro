@@ -111,6 +111,16 @@ function runCases() {
     await refusedUnchanged({}, /'Research venue options' .*reset/u);
   });
 
+  it('refuses a map charted without its decision and claim, naming it', async () => {
+    const made = await executeCommand(cast.db.app, cast.business, ada(cast), 'api', {
+      command: 'map.chart',
+      operationId: `made-up:${randomUUID()}`,
+      title: 'Plan the new agency website',
+    } as never);
+    expect('code' in made, JSON.stringify(made)).toBe(false);
+    await refusedUnchanged({}, /'Plan the new agency website' .*reset/u);
+  });
+
   it('refuses a marked database whose guard ledger names an entry', async () => {
     const id = randomUUID();
     await cast.db.admin.execute(
