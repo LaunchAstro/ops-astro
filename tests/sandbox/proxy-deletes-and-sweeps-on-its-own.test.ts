@@ -239,6 +239,7 @@ it('leaves every request unavailable while its sweep fails, and sweeps again eve
   const state = await opened(w);
   expect(await state.handle({ kind: 'ping' })).toEqual(UNAVAILABLE);
   expect(await state.handle(create(P, s1('p')))).toEqual(UNAVAILABLE);
+  expect(w.calls).toEqual(['list']);
   w.calls.length = 0;
   w.now = T0 + GRACE - 1;
   await state.tick();
