@@ -23,6 +23,7 @@ import type {
   InternalTaskRead,
   PersonListResult,
   QueueResult,
+  SecretListResult,
   SessionPersonResult,
   SettingsReadResult,
   TagListResult,
@@ -35,6 +36,8 @@ import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 import { AGENT_READS } from './made-up-agent.ts';
+import { AUTOMATION_REGISTRY } from './made-up-automations.ts';
+import { FLEET_READ, SIGNAL_READ } from './made-up-connections.ts';
 import { EXECUTION, RECEIPT } from './made-up-data.ts';
 import { DETAIL, LEDGER, STATE, TAGS, TASKS, TODOS } from './made-up-rows.ts';
 
@@ -90,6 +93,7 @@ const READS = {
       { collection: 'tasks', action: 'read' },
       { collection: 'tasks', action: 'write' },
       { collection: 'settings', action: 'manage' },
+      { collection: 'custody', action: 'manage' },
     ],
   } satisfies CapabilitiesResult,
   'task.queue': { ok: true, queue: [], alerts: [], outages: [] } satisfies QueueResult,
@@ -172,6 +176,35 @@ const READS = {
   // The business's clients (C32), as the task's client field and the to-dos'
   // client scope ask them.
   'client.list': { ok: true, clients: [HARBOUR, MERIDIAN] } satisfies ClientListResult,
+  // Custody's keys (C31) for Settings: one set, one not, never a value.
+  'secret.list': {
+    ok: true,
+    canChange: true,
+    secrets: [
+      {
+        id: 'S-1',
+        name: 'xero.client-secret',
+        clientId: null,
+        state: 'set',
+        setAt: '2026-09-30T00:00:00Z',
+        lastUsedAt: null,
+        revision: 1,
+      },
+      {
+        id: 'S-2',
+        name: 'ads.token',
+        clientId: null,
+        state: 'not set',
+        setAt: null,
+        lastUsedAt: null,
+        revision: 2,
+      },
+    ],
+  } satisfies SecretListResult,
+  // Settings ▸ Workflow triggers (C33).
+  'automation.registry': AUTOMATION_REGISTRY,
+  'connection.fleet': FLEET_READ,
+  'connection.signal': SIGNAL_READ,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

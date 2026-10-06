@@ -22,16 +22,18 @@
 // settled attempt answers its settlement and charges nothing more.
 //
 // AW-08: the provider's receipt link rides with the first observation of an
-// applied effect and is kept only when `receiptLinkOf` keeps it; otherwise it
-// is recorded absent. A later observation never changes it.
+// applied effect and is kept only when `receiptLinkOf` keeps it, checked
+// against every live credential the observing agent holds; otherwise it is
+// recorded absent. A later observation never changes it.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { fenceCause, holdsLease, readLease, refuseLease } from './lease-ownership.ts';
 import { acquire } from './locks.ts';
 import { settleAtObserved, settledAt, type Settlement } from './budget.ts';
+import { modelCallsOn } from './model-calls-on.ts';
 import { priceAttempt } from './price-book.ts';
-import { receiptLinkOf } from './receipt-link.ts';
+import { agentCredentials, receiptLinkOf } from './receipt-link.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import type { DispatchRequest } from './dispatch.ts';
 
@@ -75,8 +77,21 @@ interface Found {
   readonly task_id: string;
   readonly step_id: string;
   readonly reservation_id: string;
+  readonly envelope_id: string;
   readonly attempt_id: string;
   readonly delegation_id: string | null;
+}
+
+/** The receipt link to store: none unless the observing agent's credentials could be checked. */
+async function keptLink(
+  tx: TenantQuery,
+  request: ObserveRequest,
+  presented: string | null,
+  stepKind: string,
+): Promise<string | null> {
+  const held = await agentCredentials(tx, presented);
+  if (held === undefined) return null;
+  return receiptLinkOf(request.receiptLink, stepKind, held);
 }
 
 export async function observe(
@@ -115,7 +130,7 @@ export async function observe(
   if (state.attempt_state === 'liability_unknown') {
     return refuse(
       'BUDGET_UNAVAILABLE',
-      'this attempt reported more than its hold and is held as an unknown liability',
+      'this attempt is held as an unknown liability: what its hold spent was above the hold, or a model call on it was never settled',
       'Nothing was settled. A person records this attempt’s outcome.',
     );
   }
@@ -123,7 +138,7 @@ export async function observe(
     await tx.query(
       `update public.attempts set observed = true, receipt_link = $3
         where business_id = $1 and id = $2 and dispatch_marker`,
-      [tx.businessId, found.attempt_id, receiptLinkOf(request.receiptLink, state.step_kind)],
+      [tx.businessId, found.attempt_id, await keptLink(tx, request, presented, state.step_kind)],
     );
   }
   return {
@@ -150,6 +165,8 @@ async function settlementOf(
   const heldMinor = BigInt(state.held_minor);
   if (state.attempt_state === 'settled')
     return settledAt(heldMinor, BigInt(state.actual_minor ?? 0));
+  // The hold's model calls are part of what it spent, and one sent and never settled keeps
+  // the whole hold for a person, as the classifier closes a hold (#832).
   const cost = priceAttempt(
     { priceBook: state.price_book, currency: state.currency },
     request.usage,
@@ -159,9 +176,10 @@ async function settlementOf(
     taskId: found.task_id,
     attemptId: found.attempt_id,
     reservationId: found.reservation_id,
-    envelopeId: state.envelope_id,
+    envelopeId: found.envelope_id,
     heldMinor,
     costMinor: cost,
+    calls: await modelCallsOn(tx, found.reservation_id),
     outcome,
   });
 }
@@ -169,7 +187,8 @@ async function settlementOf(
 /** Where the lease leads, in this business only, before any lock. */
 async function discover(tx: TenantQuery, leaseId: string): Promise<Found | undefined> {
   const rows = await tx.query<Found>(
-    `select l.task_id, att.step_id, res.id as reservation_id, att.id as attempt_id, l.delegation_id
+    `select l.task_id, att.step_id, res.id as reservation_id, res.envelope_id, att.id as attempt_id,
+            l.delegation_id
        from public.leases l
        join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
@@ -185,7 +204,11 @@ async function ownedUnderLocks(
   request: ObserveRequest,
   found: Found,
 ): Promise<RuntimeResult<never> | { readonly lease: Observed['lease'] }> {
+  // The envelope settlement moves is taken here, in the contract's order before the lease, never
+  // by the settling write after it: a hand-back holds the envelope and waits on the lease (#834).
+  // A reservation's envelope never changes, so discovery's id is the one to lock.
   await acquire(tx, [
+    { lockClass: 'envelope', id: found.envelope_id },
     { lockClass: 'step', id: found.step_id },
     { lockClass: 'lease', id: request.leaseId },
     { lockClass: 'reservation', id: found.reservation_id },
@@ -229,12 +252,12 @@ async function heldState(tx: TenantQuery, attemptId: string, leaseId: string): P
     await tx.query<HeldState>(
       `select (res.lease_id = $3 and (res.state = 'held' or att.state = 'settled')) as held,
               att.dispatch_marker as marked, att.observed, att.state as attempt_state,
-              res.held_minor::text as held_minor, att.actual_minor::text as actual_minor,
-              att.price_book, att.envelope_id, env.currency, step.kind as step_kind
+              res.held_minor::text as held_minor, res.actual_minor::text as actual_minor,
+              att.price_book, res.envelope_id, env.currency, step.kind as step_kind
          from public.attempts att
          join public.planned_steps step on step.business_id = att.business_id and step.id = att.step_id
          join public.reservations res on res.business_id = att.business_id and res.id = att.reservation_id
-         join public.task_envelopes env on env.business_id = att.business_id and env.id = att.envelope_id
+         join public.task_envelopes env on env.business_id = res.business_id and env.id = res.envelope_id
         where att.business_id = $1 and att.id = $2`,
       [tx.businessId, attemptId, leaseId],
     )

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Catalogue #414: migration 20261004091400 gives a comment type installed
+// Catalogue #414: migration 20261006125645 gives a comment type installed
 // before `on_behalf_of` was declared the same field row `installTaskSpine`
 // writes now (system-written, internal, no slot), and leaves a type that has
 // it alone, as 0075 did for `parent`.
@@ -15,7 +15,7 @@ import {
 } from '../support/fresh-database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 
-const MIGRATION = readFileSync('migrations/20261004091400_comment_on_behalf_of.sql', 'utf8');
+const MIGRATION = readFileSync('migrations/20261006125645_comment_on_behalf_of.sql', 'utf8');
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('the on_behalf_of backfill', () => {
   let db: FreshDatabase;

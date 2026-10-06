@@ -73,7 +73,8 @@ describe.skipIf(serverUrl === undefined)('T04/M03: what a production operation s
     await executeCommand(app, business, worker.presented, 'api', command);
 
   beforeAll(async () => {
-    db = await createFreshDatabase({ part: 's' });
+    // From empty, not a clone of the migrated template: its log must hold the migrations' DDL.
+    db = await createFreshDatabase({ part: 's', fromEmpty: true });
     business = await insertBusiness(db.app, 'runtime-statements');
     await installSpine(db.app, business);
     worker = await enrol(db.app, business, 'worker');

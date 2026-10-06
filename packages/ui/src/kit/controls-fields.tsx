@@ -157,23 +157,35 @@ function SelectMenu(props: {
   );
 }
 
-/** A select's open state, its active option and its keys: arrows open and walk, Enter and Space choose, Escape closes. */
+/** Where the select's value sits among its options, or the first option. */
+const valueIndex = (props: SelectProps): number =>
+  Math.max(
+    0,
+    props.options.findIndex((o) => o.value === props.value),
+  );
+
+/**
+ * A select's open state, its active option and its keys: arrows open and walk, Enter and Space
+ * choose, Escape closes the menu and goes no further. Opening starts at the current value; a
+ * disabled select draws no menu.
+ */
 function useSelect(props: SelectProps): {
   readonly open: boolean;
-  readonly setOpen: (update: (was: boolean) => boolean) => void;
+  readonly toggle: () => void;
   readonly active: number;
   readonly trigger: RefObject<HTMLButtonElement | null>;
   readonly choose: (index: number) => void;
   readonly onKey: (event: KeyboardEvent) => void;
 } {
   const [open, setOpen] = useState(props.defaultOpen === true);
-  const [active, setActive] = useState(() =>
-    Math.max(
-      0,
-      props.options.findIndex((o) => o.value === props.value),
-    ),
-  );
+  const [active, setActive] = useState(() => valueIndex(props));
   const trigger = useRef<HTMLButtonElement>(null);
+  const shown = open && props.disabled !== true;
+  const at = Math.min(active, props.options.length - 1);
+  const openAtValue = (): void => {
+    setActive(valueIndex(props));
+    setOpen(true);
+  };
   const close = (): void => {
     setOpen(false);
     trigger.current?.focus();
@@ -185,25 +197,32 @@ function useSelect(props: SelectProps): {
   };
   const onKey = (event: KeyboardEvent): void => {
     const last = props.options.length - 1;
-    if (event.key === 'Escape' && open) {
+    if (event.key === 'Escape' && shown) {
       event.preventDefault();
+      event.stopPropagation();
       close();
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      if (open)
-        setActive((i) => (event.key === 'ArrowDown' ? Math.min(last, i + 1) : Math.max(0, i - 1)));
-      else setOpen(true);
-    } else if ((event.key === 'Enter' || event.key === ' ') && open) {
+      // Walk from the option drawn active, so a list that shrank while open
+      // never walks from an option it no longer has.
+      if (shown)
+        setActive(event.key === 'ArrowDown' ? Math.min(last, at + 1) : Math.max(0, at - 1));
+      else openAtValue();
+    } else if ((event.key === 'Enter' || event.key === ' ') && shown) {
       event.preventDefault();
-      choose(active);
+      choose(at);
     }
   };
-  return { open, setOpen, active, trigger, choose, onKey };
+  const toggle = (): void => {
+    if (shown) setOpen(false);
+    else openAtValue();
+  };
+  return { open: shown, toggle, active: at, trigger, choose, onKey };
 }
 
 export function Select(props: SelectProps): ReactElement {
   const id = useId();
-  const { open, setOpen, active, trigger, choose, onKey } = useSelect(props);
+  const { open, toggle, active, trigger, choose, onKey } = useSelect(props);
   const current = props.options.find((o) => o.value === props.value);
   return (
     <Field id={id} label={props.label} hint={props.hint} error={props.error}>
@@ -220,9 +239,7 @@ export function Select(props: SelectProps): ReactElement {
           aria-invalid={props.error === undefined ? undefined : true}
           aria-describedby={describedBy(id, props)}
           disabled={props.disabled}
-          onClick={() => {
-            setOpen((was) => !was);
-          }}
+          onClick={toggle}
           onKeyDown={onKey}
         >
           <span className="sel__value">{current?.label ?? ''}</span>

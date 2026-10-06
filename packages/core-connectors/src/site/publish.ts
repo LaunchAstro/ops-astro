@@ -1,0 +1,300 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The reviewed executable: the one place the live correction's real effect
+// happens. It runs under the worker lease after the gate, and every step
+// before the dispatch refuses rather than guesses (release decision
+// sections 3 and 8):
+//
+// - no approving decision on the exact version: `APPROVAL_MISSING`;
+// - a decision on another version, or bytes other than the approved ones:
+//   `PROPOSAL_SUPERSEDED` (case 4);
+// - anything wider than the envelope: `CHANGE_ENVELOPE_EXCEEDED` (case 9);
+// - cancelled before dispatch: `CANCELLED`, nothing sent;
+// - the file moved since its pre-image was pinned: `CONTENT_DRIFTED`, a wait
+//   on a person, never an overwrite (case 5).
+//
+// After the dispatch the answer is `accepted` at most, never live (D21-5);
+// an answer that cannot be read stays `unknown` with its reference and raises
+// a task (case 6); a cancellation that arrives after the dispatch is an
+// uncertain effect, not a cancellation (case 7). Live is a later observation.
+// Every send reads its effect back through the seam first, so a retry of an
+// unknown is never sent blind (broker contract 3.4).
+
+import type { ProviderResult } from '../call.ts';
+import { checkEnvelope, type CorrectionTarget, type ProposedChange } from './envelope.ts';
+import {
+  calibrated,
+  claimed,
+  flipped,
+  proven,
+  reconciled,
+  type Occurrence,
+  type ReadBack,
+} from './reconcile.ts';
+import { contentDigest, versionDigestOf } from './version.ts';
+
+/** The provider's idempotency key: stable for one intended effect across retries (broker contract 3.4). */
+export function dispatchToken(operation: string, versionDigest: string): string {
+  return contentDigest({ operation, versionDigest });
+}
+
+export interface GateDecision {
+  readonly decisionId: string;
+  readonly decision: 'approve' | 'reject' | 'request_changes';
+  readonly versionId: string;
+  readonly versionDigest: string;
+}
+
+export interface PublishJob {
+  readonly correctionId: string;
+  readonly target: CorrectionTarget;
+  readonly change: ProposedChange;
+  /** The target file's digest at the pinned revision, taken before the proposal was composed. */
+  readonly preImageDigest: string;
+  readonly baseRevision: string;
+  /** The catalogued page the correction was asked for; the capture reads this and nothing else. */
+  readonly pageUrl: string;
+  readonly version: { readonly versionId: string; readonly digest: string };
+  readonly decision: GateDecision | undefined;
+  /** The reference the publish is read back by, held before dispatch. */
+  readonly seam: string;
+}
+
+export interface Published {
+  readonly revision: string;
+  readonly deploymentId: string;
+  readonly liveUrl: string;
+}
+
+/** A send or read back by the seam, under the provider's idempotency key. */
+type Seamed = { readonly seam: string; readonly dispatchToken: string };
+
+export interface PublishPorts {
+  /** `site.source.read` of the target file on the branch being published. */
+  readonly readSource: () => Promise<ProviderResult<{ content: string; revision: string }>>;
+  /** `site.request.read` by the seam: absent only while the request is provably unmerged. */
+  // The wiring must return landed only when the merged head is the approved one, else unknown.
+  readonly readBack: (input: Seamed) => Promise<ReadBack<Published>>;
+  /** `site.publish`, once. */
+  readonly publish: (
+    input: Seamed & { versionDigest: string },
+  ) => Promise<ProviderResult<Published>>;
+  readonly cancellation: () => Promise<'none' | 'requested'>;
+  /** At most one task per reason and key (one effect's token); the reasons are a closed set. */
+  readonly raiseTask: (reason: string, key: string) => Promise<void>;
+  /** `site.capture` of the catalogued page before the send: the occurrence is calibrated on it. */
+  readonly capture: ObservePorts['capture'];
+}
+
+export type PublishRefusal =
+  | 'APPROVAL_MISSING'
+  | 'PROPOSAL_SUPERSEDED'
+  | 'CHANGE_ENVELOPE_EXCEEDED'
+  | 'CANCELLED'
+  | 'CONTENT_DRIFTED'
+  | 'CONTENT_DRIFT_UNCHECKED';
+
+export interface Accepted extends Published {
+  readonly state: 'accepted';
+  readonly dispatchToken: string;
+  readonly occurrence: Occurrence | undefined;
+}
+
+export type PublishOutcome =
+  | { readonly state: 'refused'; readonly code: PublishRefusal; readonly waitsOn?: 'person' }
+  | Accepted
+  | { readonly state: 'failed'; readonly code: string; readonly proof: string }
+  | {
+      readonly state: 'unknown';
+      readonly code: string;
+      readonly reference: string;
+      readonly dispatchToken: string;
+    };
+
+const refused = (code: PublishRefusal): PublishOutcome => ({ state: 'refused', code });
+
+/** Each check before the dispatch in order, then the served page; drift counts until a landing. */
+async function beforeDispatch(
+  job: PublishJob,
+  ports: PublishPorts,
+  back: ReadBack<Published>,
+): Promise<PublishOutcome | { readonly preImage: string | undefined }> {
+  const { decision } = job;
+  if (decision === undefined || decision.decision !== 'approve') return refused('APPROVAL_MISSING');
+  const bound =
+    decision.versionId === job.version.versionId &&
+    decision.versionDigest === job.version.digest &&
+    versionDigestOf(job) === job.version.digest;
+  if (!bound) return refused('PROPOSAL_SUPERSEDED');
+  if (!checkEnvelope(job.change, job.target).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
+  // After a landing the page may already show the correction: nothing read then is a pre-image.
+  if (back.state !== 'absent') return { preImage: undefined };
+  const current = await ports.readSource();
+  if (current.kind !== 'ok') return refused('CONTENT_DRIFT_UNCHECKED');
+  const pinned = contentDigest(job.change.files[0]?.before ?? null);
+  if (
+    contentDigest(current.value.content) !== job.preImageDigest ||
+    pinned !== job.preImageDigest
+  ) {
+    return { state: 'refused', code: 'CONTENT_DRIFTED', waitsOn: 'person' };
+  }
+  if ((await ports.cancellation()) === 'requested') return refused('CANCELLED');
+  const captured = await ports.capture(job.pageUrl);
+  // A capture that ended on another address (a redirect) is not this page's pre-image.
+  const onPage = captured.ok && captured.value.url === job.pageUrl;
+  const cleared = { preImage: onPage ? captured.value.text : undefined };
+  // Last, after every awaited read: a cancellation that arrived during one still stops the send.
+  return (await ports.cancellation()) === 'requested' ? refused('CANCELLED') : cleared;
+}
+
+export async function publishCorrection(
+  job: PublishJob,
+  ports: PublishPorts,
+): Promise<PublishOutcome> {
+  const token = dispatchToken('site.publish', job.version.digest);
+  const readBack = () => ports.readBack({ seam: job.seam, dispatchToken: token });
+  const send = () =>
+    ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest });
+  const sent = await claimed(job.seam, token, async () => {
+    const back = await readBack();
+    const checked = await beforeDispatch(job, ports, back);
+    if ('state' in checked) return checked;
+    return { ...checked, answer: await reconciled(back, send, readBack) };
+  });
+  if ('state' in sent) return sent;
+  const { preImage, answer } = sent;
+  const unknown = async (code: string): Promise<PublishOutcome> => {
+    await ports.raiseTask(code, token);
+    return { state: 'unknown', code, reference: job.seam, dispatchToken: token };
+  };
+  if ((await ports.cancellation()) === 'requested') return unknown('CANCELLED_AFTER_DISPATCH');
+  if (answer.kind === 'ok') {
+    // Live is read at the provider's address: the place holds only on the page it was read on.
+    const onPage = answer.value.liveUrl === job.pageUrl;
+    const occurrence = onPage ? calibrated(job.change, job.target, preImage) : undefined;
+    if (occurrence === undefined) await ports.raiseTask('LIVE_CHECK_UNPLACED', token);
+    return { state: 'accepted', ...answer.value, dispatchToken: token, occurrence };
+  }
+  if (proven('site.publish', answer)) {
+    return { state: 'failed', code: answer.code, proof: answer.proof };
+  }
+  return unknown(answer.code);
+}
+
+export interface Served {
+  readonly revision: string;
+  readonly served: boolean;
+}
+
+/** A fenced capture: the page's text and the address it ended on after any redirect. */
+export type Captured =
+  | { readonly ok: true; readonly value: { readonly text: string; readonly url: string } }
+  | { readonly ok: false };
+
+export interface ObservePorts {
+  /** `site.deployment.read`. */
+  readonly readDeployment: (deploymentId: string) => Promise<ProviderResult<Served>>;
+  /** `site.capture` of the public address, through the fence. */
+  readonly capture: (url: string) => Promise<Captured>;
+  readonly raiseTask: PublishPorts['raiseTask'];
+}
+
+/** The deployment answers served, at this revision. */
+async function servedAt(ports: ObservePorts | RevertPorts, deploymentId: string, revision: string) {
+  const deployment = await ports.readDeployment(deploymentId);
+  return (
+    deployment.kind === 'ok' && deployment.value.served && deployment.value.revision === revision
+  );
+}
+
+/** Live is two observations: the revision served, and the fenced capture showing the new word where it was approved. */
+export async function observeLanded(
+  accepted: Accepted,
+  target: CorrectionTarget,
+  ports: ObservePorts,
+): Promise<Accepted | (Omit<Accepted, 'state'> & { readonly state: 'live' })> {
+  if (!(await servedAt(ports, accepted.deploymentId, accepted.revision))) return accepted;
+  const captured = await ports.capture(accepted.liveUrl);
+  if (!captured.ok || captured.value.url !== accepted.liveUrl) return accepted;
+  const live = flipped(captured.value.text, accepted.occurrence, target.word, target.replacement);
+  if (live === 'unconfirmable')
+    await ports.raiseTask('LIVE_CHECK_UNCONFIRMED', accepted.dispatchToken);
+  if (typeof live !== 'object') return accepted;
+  return { ...accepted, state: 'live', occurrence: { ...live, liveAt: captured.value.url } };
+}
+
+type Deployed = { readonly revision: string; readonly deploymentId: string };
+
+export interface RevertPorts extends Omit<ObservePorts, 'capture'> {
+  readonly now: () => number;
+  /** `site.source.read` of the default branch head: absent only while it provably holds no revert. */
+  readonly readBack: (input: Seamed) => Promise<ReadBack<Deployed>>;
+  /** `site.source.revert`: the forward change back to the pinned pre-image. */
+  readonly revert: (input: Seamed) => Promise<ProviderResult<Deployed>>;
+  readonly capture: () => Promise<Captured>;
+}
+
+type RevertAccepted = Deployed & { readonly state: 'revert_accepted'; readonly decidedAt: string };
+
+export type RevertOutcome =
+  | RevertAccepted
+  | (Omit<RevertAccepted, 'state'> & {
+      readonly state: 'reverted';
+      readonly observedAt: string;
+      readonly intervalMs: number;
+    })
+  | { readonly state: 'unknown' | 'failed'; readonly code: string; readonly decidedAt: string };
+
+/**
+ * Case 8: the revert is published forward, observed served, and the page shows
+ * the original word at the approved occurrence; only then is the interval from
+ * the decision recorded. No other recovery figure is quoted (ADR 0067).
+ */
+export async function revertCorrection(
+  input: {
+    readonly publishedRevision: string;
+    readonly target: CorrectionTarget;
+    /** The place the live check saw change (the live outcome's): the page must return to it. */
+    readonly occurrence: Occurrence | undefined;
+    readonly seam: string;
+    /** When the revert was decided, kept across every resumed attempt until it is observed. */
+    readonly decidedAt: number;
+  },
+  ports: RevertPorts,
+): Promise<RevertOutcome> {
+  const decidedAt = new Date(input.decidedAt).toISOString();
+  // One token per published revision, and a retry is read back before it is ever sent again.
+  const token = dispatchToken('site.source.revert', input.publishedRevision);
+  const readBack = () => ports.readBack({ seam: input.seam, dispatchToken: token });
+  const send = () => ports.revert({ seam: input.seam, dispatchToken: token });
+  const reverted = await claimed(input.seam, token, async () =>
+    reconciled(await readBack(), send, readBack),
+  );
+  if (reverted.kind !== 'ok') {
+    const state = proven('site.source.revert', reverted) ? 'failed' : 'unknown';
+    return { state, code: reverted.code, decidedAt };
+  }
+  const { revision, deploymentId } = reverted.value;
+  const pending = { state: 'revert_accepted', revision, deploymentId, decidedAt } as const;
+  const where = input.occurrence;
+  // Only a place seen live tracks the target: without one no observation can confirm the revert.
+  if (where?.liveAt === undefined) {
+    await ports.raiseTask('REVERT_CHECK_UNPLACED', token);
+    return pending;
+  }
+  if (!(await servedAt(ports, deploymentId, revision))) return pending;
+  const captured = await ports.capture();
+  if (!captured.ok || captured.value.url !== where.liveAt) return pending;
+  const back = flipped(captured.value.text, where, input.target.replacement, input.target.word);
+  if (back === 'unconfirmable') await ports.raiseTask('REVERT_CHECK_UNCONFIRMED', token);
+  if (typeof back !== 'object') return pending;
+  const observed = ports.now();
+  return {
+    state: 'reverted',
+    revision,
+    deploymentId,
+    decidedAt,
+    observedAt: new Date(observed).toISOString(),
+    intervalMs: observed - input.decidedAt,
+  };
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "preflight's predicted release equals what the classifier releases for the same hold, and a foreign business's version gives back nothing and moves nothing"
+}

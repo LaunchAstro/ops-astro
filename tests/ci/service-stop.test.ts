@@ -26,6 +26,8 @@ const serverUrl = databaseUrlFromEnvironment();
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 describe('S0-1 gated stop, before any lookup', () => {
+  // Runs the stop three times: 2.1 to 3.5 s on the hosted runner in October 2026,
+  // against vitest's 5 s default, so it names its own.
   it('takes no argument: a caller cannot name a service, and nothing is asked', () => {
     for (const args of [['docker:prod-db'], ['--api', 'docker:prod-db'], ['ops-astro-api']]) {
       const at = fake();
@@ -34,7 +36,7 @@ describe('S0-1 gated stop, before any lookup', () => {
       expect(result.out).toMatch(/takes no argument; it stops only production's worker unit/u);
       untouched(at);
     }
-  });
+  }, 10_000);
 
   it('with no sign-in is refused and asks nothing of the machine', () => {
     const at = fake();

@@ -30,6 +30,7 @@ function world(held: Promise<void>): typeof fetch {
     const at = String(url);
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: 'fresh' });
     if (at === '/api/session') return json({ ok: true, session: 'fresh-session' });
+    if (at.endsWith('/session/person')) return json({ person: { name: 'Mia Hart' } });
     if (at.startsWith('/api/b/bravo/session/capabilities')) {
       return json({ ok: true, personId: 'p', businessKey: 'bravo', grants: [] });
     }

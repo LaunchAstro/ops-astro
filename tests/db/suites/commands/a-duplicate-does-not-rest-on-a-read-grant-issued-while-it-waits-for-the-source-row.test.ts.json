@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a duplicate does not rest on a read grant issued while it waits for the source row"
+}

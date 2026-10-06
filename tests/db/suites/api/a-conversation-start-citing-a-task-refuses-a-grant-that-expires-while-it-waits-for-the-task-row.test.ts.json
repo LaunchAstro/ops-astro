@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a conversation start citing a task refuses a grant that expires while it waits for the task row, and keeps no conversation"
+}

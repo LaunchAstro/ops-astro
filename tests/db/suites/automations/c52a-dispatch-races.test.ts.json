@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "PORT-P11 (C52-A standing approvals): a revoke or turn-off racing a dispatch, each on its own connection."
+}

@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What `s0-5-client-lock.test.ts` runs: the task-content commands read from
-// the catalogue, each fixture's marker or the rows that name its task, the
-// client change through the CLI and the API, and the interleaving of a
-// content write with a client change under the task's row lock.
+// What `s0-5-client-lock.test.ts` runs: the catalogue's task-content commands, each fixture's
+// marker, the client change by CLI and API, and a content write racing it under the row lock.
 
 import { randomUUID } from 'node:crypto';
 import {
   COMMAND_EFFECTS,
-  COMMAND_SURFACE,
   type CommandDeclaration,
   type CommandName,
 } from '../../packages/core-wire/src/index.ts';
 import type { Harness } from '../acceptance/role-case-harness.ts';
 import { both, refusedAlike } from '../cli/cli-parity.ts';
+import { CONTENT } from './s0-5-client-lock-content.ts';
+
+export { CONTENT } from './s0-5-client-lock-content.ts';
 
 /** Bookkeeping every call writes; never content of its own. */
 const BOOKKEEPING: ReadonlySet<string> = new Set([
@@ -21,35 +21,6 @@ const BOOKKEEPING: ReadonlySet<string> = new Set([
   'operations',
   'authentication_attempts',
 ]);
-
-/** Commands that write a client-scoped kind but are not content on an existing task. */
-const NOT_CONTENT: Readonly<Record<string, string>> = {
-  'task.create': 'the creation itself',
-  'task.duplicate': 'creates a new task from the shell; the old task is untouched (MP-4-8)',
-  'task.set_party': 'a client change, which the lock allows while the task is empty',
-  'client.create': 'writes a client, not a task',
-  'client.set_privacy': "a client's privacy settings, not a task",
-  'task.share_with_client': 'a share grant: who sees the task, not what it holds',
-  'task.purge': 'removes the task; nothing is left to change the client of',
-  'inbox.seen': "the caller's own seen stamp on an item, not the task's content",
-  // SL12 (batch 3a): a conversation is its owner's; citing a task writes nothing on it.
-  'conversation.start': "the caller's own conversation, which may cite a task",
-  'conversation.message': "a message in the caller's own conversation",
-  'conversation.rename': "the caller's own conversation's title",
-  'conversation.set_scope': "the page the caller's own conversation is about",
-  'model.call':
-    'the agent prefix only (the person path refuses it), under a lease: the task already has content',
-  // SL11 (batch 3b): AW-11's two, agent-only like `model.call`.
-  'run.delegate_child':
-    "the agent prefix only, under the parent's lease: the task already has content",
-  'run.child_handback':
-    "the agent prefix only, on a child the parent's lease made: the task already has content",
-};
-
-export const CONTENT: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(
-  ({ name }) =>
-    !(name in NOT_CONTENT) && COMMAND_EFFECTS[name].writes.some((kind) => kind.scope === 'client'),
-);
 
 let harness: Harness;
 
@@ -165,8 +136,8 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'run.top_up',
   'run.end_at_budget_stop',
   'run.revise_state',
-  // The task's own rows beside it (MP-4-5 comments, MP-4-6 time, MP-4-11 tags):
-  // a comment's edit or removal, a time entry, a tag on the task.
+  // The task's own rows beside it (MP-4-5 comments, MP-4-6 time, MP-4-11 tags, C41-A):
+  // a comment's edit or removal, a time entry, a tag, a step's result as a comment.
   'task.edit_comment',
   'task.delete_comment',
   'time.start',
@@ -176,6 +147,7 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'time.delete',
   'task.add_tag',
   'task.remove_tag',
+  'onboarding.step_result',
   // SL11 (batch 3b): approves the proposal's gate as `task.decide` does, then pins and binds.
   'task.accept_plan',
 ]);

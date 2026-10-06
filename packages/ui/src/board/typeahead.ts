@@ -47,18 +47,14 @@ export function suggest<Row>(options: {
     (startsAWord(facet.label, q) || (facet.words ?? []).some((word) => startsAWord(word, q)));
   const clients = options.facets.filter((facet) => facet.kind === 'Client' && hit(facet));
   const others = options.facets.filter((facet) => facet.kind !== 'Client' && hit(facet));
-  // A row that is itself a client (the clients board) is already offered above.
-  const clientLabels = new Set(
-    options.facets
-      .filter((facet) => facet.kind === 'Client')
-      .map((facet) => facet.label.toLowerCase()),
-  );
-  const names = [...new Set(options.names)].filter(
-    (name) =>
-      startsAWord(name, q) &&
-      !clientLabels.has(name.toLowerCase()) &&
-      !options.have.text.includes(name.toLowerCase()),
-  );
+  // Taking a name adds each of its words, so a name whose words are all on is
+  // never offered again.
+  const taken = (name: string): boolean =>
+    name
+      .toLowerCase()
+      .split(/\s+/u)
+      .every((word) => word === '' || options.have.text.includes(word));
+  const names = [...new Set(options.names)].filter((name) => startsAWord(name, q) && !taken(name));
   const noun = `${options.noun.charAt(0).toUpperCase()}${options.noun.slice(1)}s`;
   return [
     ...group(

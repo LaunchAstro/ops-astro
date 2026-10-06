@@ -64,8 +64,7 @@ export async function liveFactor(
   options: { readonly lock?: string } = {},
 ): Promise<SecondFactor | undefined> {
   if (options.lock !== undefined) {
-    const digest = createHash('sha256').update(options.lock).digest('hex');
-    await advisoryLock(tx, `second-factor-subject:${digest}`);
+    await lockLoginFactors(tx, options.lock);
     await tx.query(
       'select 1 from public.people where business_id = $1 and id = $2 for no key update',
       [tx.businessId, personId],
@@ -79,6 +78,12 @@ export async function liveFactor(
   );
   const row = rows[0];
   return row === undefined ? undefined : shaped(row);
+}
+
+/** The login's lock, `second-factor-subject:<digest>`; first in its transaction. */
+export async function lockLoginFactors(tx: TenantQuery, subject: string): Promise<void> {
+  const digest = createHash('sha256').update(subject).digest('hex');
+  await advisoryLock(tx, `second-factor-subject:${digest}`);
 }
 
 /** A first enrolment: the provider has issued a factor that is not yet verified. */

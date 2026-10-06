@@ -18,8 +18,8 @@ export {
 } from './commands/conversation-exchange.ts';
 export {
   CREDENTIAL_REACH,
-  credentialNotLive,
   executeCredentialCommand,
+  atUnheldKey,
   type CredentialQuota,
   type QuotaSlot,
 } from './commands/credential-envelope.ts';
@@ -110,6 +110,16 @@ export {
   type SessionsEnded,
 } from './commands/account-factor-provider.ts';
 export {
+  PASSWORD_BYTES,
+  RESET_COMMAND,
+  RESET_TOKEN_MINUTES,
+  setPasswordByToken,
+  type PasswordReset,
+  type PasswordResetCode,
+  type PasswordResetResult,
+  type ResetDependencies,
+} from './commands/account-password.ts';
+export {
   endOtherSessions,
   listOwnSessions,
   signOutSession,
@@ -121,3 +131,4 @@ export {
   type LoginProvider,
   type SettleReport,
 } from './commands/access-end.ts';
+export { FACTOR_RESET_CLAIM_SECONDS, settleFactorResets } from './commands/factor-reset-settle.ts';

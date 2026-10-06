@@ -671,3 +671,59 @@
 .tokpanel__reason {
   margin: 0;
 }
+
+/* AW-04: the plan as a card in the drawer's chat, and its approved card. */
+.aip__msg--plan {
+  display: grid;
+  gap: var(--s-2);
+}
+.aip__plan {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.aip__plan-k {
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  color: var(--text-muted);
+}
+.aip__plan-steps {
+  margin: 0;
+  padding-left: 1.1rem;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.aip__plan-meta {
+  margin: 0;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text-2);
+}
+.aip__plan-refused {
+  color: var(--danger);
+}
+.aip__plan-act {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.aip__plan-done {
+  display: grid;
+  gap: var(--s-1);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.aip__plan-words {
+  margin: 0;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  white-space: pre-wrap;
+}

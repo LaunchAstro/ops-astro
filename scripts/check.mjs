@@ -20,65 +20,137 @@
 // The order matters. The contamination gate's self-test comes before its
 // sweep, because a blind gate that has stopped working looks exactly like a
 // clean repository.
+//
+// CI-SPEED, light pull requests. The `local checks` job sets CHECK_SCOPE to its
+// name and scripts/ci-scope.ts decides. On a pull request the step marked
+// `changed` runs only the tests the change reaches (`vitest run --changed`, from
+// the pull request's base); the full run is in the merge queue, the only way
+// into main. A merge group, a push, any other event and a run with no
+// CHECK_SCOPE, every local run, run every step in full. A decision or a base it
+// cannot read fails the check before any step runs.
+//
+// The build runs before the tests, on a pull request too. Tests copy the bundle
+// it writes to apps/web/dist. Run last, and on a pull request not at all, it
+// left them to whichever test worker built first, and a pull request's light set
+// could select them without the one test that builds, so they read no bundle at
+// all. The build takes seconds.
+//
+// Once the build passes, every step after it gets the stamp it wrote, in
+// CHECK_WEB_BUILD, and no step before it gets one from outside.
+// tests/ci/no-fallback-in-bundle.test.ts keeps a bundle carrying exactly that
+// stamp rather than rewriting it under the other tests, and rebuilds any other
+// (tests/ci/web-bundle-build.ts). A build that leaves no stamp this can read
+// names nothing, so that test builds for itself.
+//
+// CI-SHARDS-2. The `local checks` job runs as shards and sets CHECK_SHARD to
+// i/n. Every shard runs the build and its share of the test files (vitest
+// --shard, split by measured time in vitest.config.ts); every other step runs
+// in the one shard scripts/ci-shards.ts gives it, in the order above, and the
+// others say which shard runs it. The required check passes only when every
+// shard did, so a step's cases and the step they prove (the gate's self-test
+// and its sweep, say) may run in different shards and still both hold it.
+// A CHECK_SHARD it cannot read fails the check before any step runs.
 
 import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
+import { readStamp } from '../apps/web/build-stamp.ts';
+import { STEPS } from './check-steps.ts';
+import { EVERY_SHARD, localStepShards, readShardPlan } from './ci-shards.ts';
+import { parseShard } from './db-shards.ts';
 
-const STEPS = [
-  ['brand:check', 'product name headings'],
-  ['brand:cases', 'the actual product name CLI'],
-  ['typecheck', 'types'],
-  ['lint', 'lint'],
-  ['lint:ratchet', 'no new lint warning, no product source file over 1,000 lines'],
-  ['format:check', 'format'],
-  ['test', 'tests'],
-  ['gate:selftest', 'the gate proves itself'],
-  ['gate:cases', 'the gate catches what it must'],
-  ['gate:hooks', 'the hook handles every exit code'],
-  ['commits:cases', 'commit messages and provenance'],
-  ['migrations:cases', 'a changed applied migration fails'],
-  ['provenance:cases', 'the actual commit message hook'],
-  ['candidate:cases', 'candidate snapshots and public-content cases'],
-  ['public:history:cases', 'public policy on outgoing history and metadata'],
-  ['size:cases', 'the size report measures and never blocks'],
-  ['review:cases', 'review evidence binds to a revision'],
-  ['session:cases', 'the session check reads a scope correctly'],
-  ['pins:cases', 'pins-check refuses an unpinned action, image or container'],
-  ['pins', 'actions pinned and recorded'],
-  ['skills:refs', 'every skill reference resolves'],
-  ['merge:policy', 'nothing merges itself'],
-  ['gate', 'the gate sweeps'],
-  ['secrets', 'secrets, over the working tree'],
-  ['public:content:tree', 'public content policy, over the working tree'],
-  ['licences:cases', 'the licence checker refuses what it must'],
-  ['licences', 'licence compatibility'],
-  ['type:census', 'every text style on the declared scale'],
-  ['spdx:cases', 'source licence header rejection cases'],
-  ['spdx', 'source licence headers'],
-  ['deps:cases', 'the dependency cruise refuses a cruise that read nothing'],
-  ['deps:cruise', 'structural dependency rules'],
-  ['db:cases', 'the database gate refuses a skip, a missing suite and an empty run'],
-  ['local:cases', 'the local scripts never reuse a database on another major'],
-  ['build', 'build'],
-];
+/** The variable the steps after the build read the bundle's stamp from. */
+const BUILT = 'CHECK_WEB_BUILD';
+/** Where the build writes the bundle, from the directory every step runs in. */
+const BUNDLE = join('apps', 'web', 'dist');
 
 const execPath = process.env['npm_execpath'];
 const isScript = execPath !== undefined && /\.[cm]?js$/u.test(execPath);
 const command = execPath === undefined ? 'pnpm' : isScript ? process.execPath : execPath;
 const prefix = isScript && execPath !== undefined ? [execPath] : [];
 
-const results = [];
+/** A script beside this one, run by this node; its stdout, or the check fails. */
+const read = (script, ...args) => {
+  const run = spawnSync(process.execPath, [join(import.meta.dirname, script), ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  if (run.status !== 0) {
+    console.error(`check: ${script} ${args.join(' ')} failed; nothing ran.`);
+    process.exit(1);
+  }
+  return run.stdout;
+};
 
-for (const [script, label] of STEPS) {
-  console.log(`\n=== ${label} (pnpm run ${script}) ===`);
-  const run = spawnSync(command, [...prefix, 'run', script], { stdio: 'inherit' });
+/** On a pull request under CHECK_SCOPE, the base the light set reads the change from; else null. */
+function lightBase() {
+  const scope = process.env['CHECK_SCOPE'] ?? '';
+  if (scope === '') return null;
+  const decision = read('ci-scope.ts', scope, '--decide');
+  if (decision === 'run\n') return null;
+  const base = decision === 'skip\n' ? read('merge-group.mjs', 'base').trim() : '';
+  if (!/^[0-9a-f]{40}$/u.test(base)) {
+    console.error(`check: no light set (decision ${JSON.stringify(decision)}, base "${base}").`);
+    process.exit(1);
+  }
+  return base;
+}
+
+/** In a shard (CHECK_SHARD=i/n), the shard and each step's shard number; else null, every step here. */
+function shardOf() {
+  const text = process.env['CHECK_SHARD'];
+  if (text === undefined) return null;
+  try {
+    const shard = parseShard(text, 'CHECK_SHARD');
+    const owners = new Map();
+    localStepShards(readShardPlan(join(import.meta.dirname, '..')), shard.count).forEach(
+      (steps, i) => steps.forEach((step) => owners.set(step, i + 1)),
+    );
+    return { shard, owners };
+  } catch (error) {
+    console.error(`check: ${error instanceof Error ? error.message : String(error)}; nothing ran.`);
+    process.exit(1);
+  }
+}
+
+const sharded = shardOf();
+const base = lightBase();
+const results = [];
+const env = { ...process.env };
+delete env[BUILT];
+// Read above; a step that runs pnpm check again (a test of it, say) runs it whole.
+delete env['CHECK_SHARD'];
+
+for (const [script, label, light] of STEPS) {
+  const owner = EVERY_SHARD.includes(script) ? undefined : sharded?.owners.get(script);
+  if (owner !== undefined && owner !== sharded?.shard.index) {
+    console.log(`\n=== ${label} (pnpm run ${script}): local checks shard ${owner} runs it ===`);
+    results.push({ script, label, ok: true, owner });
+    continue;
+  }
+  const changed = base !== null && light === 'changed';
+  const args = changed ? ['--changed', base, '--passWithNoTests'] : [];
+  if (script === 'test' && sharded !== null) {
+    args.push('--shard', `${sharded.shard.index}/${sharded.shard.count}`);
+  }
+  const note = changed
+    ? ': the full run is in the merge queue; here, the tests the change reaches'
+    : '';
+  console.log(`\n=== ${label} (pnpm run ${script})${note} ===`);
+  const run = spawnSync(command, [...prefix, 'run', script, ...args], { stdio: 'inherit', env });
   const ok = run.status === 0;
   results.push({ script, label, ok });
   if (!ok) break;
+  if (script === 'build') {
+    const stamp = readStamp(BUNDLE);
+    if (stamp !== undefined) env[BUILT] = stamp;
+  }
 }
 
 console.log('\n=== summary ===');
-for (const { script, label, ok } of results) {
-  console.log(`${ok ? 'pass' : 'FAIL'}  ${label} (${script})`);
+for (const { script, label, ok, owner } of results) {
+  console.log(
+    `${owner === undefined ? (ok ? 'pass' : 'FAIL') : `shard ${owner}`}  ${label} (${script})`,
+  );
 }
 
 const failed = results.find((r) => !r.ok);
@@ -86,4 +158,10 @@ if (failed) {
   console.error(`\ncheck: failed at ${failed.script}. Nothing after it ran.`);
   process.exit(1);
 }
-console.log('\ncheck: green.');
+const where =
+  sharded === null ? '' : `, shard ${sharded.shard.index}/${sharded.shard.count} of local checks`;
+console.log(
+  base === null
+    ? `\ncheck: green${where}.`
+    : `\ncheck: green, the light set${where}. The full set runs in the merge queue.`,
+);

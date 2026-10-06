@@ -42,12 +42,28 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
+# CI-LOCAL (owner, 6 October 2026: CI runs on our own machines). With the
+# repository variable OPS_CI_LOCAL set to `on` (any case), a merge group's
+# required jobs, and every job they wait on, ask for our own Linux runners
+# (`self-hosted`, `Linux`, `ops-merge-m5`); unset or any other value, they run
+# here as before. Deleting the variable moves new runs back; jobs already
+# waiting for our runners stay there until they run or the queue's check
+# timeout drops their group, so cancel those runs too. Only `merge_group`
+# routes: ops-astro is public, and a pull request, a fork's included, must
+# never reach our runner (CIRUNNER). This file cannot be that barrier, as a
+# pull request can edit it; the runner brings its own (a check before any
+# step that refuses every job but this repository's merge group, a throwaway
+# machine per job), the repository requires approval for every outside
+# contributor's run, and the variable stays unset until both hold. Job names are unchanged, so the required
+# checks still match. Pull requests, pushes and the jobs no required check
+# waits on stay hosted. tests/ci/merge-group-runner.test.ts holds every job
+# to this.
 jobs:
   gate:
     # First job, and deliberately first: a repository with client material in
     # it is not made acceptable by passing its type checks.
     name: contamination gate
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 5.2 min.
     timeout-minutes: 15
     steps:
@@ -61,6 +77,14 @@ jobs:
       # after the gate runs on a head sent back for fixes (scripts/sent-back-hold.mjs).
       - name: A pull request sent back for fixes waits for its fix head
         run: node scripts/sent-back-hold.mjs
+      # CI-SPEED (#724): a pull request whose head is a merge-queue commit (the
+      # tip of a gh-readonly-queue/ branch, under any branch name) fails here:
+      # every job that waits on the gate is skipped, and `database conformance`,
+      # which runs always(), fails. review-evidence.yml runs the same check, as
+      # it waits on no gate. It fails closed on a pull request it cannot read;
+      # other events pass (scripts/queue-head-check.mjs).
+      - name: A pull request never runs its checks on a merge-queue commit
+        run: node scripts/queue-head-check.mjs
       - name: Required scanner runtime
         run: python3 -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11 or newer is required'"
       - name: Self-test, before anything is believed
@@ -120,7 +144,7 @@ jobs:
     # executes third-party code, so it waits too. YAML order is not execution
     # order; only `needs` is.
     needs: [gate]
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 0.7 min.
     timeout-minutes: 10
     steps:
@@ -149,11 +173,27 @@ jobs:
         run: ./gitleaks git --no-banner --redact --config .gitleaks.toml .
 
   check:
-    name: local checks
+    # `local checks` in shards (CI-SHARDS-2). Run whole it took 35 of the merge
+    # queue's 38 minutes, so each shard runs the build, its share of the test
+    # files and its share of every other step below, split by measured time
+    # (scripts/ci-shards.ts, tests/ci/ci-shard-plan.json);
+    # tests/ci/ci-shards*.test.ts prove each step and test file runs in exactly
+    # one shard. It runs on every event the job ran on whole. `local checks`
+    # below is the required check, and it passes only when every shard did.
+    name: local checks shard ${{ matrix.shard }}
     needs: [gate]
-    runs-on: ubuntu-latest
-    # Its slowest green run in the day to 1 October 2026: 33.6 min.
-    timeout-minutes: 60
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
+    # The whole job's slowest green run in the 10 merge groups of 5 October
+    # 2026 was 36.4 min; a third of it is about 12 min.
+    timeout-minutes: 30
+    strategy:
+      # Every shard runs to the end, so one red names all of its failures.
+      fail-fast: false
+      # 3, sized so a shard ends inside the database shards' window; with 16
+      # database shards, each merge group holds 21 jobs while both run (on
+      # hosted runners; on our own, the slots set the pace, CI-LOCAL).
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -188,34 +228,54 @@ jobs:
           echo "$bin" >> "$GITHUB_PATH"
       - name: The pinned headless shell for MP-1-1's harness captures and the browser proofs
         run: pnpm exec playwright install --with-deps --only-shell chromium
+      # CI-SPEED, light pull requests: CHECK_SCOPE names this check, and
+      # scripts/check.mjs asks scripts/ci-scope.ts. On a pull request it runs
+      # the light set: every step, the build before the tests, with the tests
+      # the change reaches in place of the full test run; the full run is in the
+      # merge queue, the only way into main. On a merge group or a push it
+      # runs every step, as before. No step here carries a condition.
       - run: pnpm check
         env:
           # The suites in tests/ci/container-suites.json run in the next step instead.
           CONTAINER_SUITES: apart
+          CHECK_SCOPE: local checks
+          CHECK_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+      # CI-SPEED: every step below is queue-only (`queueOnly`,
+      # scripts/ci-scope.json). On a pull request each says it runs in the
+      # merge queue and passes; on a merge group or a push each runs in full,
+      # in the one shard scripts/ci-shards.ts gives it; the others say which.
       # They start containers, and a new network interface aborts a browser
       # capture's page load in flight (net::ERR_NETWORK_CHANGED), so they run
       # here, after every capture in `pnpm check`.
       - name: The suites that start containers, after the browser captures
-        run: pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'container suites' -- pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
       # S0-6 content policy: the built page, in the headless shell above,
       # refuses planted scripts. Alone, since it builds apps/web/dist.
       - name: The built page refuses planted scripts in a real browser
-        run: pnpm vitest run tests/browser/
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'browser proofs' -- pnpm vitest run tests/browser/
         env:
           BROWSER_PROOFS: '1'
       - name: Semgrep p/default on the supply-chain settings, image pinned by digest (CQ-3)
-        run: bash scripts/local/semgrep-settings.sh
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'semgrep settings' -- bash scripts/local/semgrep-settings.sh
+      # `pnpm check` reads the same policy over the working tree on a pull request too.
       - name: Public content in the actual checked-out snapshot
-        run: node scripts/public-content-check.mjs --repo "$PWD"
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'public content snapshot' -- node scripts/public-content-check.mjs --repo "$PWD"
       # S0-1 promotion same artefact, a dry run in CI: the release step turns
       # the build `pnpm check` just made into the build output (the Vercel
       # re-plan), stored the way staging keeps it, under the name the staging
       # definition gives it; the promotion step must select it by the stamp
       # it carries, check its bytes against the digest it records, and record
-      # it. It touches no service and no database.
+      # it. It touches no service and no database. A pull request's light set
+      # builds too, but this dry run is queue-only: on a pull request
+      # `scripts/ci-scope.ts --decide` says skip and it passes, so it runs in
+      # the merge queue.
       - name: S0-1 promotion same artefact, a dry run over the build output just made
         run: |
           set -euo pipefail
+          decision="$(node scripts/ci-scope.ts 'local checks' --decide)"
+          case "$decision" in run) ;; skip) exit 0 ;; *) exit 1 ;; esac
+          shard="$(node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'promotion dry run' --decide)"
+          case "$shard" in run) ;; skip) exit 0 ;; *) exit 1 ;; esac
           version="$(node -p "JSON.parse(require('node:fs').readFileSync('apps/web/dist/build.json', 'utf8')).build")"
           store="${RUNNER_TEMP}/artefacts"
           mkdir -p "$store"
@@ -229,7 +289,28 @@ jobs:
         env:
           DOCKER: docker
           L5_RUNTIME_PROOFS: '1'
-        run: bash scripts/local/restart-proof.sh --suite tests/acceptance/inbox-worker-restart.test.ts
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/ci-shards.ts 'local checks' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'inbox restart' -- bash scripts/local/restart-proof.sh --suite tests/acceptance/inbox-worker-restart.test.ts
+
+  local-checks:
+    # The required check (ruleset 23396133, .github/required-checks.json): one
+    # name over every `local checks` shard, as `database conformance` is over
+    # its shards. `always()` runs it when a shard failed, was skipped or was
+    # cancelled, and each of those fails it on every event; without it this
+    # job would be skipped, and a skipped required check reads as passed. The
+    # shards run on pull requests too, so no skip passes anywhere.
+    name: local checks
+    needs: [gate, check]
+    if: always()
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - name: Every shard succeeded
+        env:
+          SHARDS: ${{ needs.check.result }}
+          GATE: ${{ needs.gate.result }}
+        run: |
+          echo "local checks shards: $SHARDS, contamination gate: $GATE"
+          test "$SHARDS" = success
 
   database-gate:
     # Proving the gate. These probes start their own throwaway Postgres, run
@@ -240,16 +321,38 @@ jobs:
     # product, and they must not be read as saying anything about it.
     name: database conformance gate
     needs: [gate]
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 2.4 min.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # merge-group.mjs walks a group's first parents down to the base tip.
+          fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
+      # ORCH91 MAGNETS: each named suite is a file of its own, so a change can
+      # drop one by deleting a file. This fails naming each suite the base
+      # named, or marked isolation, that the head does not, unless its test
+      # file went too. On a pull request, merge-group.mjs runs it against the
+      # pull request's base. On a group it runs once per pull request the group
+      # holds, each time the checked-out group against the base branch's tip,
+      # so a drop fails every run and names them all. On a push the base is
+      # the push's `before`, reaching the script through env alone. It
+      # branches in the shell, as a step condition could skip a group. The
+      # script validates the id before git sees it; an all-zero base fails.
+      - name: No named or isolation suite is dropped
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            node scripts/named-suites.ts kept "$BEFORE"
+          else
+            node scripts/merge-group.mjs each sh -c 'node scripts/named-suites.ts kept "$BASE_SHA"'
+          fi
       - run: pnpm install --frozen-lockfile
       - run: pnpm run db:cases
 
@@ -268,14 +371,24 @@ jobs:
     # check, and it passes only when every shard did.
     name: database conformance shard ${{ matrix.shard }}
     needs: [gate]
-    runs-on: ubuntu-latest
+    # CI-SPEED, light pull requests: the shards run in the merge queue, the
+    # only way into main, and on a push; a pull request skips them, and the
+    # aggregate below passes that skip on a pull request whose contamination
+    # gate passed, and nowhere else. This never
+    # skips a group (tests/ci/merge-group-jobs.test.ts).
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 18.6 min.
     timeout-minutes: 35
     strategy:
       # Every shard runs to the end, so one red names all of its suites.
       fail-fast: false
+      # 16 since CI-SPEED (owner, 4 October 2026): two merge groups at once hold 32 shard jobs,
+      # inside the 60 jobs the account runs at once on hosted runners (our own runners have
+      # fewer slots, CI-LOCAL). scripts/db-census.ts proves the 8- and
+      # 16-way splits hold the same items and tests.
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     services:
       postgres:
         # Postgres 17, the hosted database's major (S0-7), pinned by digest:
@@ -310,10 +423,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
-      # request the wrapped command runs only when the change reaches what it
-      # proves, and the step says why when it does not; on a merge group or a
-      # push it always runs. No step here carries a condition.
+      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a merge
+      # group or a push the wrapped command always runs, and the shards run on
+      # nothing else. No step here carries a condition.
       - run: node scripts/ci-scope.ts 'database conformance' --shard ${{ matrix.shard }}/${{ strategy.job-total }} -- pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
@@ -323,9 +435,9 @@ jobs:
       # S0-3: a pull request that adds a migration upgrades a database built and
       # seeded at the base branch's newest migration, with the application
       # stopped, and every row must come through unchanged. No migration added,
-      # nothing to drill; a push to main has no base to start from. On a merge
-      # group the base is main as it stands, and the head holds every
-      # migration the group's pull requests add.
+      # nothing to drill; a push to main has no base to start from. It runs on
+      # a merge group, where the base is main as it stands and the head holds
+      # every migration the group's pull requests add.
       - name: The upgrade drill, when this pull request adds a migration
         if: github.event_name != 'push'
         env:
@@ -338,74 +450,42 @@ jobs:
           from=$(git ls-tree --name-only "$BASE_SHA" migrations/ | grep '\.sql$' | sort | tail -1)
           pnpm run verify:upgrade-drill --from "$(basename "$from" .sql)" --base "$BASE_SHA"
 
-  database-lookahead:
-    # S0-7: the same conformance run on Postgres 18, the next major, so a
-    # change that breaks on it shows before the provider moves. It is not a
-    # required check: its failure is reported red on the pull request and
-    # blocks nothing. When the provider offers 18, one ticket moves
-    # production, staging, CI and the restore drill to it together
-    # (docs/supply-chain-pins.md).
-    name: database look-ahead, Postgres 18 (not required)
-    needs: [gate]
-    # Pull requests only (CI-SPEED, ORCH78 LOOKAHEAD). On a merge group or a
-    # push to main nobody reads it, and it held a runner to its 90-minute
-    # timeout there while the group's required checks waited for runners.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    services:
-      postgres:
-        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
-        env:
-          POSTGRES_PASSWORD: conformance-throwaway
-          POSTGRES_DB: conformance
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    steps:
-      # The upgrade drill seeds through an older commit's checkout: full history.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run db:conformance
-        env:
-          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
-          OPS_ASTRO_DB_LOOKAHEAD_MAJOR: '18'
-
   database:
     # The required check (ruleset 23396133, .github/required-checks.json): one
     # name over every shard. `always()` runs it when a shard failed, was
-    # skipped or was cancelled, and each of those fails it; without it this
-    # job would be skipped, and a skipped required check reads as passed.
-    # docs/agents/database-conformance.md holds what the check means.
+    # skipped or was cancelled, and each of those fails it on a merge group or
+    # a push; without it this job would be skipped, and a skipped required
+    # check reads as passed. On a pull request the shards skip by design
+    # (CI-SPEED), so a skip passes there, only when the contamination gate
+    # passed, and nowhere else: a failed gate skips the shards too, and
+    # always() would otherwise pass that skip as green. A failure or a cancel
+    # fails everywhere. docs/agents/database-conformance.md holds what the
+    # check means.
     name: database conformance
-    needs: [database-shard]
+    needs: [gate, database-shard]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 0.2 min.
     timeout-minutes: 10
     steps:
-      - name: Every shard succeeded
+      - name: Every shard succeeded, or on a pull request whose gate passed none ran
         env:
           SHARDS: ${{ needs.database-shard.result }}
+          GATE: ${{ needs.gate.result }}
+          # The event reaches the script as a value, never as script text.
+          EVENT: ${{ github.event_name }}
         run: |
-          echo "database conformance shards: $SHARDS"
+          echo "database conformance shards: $SHARDS, contamination gate: $GATE"
+          if [ "$EVENT" = pull_request ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
+            echo "database conformance: the shards run in the merge queue, the only way into main"
+            exit 0
+          fi
           test "$SHARDS" = success
 
   licences:
     name: OSI licence allowlist
     needs: [gate]
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 1.7 min.
     timeout-minutes: 10
     steps:
@@ -425,7 +505,7 @@ jobs:
     needs: [gate]
     # On a push to main, no pull request: the range is the gate's, from the root.
     if: github.event_name != 'push'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 3.1 min.
     timeout-minutes: 10
     steps:
@@ -458,7 +538,7 @@ jobs:
     name: pull request size
     needs: [gate]
     if: github.event_name != 'push'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 1.3 min.
     timeout-minutes: 10
     steps:
@@ -477,7 +557,7 @@ jobs:
   audit:
     name: dependency audit
     needs: [gate]
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 0.7 min.
     timeout-minutes: 10
     steps:
@@ -495,7 +575,7 @@ jobs:
   semgrep:
     name: static analysis
     needs: [gate]
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
     # Its slowest green run in the day to 1 October 2026: 2.0 min.
     timeout-minutes: 10
     steps:
@@ -518,11 +598,23 @@ jobs:
   isolation:
     # The client-isolation, restricted-call, pooled-crossover and permission
     # refusal suites (also in `database conformance`), named on their own.
-    name: isolation tests
+    # In shards (CI-SHARDS-2): run whole it took 29 of the merge queue's 38
+    # minutes, so each shard runs its share of the suites and of the steps
+    # beside the runner, split by measured time (scripts/ci-shards.ts); every
+    # suite and step runs in exactly one shard (tests/ci/ci-shards*.test.ts).
+    # `isolation tests` below is the required check.
+    name: isolation tests shard ${{ matrix.shard }}
     needs: [gate]
-    runs-on: ubuntu-latest
-    # Its slowest green run in the day to 1 October 2026: 21.2 min.
-    timeout-minutes: 40
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
+    # The whole job's slowest green run in the 10 merge groups of 5 October
+    # 2026 was 30.9 min; half of it is about 15 min.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # 2: one suite alone takes 10 minutes, so a third shard would end barely
+      # sooner and hold another runner in every merge group.
+      matrix:
+        shard: [1, 2]
     services:
       postgres:
         # The same digest and throwaway password as `database conformance`.
@@ -538,7 +630,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
-      # Full history: on a pull request the scope reads the change from its base.
+      # Full history, as before; a queue-only check reads no change.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -548,11 +640,12 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
-      # request the wrapped command runs only when the change reaches what it
-      # proves, and the step says why when it does not; on a merge group or a
-      # push it always runs. No step here carries a condition.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --manifest tests/db/isolation-suites.json
+      # CI-SPEED, light pull requests: queue-only (`queueOnly`,
+      # scripts/ci-scope.json). On a pull request each step says it runs in
+      # the merge queue, the only way into main, and passes, so the check
+      # still reports under its name; on a merge group or a push each always
+      # runs. No step here carries a condition.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation --shard ${{ matrix.shard }}/${{ strategy.job-total }}
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # The T4a fixture suites are named here too; their clone past a
@@ -560,11 +653,39 @@ jobs:
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
       # The named service-stop proof with both addresses a local setup has; it
       # skips without both, and the shard jobs set only one.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'service stop, two addresses' -- pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+      # The seed's boundary proof is a node:test file, so no manifest runs it: it
+      # makes and drops its own migrated databases on this service.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'seed boundaries' -- node --test tests/review/seed-boundaries-proof.test.mjs
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+      # So is the proof that an HTTPS redirect cannot carry the seed's key to plaintext HTTP.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/ci-shards.ts 'isolation tests' --shard ${{ matrix.shard }}/${{ strategy.job-total }} --step 'seed redirect' -- node --test tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+
+  isolation-tests:
+    # The required check: one name over every `isolation tests` shard, on the
+    # same terms as `local checks` above.
+    name: isolation tests
+    needs: [gate, isolation]
+    if: always()
+    runs-on: ${{ github.event_name == 'merge_group' && vars.OPS_CI_LOCAL == 'on' && fromJSON('["self-hosted","Linux","ops-merge-m5"]') || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    steps:
+      - name: Every shard succeeded
+        env:
+          SHARDS: ${{ needs.isolation.result }}
+          GATE: ${{ needs.gate.result }}
+        run: |
+          echo "isolation tests shards: $SHARDS, contamination gate: $GATE"
+          test "$SHARDS" = success
 
   parity:
     # API-1: every app action has its API and CLI equivalent; no database.

@@ -6,7 +6,12 @@
 // Who is asking (`FactorCaller`) is declared here, so the modules split from
 // `account-factor.ts` take it from here and none imports that file back.
 
-import { withSession } from '../../../core-records/src/index.ts';
+import {
+  ENDED_FIXES,
+  endProviderSession,
+  sessionEndedSince,
+  withSession,
+} from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -17,7 +22,7 @@ import type {
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { recordCode } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
-import { asCallerVisible, type CommandRefusal } from './refusal.ts';
+import { asCallerVisible, refuseCommand, type CommandRefusal } from './refusal.ts';
 
 /** Who is asking and what they presented, as the API door admitted them. */
 export interface FactorCaller {
@@ -56,21 +61,53 @@ export async function judged(
     caller.businessId,
     caller.presented,
     async (tx, session) => {
-      const refusal = await check(tx, session);
-      await recordCode(tx, session, caller, stage, refusal);
-      if (stage === 'before' && refusal === undefined) return;
-      await writeAuditEvent(tx, {
-        actorId: session.actorId,
-        command: act,
-        operationId: caller.attempt ?? caller.operation ?? null,
-        outcome: refusal === undefined ? 'applied' : 'refused',
-        refusalCode: refusal?.code ?? null,
-        payloadDigest: payloadDigest({ command: act, person: session.personId }),
-      });
-      return refusal;
+      const settle = async (refusal: CommandRefusal | undefined) => {
+        await recordCode(tx, session, caller, stage, refusal);
+        if (stage === 'before' && refusal === undefined) return;
+        await writeAuditEvent(tx, {
+          actorId: session.actorId,
+          command: act,
+          operationId: caller.attempt ?? caller.operation ?? null,
+          outcome: refusal === undefined ? 'applied' : 'refused',
+          refusalCode: refusal?.code ?? null,
+          payloadDigest: payloadDigest({ command: act, person: session.personId }),
+        });
+        return refusal;
+      };
+      await tx.query('savepoint factor_act');
+      const refusal = await settle(await check(tx, session));
+      // The session asked again after the act's last wait (the factor lock,
+      // the audit chain), its ending keys held (C52-A): one signed out
+      // meanwhile undoes the act, whatever it decided (a refusal can change
+      // records too: a verify's losing enrolment is removed), and the refusal
+      // is recorded in its place (#443); one ending now, in any business,
+      // waits for the act to commit.
+      if (stage === 'before') return refusal;
+      const { sessionId } = caller.presented;
+      if (sessionId === undefined || !(await sessionEndedSince(tx, session))) return refusal;
+      return await undo(tx, sessionId, settle);
     },
     'enrolling',
   );
   if (outcome === undefined) return undefined;
   return asCallerVisible(outcome);
+}
+
+/**
+ * The act undone once its session ended: rolled back, the refusal recorded in
+ * its place, and the session ended here, whatever ended it. The rollback also
+ * takes back the ending `sessionEnded` records for a session refused while a
+ * reset is open; an ended session stays ended, and asking again could miss a
+ * reset that settled since. The refusal's audit event comes first, so the
+ * session's key follows the chain in the one order (ending-keys.ts).
+ */
+async function undo(
+  tx: TenantQuery,
+  sessionId: string,
+  settle: (refusal: CommandRefusal) => Promise<CommandRefusal | undefined>,
+): Promise<CommandRefusal | undefined> {
+  await tx.query('rollback to savepoint factor_act');
+  const expired = await settle(refuseCommand('AUTH_SESSION_EXPIRED', [], ENDED_FIXES));
+  await endProviderSession(tx, sessionId);
+  return expired;
 }

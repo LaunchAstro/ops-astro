@@ -78,6 +78,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['FRESH_SIGN_IN_REQUIRED', 403, 'caller'],
   ['FACTOR_ALREADY_ENROLLED', 409, 'caller'],
   ['FACTOR_NOT_ENROLLED', 409, 'caller'],
+  ['FACTOR_RESET_REFUSED', 409, 'caller'],
   ['SECOND_FACTOR_INVALID', 422, 'caller'],
   ['SECOND_FACTOR_LOCKED', 429, 'caller'],
   ['PROVIDER_ANSWER_INVALID', 502, 'caller'],
@@ -179,6 +180,12 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   // AW-08, the launch gate and its client sign-off.
   ['LAUNCH_NOT_DECIDED', 409, 'caller'],
   ['CLIENT_SIGNOFF_REQUIRED', 409, 'caller'],
+  // C80's rows, read after the table from `site/refusal-rows.ts`.
+  ['CHANGE_ENVELOPE_EXCEEDED', 422, 'caller'],
+  ['APPROVER_NOT_CONFIGURED', 409, 'caller'],
+  ['APPROVER_NOT_CONFIGURED_ONE', 403, 'caller'],
+  ['SELF_APPROVAL_REFUSED', 403, 'caller'],
+  ['CORRECTION_PARTY_MISMATCH', 409, 'caller'],
 ];
 
 /**

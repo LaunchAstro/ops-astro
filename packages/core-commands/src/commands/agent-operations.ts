@@ -35,7 +35,9 @@ import { checkLease } from './tasks-check.ts';
 import { reviseRunState } from './run-state.ts';
 import { holdCoveringGrants, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
-import { writeTaskComment } from './tasks-comment.ts';
+import { writeStepResult } from './onboarding.ts';
+import { delegationStillHolds } from './onboarding-authority.ts';
+import { AGENT_AUDIENCES, writeTaskComment } from './tasks-comment.ts';
 import { proposeFor, type ProposeFields } from './tasks-propose.ts';
 import { deleteTaskComment, editTaskComment, type CommentChange } from './tasks-comment-edit.ts';
 import { setScores } from './tasks-scores.ts';
@@ -81,7 +83,7 @@ interface AgentOperationRow<O extends object> {
   readonly operands: (request: AgentRequest) => O | Refused;
   /** How a stored success is released on replay (`agent-replay.ts`). */
   readonly replay:
-    'reauthorise' | 'pickup' | 'capabilities' | 'settledHandback' | 'childPickup' | 'childHandback';
+    'reauthorise' | 'pickup' | 'serveAgain' | 'settledHandback' | 'childPickup' | 'childHandback';
   /** What an authority refusal keeps, when the operation keeps anything. */
   readonly onRefused?: (
     tx: TenantQuery,
@@ -184,9 +186,6 @@ export function isOperandRefusal<O extends object>(parsed: O | Refused): parsed 
 
 /** The operands of a row that reads none beyond its identifiers. */
 const NONE = (): NoOperands => ({});
-
-/** What a delegated agent may write a comment in: its team's notes, not the client's thread. */
-const AGENT_AUDIENCES: ReadonlySet<string> = new Set(['internal']);
 
 /**
  * The operands' shape rules. A present operand of the wrong shape is refused
@@ -628,13 +627,15 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     'task.queue',
     row({
       authority: 'beforePickup',
-      replay: 'reauthorise',
+      // Served again on replay: the stored queue may predate a delegation that
+      // now narrows it (#169).
+      replay: 'serveAgain',
       identifiers: READ_CATALOGUE['task.queue'].identifiers,
       operands: NONE,
-      serve: async (tx) => ({
+      serve: async (tx, { session }) => ({
         recordId: null,
         revision: null,
-        detail: { queue: await readQueue(tx) },
+        detail: { queue: await readQueue(tx, session.actorId) },
       }),
     }),
   ],
@@ -826,6 +827,31 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     }),
   ],
   [
+    // C41-A: an agent step's result goes on its delegated task only (purpose scope and the person's `task:write`).
+    'onboarding.step_result',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: async (tx, { session, request }, _operands, delegation, taskId) => {
+        if (taskId === undefined) return NOT_FOUND();
+        const spine = await readTaskSpine(tx);
+        return await writeStepResult(
+          tx,
+          {
+            actorId: session.actorId,
+            actorKind: 'agent',
+            entryPoint: 'api',
+            commentTypeId: spine.taskCommentTypeId,
+            stillHolds: await delegationStillHolds(tx, delegation),
+          },
+          { recordId: taskId, outcome: request['outcome'], result: request['result'] },
+        );
+      },
+    }),
+  ],
+  [
     'task.edit_comment',
     row({
       authority: 'record',
@@ -935,7 +961,15 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       operands: recordIdOperand(() => refuseNotFound()),
       // The task checked under the delegation (`run:write`, which the mint
       // grants only where the person holds it); the agent is the recorded actor.
-      serve: async (tx, { session, request }, _operands, _delegation, taskId) => {
+      serve: async (
+        tx,
+        { session, request, declaration, credential },
+        _operands,
+        _delegation,
+        taskId,
+      ) => {
+        if (credential === undefined)
+          throw new Error('agent run state: served without a credential');
         const spine = await readTaskSpine(tx);
         return await reviseRunState(
           tx,
@@ -946,7 +980,22 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             knowledge: request['knowledge'],
             unknowns: request['unknowns'],
           },
-          session.actorId,
+          {
+            id: session.actorId,
+            // The delegation resolved again, not the one read before the wait:
+            // one revoked or expired while this waited for the run refuses the
+            // write (#443).
+            askAgain: async (task) => {
+              const again = await resolveDelegation(tx, session.actorId, credential);
+              if (!again.ok) return refused(again.refusal);
+              const still = await checkDelegatedAuthority(tx, again.value, {
+                collection: declaration.collection,
+                action: declaration.action,
+                scope: { kind: 'record', id: task },
+              });
+              return still.ok ? undefined : refused(still.refusal);
+            },
+          },
         );
       },
     }),
@@ -976,7 +1025,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     'session.capabilities',
     row({
       authority: 'purpose',
-      replay: 'capabilities',
+      replay: 'serveAgain',
       identifiers: READ_CATALOGUE['session.capabilities'].identifiers,
       operands: NONE,
       // An agent holds no grants of its own -- `identity/agent-login.ts`

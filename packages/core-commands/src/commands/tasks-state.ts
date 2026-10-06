@@ -33,7 +33,9 @@ import {
   isRecordsRefusal,
   mergeFieldValues,
   raiseAssignment,
+  reparkStepMove,
   setTaskState,
+  isWayfinderRecord,
 } from '../../../core-records/src/index.ts';
 import type {
   TenantQuery,
@@ -49,6 +51,7 @@ import type { CommandContext } from './context.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import type { FieldValues } from './requests.ts';
 import { lockSteps, moveSteps, type StepMove } from './tasks-steps.ts';
+import { askedAgain } from './prepare.ts';
 
 /**
  * The task fields whose value is a person of this business.
@@ -265,6 +268,10 @@ export async function setState(
       ? { ok: true as const, ids: [] }
       : await lockSteps(tx, context, target.id, stepMove);
   if (!steps.ok) return refused(steps.refusal);
+  // The parent's grant asked again once its steps are held: one revoked while
+  // this waited for them moves nothing (#443).
+  const lost = stepMove === undefined ? undefined : await askedAgain(tx, context, target.id);
+  if (lost !== undefined) return lost;
 
   const moved = await setTaskState(tx, {
     taskId: target.id,
@@ -414,6 +421,21 @@ export async function writeOwnedFields(
   const noClient = await refuseClientNotHere(tx, fields);
   if (noClient !== undefined) return refused(noClient);
 
+  // A map, its tickets and their threads never reach a client surface (WF-1).
+  if (
+    command === 'task.set_audience' &&
+    fields['client_visible'] === true &&
+    (await isWayfinderRecord(tx, target.id))
+  ) {
+    return refused(
+      refuseCommand(
+        'TRANSITION_NOT_PERMITTED',
+        ['client_visible'],
+        ['A map and its tickets stay internal; share a finished document instead.'],
+      ),
+    );
+  }
+
   // Stored in the spelling the uuid cast answers, so the task names the
   // person in the one form every read and join compares against.
   const links = canonicalPersonLinks(fields);
@@ -432,6 +454,8 @@ export async function writeOwnedFields(
     const assignee = typeof links['assignee'] === 'string' ? links['assignee'] : null;
     await raiseAssignment(tx, { taskId: target.id, assignee, by: context.session.personId });
   }
+  // C41-A: an onboarding step's move follows its assignee and its client.
+  if ('assignee' in links || 'client' in links) await reparkStepMove(tx, target.id);
   return applied(target.id, Number(written.revision), { changed: keys });
 }
 

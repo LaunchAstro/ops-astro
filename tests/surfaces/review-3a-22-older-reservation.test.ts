@@ -55,7 +55,7 @@ const v1Actual: Reservation = {
   actualMinor: 1_200,
   classifiedCause: null,
   lease: { state: 'released' },
-  attempt: { state: 'succeeded' },
+  attempt: { state: 'succeeded', outcome: 'completed' },
 };
 
 describe('REVIEW-3A-22 older version reservation', () => {

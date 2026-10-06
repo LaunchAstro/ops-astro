@@ -1,0 +1,93 @@
+# Custody: the business's secrets
+
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
+What C31 built, what it proves, and what to do when a credential leaks.
+
+## What is here
+
+`custody_secrets` (migration 20261004103606) holds one row per named secret at one
+scope: the whole business, or one client (a party id, the scope a
+party-scoped grant names). A row says whether a value is set, who set or
+cleared it, and when the broker last used it.
+
+A value is sealed before any statement is built
+(`packages/core-records/src/custody/sealing.ts`): X25519 against a fresh
+ephemeral key, HKDF-SHA256, then AES-256-GCM. The application holds only the
+broker's public key, `CUSTODY_KEY_ID` and `CUSTODY_PUBLIC_KEY`, from the
+environment or the ignored `.local/custody.env`. It can seal and cannot open.
+The private half is the broker's (ADR 0028), which AW-01 builds. With no public
+key configured, `secret.set` refuses `DEPENDENCY_NOT_LANDED` and stores
+nothing.
+
+`secret.set` stores only what custody's own load check would take
+(`parseCredentials` in `packages/core-custody/src/credentials.ts`, AW-01 and
+C60) and refuses anything else `FIELD_VALUE_INVALID` on `value`, never
+echoing it. A consumer chat product's browser session (a Claude.ai or ChatGPT
+session token, bare, in a cookie pair or percent-encoded) is never stored
+(`C31 no session token`), and neither is a value shorter than 8 characters or
+holding a space or line break, so a session wrapped in newlines is refused too.
+
+The application role is refused the three sealed columns by column grants, so
+a read that names them fails in the server, whatever the code asks.
+
+## The commands
+
+| Command        | Permission key   | Agent | What it does                                                                         |
+| -------------- | ---------------- | ----- | ------------------------------------------------------------------------------------ |
+| `secret.list`  | `custody:manage` | never | rows at the scopes the caller holds the key at, and `canChange` (held business-wide) |
+| `secret.set`   | `custody:manage` | never | seals and stores a value, business-wide or for one client                            |
+| `secret.clear` | `custody:manage` | never | removes the value, keeps the row and who cleared it                                  |
+
+A client-scoped holder of `custody:manage` lists that client's rows only,
+and the grant is asked in the statement that reads the rows, so a list running
+across a revocation serves nothing created after it; setting and clearing need
+the key business-wide. A set for one client names
+a client of this business; another business's client or a made-up id is
+refused `NOT_FOUND` on `clientId`, and nothing is written. A set may store a
+client's credential, so it is client data: on a real-data installation it waits
+on the first-client gate (`GATE_SHUT`) like any client write. The body of a set
+reaches no log, error, audit payload or repeat-request row: the envelope stores
+its digest only, and a refusal's attempted values are dropped for `secret.set`.
+
+A set's `expectedRevision` is compared in the upsert itself, against the row it
+would replace under that row's lock, so a setter that lost an insert race to a
+newer value is refused `VERSION_STALE` and changes nothing. `expectedRevision: 0`
+means the name must not exist yet (rows start at revision 1): a first set from
+a list that did not show the name sends it, so a key another administrator
+created since is refused `VERSION_STALE` naming its revision, not replaced. A
+revision past a safe integer is refused `FIELD_VALUE_INVALID` on
+`expectedRevision`. The tests are `tests/custody/c31-credentials.test.ts`, `c31-secret-set-absent.test.ts`,
+`c31-secret-set-guards.test.ts`, `c31-two-setters-overlap.test.ts`,
+`c31-revoked-list-and-revision-range.test.ts`, `tests/surfaces/c31-keys-panel.test.tsx`
+and `c31-keys-panel-first-set-refused.test.tsx`.
+
+`markSecretUsed` moves a row's last-used time to the moment of use
+(`clock_timestamp()`), never backwards, so an older transaction committing a
+later use cannot wind it back (`c31-last-used-moves-forward.test.ts`). The
+broker calls it when it injects the secret into a dispatch; setting a value
+again leaves it alone.
+
+## When a credential leaks
+
+Run these in order, and record each step with its time in the incident's task.
+
+1. **Disable it.** Clear the secret (`secret.clear`), so nothing new can use
+   it. Revoke it at the provider too if the provider allows that.
+2. **Rotate it.** Issue a new credential at the provider and set it
+   (`secret.set`). Never reuse the leaked value.
+3. **Invalidate what depended on it.** Revoke the delegations and cancel the
+   runs that were using the connection (`delegation.revoke`, `task.cancel`),
+   and end the sessions of any person whose login was involved.
+4. **Tell the provider** through its security contact, with the time window.
+5. **Review its use.** Read the audit chain for the secret's `secret.set`,
+   `secret.clear` and the broker's calls in the window, and the row's last-used
+   time.
+6. **Assess the clients affected**: every client whose connection used the
+   credential in the window.
+7. **Notify the named recipients**: the owner, then the second operator. Client
+   notification follows the privacy decision for a notifiable breach.
+
+The drill runs this list on staging against a planted test credential and
+leaves a receipt: each step's time, who did it, and the audit rows it produced.
+It has not run: nothing is deployed from this build (TR-SEC-5).

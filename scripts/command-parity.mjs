@@ -177,6 +177,8 @@ const OPERANDS = {
   'task.ledger': { before: null, timeZone: 'Australia/Brisbane', query: null },
   'definition.attribution': { digest: 'a'.repeat(64) },
   'trace.read': { recordId: 'r' },
+  'map.view': { recordId: 'r' },
+  'map.frontier': { recordId: 'r' },
   'harness.read': { runId: 'r' },
   'privacy.draft_breach_notices': {
     incidentId: '00000000-0000-4000-8000-000000000000',
@@ -185,6 +187,7 @@ const OPERANDS = {
     containment: 'c',
     steps: 's',
   },
+  'chat.messages': { conversationId: '00000000-0000-4000-8000-000000000000' },
 };
 
 // The grants a read really asks: the real read path on a transaction that holds none.

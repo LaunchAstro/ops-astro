@@ -1,0 +1,100 @@
+name: structural
+
+# CI-STRUCT (speed audit fix 2.3): the cheap structural checks that drop merge
+# queue groups (the lint ratchet with its 1,000-line cap, the CQ-8 size caps
+# and the database shard balance), run on a pull request's head merged into
+# main as main stands when the job runs. `local checks` runs them too, but on
+# a pull request it reads main as it stood at the push, and the light set
+# selects the two test files only by import (scripts/structural-checks.ts).
+#
+# The check is not required, and nothing here keeps a red head out of the
+# queue: that is for the ruleset or for the orchestrator's queue scripts,
+# outside this repository, reading it by name from the check runs on a pull
+# request's head. A push to main re-runs it on every open pull request, so a
+# head that main has moved under reads red before it reaches the queue. Every action is pinned to the hash ci.yml pins.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  merge_group:
+  # A branch's own copy of this workflow runs, on the branch's head. The push
+  # job below dispatches it; the train may too.
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# Read-only by default. The one job that needs more says so itself.
+permissions:
+  contents: read
+
+# One run per branch: a newer push or dispatch cancels an older run in flight.
+# The head's repository is in the key, so a fork's branch named like one of
+# ours (its `main` included) never cancels our run. A merge group's run is
+# never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
+jobs:
+  structural:
+    name: structural checks (vs current main)
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Full history, so the head and main's tip share a merge base.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # A group's head already holds main as it stands; anything else is merged
+      # into main's tip fetched now. The head reaches the shell through env.
+      - name: The head merged into main as it stands now
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = merge_group ]; then
+            node scripts/merge-group.mjs base > "$RUNNER_TEMP/base"
+          else
+            node scripts/structural-checks.ts merge "$HEAD_SHA" main > "$RUNNER_TEMP/base"
+          fi
+      - run: pnpm install --frozen-lockfile
+      - name: Lint ratchet, CQ-8 sizes and shard balance on that tree
+        run: node scripts/structural-checks.ts run "$(cat "$RUNNER_TEMP/base")"
+
+  recheck:
+    name: re-run the structural checks on open pull requests
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Lists pull requests and dispatches this workflow; it checks nothing out
+    # and runs no code from the repository.
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Dispatch this workflow on each open pull request's branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Every open pull request into main from this repository, a draft or
+          # a head sent back included, so none turns ready on a stale result
+          # (Sol PRV-oa-976-R1). A fork's branch is not here to dispatch on.
+          gh api --paginate "repos/$REPO/pulls?state=open&base=main&per_page=100" \
+            --jq '.[] | select(.head.repo.full_name == env.REPO) | .head.ref' \
+            > "$RUNNER_TEMP/branches"
+          while IFS= read -r branch; do
+            # A branch from before this workflow has no copy of it to run.
+            gh api -X POST "repos/$REPO/actions/workflows/structural.yml/dispatches" \
+              -f ref="$branch" > /dev/null ||
+              echo "::warning::structural: no dispatch on $branch"
+          done < "$RUNNER_TEMP/branches"
+          echo "structural: dispatched on $(wc -l < "$RUNNER_TEMP/branches") branches"

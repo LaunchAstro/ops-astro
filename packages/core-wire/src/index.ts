@@ -157,6 +157,9 @@ export type {
   TaskTimeView,
   TimeEntryView,
 } from './views.ts';
+// the team conversation reads' answers (C71-D)
+export type * from './views-chat.ts';
+export type { MapComponentView, MapView, MapViewResult, MapFrontierResult } from './views-map.ts';
 // AW-04's attribution and allowance answers, beside the other agent views.
 export type {
   AllowanceResult,
@@ -165,6 +168,36 @@ export type {
   PreReviewAttribution,
   PreReviewRun,
 } from './views-agent.ts';
+// Settings ▸ Workflow triggers' registry (C33).
+export type {
+  ActivationView,
+  AutomationDefinitionView,
+  AutomationRegistryResult,
+  DefinitionVersionView,
+  StandingApprovalView,
+} from './views-automations.ts';
+// Custody's secrets as Settings ▸ Keys reads them (C31), and the connector
+// fleet and the per-client graduation region as Connections & signal reads
+// them (MP-14-7a, MP-14-10a).
+export type {
+  ConnectionFleetResult,
+  ConnectionGraduationResult,
+  ConnectionView,
+  GraduationRowView,
+  MandateView,
+  SecretListResult,
+  SecretView,
+} from './connection-views.ts';
+// Grants, tripwires and the night round on the same page (MP-14-8).
+export type {
+  ConnectionSignalResult,
+  GrantView,
+  NightStepView,
+  RosterView,
+  TripwireView,
+} from './signal-views.ts';
+// AW-04: a plan version as a planning reply offers it in the chat
+export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
 // each command's data effects and its class, read by the first-client gate (S0-5)

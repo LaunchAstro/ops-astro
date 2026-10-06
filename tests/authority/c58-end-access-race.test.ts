@@ -77,7 +77,7 @@ async function c58EndsAtOnceAGrantRacing(): Promise<void> {
         harness.world.bravo,
       ),
     ]);
-    expect(codes.toSorted()).toEqual(['ACCESS_LAST_MANAGER', 'ok']);
+    expect(codes.toSorted()).toEqual(['SCOPE_NOT_GRANTED', 'ok']);
   } finally {
     await wide.close();
   }
