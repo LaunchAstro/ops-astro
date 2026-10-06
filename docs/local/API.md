@@ -1648,6 +1648,9 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.set_category`                        | `setCategory` (`commands/tasks-category.ts`)                                              | served under a live delegation, on its own task (`serve`)                                                                                                                              |
 | `task.share_with_client`                   | `shareWithClient` (`commands/tasks-client-access.ts`)                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.revoke_client_share`                 | `revokeClientShare` (`commands/tasks-client-access.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `record.create`                            | `createRecord` (`commands/record-create.ts`)                                              | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `onboarding.start`                         | `startOnboarding` (`commands/onboarding.ts`)                                              | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `onboarding.step_result`                   | `recordStepResult` (`commands/onboarding.ts`)                                             | served under a live delegation on the step's task (the row's `serve`, `writeStepResult`)                                                                                               |
 | `task.reparent`                            | `reparentTask` (`commands/tasks-place.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.move`                                | `moveTask` (`commands/tasks-place.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.rank`                                | `rankTask` (`commands/tasks-place.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -3175,6 +3178,72 @@ this route and on `grant.revoke`.
 `task.set_party`'s `client` must name a client of this business: another
 business's or a made-up one is `NOT_FOUND` 404 naming `client`.
 
+### New client onboarding (C41-A)
+
+Three writes, none of them a send, a run or a spend. `record.create` is the one
+record-create command (RC-13): it takes `{ operationId, type: 'client', fields:
+{ name } }` under `record:write`, never an agent's, makes the client as
+`client.create` does (0055's `clients`, the same name rule and
+`CLIENT_NAME_TAKEN` 409), and answers `{ recordId, type }`. Any other type, or
+any field but `name`, is `FIELD_VALUE_INVALID` 422 naming `type` or `fields`.
+
+`onboarding.start` takes `{ operationId, clientId, templateKey }` under
+`record:write` and, in the handler, `task:write` across the business. It lays a
+template version out as tasks on that client, one per step, each titled with
+its phase, linked to the client (`records.uuid_7`), and recorded with its kind
+(agent-run, needs a person, or waits on the client) and the steps it waits for
+(`onboardings`, `onboarding_steps`, migration 20261005200007). The templates are
+versions in code (`ONBOARDING_TEMPLATES`, `core-records/src/onboarding/template.ts`).
+A client has one onboarding: the start claims it first, so a second start, at
+once or later, is `TRANSITION_NOT_PERMITTED` 409 and writes nothing. It answers
+`{ onboardingId, templateKey, templateVersion, steps: [{ key, phase, kind,
+taskId, dependsOn, state }] }`; an unknown template is `FIELD_VALUE_INVALID` 422
+naming `templateKey`, and a client not of this business `NOT_FOUND` 404.
+
+`onboarding.step_result` takes `{ operationId, recordId, outcome: 'done' |
+'failed', result }` and writes the result onto the step's own task as an
+internal system comment, so reading the task shows it. A done step opens the
+steps waiting on it; a second failure stops the onboarding and says so on the
+task. `task:write` is asked at the step task's own client (`prepare.ts`, the
+`target` lookup), and only while the task is still on the onboarding's client,
+so a holder scoped to one client writes that client's steps and no other's; an
+agent writes the step on the task it is delegated on. An agent records agent
+steps only, on both agent paths: under a delegation, and by an API-2 agent
+credential, whose call runs as its agent, so its comment's source is the
+agent's (`agent:api`), never its person's. A person or client-wait step is a
+person's checkpoint, so an agent's result on one is
+`DELEGATION_EXCLUDES_OPERATION` 403 naming `kind`, asked under the locks before
+anything is written (ORCH79 P12STEPACTOR). A person records a step of any kind.
+It answers `{ step, outcome, opened, stopped }`;
+`FIELD_VALUE_INVALID` 422 names `recordId`, `outcome` or `result`; a task that
+is no step here, or is in the trash, is `NOT_FOUND` 404, as `task.comment`
+answers a trashed task; a step of a stopped or finished onboarding is
+`TRANSITION_NOT_PERMITTED` 409 naming `state=stopped` or `state=done`, and a
+step still waiting, already closed or stopped is that 409 naming its own state.
+A result is content on its task (S0-5): it locks the onboarding, then its
+steps, then the step's task, and asks again under the task's lock whether the
+task is still on the onboarding's client and out of the trash. A task moved to
+another client or trashed meanwhile is `NOT_FOUND` 404 and nothing is written;
+a move after a result is `CLIENT_LOCKED` 409. The result waits on the
+onboarding's lock after its authority was asked, so it asks again once the lock
+is held (`onboarding-authority.ts`): a person's or an API-2 credential's task
+grants are held for share before the lock, so a revocation that comes after
+waits for the result, and `task:write` at the step's client is asked at the
+clock under the lock, so a grant revoked or lapsed during the wait is
+`SCOPE_NOT_GRANTED` 403; a delegated agent's delegation is read `for share`
+under the lock, and one revoked or lapsed during the wait is
+`DELEGATION_NOT_LIVE` 403. Either refusal writes nothing.
+
+The owner-rule moves (U38: an inbox item parking a person or client-wait step
+with whoever owns its move) are not built here; they follow in their own pull
+request. The agent step's run and its gate, and the
+client email's draft and its one send path, are not built here;
+`tests/onboarding/c41-a-held.test.ts` holds each by name. S0-5's first-client
+gate runs on all three commands, each classed `client-data`: after authority on
+the person path (`envelope.ts`) and after the delegation's answers on the agent
+path (`agent-envelope.ts`), before any write. Its named `C41-A gate refusal`
+case is held there too.
+
 ### A client's privacy settings (C60)
 
 `client.set_privacy` takes `{ operationId, clientId, modelEgress, providers,
@@ -3254,6 +3323,48 @@ failed, so a scheduler sees the backlog. It refuses to start without `DATABASE_U
 `SUPABASE_SERVICE_KEY`. A 30-second claim on the row stops two retries
 calling the provider at once, and a step done is stamped once and never asked
 again (`settleAccessEndings`, `commands/access-end.ts`).
+
+### Resetting a member's authenticator (C59)
+
+`access.reset_factor` takes `{ operationId, holderId }` under `settings:manage`,
+never an agent's: the tracked action `second factor reset (person, by)`,
+audited against the caller with the member as its subject. It asks the
+caller's own step-up, a sign-in with the second factor inside the last 60
+minutes, whatever `money_step_up_required` holds (`STEP_UP_REQUIRED` 403). A
+malformed id is `FIELD_VALUE_INVALID` 422; a holder with no active membership
+in this business, another business's included, is `NOT_FOUND` 404 naming
+`holderId`; a member with no verified factor here is `FACTOR_NOT_ENROLLED` 409.
+The caller's own person, a member holding a business-wide grant the caller
+does not hold (no reset upward: an owner may reset another owner, a peer an
+equal-grant peer, never a lesser `settings:manage` holder the owner,
+ORCH66-FACTORM2), a member whose sign-in login is not exactly one, and a login
+still live in another business (mapped there, its access not ended) are
+`FACTOR_RESET_REFUSED` 409, in one set of words for every reason, which never
+say where else the login is; nothing is written or sent.
+
+In one transaction, under the access lock, the member's live factor is
+recorded removed (here and by subject, 0064), every session of theirs is ended
+(0057, 0063), and one reset row owes the provider GoTrue's admin removal of
+that factor (`DELETE /admin/users/<subject>/factors/<factor id>`, 20261004091551). It
+answers `{ resetId, providerStep }`: `owed` from the act, `done` when the local
+server, holding the admin key, sent the removal as soon as the act committed.
+Hosted, the endings loop sends it each `ACCESS_ENDING_RETRY_SECONDS`
+(`retryOwedSteps`, beside the access endings). Each owed row is claimed for 30
+seconds just before its own call, so two settles never call at once for one
+reset and a slow pass never lets a later row's claim lapse; done is stamped
+once and never asked again, and an answer that comes back after the row is
+done stamps nothing. Done is the factor named back by its id, or GoTrue's 404
+with `error_code` `mfa_factor_not_found` (the factor already gone, an earlier
+answer lost); anything else, any other 404 included, is a fault by its kind
+alone, with the step left owed (`settleFactorResets`,
+`commands/factor-reset-settle.ts`). The live-elsewhere check runs inside the
+command's transaction through `public.factor_login_live_elsewhere(login)`, a
+security definer that takes a login id of the transaction's own business,
+never a subject, reads the subject itself and answers one boolean: true with
+no business set or an id that is not a login here. PUBLIC may not execute it;
+the application role may. Any path that ever maps a login into a business must
+first take the `second-factor-subject` lock the reset holds, so the check
+holds to the commit.
 
 ### The overseas-services register (C81, SP-25)
 

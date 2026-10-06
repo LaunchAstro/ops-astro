@@ -371,6 +371,22 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     name: `restricted calls seed ${randomUUID()}`,
     created_by_actor_id: randomUUID(),
   },
+  // C41-A (20261005200007): no journey starts an onboarding.
+  'public.onboardings': {
+    client_id: randomUUID(),
+    template_key: 'restricted-calls',
+    template_version: 1,
+    started_by_actor_id: randomUUID(),
+  },
+  'public.onboarding_steps': {
+    onboarding_id: randomUUID(),
+    step_key: 'restricted-calls',
+    task_id: randomUUID(),
+    position: 0,
+    phase: 'restricted calls',
+    kind: 'agent',
+    state: 'ready',
+  },
   // C60: no journey records a client's written request.
   'public.client_model_requests': {
     client_id: randomUUID(),
@@ -386,6 +402,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     person_id: randomUUID(),
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
+  },
+  // 20261005235557 (C59): no journey resets a factor.
+  'public.factor_resets': {
+    person_id: randomUUID(),
+    login_id: randomUUID(),
+    reset_by_actor_id: randomUUID(),
+    provider_factor_id: 'restricted-calls-seed',
   },
   // 0057 (C58): no journey here signs out.
   'public.ended_sessions': {

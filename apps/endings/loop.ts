@@ -7,12 +7,13 @@
 // login (for each business's settle, under tenancy), `GOTRUE_URL` and the
 // provider's admin key, `SUPABASE_SERVICE_KEY`. Every
 // `ACCESS_ENDING_RETRY_SECONDS` it asks the provider for the steps each access
-// ending still owes; `--once` runs one pass and exits 1 if that pass failed.
+// ending and each factor reset (C59) still owes; `--once` runs one pass and
+// exits 1 if that pass failed.
 // Nothing here prints a setting's value or a fault's words.
 
 import { connect, connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import { goTrueLogins } from '../api/auth/provider-logins.ts';
-import { ACCESS_ENDING_RETRY_SECONDS, endingsSettings, retryAccessEndings } from './pass.ts';
+import { ACCESS_ENDING_RETRY_SECONDS, endingsSettings, retryOwedSteps } from './pass.ts';
 
 export async function main(
   argv: readonly string[],
@@ -30,7 +31,7 @@ export async function main(
     for (;;) {
       try {
         // oxlint-disable-next-line no-await-in-loop -- one pass at a time, by design
-        const owed = await retryAccessEndings(owner, app, logins);
+        const owed = await retryOwedSteps(owner, app, logins);
         process.stdout.write(`${JSON.stringify({ owed })}\n`);
       } catch {
         if (argv.includes('--once')) {
