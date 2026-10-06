@@ -125,3 +125,11 @@ it("holds build.format, trailingSlash and output to Astro's values, output stati
   expect(withField('trailingSlash', true)).toEqual(faulted('site record'));
   expect(withField('output', 'server')).toEqual(faulted('site record'));
 });
+
+it('refuses lists and the variable map given as another JSON type', () => {
+  for (const scopes of ['@agencyastro', { '@agencyastro': true }, null])
+    expect(withField('scopes', scopes)).toEqual(faulted('site record'));
+  expect(withField('contentDirectories', 'src/pages/')).toEqual(faulted('site record'));
+  for (const env of [null, ['PUBLIC_X=y'], 'PUBLIC_X=y'])
+    expect(withField('buildEnv', env)).toEqual(faulted('record env'));
+});

@@ -252,3 +252,22 @@ it('refuses a .git directory in the tree', async () => {
     'tree config',
   );
 });
+
+it('refuses a commit that does not name its tree first, a listing with no NUL, and a malformed revision', async () => {
+  const treeId = tree(SITE_FILES);
+  const noNul = commit(
+    level([`040000 ${literal('tree', Buffer.from(`100644 ${'a'.repeat(40)}`))} src`]),
+  );
+  await allRefused(
+    [
+      assembleTree(read, literal('commit', Buffer.from(`trex ${treeId}\n`)), EDIT),
+      assembleTree(read, noNul, EDIT),
+    ],
+    'tree listing',
+  );
+  reads = [];
+  expect(await assembleTree(read, siteCommit.toUpperCase(), EDIT)).toEqual(
+    refused('request value'),
+  );
+  expect(reads).toEqual([]);
+});

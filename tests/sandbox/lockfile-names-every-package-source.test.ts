@@ -198,3 +198,19 @@ it('reads both files as bytes, so bad UTF-8 or a byte-order mark is refused, not
   const bom = Uint8Array.from([0xef, 0xbb, 0xbf, ...new TextEncoder().encode(PACKAGE_JSON)]);
   expect(checkLockfile(bom, lock(), [])).toMatchObject({ ok: false, reason: 'lockfile refused' });
 });
+
+it('refuses entry values of the wrong JSON type, never reading them as text', () => {
+  const entry = registry('astro', '5.1.0');
+  const at = (value: Record<string, unknown>) => withEntry('node_modules/astro', value);
+  expect(at({ ...entry, version: ['5.1.0'] })).toEqual(refused('lockfile entry'));
+  expect(at({ ...entry, integrity: [entry['integrity']] })).toEqual(refused('lockfile integrity'));
+  for (const resolved of [undefined, 7, [entry['resolved']]])
+    expect(at({ ...entry, resolved }), String(resolved)).toEqual(refused('lockfile resolved'));
+  for (const value of [null, 'astro', ['5.1.0']])
+    expect(check({ ...PACKAGES, 'node_modules/astro': value })).toEqual(refused('lockfile entry'));
+  for (const packages of [null, [entry], 'node_modules/astro'])
+    expect(
+      checkLockfile(PACKAGE_JSON, JSON.stringify({ lockfileVersion: 3, packages }), []),
+      String(packages),
+    ).toEqual(refused('lockfile entry'));
+});

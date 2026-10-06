@@ -131,3 +131,15 @@ it("holds each Env list to B3: the class's fixed pairs first, in order, then no 
     expect(read({ ...LIST, base })).toEqual(faulted('pin list'));
   }
 });
+
+it('refuses a base entry with an extra key or a bad image id, and values of the wrong JSON type', () => {
+  const base = (entry: unknown) => read({ ...LIST, base: { 'linux/arm64': entry } });
+  expect(base({ image: ID('d'), env: BASE_ENV, extra: 1 })).toEqual(faulted('pin list'));
+  expect(base({ image: 'sha256:x', env: BASE_ENV })).toEqual(faulted('pin list'));
+  expect(base([ID('d'), BASE_ENV])).toEqual(faulted('pin list'));
+  expect(withSite({ image: '', commit: ['e'.repeat(40)] })).toEqual(faulted('pin list'));
+  expect(read({ ...LIST, sites: [SITE] })).toEqual(faulted('pin list'));
+  expect(read({ ...LIST, base: [LIST.base['linux/arm64']] })).toEqual(faulted('pin list'));
+  const twice = `{"probe":{"image":"${ID('c')}"},"probe":{"image":"${ID('c')}"},"base":{},"sites":{}}`;
+  expect(readPinList(new TextEncoder().encode(twice))).toEqual(faulted('duplicate key'));
+});
