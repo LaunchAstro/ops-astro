@@ -12,14 +12,21 @@ import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import { asAgent, codeOf as commandCode } from './schedules-harness.ts';
-import { authorityFor, noDatabase, start, useOccurrenceWorld, w } from './occurrence-run-world.ts';
+import {
+  authorityFor,
+  noDatabase,
+  occurrence,
+  start,
+  useOccurrenceWorld,
+  w,
+} from './occurrence-run-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useOccurrenceWorld('rv3a19');
 
 it('REVIEW-3A-19: an agent under a live delegation cannot task.read the task an occurrence run landed on', async () => {
-  const started = await start(w.s, randomUUID(), authorityFor(w.s), w.worker);
+  const started = await start(w.s, await occurrence(w.s), authorityFor(w.s), w.worker);
   if (!started.ok) throw new Error(`refused ${started.refusal.code}`);
   const credential = String(w.work.picked['credential']);
   const readAsAgent = async (recordId: string) =>

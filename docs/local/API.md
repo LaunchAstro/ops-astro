@@ -3617,8 +3617,29 @@ approval is `approved` and names it. Dispatch rechecks, holding the
 activation's lock, that the activation is on and that the approval is still
 the one standing and unrevoked, and records once what it found
 (`occurrence_dispatches`): a run started, or `activation_off`,
-`approval_revoked` or `approval_ended`. Starting the run itself through the
-agent engine (AW-01 J) is not wired yet.
+`approval_revoked` or `approval_ended`. An approved occurrence reaches no
+route: the worker dispatches it with
+`dispatchOccurrence(tx, id, occurrenceRunStarter(workerActorId))`, and AW-01 J
+writes the run (RUNTIME.md, "An automation occurrence's run") from the facts
+`readOccurrenceFacts` reads from these rows, refusing again an approval
+revoked, ended or superseded since. A start J refuses writes nothing and
+records no dispatch (`{ kind: 'refused', code }`), so the worker may try again.
+
+C33's limits (`FIRING_LIMITS`, `automations/occurrences.ts`) are AW-01's
+durable limits keyed by the business, so one business at a limit never delays
+another. An occurrence past its activation's 60 an hour or its business's 600
+is recorded `over_activation_rate` or `over_business_rate` and starts no run.
+The business's activation runs in flight (not handed back or cancelled) are at
+most 5: at the ceiling dispatch answers `{ kind: 'waiting' }` and writes
+nothing. Its event intake holds at most 1,000 approved events not yet
+dispatched: past that, the claim records the event `over_intake_bound`
+(migration 20261006092531) and starts nothing. `waitingOccurrences` lists the
+approved occurrences with no dispatch, oldest first: the queued events and the
+runs waiting, which the worker dispatches again as runs finish, one
+transaction per occurrence. A transaction claims and dispatches for one
+activation only: each takes the activation's row, then these business-wide
+locks, so a second activation's row after them is refused (`lockActivation`)
+rather than left to deadlock with that activation's own writer.
 
 | Operation              | Route                   | Body                                            | Answer or refusals                                                                                                                                                                                                                                                 |
 | ---------------------- | ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

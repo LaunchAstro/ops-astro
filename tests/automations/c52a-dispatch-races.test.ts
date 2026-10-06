@@ -72,7 +72,7 @@ describe.skipIf(serverUrl === undefined)('C52-A dispatch races', () => {
     const { activation, approval } = await f.approved();
     const held = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
     expect(held.outcome).toBe('approved');
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     const answer = await changeWhileDispatching(
       async (tx) => {
         expect(
@@ -93,7 +93,7 @@ describe.skipIf(serverUrl === undefined)('C52-A dispatch races', () => {
   it('C52-A turn-off racing dispatch: a turn-off committed while the dispatch waits on its lock starts no run', async () => {
     const { activation } = await f.approved();
     const held = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     const answer = await changeWhileDispatching(
       async (tx) => {
         const off = await turnOffActivation(tx, {
@@ -116,7 +116,7 @@ describe.skipIf(serverUrl === undefined)('C52-A dispatch races', () => {
   it('C52-A dispatch before revoke: a dispatch holding the lock starts its run, the waiting revoke then stops the next occurrence', async () => {
     const { activation, approval } = await f.approved();
     const held = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     let revoked: Promise<unknown> | undefined;
     // The starter runs with the lock held: the revoke is sent then, and waits.
     const slow: RunStarter = async (tx, run) => {
@@ -156,7 +156,7 @@ describe.skipIf(serverUrl === undefined)('C52-A dispatch races', () => {
     if (claimed === undefined) throw new Error('the claim was never sent');
     const held = occurrenceOf(await claimed);
     expect([held.versionId, held.outcome]).toEqual([next.id, 'approved']);
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     const answer = await f.dispatch(held.id, s.start);
     expect(answer.kind === 'dispatched' && answer.dispatch.outcome).toBe('started');
     const again = await w.claim(activation.id, { dueAt });
