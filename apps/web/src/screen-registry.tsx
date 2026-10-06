@@ -27,6 +27,7 @@ import { AccessScreen } from './screens/Access.tsx';
 import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
+import { MapScreen } from './screens/Map.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
@@ -147,6 +148,14 @@ export const SCREENS: {
   ),
   'agency:operations': (context) => (
     <OperationsScreen client={context.client} grantKey={context.grantKey} />
+  ),
+  'agency:map': (context) => (
+    <MapScreen
+      key={`${context.grantKey}\u0000${context.params.key}`}
+      client={context.client}
+      grantKey={context.grantKey}
+      mapKey={context.params.key}
+    />
   ),
   'agency:task-detail': (context) => (
     <TaskDetailScreen
