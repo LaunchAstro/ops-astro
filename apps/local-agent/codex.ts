@@ -278,6 +278,35 @@ export async function runCodex(
 
 const PLAN_LOGIN = 'Logged in using ChatGPT';
 
+/**
+ * Stops a detached child's process group, and while it is out stops it on the
+ * launcher's SIGINT, SIGTERM or exit too: the group sits outside the
+ * terminal's Ctrl-C, so a launcher stopped mid-check stops it, then goes as asked.
+ */
+function heldGroup(pid: number | undefined): { stopGroup: () => void; release: () => void } {
+  const stopGroup = (): void => {
+    try {
+      if (pid !== undefined) process.kill(-pid, 'SIGKILL');
+    } catch {
+      // The group has already gone.
+    }
+  };
+  const cancelled = (signal: NodeJS.Signals): void => {
+    stopGroup();
+    release();
+    process.kill(process.pid, signal);
+  };
+  const release = (): void => {
+    process.off('SIGINT', cancelled);
+    process.off('SIGTERM', cancelled);
+    process.off('exit', stopGroup);
+  };
+  process.once('SIGINT', cancelled);
+  process.once('SIGTERM', cancelled);
+  process.once('exit', stopGroup);
+  return { stopGroup, release };
+}
+
 /** On the ChatGPT plan (an API key bills per call): `codex login status` exits 0 with that line. */
 export async function codexLogin(settings: RunnerSettings, deadlineMs = 10_000): Promise<boolean> {
   // Codex refuses a CODEX_HOME that is not there, so a missing one holds no login; nothing is made.
@@ -293,27 +322,7 @@ export async function codexLogin(settings: RunnerSettings, deadlineMs = 10_000):
     });
     const parts: Buffer[] = [];
     for (const out of [child.stdout, child.stderr]) out.on('data', (b: Buffer) => parts.push(b));
-    const stopGroup = (): void => {
-      try {
-        if (child.pid !== undefined) process.kill(-child.pid, 'SIGKILL');
-      } catch {
-        // The group has already gone.
-      }
-    };
-    // Outside the terminal's Ctrl-C, so a launcher stopped mid-check stops the group, then goes as asked.
-    const cancelled = (signal: NodeJS.Signals): void => {
-      stopGroup();
-      release();
-      process.kill(process.pid, signal);
-    };
-    const release = (): void => {
-      process.off('SIGINT', cancelled);
-      process.off('SIGTERM', cancelled);
-      process.off('exit', stopGroup);
-    };
-    process.once('SIGINT', cancelled);
-    process.once('SIGTERM', cancelled);
-    process.once('exit', stopGroup);
+    const { stopGroup, release } = heldGroup(child.pid);
     // At the deadline it is no login, whatever still holds the output open.
     const timer = setTimeout(() => {
       release();
