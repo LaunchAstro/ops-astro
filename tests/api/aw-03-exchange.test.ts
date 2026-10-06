@@ -19,7 +19,14 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ConversationReply } from '../../packages/core-commands/src/index.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { openReplayBroker, type ReplayBroker } from '../broker/replay-broker.ts';
-import { enrol, grantTo, installSpine, shareWithClient, type Member } from '../commands/fixture.ts';
+import {
+  addClient,
+  enrol,
+  grantTo,
+  installSpine,
+  shareWithClient,
+  type Member,
+} from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
@@ -158,19 +165,26 @@ describe.skipIf(serverUrl === undefined)('AW-03 the exchange', () => {
   });
 
   it('owner line 72: a conversation opened on a client’s task asks no model and keeps no reply', async () => {
-    const task = await c.createTask('a task for a client');
-    const made = await c.asPerson('client.create', { name: `Client ${randomUUID()}` });
-    const placed = await c.asPerson('task.set_party', {
-      recordId: task.id,
-      expectedRevision: task.revision,
-      fields: { client: String(detail(made)['clientId']) },
+    const { db, business } = c.fixture;
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, w.owner, 'share');
+    });
+    const clientId = randomUUID();
+    await addClient(db.app, business, clientId, w.owner);
+    const made = await w.as(w.owner, 'task.create', { fields: { title: 'a task for a client' } });
+    const taskId = String(made.body['recordId']);
+    const placed = await w.as(w.owner, 'task.set_party', {
+      operationId: randomUUID(),
+      recordId: taskId,
+      expectedRevision: made.body['revision'],
+      fields: { client: clientId },
     });
     expect(placed.status).toBe(200);
     const before = await calls();
     const sent = model.provider.seen.length;
     const opened = await w.as(w.owner, 'conversation.start', {
       body: `${canary} how is this client going?`,
-      scope: { kind: 'task', id: task.id },
+      scope: { kind: 'task', id: taskId },
     });
     expect(opened.status).toBe(200);
     expect(replyOf(opened)).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
