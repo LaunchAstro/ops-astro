@@ -20,10 +20,8 @@
 
 import {
   askedFor,
-  CONVERSATION_TYPE_KEY,
   clientsReached,
   countOwedItems,
-  readableNow,
   readInboxItems,
   readUnattended,
   type InboxItem,
@@ -66,9 +64,10 @@ function entryOf(item: InboxItem): InboxEntry {
 
 /**
  * The caller's own inbox, oldest raised first, as `readInboxItems` orders it.
- * A readable entry is named in the same transaction: its task's key and title,
- * who closed it, and its task's client where the caller's subjects reach that
- * client (MP-7-3). The item stores none of them, so a rename reads renamed.
+ * A readable entry is named: its task's key and title, read in the statement
+ * that found the task readable (`readInboxItems`), who closed it, and its
+ * task's client where the caller's subjects reach that client (MP-7-3). The
+ * item stores none of them, so a rename reads renamed.
  */
 export async function readInbox(
   tx: TenantQuery,
@@ -76,8 +75,11 @@ export async function readInbox(
   subjects: readonly Subject[],
 ): Promise<readonly InboxEntry[]> {
   const items = await readInboxItems(tx, personId, chats(subjects));
-  const listed = items.filter((item) => item.access !== 'withheld').map((item) => entryOf(item));
-  return await named(tx, listed, personId, subjects);
+  return await named(
+    tx,
+    items.filter((item) => item.access !== 'withheld'),
+    subjects,
+  );
 }
 
 /** The owed count: the list's counted entries, counted in one query under the same rule. */
@@ -92,42 +94,6 @@ export async function countOwed(
 /** Whether conversations are shown at all: to an agent key (API-2) only when it ticks `chat:comment`. */
 const chats = (subjects: readonly Subject[]): boolean =>
   askedFor(subjects, { collection: 'chat', action: 'comment' }).length > 0;
-
-interface Named {
-  readonly key: string;
-  readonly title: string | null;
-  readonly clientId: string | null;
-  /** Set when the subject is a team conversation: `key` is then its kind, `title` a group's name. */
-  readonly conversation: boolean;
-}
-
-/**
- * Each task's key, title and client link, or each conversation's kind and name,
- * read at the read. Each is named only while `personId` reads it now
- * (`readableNow`), asked in this statement: access read earlier names nothing here.
- */
-async function taskNames(
-  tx: TenantQuery,
-  taskIds: readonly string[],
-  personId: string,
-): Promise<ReadonlyMap<string, Named>> {
-  const rows = await tx.query<{
-    readonly id: string;
-    readonly key: string | null;
-    readonly title: string | null;
-    readonly clientId: string | null;
-    readonly conversation: boolean;
-  }>(
-    `select r.id, r.txt_1 as key, case when t.key = $3 then r.txt_2 else r.txt_4 end as title,
-            r.uuid_7 as "clientId", t.key = $3 as conversation
-       from public.records r
-       join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-      where r.business_id = $1 and r.id = any($2::uuid[])
-        and ${readableNow('$4::uuid', "'infinity'")}`,
-    [tx.businessId, taskIds, CONVERSATION_TYPE_KEY, personId],
-  );
-  return new Map(rows.map((row) => [row.id, { ...row, key: row.key ?? '' }]));
-}
 
 /**
  * Which of these clients the subjects reach, by C32's own rule: a grant over
@@ -145,16 +111,13 @@ async function reachedClients(
 
 async function named(
   tx: TenantQuery,
-  entries: readonly InboxEntry[],
-  personId: string,
+  items: readonly InboxItem[],
   subjects: readonly Subject[],
 ): Promise<readonly InboxEntry[]> {
-  const readable = entries.filter((entry) => entry.access === 'readable');
-  const taskIds = [...new Set(readable.map((entry) => entry.subjectRecordId ?? ''))];
-  const deciderIds = [...new Set(readable.flatMap((entry) => entry.closedByPersonId ?? []))];
-  if (taskIds.length === 0) return entries;
-  const tasks = await taskNames(tx, taskIds, personId);
-  const clientIds = [...tasks.values()].flatMap((task) => task.clientId ?? []);
+  const readable = items.flatMap((item) => (item.access === 'readable' ? [item] : []));
+  if (readable.length === 0) return items.map((item) => entryOf(item));
+  const deciderIds = [...new Set(readable.flatMap((item) => item.closedByPersonId ?? []))];
+  const clientIds = [...new Set(readable.flatMap((item) => item.clientId ?? []))];
   const reached = await reachedClients(tx, subjects, clientIds);
   const people = new Map<string, PersonView>(
     deciderIds.length === 0
@@ -167,19 +130,15 @@ async function named(
           )
         ).map((row) => [row.id, { personId: row.id, name: row.name }] as const),
   );
-  return entries.map((entry) => {
-    if (entry.access !== 'readable') return entry;
-    const task = tasks.get(entry.subjectRecordId ?? '');
-    const client = reached.get(task?.clientId ?? '');
-    const decider = entry.closedByPersonId ?? null;
-    const naming =
-      task === undefined
-        ? {}
-        : task.conversation
-          ? { conversation: conversationOf(entry.subjectRecordId ?? '', task) }
-          : { task: { key: task.key, title: task.title } };
+  return items.map((item) => {
+    if (item.access !== 'readable') return entryOf(item);
+    const client = reached.get(item.clientId ?? '');
+    const decider = item.closedByPersonId;
+    const naming = item.conversation
+      ? { conversation: conversationOf(item.subjectRecordId, item.task) }
+      : { task: item.task };
     return {
-      ...entry,
+      ...entryOf(item),
       ...naming,
       ...(client === undefined ? {} : { client }),
       closedBy: decider === null ? null : (people.get(decider) ?? null),
@@ -187,7 +146,10 @@ async function named(
   });
 }
 
-function conversationOf(conversationId: string, subject: Named): InboxConversation {
+function conversationOf(
+  conversationId: string,
+  subject: { readonly key: string; readonly title: string | null },
+): InboxConversation {
   return {
     conversationId,
     kind: subject.key === 'group' ? 'group' : 'direct',

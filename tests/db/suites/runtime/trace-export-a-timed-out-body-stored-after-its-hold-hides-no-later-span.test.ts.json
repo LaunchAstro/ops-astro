@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#963): a timed-out body the target stores after the export's hold hides no later span from recovery."
+}

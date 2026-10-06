@@ -2,11 +2,10 @@
 //
 // MP-4-6: the time section on the Team side (CS-4.1, CS-4.28 to CS-4.31).
 //
-// Everything drawn here is `task.read`'s `time`: the reader's own entries and
-// running timer, and the task's total (RS-VAULT-9). Start and Stop drive the
-// person's one timer through `time.start` and `time.stop`; the log box sends
-// what was typed as `time.log` and the server parses it; a note edits inline
-// by keyboard through `time.set_note`; an entry deletes through `time.delete`.
+// Everything drawn here is `task.read`'s `time`: the reader's own entries and running timer, and
+// the task's total (RS-VAULT-9). Start and Stop drive the person's one timer through `time.start`
+// and `time.stop`; the log box sends what was typed as `time.log` and the server parses it; a
+// note edits inline by keyboard through `time.set_note`; an entry deletes through `time.delete`.
 // After each, the page rereads rather than guessing the next state.
 
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
@@ -15,6 +14,7 @@ import type { TaskTimeView, TimeEntryView } from '../../../../../packages/core-w
 import { useSignedInName } from '../../app-state.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
+import { holding, useHeldOperations } from './held-operations.ts';
 
 /** The entries shown before the fold (CS-4.31). */
 const LATEST = 3;
@@ -152,17 +152,21 @@ function EntryRow(props: {
   );
 }
 
-/** What was typed, sent as `time.log` on Enter or Log; the server says whether it is a length of time. */
+/** What was typed, as `time.log`, which the server parses; a lost answer's id is kept for the same box. */
 function LogBox(props: {
   readonly busy: boolean;
-  readonly log: (duration: string, done: () => void) => void;
+  readonly mint: () => string;
+  readonly log: (duration: string, operationId: string, then: (kind: string) => void) => void;
 }): ReactElement {
   const [typed, setTyped] = useState('');
+  const held = useHeldOperations();
   const send = (): void => {
     const duration = typed.trim();
     if (duration === '' || props.busy) return;
-    props.log(duration, () => {
-      setTyped('');
+    const hold = holding(held, 'time.log', duration, props.mint);
+    props.log(duration, hold.id, (kind) => {
+      hold.settle(kind);
+      if (kind === 'ok') setTyped((now) => (now === typed ? '' : now));
     });
   };
   return (
@@ -173,9 +177,7 @@ function LogBox(props: {
         aria-label="Log time"
         placeholder="1h 30m, 90m or 90"
         value={typed}
-        onChange={(event) => {
-          setTyped(event.target.value);
-        }}
+        onChange={(event) => setTyped(event.target.value)}
         onKeyDown={(event) => {
           if (event.key !== 'Enter') return;
           event.preventDefault();
@@ -239,9 +241,7 @@ function Fold(props: {
       className="btn btn--ghost"
       data-time-fold
       aria-expanded={props.open}
-      onClick={() => {
-        props.onOpen(!props.open);
-      }}
+      onClick={() => props.onOpen(!props.open)}
     >
       {props.open ? 'Show latest three' : `Show all (${String(props.count)})`}
     </button>
@@ -256,26 +256,26 @@ export function TimeLog(props: {
   readonly showAll: boolean;
   readonly onShowAll: (value: boolean) => void;
   readonly onChanged: () => void;
+  readonly onTimer?: ((running: string | null) => void) | undefined;
 }): ReactElement {
   const { client, taskId, time } = props;
   const { busy, because, run } = useCommand();
-  const after = (done?: () => void) => (settlement: { readonly kind: string }) => {
-    if (settlement.kind !== 'ok') return;
-    done?.();
-    props.onChanged();
+  const after = (done?: (kind: string) => void) => (settlement: { readonly kind: string }) => {
+    done?.(settlement.kind);
+    if (settlement.kind === 'ok') props.onChanged();
   };
   const timer = (): void => {
-    const name = time.running === null ? 'time.start' : 'time.stop';
-    run(() => client.mutate(name, { taskId }), after());
+    const start = time.running === null;
+    const said = (kind: string) => kind === 'ok' && props.onTimer?.(start ? taskId : null);
+    run(() => client.mutate(start ? 'time.start' : 'time.stop', { taskId }), after(said));
   };
-  const log = (duration: string, done: () => void): void => {
-    run(() => client.mutate('time.log', { taskId, duration }), after(done));
-  };
+  const log = (duration: string, operationId: string, done: (kind: string) => void): void =>
+    run(() => client.mutate('time.log', { taskId, duration }, { operationId }), after(done));
   const shown = props.showAll ? time.entries : time.entries.slice(0, LATEST);
   return (
     <div className="sb__steplist" data-time-log-section>
       <TimerButton running={time.running !== null} busy={busy} onPress={timer} />
-      <LogBox busy={busy} log={log} />
+      <LogBox key={taskId} busy={busy} mint={() => client.newOperationId()} log={log} />
       <Totals total={time.totalMinutes} estimate={props.estimateMinutes} />
       <ul className="sb__steps">
         {shown.map((entry) => (

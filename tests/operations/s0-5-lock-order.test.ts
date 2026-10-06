@@ -43,9 +43,22 @@ const LOCKED: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(
   (one) => one.targetsExistingRecord && one.targetLock === 'command',
 );
 
-/** `lockTask`'s own statement, the task row taken `for update`. */
-const TASK_LOCK =
-  /^select id, revision::text as revision, data, deleted_at, trash_batch_id from records where business_id = \$1 and record_type_id = \$2 and id = \$3 for update$/u;
+/**
+ * `lockTask`'s own statement: the task row `for update`, or `for no key
+ * update` for a wayfinder write (the map-serialised commands, claim and
+ * resolve), named here rather than read from the envelope, so a command's
+ * lock weakened there fails this.
+ */
+const WAYFINDER_KEY_SHARED = new Set(['task.claim', 'task.resolve']);
+const taskLock = (declaration: CommandDeclaration): RegExp =>
+  new RegExp(
+    String.raw`^select id, revision::text as revision, data, deleted_at, trash_batch_id from records where business_id = \$1 and record_type_id = \$2 and id = \$3 for ${
+      declaration.serialise === 'wayfinder.map' || WAYFINDER_KEY_SHARED.has(declaration.name)
+        ? 'no key update'
+        : 'update'
+    }$`,
+    'u',
+  );
 
 /** The envelope's steps before the lock, each with why it may come first. */
 const BEFORE_LOCK: readonly (readonly [RegExp, string])[] = [
@@ -58,15 +71,35 @@ const BEFORE_LOCK: readonly (readonly [RegExp, string])[] = [
   [/^select key, id from record_types /u, 'the task spine (held: runtime half)'],
   [/^select id, data ->> 'key' as key, data ->> 'machine_category' /u, 'the spine (held)'],
   [/^with recursive effective as \( select g\.\*/u, 'authority asked (held: runtime half)'],
-  [/^select pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)$/u, "a declared subtree's lock"],
+  [
+    /^select pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)$/u,
+    "the operation identity's door (#932), or a declared subtree's lock",
+  ],
+  [
+    /^select pg_advisory_xact_lock_shared\(hashtextextended\(\$1, 0\)\)$/u,
+    "the business's access lock, shared, before authority is asked and held to commit",
+  ],
+  [
+    /^select r\.data ->> 'type' as type, r\.data ->> 'map_owner' as owner, /u,
+    "a map write's ticket's map, read only to name the row held next; nothing is written",
+  ],
+  [
+    /^select 1 from records where business_id = \$1 and id = \$2 for no key update$/u,
+    "a map write's map row, held before its ticket, the order an update of the map takes",
+  ],
 ];
 
 const flat = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim().toLowerCase();
 
 /** What one command's transaction sent before its task lock that the envelope does not name. */
-function lockOrderFaults(name: string, sent: readonly RecordedStatement[]): string[] {
+function lockOrderFaults(
+  declaration: CommandDeclaration,
+  sent: readonly RecordedStatement[],
+): string[] {
+  const name = declaration.name;
+  const lock = taskLock(declaration);
   const texts = sent.map((one) => flat(one.text));
-  const at = texts.findIndex((text) => TASK_LOCK.test(text));
+  const at = texts.findIndex((text) => lock.test(text));
   if (at < 0) return [`${name}: no task row lock`];
   return texts
     .slice(0, at)
@@ -93,7 +126,7 @@ async function faultsThrough(execute?: typeof executeCommand): Promise<string[]>
         body: prepared.body,
       });
       if (answer.code !== 'ok') found.push(`${declaration.name}: answered ${answer.code}`);
-      found.push(...lockOrderFaults(declaration.name, sent));
+      found.push(...lockOrderFaults(declaration, sent));
     }
     return found;
   } finally {

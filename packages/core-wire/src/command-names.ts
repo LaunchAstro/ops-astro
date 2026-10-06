@@ -3,6 +3,8 @@
 // Every command's name, one union. Type-only, so the command surface
 // (`surface.ts`, which re-exports it) stays under the product line cap.
 
+import type { SetupCommandName } from './surface-setup.ts';
+
 export type CommandName =
   // The contract's nine.
   | 'task.create'
@@ -125,9 +127,17 @@ export type CommandName =
   // and the lease owner's heartbeat. None is a new actor power; each asks for
   // authority the caller already holds (see each row below).
   | 'client.create'
+  // New client onboarding (C41-A): record.create, onboarding.start and onboarding.step_result.
+  | 'record.create'
+  | 'onboarding.start'
+  | 'onboarding.step_result'
+  // C60: a client's privacy settings, on its record.
+  | 'client.set_privacy'
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'
+  // C59 (ORCH65-Q3): the owner clears a member's lost authenticator.
+  | 'access.reset_factor'
   | 'grant.revoke'
   | 'delegation.revoke'
   | 'task.cancel'
@@ -145,6 +155,28 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
+  // C80's live correction: an agent may request it inside its delegation, a
+  // person decides the exact version, a named setting names who, the decision
+  // is read back; the publish, revert and receipt are system writes, not rows here.
+  | 'live_correction.request'
+  | 'live_correction.read'
+  | 'live_correction.decide'
+  | 'settings.set_live_correction_approver'
+  // Wayfinder (WF-1): a map is a task of type `map`, its tickets its subtasks.
+  // Retyping to or from grilling, prototype or map also asks the owner's `decide`.
+  | 'task.set_type'
+  | 'map.revise'
+  | 'map.scope'
+  | 'map.view'
+  // WF-2: chart a map, a ticket's blocking, claim and close, and fog graduating.
+  | 'map.chart'
+  | 'task.set_blocking'
+  | 'task.claim'
+  | 'map.graduate'
+  | 'task.resolve'
+  | 'task.close_out_of_scope'
+  // WF-2: a map's frontier and fog, from their read models.
+  | 'map.frontier'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
   // planning replies spend before the accept.
   | 'budget.set_planning_cap'
@@ -232,4 +264,23 @@ export type CommandName =
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
   | 'trace.read'
   // The harness adoption test's result on one run (AW-12): the team's.
-  | 'harness.read';
+  | 'harness.read'
+  // C39-T: a team invitation made, sent again and withdrawn under
+  // `access:share`; its expiry is the business's worker's, never a command.
+  | 'invitation.create'
+  | 'invitation.resend'
+  | 'invitation.revoke'
+  // Settings ▸ Workflow triggers (C33): the registry is one read by
+  // `settings:read`; changing an activation is `settings:manage` and releasing
+  // a definition version `automation:manage`, neither an agent's.
+  | 'automation.registry'
+  | 'activation.change'
+  | 'definition.release'
+  // Standing approvals (C52-A): adopting a version, rolling back, turning off
+  // and revoking an approval, each `automation:manage` and never an agent's.
+  | 'activation.adopt'
+  | 'activation.roll_back'
+  | 'activation.turn_off'
+  | 'approval.revoke'
+  // Setup's operations (C31 on), in `surface-setup.ts`.
+  | SetupCommandName;

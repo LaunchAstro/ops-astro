@@ -12,55 +12,37 @@
 // **Delivery is a port** (`Deliver`): the composition root hands the exporter
 // custody's egress, which names the target's origin itself, refuses redirects
 // and bounds the reply by time and bytes. Anything short of a 2xx JSON reply
-// is recorded as a gap with a fixed code and the cursor stays where it was;
-// an export with no reachable target is never reported as success.
+// to every body is recorded as a gap with a fixed code and the cursor stays
+// where it was; an export with no reachable target is never reported as success.
+//
+// One export per business at a time, by a lease on its cursor row
+// (`trace-lease.ts`): another export meanwhile is `held` and sends nothing.
+// A gap whose body may still be stored keeps the lease to its end.
 
 import { randomUUID } from 'node:crypto';
-import { readableNow, type TenantQuery } from '../../core-records/src/index.ts';
-import {
-  TRACE_ERRORS,
-  TRANSFORM_VERSION,
-  derivedId,
-  otlp,
-  traceCells,
-  traceSpan,
-  type TraceCells,
-  type TraceSpan,
-} from './trace-span.ts';
+import type { TenantQuery } from '../../core-records/src/index.ts';
+import { gapOf, type Deliver, type GapCode } from './trace-delivery.ts';
+import { letGo, release, renew, take, type Cursor } from './trace-lease.ts';
+import { owedSince } from './trace-owed.ts';
+import { derivedId, otlp, traceSpan, type TraceSpan } from './trace-span.ts';
+import { cellsOf, EVENT_CELLS, type Row } from './trace-read.ts';
 
-/** What delivery answers: custody's `Outbound`, narrowed to what the exporter reads. */
-export type Delivered =
-  | { readonly ok: true; readonly status: number; readonly body: string }
-  | { readonly ok: false; readonly fault: string; readonly status: number | null };
-
-export type Deliver = (body: string) => Promise<Delivered>;
-
-export type GapCode =
-  | 'target_unreachable'
-  | 'target_redirect'
-  | 'target_timeout'
-  | 'target_oversized_reply'
-  | 'target_malformed_reply'
-  | 'target_refused'
-  | 'target_forbidden';
+export type { Cursor } from './trace-lease.ts';
+export { readTaskTrace, TRACE_READ_LIMIT, type ReadSpan } from './trace-read.ts';
 
 export type ExportOutcome =
   | { readonly kind: 'idle' }
+  | { readonly kind: 'held' }
   | { readonly kind: 'delivered'; readonly spans: number }
   | { readonly kind: 'gap'; readonly code: GapCode; readonly spans: number };
 
-/** The most events one export sends. */
+/** The most events one export reads, and the most owed events one body sends again. */
 export const TRACE_BATCH = 100;
 
-interface Row {
-  readonly id: string;
-  readonly runId: string;
-  readonly kind: string;
-  readonly position: number;
-  readonly atMs: number;
-  readonly previousMs: number | null;
-  readonly cause: string | null;
-}
+/** The trace window, in days (contract 7.5): an event older than it when read is never sent. */
+export const TRACE_WINDOW_DAYS = 30;
+
+type Pending = Row & { readonly past: boolean };
 
 /** The database side the exporter needs: one business's tenant transactions. */
 export interface TraceDatabase {
@@ -68,10 +50,15 @@ export interface TraceDatabase {
 }
 
 /**
- * One export for one business: read a batch after the cursor, register each
- * run's copy, deliver, then advance the cursor or record the gap. The read
- * and the advance are separate transactions and delivery is between them, so
- * no transaction is open while the target is asked.
+ * One export for one business: take the lease, read a batch after the cursor,
+ * register each run's copy, deliver, then advance the cursor or record the
+ * gap and give the lease up. The read and the advance are separate
+ * transactions and delivery is between them, so no transaction is open while
+ * the target is asked; each body renews the lease first, and an export that
+ * has lost it stops, `held`. The events owed again
+ * (`owedSince`) go first, in bodies of at most `TRACE_BATCH` in the cursor's
+ * order, the batch's own events with the last; one refused body stops the
+ * rest, and the next export sends them all again.
  *
  * The read takes only events whose writing transaction is below its
  * snapshot's horizon, in transaction order (0090): every transaction below
@@ -85,49 +72,89 @@ export async function exportOnce(
   key: Buffer,
   deliver: Deliver,
 ): Promise<ExportOutcome> {
-  const batch = await database.withBusiness(businessId, async (tx) => {
-    const rows = await pending(tx);
-    for (const runId of new Set(rows.map((row) => row.runId))) {
+  const holder = randomUUID();
+  const read = await database.withBusiness(businessId, async (tx) => {
+    const cursor = await take(tx, holder);
+    if (cursor === null) return null;
+    const rows = await pending(tx, cursor);
+    if (rows.length === 0) await release(tx, holder);
+    for (const runId of new Set(rows.filter((row) => !row.past).map((row) => row.runId))) {
       // eslint-disable-next-line no-await-in-loop -- one registration per run, in order
       await registerTraceCopy(tx, runId);
     }
-    return rows;
+    const owed = await owedSince<Row>(tx, EVENT_CELLS, rows, cursor, TRACE_WINDOW_DAYS);
+    const fresh = rows.filter((row) => !row.past);
+    return { from: cursor, batch: rows, sent: bodiesOf(owed, fresh) };
   });
+  if (read === null) return { kind: 'held' };
+  const { from, batch, sent } = read;
   const last = batch.at(-1);
   if (last === undefined) return { kind: 'idle' };
-  const spans = batch.map((row) => spanOf(key, businessId, row));
-  const answer = await deliver(otlp(spans));
-  const code = gapOf(answer);
+  const renewed = async (at: string | null): Promise<string | null> =>
+    await database.withBusiness(businessId, async (tx) => await renew(tx, holder, at));
+  let { version } = from;
+  let code: GapCode | null = null;
+  let spans = 0;
+  for (const body of sent) {
+    // eslint-disable-next-line no-await-in-loop -- the lease before each body
+    version = await renewed(version);
+    if (version === null) return { kind: 'held' };
+    spans += body.length;
+    // eslint-disable-next-line no-await-in-loop -- one body after another, in the cursor's order
+    code = await send(
+      deliver,
+      body.map((row) => spanOf(key, businessId, row)),
+    );
+    if (code !== null) break;
+  }
   await database.withBusiness(businessId, async (tx) => {
-    if (code === null) await advance(tx, last);
-    else await recordGap(tx, code, batch.length);
+    if (code === null) await advance(tx, last, holder, version);
+    else await recordGap(tx, code, from, batch.length);
+    await letGo(tx, holder, code);
   });
-  return code === null
-    ? { kind: 'delivered', spans: spans.length }
-    : { kind: 'gap', code, spans: spans.length };
+  return code === null ? { kind: 'delivered', spans } : { kind: 'gap', code, spans };
 }
 
-/** What a span is made of, per event `ev`: the export's read and `trace.read`'s. */
-const EVENT_CELLS = `ev.id, ev.run_id as "runId", ev.kind, ev.position::float8 as position,
-            (extract(epoch from ev.created_at) * 1000)::float8 as "atMs",
-            (select (extract(epoch from prev.created_at) * 1000)::float8
-               from public.run_events prev
-              where prev.business_id = ev.business_id and prev.run_id = ev.run_id
-                and prev.position < ev.position
-              order by prev.position desc limit 1) as "previousMs",
-            ev.detail ->> 'cause' as cause`;
+/**
+ * One body. A body larger than a plain export's (`TRACE_BATCH`) that the
+ * target refuses as too large goes again as two halves, in order: an owed
+ * resend then asks no more of the target than a plain export does, and the
+ * earliest span still leaves first.
+ */
+async function send(deliver: Deliver, spans: readonly TraceSpan[]): Promise<GapCode | null> {
+  const code = gapOf(await deliver(otlp(spans)));
+  if (code !== 'target_oversized_body' || spans.length <= TRACE_BATCH) return code;
+  const half = Math.ceil(spans.length / 2);
+  return (await send(deliver, spans.slice(0, half))) ?? (await send(deliver, spans.slice(half)));
+}
 
-async function pending(tx: TenantQuery): Promise<readonly Row[]> {
-  return await tx.query<Row>(
-    `select ${EVENT_CELLS}
+/** The owed events in bodies of `TRACE_BATCH`, the batch's own (up to `TRACE_BATCH` more) with the last; none when both are empty. */
+function bodiesOf(owed: readonly Row[], fresh: readonly Row[]): readonly (readonly Row[])[] {
+  const bodies: (readonly Row[])[] = [];
+  for (let at = 0; at < owed.length; at += TRACE_BATCH) {
+    bodies.push(owed.slice(at, at + TRACE_BATCH));
+  }
+  const tail = [...(bodies.pop() ?? []), ...fresh];
+  return tail.length === 0 ? bodies : [...bodies, tail];
+}
+
+/**
+ * The batch after `from`, the cursor this export read: its gap, if it has one,
+ * names the same. An event `past` the window is passed by the cursor, never
+ * sent: retention would owe it a delete at once, and a confirmation covers only
+ * such events, so a step back that re-reads them brings no trace back.
+ */
+async function pending(tx: TenantQuery, from: Cursor): Promise<readonly Pending[]> {
+  return await tx.query<Pending>(
+    `select ${EVENT_CELLS},
+            ev.created_at < now() - make_interval(days => $5) as past
        from public.run_events ev
-       left join public.trace_export_cursors c on c.business_id = ev.business_id
       where ev.business_id = $1
         and ev.tx < pg_snapshot_xmin(pg_current_snapshot())
-        and (c.after_tx is null or (ev.tx, ev.id) > (c.after_tx, c.after_id))
+        and ($3::xid8 is null or (ev.tx, ev.id) > ($3::xid8, $4::uuid))
       order by ev.tx, ev.id
       limit $2`,
-    [tx.businessId, TRACE_BATCH],
+    [tx.businessId, TRACE_BATCH, from.tx, from.id, TRACE_WINDOW_DAYS],
   );
 }
 
@@ -137,95 +164,6 @@ function spanOf(key: Buffer, businessId: string, row: Row): TraceSpan {
     spanId: derivedId(key, ['span', businessId, row.id], 16),
     ...cellsOf(row),
   });
-}
-
-/** An event's cells, unchecked: `traceSpan` and `traceCells` hold them to the allowlist. */
-function cellsOf(row: Row): Readonly<Record<string, unknown>> {
-  const startedAtMs = Math.floor(row.atMs);
-  return {
-    stage: row.kind,
-    transformVersion: TRANSFORM_VERSION,
-    startedAtMs,
-    durationMs:
-      row.previousMs === null ? null : Math.max(0, startedAtMs - Math.floor(row.previousMs)),
-    sequence: row.position,
-    errorCode:
-      row.cause !== null && (TRACE_ERRORS as readonly string[]).includes(row.cause)
-        ? row.cause
-        : null,
-  };
-}
-
-/** The most events one `trace.read` returns; `complete` says whether it reached the end. */
-export const TRACE_READ_LIMIT = 1_000;
-
-/** A span as `trace.read` shows it: the allowlist's cells, its run, and whether it has left. */
-export type ReadSpan = TraceCells & { readonly runId: string; readonly exported: boolean };
-
-/**
- * One task's trace as an operator reads it (AW-13 readers, `trace.read`): each
- * event of its runs as the export sends it, less the two ids only the
- * exporter's key derives, and whether it is behind the cursor. `operations:read`
- * is asked before this, by the read's row; the task's own read is asked here,
- * in the statement that reads the events (`readableNow`), and null answers a
- * task `personId` does not read now.
- */
-export async function readTaskTrace(
-  tx: TenantQuery,
-  taskId: string,
-  personId: string,
-): Promise<{ readonly spans: readonly ReadSpan[]; readonly complete: boolean } | null> {
-  const rows = await tx.query<
-    Omit<Row, 'id'> & { readonly id: string | null; readonly exported: boolean }
-  >(
-    `select ${EVENT_CELLS},
-            coalesce((ev.tx, ev.id) <= (c.after_tx, c.after_id), false) as exported
-       from public.records r
-       left join (public.run_events ev
-                  join public.planned_runs run
-                    on run.business_id = ev.business_id and run.id = ev.run_id)
-         on ev.business_id = r.business_id and run.task_id = r.id
-       left join public.trace_export_cursors c on c.business_id = r.business_id
-      where r.business_id = $1 and r.id = $2 and ${readableNow('$4::uuid', "'infinity'")}
-      order by ev.position, ev.id
-      limit $3`,
-    [tx.businessId, taskId, TRACE_READ_LIMIT + 1, personId],
-  );
-  if (rows.length === 0) return null;
-  const events = rows.flatMap((row) => (row.id === null ? [] : [{ ...row, id: row.id }]));
-  return {
-    spans: events
-      .slice(0, TRACE_READ_LIMIT)
-      .map((row): ReadSpan =>
-        Object.assign({ runId: row.runId, exported: row.exported }, traceCells(cellsOf(row))),
-      ),
-    complete: events.length <= TRACE_READ_LIMIT,
-  };
-}
-
-const FAULT_GAP: Readonly<Record<string, GapCode>> = {
-  redirect: 'target_redirect',
-  timeout: 'target_timeout',
-  too_large: 'target_oversized_reply',
-  forbidden: 'target_forbidden',
-  unlisted: 'target_forbidden',
-  bad_path: 'target_forbidden',
-  status: 'target_refused',
-  network: 'target_unreachable',
-};
-
-/** Null for a landed delivery; otherwise the gap's fixed code. Retention reads its deletes the same way. */
-export function gapOf(answer: Delivered): GapCode | null {
-  if (!answer.ok) return FAULT_GAP[answer.fault] ?? 'target_unreachable';
-  if (answer.status < 200 || answer.status > 299) return 'target_refused';
-  try {
-    const parsed: unknown = JSON.parse(answer.body);
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? null
-      : 'target_malformed_reply';
-  } catch {
-    return 'target_malformed_reply';
-  }
 }
 
 async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> {
@@ -239,29 +177,42 @@ async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> 
 }
 
 /**
- * Forward only: two exports at once may read the same batch, and the slower
- * one must not move the cursor back past what the faster one delivered. The
- * upsert's row lock orders them; the comparison under it keeps the later.
+ * The advance lands only while `holder` holds the lease, on the version it
+ * last wrote; otherwise it changes nothing and the next read starts wherever
+ * the row now is. Retention's step back (`sendAgain` in `trace-retention.ts`)
+ * gives the row a new version: an export that read before it, and may have
+ * delivered before the delete, never moves the cursor past the events the
+ * step sends again. The row lock orders them; the version under it decides.
  */
-async function advance(tx: TenantQuery, last: Row): Promise<void> {
+async function advance(
+  tx: TenantQuery,
+  last: Row,
+  holder: string,
+  version: string | null,
+): Promise<void> {
   await tx.query(
-    `insert into public.trace_export_cursors (business_id, after_tx, after_id)
-     select $1, tx, id from public.run_events where business_id = $1 and id = $2
-     on conflict (business_id) do update
-       set after_tx = excluded.after_tx, after_id = excluded.after_id, updated_at = now()
-       where trace_export_cursors.after_tx is null
-          or (trace_export_cursors.after_tx, trace_export_cursors.after_id)
-             < (excluded.after_tx, excluded.after_id)`,
-    [tx.businessId, last.id],
+    `update public.trace_export_cursors c
+        set after_tx = ev.tx, after_id = ev.id, updated_at = now()
+       from public.run_events ev
+      where c.business_id = $1 and ev.business_id = $1 and ev.id = $2
+        and c.lease_holder = $3 and c.xmin = $4::xid`,
+    [tx.businessId, last.id, holder, version],
   );
 }
 
-async function recordGap(tx: TenantQuery, code: GapCode, events: number): Promise<void> {
+/**
+ * A gap names the cursor its batch was read after, never the row as it is
+ * now: another export may have advanced it while this one waited on the target.
+ */
+async function recordGap(
+  tx: TenantQuery,
+  code: GapCode,
+  from: Cursor,
+  events: number,
+): Promise<void> {
   await tx.query(
     `insert into public.trace_export_gaps (business_id, id, code, from_tx, from_id, events)
-     select $1, $2, $3, c.after_tx, c.after_id, $4
-       from (select 1) one
-       left join public.trace_export_cursors c on c.business_id = $1`,
-    [tx.businessId, randomUUID(), code, events],
+     values ($1, $2, $3, $4::xid8, $5::uuid, $6)`,
+    [tx.businessId, randomUUID(), code, from.tx, from.id, events],
   );
 }

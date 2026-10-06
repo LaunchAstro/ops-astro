@@ -28,6 +28,7 @@
 // `task.comment` itself, which is not this module's to change, so a share that
 // carried `comment` would let an outsider write a team note. It does not.
 
+import { isWayfinderRecord } from '../tasks/wayfinder.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
@@ -38,6 +39,7 @@ import {
   type Subject,
 } from './grants.ts';
 import { isUuid } from '../tenancy/ids.ts';
+import { EFFECTIVE } from './effective.ts';
 
 /** Who is sharing: the person, and the actor the grant row names as granter. */
 export interface Sharer {
@@ -95,8 +97,8 @@ export async function issueShare(
   granterActorId: string,
   request: ShareRequest,
 ): Promise<string> {
-  const live = await liveShares(tx, request);
-  if (live[0] !== undefined) return live[0];
+  const standing = await liveShares(tx, request, true);
+  if (standing[0] !== undefined) return standing[0];
 
   const issued = await issueGrant(tx, [], {
     subject: { kind: 'person', id: request.personId },
@@ -174,12 +176,32 @@ async function refuseShare(
     ],
   );
   if (found[0]?.record !== true || found[0]?.person !== true) return notFound();
+  // A map, its tickets and their threads never reach a client surface (WF-1).
+  // A new share only: withdrawing one that exists stays open. Held, so a
+  // parent's retype to map, which locks its children, is seen or waits.
+  if (
+    record === 'live' &&
+    request.collection === 'task' &&
+    (await isWayfinderRecord(tx, request.recordId, true))
+  ) {
+    return notFound();
+  }
   return undefined;
 }
 
-async function liveShares(tx: TenantQuery, request: ShareRequest): Promise<readonly string[]> {
+/**
+ * This record's live share rows with this person. `standing` keeps only those
+ * whose whole chain is live (`EFFECTIVE`): a share is reused only when it
+ * still grants, while a withdrawal revokes every live row.
+ */
+async function liveShares(
+  tx: TenantQuery,
+  request: ShareRequest,
+  standing = false,
+): Promise<readonly string[]> {
   const rows = await tx.query<{ readonly id: string }>(
-    `select id from public.grants
+    `${standing ? EFFECTIVE : ''}
+     select id from ${standing ? 'effective' : 'public.grants'}
       where business_id = $1 and subject_kind = 'person' and subject_id = $2
         and scope_kind = 'record' and scope_id = $3 and collection = $4 and action = 'read'
         and revoked_at is null and (expires_at is null or expires_at > now())

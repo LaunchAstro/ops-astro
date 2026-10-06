@@ -15,6 +15,7 @@ import {
   type ReadOccurrenceAuthority,
 } from '../../packages/core-commands/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
+import { seedAutomation, type SeededAutomation } from '../automations/seed.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   liveWork,
@@ -38,6 +39,15 @@ export interface OccurrenceWorld {
 
 export const w = {} as OccurrenceWorld;
 
+/** Each business's one automation, owner-written, that its occurrences belong to. */
+const seeded = new Map<string, SeededAutomation>();
+
+const automationOf = (on: Schedules): SeededAutomation => {
+  const found = seeded.get(on.business);
+  if (found === undefined) throw new Error(`no automation seeded for ${on.business}`);
+  return found;
+};
+
 export const DIGEST: string = createHash('sha256').update('definition bytes').digest('hex');
 
 export async function insertWorker(on: Schedules, active = true): Promise<string> {
@@ -60,6 +70,10 @@ export function useOccurrenceWorld(label: string): void {
     w.worker = await insertWorker(w.s);
     w.bravoWorker = await insertWorker(w.bravo);
     w.work = await liveWork(w.s, `${label}-${randomUUID()}`, 2_000);
+    for (const on of [w.s, w.bravo]) {
+      // eslint-disable-next-line no-await-in-loop -- one business at a time
+      seeded.set(on.business, await seedAutomation(on.db.admin, on.business, on.decider.actorId));
+    }
   }, 180_000);
   afterAll(async () => {
     await w.s?.db.drop();
@@ -74,8 +88,8 @@ export function authorityFor(
     approvalId: randomUUID(),
     approvalState: 'standing',
     approverActorId: on.decider.actorId,
-    definitionId: randomUUID(),
-    definitionVersionId: randomUUID(),
+    definitionId: automationOf(on).definitionId,
+    definitionVersionId: automationOf(on).versionId,
     versionState: 'released',
     contentDigest: DIGEST,
     contentSize: 42,
@@ -83,6 +97,22 @@ export function authorityFor(
     title: `nightly reconciliation ${randomUUID()}`,
     ...overrides,
   };
+}
+
+/**
+ * A real occurrence of the business's automation, owner-written, for a run to
+ * name: the run's origin keys reach C33's occurrence and definition rows.
+ */
+export async function occurrence(on: Schedules): Promise<string> {
+  const id = randomUUID();
+  const { activationId, versionId } = automationOf(on);
+  await on.db.admin.execute(
+    `insert into public.activation_occurrences
+       (business_id, id, activation_id, version_id, event_id, outcome)
+     values ($1, $2, $3, $4, $5, 'activation_off')`,
+    [on.business, id, activationId, versionId, `aw01-${id}`],
+  );
+  return id;
 }
 
 /** The stand-in for C52-A's read: one occurrence, its facts. */

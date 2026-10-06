@@ -4,7 +4,9 @@
 // broker whose call waits at a gate while the run stops, and the rows that
 // show what the envelope counts for it.
 
+import { setTimeout as sleep } from 'node:timers/promises';
 import { expect } from 'vitest';
+import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { BudgetAnswerRequest } from '../../packages/core-runtime/src/index.ts';
 import { rows, type Schedules, type Work } from '../runtime/schedules-harness.ts';
 import { s } from './broker-world.ts';
@@ -65,3 +67,75 @@ export const decider = (on: Schedules, runId: string): BudgetAnswerRequest => ({
     { kind: 'actor', id: on.decider.actorId },
   ],
 });
+
+/**
+ * `on` with its application on a connection of its own, whose settlement
+ * stops once `lockCall` holds its locks, envelope first and reservation last,
+ * before it reads the call's row, until `resume`: a close on the world's own
+ * connection can be seen waiting on the envelope.
+ */
+export function heldAtEnvelope(on: Schedules): {
+  readonly on: Schedules;
+  readonly reached: Promise<void>;
+  readonly resume: () => void;
+  readonly close: () => Promise<void>;
+} {
+  const own = connect(on.db.appUrl);
+  let reach: (() => void) | undefined;
+  let resume: (() => void) | undefined;
+  const reached = new Promise<void>((resolve) => {
+    reach = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const app: Database = {
+    ...own,
+    withBusiness: async (businessId, run) =>
+      await own.withBusiness(
+        businessId,
+        async (tx) =>
+          await run({
+            ...tx,
+            query: async <Row>(sql: string, parameters?: readonly unknown[]) => {
+              const found = await tx.query<Row>(sql, parameters);
+              if (sql.startsWith('select 1 from public.reservations')) {
+                reach?.();
+                await gate;
+              }
+              return found;
+            },
+          }),
+      ),
+  };
+  return {
+    on: { ...on, db: { ...on.db, app } },
+    reached,
+    resume: () => resume?.(),
+    close: own.close,
+  };
+}
+
+/**
+ * `resume` once another backend in `on`'s database waits for an envelope lock
+ * (`for update of e`); whether one did within five seconds.
+ */
+export async function resumeOnceBlocked(on: Schedules, resume: () => void): Promise<boolean> {
+  try {
+    for (let tries = 0; tries < 100; tries += 1) {
+      // Sequential polls: each reads the database as it now stands.
+      // eslint-disable-next-line no-await-in-loop
+      const [row] = await on.db.admin.execute<{ readonly waiting: boolean }>(
+        `select exists(select 1 from pg_stat_activity
+                        where datname = current_database() and wait_event_type = 'Lock'
+                          and query like '%for update of e%') as waiting`,
+      );
+      if (row?.waiting === true) return true;
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(50);
+    }
+    return false;
+  } finally {
+    resume();
+  }
+}

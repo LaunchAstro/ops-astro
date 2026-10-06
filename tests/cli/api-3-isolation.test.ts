@@ -1,0 +1,196 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable no-await-in-loop, max-lines-per-function -- calls in order; one isolation case, three crossings in order */
+//
+// `API-3 isolation`: the verb CLI over the composed API makes the three real
+// crossings (another business; another client's map in the same business;
+// an agent under a live delegation), each refusal's status checked, and no
+// foreign id, title or text in any answer, refusals included.
+
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { cliWorld, idOf, type Caller, type CliWorld } from './api-3-world.ts';
+import { must } from '../wayfinder/world.ts';
+import { addClient, grantTo, type Member } from '../commands/fixture.ts';
+
+const serverUrl = databaseUrlFromEnvironment();
+
+describe.skipIf(serverUrl === undefined)('API-3 isolation', () => {
+  let w: CliWorld;
+  let lead: Member;
+
+  beforeAll(async () => {
+    w = await cliWorld('api3iso', 'api3iso');
+    // A map's client is a client change, asked under `share` (WF-1).
+    lead = await w.member('lead', ['read', 'write', 'assign', 'comment', 'decide', 'share']);
+  }, 180_000);
+
+  afterAll(async () => await w?.drop());
+
+  /** A map scoped to a new real client of the business. */
+  const map = async (title: string) => {
+    const client = randomUUID();
+    await addClient(w.db.app, w.business, client, lead);
+    const made = must(
+      await w.as(lead, { command: 'task.create', fields: { title }, taskType: 'map' }),
+      title,
+    );
+    must(
+      await w.as(lead, {
+        command: 'map.scope',
+        recordId: made.id,
+        expectedRevision: await w.revisionOf(made.id),
+        client,
+      }),
+      'scope',
+    );
+    return made.id;
+  };
+
+  it('API-3 isolation', async () => {
+    const lead0 = await w.person(lead);
+    const mapA = await map('canary-map-A');
+    const mapB = await map('canary-map-B');
+    const ticketB = idOf(
+      await lead0.run(
+        'task',
+        'create',
+        '--title',
+        'canary-ticket-B',
+        '--parent',
+        mapB,
+        '--type',
+        'research',
+      ),
+    );
+    expect(
+      (
+        await lead0.run(
+          'task',
+          'comment',
+          ticketB,
+          '--revision',
+          String(await w.revisionOf(ticketB)),
+          '--text',
+          'canary-thread-B',
+        )
+      ).exit,
+    ).toBe(0);
+    const foreign = [mapB, ticketB, 'canary-map-B', 'canary-ticket-B', 'canary-thread-B'];
+    const clean = (caller: string, out: string) => {
+      for (const canary of foreign) expect(out, `${caller}: ${out}`).not.toContain(canary);
+    };
+    const refusedAs = async (caller: Caller, code: string, name: string, argv: string[]) => {
+      const answer = await caller.run(...argv);
+      expect(answer.exit, `${name} ${argv.join(' ')}: ${answer.out}`).toBe(1);
+      expect(answer.out).toContain(code);
+      clean(name, answer.out);
+    };
+
+    // 1. Another business: bravo's person, on bravo's own key, reaches none of alpha's.
+    // Bea holds comment too, so each crossing reaches the record and not the key check.
+    const beaMember = await w.outsider('bea');
+    await w.db.app.withBusiness(w.bravo, async (tx) => await grantTo(tx, beaMember, 'comment'));
+    const bea = await w.person(beaMember, `${w.key}-bravo`);
+    for (const argv of [
+      ['task', 'get', ticketB],
+      ['map', 'view', mapB],
+      ['task', 'comment', ticketB, '--revision', '1', '--text', 'x'],
+      ['task', 'update', ticketB, '--revision', '1', '--title', 'x'],
+    ]) {
+      await refusedAs(bea, 'NOT_FOUND', 'bravo', argv);
+    }
+    const beaList = await bea.run('task', 'list', '--detail', 'brief', '--json');
+    expect(beaList.exit).toBe(0);
+    clean('bravo list', beaList.out);
+
+    // 2. Another client in the same business: the map-A holder never reaches map B.
+    const onA = await w.person(
+      await w.member('on-a', ['read', 'write', 'comment'], { kind: 'record', id: mapA }),
+    );
+    expect((await onA.run('map', 'view', mapA)).exit).toBe(0);
+    for (const argv of [
+      ['task', 'get', ticketB],
+      ['map', 'view', mapB],
+      ['map', 'frontier', mapB],
+      ['task', 'comment', ticketB, '--revision', '1', '--text', 'x'],
+      ['task', 'update', ticketB, '--revision', '1', '--title', 'x'],
+    ]) {
+      await refusedAs(onA, 'SCOPE_NOT_GRANTED', 'client A', argv);
+    }
+    const onAList = await onA.run('task', 'list', '--detail', 'brief', '--json');
+    clean('client A list', onAList.out);
+
+    // 3. An agent under a live delegation: its purpose is its own task, never map B.
+    const picked = await w.pickUp(await w.decider('delegator'), 'delegated work');
+    const agent = await w.agent(picked.credential);
+    expect((await agent.run('task', 'get', picked.taskId, '--detail', 'brief')).exit).toBe(0);
+    for (const argv of [
+      ['task', 'get', ticketB],
+      ['task', 'comment', ticketB, '--revision', '1', '--text', 'x'],
+      ['map', 'frontier', mapB],
+    ]) {
+      const answer = await agent.run(...argv);
+      expect(answer.exit, `agent ${argv.join(' ')}: ${answer.out}`).toBe(1);
+      clean('agent', answer.out);
+    }
+    const agentList = await agent.run('task', 'list', '--detail', 'brief', '--json');
+    clean('agent list', agentList.out);
+  });
+
+  it('API-3 isolation: a blocker the reader may not read is withheld, never named', async () => {
+    const lead0 = await w.person(lead);
+    const hidden = idOf(await lead0.run('task', 'create', '--title', 'canary-hidden-blocker'));
+    const mine = idOf(await lead0.run('task', 'create', '--title', 'scoped task'));
+    await w.blocks(hidden, mine);
+    const scoped = await w.person(
+      await w.member('only-mine', ['read'], { kind: 'record', id: mine }),
+    );
+    const picked = await w.pickUp(await w.decider('blocker-delegator'), 'agent blocked task');
+    await w.blocks(hidden, picked.taskId);
+    const agent = await w.agent(picked.credential);
+    const read = async (caller: Caller, id: string, ...level: string[]) => {
+      const answer = await caller.run('task', 'get', id, ...level, '--json');
+      expect(answer.exit, answer.out).toBe(0);
+      expect(answer.out).not.toContain(hidden);
+      return JSON.parse(answer.out) as Record<string, unknown>;
+    };
+    // A member reading through record grants is a client login under owner
+    // answer 22: told no count of what it may not read, as task.board tells
+    // it none (SL07-B22-ANSWER).
+    for (const level of [[], ['--detail', 'full']]) {
+      expect(await read(scoped, mine, ...level), 'scoped').not.toHaveProperty('blockersWithheld');
+    }
+    // An agent is no client login: it is told the count, never the id.
+    for (const level of [[], ['--detail', 'full']]) {
+      expect(await read(agent, picked.taskId, ...level), 'agent').toHaveProperty(
+        'blockersWithheld',
+        1,
+      );
+    }
+    // The lead, whose grant reaches the whole business, is shown it, and no count.
+    const shown = await lead0.run('task', 'get', mine, '--json');
+    expect(shown.out).toContain(hidden);
+    expect(JSON.parse(shown.out) as Record<string, unknown>).not.toHaveProperty('blockersWithheld');
+  });
+
+  it('API-3 isolation: a blocks link from a record that is not a task is never shown or counted', async () => {
+    const lead0 = await w.person(lead);
+    const blocker = idOf(await lead0.run('task', 'create', '--title', 'a real blocker'));
+    const mine = idOf(await lead0.run('task', 'create', '--title', 'blocked twice'));
+    await w.blocks(blocker, mine);
+    // The task's own state record, linked as a blocker behind the commands' back.
+    const [row] = await w.db.admin.execute<{ readonly state: string }>(
+      `select uuid_1::text as state from public.records where business_id = $1 and id = $2`,
+      [w.business, mine],
+    );
+    await w.blocks(row?.state as string, mine);
+    for (const level of ['standard', 'full']) {
+      const answer = await lead0.run('task', 'get', mine, '--detail', level, '--json');
+      expect(answer.exit, answer.out).toBe(0);
+      const got = JSON.parse(answer.out) as Record<string, unknown>;
+      expect(got['blockedBy'], level).toStrictEqual([blocker]);
+      expect(got, level).not.toHaveProperty('blockersWithheld');
+    }
+  });
+});

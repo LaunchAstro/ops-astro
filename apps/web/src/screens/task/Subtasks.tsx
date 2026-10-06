@@ -13,9 +13,9 @@
 // its row carries an eye and a note in place of the tick, and it stays open in
 // the count until the gate is decided.
 //
-// **The box stays ready.** Enter adds and clears the box, and focus stays in
-// it for the next one. The box sits at the top and a new step joins the end,
-// in the order the server lists them.
+// **The box stays ready.** Enter adds and clears the box, unless a newer name is typed there,
+// and keeps the focus; the page holds its words, and a lost add's id, above the read, so Enter
+// on the same name is replayed (#461). A new step joins the end, in the server's order.
 //
 // **Finished steps fold away.** A done step, and an archived one (it left the
 // count without being done, MP-4-15), sit under "Show finished", the person's
@@ -23,7 +23,7 @@
 // step says when and why, and carries no tick: it comes back only when its
 // parent is reopened.
 
-import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { createContext, use, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { StepView, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useShowFinished } from './show-finished.ts';
@@ -31,8 +31,11 @@ import { useCommand } from '../../records/use-command.ts';
 import { stepMarks } from './perspective-counts.ts';
 import { TeamWork, type PanelOpener } from './Perspectives.tsx';
 import { TimeLog } from './Time.tsx';
+import { holding, useHeldOperations } from './held-operations.ts';
 
 const REOPEN_REASON = 'Unticked on the parent task’s subtask list.';
+/** The add box's words where the page holds them above its read; the panel's box keeps its own. */
+export const StepTitleHeld = createContext<readonly [string, (next: string) => void] | null>(null);
 
 /** "1 of 2 done · 50%": the steps still in play, the archived ones left out. */
 export function stepProgress(steps: readonly StepView[]): string {
@@ -116,24 +119,26 @@ function AddStep(props: {
   readonly onChanged: () => void;
 }): ReactElement {
   const { busy, because, run } = useCommand();
-  const [title, setTitle] = useState('');
+  const own = useState('');
+  const [title, setTitle] = use(StepTitleHeld) ?? own;
+  const typed = useRef(title);
+  typed.current = title;
   const box = useRef<HTMLInputElement>(null);
+  const held = useHeldOperations();
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     const wanted = title.trim();
     if (wanted === '' || busy) return;
+    const body = { fields: { title: wanted }, parentId: props.parentId };
+    const hold = holding(held, 'task.create', body, () => props.client.newOperationId());
     run(
-      () =>
-        props.client.mutate('task.create', {
-          fields: { title: wanted },
-          parentId: props.parentId,
-        }),
+      () => props.client.mutate('task.create', body, { operationId: hold.id }),
       (settlement) => {
-        if (settlement.kind === 'ok') {
-          setTitle('');
-          props.onChanged();
-        }
+        hold.settle(settlement.kind);
+        // A name typed since is the next one, not this one's to clear.
+        if (settlement.kind === 'ok' && typed.current === title) setTitle('');
+        if (settlement.kind === 'ok') props.onChanged();
         box.current?.focus();
       },
     );
@@ -147,9 +152,7 @@ function AddStep(props: {
         aria-label="Add a subtask"
         placeholder="Add a subtask and press Enter"
         value={title}
-        onChange={(event) => {
-          setTitle(event.target.value);
-        }}
+        onChange={(event) => setTitle(event.target.value)}
         onKeyDown={onKeyDown}
       />
       {because === null ? null : (
@@ -173,9 +176,7 @@ function FinishedFold(props: {
       className="btn btn--ghost"
       data-steps-finished
       aria-expanded={props.open}
-      onClick={() => {
-        props.onOpen(!props.open);
-      }}
+      onClick={() => props.onOpen(!props.open)}
     >
       {props.open ? 'Hide finished' : `Show finished (${String(props.count)})`}
     </button>
@@ -247,6 +248,7 @@ interface TeamSubtasksProps {
   readonly showFinished?: boolean | null;
   readonly onShowFinished?: (value: boolean | null) => void;
   readonly onChanged: () => void;
+  readonly onTimer?: ((running: string | null) => void) | undefined;
   readonly onOpenPanel: PanelOpener | undefined;
   /** False inside the dock task panel, where the edit already happens. */
   readonly doors?: boolean;
@@ -287,6 +289,7 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
             showAll={props.showAllTime}
             onShowAll={props.onShowAllTime}
             onChanged={props.onChanged}
+            onTimer={props.onTimer}
           />
         )
       }

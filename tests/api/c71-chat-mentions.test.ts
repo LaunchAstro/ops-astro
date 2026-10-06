@@ -20,6 +20,7 @@ import type { InboxEntry, UnattendedView } from '../../packages/core-wire/src/in
 import type { Caller } from '../acceptance/cast.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { createGroupWorld, detailOf, type GroupWorld } from './c71-g-world.ts';
+import { MAIL } from '../broker/email-world.ts';
 
 /** A broker whose custody sends nothing and counts what it was asked to send. */
 function mailGate(): { readonly broker: Broker; readonly dispatched: string[] } {
@@ -31,6 +32,7 @@ function mailGate(): { readonly broker: Broker; readonly dispatched: string[] } 
       return await Promise.resolve({ kind: 'refused', started: false, code: 'NOT_SENT_IN_TEST' });
     },
     stderr: () => '',
+    describe: () => Promise.resolve(null),
     raw: async () => await Promise.resolve({}),
     kill: () => {},
     stop: async () => await Promise.resolve(),
@@ -263,7 +265,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71 chat mentions',
       [world.alpha, world.mia.personId, `mia-${randomUUID()}@example.test`],
     );
     const { broker, dispatched } = mailGate();
-    const mail = { appOrigin: 'https://ops.example.test', from: 'hello@example.test' };
+    const mail = MAIL;
     expect(await sendInboxEmail(world.db.app, world.alpha, beforeRejoin, broker, mail)).toEqual({
       ok: false,
       code: 'ITEM_WITHHELD',

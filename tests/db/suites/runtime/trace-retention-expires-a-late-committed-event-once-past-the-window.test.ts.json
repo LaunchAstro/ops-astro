@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#475): an event that commits late is expired once it is past the window, by transaction order, not time."
+}

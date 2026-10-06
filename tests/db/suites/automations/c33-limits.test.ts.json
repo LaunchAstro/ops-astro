@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "PORT-P11 (P11b, C33 rates): the hourly rates per activation and per business, read after the lock wait, racing claimers on separate connections; one business at its rate never delays another."
+}

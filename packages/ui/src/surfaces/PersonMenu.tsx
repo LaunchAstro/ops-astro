@@ -11,6 +11,7 @@
 // it.
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -36,6 +37,12 @@ export function PersonMenu(props: PersonMenuProps): ReactElement {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const shown = props.name ?? props.email;
+  // One close for the menu's life: a parent's rerender must not rerun its
+  // focus-on-open and move focus without a gesture.
+  const onClose = useCallback((refocus: boolean) => {
+    setOpen(false);
+    if (refocus) trigger.current?.focus();
+  }, []);
   return (
     <div className="who">
       <button
@@ -54,17 +61,7 @@ export function PersonMenu(props: PersonMenuProps): ReactElement {
           <Avatar name={shown} />
         </span>
       </button>
-      {open ? (
-        <MenuPanel
-          {...props}
-          shown={shown}
-          trigger={trigger}
-          onClose={(refocus) => {
-            setOpen(false);
-            if (refocus) trigger.current?.focus();
-          }}
-        />
-      ) : null}
+      {open ? <MenuPanel {...props} shown={shown} trigger={trigger} onClose={onClose} /> : null}
     </div>
   );
 }

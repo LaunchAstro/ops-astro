@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "PORT-P11 (C52-A standing approvals): automation:manage refusals, agent refused, audit readback, isolation over bravo's own approval and a real client grant."
+}

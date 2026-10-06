@@ -125,8 +125,35 @@ describe('C80 envelope refusal', () => {
   });
 });
 
+describe('C80 envelope refusal, the frontmatter fence', () => {
+  // Sol R2.2 (F11): the scan starts after the frontmatter's closing fence, so
+  // a quoted brace in unchanged frontmatter leaves the paragraph body copy.
+  // The fence is a line of its own: one that never closes refuses everything.
+  it('reads body copy after frontmatter that holds a quoted brace', () => {
+    const before = "---\nconst marker = '{';\n---\n<p>We walk alongside you.</p>\n";
+    const after = before.replace('alongside', 'beside');
+    expect(checkEnvelope(change(after, before), TARGET)).toEqual({
+      ok: true,
+      value: { path: TARGET.path, line: 4, before: 'alongside', after: 'beside' },
+    });
+  });
+
+  it('refuses the word while the frontmatter fence is open or not a fence line', () => {
+    const hostile = [
+      "---\nconst marker = '{';\n<p>We walk alongside you.</p>\n",
+      '---\nconst a = 1;\n---x\n<p>We walk alongside you.</p>\n',
+      "\n---\nconst a = 'alongside';\n---\n<p>x</p>\n",
+      "---\r\nconst a = 'alongside';\r\n---\r\n<p>x</p>\r\n",
+    ];
+    for (const before of hostile) {
+      const after = before.replace('alongside', 'beside');
+      expect(checkEnvelope(change(after, before), TARGET).ok, before).toBe(false);
+    }
+  });
+});
+
 function page(overrides: Partial<PageObservation> = {}): PageObservation {
-  return {
+  const observed = {
     url: 'https://www.example.com/about',
     status: 200,
     documentDigest: 'sha256:doc-before',
@@ -136,6 +163,8 @@ function page(overrides: Partial<PageObservation> = {}): PageObservation {
     },
     ...overrides,
   };
+  // The served document carries what the text shows, and nothing else.
+  return { ...observed, html: `<p>${observed.text}</p>` };
 }
 
 describe('C80 one word only', () => {

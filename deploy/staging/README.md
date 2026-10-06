@@ -97,6 +97,15 @@ setting's value.
 Backups are never restored into staging: the restore drill takes no target and
 restores only into a throwaway container of its own.
 
+The dump from Supabase's pooler leaves out `auth`. On hosted Supabase that
+schema belongs to the platform, and staging's owner may use it but may not
+grant it. No platform role is granted to the backup identity, because each one
+would give it far more than reads. The sign-ins stay in Supabase's own project
+backup, and the reset makes staging's made-up sign-ins again. The drill passes
+without `auth`. Migration `20261006140500` stops if the backup identity cannot
+read a schema the dump names that is ours to grant, or a table in that schema
+(#999).
+
 The backup store is a database server of its own, `backups`
 (`ops-astro-staging-backups`), on staging's internal network with no port on
 the machine. Its data is on `ops-astro-staging-backups-data`, the one
@@ -132,8 +141,12 @@ installation wrote into `ops.operating_business` (migration 0045), read in the
 same transaction and on the same database as the grant check, so no value or
 database address the caller sets replaces it. The store checks the same
 appointment again before it hands out a byte
-(`backups.read_latest(person, business)`). The backup is the whole database,
-so another business's manager is refused and learns nothing.
+(`backups.read_latest(person, business)`), and again before each part
+(`backups.read_part`), so a login no longer appointed reads no further. The
+backup is the whole database, so another business's manager is refused and
+learns nothing. An export and a drill from the store also ask the gate again
+before each step with the store, so an operator whose sign-in ended or whose
+`operations:manage` was revoked part way reads and records nothing more.
 
 The carried drill takes three commands:
 
@@ -171,6 +184,7 @@ Before staging is prepared, and again after, the owner runs
 
 ```sh
 node scripts/ops/service-report.mjs snapshot > before.json
+# exit 2 here: stop, prepare nothing, and read the error it printed
 # prepare staging, as the runbook says
 node scripts/ops/service-report.mjs snapshot > after.json
 node scripts/ops/service-report.mjs compare before.json after.json
@@ -178,13 +192,17 @@ node scripts/ops/service-report.mjs compare before.json after.json
 
 It exits 1 when a live service stopped, restarted, vanished, moved port or
 was reconfigured, and 0 when all are unchanged (`S0-1 services unchanged`).
+A snapshot that cannot be taken exits 2 with Docker's or launchd's own error
+and prints nothing. Stop there: compare refuses the empty file the redirect
+leaves, but only after staging was prepared without a before.
 
 ## The deploy
 
 `scripts/ops/deploy.mjs --version <id> --artefacts <store>` deploys a stored
 build to staging (ticket S0-6). It is a person's act under
-`operations:manage`, asked of the operator gate before anything else, like
-the preparation and the promotion. It takes the artefact the store holds for
+`operations:manage` in the installation's operating business (the services
+are the installation's, not one business's), asked of the operator gate before
+anything else. It takes the artefact the store holds for
 that version, checked as the promotion checks it, and never builds the
 product. Before anything starts, staging's database (`DATABASE_ADMIN_URL`)
 must pass the made-up-only preflight, and any sign it finds refuses the
@@ -250,7 +268,8 @@ watcher's web check stays green; its keyword check on the page's marker
 
 The promotion migrates only with production's worker stopped, so a person
 stops it first with `scripts/ops/stop-production.mjs`. It asks the operator
-gate before anything else, then stops the containers `ops-astro-worker` and
+gate before anything else, for `operations:manage` in the installation's
+operating business, as the deploy does, then stops the containers `ops-astro-worker` and
 `ops-astro-forwarder` (the worker unit; the forwarder holds a database
 session) and records the stop. It takes no argument, so no caller can point it
 at another service. Those two names are the one part of production's layout

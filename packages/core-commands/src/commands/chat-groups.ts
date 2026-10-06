@@ -21,6 +21,12 @@
 //
 // Every one of them takes the conversation's lock before it reads who is in
 // it (`lockGroup`), so sends, member changes and leaves serialise there.
+// **Authority is read again after that lock wait**, as a direct message's is
+// (`standsNow`, `chat.ts`): a send, rename or member change reads the
+// caller's membership and the declaration's grant under the access lock
+// (shared) before it writes, and a start does before it reads its teammates
+// (the lock it then takes is a new conversation's, which no one else can
+// hold). A leave asks none: it only ends the caller's own membership.
 
 import {
   allStaff,
@@ -40,7 +46,7 @@ import { isInternalReader } from '../reads/tasks.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import { conversationTypesFor, writeMessage } from './chat.ts';
+import { conversationTypesFor, standsNow, writeMessage } from './chat.ts';
 import { commentBodyOf, mentionsOf } from './tasks-comment.ts';
 
 /** More people than a team conversation is for; past it, the list is refused. */
@@ -100,7 +106,7 @@ async function ownGroup(
  * A group the caller may rename or change the members of, locked: its creator
  * while a member, or a holder of `chat:manage` over the business, in it or
  * not. A member who is neither gets the grant refusal; anyone else outside it
- * NOT_FOUND, as for a group never issued.
+ * NOT_FOUND, as for a group never issued, a lost standing included.
  */
 async function managedGroup(
   tx: TenantQuery,
@@ -111,6 +117,9 @@ async function managedGroup(
   if ('refusal' in found) return found;
   const { session } = context;
   const member = found.group.members.includes(session.personId);
+  // A lost standing tells an outsider nothing of the group: NOT_FOUND.
+  const lost = await standsNow(tx, context, null);
+  if (lost !== undefined) return { refusal: refused(member ? lost : refuseNotFound()) };
   if (member && found.group.creator === session.personId) return found;
   const asked = await checkAuthority(tx, subjectsOf(session), {
     collection: 'chat',
@@ -137,6 +146,8 @@ export async function startGroupConversation(
   }
   const types = await conversationTypesFor(tx, context);
   if (!('conversationTypeId' in types)) return types;
+  const lost = await standsNow(tx, context, null);
+  if (lost !== undefined) return refused(lost);
   if (!(await allStaff(tx, teammates))) return refused(refuseNotFound());
   const conversationId = await startGroup(tx, types, session.personId, named, teammates);
   return applied(conversationId, null, { conversationId });
@@ -156,6 +167,8 @@ export async function sendGroupMessage(
   if (!Array.isArray(named)) return named as HandlerOutcome;
   const own = await ownGroup(tx, context, conversationId);
   if ('refusal' in own) return own.refusal;
+  const lost = await standsNow(tx, context, null);
+  if (lost !== undefined) return refused(lost);
   return await writeMessage(tx, context, own.types, conversationId, 'group', words, named);
 }
 

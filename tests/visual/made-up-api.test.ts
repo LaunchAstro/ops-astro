@@ -7,8 +7,9 @@ import { MADE_UP_READS, madeUpAnswer, MOCKUP_TASK_KEY, TASKS } from './made-up-a
 // Reads no screen draws at the harness's addresses: the preset plan is the
 // command line's, the unattended list is the operations view's. No screen asks
 // the breach notice drafts (the command line's drill), nor an instruction
-// file's attribution yet (the command line and pre-review do). Each is drawn
-// "could not be read" if asked. The task page's run has a receipt, so
+// file's attribution yet (the command line and pre-review do), and the drawer
+// reads no correction's decision while it keeps the made-up desk (C80). Each
+// is drawn "could not be read" if asked. The task page's run has a receipt, so
 // `task.receipt` is drawn here, and the task's client field asks the client list.
 const NOT_DRAWN = new Set([
   'preset.plan',
@@ -19,10 +20,13 @@ const NOT_DRAWN = new Set([
   // AW-12: no screen draws the harness result in this piece.
   'harness.read',
   'privacy.draft_breach_notices',
+  'live_correction.read',
   // C71-D: the web client can reach team conversations, but no screen draws
   // them yet; the Team panel arrives in a later piece.
   'chat.conversations',
   'chat.messages',
+  // MP-14-10a: the graduation data lands before the screens that draw it (P06).
+  'connection.graduation',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {

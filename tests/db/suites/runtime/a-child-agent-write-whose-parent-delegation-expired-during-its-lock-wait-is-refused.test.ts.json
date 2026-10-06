@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a child agent write whose parent delegation expired during its lock wait is refused"
+}

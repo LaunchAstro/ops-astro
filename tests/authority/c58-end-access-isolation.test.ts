@@ -44,6 +44,7 @@ import {
   stateOf,
   useEndAccessWorld,
 } from './c58-end-access-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 // WORLD-IMPORTS c58-end-access-world.ts
 
@@ -153,7 +154,7 @@ async function c58IsolationBravoSEndingIsBravo(): Promise<void> {
 
 async function c58CanaryAPlantedSecretInThe(): Promise<void> {
   const logged: string[] = [];
-  const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+  const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
   const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
     vi.spyOn(console, level).mockImplementation(capture),
   );

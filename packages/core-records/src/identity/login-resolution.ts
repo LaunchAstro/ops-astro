@@ -31,7 +31,9 @@ type Refusal = CommandRefusal<IdentityRefusalCode>;
 const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
+import { admitQuota, type QuotaRefusal } from './quota.ts';
 import { loginHasVerifiedFactor } from './second-factor.ts';
+import { sessionEnded, sessionEndedHeld } from './sessions.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
@@ -57,6 +59,8 @@ export interface Session {
   /** Agent credential calls only (API-2): its ticked `collection:action` keys, which every
    *  grant check also asks within (`subjectsOf`); `actorId` is the agent, `personId` its person. */
   readonly credentialScope?: readonly string[];
+  /** The verified token a person's session was resolved from (C58), for `sessionEndedSince`. */
+  readonly presented?: VerifiedSubject;
 }
 
 /**
@@ -84,7 +88,7 @@ export const NO_MEMBERSHIP_FIXES = [
 ] as const;
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
-const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
+export const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
 const SECOND_FACTOR_FIXES = [
   'enter the code from your authenticator app to finish signing in',
 ] as const;
@@ -178,7 +182,19 @@ export async function standingOf(
     actorId: found.actor_id,
     roleKey: found.role_key,
     assurance,
+    presented,
   };
+}
+
+/**
+ * Whether the person's session has ended since it was resolved (C58), asked
+ * by a write after its last wait, the business's audit chain held: an ending
+ * committed meanwhile is seen here, as the door would see it on the next call,
+ * and one not yet committed waits for the write (`sessionEndedHeld`). An agent
+ * credential's session, which no person's token resolved, has none to end.
+ */
+export async function sessionEndedSince(tx: TenantQuery, session: Session): Promise<boolean> {
+  return session.presented !== undefined && (await sessionEndedHeld(tx, session.presented));
 }
 
 /** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */
@@ -236,28 +252,6 @@ export async function standsOnShares(tx: TenantQuery, personId: string): Promise
   return row !== undefined && row.shares > 0 && row.business === 0;
 }
 
-/**
- * Whether the session the token belongs to has ended (C58): signed out, in any
- * business the login reaches (0061), or one of the login's other sessions
- * ended from any business (0063): not the kept one, first signed in at or
- * before that ending. A token naming no session has none to end.
- */
-async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
-  if (presented.sessionId === undefined) return false;
-  const rows = await tx.query<{ readonly ended: boolean }>(
-    `select exists (
-       select 1 from ops.ended_provider_sessions where session_id = $1::uuid
-     ) or exists (
-       select 1 from ops.ended_subject_sessions s
-        where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
-          and s.kept_session is distinct from $1::uuid
-          and to_timestamp($3::bigint) <= s.ended_before
-     ) as ended`,
-    [presented.sessionId, presented.subject, presented.assurance?.signedInAt ?? null],
-  );
-  return rows[0]?.ended === true;
-}
-
 /** A refusal and its record commit together, so nobody is turned away unrecorded. */
 async function recordRefusal(
   tx: TenantQuery,
@@ -287,10 +281,16 @@ export async function withSession<T>(
   presented: VerifiedSubject,
   run: (tx: TenantQuery, session: Session) => Promise<T>,
   rule: SecondFactorRule = 'required',
-): Promise<T | Refusal> {
+): Promise<T | Refusal | QuotaRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const resolved = await resolveLogin(tx, presented, rule);
     if ('refused' in resolved) return resolved;
+    // Charged only now, once the caller is admitted (`quota.ts`).
+    const overQuota = await admitQuota(tx, 'person_login', presented, {
+      credential: resolved.loginId,
+      person: resolved.personId,
+    });
+    if (overQuota !== undefined) return overQuota;
     return await run(tx, resolved);
   });
 }

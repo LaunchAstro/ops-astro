@@ -2,15 +2,12 @@
 //
 // The per-read facts, pinned as they stood at 06ab232.
 //
-// Written before the read facts were folded into one typed catalogue (thermo
-// review b483399, H3), and green before and after. Each read's identifiers and
-// whether an outsider is told NOT_FOUND are pinned by literal, and its operand
-// check by the exact refusal it gives each of a set of bodies, so a
-// refactor that moved a check, loosened one or changed its words fails here
-// before a caller sees it. Since the catalogue landed, each fact is read off
-// the read's row, and the row's spine, subject and authority mode are pinned
-// beside them. The refusal order itself is pinned by
-// `tests/acceptance/identifier-timing` and `identifier-negatives`.
+// Written before the read facts were folded into one typed catalogue (thermo review b483399, H3),
+// and green before and after. Identifiers and whether an outsider is told NOT_FOUND are pinned by
+// literal, and each operand check by the exact refusal it gives each body, so a refactor that
+// moved, loosened or reworded a check fails here first. Since the catalogue landed, each fact is
+// read off the read's row, with the row's spine, subject and authority mode pinned beside them.
+// The refusal order is pinned by `tests/acceptance/identifier-timing` and `identifier-negatives`.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -18,52 +15,21 @@
 import { describe, expect, it } from 'vitest';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { READ_CATALOGUE, type ReadName } from '../../packages/core-commands/src/reads/catalogue.ts';
+import { PINNED_SHAPE } from './read-catalogue-shape.ts';
 
 const rows = Object.entries(READ_CATALOGUE) as [ReadName, (typeof READ_CATALOGUE)[ReadName]][];
 const READ_IDENTIFIERS = Object.fromEntries(rows.map(([name, row]) => [name, row.identifiers]));
 const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([name]) => name);
 
-/** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
-const PINNED_SHAPE = {
-  'access.read': { spine: false, subject: false, authority: 'declared' },
-  'chat.conversations': { spine: false, subject: false, authority: 'declared' },
-  'chat.messages': { spine: false, subject: false, authority: 'declared' },
-  'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
-  'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
-  'harness.read': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'inbox.count': { spine: false, subject: false, authority: 'self' },
-  'inbox.read': { spine: false, subject: false, authority: 'self' },
-  'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
-  'operations.read': { spine: false, subject: false, authority: 'declared' },
-  'person.list': { spine: false, subject: false, authority: 'declared' },
-  'preference.read': { spine: false, subject: false, authority: 'self' },
-  'preset.plan': { spine: false, subject: false, authority: 'from the request' },
-  'privacy.draft_breach_notices': { spine: false, subject: false, authority: 'declared' },
-  'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
-  'session.person': { spine: false, subject: false, authority: 'self' },
-  'settings.read': { spine: false, subject: false, authority: 'declared' },
-  'tag.list': { spine: false, subject: false, authority: 'declared' },
-  'task.board': { spine: true, subject: false, authority: 'declared-within' },
-  'task.execution': { spine: true, subject: true, authority: 'declared' },
-  'task.queue': { spine: false, subject: false, authority: 'declared' },
-  'task.read': { spine: true, subject: true, authority: 'declared' },
-  'task.receipt': { spine: true, subject: true, authority: 'declared' },
-  'task.todos': { spine: true, subject: false, authority: 'declared' },
-  'task.search': { spine: true, subject: false, authority: 'holds-any-grant' },
-  'task.ledger': { spine: true, subject: false, authority: 'declared' },
-  'team.list': { spine: false, subject: false, authority: 'declared' },
-  'trace.read': { spine: true, subject: true, authority: 'declared' },
-};
-
 const PINNED_IDENTIFIERS = {
   'access.read': [],
+  'automation.registry': [],
   'chat.conversations': [],
   'chat.messages': ['conversationId'],
   'client.list': [],
+  'connection.fleet': [],
+  'connection.graduation': [],
+  'connection.signal': [],
   'conversation.allowance': ['conversationId'],
   'conversation.list': [],
   'conversation.read': ['conversationId'],
@@ -73,11 +39,15 @@ const PINNED_IDENTIFIERS = {
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'live_correction.read': ['correctionId'],
+  'map.frontier': ['recordId'],
+  'map.view': ['recordId'],
   'operations.read': [],
   'person.list': [],
   'preference.read': [],
   'preset.plan': [],
   'privacy.draft_breach_notices': [],
+  'secret.list': [],
   'session.capabilities': [],
   'session.person': [],
   'settings.read': [],
@@ -100,6 +70,8 @@ const PINNED_IDENTIFIERS = {
 const PINNED_OUTSIDER_NOT_FOUND = [
   'chat.conversations',
   'chat.messages',
+  'map.frontier',
+  'map.view',
   'task.board',
   'task.execution',
   'task.ledger',
@@ -127,6 +99,11 @@ const RECORD_ID = {
   code: 'FIELD_VALUE_INVALID',
   names: ['recordId'],
   fixes: ['Send recordId as the task’s identifier or its key.'],
+};
+const MAP_ID = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['recordId'],
+  fixes: ['Send recordId as the map’s identifier or its key.'],
 };
 const BOARD = {
   code: 'FIELD_VALUE_INVALID',
@@ -161,8 +138,14 @@ const LEDGER_ZONE = {
   fixes: ['Send timeZone as a zone name the server knows, such as Australia/Brisbane.'],
 };
 
+/** The one refusal every body gets for an operand none of them carries. */
+const unsent = (name: string, fix: string) =>
+  BODIES.map(() => ({ code: 'FIELD_VALUE_INVALID', names: [name], fixes: [fix] }));
+
 /** For each read, the refusal each body gets, in `BODIES` order; `null` is no refusal. */
 const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
+  'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
+  'map.frontier': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'task.read': [
     RECORD_ID,
     null,
@@ -208,6 +191,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'tag.list': BODIES.map(() => null),
   'task.todos': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
+  // C33: the Workflow triggers registry takes nothing.
+  'automation.registry': BODIES.map(() => null),
+  'secret.list': BODIES.map(() => null),
+  'connection.fleet': BODIES.map(() => null),
+  'connection.signal': BODIES.map(() => null),
+  'connection.graduation': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
@@ -229,19 +218,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
+  // C80's correction and AW-12's run, which none of these bodies carries.
+  'live_correction.read': unsent('correctionId', 'Send correctionId as the correction.'),
+  'harness.read': unsent('runId', 'Send runId as the run’s identifier.'),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
-  'chat.messages': BODIES.map(() => ({
-    code: 'FIELD_VALUE_INVALID',
-    names: ['conversationId'],
-    fixes: ['Send conversationId as a conversation’s identifier.'],
-  })),
-  // AW-12: the run, which none of these bodies carries.
-  'harness.read': BODIES.map(() => ({
-    code: 'FIELD_VALUE_INVALID',
-    names: ['runId'],
-    fixes: ['Send runId as the run’s identifier.'],
-  })),
+  'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -253,7 +235,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same thirty-two reads', () => {
+  it('names the same forty reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
@@ -261,7 +243,7 @@ describe('the per-read facts at 06ab232', () => {
     expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
   });
 
-  it('tells an outsider NOT_FOUND on the same eight', () => {
+  it('tells an outsider NOT_FOUND on the same eleven', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 

@@ -8,6 +8,7 @@
 import {
   checkDelegatedAuthority,
   digestOf,
+  resolveDelegation,
   resolveLiveById,
   resolveSettledByLease,
   DERIVED_SCHEME,
@@ -24,6 +25,7 @@ import { isRefused } from './outcome.ts';
 import type { AgentCall } from './agent-call.ts';
 import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
 import { replayChildHandback, replayChildPickup } from './agent-child.ts';
+import { replayRefusal } from './live-correction-agent.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
@@ -38,8 +40,8 @@ export async function releaseReplay(
   switch (operation.replay) {
     case 'pickup':
       return await replayPickup(tx, call, stored);
-    case 'capabilities':
-      return await operation.open(async (row) => await replayCapabilities(tx, call, row));
+    case 'serveAgain':
+      return await operation.open(async (row) => await serveAgain(tx, call, row));
     case 'settledHandback':
       return await replaySettledHandback(tx, call, stored);
     case 'childPickup':
@@ -55,22 +57,32 @@ export async function releaseReplay(
         const authorised = await authorise(tx, call, row);
         return 'refusal' in authorised ? authorised.refusal : undefined;
       });
+    case 'correctionRequest':
+      return await operation.open(async (row) => {
+        const authorised = await authorise(tx, call, row);
+        if ('refusal' in authorised) return authorised.refusal;
+        // `authorise` resolved this credential as live a statement ago.
+        const resolved = await resolveDelegation(tx, call.session.actorId, call.credential ?? '');
+        if (!resolved.ok) return resolved.refusal;
+        return await replayRefusal(tx, call.request, resolved.value);
+      });
   }
 }
 
 /**
- * A capabilities replay: the current rights checked the way a fresh call is,
- * then the row served again for them. The stored answer is never released.
+ * A read whose answer depends on the rights held now (`session.capabilities`,
+ * `task.queue`): those rights checked the way a fresh call is, then the row
+ * served again for them. The stored answer is never released.
  */
-async function replayCapabilities<O extends object>(
+async function serveAgain<O extends object>(
   tx: TenantQuery,
   call: AgentCall,
   operation: TypedOperation<O>,
 ): Promise<CommandResult> {
   const authorised = await authorise(tx, call, operation);
   if ('refusal' in authorised) return authorised.refusal;
-  // The row's own operands, read as a fresh call reads them: the capabilities
-  // row reads none, so this is its `{}`, typed as the row's own.
+  // The row's own operands, read as a fresh call reads them: both rows
+  // read none, so this is its `{}`, typed as the row's own.
   const operands = operation.operands(call.request);
   if (isOperandRefusal(operands)) return operands.refusal;
   const served = await authorised.run(operands);

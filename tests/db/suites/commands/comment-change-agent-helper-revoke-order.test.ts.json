@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a helper's comment change racing delegation.revoke of that helper does not deadlock, and the revoke wins (catalogue #414)"
+}

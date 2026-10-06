@@ -83,6 +83,7 @@ export {
 } from './plan-record.ts';
 export {
   PLAN_CANDIDATES,
+  boundPlans,
   projectedPlan,
   readProjectedPlan,
   type ProjectedPlan,
@@ -236,6 +237,7 @@ export {
 } from './refusals.ts';
 export {
   delegationCredentialKeys,
+  custodySealingKey,
   gateSigningKey,
   readBusinessCapId,
   runtimeKeys,
@@ -259,20 +261,19 @@ export {
 export {
   TRACE_BATCH,
   TRACE_READ_LIMIT,
+  TRACE_WINDOW_DAYS,
   exportOnce,
   readTaskTrace,
   type ReadSpan,
-  type Deliver,
-  type Delivered,
   type ExportOutcome,
-  type GapCode,
   type TraceDatabase,
 } from './trace-export.ts';
+export { type Deliver, type Delivered, type GapCode } from './trace-delivery.ts';
 export {
   EXPIRY_PAGE,
   expireOnce,
-  TRACE_WINDOW_DAYS,
   type ExpiryCode,
-  type ExpiryPorts,
   type RetentionBatch,
 } from './trace-retention.ts';
+export { type ExpiryPorts } from './trace-store.ts';
+export { standingMandateVerdict, type MandateQuestion, type MandateVerdict } from './mandates.ts';

@@ -117,11 +117,21 @@ const record = (value: unknown): Readonly<Record<string, unknown>> | null =>
     : null;
 
 /**
+ * Where a version's evidence names what the run was given: the proposal's
+ * payload, which the evidence renderer nests under `payload`. A body without
+ * one is read as it stands.
+ */
+function givenOf(version: RunVersion | undefined): Readonly<Record<string, unknown>> | null {
+  const body = record(version?.evidence?.body);
+  return record(body?.['payload']) ?? body;
+}
+
+/**
  * The skills a version's evidence names, each a string or `{ name }`, read as
  * text. Anything else is left out, never guessed at.
  */
 function skillsOf(version: RunVersion | undefined): readonly LedgerSkill[] {
-  const listed = record(version?.evidence?.body)?.['skills'];
+  const listed = givenOf(version)?.['skills'];
   return (Array.isArray(listed) ? listed : []).flatMap((entry: unknown) => {
     const name = typeof entry === 'string' ? entry : record(entry)?.['name'];
     return typeof name === 'string' && name.trim() !== '' ? [{ name }] : [];
@@ -130,7 +140,7 @@ function skillsOf(version: RunVersion | undefined): readonly LedgerSkill[] {
 
 /** The data source a version's evidence names, as it is: the link is guarded where it is drawn. */
 function sourceOf(version: RunVersion | undefined): LedgerSource | null {
-  const source = record(record(version?.evidence?.body)?.['dataSource']);
+  const source = record(givenOf(version)?.['dataSource']);
   const label = source?.['label'];
   const href = source?.['href'];
   return typeof label === 'string' && label.trim() !== ''

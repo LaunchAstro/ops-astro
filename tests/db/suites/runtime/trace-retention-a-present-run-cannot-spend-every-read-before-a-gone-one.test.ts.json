@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#963): owed runs that read present cannot spend every read a store allows before a gone run is reached."
+}

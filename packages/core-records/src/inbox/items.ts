@@ -72,6 +72,11 @@ export interface Disclosed {
   readonly subjectRecordId: string;
   readonly factId: string;
   readonly closedByPersonId: string | null;
+  /** The task's key, title and client, read in the statement that found it readable. */
+  readonly task: { readonly key: string; readonly title: string | null };
+  readonly clientId: string | null;
+  /** Set when the subject is a team conversation (C71): `task` is its kind and a group's name. */
+  readonly conversation: boolean;
   /** T2h's alert on the run the item points at, the one the task page shows; null otherwise. */
   readonly alert: InboxAlert | null;
 }
@@ -87,6 +92,15 @@ export interface InboxAlert {
 /** Only a finished run asks nothing back; the schema holds the same rule. */
 export function owes(reason: InboxReason): boolean {
   return reason !== 'run_finished';
+}
+
+/**
+ * Told at once on every channel it reaches, never batched or switched off:
+ * a decision or an incident (owner answer 10, CS-16.9). The channel setting
+ * refuses to quiet one and the email send never batches one.
+ */
+export function toldAtOnce(reason: InboxReason): boolean {
+  return reason === 'decision' || reason === 'incident';
 }
 
 /**
@@ -134,13 +148,23 @@ export async function recordDeliveryAttempt(
     readonly channel: DeliveryChannel;
     readonly state: DeliveryState;
     readonly evidence?: string;
+    /** When it was observed, if not the transaction's start (`now()`). */
+    readonly observedAt?: string;
   },
 ): Promise<string> {
   const rows = await tx.query<{ readonly id: string }>(
-    `insert into public.inbox_delivery_attempts (business_id, id, item_id, channel, state, evidence)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5)
+    `insert into public.inbox_delivery_attempts
+       (business_id, id, item_id, channel, state, evidence, observed_at)
+     values ($1, gen_random_uuid(), $2, $3, $4, $5, coalesce($6::timestamptz, now()))
      returning id`,
-    [tx.businessId, attempt.itemId, attempt.channel, attempt.state, attempt.evidence ?? null],
+    [
+      tx.businessId,
+      attempt.itemId,
+      attempt.channel,
+      attempt.state,
+      attempt.evidence ?? null,
+      attempt.observedAt ?? null,
+    ],
   );
   const id = rows[0]?.id;
   if (id === undefined) throw new Error('recordDeliveryAttempt: the insert returned no row');
@@ -162,16 +186,28 @@ export async function stampSeen(
   // Opening needs read on the task now, asked in the insert itself: an item
   // about a task the recipient cannot read (another client's, a lost grant, a
   // conversation they left or rejoined since) is answered as not theirs.
-  const held = await tx.query(
-    `with held as (
-       select i.id from public.inbox_items i
+  const heldItem = `select i.id from public.inbox_items i
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
         where i.business_id = $1 and i.id = $2 and i.recipient_person_id = $3
-          and ${readableNow('$3::uuid', 'i.raised_at')}),
+          and ${readableNow('$3::uuid', 'i.raised_at')}`;
+  // The insert can wait on another stamp of the same item, so read access is
+  // asked again after it, and a grant revoked meanwhile undoes this stamp
+  // (#443). The app role cannot delete an attention row: a savepoint holds it.
+  await tx.query('savepoint inbox_seen');
+  const held = await tx.query(
+    `with held as (${heldItem}),
      stamped as (insert into public.inbox_attention (business_id, item_id, person_id)
        select $1, id, $3 from held on conflict (business_id, item_id) do nothing)
      select 1 from held`,
     [tx.businessId, itemId, personId],
   );
-  return held.length > 0;
+  const still =
+    held.length === 0 ? [] : await tx.query(heldItem, [tx.businessId, itemId, personId]);
+  if (still.length === 0) {
+    await tx.query('rollback to savepoint inbox_seen');
+    await tx.query('release savepoint inbox_seen');
+    return false;
+  }
+  await tx.query('release savepoint inbox_seen');
+  return true;
 }

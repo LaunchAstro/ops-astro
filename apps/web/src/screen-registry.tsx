@@ -9,7 +9,7 @@
 // instead of falling through to whichever screen a bare `else` happened to
 // draw.
 
-import type { ReactElement, ReactNode } from 'react';
+import { Fragment, type ReactElement, type ReactNode } from 'react';
 import { Gallery } from '@launchastro/ui';
 import { clientNamedIn } from './client-address.ts';
 import {
@@ -19,12 +19,15 @@ import {
   type RouteMatch,
 } from './routes.ts';
 import type { PanelId } from './panels.ts';
+import { tabRollupFloor } from './data/rollup-floor.ts';
 import type { OperationsClient } from './operations/client.ts';
+import { ConnectionsScreen } from './screens/Connections.tsx';
 import { ConversationScreen } from './screens/Conversation.tsx';
 import { AccessScreen } from './screens/Access.tsx';
 import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
+import { MapScreen } from './screens/Map.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
@@ -95,6 +98,18 @@ export const SCREENS: {
       conversationId={context.params.conversation}
     />
   ),
+  // Keyed on the grant, so a change of business or person, or a sign-out (the
+  // key's generation), starts the fleet's view state, open rows and repair
+  // attempts over; a step-up keeps the reader, as `grantKeyOf` does everywhere.
+  // An agency-wide rollup, so it re-reads on the tab's floor (LIVE-SYNC.md).
+  'agency:connections': (context) => (
+    <ConnectionsScreen
+      key={context.grantKey}
+      client={context.client}
+      grantKey={context.grantKey}
+      rollup={tabRollupFloor()}
+    />
+  ),
   'agency:gallery': () => <Gallery />,
   // Settings ▸ General, then the person's own sessions (C58) and authenticator app (C59),
   // which post to their own account routes rather than to the settings commands.
@@ -106,7 +121,7 @@ export const SCREENS: {
         storage={context.storage}
       />
       <OwnSessions client={context.client} grantKey={context.grantKey} />
-      <AuthenticatorSetup client={context.client} />
+      <AuthenticatorSetup key={context.grantKey} client={context.client} />
     </>
   ),
   'agency:inbox': (context) => (
@@ -133,6 +148,14 @@ export const SCREENS: {
   ),
   'agency:operations': (context) => (
     <OperationsScreen client={context.client} grantKey={context.grantKey} />
+  ),
+  'agency:map': (context) => (
+    <MapScreen
+      key={`${context.grantKey}\u0000${context.params.key}`}
+      client={context.client}
+      grantKey={context.grantKey}
+      mapKey={context.params.key}
+    />
   ),
   'agency:task-detail': (context) => (
     <TaskDetailScreen
@@ -166,12 +189,21 @@ export const SCREENS: {
   ),
 };
 
-/** The screen a matched address draws, handed that route's own parameters. */
+/**
+ * The screen a matched address draws, handed that route's own parameters.
+ * Keyed on the grant: a screen's own state (a typed proposal, an outcome line)
+ * was made under one business and person, so a switch that keeps the same
+ * address, in the page or a dock panel, draws the screen afresh (#487).
+ */
 export function drawScreen<Id extends AuthenticatedRouteId>(
   match: RouteMatch<Id>,
   context: Omit<ScreenContext<Id>, 'params'>,
 ): ReactElement {
-  return SCREENS[match.id]({ ...context, params: match.params });
+  return (
+    <Fragment key={context.grantKey}>
+      {SCREENS[match.id]({ ...context, params: match.params })}
+    </Fragment>
+  );
 }
 
 /** What an open route's screen is handed: the public reads only, never the session's client. */

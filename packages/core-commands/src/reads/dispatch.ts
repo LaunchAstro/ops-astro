@@ -7,8 +7,8 @@
 // read after it, so "denied" and "not there" are answered by different code
 // paths and cannot be confused for each other.
 
-import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
-import type { TenantQuery, Session } from '../../../core-records/src/index.ts';
+import { checkAuthority, subjectsOf, wayfinderFacts } from '../../../core-records/src/index.ts';
+import type { TenantQuery, Session, ScopeRequest } from '../../../core-records/src/index.ts';
 import {
   isCommandRefusal,
   refuseCommand,
@@ -120,7 +120,9 @@ async function serveRead<K extends ReadName>(
 ): Promise<ServedRead> {
   const admission = await admit(tx, session, request);
   if (!('serve' in admission)) return admission;
-  return { outcome: await admission.serve(), subjectRecordId: admission.recordId ?? null };
+  const outcome = await admission.serve();
+  const disclosed = isCommandRefusal(outcome) ? undefined : admission.disclosed?.(outcome);
+  return { outcome, subjectRecordId: admission.recordId ?? disclosed ?? null };
 }
 
 /**
@@ -138,7 +140,10 @@ export async function admitRead(
   request: ReadRequest,
 ): Promise<{ readonly recordId: string | undefined } | CommandRefusal> {
   const admission = await admit(tx, session, request);
-  return 'serve' in admission ? { recordId: admission.recordId } : admission.outcome;
+  if (!('serve' in admission)) return admission.outcome;
+  // A list read decides a member's admission in its `serve` (catalogue #415):
+  // asked here without serving, so this refuses what the read refuses.
+  return (await admission.listRefusal?.()) ?? { recordId: admission.recordId };
 }
 
 /** Everything before the read is served: a refusal, with what its audit row names, or the way to serve it. */
@@ -197,7 +202,7 @@ async function admit<K extends ReadName>(
   const listsWithin = row.authority === 'declared-within' && session.roleKey !== null;
   if (row.authority !== 'holds-any-grant' && row.authority !== 'self' && !listsWithin) {
     const declared = row.authority === 'declared' || row.authority === 'declared-within';
-    const authorised = await checkAuthority(tx, subjectsOf(session), {
+    const asked: ScopeRequest = {
       // The action is the declaration's, and so is the collection unless the
       // row names the one the request is really about (`preset.plan`).
       collection: declared ? declaration.collection : row.authority(parsed.operands),
@@ -209,7 +214,23 @@ async function admit<K extends ReadName>(
         readied.recordId === undefined
           ? { kind: 'business', id: null }
           : { kind: 'record', id: readied.recordId },
-    });
+    };
+    let authorised = await checkAuthority(tx, subjectsOf(session), asked);
+    // A grant scoped to a map covers its tickets too (W12), as on the command path.
+    const recordId = readied.recordId;
+    const map =
+      authorised.ok || recordId === undefined || asked.collection !== 'task'
+        ? null
+        : ((await wayfinderFacts(tx, recordId))?.mapId ?? null);
+    if (!authorised.ok && map !== null && recordId !== undefined && map !== recordId) {
+      const again = await checkAuthority(tx, subjectsOf(session), {
+        ...asked,
+        scope: { kind: 'record', id: map },
+      });
+      // Read again, held until the read is served: a move that committed
+      // since is seen, and none can commit before the answer is read.
+      if (again.ok && (await wayfinderFacts(tx, recordId, true))?.mapId === map) authorised = again;
+    }
     if (!authorised.ok) {
       // An external party is a session with no membership (`ReadRow.outsiderNotFound`).
       if (session.roleKey === null && row.outsiderNotFound) return refused(refuseNotFound());
@@ -230,7 +251,11 @@ interface Readied {
   readonly recordId: string | undefined;
   /** The row's own gate after the grant (`SpineRow.admits`); no gate admits. */
   readonly admits: () => Promise<boolean>;
+  /** A list read's own admission (`SpineRow.listRefusal`); absent, it refuses nothing. */
+  readonly listRefusal?: () => Promise<CommandRefusal | undefined>;
   readonly serve: () => Promise<ReadResult | CommandRefusal>;
+  /** A business row's record its answer disclosed (`BusinessRow.disclosed`), for the audit. */
+  readonly disclosed?: ((answer: ReadResult) => string | undefined) | undefined;
 }
 
 /**
@@ -249,16 +274,21 @@ async function ready<K extends ReadName>(
       recordId: undefined,
       admits: async () => await Promise.resolve(true),
       serve: async () => await business.serve(tx, session, operands),
+      disclosed: business.disclosed,
     };
   }
   const spineRow = row;
   const spine = await readTaskSpine(tx);
   const recordId =
     spineRow.subject === undefined ? undefined : await spineRow.subject(tx, spine, operands);
-  const { admits } = spineRow;
+  const { admits, listRefusal } = spineRow;
   return {
     recordId,
     admits: async () => admits === undefined || (await admits(tx, session, { spine, recordId })),
+    listRefusal: async () =>
+      listRefusal === undefined
+        ? undefined
+        : await listRefusal(tx, session, operands, { spine, recordId }),
     serve: async () => await spineRow.serve(tx, session, operands, { spine, recordId }),
   };
 }

@@ -37,9 +37,10 @@
 import {
   INBOX_REASONS,
   isSettingRevisionStale,
+  toldAtOnce,
   writeBusinessSetting,
 } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { InboxReason, TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -51,6 +52,7 @@ const KEY_OF: Readonly<Record<string, string>> = {
   'settings.set_money_step_up': 'money_step_up_required',
   'settings.set_conversation_window': 'conversation_window_days',
   'settings.set_retention_window': 'retention_window_days',
+  'settings.set_live_correction_approver': 'live_correction_approver',
 };
 
 type WindowCommand = 'settings.set_conversation_window' | 'settings.set_retention_window';
@@ -115,6 +117,7 @@ export async function setBusinessSetting(
     | 'settings.set_four_eyes_threshold'
     | 'settings.set_client_sign_off'
     | 'settings.set_money_step_up'
+    | 'settings.set_live_correction_approver'
     | WindowCommand,
   value: unknown,
   expectedRevision?: number,
@@ -127,7 +130,7 @@ export async function setBusinessSetting(
   // serialises by the type it is given, and an `unknown` that is really a
   // string reaches the column as the JSON string "500", which no comparison
   // reads and the check constraint correctly refuses.
-  let writable: number | boolean | null;
+  let writable: number | boolean | string | null;
   if (command === 'settings.set_four_eyes_threshold') {
     if (value === null) writable = null;
     else if (typeof value === 'number' && Number.isFinite(value) && value >= 0) writable = value;
@@ -146,7 +149,8 @@ export async function setBusinessSetting(
       return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], fixesFor(command)));
     }
     writable = value;
-  } else if (typeof value === 'boolean') writable = value;
+  } else if (command === 'settings.set_live_correction_approver') writable = value as string | null;
+  else if (typeof value === 'boolean') writable = value;
   else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], fixesFor(command)));
 
   // `owningOperation` is this command's own name and never the caller's idea of
@@ -197,9 +201,9 @@ function fixesFor(command: string): readonly string[] {
 // The caller's notification setting (INB-1e, CS-2.17). Per channel and never
 // per item: the body names no item, and `prepare.ts` refuses one that does.
 // In-app is always on, so its one mode is `on` and nothing is stored. The
-// email channel and its per-category choice (instant, daily batch, off) arrive
-// with AW-07b, which stores the row under the same self-scoped key. Until
-// then email is declared and not landed.
+// email channel and its per-category choice (instant, daily batch, off) is
+// MP-2-11's setting (CS-2.17), which the email send reads (AW-07b,
+// `email-timing.ts`). Until it lands here, email is declared and not landed.
 // Nobody switches off or batches a decision or an incident on any channel,
 // and that rule is checked before the channel's own, so it holds the day
 // email lands. No setting reaches an item, a gate or an approval.
@@ -210,9 +214,6 @@ const CHANNEL_MODES: Readonly<Record<string, readonly string[]>> = {
 };
 
 const CATEGORIES: ReadonlySet<string> = new Set(INBOX_REASONS);
-
-/** Told at once on every channel it reaches (owner answer 10). */
-const NEVER_QUIETED: ReadonlySet<string> = new Set(['decision', 'incident']);
 
 const CHANNEL_FIXES: readonly string[] = ['Send channel as in_app or email.'];
 const IN_APP_FIXES: readonly string[] = ['In-app is always on. Send mode as on.'];
@@ -249,7 +250,7 @@ export function setNotificationChannel(
     outcome = refused(refuseCommand('FIELD_VALUE_INVALID', ['category'], CATEGORY_FIXES));
   } else if (
     category !== undefined &&
-    NEVER_QUIETED.has(category) &&
+    toldAtOnce(category as InboxReason) &&
     request.mode !== 'on' &&
     request.mode !== 'instant'
   ) {

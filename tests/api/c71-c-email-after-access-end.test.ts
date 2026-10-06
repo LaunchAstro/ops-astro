@@ -4,6 +4,7 @@ import { catalogue, EMAIL_SEND, emailAdapter } from '../../packages/core-connect
 import { sendInboxEmail, type Broker } from '../../packages/core-custody/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/index.ts';
 import { createGroupWorld, detailOf } from './c71-g-world.ts';
+import { MAIL } from '../broker/email-world.ts';
 
 function latch() {
   let release: (() => void) | undefined;
@@ -25,6 +26,7 @@ function mailProbe(): { broker: Broker; dispatched: string[] } {
           return Promise.resolve({ kind: 'refused', started: false, code: 'NOT_SENT_IN_TEST' });
         },
         stderr: () => '',
+        describe: () => Promise.resolve(null),
         raw: () => Promise.resolve({}),
         kill: () => {},
         stop: () => Promise.resolve(),
@@ -95,7 +97,7 @@ it('a mention email under way when the recipient loses business access is not di
       [world.alpha, world.mia.personId, 'synthetic-ended-mia@example.test'],
     );
     const { broker, dispatched } = mailProbe();
-    const mail = { appOrigin: 'https://ops.example.test', from: 'hello@example.test' };
+    const mail = MAIL;
     sending = sendInboxEmail(paused, world.alpha, item.id, broker, mail);
     await reached.promise;
     const ended = await g.as(world.ada, 'access.end', { holderId: world.mia.personId });

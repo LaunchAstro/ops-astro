@@ -61,7 +61,11 @@ export async function fourEyes(
   );
   const holds = billingHoldsAt(tx, opened);
   const band = threshold === null ? null : BigInt(threshold.minor);
-  const paired = await pairFor(BigInt(request.amountMinor), band, me, firsts, holds);
+  // The plan approver, while they hold the grant, is one of the two: their
+  // waiting approval pairs before any earlier one.
+  const approver = await approverHolds(tx, opened);
+  const amount = BigInt(request.amountMinor);
+  const paired = await pairFor(amount, band, me, firsts, holds, approver ?? undefined);
   if (paired === 'own') {
     return deny(
       'FOUR_EYES_REQUIRED',
@@ -71,7 +75,6 @@ export async function fourEyes(
   }
   const other = paired ?? undefined;
   const completing = paired !== undefined;
-  const approver = await approverHolds(tx, opened);
   const approvers = new Set([me, ...(other === undefined ? [] : [other.person_id])]);
   if (approver !== null && completing && !approvers.has(approver)) {
     return refuse(

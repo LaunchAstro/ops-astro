@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CSRF_HEADER, SESSION_HEADER } from '../../packages/core-wire/src/index.ts';
 import { json, open, settle } from './mp-2-1-support.tsx';
 import type { Mounted } from '../surfaces/mount.tsx';
+import { consoleLine } from '../support/console-text.ts';
 
 const CANARY = 'ENROL-CANARY-SHOWN-ONCE';
 const URI = `otpauth://totp/Ops%20Astro:mia%40alpha.local?secret=${CANARY}&issuer=Ops%20Astro`;
@@ -118,7 +119,7 @@ type Spy = { readonly mock: { readonly calls: readonly (readonly unknown[])[] } 
 const spies: Spy[] = [];
 /** Everything written to storage or the console since the case began. */
 const written = (): string[] =>
-  spies.flatMap((spy) => spy.mock.calls.map((args) => args.map(String).join(' ')));
+  spies.flatMap((spy) => spy.mock.calls.map((args) => consoleLine(...args)));
 beforeEach(() => {
   spies.length = 0;
   spies.push(vi.spyOn(Storage.prototype, 'setItem'));

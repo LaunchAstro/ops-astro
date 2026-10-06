@@ -23,11 +23,13 @@ import type {
 } from '@launchastro/ui';
 import type { ScopeInput } from './subject.ts';
 
+export type StandingScope = Pick<ScopeInput, 'client' | 'task'>;
+
 export interface Chat extends AssistantChat {
   readonly conversationId: string | null;
+  /** The scope this conversation was asked under: selecting it brings it back. */
+  readonly scope: StandingScope;
 }
-
-export type StandingScope = Pick<ScopeInput, 'client' | 'task'>;
 
 export interface AssistantState {
   readonly chats: readonly Chat[];
@@ -36,8 +38,10 @@ export interface AssistantState {
   readonly next: number;
   readonly citation: AssistantCitation | null;
   readonly draft: string;
-  /** Scope the last ask carried; none means the route's own. */
+  /** The selected conversation's scope; none means the route's own. */
   readonly scope: StandingScope;
+  /** Each tab's questions still out, by key: a tab with one out is answering. */
+  readonly answering: Readonly<Record<string, number>>;
 }
 
 export interface AskEntry {
@@ -53,26 +57,29 @@ export const TAB_TITLE_LIMIT = 40;
 
 const NO_SCOPE: StandingScope = { client: null, task: null };
 
-const blank = (number: number, messages: Chat['messages']): Chat => ({
+const blank = (number: number, messages: Chat['messages'], scope: StandingScope): Chat => ({
   key: `chat-${number}`,
   conversationId: null,
   title: `Chat ${number}`,
   model: null,
   page: null,
   messages,
+  scope,
 });
 
 export const initial = (): AssistantState => ({
-  chats: [blank(1, [])],
+  chats: [blank(1, [], NO_SCOPE)],
   selected: 'chat-1',
   next: 2,
   citation: null,
   draft: '',
   scope: NO_SCOPE,
+  answering: {},
 });
 
 export function fresh(state: AssistantState): AssistantState {
-  const chat = blank(state.next, [{ id: 'fresh', role: 'note', body: FRESH_NOTE, cites: [] }]);
+  const note: AssistantMessage = { id: 'fresh', role: 'note', body: FRESH_NOTE, cites: [] };
+  const chat = blank(state.next, [note], state.scope);
   return {
     ...state,
     chats: [...state.chats, chat],
@@ -91,8 +98,14 @@ function change(state: AssistantState, key: string, edit: (chat: Chat) => Chat):
   return { ...state, chats: state.chats.map((chat) => (chat.key === key ? edit(chat) : chat)) };
 }
 
+/** The tab `key` selected, with the scope its conversation was asked under. */
+function selecting(state: AssistantState, key: string): AssistantState {
+  const scope = state.chats.find((chat) => chat.key === key)?.scope ?? NO_SCOPE;
+  return { ...state, selected: key, scope };
+}
+
 export const select = (state: AssistantState, key: string): AssistantState =>
-  has(state, key) && state.selected !== key ? { ...state, selected: key } : state;
+  has(state, key) && state.selected !== key ? selecting(state, key) : state;
 
 export function rename(state: AssistantState, key: string, title: string): AssistantState {
   const trimmed = title.trim().slice(0, TAB_TITLE_LIMIT);
@@ -105,9 +118,8 @@ export function takeOut(state: AssistantState, key: string): AssistantState {
   if (at === -1) return state;
   const chats = state.chats.filter((chat) => chat.key !== key);
   if (chats.length === 0) return fresh({ ...state, chats });
-  const selected =
-    state.selected === key ? (chats[Math.max(0, at - 1)]?.key ?? '') : state.selected;
-  return { ...state, chats, selected };
+  if (state.selected !== key) return { ...state, chats };
+  return selecting({ ...state, chats }, chats[Math.max(0, at - 1)]?.key ?? '');
 }
 
 export const chooseModel = (state: AssistantState, key: string, model: string): AssistantState =>
@@ -133,10 +145,9 @@ export function ask(state: AssistantState, entry: AskEntry): AssistantState {
   const question = entry.question.trim();
   if (question === '' || entry.widget.id === '' || entry.widget.label.trim() === '') return state;
   return {
-    ...fresh(state),
+    ...fresh({ ...state, scope: entry.scope }),
     citation: { row: entry.row, id: entry.widget.id, label: entry.widget.label },
     draft: question,
-    scope: entry.scope,
   };
 }
 
@@ -145,6 +156,7 @@ export const openDirect = (state: AssistantState): AssistantState => ({
   citation: null,
   draft: '',
   scope: NO_SCOPE,
+  answering: {},
 });
 
 /** A line added to a tab's transcript. */
@@ -155,9 +167,69 @@ export const said = (
 ): AssistantState =>
   change(state, key, (chat) => ({ ...chat, messages: [...chat.messages, message] }));
 
-/** The tab's first question started its conversation. */
-export const started = (
+/**
+ * The tab's first question started its conversation. A tab the history
+ * reopened for that same conversation while the start was out folds into it,
+ * so it is never open twice.
+ */
+export function started(
   state: AssistantState,
   key: string,
   conversationId: string,
-): AssistantState => change(state, key, (chat) => ({ ...chat, conversationId }));
+): AssistantState {
+  const twin = state.chats.find(
+    (chat) => chat.key !== key && chat.conversationId === conversationId,
+  );
+  const single =
+    twin === undefined ? state : { ...state, chats: state.chats.filter((chat) => chat !== twin) };
+  const chosen =
+    twin !== undefined && state.selected === twin.key ? selecting(single, key) : single;
+  return change(chosen, key, (chat) => ({ ...chat, conversationId }));
+}
+
+/** A question for tab `key` went out (+1) or came back (-1). */
+export const asking = (state: AssistantState, key: string, by: 1 | -1): AssistantState => ({
+  ...state,
+  answering: { ...state.answering, [key]: Math.max(0, (state.answering[key] ?? 0) + by) },
+});
+
+/** A conversation as `conversation.read` gave it: its id, title and transcript. */
+export interface Reopened {
+  readonly conversationId: string;
+  readonly title: string;
+  readonly messages: Chat['messages'];
+}
+
+/**
+ * Tabs for conversations kept or reopened (CS-7.33, C36): a conversation
+ * already open is selected, never opened twice; the rest open after the tabs
+ * there are, the last one selected.
+ */
+export function reopened(
+  state: AssistantState,
+  conversations: readonly Reopened[],
+): AssistantState {
+  let next = state;
+  for (const one of conversations) {
+    const open = next.chats.find((chat) => chat.conversationId === one.conversationId);
+    if (open !== undefined) {
+      next = selecting(next, open.key);
+      continue;
+    }
+    const chat = { ...blank(next.next, one.messages, NO_SCOPE), ...one, key: `chat-${next.next}` };
+    next = selecting({ ...next, chats: [...next.chats, chat], next: next.next + 1 }, chat.key);
+  }
+  return next;
+}
+
+/** A kept tab's transcript and title, as its conversation's read gave them. */
+export const transcript = (
+  state: AssistantState,
+  conversationId: string,
+  read: Pick<Chat, 'messages'> & { readonly title?: string },
+): AssistantState => ({
+  ...state,
+  chats: state.chats.map((chat) =>
+    chat.conversationId === conversationId ? { ...chat, ...read } : chat,
+  ),
+});

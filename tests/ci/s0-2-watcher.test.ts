@@ -96,6 +96,8 @@ function uptimeCheckOffCases1() {
 }
 
 function uptimeCheckOffCases2() {
+  // Starts the watcher once per address: 2.2 to 4.4 s on the hosted runner in
+  // October 2026, against vitest's 5 s default, so it names its own.
   it('an address the off-box watcher could not reach is refused, by name and without the value', () => {
     for (const url of [
       'http://staging.example.test/',
@@ -123,7 +125,7 @@ function uptimeCheckOffCases2() {
       expect(result.stderr).toMatch(/OPS_WATCH_STAGING_URL/u);
       expect(result.stderr).not.toContain(url);
     }
-  });
+  }, 15_000);
 
   it('each monitor is named in plain words after what it is, never where it is', () => {
     const { monitors } = plan({ ...BASE, OPS_WATCH_PRODUCTION_URL: 'https://ops.example.test' });

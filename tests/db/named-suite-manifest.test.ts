@@ -34,6 +34,7 @@ const HARNESS = 'tests/support/fresh-database.ts';
 const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/api/server-onerror.test.ts': 'skips without SURFACE_API_PORT',
   'tests/cli/mounted-cli.test.ts': 'skips without SURFACE_API_PORT',
+  'tests/api/c40-password-set-provider.test.ts': 'skips without C40_AUTH_URL (a pinned GoTrue)',
   'tests/runtime/aw-13-local-target.test.ts':
     'skips without TRACE_TARGET_ENV_FILE (a running local trace target)',
   'tests/acceptance/restart-and-expiry.test.ts': 'skips without L5_RESTART_CONTAINER_NAME',
@@ -55,6 +56,14 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
     'pure: a stubbed fetch and a typed stand-in world, counter 0',
   'tests/api/function-agent-quota.test.ts':
     'pure: the function handler with no database, counter 0',
+  'tests/custody/c31-secret-set-not-task-content.test.ts':
+    "pure: the S0-5 world's content list only, counter 0",
+  'tests/custody/c31-audit-chain-corrupted.test.ts':
+    'red by design: run only as the child of c31-audit-chain-test-catches-corruption',
+  'tests/api/secret-log-capture-keeps-credential-in-object.test.ts':
+    'pure: the console capture only, counter 0',
+  'tests/api/secret-log-capture-keeps-credential-in-format-and-buffer.test.ts':
+    'pure: the console capture only, counter 0',
 };
 
 const manifest = readNamedSuites(root);

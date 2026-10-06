@@ -77,6 +77,7 @@ async function candidates(tx: TenantQuery): Promise<{
   readonly quiet: readonly Candidate[];
   readonly purgeable: readonly Candidate[];
   readonly held: readonly Held[];
+  readonly windowUnreadable: boolean;
 }> {
   const quiet = await tx.query<Candidate>(
     `select c.id, c.last_activity_at from conversations c
@@ -89,8 +90,10 @@ async function candidates(tx: TenantQuery): Promise<{
       order by c.last_activity_at, c.id limit $3`,
     [tx.businessId, QUIET_HOURS, PASS_LIMIT],
   );
-  // Without a window every candidate goes to the purge, which reports the gap.
+  // Without a window nothing is purged and the pass reports the gap, whether
+  // or not an old body is waiting.
   const window = await windowDays(tx);
+  if (window === undefined) return { quiet, purgeable: [], held: [], windowUnreadable: true };
   const purgeable: Candidate[] = [];
   const held: Held[] = [];
   for (let offset = 0; purgeable.length < PASS_LIMIT; offset += PASS_LIMIT) {
@@ -109,13 +112,13 @@ async function candidates(tx: TenantQuery): Promise<{
     for (const wrapped of page) {
       if (purgeable.length === PASS_LIMIT) break;
       // eslint-disable-next-line no-await-in-loop -- one conversation, in turn
-      const code = window === undefined ? undefined : await purgeHold(tx, wrapped, window);
+      const code = await purgeHold(tx, wrapped, window);
       if (code === undefined) purgeable.push(wrapped);
       else held.push({ conversationId: wrapped.id, code });
     }
     if (page.length < PASS_LIMIT) break;
   }
-  return { quiet, purgeable, held };
+  return { quiet, purgeable, held, windowUnreadable: false };
 }
 
 async function boundedWait(tx: TenantQuery, lockTimeoutMs: number): Promise<void> {
@@ -148,6 +151,7 @@ export async function sweepConversations(
       failed.push({ conversationId: id, stage: 'wrap_up' });
     }
   }
+  if (found.windowUnreadable) return { wrapped, purged, held, failed, windowUnreadable: true };
   for (const { id, last_activity_at: lastActivityAt } of found.purgeable) {
     const operationId = sweepPurgeOperationId(id, lastActivityAt);
     let outcome;

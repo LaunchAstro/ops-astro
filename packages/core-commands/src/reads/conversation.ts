@@ -18,11 +18,18 @@
 //   reason and nothing of the conversation.
 //
 // Each refusal is decided before any title, subject or message is selected.
+// A scope task the reader may not read is decided by the live grants inside
+// the statement (`SHOWN`): neither its subject nor a title taken from the
+// subject leaves Postgres, and the scope is not returned (catalogue #412). A
+// wrap-up's pointers (`contentsForReader`) and the page are served per reader.
 
 import {
+  askedFor,
   checkAuthority,
   coveredScopes,
+  EFFECTIVE_GRANTS,
   isUuid,
+  readableScope,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
@@ -30,10 +37,19 @@ import type {
   ConversationListResult,
   ConversationMessageView,
   ConversationReadResult,
-  WrapUpView,
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
-import { conversationAddress } from '../commands/conversations.ts';
+import {
+  conversationAddress,
+  DEFAULT_TITLE,
+  holdsOwnConversations,
+} from '../commands/conversations.ts';
+import {
+  addressReader,
+  wrapUpView,
+  type ReadsAddress,
+  type WrapUpRow,
+} from '../commands/conversation-contents.ts';
 
 const COLLECTION = 'conversation';
 
@@ -89,35 +105,6 @@ interface ConversationRow {
   readonly body_purged_at: Date | null;
 }
 
-interface WrapUpRow {
-  readonly version: number;
-  readonly created_at: Date;
-  readonly written_by_operation: string;
-  readonly code_revision: string;
-  readonly definition_version: string | null;
-  readonly request_quotation: string;
-  readonly items: WrapUpView['items'];
-  readonly left_open: WrapUpView['leftOpen'];
-}
-
-export const NOTHING_LEFT_OPEN = 'nothing left open';
-
-export function leftOpenText(leftOpen: WrapUpView['leftOpen']): string {
-  if (leftOpen.length === 0) return NOTHING_LEFT_OPEN;
-  return `${String(leftOpen.length)} left open: ${leftOpen.map((pointer) => `${pointer.kind} ${pointer.id}`).join(', ')}`;
-}
-
-const wrapUpView = (row: WrapUpRow): WrapUpView => ({
-  version: row.version,
-  writtenAt: row.created_at.toISOString(),
-  writtenBy: { operation: row.written_by_operation, codeRevision: row.code_revision },
-  definitionVersion: row.definition_version,
-  request: { quotation: row.request_quotation },
-  items: row.items,
-  leftOpen: row.left_open,
-  leftOpenText: leftOpenText(row.left_open),
-});
-
 /** The body, oldest first. */
 async function messagesOf(
   tx: TenantQuery,
@@ -142,16 +129,70 @@ async function messagesOf(
   }));
 }
 
-async function served(tx: TenantQuery, conversationId: string): Promise<ConversationReadResult> {
+/**
+ * Whether the reader's subjects ($3 kinds, $4 ids) may read the row's scope
+ * task, asked as `task.read` asks of the live grants (`EFFECTIVE_GRANTS`
+ * opens the statement) at the statement's own snapshot, so a revocation
+ * committed before it is honoured. A title taken from an unreadable task's
+ * subject leaves as the default ($5).
+ */
+const SHOWN = `(conversations.scope_record_id is null or exists (
+    select 1 from effective e
+     where e.collection = 'task'
+       and e.action = 'read'
+       and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+                    where s.kind = e.subject_kind and s.id = e.subject_id)
+       and (e.scope_kind = 'business'
+            or (e.scope_kind = 'record' and e.scope_id = conversations.scope_record_id))))`;
+const TITLE = `case when ${SHOWN} or title is distinct from subject then title else $5 end as title`;
+function reader(session: Session): readonly unknown[] {
+  const asked = askedFor(subjectsOf(session), { collection: 'task', action: 'read' });
+  return [asked.map((subject) => subject.kind), asked.map((subject) => subject.id), DEFAULT_TITLE];
+}
+
+/** The conversation's own fields; its page names a task only to a reader who may read it. */
+function conversationView(
+  row: ConversationRow,
+  reads: ReadsAddress,
+): ConversationReadResult['conversation'] {
+  return {
+    id: row.id,
+    address: conversationAddress(row.id),
+    title: row.title,
+    subject: row.subject,
+    scope:
+      row.scope_kind === null || row.scope_record_id === null
+        ? null
+        : { kind: row.scope_kind, id: row.scope_record_id },
+    page:
+      row.page_address === null || row.page_shows === null || !reads(row.page_address)
+        ? null
+        : { address: row.page_address, shows: row.page_shows },
+    createdAt: row.created_at.toISOString(),
+    lastActivityAt: row.last_activity_at.toISOString(),
+    bodyPurgedAt: row.body_purged_at?.toISOString() ?? null,
+  };
+}
+
+async function served(
+  tx: TenantQuery,
+  session: Session,
+  conversationId: string,
+): Promise<ConversationReadResult> {
+  // Before the row: a purge committing between them reads as purged, not as an empty body.
+  const body = await messagesOf(tx, conversationId);
   const rows = await tx.query<ConversationRow>(
-    `select id, title, subject, scope_kind, scope_record_id, page_address, page_shows,
-            created_at, last_activity_at, body_purged_at
+    `${EFFECTIVE_GRANTS}
+     select id, ${TITLE}, case when ${SHOWN} then subject end as subject,
+            case when ${SHOWN} then scope_kind end as scope_kind,
+            case when ${SHOWN} then scope_record_id end as scope_record_id,
+            page_address, page_shows, created_at, last_activity_at, body_purged_at
        from conversations where business_id = $1 and id = $2`,
-    [tx.businessId, conversationId],
+    [tx.businessId, conversationId, ...reader(session)],
   );
   const row = rows[0];
   if (row === undefined) throw new Error('conversation.read: the conversation went between reads');
-  const messages = row.body_purged_at === null ? await messagesOf(tx, conversationId) : null;
+  const messages = row.body_purged_at === null ? body : null;
   const wrapUps = await tx.query<WrapUpRow>(
     `select version, created_at, written_by_operation, code_revision, definition_version,
             request_quotation, items, left_open
@@ -161,27 +202,12 @@ async function served(tx: TenantQuery, conversationId: string): Promise<Conversa
     [tx.businessId, conversationId],
   );
   const current = wrapUps[0];
+  const reads = addressReader(await readableScope(tx, subjectsOf(session), 'task', 'read'));
   return {
     ok: true,
-    conversation: {
-      id: row.id,
-      address: conversationAddress(row.id),
-      title: row.title,
-      subject: row.subject,
-      scope:
-        row.scope_kind === null || row.scope_record_id === null
-          ? null
-          : { kind: row.scope_kind, id: row.scope_record_id },
-      page:
-        row.page_address === null || row.page_shows === null
-          ? null
-          : { address: row.page_address, shows: row.page_shows },
-      createdAt: row.created_at.toISOString(),
-      lastActivityAt: row.last_activity_at.toISOString(),
-      bodyPurgedAt: row.body_purged_at?.toISOString() ?? null,
-    },
+    conversation: conversationView(row, reads),
     messages,
-    wrapUp: current === undefined ? null : wrapUpView(current),
+    wrapUp: current === undefined ? null : wrapUpView(current, reads),
     wrapUpHistory: wrapUps.map((wrapUp) => ({
       version: wrapUp.version,
       writtenAt: wrapUp.created_at.toISOString(),
@@ -233,7 +259,7 @@ export async function readConversation(
   if (door === undefined) return refuseNotFound();
   const refusal = await mayRead(tx, session, door);
   if (refusal !== undefined) return refusal;
-  return await served(tx, conversationId);
+  return await served(tx, session, conversationId);
 }
 
 const LIST_LIMIT = 50;
@@ -250,23 +276,16 @@ export async function listConversations(
   tx: TenantQuery,
   session: Session,
 ): Promise<ConversationListResult | CommandRefusal> {
-  const own = await checkAuthority(tx, subjectsOf(session), {
-    collection: COLLECTION,
-    action: 'write',
-    scope: { kind: 'business', id: null },
-  });
-  if (session.roleKey === null || !own.ok) return HOLDS_NOTHING;
-  const rows = await tx.query<{
-    readonly id: string;
-    readonly title: string;
-    readonly last_activity_at: Date;
-    readonly body_purged_at: Date | null;
-  }>(
-    `select id, title, last_activity_at, body_purged_at from conversations
+  if (!(await holdsOwnConversations(tx, session))) return HOLDS_NOTHING;
+  const rows = await tx.query<
+    Pick<ConversationRow, 'id' | 'title' | 'last_activity_at' | 'body_purged_at'>
+  >(
+    `${EFFECTIVE_GRANTS}
+     select id, ${TITLE}, last_activity_at, body_purged_at from conversations
       where business_id = $1 and owner_actor_id = $2
       order by last_activity_at desc, id
       limit ${String(LIST_LIMIT)}`,
-    [tx.businessId, session.actorId],
+    [tx.businessId, session.actorId, ...reader(session)],
   );
   return {
     ok: true,

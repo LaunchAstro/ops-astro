@@ -11,7 +11,7 @@
 // own person's inbox topic, `business:inbox:person` (migration 0043).
 //
 // C71 (CS-7.42) adds a team conversation's topic, `business:conversation:id`
-// (migration 20261003003849): its own subscribers hear it as a task's hear theirs, and
+// (migration 20261006213000): its own subscribers hear it as a task's hear theirs, and
 // every board of its business is handed it, to say to a current member alone
 // (`live-board.ts`). A task and a conversation are both records, so their ids
 // share one key space and a subscriber is filed by business and id alone.
@@ -107,7 +107,8 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
     },
     async close() {
       listening = false;
-      await closeAll(held, listener);
+      held.closing ??= closeAll(held, listener);
+      await held.closing;
     },
   };
 }
@@ -116,6 +117,8 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
 interface Held {
   readonly stops: Set<Stop>;
   stopping: Promise<void>[] | undefined;
+  /** The one shutdown, however many callers ask: each waits out every stream. */
+  closing?: Promise<void>;
 }
 
 /**
