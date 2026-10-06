@@ -31,6 +31,7 @@ import {
 } from './api-1-isolation-world.ts';
 import { delegationCrossing, delegationCrossingTargets } from './api-1-isolation-delegation.ts';
 import { foreign, threeWays, type Heard } from './api-1-isolation-surfaces.ts';
+import { ownStepControl, useSteps } from './api-1-isolation-steps.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -43,8 +44,10 @@ it('a refusal carrying another client record is detected', () => {
 
 describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
   useIsolationWorld();
+  useSteps();
   businessAndClientCrossings();
   delegationCrossing();
+  ownStepControl();
   delegationCrossingTargets();
   leaksInSuccessfulReads();
   refusalsNameNoForeignRecord();
