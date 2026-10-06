@@ -32,6 +32,8 @@ const todo = (
   revision: 3,
   tags: [],
   waitingComments: 0,
+  category: null,
+  whoseMove: 'Team',
   ...over,
 });
 
@@ -39,8 +41,13 @@ export const TODOS = [
   todo('Proj-Alpha', 'Budget brief', '2026-09-28', 2, {
     tags: [{ id: 'g-legal', name: 'Legal' }],
     waitingComments: 2,
+    category: 'seo',
+    whoseMove: 'Review',
   }),
-  todo('Proj-Bravo', 'Call the client', '2026-10-01', 1),
+  todo('Proj-Bravo', 'Call the client', '2026-10-01', 1, {
+    category: 'content',
+    whoseMove: 'Agent',
+  }),
   todo('Proj-Charlie', 'Audit links', '2026-10-02', null, {
     tags: [{ id: 'g-launch', name: 'Launch' }],
   }),
@@ -85,18 +92,26 @@ export async function todos(
   } = {},
 ) {
   const opened: string[] = [];
-  const view = await mount(
+  const client = over.client ?? serving().client;
+  const screen = (changes: number) => (
     <TodosScreen
-      client={over.client ?? serving().client}
+      client={client}
       grantKey="alpha:member"
       onOpen={(key) => {
         opened.push(`${key}:open`);
       }}
+      changes={changes}
       now={() => over.now ?? NOW}
-    />,
+    />
   );
+  const view = await mount(screen(0));
   await tick();
-  return { view, opened };
+  /** The panel host's change count moved: a write in the task panel. */
+  const changed = async (changes: number): Promise<void> => {
+    await view.render(screen(changes));
+    await tick();
+  };
+  return { view, opened, changed };
 }
 
 type View = Awaited<ReturnType<typeof todos>>['view'];
