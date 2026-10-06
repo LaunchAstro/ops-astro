@@ -32,6 +32,13 @@ export const DEFAULT_TITLE = 'New conversation';
 /** The conversation's address: the page C36 draws, and the API's read of it. */
 export const conversationAddress = (conversationId: string): string => `/agent/${conversationId}`;
 
+/** `conversation:write` across the business: the owner's key to their own conversations. */
+const OWN_WRITE = {
+  collection: 'conversation',
+  action: 'write',
+  scope: { kind: 'business', id: null },
+} as const;
+
 /**
  * Whether the caller still holds their own conversations: a member holding
  * `conversation:write`, which `conversation.read` and `conversation.list` ask
@@ -46,13 +53,8 @@ export async function holdsOwnConversations(
   under?: { readonly at: string; readonly held: ReadonlySet<string> },
 ): Promise<boolean> {
   if (session.roleKey === null) return false;
-  const request = {
-    collection: 'conversation',
-    action: 'write',
-    scope: { kind: 'business', id: null },
-  } as const;
-  if (under === undefined) return (await checkAuthority(tx, subjectsOf(session), request)).ok;
-  const own = await checkAuthorityAt(tx, subjectsOf(session), request, under.at);
+  if (under === undefined) return (await checkAuthority(tx, subjectsOf(session), OWN_WRITE)).ok;
+  const own = await checkAuthorityAt(tx, subjectsOf(session), OWN_WRITE, under.at);
   return own.ok && own.value.some((grant) => under.held.has(grant.id));
 }
 
@@ -217,7 +219,11 @@ export async function messageConversation(
   if (conversation.body_purged_at !== null) return refused(PURGED);
   const messageId = randomUUID();
   // Stamped after the row lock, so messages list in the order kept (#444).
+  // The grant the door asked is asked again at that clock: one that lapsed
+  // while this waited for the row no longer counts.
   const at = await lockedInstant(tx);
+  const still = await checkAuthorityAt(tx, subjectsOf(context.session), OWN_WRITE, at);
+  if (!still.ok) return refused(still.refusal);
   await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body, created_at)
