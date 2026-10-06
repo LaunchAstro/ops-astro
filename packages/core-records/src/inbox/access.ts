@@ -2,9 +2,7 @@
 //
 // An inbox item's access axis (INB-1a), derived on every read from the
 // recipient's live grants and never stored: readable, withheld or gone.
-// An item about a team conversation (C71, a mention in it) is held by the
-// conversation's current members alone, while they may chat, whatever task
-// grants they hold.
+// A team conversation's item (C71) is held by its current members who may chat.
 import {
   EFFECTIVE,
   effectiveGrants,
@@ -42,12 +40,8 @@ export const IS_CONVERSATION = `exists (select 1 from public.record_types ct
      and ct.key = 'team_conversation')`;
 
 /**
- * Whether `person` (an SQL expression) may chat in `r`'s business now, as
- * `chat.messages` admits them: staff (an active owner, administrator or member
- * membership) holding a live `chat:comment` across the business, walked from
- * `EFFECTIVE` in the statement that asks it. Its expiry is read against that
- * statement's clock, not the transaction's start, so a grant that lapses while
- * the statement waits admits nothing (a child never outlives its parent).
+ * Whether `person` (SQL) may chat in `r`'s business now: staff holding a live
+ * business-wide `chat:comment`, its expiry read on the statement's clock.
  */
 export const chatsNow = (person: string): string => `(exists (select 1 from public.memberships ms
      where ms.business_id = r.business_id and ms.person_id = ${person} and ms.active
@@ -67,12 +61,7 @@ const heldBy = (
           where a.business_id = r.business_id and a.person_id = ${person}
             and a.kind = 'person' and a.active)))`;
 
-/**
- * Whether `person` (an SQL expression) is a current member of conversation `r`
- * who may chat now (`chatsNow`), and, given `since`, has been a member since
- * then: a re-added member reads from the new join only, an item raised before
- * it included (AUTHORITY.md, team chat).
- */
+/** Whether `person` (SQL) is a current member of `r` who may chat, joined by `since` when given. */
 export const inConversation = (person: string, since?: string): string =>
   `(exists (select 1 from public.team_conversation_members cm
    where cm.business_id = r.business_id and cm.conversation_id = r.id
@@ -80,12 +69,7 @@ export const inConversation = (person: string, since?: string): string =>
        since === undefined ? '' : ` and cm.joined_at <= ${since}`
      }) and ${chatsNow(person)})`;
 
-/**
- * Whether `person` reads live record `r` now, as `taskAccess` answers
- * `readable`, asked in the statement that acts on it so a revocation committed
- * before it reaches nothing: a conversation by a member since `since` who may
- * chat, a task by a live `task:read` across the business, on it or its client.
- */
+/** Whether `person` reads live record `r` now, asked in the statement that acts on it. */
 export const readableNow = (person: string, since: string): string => `(r.deleted_at is null
   and case when ${IS_CONVERSATION} then ${inConversation(person, since)}
    else exists (${EFFECTIVE}
@@ -95,12 +79,7 @@ export const readableNow = (person: string, since: string): string => `(r.delete
              or (e.scope_kind = 'party' and e.scope_id = r.uuid_7))
         and ${heldBy(person)}) end)`;
 
-/**
- * One person's access to one task, or to one conversation, derived as every
- * read derives it. Given an item's `raisedAt` (its `raised_at` as text, so no
- * precision is lost on the way back), a conversation is read as `inbox.read`
- * reads its items: by a member since then.
- */
+/** One person's access to one task or conversation; given `raisedAt`, a member since then. */
 export async function taskAccess(
   tx: TenantQuery,
   personId: string,

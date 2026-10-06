@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C71 (CS-7.42): who may hear a team conversation on the live channel. A tab
-// follows `conversation:<id>` as it follows a task, and the board stream says
-// a conversation moved; both only to a current member of it, staff holding
-// `chat:comment`, as `chat.messages` would admit them. The owner and
-// administrators hold no way round it. Anything else is NOT_FOUND, one answer
-// for another person's conversation, another business's, one the caller has
-// left and an id never issued. Neither serves nor audits anything: the
-// channel shows no content (C4 live-sync 6).
+// C71 (CS-7.42): who may hear a team conversation on the live channel: a
+// current member holding `chat:comment`, no one else (one NOT_FOUND for all).
+// Nothing served or audited (C4 live-sync 6).
 
 import {
   askedFor,
@@ -31,11 +26,7 @@ import {
 } from '../commands/refusal.ts';
 import type { AdmissionAt } from './execute.ts';
 
-/**
- * The conversations of these the session's person may hear now: staff, a
- * current member and holding `chat:comment`, all asked in the one membership
- * statement; none to an agent key (API-2) that does not tick `chat:comment`.
- */
+/** The conversations of these the session's person may hear now, in one statement. */
 async function heard(
   tx: TenantQuery,
   session: Session,
