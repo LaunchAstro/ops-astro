@@ -70,14 +70,16 @@ describe.skipIf(serverUrl === undefined)('A late map reply keeps what the reader
   /**
    * The map page for `member`. `hold(path)` holds the next reply to `path`
    * after the server has answered it: `arrived` settles when it is held, and
-   * `release` delivers it. `sent(path)` counts the requests made to `path`.
+   * `release` delivers it. `sent(path)` counts the requests made to `path` as
+   * they go out, whether or not they have been answered.
    */
   async function openHeld(member: Member, mapKey: string) {
     const holds: Hold[] = [];
     const sent: string[] = [];
     const fetch = asBrowser(await tokenFor(member.presented.subject), async (url, init) => {
-      const answer = await w.api.fetch(new Request(url, init));
+      // Counted as sent, before its answer: a write still on its way counts.
       sent.push(url);
+      const answer = await w.api.fetch(new Request(url, init));
       const at = holds.findIndex((one) => url.endsWith(one.path));
       const held = at === -1 ? undefined : holds.splice(at, 1)[0];
       if (held !== undefined) {
