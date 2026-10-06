@@ -666,8 +666,9 @@ export async function prepareCommand(
     if (viaMap !== undefined && (await coveringMap(tx, request, declaration)) !== viaMap.id) {
       return viaMap.refusal;
     }
-    // OWNER-3 A: authority read before the lock wait is judged again after it, as a replay is.
-    if (declaration.targetLock === 'command') {
+    // OWNER-3 A: authority read before the lock wait is judged again after it, as a replay is;
+    // a body refused is answered after the revision (CQ-6), and the access lock covers it.
+    if (declaration.targetLock === 'command' && !('refusal' in parsed)) {
       const again = await prepareCommand(tx, session, entryPoint, request, {
         ...declaration,
         targetsExistingRecord: false,
