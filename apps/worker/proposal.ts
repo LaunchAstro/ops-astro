@@ -15,6 +15,8 @@ import type { UsageReporter } from './usage.ts';
 export interface Proposer {
   actorId?: string;
   unanswered?: { readonly recordId: string; readonly [field: string]: unknown } | undefined;
+  /** The proposal pass under way: a second pass shares it, never starting its own. */
+  running?: Promise<Proposed> | undefined;
 }
 
 export type Proposed =
@@ -36,17 +38,43 @@ export async function selfOf(call: Call, mine: Proposer): Promise<string | Unans
   return mine.actorId;
 }
 
-/** `step` proposed once on the delegation's task; a proposal with no answer is sent again as it was. */
+/** `step` proposed once on the delegation's task, one pass at a time per worker. */
 export async function proposeStep(
   call: Call,
   mine: Proposer,
   step: { readonly kind: string },
   reporter: Pick<UsageReporter, 'estimate'>,
 ): Promise<Proposed> {
+  mine.running ??= proposeAlone(call, mine, step, reporter).finally(() => {
+    mine.running = undefined;
+  });
+  return await mine.running;
+}
+
+/**
+ * Whether a refusal proves the proposal never committed. A replay refused by
+ * a delegation check (`agent-replay.ts`) may be withholding a committed
+ * receipt, so it proves nothing while that authority is missing; once the
+ * capabilities read just before it show the write is covered again, a
+ * delegation refusal is the stored answer of a proposal that never ran.
+ */
+const provesUncommitted = (code: string, capabilities: Record<string, unknown>): boolean =>
+  !code.startsWith('DELEGATION_') ||
+  ((capabilities['grants'] ?? []) as readonly { action?: unknown }[]).some(
+    (grant) => grant.action === 'write',
+  );
+
+/** A proposal with no answer, or one whose refusal proves nothing, is sent again as it was. */
+async function proposeAlone(
+  call: Call,
+  mine: Proposer,
+  step: { readonly kind: string },
+  reporter: Pick<UsageReporter, 'estimate'>,
+): Promise<Proposed> {
+  const capabilities = await call('session.capabilities', {});
+  if (!('body' in capabilities)) return capabilities;
+  mine.actorId = String(capabilities.body['agentActorId']);
   if (mine.unanswered === undefined) {
-    const capabilities = await call('session.capabilities', {});
-    if (!('body' in capabilities)) return capabilities;
-    mine.actorId = String(capabilities.body['agentActorId']);
     const scope = capabilities.body['purposeScope'] as { id?: unknown } | null | undefined;
     const recordId = String(scope?.id ?? '');
     const read = await call('task.read', { recordId });
@@ -68,6 +96,9 @@ export async function proposeStep(
   const sent = mine.unanswered;
   const proposed = await call('task.propose', sent);
   if ('fault' in proposed) return proposed;
+  if ('refused' in proposed && !provesUncommitted(proposed.refused.code, capabilities.body)) {
+    return proposed;
+  }
   mine.unanswered = undefined;
   if (!('body' in proposed)) return proposed;
   return {
