@@ -40,6 +40,7 @@
 import {
   advisoryLock,
   checkAuthority,
+  lockAccess,
   refuseStaleMoneyStep,
   subjectsOf,
   wayfinderFacts,
@@ -414,6 +415,20 @@ const GATE_TASK: ScopeLookup = [
 ];
 
 const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
+  // C80: the party a request names is its scope as named; an approval's is
+  // the party of the correction it names, read in this business only, so a
+  // correction elsewhere falls back to the business like any unknown target.
+  'live_correction.request': ['partyId', (_tx, id) => Promise.resolve({ kind: 'party', id })],
+  'live_correction.decide': [
+    'correctionId',
+    (tx, id) =>
+      firstRow(
+        tx,
+        `select 'party' as kind, party_id as id from public.live_corrections
+          where business_id = $1 and id = $2`,
+        id,
+      ),
+  ],
   'grant.revoke': [
     'grantId',
     (tx, id) =>
@@ -623,6 +638,10 @@ async function coveringMap(
   return facts.mapId === id ? undefined : facts.mapId;
 }
 
+/** OWNER-3 A: writes judged under revocations' access lock; exclusive where the handler takes it. */
+const ACCESS_LOCKERS =
+  /^(?:access\.(?:grant|revoke|end|reset_factor)|grant\.revoke|credential\.issue)$/u;
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -661,6 +680,7 @@ export async function prepareCommand(
   let asked: ScopeRequest | undefined;
   // A `self` row asks no grant: its handler reaches the caller's own rows only.
   if (declaration.authorisedOn !== 'self') {
+    await lockAccess(tx, ACCESS_LOCKERS.test(declaration.name) ? undefined : 'shared');
     asked = {
       // From the declaration, never written in here: see `CommandDeclaration`.
       collection: declaration.collection,
@@ -698,7 +718,7 @@ export async function prepareCommand(
     // Before any task row: a command that rewrites a subtree's links takes its
     // per-business lock first, so it never holds a row while waiting for it.
     // Only here, where the target is read: a replay re-judges authority with
-    // `targetsExistingRecord` off, and it locks nothing (`withheldNow`).
+    // `targetsExistingRecord` off, and it locks no record (`withheldNow`).
     if (declaration.serialise !== undefined) await serialiseOn(tx, declaration.serialise);
     // A target the runtime locks in its own order is only read here. The
     // read takes nothing, and the handler compares the revision under the

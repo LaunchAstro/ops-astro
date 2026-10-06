@@ -17,6 +17,7 @@
 // asserted on its own code. The last case is the target-free operations, for
 // the SC2 reading TRANSACTION-CONTRACT line 113 proposes.
 
+import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -201,8 +202,9 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_negatives');
-    // MP-6-2's revision asks run:write, which the cast's admin holds on no
-    // run; on the whole business, so a foreign task is judged by the handler.
+    // MP-6-2's revision and C80's decision read ask run:write, which the cast's
+    // admin holds on no run; on the whole business, so a foreign task or
+    // correction is judged by the handler.
     await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
       await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
     });
@@ -595,6 +597,36 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           ...ACCEPTED_PLAN,
           note: NOBODY,
         },
+      });
+    },
+    120_000,
+  );
+
+  it(
+    CASE.liveCorrection,
+    async () => {
+      // A correction of bravo's and a fabricated one; a request worked under
+      // bravo's task and under a fabricated one. Each pair answers alike.
+      const { world } = w.h;
+      const decision = { decision: 'approve' };
+      const theirs = await seedLiveCorrection(
+        world.db.app,
+        world.bravo,
+        w.foreign.task.id,
+        w.foreign.admin,
+      );
+      await refuses('live_correction.decide', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { ...theirs, ...decision },
+        fabricated: { correctionId: randomUUID(), versionId: randomUUID(), ...decision },
+      });
+      await refuses('live_correction.read', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { correctionId: theirs.correctionId },
+        fabricated: { correctionId: randomUUID() },
+      });
+      const request = { ...C80_REQUEST, partyId: randomUUID() };
+      await refuses('live_correction.request', 'taskId', ada, 'NOT_FOUND', {
+        foreign: { ...request, taskId: w.foreign.task.id },
+        fabricated: { ...request, taskId: randomUUID() },
       });
     },
     120_000,

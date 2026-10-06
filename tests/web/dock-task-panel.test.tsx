@@ -89,9 +89,9 @@ const escape = (): void => {
 };
 
 describe('MP-3-1 the dock draws the task panel as its Task panel', () => {
-  it('the Task tab is on the rail, closed, and no Task panel until a task is opened', async () => {
+  it('no Task tab and no Task panel until a task is opened', async () => {
     const view = await app();
-    expect(view.host.querySelector(TAB)?.getAttribute('aria-expanded')).toBe('false');
+    expect(view.host.querySelector(TAB)).toBeNull();
     expect(view.host.querySelector(TASK)).toBeNull();
   });
 
@@ -117,7 +117,7 @@ describe('MP-3-1 the Task panel closes from either side', () => {
     await view.click(`${TASK} [data-act="close"]`);
     await tick();
     expect(view.find('[data-task-panel]')).toBeNull();
-    expect(view.host.querySelector(TAB)?.getAttribute('aria-expanded')).toBe('false');
+    expect(view.host.querySelector(TAB)).toBeNull();
     expect(document.activeElement).toBe(view.host.querySelector(DOOR));
   });
 
@@ -126,7 +126,7 @@ describe('MP-3-1 the Task panel closes from either side', () => {
     await view.click('.dock__closeall');
     await tick();
     expect(view.find('[data-task-panel]')).toBeNull();
-    expect(view.host.querySelector(TAB)?.getAttribute('aria-expanded')).toBe('false');
+    expect(view.host.querySelector(TAB)).toBeNull();
   });
 
   it("the task panel draws no close of its own in the dock: the dock's X is its one close", async () => {

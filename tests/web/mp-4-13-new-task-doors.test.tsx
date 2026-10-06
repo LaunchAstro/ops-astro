@@ -54,6 +54,8 @@ const fetch = ((url: string | URL, init?: RequestInit) => {
     return Promise.resolve(json({ recordId: 'r-new', revision: 1, detail: { key: 'Proj-New' } }));
   }
   if (where.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
+  if (where.endsWith('/client/list')) return Promise.resolve(json({ ok: true, clients: [] }));
+  if (where.endsWith('/task/todos')) return Promise.resolve(json({ ok: true, todos: [] }));
   if (where.endsWith('/task/queue')) {
     return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
   }
@@ -86,11 +88,12 @@ async function app(storage: Storage, path = `/task/${KEY}`) {
 }
 
 describe('MP-4-13 the dock’s New task is on every page', () => {
-  it('with nothing open the Task tab is on the rail, and its press opens a draft filed from the page', async () => {
+  it('the Projects (to-dos) panel’s head New opens a draft filed from the page, and the rail keeps its doors', async () => {
     const view = await app(store());
-    expect(view.host.querySelector(TAB)?.getAttribute('aria-expanded')).toBe('false');
-    expect(view.host.querySelector(TASK)).toBeNull();
-    await view.click(TAB);
+    expect(view.host.querySelector(TAB)).toBeNull();
+    await view.click('.dock__tab[data-panel="todos"]');
+    await tick();
+    await view.click('.dpanel[data-panel-id="todos"] [data-act="new"]');
     await tick();
     expect(view.find(`${TASK} [data-draft-panel]`)).not.toBeNull();
     expect(view.find('[data-draft-admission]')?.textContent).toContain(

@@ -38,6 +38,7 @@ import type {
   OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
+  LiveCorrectionReadResult,
   PersonListResult,
   TagListResult,
   TaskTodosResult,
@@ -65,6 +66,7 @@ import type {
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
+import type { BoardPage, Leveled, Paging } from './detail.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -85,9 +87,9 @@ export type {
  * uses is a field its `parse` checked.
  */
 export interface ReadOperands {
-  readonly 'task.read': { readonly recordId: string };
+  readonly 'task.read': { readonly recordId: string } & Paging;
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
-  readonly 'task.board': { readonly board: string | null };
+  readonly 'task.board': { readonly board: string | null } & Paging;
   /**
    * The activity ledger's page: the newest days with events before `before`
    * (a `YYYY-MM-DD` in `timeZone`), or the newest days of all when it is
@@ -206,6 +208,8 @@ export interface ReadOperands {
   readonly 'trace.read': { readonly recordId: string };
   /** The run whose harness test result is read (AW-12). */
   readonly 'harness.read': { readonly runId: string };
+  /** One live correction's decision, read again for its card (C80). */
+  readonly 'live_correction.read': { readonly correctionId: string };
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
   readonly 'automation.registry': NoOperands;
 }
@@ -225,6 +229,9 @@ export interface ReadRequest {
 
 export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
+  /** A task or a page at a named detail level (API-3, `detail.ts`). */
+  | ({ readonly ok: true } & Leveled)
+  | BoardPage
   | SharedTaskRead
   | TaskBoardResult
   | TaskSearchResult
@@ -256,6 +263,7 @@ export type ReadResult =
   | AttributionResult
   | InboxReadResult
   | InboxCountResult
+  | LiveCorrectionReadResult
   | MapViewResult
   | MapFrontierResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "an agent CLI read crosses another business, another client in the same business and another person's delegation with real links and sees none of them, and a blocker it may not read is withheld by count, never by id"
+}

@@ -62,6 +62,10 @@ const BEFORE_LOCK: readonly (readonly [RegExp, string])[] = [
     /^select pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)$/u,
     "the operation identity's door (#932), or a declared subtree's lock",
   ],
+  [
+    /^select pg_advisory_xact_lock_shared\(hashtextextended\(\$1, 0\)\)$/u,
+    "the business's access lock, shared, before authority is asked and held to commit",
+  ],
 ];
 
 const flat = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim().toLowerCase();

@@ -336,7 +336,7 @@ describe.skipIf(serverUrl === undefined)('id operand shape (TC:11, root ruling 2
 
   it('refuses a malformed operand on the agent prefix as a fabricated one', async () => {
     // The live 503 at d62f1bc: the envelope passed `String(reservationId ?? '')`
-    // and nothing shaped it before SQL. `pickupOperands` (`commands/agent-operations.ts`)
+    // and nothing shaped it before SQL. `pickupOperands` (`commands/agent-operands.ts`)
     // now reads it by type.
     const bare: Presenter = { kind: 'agent', identity: w.h.world.agent };
     await probe([

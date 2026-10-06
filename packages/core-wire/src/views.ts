@@ -45,6 +45,7 @@ export type {
   ExecutionGraph,
   ExecutionNode,
   ReceiptResult,
+  LiveCorrectionReadResult,
 } from './views-run.ts';
 
 // The run ledger, conversation and awaiting-review views live in their own
