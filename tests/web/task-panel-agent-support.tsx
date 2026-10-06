@@ -47,6 +47,9 @@ export function serving(
     // The drawer's planning allowance (AW-04): none to show here.
     if (where.endsWith('/conversation/allowance'))
       return Promise.resolve(json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404));
+    // The drawer's model offer (CS-7.30) is a read, never a command sent: none offered here.
+    if (where.endsWith('/conversation/models'))
+      return Promise.resolve(json({ ok: true, models: [], chosen: null }));
     if (where.endsWith('/task/queue')) {
       return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
     }

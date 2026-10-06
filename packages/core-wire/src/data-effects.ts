@@ -179,6 +179,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'conversation.message': writing(client('conversations', 'conversation_messages')),
   'conversation.rename': writing(client('conversations')),
   'conversation.set_scope': writing(client('conversations')),
+  'conversation.set_model': writing(client('conversations')),
   // AW-01: the broker's hold on the lease's run and its prompt copy's registration. At the approved
   // ceiling the refusal commits the stop instead (AW-05): the ask, the lease released, the
   // delegation retired, the run waiting. The provider call goes through the credential broker; a
@@ -206,6 +207,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap, AW-13's trace read,
   // AW-12's harness result, AW-11's child work, and the accepted plan.
   'conversation.allowance': READ,
+  'conversation.models': READ,
   'definition.attribution': READ,
   'trace.read': READ,
   'harness.read': READ,
