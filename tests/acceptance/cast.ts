@@ -92,6 +92,9 @@ export const MEMBER_ACTIONS: readonly Action[] = ['read', 'write', 'assign', 'co
  * `conversation` is AW-03's: the seeded admin holds `conversation:write`, so
  * the fixture's does too (and, being a fixture, every other action on it).
  */
+// `gate` is also C80's: a live correction is approved as a gate decision. `run`
+// is left out on purpose (ORCH38): a fixture admin's pickups then mint the task
+// delegation the run-reach suites pin, and a suite that means run:write grants it.
 export const ADMIN_COLLECTIONS: readonly string[] = [
   'task',
   'person',

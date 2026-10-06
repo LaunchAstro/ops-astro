@@ -5,15 +5,19 @@
 // again once the ticket row is held (`prepareCommand`). The writer holds
 // independent write grants on the ticket and on its map. A fixture
 // transaction holds the ticket row; the edit parks on it; the ticket grant is
-// revoked through `access.revoke` and commits, the map grant left live; then
-// the fixture lets go. The edit must still apply, once, on the map's grant: a
-// retry with the same revision is then stale (Sol round 1 on #1010, F4).
+// revoked through `access.revoke`, the map grant left live; then the fixture
+// lets go. The edit must apply, once: a retry with the same revision is then
+// stale. Either the revocation committed during the wait and the edit stands
+// on the map's grant (Sol round 1 on #1010, F4), or the revocation waits
+// behind the editor, which holds the business's access lock shared from
+// before its grant check (#1008), and the edit commits first on its ticket
+// grant, still live.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { hold, waitingOn } from '../support/lock-waits.ts';
+import { chainPlaces, hold, revokedOrBehindWriter, waitingOn } from '../support/lock-waits.ts';
 import { grantTo, WHOLE_BUSINESS } from './fixture.ts';
 import {
   alpha,
@@ -64,6 +68,8 @@ it.skipIf(serverUrl === undefined)(
     };
     const editor = connect(db.appUrl);
     const revoker = connect(db.appUrl);
+    const editing = randomUUID();
+    const revocation = randomUUID();
     try {
       const held = await hold(db.appUrl, alpha, async (tx) => {
         await tx.query(
@@ -71,23 +77,31 @@ it.skipIf(serverUrl === undefined)(
           [tx.businessId, ticket],
         );
       });
-      let editing: ReturnType<typeof executeCommand> | undefined;
+      let edited: ReturnType<typeof executeCommand> | undefined;
+      let revoking: ReturnType<typeof executeCommand> | undefined;
+      let order: Awaited<ReturnType<typeof revokedOrBehindWriter>> | undefined;
       try {
-        editing = executeCommand(editor, alpha, clientAWriter.presented, 'api', {
+        edited = executeCommand(editor, alpha, clientAWriter.presented, 'api', {
           ...edit,
-          operationId: randomUUID(),
+          operationId: editing,
         } as never);
         await waitingOn(db.admin, 'transactionid', LOCK_TASK);
-        const revoked = await executeCommand(revoker, alpha, writer.presented, 'api', {
+        let answered = false;
+        revoking = executeCommand(revoker, alpha, writer.presented, 'api', {
           command: 'access.revoke',
-          operationId: randomUUID(),
+          operationId: revocation,
           grantId: ticketGrant,
         });
-        expect(outcomeOf(revoked)).toEqual({ applied: true });
+        const settle = (): void => {
+          answered = true;
+        };
+        void revoking.then(settle, settle);
+        order = await revokedOrBehindWriter(db.admin, LOCK_TASK, () => answered);
       } finally {
         await held.letGo();
       }
-      const answer = await editing;
+      expect(outcomeOf(await revoking)).toEqual({ applied: true });
+      const answer = await edited;
       const retry = await executeCommand(editor, alpha, clientAWriter.presented, 'api', {
         ...edit,
         operationId: randomUUID(),
@@ -99,14 +113,22 @@ it.skipIf(serverUrl === undefined)(
         "select data ->> 'title' as title, revision::int as revision from public.records where id = $1",
         [ticket],
       );
+      // Behind the writer, the chain says which committed first.
+      const places =
+        order === 'behind the writer'
+          ? await chainPlaces(db.admin, [editing, revocation])
+          : undefined;
       expect({
         answer: outcomeOf(answer)['code'] ?? 'applied',
         retry: outcomeOf(retry)['code'] ?? 'applied',
         stored,
+        committedFirst:
+          places === undefined || Number(places[1]) < Number(places[0]) ? 'revocation' : 'edit',
       }).toEqual({
         answer: 'applied',
         retry: 'VERSION_STALE',
         stored: { title: 'Ticket, edited', revision: revision + 1 },
+        committedFirst: order === 'revoked' ? 'revocation' : 'edit',
       });
     } finally {
       await Promise.all([editor.close(), revoker.close()]);

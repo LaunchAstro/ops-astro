@@ -225,6 +225,10 @@ export const DECLARED: Readonly<
   'approval.revoke': { carry: 'not carried', plant: 'an automation, not task content' },
   // MP-14-7a: a repair names a connection, never task content.
   'connector.repair': { carry: 'not carried', plant: 'a connection, not task content' },
+  // C80: a live correction is the site's, decided by its approver; a duplicate carries none.
+  'live_correction.request': { carry: 'not carried', plant: 'needs a live site page' },
+  'live_correction.decide': { carry: 'not carried', plant: 'needs a requested correction' },
+  'settings.set_live_correction_approver': { carry: 'not carried', plant: 'a business setting' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

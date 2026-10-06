@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's agent request reads its delegation again after its task lock wait, so a delegation that expired while it waited stores no correction."
+}

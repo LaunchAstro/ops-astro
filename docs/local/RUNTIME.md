@@ -2154,7 +2154,11 @@ route, command-line verb or agent operation reaches it.
   occurrence's advisory lock makes a second start answer the first as
   replayed, and past the code the database's unique index holds it.
 - **Who writes it.** An active worker of the business, never a person or an
-  agent (`WORKER_REQUIRED`). The run row goes in through
+  agent (`WORKER_REQUIRED`). The worker's row is read `for share` under the
+  occurrence lock and held to commit: a stop that arrives during the start
+  waits for it to commit, a stop already committed refuses it, and a start
+  that meets a stop still in flight waits for it, then is refused. The run
+  row goes in through
   `ops_astro_occurrence`, taken for the one insert with
   `set_config('role', ..., true)`; 0097's trigger refuses an origin written by
   any other role, and any change to an origin after the insert.
@@ -2174,9 +2178,17 @@ route, command-line verb or agent operation reaches it.
   an occurrence's run. AW-04 builds its claim.
 
 The approval and version facts come through `ReadOccurrenceAuthority`, which
-C52-A fills from its own rows under the activation lock; its foreign keys and
-that read join at the batch 3 join. Tests: `aw-01-occurrence-run` and
-`aw-01-occurrence-run-isolation`.
+C52-A fills from its own rows under the activation lock (`readOccurrenceFacts`
+in core-records `automations/dispatch.ts`); the worker hands dispatch
+`occurrenceRunStarter(workerActorId)` (core-commands
+`commands/automation-run.ts`). Before the start, dispatch takes C33's run
+ceiling on the durable limit: at five runs in flight it answers `waiting` and
+writes nothing. A start J refuses records no dispatch. A claim locks the
+activation as dispatch does, and one transaction locks one activation
+(`lockActivation`), so no writer upgrades a lock or takes a second activation
+after the business-wide keys. Tests: `aw-01-occurrence-run`,
+`aw-01-occurrence-run-isolation`, `c52a-run-start`, `c33-intake` and
+`c52a-dispatch-claim-races`.
 
 ## The harness adoption test's trigger
 

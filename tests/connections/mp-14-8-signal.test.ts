@@ -34,6 +34,7 @@ import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import type { SecuritySignal } from '../../apps/api/alerts/detect.ts';
 import { recordsIn } from '../../apps/api/records-in.ts';
+import { countdownOf } from '../../apps/web/src/screens/connections/signal-view.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const RECORD_CANARY = `record-canary-${randomUUID()}`;
@@ -897,6 +898,27 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     const shown = grantOf(result, child.delegation.id);
     expect(Date.parse(String(parentEnd))).toBeLessThan(Date.now() + 15 * 60_000);
     expect([shown?.state, shown?.expiresAt]).toStrictEqual(['live', parentEnd]);
+  });
+
+  it('MP-14-8 the grants section draws a live child countdown to its parent end, in warning', async () => {
+    // PRV-oa-1046-R1.2: a child with an hour on its own row under a parent
+    // ten minutes from its end; the row's countdown, its clock at ten minutes
+    // before that end, reads the real answer as ten minutes, in warning.
+    await holdRunWrite();
+    const [parentId, parentCredential] = await delegate('drawn_parent', null);
+    const { child } = await mintHelperChild(parentCredential);
+    await owner(
+      `update public.delegations set expires_at = now() + interval '10 minutes' where id = $1`,
+      [parentId],
+    );
+    const result = await signal(admin);
+    const parentEnd = Date.parse(String(grantOf(result, parentId)?.expiresAt));
+    // What each grant row draws as its countdown and data-tone (signal-grants.tsx).
+    const drawn = countdownOf(
+      grantOf(result, child.delegation.id) as GrantView,
+      parentEnd - 10 * 60_000,
+    );
+    expect([drawn.tone, drawn.words]).toStrictEqual(['warn', '10m left']);
   });
 
   it('MP-14-8 a grant that ran out and was settled by its agent next mint ends at the settlement', async () => {

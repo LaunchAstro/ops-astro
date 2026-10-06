@@ -21,6 +21,7 @@ import {
   codeOf,
   footprint,
   noDatabase,
+  occurrence,
   start,
   useOccurrenceWorld,
   w,
@@ -38,7 +39,7 @@ const runsFor = async (occurrenceId: string): Promise<number> =>
   );
 
 it('AW-01 occurrence run: one occurrence starts one run on a new accepted task, pinned to its version', async () => {
-  const occurrenceId = randomUUID();
+  const occurrenceId = await occurrence(w.s);
   const authority = authorityFor(w.s);
   const started = await start(w.s, occurrenceId, authority, w.worker);
   if (!started.ok) throw new Error(`refused ${started.refusal.code}`);
@@ -89,7 +90,7 @@ it('AW-01 occurrence run: one occurrence starts one run on a new accepted task, 
 });
 
 it('AW-01 occurrence run: once per occurrence, replayed and raced', async () => {
-  const occurrenceId = randomUUID();
+  const occurrenceId = await occurrence(w.s);
   const authority = authorityFor(w.s);
   const first = await start(w.s, occurrenceId, authority, w.worker);
   const again = await start(w.s, occurrenceId, authority, w.worker);
@@ -99,7 +100,7 @@ it('AW-01 occurrence run: once per occurrence, replayed and raced', async () => 
   // Two backends at once, several times over: one run and one task each time.
   const [left, right] = [racer(w.s), racer(w.s)];
   const race = async () => {
-    const raced = randomUUID();
+    const raced = await occurrence(w.s);
     const before = await footprint();
     const answers = await Promise.all([
       start(w.s, raced, authority, w.worker, left),
@@ -129,10 +130,11 @@ const asOccurrenceRole = async (text: string, parameters: readonly unknown[]) =>
   });
 
 it('AW-01 occurrence run: one run per occurrence is held by the database, past the code', async () => {
-  const occurrenceId = randomUUID();
-  const first = await start(w.s, occurrenceId, authorityFor(w.s), w.worker);
+  const occurrenceId = await occurrence(w.s);
+  const authority = authorityFor(w.s);
+  const first = await start(w.s, occurrenceId, authority, w.worker);
   if (!first.ok) throw new Error(`refused ${first.refusal.code}`);
-  const origin = [randomUUID(), w.s.decider.actorId];
+  const origin = [authority.definitionId, w.s.decider.actorId];
   await expect(
     asOccurrenceRole(
       `insert into public.planned_runs (business_id, id, task_id, origin_occurrence_id,
@@ -223,7 +225,7 @@ it('AW-01 occurrence run: an unknown or malformed occurrence starts nothing', as
 });
 
 it('AW-01 occurrence run: audited as a system write naming the definition, its version and its approver', async () => {
-  const occurrenceId = randomUUID();
+  const occurrenceId = await occurrence(w.s);
   const authority = authorityFor(w.s);
   const started = await start(w.s, occurrenceId, authority, w.worker);
   if (!started.ok) throw new Error(`refused ${started.refusal.code}`);

@@ -31,7 +31,7 @@ import {
   type World,
 } from '../acceptance/world.ts';
 import { grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
-import { hold } from '../support/lock-waits.ts';
+import { chainPlaces, hold } from '../support/lock-waits.ts';
 
 if (serverUrl === undefined) {
   console.warn(
@@ -135,6 +135,8 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
   it("a credential write waiting on the task lock is refused once its issuer's grant is revoked", async () => {
     const { grantId, recordId, revision, credential } = await credentialWrite();
     const revoker = rebuildApi(world);
+    const update = randomUUID();
+    const revocation = randomUUID();
     let updating: Promise<Answer> | undefined;
     let revoked: Answer | undefined;
     let revoking: Promise<Answer> | undefined;
@@ -151,7 +153,7 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
           world.api,
           agentPath('alpha', pathOf('task.update')),
           {
-            operationId: randomUUID(),
+            operationId: update,
             recordId,
             expectedRevision: revision,
             fields: { title: 'after revocation' },
@@ -175,7 +177,7 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
         revoking = call(
           revoker.api,
           personPath('alpha', pathOf('access.revoke')),
-          { operationId: randomUUID(), grantId },
+          { operationId: revocation, grantId },
           bearer(world.ada.token),
         );
         const settle = (): void => {
@@ -211,18 +213,27 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
       );
       if (revokeWaited) {
         // The other half of Expected: the revocation waited for the writer,
-        // which wrote first, and then committed.
+        // which committed first (the audit chain's order is commit order),
+        // and then the revocation committed.
         const late = await revoking;
         const [grant] = await world.db.admin.execute<{ readonly revoked: boolean }>(
           'select revoked_at is not null as revoked from public.grants where id = $1',
           [grantId],
         );
+        const [wrote, revokedAt] = await chainPlaces(world.db.admin, [update, revocation]);
         expect({
           updated: updated.status,
           revoked: late?.status,
           grant: grant?.revoked,
           title: row?.title,
-        }).toEqual({ updated: 200, revoked: 200, grant: true, title: 'after revocation' });
+          committedFirst: Number(wrote) < Number(revokedAt) ? 'write' : 'revocation',
+        }).toEqual({
+          updated: 200,
+          revoked: 200,
+          grant: true,
+          title: 'after revocation',
+          committedFirst: 'write',
+        });
         return;
       }
       expect({ code: updated.code, row }, updated.text).toEqual({
@@ -235,13 +246,15 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
   }, 240_000);
 
   // Sol round 1 on #1010, F5: a second lock waiter that waits on something
-  // other than the writer (here a transaction queued, as a revocation's
-  // `lockAccess` would be, behind an unrelated holder of the business's
-  // access lock) must not be taken for a revocation waiting behind the writer.
+  // other than the writer (here a transaction queued behind an unrelated
+  // holder of a lock of its own) must not be taken for a revocation waiting
+  // behind the writer. Not the access lock: the credential write holds it
+  // shared from before its task lock wait (#1008), so every waiter on it is
+  // behind the writer too.
   it('a lock waiter queued behind another holder is not taken for one waiting behind the writer', async () => {
     const { recordId, revision, credential } = await credentialWrite();
     const access = await hold(world.db.appUrl, world.alpha, async (tx) => {
-      await advisoryLock(tx, `access:${tx.businessId}`);
+      await advisoryLock(tx, `unrelated:${tx.businessId}`);
     });
     const other = connect(world.db.appUrl);
     let updating: Promise<Answer> | undefined;
@@ -265,7 +278,7 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
         );
         await until(async () => (await count(execute, UPDATE_WAITING)) >= 1);
         queued = other.withBusiness(world.alpha, async (tx) => {
-          await advisoryLock(tx, `access:${tx.businessId}`);
+          await advisoryLock(tx, `unrelated:${tx.businessId}`);
         });
         await until(async () => (await count(execute, LOCK_WAITERS)) >= 2);
         expect(await count(execute, LOCK_WAITERS), 'the writer and the other waiter').toBe(2);

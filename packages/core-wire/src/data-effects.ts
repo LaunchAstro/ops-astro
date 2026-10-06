@@ -8,6 +8,7 @@ import { business, client, writing, type DataEffects } from './data-effects-type
 import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
 import { CHAT_EFFECTS } from './data-effects-chat.ts';
+import { LIVE_CORRECTION_EFFECTS } from './data-effects-live-correction.ts';
 export type {
   ClassedEffects,
   DataClass,
@@ -23,9 +24,7 @@ const READ = writing([]);
 // A task is a row of `records`, with its unique values beside it.
 const TASK = writing(client('records', 'record_unique_values'));
 // A map or its ticket: the task, and the map's derived summary and frontier.
-const MAP_TASK = writing(
-  client('records', 'record_unique_values', 'map_summaries', 'map_frontier'),
-);
+const MAP_TASK = writing(TASK.writes.concat(client('map_summaries', 'map_frontier')));
 // A proposal raises the decision's inbox items (INB-1b).
 const PROPOSAL = writing(
   client(
@@ -159,6 +158,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_money_step_up': SETTINGS,
   'settings.set_conversation_window': SETTINGS,
   'settings.set_retention_window': SETTINGS,
+  ...LIVE_CORRECTION_EFFECTS,
   'privacy.record_incident': writing(business('privacy_incidents')),
   'legal.draft_version': LEGAL,
   'legal.approve_version': LEGAL,

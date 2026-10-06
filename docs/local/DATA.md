@@ -922,3 +922,21 @@ their own business by foreign key. Every column drawn as words is the
 application may only select both; the checks and the round write them (not
 built). Tenancy-keyed with the restrictive policy. The records are
 `packages/core-records/src/connections/signal.ts`.
+
+## Occurrence intake (20261006092531, C33)
+
+An occurrence may also be `over_activation_rate`, `over_business_rate` or
+`over_intake_bound` (`activation_occurrences_outcome_known`): past its
+activation's 60 an hour, its business's 600 an hour, or its business's queue
+of 1,000 approved events with no dispatch. None names an approval or starts a
+run. Each count is read back from these rows under AW-01's durable limit
+(`hasRoom`), so there is no counter column. A run over the business's ceiling
+of five activation runs in flight writes nothing: its occurrence stays
+`approved` with no dispatch, which is how it shows as waiting. When dispatch
+starts the run, AW-01 J writes it (`planned_runs.origin_occurrence_id`, 0097) and the dispatch row names it.
+The keys 0097 deferred join here: a run's origin occurrence and definition
+are rows of its own business (`planned_runs_origin_occurrence_fkey`,
+`planned_runs_origin_definition_fkey`), and a dispatch's run is the run its
+own occurrence started (`occurrence_dispatches_run_fkey` on business, run and
+occurrence). That the origin occurrence was approved is still the code's
+check, under the activation lock.

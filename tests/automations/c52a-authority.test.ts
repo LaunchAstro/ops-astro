@@ -109,8 +109,8 @@ describe.skipIf(serverUrl === undefined)('C52-A standing approval authority', ()
 
   let hour = 0;
   const fires = async (activationId: string): Promise<number> => {
-    const counting = starter();
     const { db, business } = w.controls.fixture;
+    const counting = await starter(db, business);
     await db.app.withBusiness(business, async (tx) => {
       const claim = await claimOccurrence(tx, activationId, {
         dueAt: new Date(Date.UTC(2026, 10, 3, (hour += 1))),
