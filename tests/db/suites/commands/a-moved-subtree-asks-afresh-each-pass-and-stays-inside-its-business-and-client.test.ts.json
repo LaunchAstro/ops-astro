@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a move's repeated descendant walk asks authority afresh on each pass, so a grant that lapsed while it waited covers nothing new, and its walk and rewrite stay inside one business and one client"
+}
