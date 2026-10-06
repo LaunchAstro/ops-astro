@@ -382,6 +382,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('credential.revoke', 'credentialId', f.credentialId, (credentialId) => ({
       credentialId,
     }));
+    byAda('onboarding.start', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      templateKey: 'standard',
+    }));
+    byAda('onboarding.step_result', 'recordId', f.stepTaskId, (recordId) => ({
+      recordId,
+      outcome: 'done',
+      result: 'a result aimed abroad',
+    }));
     // C33: bravo's version and definition named in an alpha change and release.
     byAda('activation.change', 'versionId', f.automation.versionId, (versionId) => ({
       versionId,
@@ -521,11 +530,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 88 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 90 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(88);
-    expect(names).toHaveLength(88);
+    expect(new Set(names).size, 'distinct operations').toBe(90);
+    expect(names).toHaveLength(90);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

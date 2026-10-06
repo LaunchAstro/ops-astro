@@ -133,6 +133,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0055 (C32): a client is written once and never deleted; C60 updates its
   // four privacy settings alone, by the column grant in COLUMN_UPDATES.
   ['si', 'clients'],
+  // 20261005200007 (C41-A): an onboarding and its steps are laid out once and
+  // never deleted; each moves on by the column grants in COLUMN_UPDATES.
+  ['si', 'onboarding_steps onboardings'],
   // C60: a client's written request for model use is kept as written.
   ['si', 'client_model_requests'],
   // 0056 (C58): an access ending is written, then its provider steps are
@@ -180,6 +183,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // the broker, and a repair is recorded once and never changed.
   ['s', 'connection_clients connections'],
   ['si', 'connection_repairs'],
+  // 20261005201200 (MP-14-8): tripwires and night round steps are written by the
+  // checks and the round (not built) and read here.
+  ['s', 'night_round_steps tripwires'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

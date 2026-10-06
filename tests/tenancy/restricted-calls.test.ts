@@ -208,6 +208,19 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
      select business_id, gen_random_uuid(), 'restricted calls seed', id
        from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C41-A: no journey starts an onboarding, so one on that client, and one
+  // step on a record of the business, so a copy of the row meets its keys.
+  'public.onboardings': `insert into public.onboardings
+       (business_id, id, client_id, template_key, template_version, started_by_actor_id)
+     select business_id, gen_random_uuid(), id, 'restricted-calls', 1, created_by_actor_id
+       from public.clients where business_id = $1 order by id limit 1 returning 1`,
+  'public.onboarding_steps': `insert into public.onboarding_steps
+       (business_id, onboarding_id, step_key, task_id, position, phase, kind, state)
+     select o.business_id, o.id, 'restricted-calls',
+            coalesce((select r.id from public.records r where r.business_id = $1
+                       order by r.id limit 1), gen_random_uuid()),
+            0, 'restricted calls', 'agent', 'ready'
+       from public.onboardings o where o.business_id = $1 order by o.id limit 1 returning 1`,
   // C60: no journey records a client's written request, so one is written here.
   'public.client_model_requests': `insert into public.client_model_requests
        (business_id, id, client_id, requested_by, requested_on, request_link, providers, outcome,
@@ -268,6 +281,16 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join lateral (
          select id from public.actors where business_id = $1 order by id limit 1) a on true
      returning 1`,
+  // Tripwires and the night round (MP-14-8): nothing the journey does writes
+  // one, so each is written here.
+  'public.tripwires': `insert into public.tripwires
+       (business_id, id, what, rule, watching, state)
+     values ($1, gen_random_uuid(), 'restricted calls', 'restricted calls', 'restricted calls',
+             'armed') returning 1`,
+  'public.night_round_steps': `insert into public.night_round_steps
+       (business_id, id, round_on, at, tone, what, who, say)
+     values ($1, gen_random_uuid(), '2026-09-29', '2026-09-28T23:00:00Z', 'plain',
+             'restricted calls', 'restricted calls', 'restricted calls') returning 1`,
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
   // C80's two tables: the journey requests no live correction. The receipt

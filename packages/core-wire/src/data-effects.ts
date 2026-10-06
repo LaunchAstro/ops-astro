@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S0-5: what each command does to data, declared beside its permission key. Its shapes, the class
-// the gate reads (derived from it and never set by hand) and the three constructors below are in
-// `data-effects-types.ts`.
+// S0-5: each command's effect on data, declared beside its permission key. Its shapes, the class
+// the gate reads (derived, never set by hand) and its constructors are in `data-effects-types.ts`.
 
 import type { CommandName } from './surface.ts';
 import { business, client, writing, type DataEffects } from './data-effects-types.ts';
+import { ONBOARDING_EFFECTS } from './data-effects-onboarding.ts';
 import { AUTOMATION_EFFECTS } from './data-effects-automations.ts';
 
 export type {
@@ -100,7 +100,6 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // Client access (MP-4-10): a share grant on the task for its client's people.
   'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
-  'task.set_party': TASK,
   'task.set_audience': TASK,
   'task.reparent': TASK,
   'task.move': TASK,
@@ -178,8 +177,10 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.set': writing(client('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
   'connection.fleet': READ,
+  'connection.signal': READ,
   'connector.repair': writing(business('connection_repairs')),
   'client.create': writing(client('clients')),
+  ...ONBOARDING_EFFECTS,
   'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
   // content once scoped to it, so its rows count as client-scoped.

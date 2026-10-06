@@ -896,3 +896,17 @@ run (unique per run), or `activation_off`, `approval_revoked` or
 `approval_ended`. The application may select and insert the three tables and
 update `activations.approval_id` by column grant; nothing changes or deletes an
 approval, revocation or dispatch. Tenancy-keyed with the restrictive policy.
+
+## Tripwires and the night round (20261005201200, MP-14-8)
+
+`tripwires` holds each stated check a business runs: what it watches, whether
+it is armed or cannot be armed (and why), how often it fired and what the last
+firing filed. One that cannot be armed carries no firing history
+(`tripwires_unarmed_never_fired`). `night_round_steps` holds each step of a
+night round, by the morning it hands over, with where the fact it reports
+lives (a section of the page, or a task by its key). Both may name a client of
+their own business by foreign key. Every column drawn as words is the
+`signal_text` domain, an explicit allow-list of characters refused whole. The
+application may only select both; the checks and the round write them (not
+built). Tenancy-keyed with the restrictive policy. The records are
+`packages/core-records/src/connections/signal.ts`.
