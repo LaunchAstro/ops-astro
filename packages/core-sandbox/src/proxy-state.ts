@@ -18,7 +18,8 @@
 // 30 s; a run whose container a sweep removed stays `unavailable`. A throw
 // fails a sweep, kill or delete, and answers the launcher `internal`. A wait
 // counts only if sent after a start answered 204 (a created container's wait
-// answers at once), and a start at the deadline is refused. `tick`
+// answers at once). A start at the deadline is refused, and one answered at
+// or after it is killed again. `tick`
 // is the caller's timer for P4 and P6's kill and deletes. Loads and image
 // calls are P5's (piece 2d-ii).
 
@@ -138,7 +139,10 @@ export class ProxyState {
     }
     const started = 'id' in op && this.#started === op.id;
     const reply = await this.#call(op);
-    if (op.kind === 'start' && reply.status === NO_CONTENT) this.#started = op.id;
+    if (op.kind === 'start' && reply.status === NO_CONTENT) {
+      this.#started = op.id;
+      await this.#exclusive(() => this.#startedLate(op.id));
+    }
     if (op.kind === 'wait') await this.#exclusive(() => this.#waited(op.id, started, reply));
     if (op.kind === 'delete') await this.#exclusive(() => this.#deleted(op.id, reply));
     return reply === THREW ? fault('reply status') : { ok: true, reply };
@@ -244,6 +248,13 @@ export class ProxyState {
         ? this.#candidates
         : recordCandidateWait(this.#candidates, run.image, run.run, code, now < held.deadline);
     await this.#save(candidates, noteWaitReturned(this.#containers, now));
+  }
+
+  /** A start answered at or after the deadline may have run after the deadline kill: kill again. */
+  async #startedLate(id: string): Promise<void> {
+    const held = this.#containers.container;
+    if (held?.id !== id || this.#ports.now() < held.deadline) return;
+    await this.#killed(await this.#call({ kind: 'kill', id }));
   }
 
   /** The proxy's own deadline kill, under the lock that read the id. */
