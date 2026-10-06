@@ -157,7 +157,7 @@ describe.skipIf(serverUrl === undefined)('T3f two worker processes, one lease', 
         fence: working['fence'],
         outcome: 'completed',
         successor: {
-          purpose: `t3f_${randomUUID().slice(0, 8)}`,
+          purpose: 'synthetic_comment',
           maximumMinor: 2_000,
           currency: 'AUD',
           payload: { change: 'the reviewed output' },

@@ -145,8 +145,12 @@ async function ask(
   const queued = await agentCall(options)('task.queue', {});
   if (!('body' in queued)) return queued;
   const entries = (queued.detail['queue'] ?? []) as readonly Record<string, unknown>[];
+  // Its own proposal of its own step: an approval of any other step never runs this one.
   const work = entries.find(
-    (entry) => entry['taskId'] === taskId && entry['proposedByActorId'] === actorId,
+    (entry) =>
+      entry['taskId'] === taskId &&
+      entry['proposedByActorId'] === actorId &&
+      entry['purpose'] === SYNTHETIC_STEP.kind,
   );
   if (work === undefined) return { idle: { taskId } };
   return { reservationId: work['reservationId'], operationId: randomUUID() };

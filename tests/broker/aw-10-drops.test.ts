@@ -25,6 +25,7 @@ import {
   workerLost,
   world,
 } from './aw-10-world.ts';
+import { REPLAY_PATH } from '../../packages/core-connectors/src/index.ts';
 import { liveWork } from '../runtime/schedules-harness.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -102,6 +103,8 @@ it('AW-10 three drops: a call the provider refused comes back by itself, with a 
   // The lost call never reached the provider and may still arrive: nothing comes back.
   expect(await attemptsOf(s, lost)).toMatchObject([{ state: 'liability_unknown', held: 'held' }]);
   expect(await callsOf(s, lost)).toMatchObject([{ state: 'liability_unknown' }]);
+  // A hold that never ends by itself is not silent: the task's people are told of it.
+  expect(await toldOf(s, lost)).toMatchObject([{ reactivated: false }]);
   for (const work of runs.map((one) => one.work)) {
     // eslint-disable-next-line no-await-in-loop
     const [first, second] = await attemptsOf(s, work);
@@ -158,9 +161,17 @@ it("AW-10 fault from evidence: a timeout is undetermined, a hostile answer the p
 it("AW-10 a heartbeat provider start is not cleared by a call's absence proof: the step's own provider may have acted, so the pass leaves it unanswered and the hold whole", async () => {
   world.provider.lookupMode('honest');
   const work = await workerLost(s, true);
+  // The silent call's request reaches the provider while it is down, which refuses it before
+  // any work began: the honest lookup's declared proof, so the pass releases the call.
+  world.provider.mode('unavailable');
+  const [call] = await callsOf(s, work);
+  await fetch(`${world.provider.origin}${REPLAY_PATH}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ operation_id: String(call?.['id']) }),
+  }).then(async (response) => await response.text());
   const swept = await pass();
-  // The silent call never reached the provider, so its lookup proves nothing and it stays held.
-  expect(await callsOf(s, work)).toMatchObject([{ state: 'liability_unknown', outcome: null }]);
+  expect(await callsOf(s, work)).toMatchObject([{ state: 'released', outcome: null }]);
   const reconciled = swept.ok ? (swept.businesses[0]?.reconciled ?? []) : [];
   expect(reconciled.filter((one) => one.attemptId === work.picked['attemptId'])).toMatchObject([
     { answer: 'unanswered' },

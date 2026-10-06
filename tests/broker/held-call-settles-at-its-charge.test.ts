@@ -65,11 +65,14 @@ it('a call whose request has not reached the provider is not closed by its looku
 
   // The provider processed it and its answer closes the call at the provider's charge.
   // Its lost worker gets no text back; the money is on the call.
-  expect(await late).toMatchObject({ ok: false });
-  expect(world.provider.processed.size).toBeGreaterThan(0);
-  const came = await cameTo(work);
-  expect(came).toBeGreaterThan(0);
-  const closedAt = [{ state: 'settled', came_to: String(came) }];
+  const answered = await late;
+  expect(answered).toMatchObject({ ok: false });
+  expect(world.provider.processed.has(('callId' in answered ? answered.callId : null) ?? '')).toBe(
+    true,
+  );
+  // The stand-in's answer: 40 units in and 30 out, priced 40 + 2 x 30.
+  expect(await cameTo(work)).toBe(100);
+  const closedAt = [{ state: 'settled', came_to: '100' }];
   expect(await calls(work)).toMatchObject(closedAt);
   expect(await calls(work)).toHaveLength(1);
   // The step's hold stays whole for a person, counting the charge against the cap; the
