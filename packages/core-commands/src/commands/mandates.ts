@@ -55,7 +55,7 @@ import { ceilingOf, classesOf, expiryOf, isRevision, labelOf, shownAs } from './
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 
 const FIXES: Readonly<Record<string, string>> = {
-  classes: 'Send classes as a list of distinct entries from the client scope list.',
+  classes: 'Send classes as a list of 1 to 20 distinct entries from the client scope list.',
   refuses: 'Send refuses as true for a refusal, or leave it out.',
   ceiling:
     'Send ceiling as { amountMinor, currency }: whole minor units of a three-letter currency; a refusal sends none.',
@@ -126,8 +126,9 @@ export async function fileMandate(
   // answers exactly as a fabricated or malformed identifier does.
   const client = isUuid(request.clientId) && (await lockClientForWrite(tx, request.clientId));
   if (!(await stillManagesMandates(tx, context))) return notGranted();
-  const own = client ? await clientClasses(tx, request.clientId) : [];
-  if (own.length === 0) return refused(refuseNotFound());
+  if (!client) return refused(refuseNotFound());
+  // A client with no graduation rows yet is offered the whole account only.
+  const own = await clientClasses(tx, request.clientId);
   const classes = classesOf(request.classes, scopeChoices(own));
   if (classes === null) return invalid('classes');
   if (request.refuses !== undefined && typeof request.refuses !== 'boolean') {

@@ -3719,26 +3719,28 @@ or not at all. A class whose record is `never` shows
 Filing, revoking, promoting and demoting are `mandate:manage` business-wide, a
 person's act and never an agent's, and in C59's money set, so a sign-in without
 a second factor inside sixty minutes is refused `STEP_UP_REQUIRED`. Each command
-locks the client's row, then the class's graduation row, then the mandate (core's
-order), then asks `mandate:manage` again with the caller's grants held, so a
-grant revoked before it refuses it. A mandate is never edited: filed at revision
-1, revoked once at revision 2. Promoting files a one-class mandate for a class
-that shows `ready`; demoting revokes the mandate that promoted it, also while a
-refusal holds the class or its record has since turned `never`, so the class
-does not run unattended again when the refusal ends or the record recovers;
-each steps the graduation row's revision by one, as does revoking a promoting
-mandate. A promote's or demote's audit event names the mandate it filed or
-revoked, and so does its replay. Another business's client, class or mandate answers exactly as a made-up or malformed
-identifier does. Classes are picked from the client's own scope list, the
-ceiling is whole minor units of a three-letter currency, `expiresAt` is
-`toISOString()`'s form for a year from 0001 to 9999 and must be at least a
-minute past the database's clock, and the label is 1 to 500 characters with no
-control character, line break, bidi control or character that draws as nothing
-(no non-joiner, tag character or supplementary selector; the joiner only inside
-an emoji sequence, a variation selector only straight after a character that
-draws, at most four combining marks on one character, and at least one
-character that draws); each refusal names its field. A promote's label shows the class and client by
-name, or by identifier where a name would not pass that rule.
+locks the client's row, then the class's graduation row, then the mandate
+(core's order), then asks `mandate:manage` again with the caller's grants held,
+so a grant revoked before it refuses it. A mandate is never edited: filed at
+revision 1, revoked once at revision 2. Promoting files a one-class mandate for
+a class that shows `ready`; demoting revokes the mandate that promoted it, also
+while a refusal holds the class or its record has since turned `never`, so the
+class does not run unattended again when the refusal ends or the record
+recovers; each steps the graduation row's revision by one, as does revoking a
+promoting mandate. A promote's or demote's audit event names the mandate it
+filed or revoked, and so does its replay. Another business's client, class or
+mandate answers exactly as a made-up or malformed identifier does. Classes are 1
+to 20 picked from the client's own scope list, the ceiling is whole minor units
+of a three-letter currency, `expiresAt` is `toISOString()`'s form for a year
+from 0001 to 9999 and must be at least a minute past the database's clock, and
+the label, trimmed, is 1 to 500 characters with no control character, line
+break, bidi control or character that draws as nothing or as a blank (no
+non-joiner, tag character, variation selector but U+FE0E-FE0F, space but U+0020,
+unassigned or private-use code point; U+FE0E-FE0F only on a pictograph or
+keycap, the joiner only inside an emoji sequence, at most four combining marks
+on one character, and at least one character that draws); each refusal names its
+field. A promote's label shows the class and client by name, or by identifier
+where a name would not pass that rule.
 
 | Operation            | Route                 | Body                                                                                                  | Answer or refusals                                                                                                                                                                                                                                                  |
 | -------------------- | --------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

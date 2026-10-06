@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The writes behind graduation and standing mandates (MP-14-10a): each takes
-// the row lock its command serialises on. A mandate is filed and revoked,
-// never edited; a graduation row only has its revision bumped when a promote
-// or demote moves the class it describes. Times are the database's clock
+// The reads and writes behind graduation and standing mandates (MP-14-10a).
+// `lockClientForWrite`, `lockGraduationClass` and `lockMandate` take the row
+// locks a command serialises on; the other reads run unlocked, before or under
+// those locks, by design. A mandate is filed and revoked, never edited; a
+// graduation row has its revision bumped by a promote, a demote, or the revoke
+// of the mandate that promoted it. Times are the database's clock
 // (`clock_timestamp()`), read in the statement that writes, after any lock
 // wait, never the transaction's start or a time handed in.
 //
@@ -78,6 +80,7 @@ export async function lockGraduationClass(
   return row === undefined ? null : { ...classOf(row), clientLabel: row.client_label };
 }
 
+/** Steps a graduation row's revision by one; its new revision. */
 export async function bumpGraduationClass(tx: TenantQuery, classId: string): Promise<number> {
   const rows = await tx.query<{ readonly revision: string }>(
     `update public.graduation_classes set revision = revision + 1
@@ -171,6 +174,7 @@ export async function graduationRowOf(tx: TenantQuery, mandateId: string): Promi
   return rows[0]?.id ?? null;
 }
 
+/** Revokes a live mandate as `actorId`, on the database's clock; its new revision. */
 export async function revokeMandate(
   tx: TenantQuery,
   mandateId: string,

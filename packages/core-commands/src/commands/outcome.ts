@@ -22,7 +22,7 @@ export interface Applied {
   /**
    * The record the audit event names, where it is not `recordId`: a promote or
    * demote answers the class (the revision the caller writes against) and its
-   * audit event names the mandate it filed or revoked (SEC-P05B-PR.4).
+   * audit event names the mandate it filed or revoked (MP-14-10a).
    */
   readonly auditSubjectId?: string;
 }

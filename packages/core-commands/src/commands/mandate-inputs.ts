@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The mandate commands' closed inputs (MP-14-10a), moved whole from
-// `mandates.ts` to keep that file under the per-file line cap. Each answers
-// the value it accepts, or null, and the command names the field it refuses.
+// The mandate commands' closed inputs (MP-14-10a). Each answers the value it
+// accepts, or null, and the command names the field it refuses.
 
 import type { MandateFiling } from '../../../core-records/src/index.ts';
 import { labelText } from './values.ts';
@@ -21,8 +20,8 @@ export function ceilingOf(value: unknown): Ceiling | null {
   if (typeof amountMinor !== 'number' || !Number.isSafeInteger(amountMinor) || amountMinor < 0) {
     return null;
   }
-  const upper = typeof currency === 'string' && currency.length === 3;
-  if (!upper || [...currency].some((one) => one < 'A' || one > 'Z')) return null;
+  const threeLong = typeof currency === 'string' && currency.length === 3;
+  if (!threeLong || [...currency].some((one) => one < 'A' || one > 'Z')) return null;
   return { amountMinor, currency };
 }
 
@@ -42,7 +41,8 @@ export function expiryOf(value: unknown): Date | null {
 }
 
 /**
- * The sentence, 1 to 500 characters of `labelText` (values.ts): no control,
+ * The sentence, trimmed, 1 to 500 characters (code points, as the column's
+ * `char_length` counts) of `labelText` (values.ts): no control,
  * line break, escape, bidi control or character that draws as nothing, and
  * something that draws. It is the only human text on a money pre-approval, so
  * what another administrator is shown is what was filed. That grammar also
@@ -51,7 +51,7 @@ export function expiryOf(value: unknown): Date | null {
 export function labelOf(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const label = value.trim();
-  return label.length <= 500 && labelText(label) ? label : null;
+  return [...label].length <= 500 && labelText(label) ? label : null;
 }
 
 /**
