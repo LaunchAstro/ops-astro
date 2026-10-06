@@ -1,23 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Who is in a conversation now (C71, CS-7.42), for what tells a person of
-// one: the live channel admits a conversation's topic to its current members
-// alone, the board stream says a conversation moved to them alone, and a
-// mention in it is readable by them alone. Membership is the filter inside
-// each query, as every conversation read asks it (`conversations.ts`).
+// Who is in a conversation now (C71, CS-7.42): membership is the filter
+// inside each query, as every conversation read asks it (`conversations.ts`).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
 import { chatsNow, inConversation } from '../inbox/access.ts';
 import type { Mentioned } from '../inbox/mentions.ts';
 
-/**
- * Which of these live conversations `personId` is a current member of (joined
- * and not left) who may chat now (`chatsNow`), both asked in one statement so a
- * revocation committed before it admits nothing. Another person's, another
- * business's and a fabricated id are all simply not in the answer. `any` asks
- * every conversation they are in.
- */
+/** Which of these (`any`: every) conversations `personId` is in and may chat in now, one statement. */
 export async function currentConversations(
   tx: TenantQuery,
   conversationIds: readonly string[] | 'any',
