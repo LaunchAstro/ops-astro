@@ -3,6 +3,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { advisoryLock, connect } from '../../packages/core-records/src/tenancy/database.ts';
+import { lockAccess, type TenantQuery } from '../../packages/core-records/src/index.ts';
 import { c, invite, as, codeOf, noDatabase, useInvitationWorld, w } from './c39-t-world.ts';
 
 useInvitationWorld();
@@ -17,7 +18,7 @@ function latch() {
   return { promise, release };
 }
 
-async function waitUntil(check: () => Promise<boolean>, milliseconds = 5000): Promise<void> {
+async function waitUntil(check: () => Promise<boolean>, milliseconds = 8000): Promise<void> {
   const until = Date.now() + milliseconds;
   while (!(await check())) {
     if (Date.now() >= until) throw new Error('Timed out waiting for the database schedule');
@@ -25,9 +26,19 @@ async function waitUntil(check: () => Promise<boolean>, milliseconds = 5000): Pr
   }
 }
 
-async function pastExpiry<T>(id: string, limit: string, run: () => Promise<T>): Promise<T> {
-  await w.db.admin.execute(
-    "update public.invitations set expires_at = clock_timestamp() + interval '1500 milliseconds' where id = $1",
+/**
+ * `run` started while `hold` is held on another connection, seen waiting on it
+ * while the invitation is still live, and let go only once it has lapsed.
+ * The expiry it set, whether the wait was seen before it, then `run`'s answer.
+ */
+async function pastExpiry<T>(
+  id: string,
+  hold: (tx: TenantQuery) => Promise<void>,
+  run: () => Promise<T>,
+): Promise<{ saved: string; waitedLive: boolean; result: T }> {
+  const [set] = await w.db.admin.execute<{ expires: string }>(
+    `update public.invitations set expires_at = clock_timestamp() + interval '3 seconds'
+      where id = $1 returning expires_at::text as expires`,
     [id],
   );
   const blocker = connect(w.db.appUrl);
@@ -37,24 +48,34 @@ async function pastExpiry<T>(id: string, limit: string, run: () => Promise<T>): 
   const holding = blocker.withBusiness(w.alpha, async (tx) => {
     const [row] = await tx.query<{ pid: number }>('select pg_backend_pid() as pid');
     pid = row?.pid ?? 0;
-    await advisoryLock(tx, `limit:${w.alpha}:invitation:${limit}`);
+    await hold(tx);
     held.release();
     await release.promise;
   });
+  const state = async (): Promise<{ waiting: boolean; lapsed: boolean }> => {
+    const [row] = await w.db.admin.execute<{ waiting: boolean; lapsed: boolean }>(
+      `select exists (select 1 from pg_stat_activity where $2 = any(pg_blocking_pids(pid))) as waiting,
+              clock_timestamp() > expires_at as lapsed
+         from public.invitations where id = $1`,
+      [id, pid],
+    );
+    return { waiting: row?.waiting === true, lapsed: row?.lapsed === true };
+  };
   try {
     await held.promise;
     const running = run();
+    let waitedLive = false;
     await waitUntil(async () => {
-      const [row] = await w.db.admin.execute<{ ready: boolean }>(
-        `select clock_timestamp() > expires_at and exists (
-           select 1 from pg_stat_activity where $2 = any(pg_blocking_pids(pid))) as ready
-           from public.invitations where id = $1`,
-        [id, pid],
-      );
-      return row?.ready === true;
+      const now = await state();
+      waitedLive ||= now.waiting && !now.lapsed;
+      return now.waiting;
+    });
+    await waitUntil(async () => {
+      const now = await state();
+      return now.waiting && now.lapsed;
     });
     release.release();
-    return await running;
+    return { saved: set?.expires ?? '', waitedLive, result: await running };
   } finally {
     release.release();
     await holding;
@@ -62,31 +83,49 @@ async function pastExpiry<T>(id: string, limit: string, run: () => Promise<T>): 
   }
 }
 
-describe.skipIf(noDatabase)(
-  'C39-T a resend judges expiry again once the limit locks are held',
-  () => {
-    it.each(['address', 'account'] as const)(
-      'a resend waiting for the %s limit lock cannot revive a lapsed invitation',
-      async (kind) => {
-        const id = await invite(c.admin);
-        const [before] = await w.db.admin.execute<{ address: string; revision: number }>(
-          'select address, revision from public.invitations where id = $1',
-          [id],
-        );
-        const limit =
-          kind === 'address' ? `address:${before?.address ?? ''}` : `account:${c.admin.actorId}`;
-        const result = await pastExpiry(
-          id,
-          limit,
-          async () => await as(c.admin, 'invitation.resend', { invitationId: id }),
-        );
-        expect(codeOf(result)).toBe('TRANSITION_NOT_PERMITTED');
-        const [after] = await w.db.admin.execute<{ revision: number }>(
-          'select revision from public.invitations where id = $1',
-          [id],
-        );
-        expect(after?.revision).toBe(before?.revision);
-      },
-    );
-  },
-);
+describe.skipIf(noDatabase)('C39-T a resend judges expiry again once its locks are held', () => {
+  it.each(['address limit', 'account limit', 'access'] as const)(
+    'a resend waiting for the %s lock cannot revive a lapsed invitation',
+    async (kind) => {
+      const id = await invite(c.admin);
+      const [before] = await w.db.admin.execute<{ address: string; revision: number }>(
+        'select address, revision from public.invitations where id = $1',
+        [id],
+      );
+      const hold = async (tx: TenantQuery): Promise<void> => {
+        if (kind === 'access') await lockAccess(tx);
+        else {
+          const key =
+            kind === 'address limit'
+              ? `address:${before?.address ?? ''}`
+              : `account:${c.admin.actorId}`;
+          await advisoryLock(tx, `limit:${w.alpha}:invitation:${key}`);
+        }
+      };
+      const { saved, waitedLive, result } = await pastExpiry(
+        id,
+        hold,
+        async () => await as(c.admin, 'invitation.resend', { invitationId: id }),
+      );
+      expect(waitedLive).toBe(true);
+      expect(codeOf(result)).toBe('TRANSITION_NOT_PERMITTED');
+      const [after] = await w.db.admin.execute<{
+        revision: number;
+        expires: string;
+        state: string;
+        resent: number;
+      }>(
+        `select revision, expires_at::text as expires, state,
+                (select count(*)::int from public.audit_events
+                  where subject_record_id = $1 and command = 'invitation.resend'
+                    and outcome = 'applied') as resent
+           from public.invitations where id = $1`,
+        [id],
+      );
+      expect(after?.revision).toBe(before?.revision);
+      expect(after?.state).toBe('pending');
+      expect(after?.resent).toBe(0);
+      expect(after?.expires).toBe(saved);
+    },
+  );
+});
