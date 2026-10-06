@@ -72,9 +72,11 @@ export async function shownInbox(
  * runs and their events, and what its board row derives from other rows: the
  * state and assignee it names, its Actual total (`readActualMinutes`) and the
  * gates it waits at (`awaitingApproval`), as of now, so a deadline passing
- * moves it with no write. Any change the reader can see moves it, and so does
- * a task revoked, trashed or moved to another client; undefined unless the
- * bearer still resolves to that person.
+ * moves it with no write. Of the state and the assignee it takes only what the
+ * row shows, so a write to the rest of their rows (a second factor verified on
+ * the person) tells a reader of the board nothing. Any change the reader can
+ * see moves it, and so does a task revoked, trashed or moved to another
+ * client; undefined unless the bearer still resolves to that person.
  */
 export async function boardReach(
   database: Database,
@@ -112,10 +114,16 @@ const SEEN = `${REACH},
                 'UTF8')), 'hex') as seen
          from (select r.id::text || ':' || r.revision::text from public.records r
                 where r.business_id = $1 and r.deleted_at is null
-                  and (r.id in (select id from seen) or r.id in (select state from seen)
+                  and (r.id in (select id from seen)
                        or r.data ->> 'task' in (select id::text from seen))
                union all
-               select 'a' || p.id::text || ':' || p.xmin::text from public.people p
+               select 's' || s.id::text || ':' || jsonb_build_array(s.data ->> 'key',
+                        s.data ->> 'label', s.data ->> 'machine_category', s.data ->> 'position')::text
+                 from public.records s
+                where s.business_id = $1 and s.deleted_at is null
+                  and s.id in (select state from seen)
+               union all
+               select 'a' || p.id::text || ':' || to_jsonb(p.display_name)::text from public.people p
                 where p.business_id = $1 and p.id in (select assignee from seen)
                union all
                select 'm' || m.task_id::text || ':' || sum(m.minutes)::text from public.time_entries m
