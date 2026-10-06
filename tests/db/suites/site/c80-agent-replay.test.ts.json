@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C80 separation: a correction request's stored receipt is replayed only to a delegation that could make that request now, never to one for another person or client."
+}

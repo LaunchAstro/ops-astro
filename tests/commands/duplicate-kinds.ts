@@ -207,6 +207,11 @@ export const DECLARED: Readonly<
   'run.child_handback': { carry: 'not carried', plant: 'needs a child run' },
   'chat.send_direct': { carry: 'not carried', plant: 'a team conversation’s, never on a task' },
   'chat.mark_read': { carry: 'not carried', plant: 'the reader’s own marker, not the task' },
+  'chat.start_group': { carry: 'not carried', plant: 'a team group and its members, no task' },
+  'chat.send_group': { carry: 'not carried', plant: 'a team group’s message, never on a task' },
+  'chat.rename_group': { carry: 'not carried', plant: 'a team group’s own name' },
+  'chat.change_members': { carry: 'not carried', plant: 'a team group’s member rows' },
+  'chat.leave': { carry: 'not carried', plant: 'the caller’s own member row' },
   // C33: an automation of the business, carrying no task.
   'activation.change': { carry: 'not carried', plant: 'an automation, not task content' },
   'definition.release': { carry: 'not carried', plant: 'an automation, not task content' },
@@ -225,6 +230,10 @@ export const DECLARED: Readonly<
   'mandate.revoke': { carry: 'not carried', plant: 'a client mandate, not task content' },
   'graduation.promote': { carry: 'not carried', plant: 'a client mandate, not task content' },
   'graduation.demote': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  // C80: a live correction is the site's, decided by its approver; a duplicate carries none.
+  'live_correction.request': { carry: 'not carried', plant: 'needs a live site page' },
+  'live_correction.decide': { carry: 'not carried', plant: 'needs a requested correction' },
+  'settings.set_live_correction_approver': { carry: 'not carried', plant: 'a business setting' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

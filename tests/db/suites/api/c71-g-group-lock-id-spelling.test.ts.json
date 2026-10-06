@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a group send and a member's removal serialise on one conversation lock whatever the case of the conversation id"
+}

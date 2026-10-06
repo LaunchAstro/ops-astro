@@ -30,6 +30,7 @@ import { enrolCaller, type Caller } from './cast.ts';
 import { isInvitation } from './role-case-invitation-bodies.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { taskBodyContext } from './c80-bodies.ts';
 import { factorMember } from './role-case-access-bodies.ts';
 import { gateContext } from './role-case-gate-bodies.ts';
 import { probeOperands } from './role-case-fixed-bodies.ts';
@@ -245,7 +246,7 @@ export async function createHarness(part: string): Promise<Harness> {
     freshTask,
     probeBody,
     positiveBody: createPositiveBody({
-      alphaTaskId: alphaTask.id,
+      ...taskBodyContext(world, alphaTask.id),
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) =>
         await asPerson(name, body, 'alpha', isInvitation(name) ? inviter : world.ada),

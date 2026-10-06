@@ -11,7 +11,7 @@ export const READ: DataEffects = writing([]);
 export const TASK: DataEffects = writing(client('records', 'record_unique_values'));
 // A map or its ticket: the task, and the map's derived summary and frontier.
 export const MAP_TASK: DataEffects = writing(
-  client('records', 'record_unique_values', 'map_summaries', 'map_frontier'),
+  TASK.writes.concat(client('map_summaries', 'map_frontier')),
 );
 // A proposal raises the decision's inbox items (INB-1b).
 export const PROPOSAL: DataEffects = writing(

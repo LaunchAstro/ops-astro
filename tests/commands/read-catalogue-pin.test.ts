@@ -2,15 +2,12 @@
 //
 // The per-read facts, pinned as they stood at 06ab232.
 //
-// Written before the read facts were folded into one typed catalogue (thermo
-// review b483399, H3), and green before and after. Each read's identifiers and
-// whether an outsider is told NOT_FOUND are pinned by literal, and its operand
-// check by the exact refusal it gives each of a set of bodies, so a
-// refactor that moved a check, loosened one or changed its words fails here
-// before a caller sees it. Since the catalogue landed, each fact is read off
-// the read's row, and the row's spine, subject and authority mode are pinned
-// beside them. The refusal order itself is pinned by
-// `tests/acceptance/identifier-timing` and `identifier-negatives`.
+// Written before the read facts were folded into one typed catalogue (thermo review b483399, H3),
+// and green before and after. Identifiers and whether an outsider is told NOT_FOUND are pinned by
+// literal, and each operand check by the exact refusal it gives each body, so a refactor that
+// moved, loosened or reworded a check fails here first. Since the catalogue landed, each fact is
+// read off the read's row, with the row's spine, subject and authority mode pinned beside them.
+// The refusal order is pinned by `tests/acceptance/identifier-timing` and `identifier-negatives`.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -42,6 +39,7 @@ const PINNED_IDENTIFIERS = {
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'live_correction.read': ['correctionId'],
   'map.frontier': ['recordId'],
   'map.view': ['recordId'],
   'operations.read': [],
@@ -140,6 +138,10 @@ const LEDGER_ZONE = {
   fixes: ['Send timeZone as a zone name the server knows, such as Australia/Brisbane.'],
 };
 
+/** The one refusal every body gets for an operand none of them carries. */
+const unsent = (name: string, fix: string) =>
+  BODIES.map(() => ({ code: 'FIELD_VALUE_INVALID', names: [name], fixes: [fix] }));
+
 /** For each read, the refusal each body gets, in `BODIES` order; `null` is no refusal. */
 const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
@@ -216,19 +218,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
+  // C80's correction and AW-12's run, which none of these bodies carries.
+  'live_correction.read': unsent('correctionId', 'Send correctionId as the correction.'),
+  'harness.read': unsent('runId', 'Send runId as the run’s identifier.'),
   // C71-D: a conversation is named by its id, which none of these bodies carries.
   'chat.conversations': BODIES.map(() => null),
-  'chat.messages': BODIES.map(() => ({
-    code: 'FIELD_VALUE_INVALID',
-    names: ['conversationId'],
-    fixes: ['Send conversationId as a conversation’s identifier.'],
-  })),
-  // AW-12: the run, which none of these bodies carries.
-  'harness.read': BODIES.map(() => ({
-    code: 'FIELD_VALUE_INVALID',
-    names: ['runId'],
-    fixes: ['Send runId as the run’s identifier.'],
-  })),
+  'chat.messages': unsent('conversationId', 'Send conversationId as a conversation’s identifier.'),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -240,7 +235,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same thirty-nine reads', () => {
+  it('names the same forty reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

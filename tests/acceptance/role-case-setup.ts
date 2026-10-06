@@ -2,8 +2,9 @@
 //
 // The role-case matrix's positive bodies for setup's commands: custody (C31),
 // the connector fleet (MP-14-7a) and standing mandates (MP-14-10a).
-// `tableBody` answers these, the fixed literals (`role-case-fixed-bodies.ts`)
-// and team invitations (C39-T, `role-case-invitation-bodies.ts`)
+// `tableBody` answers these, the fixed literals (`role-case-fixed-bodies.ts`),
+// team invitations (C39-T, `role-case-invitation-bodies.ts`) and C80's live
+// correction (`c80-bodies.ts`)
 // in one call from `role-case-positive-body.ts`, so that file stays under the
 // per-file cap.
 
@@ -11,6 +12,8 @@ import { randomUUID } from 'node:crypto';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
+import { C80_NAMES, c80PositiveBody } from './c80-bodies.ts';
+import type { BodyContext, Prepared } from './role-case-bodies.ts';
 import { invitationBody, isInvitation } from './role-case-invitation-bodies.ts';
 
 type Body = { readonly body: Readonly<Record<string, unknown>> } | undefined;
@@ -46,11 +49,12 @@ async function custodyBody(name: CommandName, context: SetupContext): Promise<Bo
   }
 }
 
-/** A fixed literal's, a setup command's or an invitation's positive body; undefined otherwise. */
-export async function tableBody(name: CommandName, context: SetupContext): Promise<Body> {
+/** A fixed literal's, a setup command's, an invitation's or C80's positive body; else undefined. */
+export async function tableBody(name: CommandName, context: BodyContext): Promise<Body | Prepared> {
   const fixed = FIXED_BODIES[name];
   if (fixed !== undefined) return { body: { ...fixed } };
   if (isInvitation(name)) return await invitationBody(name, context);
+  if (C80_NAMES.has(name)) return await c80PositiveBody(name, context);
   // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
   if (name === 'connection.fleet' || name === 'connection.signal') return { body: {} };
   // The graduation region (MP-14-10a): the admin reads it.

@@ -180,6 +180,7 @@ const OPERANDS = {
   'map.view': { recordId: 'r' },
   'map.frontier': { recordId: 'r' },
   'harness.read': { runId: 'r' },
+  'live_correction.read': { correctionId: 'c' },
   'privacy.draft_breach_notices': {
     incidentId: '00000000-0000-4000-8000-000000000000',
     oaic: { name: 'o', address: 'a' },
