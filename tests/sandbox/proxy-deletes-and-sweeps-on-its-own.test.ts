@@ -342,3 +342,18 @@ it('kills and deletes on time while a create holds the lock on a slow pin read',
   await Promise.all([killed, deleted]);
   expect([heldId(w), w.held.size]).toEqual([null, 0]);
 });
+
+it('refuses a run answer that lands after a sweep removed its container as unavailable', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(C));
+  await state.handle(op('start', ID));
+  const release = hold(w, 'wait');
+  const waited = state.handle(op('wait', ID));
+  await settle();
+  w.answer.delete = 500;
+  await state.handle(op('delete', ID));
+  expect(heldId(w)).toBeNull();
+  release();
+  expect(await waited).toEqual(UNAVAILABLE);
+});
