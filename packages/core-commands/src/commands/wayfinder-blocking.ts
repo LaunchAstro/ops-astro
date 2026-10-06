@@ -4,9 +4,9 @@
 // blocking set, its claim, and fog graduating into tickets. Each runs inside
 // the envelope (see `wayfinder-chart.ts`).
 
-import { isUuid } from '../../../core-records/src/index.ts';
+import { isUuid, wayfinderFacts } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { refuseCommand } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
@@ -107,7 +107,9 @@ export async function setBlocking(
 
 /**
  * `ticket claimed`: first come. The claimer becomes the assignee of an open,
- * unclaimed ticket; anything already claimed is refused and left as it is.
+ * unclaimed ticket of a map; anything already claimed, by a person, a
+ * delegate or an agent assignee, is refused and left as it is. A trashed
+ * ticket is not found, as one that does not exist.
  */
 export async function claimTicket(
   tx: TenantQuery,
@@ -115,18 +117,26 @@ export async function claimTicket(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('claimTicket: the envelope read no target');
+  if (target.deleted_at !== null) return refused(refuseNotFound());
+  const facts = await wayfinderFacts(tx, target.id);
+  if (facts?.mapId === null || facts?.mapId === undefined || facts.mapId === target.id) {
+    return notPermitted(['parent'], ['Only a ticket of a map is claimed.']);
+  }
   if (completed(context, target.data['state'])) {
     return notPermitted(['state'], ['A closed ticket is not claimed.']);
   }
   if (target.data['assignee'] !== undefined && target.data['assignee'] !== null) {
     return notPermitted(['claimed'], ['Someone has claimed this ticket already.']);
   }
-  if (target.data['delegate'] !== undefined && target.data['delegate'] !== null) {
-    return notPermitted(['claimed'], ['An agent has claimed this ticket already.']);
+  for (const held of ['delegate', 'agent']) {
+    if (target.data[held] !== undefined && target.data[held] !== null) {
+      return notPermitted(['claimed'], ['An agent has claimed this ticket already.']);
+    }
   }
   const rows = await tx.query<{ readonly revision: string }>(
     `update records set data = data || jsonb_build_object('assignee', $3::uuid), updated_at = now()
-      where business_id = $1 and id = $2 returning revision::text as revision`,
+      where business_id = $1 and id = $2 and deleted_at is null
+      returning revision::text as revision`,
     [tx.businessId, target.id, context.session.personId],
   );
   return applied(target.id, Number(rows[0]?.revision), { assignee: context.session.personId });
