@@ -196,7 +196,6 @@ export function useChat(
   const [held, setHeld] = useState<Held>({});
   const reads = useReads(client, grantKey, setList, setHeld);
   useMessageReads(reads, list, held);
-
   useTopics(client, reads, topicsOf(list));
 
   const settledRef = useRef(false);
@@ -263,22 +262,23 @@ export function talkOf(chat: ChatModel, me: string): TeamConversations | null {
   for (const view of list) {
     const held = chat.held[view.conversationId];
     if (held === null || held === undefined) continue;
-    // The server serves nothing from before the reader's current join (a rejoin is a
-    // new window), so neither does this. A departed view has no join to bound it: it
-    // draws a read asked since the list showed it departed, while that read agrees with it.
+    // Nothing from before the reader's current join (a rejoin is a new window), as the
+    // server serves. A departed view draws a read asked since the list showed it departed,
+    // while that read agrees with it, all read: no marker is kept there to clear its unread.
     const since = timeOf(view.joinedAt) ?? -Infinity;
-    const messages = departed(view)
-      ? held.departed && !stale(view, held)
+    const left = departed(view);
+    const messages = !left
+      ? held.messages.filter((message) => Date.parse(message.at) >= since)
+      : held.departed && !stale(view, held)
         ? held.messages
-        : []
-      : held.messages.filter((message) => Date.parse(message.at) >= since);
-    const readable = { lastRead: held.lastRead, messages };
+        : [];
+    const readable = { lastRead: left ? (messages.at(-1)?.at ?? null) : held.lastRead, messages };
     const other = view.members.find((id) => id !== me);
     if (view.kind === 'direct' && other !== undefined) threads.push({ with: other, ...readable });
     else if (view.kind === 'group') {
       const { conversationId: id, members } = view;
       const name = view.name ?? 'A group you left';
-      groups.push({ id, name, members, canManage: false, left: departed(view), ...readable });
+      groups.push({ id, name, members, canManage: false, left, ...readable });
     }
   }
   const directWith = (person: string): string | undefined =>

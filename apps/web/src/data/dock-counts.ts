@@ -32,7 +32,9 @@ const owedOf: ReadFigure = async (client) => {
 const unreadOf: ReadFigure = async (client) => {
   const answer = await client.read<ChatConversationsResult>('chat.conversations', {});
   if (!('value' in answer)) return null;
-  return answer.value.conversations.reduce((sum, each) => sum + each.unread, 0);
+  // A group the reader has left keeps no marker for them, so its unread could never clear.
+  const joined = answer.value.conversations.filter((each) => each.members.length > 0);
+  return joined.reduce((sum, each) => sum + each.unread, 0);
 };
 
 /** Each client's figures being shown, by the read that refreshes them. */
