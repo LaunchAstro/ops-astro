@@ -63,6 +63,10 @@ const BEFORE_LOCK: readonly (readonly [RegExp, string])[] = [
     "the operation identity's door (#932), or a declared subtree's lock",
   ],
   [
+    /^select pg_advisory_xact_lock_shared\(hashtextextended\(\$1, 0\)\)$/u,
+    "the business's access lock, shared, before authority is asked and held to commit",
+  ],
+  [
     /^select r\.data ->> 'type' as type, r\.data ->> 'map_owner' as owner, /u,
     "a map write's ticket's map, read only to name the row held next; nothing is written",
   ],

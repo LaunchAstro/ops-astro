@@ -73,7 +73,7 @@ describe.skipIf(serverUrl === undefined)('C52-A pins', () => {
 
   it('C52-A no silent skill change: runs and a newer release leave the pin and its approval; an edit leaves no approval standing', async () => {
     const { version, activation, approval } = await f.approved();
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     await f.fire(activation.id, s.start);
     await f.fire(activation.id, s.start);
     await f.fire(activation.id, s.start);
@@ -127,7 +127,7 @@ describe.skipIf(serverUrl === undefined)('C52-A pins', () => {
     const bravo = await bravoApproved(w, 'scheduled', `Bravo digest ${canary}`);
     const { activation, approval } = await f.approved();
     const occurrence = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
-    const s = starter();
+    const s = await starter(w.db, w.alpha, w.bravo);
     for (const [activationId, approvalId] of [
       [activation.id, approval.id],
       [randomUUID(), randomUUID()],

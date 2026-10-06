@@ -47,8 +47,8 @@ async function revokedBeforeLockRefused(): Promise<void> {
   const before = await resetState(target);
   const reached = latch();
   const resume = latch();
-  // Pause at the handler's first access-lock request, after the real
-  // envelope has admitted the caller and checked their live grant.
+  // Pause at the first access-lock request: preparation's, exclusive for this
+  // command, before the caller's grant is asked under that lock.
   const paused: Database = {
     log: db.app.log,
     close: async () => {},

@@ -40,6 +40,7 @@
 import {
   advisoryLock,
   checkAuthority,
+  lockAccess,
   refuseStaleMoneyStep,
   subjectsOf,
   wayfinderFacts,
@@ -624,6 +625,10 @@ async function coveringMap(
   return facts.mapId === id ? undefined : facts.mapId;
 }
 
+/** OWNER-3 A: writes judged under revocations' access lock; exclusive where the handler takes it. */
+const ACCESS_LOCKERS =
+  /^(?:access\.(?:grant|revoke|end|reset_factor)|grant\.revoke|credential\.issue)$/u;
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -662,6 +667,7 @@ export async function prepareCommand(
   let asked: ScopeRequest | undefined;
   // A `self` row asks no grant: its handler reaches the caller's own rows only.
   if (declaration.authorisedOn !== 'self') {
+    await lockAccess(tx, ACCESS_LOCKERS.test(declaration.name) ? undefined : 'shared');
     asked = {
       // From the declaration, never written in here: see `CommandDeclaration`.
       collection: declaration.collection,
@@ -699,7 +705,7 @@ export async function prepareCommand(
     // Before any task row: a command that rewrites a subtree's links takes its
     // per-business lock first, so it never holds a row while waiting for it.
     // Only here, where the target is read: a replay re-judges authority with
-    // `targetsExistingRecord` off, and it locks nothing (`withheldNow`).
+    // `targetsExistingRecord` off, and it locks no record (`withheldNow`).
     if (declaration.serialise !== undefined) await serialiseOn(tx, declaration.serialise);
     if (declaration.serialise === WAYFINDER_MAP_LOCK) await holdMapOf(tx, recordId);
     // A target the runtime locks in its own order is only read here. The

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "PORT-P11 (P11b, Sol PRV-oa-1048-R1): a claim and its dispatch in one transaction never deadlock with another claimer of the same activation, and a worker stopped during an admitted dispatch waits for its run start or, stopped first, gets none; each race on separate connections, the wait proved by pg_blocking_pids."
+}

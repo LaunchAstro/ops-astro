@@ -5,6 +5,34 @@
 // product and runs no container.
 
 export { AttachFrames, type AttachEnd } from './attach-frames.ts';
+export {
+  admitCandidateLoad,
+  candidateCreate,
+  type CandidateBook,
+  countCandidateCreate,
+  dropCandidateImage,
+  EMPTY_BOOK,
+  holdsCandidateImage,
+  readBook,
+  readDeployed,
+  recordCandidateWait,
+  writeBook,
+} from './candidate-book.ts';
+export {
+  admitContainerCreate,
+  admitContainerOp,
+  type ContainerBook,
+  containerDue,
+  deleteAnswered,
+  EMPTY_CONTAINERS,
+  GRACE_MS,
+  noteAttachClosed,
+  noteAttachEnded,
+  noteWaitReturned,
+  readContainerBook,
+  recordContainer,
+  writeContainerBook,
+} from './container-book.ts';
 export { readBuildRequest, type BuildRequest, type SiteOf } from './build-request.ts';
 export {
   fixedCreateBody,
@@ -29,6 +57,8 @@ export {
   type ProxyGrammar,
   type ProxyOp,
 } from './proxy-request.ts';
+export { type ProxyRecord, readProxyRecord, writeProxyRecord } from './proxy-record.ts';
+export { type ProxyPorts, ProxyState, type StateOp } from './proxy-state.ts';
 export {
   readReason,
   REASONS,
@@ -40,6 +70,7 @@ export {
 export { s1Env, s2Env } from './run-env.ts';
 export { runOutcome, type RunEnd, type RunOutcome } from './run-outcome.ts';
 export { readSiteRecord, type SiteRecord } from './site-record.ts';
+export { sweep, SWEEP_RETRY_MS, type SweepDaemon } from './sweep.ts';
 export { parseStrictJson, type Json } from './strict-json.ts';
 export {
   OUTPUT_CAP,

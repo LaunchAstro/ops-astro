@@ -6,14 +6,21 @@
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { workOf } from '../../packages/core-commands/src/commands/conversation-work.ts';
-import { authorityFor, noDatabase, start, useOccurrenceWorld, w } from './occurrence-run-world.ts';
+import {
+  authorityFor,
+  noDatabase,
+  occurrence,
+  start,
+  useOccurrenceWorld,
+  w,
+} from './occurrence-run-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useOccurrenceWorld('occurrence_conversation_work');
 
 it('an occurrence run a conversation started is its open work, with no plan to join', async () => {
-  const started = await start(w.s, randomUUID(), authorityFor(w.s), w.worker);
+  const started = await start(w.s, await occurrence(w.s), authorityFor(w.s), w.worker);
   if (!started.ok) throw new Error(`refused ${started.refusal.code}`);
   const conversationId = randomUUID();
   await w.s.db.admin.execute(
