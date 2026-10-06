@@ -137,7 +137,6 @@ async function carryBoardToDescendants(
         where child.business_id = $1 and child.record_type_id = $2 and child.deleted_at is null
      ) cycle id set looped using path`;
   const asked: string[] = [];
-  let whole: boolean | undefined;
   for (;;) {
     // eslint-disable-next-line no-await-in-loop -- each pass sees what the last one waited on
     const found = await tx.query<{ readonly id: string }>(
@@ -149,9 +148,10 @@ async function carryBoardToDescendants(
     );
     const fresh = found.filter(({ id }) => !asked.includes(id));
     if (fresh.length === 0) break;
-    // eslint-disable-next-line no-await-in-loop -- asked once, on the first pass that finds any
-    whole ??= (await checkAuthority(tx, subjectsOf(context.session), WHOLE_TASKS)).ok;
-    if (!whole) {
+    // Asked again on each pass: a grant can lapse while a pass waits.
+    // eslint-disable-next-line no-await-in-loop
+    const whole = await checkAuthority(tx, subjectsOf(context.session), WHOLE_TASKS);
+    if (!whole.ok) {
       for (const { id } of fresh) {
         // Sequential, stopping at the first: the answer is the same whichever.
         // eslint-disable-next-line no-await-in-loop
