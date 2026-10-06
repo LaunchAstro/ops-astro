@@ -143,6 +143,8 @@ it('lets a raised attempt load again after a failed F2, and the old image be del
   expect(holdsCandidateImage(reload.book, C)).toBe(true);
   expect(holdsCandidateImage(dropCandidateImage(reload.book, C), C)).toBe(false);
   expect(holdsCandidateImage(dropCandidateImage(reload.book, D), D)).toBe(true);
+  const counted = countCandidateCreate(reload.book, D);
+  expect(dropCandidateImage(counted, D)).toEqual(counted);
 });
 
 it('refuses a reload of an attempt whose failed candidate image was deleted, or a lower one', () => {
