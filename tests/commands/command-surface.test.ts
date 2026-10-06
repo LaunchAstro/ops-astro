@@ -280,10 +280,9 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
       'task.start',
       'task.triage',
     ]);
-    // Sixteen names, and only two of them — complete and reopen — are among
-    // the contract's nine commands. The other fourteen are why this part declares
-    // more than nine, and `task.rank` is a seventeenth operation the mechanics
-    // need that neither list carries.
+    // Sixteen names, and only two of them — complete and reopen — are among the contract's nine
+    // commands. The other fourteen are why this part declares more than nine, and `task.rank` is
+    // a seventeenth operation the mechanics need that neither list carries.
     expect(named.filter((name) => CONTRACT_NINE.includes(name as CommandName))).toStrictEqual([
       'task.complete',
       'task.reopen',
