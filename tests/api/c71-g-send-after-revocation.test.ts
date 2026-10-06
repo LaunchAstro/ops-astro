@@ -52,6 +52,7 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
         sending = g.as(world.mia, 'chat.send_group', {
           conversationId: g.conversationId,
           body: queued,
+          mentions: [g.chat.tess.personId],
         });
         await expect.poll(async () => await advisoryWaiters(world), { timeout: 5_000 }).toBe(1);
         revoking = executeCommand(revoker, world.alpha, world.ada.presented, 'api', {
@@ -74,6 +75,7 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
       const refused = await g.as(world.mia, 'chat.send_group', {
         conversationId: g.conversationId,
         body: after,
+        mentions: [g.chat.tess.personId],
       });
       expect(refused.code, refused.text).toBe('SCOPE_NOT_GRANTED');
       expect(await g.bodiesOf(world.ada)).not.toContain(after);
@@ -84,6 +86,15 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
         [world.alpha, after],
       );
       expect(written).toEqual([]);
+      // Nor is the member it names raised a mention of it.
+      const mentioned = await world.db.admin.execute(
+        `select i.id from public.inbox_items i join public.records c
+        on c.business_id = i.business_id and c.id = i.fact_id
+       where i.business_id = $1 and i.recipient_person_id = $2 and i.reason = 'mention'
+         and c.data ->> 'body' = $3`,
+        [world.alpha, g.chat.tess.personId, after],
+      );
+      expect(mentioned).toEqual([]);
     } finally {
       await sending?.catch(settled);
       await revoking?.catch(settled);
