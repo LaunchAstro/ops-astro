@@ -238,6 +238,29 @@ describe.skipIf(noDatabase)('C39-T enrolment races', () => {
     expect(askedEarly).toBe(0);
   }, 30_000);
 
+  it('C39-T enrolment: an accept whose claim lapsed, though no other accept took it, sets no password outside the limits (SEC-P3A-5 L2)', async () => {
+    const address = addressFor('lapsed-untaken');
+    const { id, token } = await invited(c.admin, address);
+    // A login an earlier accept stranded, so the next accept's create is refused and it updates.
+    e.users.mode('made_late');
+    expect(await acceptOwn(token, passwordFor())).toStrictEqual(UNAVAILABLE);
+    await lapseClaims();
+    e.users.mode('accept');
+    const paused = pausedBeforeCall();
+    const late = acceptOwn(token, passwordFor(), paused.broker);
+    await paused.reached;
+    // Its claim passes its bound before the create leaves: no longer counted in the limits.
+    await w.db.admin.execute(
+      `update public.invitations set accept_claimed_until = clock_timestamp() - interval '1 second'
+        where id = $1`,
+      [id],
+    );
+    const from = e.users.received.length;
+    paused.resume();
+    expect(await late).toStrictEqual(UNAVAILABLE);
+    expect(putsSince(from)).toBe(0);
+  }, 30_000);
+
   it('C39-T enrolment: five accepts at once in one business send no more creates than auth.create_user allows in flight', async () => {
     e.users.mode('accept');
     const links = [];
