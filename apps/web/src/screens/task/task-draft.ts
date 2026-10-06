@@ -18,8 +18,9 @@
 // answer stops Create. An edit writes the draft without them; a drop drops all.
 //
 // **Create is the task first, then each part by its own command (DN-05).**
-// `task.create` writes the task; the client, the note, the tags, the subtasks
-// and the logged time then go through `task.set_party`, `task.comment`, the
+// `task.create` writes the task; the client, the category, the owner, the
+// note, the tags, the subtasks and the logged time then go through
+// `task.set_party`, `task.set_category`, `task.assign`, `task.comment`, the
 // tag commands, `task.create` under the new parent and `time.log`, so each is
 // checked against its own permission and audited under its own name. A part
 // refused once the task exists is named back to the person, never retried as
@@ -28,6 +29,7 @@
 import type { OperationsClient } from '../../operations/client.ts';
 import { settle } from '../../records/use-command.ts';
 import { partsOf } from './draft-parts.ts';
+import type { Prefill } from './task-prefill.ts';
 
 export interface TaskDraft {
   readonly title: string;
@@ -43,6 +45,12 @@ export interface TaskDraft {
   readonly note: string;
   /** The client from the page's scope, or null: never a fixed client. */
   readonly clientId: string | null;
+  /** A category id (`TASK_CATEGORIES`), guessed from the page or chosen, or null. */
+  readonly category: string | null;
+  /** The owner the page named, or null: Create assigns nobody. */
+  readonly owner: { readonly id: string; readonly name: string } | null;
+  /** The sentence admitting what the page's guesses came from (DN-02), or null. */
+  readonly why: string | null;
 }
 
 export const emptyDraft = (clientId: string | null): TaskDraft => ({
@@ -54,6 +62,19 @@ export const emptyDraft = (clientId: string | null): TaskDraft => ({
   time: '',
   note: '',
   clientId,
+  category: null,
+  owner: null,
+  why: null,
+});
+
+/** A fresh draft with the page's guesses in it (DN-02). */
+export const prefilledDraft = (prefill: Prefill): TaskDraft => ({
+  ...emptyDraft(prefill.clientId),
+  due: prefill.due,
+  estimate: prefill.estimate,
+  category: prefill.category,
+  owner: prefill.owner,
+  why: prefill.why,
 });
 
 const PREFIX = 'ops-astro.task-draft.';

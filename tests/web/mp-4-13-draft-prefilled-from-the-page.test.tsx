@@ -76,7 +76,7 @@ describe('MP-4-13 a draft filed from a door opens with the page’s guesses', ()
     const storage = store();
     const first = await draft({ storage, scope: DOOR });
     await typeInto(first.view, '#panel-draft-name', 'Kept name');
-    unmountAll();
+    await first.view.unmount();
     const other = prefillOf({ from: 'Inbox', category: 'branding' }, NOW);
     const { view } = await draft({
       storage,

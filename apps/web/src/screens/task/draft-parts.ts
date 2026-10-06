@@ -50,6 +50,24 @@ export function partsOf(
           revision(operationId),
         ),
     }),
+    ...when(draft.category !== null, {
+      what: 'the category',
+      run: (operationId) =>
+        client.mutate(
+          'task.set_category',
+          { recordId, fields: { category: draft.category } },
+          revision(operationId),
+        ),
+    }),
+    ...when(draft.owner !== null, {
+      what: 'the owner',
+      run: (operationId) =>
+        client.mutate(
+          'task.assign',
+          { recordId, fields: { assignee: draft.owner?.id } },
+          revision(operationId),
+        ),
+    }),
     ...when(note !== '', {
       what: 'the note',
       run: (operationId) =>

@@ -32,7 +32,7 @@ import {
   type ReactElement,
 } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
-import { DraftFields } from './DraftFields.tsx';
+import { DraftFields, Missed } from './DraftFields.tsx';
 import type { Prefill } from './task-prefill.ts';
 import {
   createFromDraft,
@@ -40,6 +40,7 @@ import {
   emptyDraft,
   keepDraft,
   newAttempt,
+  prefilledDraft,
   readAttempt,
   readDraft,
   saveAttempt,
@@ -115,7 +116,9 @@ function DraftBody(
     <>
       <DraftHead busy={creating.busy} docked={props.docked === true} onClose={props.onClose} />
       <p className="card__sub" data-draft-admission>
-        New task, filed from {props.scope.from}. Nothing is stored until Create.
+        New task, filed from {props.scope.from}.{' '}
+        {kept.draft.why === null ? '' : `${kept.draft.why} `}
+        Nothing is stored until Create.
       </p>
       <DraftFields draft={kept.draft} put={kept.put} name={kept.name} locked={creating.busy} />
       {creating.refusal === null ? null : (
@@ -180,7 +183,11 @@ function DraftHead(props: {
 function useKeptDraft(props: DraftPanelProps) {
   const { storage, person } = props;
   const [draft, setDraft] = useState<TaskDraft>(
-    () => readDraft(storage, person) ?? emptyDraft(props.scope.clientId),
+    () =>
+      readDraft(storage, person) ??
+      (props.scope.prefill === undefined
+        ? emptyDraft(props.scope.clientId)
+        : prefilledDraft(props.scope.prefill)),
   );
   // The create's identity, kept across an unknown outcome and a remount, and
   // dropped by any edit.
@@ -275,29 +282,4 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     if (outcome !== null) flight.show(land(props, kept, outcome, attempt));
   };
   return { ...view, create };
-}
-
-/** A task created with parts refused after it: named, and a door to the task (never a second create). */
-function Missed(props: {
-  readonly taskKey: string;
-  readonly parts: readonly string[];
-  readonly onOpen: (key: string) => void;
-}): ReactElement {
-  return (
-    <>
-      <p className="card__sub" role="status" data-draft-missed>
-        Created {props.taskKey}; not added: {props.parts.join(', ')}. Add them on the task.
-      </p>
-      <button
-        className="btn btn--primary"
-        type="button"
-        data-draft="open-created"
-        onClick={() => {
-          props.onOpen(props.taskKey);
-        }}
-      >
-        Open the task
-      </button>
-    </>
-  );
 }
