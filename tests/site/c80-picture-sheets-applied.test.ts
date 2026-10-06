@@ -123,3 +123,47 @@ it('browser integrity rejection cannot leave a successful picture without the ob
   const picture = await capturePicture(PAGE, options, browserPort(probe));
   expect(!picture.ok || probe.colour === RED, JSON.stringify({ ok: picture.ok, probe })).toBe(true);
 }, 30_000);
+
+it('markup CSP cannot silently remove an observed inline stylesheet from a successful picture', async () => {
+  const options = world(
+    '<meta http-equiv=Content-Security-Policy content="style-src \'none\'">' +
+      '<style>p{color:red}</style><p>Hello</p>',
+  );
+  const observed = await capturePage(PAGE, options);
+  expect(observed.ok && Object.keys(observed.value.stylesheets)).toEqual(['inline:0']);
+  const probe: Probe = { requests: [] };
+  const picture = await capturePicture(PAGE, options, browserPort(probe));
+  expect(!picture.ok || probe.colour === RED, JSON.stringify({ ok: picture.ok, probe })).toBe(true);
+}, 30_000);
+
+it('a successful picture preserves the stylesheet encoding of the served page', async () => {
+  const html = '<link rel=stylesheet href=/site.css><p id=é>Hello</p>';
+  const css = '@charset "windows-1252";#é{color:red}';
+  const original = world(html);
+  const options: CaptureOptions = {
+    ...original,
+    transport: (request) =>
+      request.url.href === SHEET
+        ? Promise.resolve(answer(css, 'text/css'))
+        : original.transport(request),
+  };
+  // The same served bytes and headers, in Chromium, without the capture's wrapper.
+  const live: Probe = { requests: [] };
+  await browserPort(live)(PAGE, (request) =>
+    Promise.resolve(
+      request.url === PAGE
+        ? { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' }, body: html }
+        : request.url === SHEET
+          ? { status: 200, headers: { 'content-type': 'text/css' }, body: css }
+          : null,
+    ),
+  );
+  expect(live.colour).toBe('rgb(0, 0, 0)');
+  expect(await capturePage(PAGE, options)).toEqual({ ok: false, code: 'CAPTURE_BODY_MALFORMED' });
+  const probe: Probe = { requests: [] };
+  const picture = await capturePicture(PAGE, options, browserPort(probe));
+  expect(
+    !picture.ok || probe.colour === live.colour,
+    JSON.stringify({ ok: picture.ok, live, probe }),
+  ).toBe(true);
+}, 30_000);

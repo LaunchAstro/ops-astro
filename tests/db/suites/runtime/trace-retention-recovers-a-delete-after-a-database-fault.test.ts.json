@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#475): a delete asked before a database fault is still recovered, because the ask is written before the delete."
+}

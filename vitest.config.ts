@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { readFileSync } from 'node:fs';
-import { configDefaults, defineConfig } from 'vitest/config';
+import { relative, sep } from 'node:path';
+import { configDefaults, defineConfig, type ViteUserConfig } from 'vitest/config';
+import { BaseSequencer, type TestSpecification } from 'vitest/node';
+import { localFileShards, readShardPlan } from './scripts/ci-shards.ts';
 
 // With a database, the database-bound suites run. Each file's fresh database
 // is a clone of one template the run migrates from empty once
@@ -29,7 +32,26 @@ const clusterRoleSuites = [
 ];
 const oneSuiteAtATime = process.env['SUITE_PART'] !== undefined;
 
-export default defineConfig({
+// `local checks` runs as shards (CI-SHARDS-2): `vitest run --shard i/n` runs
+// the test files scripts/ci-shards.ts gives shard i by measured time, where
+// vitest's own split counts files. A file's shard depends on its path and the
+// committed plan alone, so each file runs in exactly one (tests/ci/ci-shards.test.ts).
+class MeasuredShards extends BaseSequencer {
+  override shard(files: TestSpecification[]): Promise<TestSpecification[]> {
+    const { root, shard } = this.ctx.config;
+    if (shard === undefined) return Promise.resolve(files);
+    const path = (spec: TestSpecification) => relative(root, spec.moduleId).split(sep).join('/');
+    const split = localFileShards(
+      files.map((spec) => path(spec)),
+      readShardPlan(root),
+      shard.count,
+    );
+    const mine = new Set(split[shard.index - 1]);
+    return Promise.resolve(files.filter((spec) => mine.has(path(spec))));
+  }
+}
+
+const config: ViteUserConfig = defineConfig({
   test: {
     environment: 'node',
     globals: false,
@@ -48,6 +70,7 @@ export default defineConfig({
     // The capture chain's longer timeout, file by file (see the file); a second
     // project would label the `vitest list` lines scripts/db-conformance.mjs reads.
     setupFiles: ['tests/support/capture-chain-timeout.ts'],
+    sequence: { sequencer: MeasuredShards },
     // Hooks are where every database-bound file makes a fresh database
     // (`beforeAll`), a clone or a migration from empty, and drops it
     // (`afterAll`). That is legitimately slow work, and with many files and
@@ -170,3 +193,5 @@ export default defineConfig({
     ],
   },
 });
+
+export default config;

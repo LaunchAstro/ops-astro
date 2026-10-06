@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#475): runs whose reads stay unknown do not stop a later owed run's recovery."
+}

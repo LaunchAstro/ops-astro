@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace export (#475): an owed run's tail goes in bounded bodies, so one large owed run does not block a later run's export."
+}

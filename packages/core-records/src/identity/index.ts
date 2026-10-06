@@ -17,6 +17,7 @@ export {
   standsOnShares,
   standingOf,
   resolveLogin,
+  sessionEndedSince,
   withSession,
   type SecondFactorRule,
   type Session,
@@ -53,3 +54,4 @@ export {
   type SeenSession,
   type SessionEndReason,
 } from './sessions.ts';
+export { holdSubjectEnding } from './ending-keys.ts';

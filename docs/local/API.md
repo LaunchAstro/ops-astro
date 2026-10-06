@@ -1648,6 +1648,9 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.set_category`                        | `setCategory` (`commands/tasks-category.ts`)                                              | served under a live delegation, on its own task (`serve`)                                                                                                                              |
 | `task.share_with_client`                   | `shareWithClient` (`commands/tasks-client-access.ts`)                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.revoke_client_share`                 | `revokeClientShare` (`commands/tasks-client-access.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `record.create`                            | `createRecord` (`commands/record-create.ts`)                                              | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `onboarding.start`                         | `startOnboarding` (`commands/onboarding.ts`)                                              | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `onboarding.step_result`                   | `recordStepResult` (`commands/onboarding.ts`)                                             | served under a live delegation on the step's task (the row's `serve`, `writeStepResult`)                                                                                               |
 | `task.reparent`                            | `reparentTask` (`commands/tasks-place.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.move`                                | `moveTask` (`commands/tasks-place.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.rank`                                | `rankTask` (`commands/tasks-place.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -1666,6 +1669,8 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.list`                              | `listCustodySecrets` (`reads/custody.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `secret.set`                               | `setCustodySecret` (`commands/custody-secrets.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.log`                                 | `logTimeEntry` (`commands/tasks-time.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -1689,6 +1694,10 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `automation.registry` | `readAutomationRegistry` (`reads/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
 | `activation.change` | `changeActivationAsPerson` (`commands/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
 | `definition.release` | `releaseDefinitionVersion` (`commands/automations.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.adopt` | `adoptActivationVersion` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.roll_back` | `rollBackActivation` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `activation.turn_off` | `turnOffActivationAsPerson` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
+| `approval.revoke` | `revokeStandingApproval` (`commands/automation-approvals.ts`) | refused `DELEGATION_EXCLUDES_OPERATION` |
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
 
@@ -2381,6 +2390,49 @@ it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. It holds
 `billing:decide`, so C59's step-up asks it in the envelope: `STEP_UP_REQUIRED`
 403 past 60 minutes while the business's money step-up setting is on.
 
+### Team invitations (C39-T)
+
+`POST /api/b/<key>/invitation/create` with `name`, `email` and `role`
+(`member` or `admin`); `invitation/resend` and `invitation/revoke` with
+`invitationId`. Each asks `share` on `access` for the whole business
+(`access:share`: owners and administrators), and no agent route serves them
+(`DELEGATION_EXCLUDES_OPERATION`). A create or resend of an `admin`
+invitation also asks `access:manage` for the whole business, and without it
+is `SCOPE_NOT_GRANTED` 403 naming `role`, writing nothing; a revoke asks
+`access:share` alone. A create writes a new person and the
+invitation, pending for seven days; a resend moves that on by seven days; a
+revoke ends it. An ended invitation is `TRANSITION_NOT_PERMITTED` 409 naming
+`state`, another business's or an unissued id `NOT_FOUND`, an address already
+pending or confirmed on a member `UNIQUE_VALUE_TAKEN` naming `email`. Creates
+and resends are limited to 3 an hour per address and 30 an hour per person,
+counted from the applied audit events (`RATE_LIMITED` naming `email` or
+`account`). The answer is the invitation's id, its revision and
+`{ invitationId, state }`. The business's worker expires lapsed invitations
+(`expireInvitations`, audited `invitation.expire`).
+
+Each create and each resend allows one email: `sendInvitation`
+(`core-custody`) sends through the broker's `email.send` only while the
+invitation is pending and has an applied act no send has answered, mints a
+fresh enrolment token (32 random bytes of its own), keeps its SHA-256 alone
+and records the attempt against it. It shares the inbox email's ceiling: one
+limit, `email.send`'s catalogued concurrency, counts inbox and invitation
+emails in flight together, each ask until custody's timeout and a minute's
+grace have passed (`EMAIL_AT_CEILING` at it, writing nothing). The login
+provider is never asked for a token, and an address holding a login in
+another business is invited as a new one is.
+
+`POST /api/hooks/auth-email` is the login provider's Send Email hook, mounted
+by `composeApi` when it is given the hook's secret (`AUTH_EMAIL_HOOK_SECRET`,
+`v1,whsec_...`) and a mail broker. It verifies the Standard Webhooks
+signature over the raw body before parsing (401), refuses a stale timestamp
+(401) and a replayed message id (409, held in the attempt's `hook:<id>`
+evidence), and answers every verified message 200 `{}`, sent or not. An
+invitation message is sent through `sendInvitation` when exactly one business
+holds a pending invitation for the address with an unanswered act; other
+Auth mail (a reset among it) has no attempt yet and is not sent (C40). Not
+here yet: the send mounted after the command, the hook wired in `main`, the
+enrolment page and the Access screen (C39-T P3).
+
 ## Tags
 
 `task.read` carries `tags` (MP-4-11): the tags the task carries, `{ id, name }`
@@ -2915,14 +2967,17 @@ row lock, the token is read again at that moment: spent or past its life is
 401 `RESET_LINK_INVALID`, and a factor verified meanwhile is 403
 `RESET_NEEDS_SUPPORT` with nothing spent. Otherwise every live token of the
 login is spent and the reset's window opens (`ops.subject_resets`,
-20261005144947): every session of the login, in every business, is ended up to
+20261005144947), under the login's session-ending key, so a write that read
+one of its sessions live commits first (C52-A): every session of the login, in
+every business, is ended up to
 the moment the window settles, and until then up to five minutes on. The
 password is set at the provider through custody under the catalogued
 `auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
 held by custody alone, whose `auth` destination lists that route and takes no
 POST, `post: false`; the answer must name the same user). In each business
 the login is mapped in, one transaction ends the sessions seen there. Last,
-whatever happened, one transaction in the token's business settles the window
+whatever happened, one transaction in the token's business, holding the login's
+session-ending keys first, settles the window
 (`clock_timestamp()`; a sign-in after it is served) and, only when the
 password was set and every business's ending committed, audits
 `account.password_changed` there, once, as the person that business maps. The
@@ -3121,6 +3176,72 @@ this route and on `grant.revoke`.
 
 `task.set_party`'s `client` must name a client of this business: another
 business's or a made-up one is `NOT_FOUND` 404 naming `client`.
+
+### New client onboarding (C41-A)
+
+Three writes, none of them a send, a run or a spend. `record.create` is the one
+record-create command (RC-13): it takes `{ operationId, type: 'client', fields:
+{ name } }` under `record:write`, never an agent's, makes the client as
+`client.create` does (0055's `clients`, the same name rule and
+`CLIENT_NAME_TAKEN` 409), and answers `{ recordId, type }`. Any other type, or
+any field but `name`, is `FIELD_VALUE_INVALID` 422 naming `type` or `fields`.
+
+`onboarding.start` takes `{ operationId, clientId, templateKey }` under
+`record:write` and, in the handler, `task:write` across the business. It lays a
+template version out as tasks on that client, one per step, each titled with
+its phase, linked to the client (`records.uuid_7`), and recorded with its kind
+(agent-run, needs a person, or waits on the client) and the steps it waits for
+(`onboardings`, `onboarding_steps`, migration 20261005200007). The templates are
+versions in code (`ONBOARDING_TEMPLATES`, `core-records/src/onboarding/template.ts`).
+A client has one onboarding: the start claims it first, so a second start, at
+once or later, is `TRANSITION_NOT_PERMITTED` 409 and writes nothing. It answers
+`{ onboardingId, templateKey, templateVersion, steps: [{ key, phase, kind,
+taskId, dependsOn, state }] }`; an unknown template is `FIELD_VALUE_INVALID` 422
+naming `templateKey`, and a client not of this business `NOT_FOUND` 404.
+
+`onboarding.step_result` takes `{ operationId, recordId, outcome: 'done' |
+'failed', result }` and writes the result onto the step's own task as an
+internal system comment, so reading the task shows it. A done step opens the
+steps waiting on it; a second failure stops the onboarding and says so on the
+task. `task:write` is asked at the step task's own client (`prepare.ts`, the
+`target` lookup), and only while the task is still on the onboarding's client,
+so a holder scoped to one client writes that client's steps and no other's; an
+agent writes the step on the task it is delegated on. An agent records agent
+steps only, on both agent paths: under a delegation, and by an API-2 agent
+credential, whose call runs as its agent, so its comment's source is the
+agent's (`agent:api`), never its person's. A person or client-wait step is a
+person's checkpoint, so an agent's result on one is
+`DELEGATION_EXCLUDES_OPERATION` 403 naming `kind`, asked under the locks before
+anything is written (ORCH79 P12STEPACTOR). A person records a step of any kind.
+It answers `{ step, outcome, opened, stopped }`;
+`FIELD_VALUE_INVALID` 422 names `recordId`, `outcome` or `result`; a task that
+is no step here, or is in the trash, is `NOT_FOUND` 404, as `task.comment`
+answers a trashed task; a step of a stopped or finished onboarding is
+`TRANSITION_NOT_PERMITTED` 409 naming `state=stopped` or `state=done`, and a
+step still waiting, already closed or stopped is that 409 naming its own state.
+A result is content on its task (S0-5): it locks the onboarding, then its
+steps, then the step's task, and asks again under the task's lock whether the
+task is still on the onboarding's client and out of the trash. A task moved to
+another client or trashed meanwhile is `NOT_FOUND` 404 and nothing is written;
+a move after a result is `CLIENT_LOCKED` 409. The result waits on the
+onboarding's lock after its authority was asked, so it asks again once the lock
+is held (`onboarding-authority.ts`): a person's or an API-2 credential's task
+grants are held for share before the lock, so a revocation that comes after
+waits for the result, and `task:write` at the step's client is asked at the
+clock under the lock, so a grant revoked or lapsed during the wait is
+`SCOPE_NOT_GRANTED` 403; a delegated agent's delegation is read `for share`
+under the lock, and one revoked or lapsed during the wait is
+`DELEGATION_NOT_LIVE` 403. Either refusal writes nothing.
+
+The owner-rule moves (U38: an inbox item parking a person or client-wait step
+with whoever owns its move) are not built here; they follow in their own pull
+request. The agent step's run and its gate, and the
+client email's draft and its one send path, are not built here;
+`tests/onboarding/c41-a-held.test.ts` holds each by name. S0-5's first-client
+gate runs on all three commands, each classed `client-data`: after authority on
+the person path (`envelope.ts`) and after the delegation's answers on the agent
+path (`agent-envelope.ts`), before any write. Its named `C41-A gate refusal`
+case is held there too.
 
 ### A client's privacy settings (C60)
 
@@ -3371,7 +3492,8 @@ version permits (checked by the command and again by the database). Without an
 activation at the revision the caller read, compared in the update itself, so
 two changes sent at one revision apply once. Changing a mode starts nothing:
 no occurrence and no planned run, since a run needs an occurrence and C52-A's
-standing approval.
+standing approval (below). A change of the pin, mode, schedule or event, or a
+switch off, ends the approval that stood.
 
 Every value is checked against a closed grammar before anything is written,
 and refused `FIELD_VALUE_INVALID` naming its field: a digest is 64 lower-case
@@ -3382,11 +3504,59 @@ no control character, line break, bidi mark or override, or lone surrogate).
 Another business's definition, version or activation answers exactly as a
 fabricated identifier does.
 
-| Operation             | Route                  | Body                                                                                        | Answer or refusals                                                                                                                                                                                                                                                                         |
-| --------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `automation.registry` | `/automation/registry` | `{}`                                                                                        | `{ ok: true, definitions: [{ id, kind, name, versions: [{ id, number, contentDigest, contentSize, modes, releasedBy, releasedAt }], activations: [{ id, versionId, versionNumber, mode, everyMinutes, eventKind, enabled, changedBy, changedAt, revision }] }] }`; `SCOPE_NOT_GRANTED` 403 |
-| `activation.change`   | `/activation/change`   | `{ activationId?, versionId, mode, everyMinutes?, eventKind?, enabled, expectedRevision? }` | `{ activationId, versionId, mode, enabled }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for a mode the version does not permit or another definition's version; `VERSION_STALE` 409                                                      |
-| `definition.release`  | `/definition/release`  | `{ definitionId? \| name, kind, contentDigest, contentSize, inputs, operations, modes }`    | `{ definitionId, versionId, number }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404 for a definition not in the business; `VERSION_STALE` 409 when three releases in a row find their number taken                                                                          |
+| Operation             | Route                  | Body                                                                                        | Answer or refusals                                                                                                                                                                                                                                                                                   |
+| --------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `automation.registry` | `/automation/registry` | `{}`                                                                                        | `{ ok: true, definitions: [{ id, kind, name, versions: [{ id, number, contentDigest, contentSize, modes, releasedBy, releasedAt }], activations: [{ id, versionId, versionNumber, mode, everyMinutes, eventKind, enabled, changedBy, changedAt, revision, approval }] }] }`; `SCOPE_NOT_GRANTED` 403 |
+| `activation.change`   | `/activation/change`   | `{ activationId?, versionId, mode, everyMinutes?, eventKind?, enabled, expectedRevision? }` | `{ activationId, versionId, mode, enabled }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for a mode the version does not permit or another definition's version; `VERSION_STALE` 409                                                                |
+| `definition.release`  | `/definition/release`  | `{ definitionId? \| name, kind, contentDigest, contentSize, inputs, operations, modes }`    | `{ definitionId, versionId, number }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404 for a definition not in the business; `VERSION_STALE` 409 when three releases in a row find their number taken                                                                                    |
+
+## Standing approvals (C52-A)
+
+Adopting a version, rolling back, revoking an approval and turning an
+automation off are each `automation:manage`, held business-wide and never an
+agent's; a holder at one client's scope is refused all four
+(`tests/automations/c52a-authority.test.ts`). An adoption pins an exact
+released version of the activation's own definition, in a mode that version
+permits, and is the standing approval for every later occurrence on that pin.
+A rollback adopts again the highest-numbered version below the pin that this
+activation adopted before under an approval nobody revoked, recorded as
+`rolled_back`; a version never adopted, or adopted and revoked, is never its
+target. The newer version and every earlier adoption stay in history.
+Revoking an approval is its own act and leaves the pin; turning an automation
+off ends its approval with it, and so does any `activation.change` of the pin,
+mode, schedule or event, or a switch off (the database's
+`activations_approval_stands`). Only an automation that is on is approved:
+adopting or rolling back one that is off is refused `TRANSITION_NOT_PERMITTED`
+naming `enabled=false`. Each change is compared with the revision the caller
+read, again under the activation's lock, so two sent at one revision apply
+once. The caller's `automation:manage` grants are held from before any
+automation row, so a revocation of one waits for the change; under the
+activation's lock the key is asked again at the clock after the wait, so a
+grant that ran out meanwhile refuses it, and a rollback picks its target
+there, after any revocation of an approval that held the lock. Once its rows
+are written, the change takes the audit chain's lock and asks the key a last
+time at that clock: a grant that ran out while it waited there, or a session
+signed out while it waited (`AUTH_SESSION_EXPIRED`), refuses it and nothing
+applies. A repeat is
+refused: a revoked approval, or an automation already off, answers
+`TRANSITION_NOT_PERMITTED`; the same `operationId` sent again is replayed. The
+registry shows each activation's
+`approval: { id, versionId, act, decidedBy, revoked }`, or null.
+
+An occurrence claimed while its activation is on under an unrevoked standing
+approval is `approved` and names it. Dispatch rechecks, holding the
+activation's lock, that the activation is on and that the approval is still
+the one standing and unrevoked, and records once what it found
+(`occurrence_dispatches`): a run started, or `activation_off`,
+`approval_revoked` or `approval_ended`. Starting the run itself through the
+agent engine (AW-01 J) is not wired yet.
+
+| Operation              | Route                   | Body                                            | Answer or refusals                                                                                                                                                                                                                                                 |
+| ---------------------- | ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `activation.adopt`     | `/activation/adopt`     | `{ activationId, versionId, expectedRevision }` | `{ activationId, versionId, approvalId, act }`; `FIELD_VALUE_INVALID` 422 naming `expectedRevision`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for another definition's version, a mode it does not permit or an automation that is off; `VERSION_STALE` 409 |
+| `activation.roll_back` | `/activation/roll_back` | `{ activationId, expectedRevision }`            | as `activation.adopt`, with `act: 'rolled_back'`; `TRANSITION_NOT_PERMITTED` 409 when no earlier version was adopted and left unrevoked                                                                                                                            |
+| `activation.turn_off`  | `/activation/turn_off`  | `{ activationId, expectedRevision }`            | `{ activationId, enabled: false }`; `FIELD_VALUE_INVALID` 422 naming `expectedRevision`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already off; `VERSION_STALE` 409                                                                                     |
+| `approval.revoke`      | `/approval/revoke`      | `{ approvalId }`                                | `{ approvalId, revoked: true }`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already revoked                                                                                                                                                              |
 
 ## Custody (C31)
 
@@ -3403,3 +3573,29 @@ No answer carries a value, and a refusal names the field, never what was sent.
 No audit row holds a set's value either, a refusal's attempted values included.
 A set's `expectedRevision` is the revision `secret.list` showed, or `0` for a
 name the list did not hold: `0` is refused `VERSION_STALE` when the name exists.
+
+## Connections (MP-14-7a)
+
+The connector fleet on Connections & signal. The fleet is `connection:read`,
+filtered in its statement by the scopes the caller holds it at: a client-scoped
+reader sees the connections serving that client, and only that client in each
+list. A client in a list is a client of this business by foreign key, shown by
+its name. The repair is `custody:manage`, business-wide, never an agent. It
+records `connector repair started` on a broken connection of this business at
+its current revision and sends nothing: re-authorising is the broker's (AW-01),
+behind the approval gate on that revision. The insert checks again that the
+connection is still broken at that revision; one that healed or moved on since
+the read is refused `TRANSITION_NOT_PERMITTED` or `VERSION_STALE` and records
+nothing. Connection rows are written by MP-13-5 and the broker; this build only
+reads them.
+
+| Operation          | Route               | Body                                               | Answer or refusals                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.fleet` | `/connection/fleet` | `{}`                                               | `{ ok: true, connections: [{ id, connectorKey, label, authMethod, status, failureClass, cadenceMinutes, lastSyncedAt, lastAttemptAt, scope, readComponents, executeComponents, custody: { secretId, state }, clients: [{ id, label }], repairStartedAt, revision }], counts: { all, active, degraded, broken, clientConnections } }`; `SCOPE_NOT_GRANTED` 403 |
+| `connector.repair` | `/connector/repair` | `operationId`, `connectionId`, `expectedRevision?` | `detail: { repairId, connectionId, connectionRevision, state: 'awaiting approval' }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (another business's, made-up or malformed alike), `TRANSITION_NOT_PERMITTED` 409 (not broken), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                                                  |
+
+The custody field is a reference: the secret's id and whether custody holds a
+value, never any part of one. No sealed column is read. It is shown only for a
+secret the caller's scopes reach (a business-wide reader, a business-wide
+secret, or one of the caller's clients'); a secret scoped to another client the
+connection serves shows as `{ secretId: null, state: 'not set' }`.

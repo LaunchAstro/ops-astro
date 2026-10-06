@@ -19,7 +19,9 @@ import {
   type RouteMatch,
 } from './routes.ts';
 import type { PanelId } from './panels.ts';
+import { tabRollupFloor } from './data/rollup-floor.ts';
 import type { OperationsClient } from './operations/client.ts';
+import { ConnectionsScreen } from './screens/Connections.tsx';
 import { ConversationScreen } from './screens/Conversation.tsx';
 import { AccessScreen } from './screens/Access.tsx';
 import { ClientsScreen } from './screens/Clients.tsx';
@@ -93,6 +95,18 @@ export const SCREENS: {
       client={context.client}
       grantKey={context.grantKey}
       conversationId={context.params.conversation}
+    />
+  ),
+  // Keyed on the grant, so a change of business or person, or a sign-out (the
+  // key's generation), starts the fleet's view state, open rows and repair
+  // attempts over; a step-up keeps the reader, as `grantKeyOf` does everywhere.
+  // An agency-wide rollup, so it re-reads on the tab's floor (LIVE-SYNC.md).
+  'agency:connections': (context) => (
+    <ConnectionsScreen
+      key={context.grantKey}
+      client={context.client}
+      grantKey={context.grantKey}
+      rollup={tabRollupFloor()}
     />
   ),
   'agency:gallery': () => <Gallery />,

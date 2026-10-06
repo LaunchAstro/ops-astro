@@ -486,11 +486,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:747-773`, run at `:906-914`). It gets a login and an acting identity,
-  and no membership and no business grant (`:165-168`, `:318-320`). The seed
+  user (`:749-775`, run at `:908-916`). It gets a login and an acting identity,
+  and no membership and no business grant (`:167-170`, `:320-322`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:767-796`, `:935-945`).
+  (`:777-806`, `:945-954`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -781,13 +781,17 @@ reaches the rows an agent may reach under a delegation that need no lease
 (`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.update`, `task.assign`,
 `task.set_scores`, `task.set_adhoc`, `task.set_category`, `task.comment`,
 `task.edit_comment`, `task.delete_comment`, `task.propose`,
-`run.child_handback` and `session.capabilities`), held to a delegated agent's
-limits where the handler has them (`updateTask`, `assignTask`, `commentOnTask`);
+`run.child_handback`, `onboarding.step_result` and `session.capabilities`), held
+to a delegated agent's limits where the handler has them (`updateTask`,
+`assignTask`, `commentOnTask`, and `onboarding.step_result`'s agent steps only);
 anything else is `DELEGATION_EXCLUDES_OPERATION`,
 `run.revise_state` included by name (`OUTSIDE_REACH`), though a run's delegation
 reaches it.
 A create asks the person's business-wide `task:write` within the ticked keys; it
 is audited against the agent and the task's `source` is `agent:api`.
+A step result is the agent's, so it records agent steps only: a person or
+client-wait step answers `DELEGATION_EXCLUDES_OPERATION` naming `kind`, and the
+step's comment has `source` `agent:api` (C41-A in API.md).
 `session.capabilities` answers the ticked keys the person's grants still cover,
 so a key the person holds and did not tick, or one revoked from them since, is
 not listed; `agentActorId` is the acting identity and `personId` the person it
@@ -820,6 +824,21 @@ Settings ▸ Workflow triggers (C33) reads the business's automations under
 and none ever an agent's. A definition carries no client, so a grant at one
 client's scope reaches none of the three. Switching an activation to a
 schedule or an event starts nothing; a run waits on C52-A's standing approval.
+Adopting a version (`activation.adopt`), rolling back
+(`activation.roll_back`), turning an automation off (`activation.turn_off`)
+and revoking a standing approval (`approval.revoke`) are each
+`automation:manage`, asked of the whole business and never an agent's. Only
+an adoption grants an approval; `settings:manage` can end one (a change of
+the pin, mode, schedule or event, or a switch off), never give one. Each of
+the four holds the caller's `automation` grants for share before any
+automation row, so a revocation of one waits for the change, and asks the key
+again after it has locked the activation, at the clock after that wait: a
+grant that ran out while it waited refuses it. Once its rows are written it
+takes the audit chain's lock, its last wait, and asks again at that clock,
+refusing too if the session that sent it was signed out meanwhile. An
+automation that is off is
+never approved, so switching one on under `settings:manage` carries no
+approval.
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a
