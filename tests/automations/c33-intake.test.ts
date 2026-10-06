@@ -20,7 +20,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import { awaitWaiters, barrier } from '../runtime/gate-negatives-cases.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { bravoApproved, firingOf, occurrenceOf, type Approved, type Firing } from './firing.ts';
+import { bravoApproved, firingOf, occurrenceOf, type Firing } from './firing.ts';
 import {
   finishRuns,
   prepareRuns,
@@ -30,7 +30,7 @@ import {
   type WorkerStarter,
   type Workers,
 } from './run-start.ts';
-import { createAutomationWorld, type AutomationWorld } from './world.ts';
+import { createAutomationWorld, type Approved, type AutomationWorld } from './world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

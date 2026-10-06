@@ -16,8 +16,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import { installSpine } from '../commands/fixture.ts';
 import type { FreshDatabase } from '../support/fresh-database.ts';
-import type { Approved } from './firing.ts';
-import type { AutomationWorld } from './world.ts';
+import type { Approved, AutomationWorld } from './world.ts';
 
 export interface Workers {
   readonly worker: string;

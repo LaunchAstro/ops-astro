@@ -29,19 +29,12 @@ import {
   type RevokeResult,
   type RunRequest,
   type RunStarter,
-  type StandingApprovalRow,
   type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
 import { installSpine } from '../commands/fixture.ts';
 import type { FreshDatabase } from '../support/fresh-database.ts';
 import { insertWorker } from './run-start.ts';
-import { DIGEST, type AutomationWorld } from './world.ts';
-
-export interface Approved {
-  readonly version: DefinitionVersionRow;
-  readonly activation: ActivationRow;
-  readonly approval: StandingApprovalRow;
-}
+import { DIGEST, type Approved, type AutomationWorld } from './world.ts';
 
 export interface Starter {
   readonly runs: RunRequest[];
