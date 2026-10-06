@@ -40,6 +40,11 @@ const PARENT = slotOf(TASK_SPINE, 'parent');
 const BOARD = slotOf(TASK_SPINE, 'board');
 const BOARD_RANK = slotOf(TASK_SPINE, 'board_rank');
 const CLIENT = slotOf(TASK_SPINE, 'client');
+const WHOLE_TASKS = {
+  collection: 'task',
+  action: 'write',
+  scope: { kind: 'business', id: null },
+} as const;
 
 /**
  * The client a live parent carries, read under the parent's row lock. A
@@ -107,9 +112,14 @@ async function reachedThroughMap(
  * The descendants are found by the walk trash uses, and each is asked the
  * envelope's question at its own record scope, as trash asks it: the target's
  * grant does not reach them. The first uncovered one refuses the whole move.
- * They are locked in one statement and rewritten in a later one, so a child
- * created under one of them meanwhile is either seen by the rewrite or waits
- * and inherits the new board.
+ *
+ * The walk locks what it finds, and is run again until it finds nothing it
+ * has not already locked and asked about. A creation holds its parent `for
+ * share` until it commits, so a walk parked on that parent sees the new child
+ * only on the next pass: the child is asked about then, or refuses the move.
+ * Once every row is locked no child can be added under one, so the rewrite
+ * touches exactly the rows asked about, and a later creation waits and
+ * inherits the new board.
  */
 async function carryBoardToDescendants(
   tx: TenantQuery,
@@ -124,37 +134,40 @@ async function carryBoardToDescendants(
        select child.id from records child join down on child.${PARENT} = down.id
         where child.business_id = $1 and child.record_type_id = $2 and child.deleted_at is null
      ) cycle id set looped using path`;
-  const found = await tx.query<{ readonly id: string }>(
-    `${walk}
-     select r.id from records r
-      where r.business_id = $1 and r.id in (select id from down where not looped and id <> $3)
-      for update of r`,
-    [tx.businessId, context.spine.taskTypeId, rootId],
-  );
-  if (found.length === 0) return undefined;
-
-  const whole = await checkAuthority(tx, subjectsOf(context.session), {
-    collection: 'task',
-    action: 'write',
-    scope: { kind: 'business', id: null },
-  });
-  if (!whole.ok) {
-    for (const { id } of found) {
-      // Sequential, stopping at the first: the answer is the same whichever.
-      // eslint-disable-next-line no-await-in-loop
-      const refusal = await refuseUnreachedRecord(tx, context, id);
-      if (refusal !== undefined) return refusal;
+  const asked: string[] = [];
+  let whole: boolean | undefined;
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop -- each pass sees what the last one waited on
+    const found = await tx.query<{ readonly id: string }>(
+      `${walk}
+       select r.id from records r
+        where r.business_id = $1 and r.id in (select id from down where not looped and id <> $3)
+        for update of r`,
+      [tx.businessId, context.spine.taskTypeId, rootId],
+    );
+    const fresh = found.filter(({ id }) => !asked.includes(id));
+    if (fresh.length === 0) break;
+    // eslint-disable-next-line no-await-in-loop -- asked once, on the first pass that finds any
+    whole ??= (await checkAuthority(tx, subjectsOf(context.session), WHOLE_TASKS)).ok;
+    if (!whole) {
+      for (const { id } of fresh) {
+        // Sequential, stopping at the first: the answer is the same whichever.
+        // eslint-disable-next-line no-await-in-loop
+        const refusal = await refuseUnreachedRecord(tx, context, id);
+        if (refusal !== undefined) return refusal;
+      }
     }
+    asked.push(...fresh.map(({ id }) => id));
   }
+  if (asked.length === 0) return undefined;
 
   await tx.query(
-    `${walk}
-     update records
-        set data = case when $4::text is null then data - 'board'
-                        else jsonb_set(data, '{board}', to_jsonb($4::text)) end
-      where business_id = $1 and id in (select id from down where not looped and id <> $3)
-        and (data ->> 'board') is distinct from $4::text`,
-    [tx.businessId, context.spine.taskTypeId, rootId, board],
+    `update records
+        set data = case when $3::text is null then data - 'board'
+                        else jsonb_set(data, '{board}', to_jsonb($3::text)) end
+      where business_id = $1 and id = any($2::uuid[])
+        and (data ->> 'board') is distinct from $3::text`,
+    [tx.businessId, asked, board],
   );
   return undefined;
 }
