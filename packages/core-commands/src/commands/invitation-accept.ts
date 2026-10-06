@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C39-T, piece P3: `invitation accepted` and `login created (person,
-// business)` on the one-time enrolment token alone: the token is the
-// authority, and the writes are the business's worker's.
+// C39-T, piece P3: `invitation accepted` and `login created (person, business)` on the
+// one-time enrolment token alone: the token is the authority, the writes the worker's.
 //
 // 1. Find the token (`enrolment_token_find`, SEC27 F6), live (unspent, in its
 //    lifetime, its pending invitation's newest), else `ENROLMENT_LINK_INVALID`.
@@ -13,10 +12,9 @@
 //    the address's login again under it, adopting one an earlier accept
 //    stranded. No user under our id: someone else's login, untouched,
 //    `sign_in`. A refused password is `PASSWORD_INVALID`; a fault binds
-//    nothing. Either lets the claim go; a lost one lapses.
-// 4. Under the lock and the claim, every check again: spend the tokens,
-//    accept, seat the person, map the login, audit both events. An adopted
-//    login's sessions all end (C40's reset window). No session opens.
+//    nothing. A call never answered may still apply: its claim stays to lapse.
+// 4. Under the lock and the claim, every check again: spend the tokens, accept, seat the
+//    person, map the login, audit both; an adopted login's sessions end (C40's reset window).
 
 import { createHash } from 'node:crypto';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
@@ -285,7 +283,7 @@ export async function acceptInvitation(
   const bound =
     made !== undefined &&
     (await database.withBusiness(found.business, (tx) => bind(tx, found, made)));
-  if (!bound) {
+  if (!bound && (login.ok || login.kind !== 'lost')) {
     await database.withBusiness(found.business, (tx) =>
       tx.query(RELEASE, [tx.businessId, found.invitationId, claimId]),
     );

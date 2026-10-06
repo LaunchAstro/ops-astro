@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C39-T, piece P3: a login made at the login provider (`auth.create_user`), or
-// set again under our id (`auth.update_user`), through custody, so the service
-// key stays there; this process sends the id, address and password once and
-// keeps none. The operation's schema reads the answer's user id, which must be
-// the one asked for. `refused` is the provider's proof nothing changed
-// (`email_exists`, or `user_not_found` on an update); `weak_password` is
-// `password`. Anything else, another user's id, a field for a password, or an
-// answer oversized, redirected, malformed or slow, is a fault.
+// C39-T, piece P3: a login made at the login provider (`auth.create_user`), or set again
+// under our id (`auth.update_user`), through custody, which keeps the service key; this
+// process sends the id, address and password once and keeps none. The answer must name
+// the id asked for. `refused` is the provider's proof nothing changed (`email_exists`, or
+// `user_not_found` on an update); `weak_password` is `password`; a call never answered is
+// `lost`; anything else (another id, a field for a password, an answer oversized,
+// redirected or malformed) is a fault.
 
 import {
   AUTH_CREATE_USER,
@@ -26,9 +25,10 @@ export interface LoginAsked {
 
 export type LoginMade =
   | { readonly ok: true; readonly subject: string }
-  | { readonly ok: false; readonly kind: 'refused' | 'password' | 'fault' | 'not_catalogued' };
+  | { readonly ok: false; readonly kind: 'refused' | 'password' | 'fault' | 'lost' };
 
 const FAULT = { ok: false, kind: 'fault' } as const;
+const LOST = { ok: false, kind: 'lost' } as const;
 
 /** Whether an answer has a field named for a password, at any depth: names, not values. */
 function namesPassword(text: string): boolean {
@@ -47,7 +47,7 @@ function namesPassword(text: string): boolean {
 /** One catalogued call for one login: its subject, or why there is none. */
 async function ask(broker: Broker, key: string, login: LoginAsked): Promise<LoginMade> {
   const found = routed(broker, key);
-  if (found === undefined) return { ok: false, kind: 'not_catalogued' };
+  if (found === undefined) return FAULT;
   const { operation, route, adapter } = found;
   const built = adapter.build({ id: login.id, email: login.email, password: login.password });
   const outcome = await broker.custody.dispatch(route.credentialRef, {
@@ -58,9 +58,11 @@ async function ask(broker: Broker, key: string, login: LoginAsked): Promise<Logi
     timeoutMs: operation.timeoutMs,
     maxResponseBytes: operation.maxResponseBytes,
   });
+  if (outcome.kind === 'worker_lost') return LOST;
   if (outcome.kind === 'answered') {
     const { outbound } = outcome;
     if (!outbound.ok) {
+      if (outbound.fault === 'timeout' || outbound.fault === 'network') return LOST;
       // One status means more than one thing (422): the refusal's code says which.
       const code = outbound.fault === 'status' ? outbound.code : undefined;
       if (code === AUTH_WEAK_PASSWORD) return { ok: false, kind: 'password' };
