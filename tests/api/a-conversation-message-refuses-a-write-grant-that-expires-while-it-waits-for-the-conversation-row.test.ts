@@ -12,8 +12,13 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { blockedBefore, holdRow, instantOf, waitPast } from '../support/lock-wait-race.ts';
-import { conversationWorld, detail, type ConversationWorld } from './aw-03-fixture.ts';
+import { blockedBefore, holdRow, waitPast } from '../support/lock-wait-race.ts';
+import {
+  conversationWorld,
+  detail,
+  expiringSoon,
+  type ConversationWorld,
+} from './aw-03-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -34,19 +39,7 @@ describe.skipIf(serverUrl === undefined)(
       const conversationId = String(detail(opened)['conversationId']);
       const db = w.fixture.db;
       // The owner's only covering conversation:write grant, ending in three seconds.
-      const grants = await db.admin.execute<{ readonly id: string }>(
-        `update public.grants set expires_at = clock_timestamp() + interval '3 seconds'
-        where subject_id = $1 and collection = 'conversation' and action = 'write'
-          and revoked_at is null
-        returning id`,
-        [person.personId],
-      );
-      expect(grants).toHaveLength(1);
-      const expiry = await instantOf(
-        db,
-        'select expires_at::text as at from public.grants where id = $1',
-        [grants[0]?.id],
-      );
+      const { expiry } = await expiringSoon(w, person.personId, 'conversation', 'write');
       const messages =
         'select count(*) as n from public.conversation_messages where conversation_id = $1';
       const before = await w.count(messages, [conversationId]);

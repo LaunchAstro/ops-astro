@@ -205,20 +205,18 @@ export const PURGED: CommandRefusal = refuseCommand(
   ],
 );
 
+const BODY_INVALID: CommandRefusal = refuseCommand(
+  'FIELD_VALUE_INVALID',
+  ['body'],
+  [`Send the message as body, 1 to ${BODY_LIMIT} characters.`],
+);
+
 export async function messageConversation(
   tx: TenantQuery,
   context: CommandContext,
   fields: MessageFields,
 ): Promise<HandlerOutcome> {
-  if (!bounded(fields.body, BODY_LIMIT)) {
-    return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['body'],
-        [`Send the message as body, 1 to ${BODY_LIMIT} characters.`],
-      ),
-    );
-  }
+  if (!bounded(fields.body, BODY_LIMIT)) return refused(BODY_INVALID);
   if (!isIdentifier(fields.conversationId)) return refused(refuseNotFound());
   // The row lock orders this message against the wrap-up and the purge, which
   // take the same lock: a message never lands in a body being purged.

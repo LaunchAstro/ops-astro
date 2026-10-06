@@ -33,35 +33,55 @@ import {
 } from './duplicate-world.ts';
 import { grantTo } from './fixture.ts';
 
+/** Client A's task, and a person who may read it and share it to client B for three seconds more. */
+async function lapsingSharer(title: string) {
+  const old = await taskFor(alpha, owner, title, clientA);
+  const sharer = await person('lapsing-sharer');
+  const share = await db.app.withBusiness(alpha, async (tx) => {
+    await grantTo(tx, sharer, 'read', { kind: 'record', id: old });
+    await grantTo(tx, sharer, 'write', { kind: 'party', id: clientB });
+    return await grantTo(tx, sharer, 'share', { kind: 'party', id: clientB });
+  });
+  await db.admin.execute(
+    `update public.grants set expires_at = clock_timestamp() + interval '3 seconds'
+      where id = $1`,
+    [share],
+  );
+  const expiry = await instantOf(
+    db,
+    'select expires_at::text as at from public.grants where id = $1',
+    [share],
+  );
+  return { old, sharer, expiry };
+}
+
+/** The copies of `title` filed under client B. */
+async function copiesUnderB(title: string): Promise<number | undefined> {
+  const copies = await db.admin.execute<{ readonly n: number }>(
+    `select count(*)::int as n from public.records
+      where business_id = $1 and uuid_7 = $2 and data->>'title' = $3`,
+    [alpha, clientB, title],
+  );
+  return copies[0]?.n;
+}
+
+/** `lockSiblings(tx, null, null)`'s key, taken as it takes it, on a connection of its own. */
+async function holdTopLevelRank() {
+  return await hold(db, async (execute) => {
+    await execute('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `task.siblings:${alpha}:board:none`,
+    ]);
+  });
+}
+
 describe.skipIf(serverUrl === undefined)('duplicating across a share grant’s expiry', () => {
   beforeAll(setUp, 180_000);
   afterAll(tearDown);
 
   it('a cross-client duplicate refuses a share grant that expires while it waits for the sibling-rank lock', async () => {
     const title = `private to client A ${CANARY}`;
-    const old = await taskFor(alpha, owner, title, clientA);
-    const sharer = await person('lapsing-sharer');
-    const share = await db.app.withBusiness(alpha, async (tx) => {
-      await grantTo(tx, sharer, 'read', { kind: 'record', id: old });
-      await grantTo(tx, sharer, 'write', { kind: 'party', id: clientB });
-      return await grantTo(tx, sharer, 'share', { kind: 'party', id: clientB });
-    });
-    await db.admin.execute(
-      `update public.grants set expires_at = clock_timestamp() + interval '3 seconds'
-        where id = $1`,
-      [share],
-    );
-    const expiry = await instantOf(
-      db,
-      'select expires_at::text as at from public.grants where id = $1',
-      [share],
-    );
-    // `lockSiblings(tx, null, null)`'s key, taken as it takes it.
-    const held = await hold(db, async (execute) => {
-      await execute('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
-        `task.siblings:${alpha}:board:none`,
-      ]);
-    });
+    const { old, sharer, expiry } = await lapsingSharer(title);
+    const held = await holdTopLevelRank();
     const before = await footprint();
     const copying = executeCommand(db.app, alpha, sharer.presented, 'api', {
       command: 'task.duplicate',
@@ -86,17 +106,12 @@ describe.skipIf(serverUrl === undefined)('duplicating across a share grant’s e
       await held.letGo();
     }
     const answer = await copying;
-    const copies = await db.admin.execute<{ readonly n: number }>(
-      `select count(*)::int as n from public.records
-        where business_id = $1 and uuid_7 = $2 and data->>'title' = $3`,
-      [alpha, clientB, title],
-    );
     expect({
       startedLive,
       waitedLive,
       outcome: outcomeOf(answer),
       footprint: await footprint(),
-      copiesUnderB: copies[0]?.n,
+      copiesUnderB: await copiesUnderB(title),
     }).toMatchObject({
       startedLive: true,
       waitedLive: true,

@@ -15,34 +15,10 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { blockedBefore, holdRow, instantOf, waitPast } from '../support/lock-wait-race.ts';
-import { conversationWorld, type ConversationWorld } from './aw-03-fixture.ts';
+import { blockedBefore, holdRow, waitPast } from '../support/lock-wait-race.ts';
+import { conversationWorld, expiringSoon, type ConversationWorld } from './aw-03-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
-/** The person's only covering `collection:action` grant, set to end in three seconds. */
-async function expiringSoon(
-  w: ConversationWorld,
-  personId: string,
-  collection: string,
-  action: string,
-): Promise<{ readonly id: string | undefined; readonly expiry: string }> {
-  const db = w.fixture.db;
-  const grants = await db.admin.execute<{ readonly id: string }>(
-    `update public.grants set expires_at = clock_timestamp() + interval '3 seconds'
-      where subject_id = $1 and collection = $2 and action = $3 and revoked_at is null
-      returning id`,
-    [personId, collection, action],
-  );
-  expect(grants).toHaveLength(1);
-  const id = grants[0]?.id;
-  const expiry = await instantOf(
-    db,
-    'select expires_at::text as at from public.grants where id = $1',
-    [id],
-  );
-  return { id, expiry };
-}
 
 /**
  * The colleague's start citing a new task, sent while the task row is held and

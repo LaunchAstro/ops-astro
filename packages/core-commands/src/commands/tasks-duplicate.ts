@@ -4,26 +4,22 @@
 // 75 and 76).
 //
 // Once a task has content its client is locked, and the way to serve another
-// client is a new task from the bare shell. The command takes the old task's
-// id, the chosen client and the shell as the person edited it (the title and
-// the step names), and writes exactly that: a task of the old task's type for
-// the chosen client, one subtask per step name, and nothing else. It reads one
-// thing of the old task, its type; the old task is untouched.
+// client is a new task from the bare shell: the old task's type for the chosen
+// client, the title and one subtask per step name as the person edited them,
+// and nothing else. Only the old task's type is read; the old task is untouched.
 //
-// All three asks of the authority are made here, inside the transaction that
-// creates the task, with the caller's task grants held for share: `task:read`
-// on the old task, at record scope as `task.read` asks it; `task:write` at the
-// chosen client (party scope, or the business when there is none); and
-// `task:share` at the chosen client when it differs from the old task's (none
-// counts as a client), since that moves the work across clients (ORCH57B11,
-// REVIEW-2D-2). So a read revoked after the draft opened refuses the create.
-// An agent never reaches this: the row is person-only on every surface.
+// The three asks of the authority are made in the transaction that creates the
+// task, with the caller's task grants held for share: `task:read` on the old
+// task at record scope, as `task.read` asks it; `task:write` at the chosen
+// client (party scope, or the business when there is none); and `task:share`
+// there when it differs from the old task's (none counts as a client), since
+// that moves the work across clients (ORCH57B11, REVIEW-2D-2). All three are
+// asked again after the last write's wait (#444). An agent never reaches this:
+// the row is person-only on every surface.
 //
-// The carried text guard comes from here, so the app, the API and the command
-// line give the same answer: a title or step name that names the old task's
-// client (its name in the client model) is refused naming the fields until
-// the person confirms it. The refusal carries the field names only, never the
-// name it matched.
+// The carried text guard comes from here, so every surface gives one answer: a
+// title or step name that names the old task's client (its name in the client
+// model) is refused naming the fields, never the name, until the person confirms.
 //
 // The new task records where it came from as a `duplicated_from` link to the
 // old task. `task.read` shows that id only to a reader who holds read on the
@@ -180,23 +176,19 @@ async function readOld(
 }
 
 /** The old task as `authorise` admitted it, and its grants asked again at a later clock. */
-interface Admitted {
-  readonly typeId: string;
-  readonly client: string | null;
+type Admitted = NonNullable<Awaited<ReturnType<typeof readOld>>> & {
   readonly askAgain: (at: string) => Promise<CommandRefusal | null>;
-}
+};
 
 /**
  * The authority, asked with the caller's task grants held for share (grants
  * before records, as `task.decide` holds them), each answer resting on a grant
  * held here: a revocation that committed first is seen, and one that comes
- * second waits for this transaction. Read and write are asked at the clock
- * after the hold, before the old task's row is locked, so a caller who cannot
- * read it takes no lock on it; and again at the clock after that lock, so a
- * grant that lapsed while this waited no longer counts (#444). Share is asked
- * last, of the old task's client as read under its lock. Answers the old task,
- * or the refusal. The writes wait again (the sibling-rank lock, the key), so
- * `askAgain` asks all three at the clock after the last of them.
+ * second waits for this transaction. Read and write are asked before the old
+ * task's row is locked, so a caller who cannot read it takes no lock on it;
+ * then all three, share last of the client read under that lock, at the clock
+ * after it (#444). Answers the old task with `askAgain`, for the writes' own
+ * waits (the sibling-rank lock, the key), or the refusal.
  */
 async function authorise(
   tx: TenantQuery,
