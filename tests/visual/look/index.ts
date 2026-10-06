@@ -11,7 +11,9 @@ import { AGENT_PANE } from './agent-pane.ts';
 import { BOARD } from './board.ts';
 import { CONVERSATION } from './conversation.ts';
 import { CLIENTS } from './clients.ts';
+import { CONNECTIONS_COSTING } from './connections-costing.ts';
 import { DOCK } from './dock.ts';
+import { EXECUTIVE } from './executive.ts';
 import { FRAME } from './frame.ts';
 import { GALLERY_LOOK } from './gallery.ts';
 import { INBOX } from './inbox.ts';
@@ -51,4 +53,6 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   FRAME,
   AGENT_PANE,
   CONVERSATION,
+  CONNECTIONS_COSTING,
+  EXECUTIVE,
 ];
