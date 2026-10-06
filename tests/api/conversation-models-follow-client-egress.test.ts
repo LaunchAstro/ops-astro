@@ -7,14 +7,22 @@
 // is offered nothing; a providers list offers only the providers it names. A
 // model chosen while offered and then made not offered (the client's egress
 // switched off) refuses the next exchange before any provider call. No answer
-// or refusal carries the client's name or the conversation's canary.
+// or refusal carries the client's name or the conversation's canary. A member
+// whose read of the client's task is revoked learns nothing of the client's
+// setting through an old conversation on it, and can choose no model there.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { REPLAY_MODEL_WINDOW } from '../../packages/core-connectors/src/index.ts';
-import { addClient, grantTo } from '../commands/fixture.ts';
+import { revokeGrant } from '../../packages/core-records/src/index.ts';
+import { addClient, enrol, grantTo } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { conversationWorld, started, type ConversationWorld } from './aw-03-fixture.ts';
+import {
+  CONVERSATION,
+  conversationWorld,
+  started,
+  type ConversationWorld,
+} from './aw-03-fixture.ts';
 import { composedWith, localModel, type LocalModel } from './aw-03-exchange-fixture.ts';
 import { createApiFixture, type Answer } from './fixture.ts';
 
@@ -32,6 +40,7 @@ describe.skipIf(serverUrl === undefined)('the models a conversation is offered',
   const clientId = randomUUID();
   const canary = `CANARY-${randomUUID()}`;
   let onClient = '';
+  let clientTask = '';
 
   /** The client's egress as the database holds it; the command's own rules are C60's suites'. */
   const egress = async (providers: readonly string[]): Promise<void> => {
@@ -77,9 +86,10 @@ describe.skipIf(serverUrl === undefined)('the models a conversation is offered',
       fields: { client: clientId },
     });
     expect(placed.status).toBe(200);
+    clientTask = String(made.body['recordId']);
     onClient = await started(w, w.owner, {
       body: `${canary} how is this client going?`,
-      scope: { kind: 'task', id: String(made.body['recordId']) },
+      scope: { kind: 'task', id: clientTask },
     });
   }, 180_000);
 
@@ -141,5 +151,46 @@ describe.skipIf(serverUrl === undefined)('the models a conversation is offered',
         [onClient],
       ),
     ).toBe(0);
+  });
+
+  it('CS-7.40: after task read is revoked, an old conversation on the client offers nothing and takes no choice', async () => {
+    const { db, business } = w.fixture;
+    const member = await enrol(db.app, business, 'once-a-reader');
+    const readGrant = await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, member, 'write', undefined, false, CONVERSATION);
+      return await grantTo(tx, member, 'read', { kind: 'record', id: clientTask });
+    });
+    const old = await started(w, member, {
+      body: 'while I can read it',
+      scope: { kind: 'task', id: clientTask },
+    });
+    await db.app.withBusiness(business, async (tx) => {
+      await revokeGrant(tx, readGrant);
+    });
+    const choice = async (): Promise<unknown> =>
+      (
+        await db.admin.execute<{ readonly model_id: string | null }>(
+          'select model_id from public.conversations where id = $1',
+          [old],
+        )
+      )[0]?.model_id;
+    const readOld = async (): Promise<Answer> =>
+      await w.as(member, 'conversation.models', { conversationId: old });
+    await egress(['replay']);
+    const allowed = await readOld();
+    expect(allowed.status).toBe(200);
+    expect(ids(allowed)).toStrictEqual([]);
+    const set = await w.as(member, 'conversation.set_model', {
+      conversationId: old,
+      model: REPLAY_MODEL_WINDOW.model,
+    });
+    expect(set.status).toBe(422);
+    expect(set.body).toMatchObject({ code: 'FIELD_VALUE_INVALID', names: ['model'] });
+    expect(await choice()).toBeNull();
+    await egress([]);
+    const off = await readOld();
+    expect(off.status).toBe(200);
+    expect(off.body).toStrictEqual(allowed.body);
+    for (const answer of [allowed, set, off]) carriesNothing(answer);
   });
 });

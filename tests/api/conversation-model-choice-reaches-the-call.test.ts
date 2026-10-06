@@ -166,6 +166,8 @@ describe.skipIf(serverUrl === undefined)('a conversation’s chosen model', () =
   it('CS-7.30: a start naming a model not offered is refused by name, nothing kept or sent', async () => {
     const marker = `UNOFFERED-${randomUUID()}`;
     const before = model.provider.seen.length;
+    const owned = 'select count(*) as n from public.conversations where owner_actor_id = $1';
+    const conversations = await w.count(owned, [w.owner.actorId]);
     const refused = await w.as(w.owner, 'conversation.start', {
       body: marker,
       model: LOCAL_GPT_DEFAULT_MODEL,
@@ -178,6 +180,7 @@ describe.skipIf(serverUrl === undefined)('a conversation’s chosen model', () =
       [marker],
     );
     expect(kept).toEqual([]);
+    expect(await w.count(owned, [w.owner.actorId])).toBe(conversations);
     expect(model.provider.seen).toHaveLength(before);
   });
 
