@@ -12,114 +12,22 @@
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name, as the drawer's own tests do */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
-import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { mount, settle, type Mounted } from './mount.tsx';
-import { track, unmountAll } from './mp-7-11-drawer-fixtures.tsx';
+import { settle } from './mount.tsx';
+import { unmountAll } from './mp-7-11-drawer-fixtures.tsx';
+import {
+  bodies,
+  drawerFor,
+  message,
+  serving,
+  tabTitles,
+  MADE,
+  ONE,
+  STORED,
+  TWO,
+  type Stored,
+} from './drawer-history-support.tsx';
 
 afterEach(unmountAll);
-
-const ONE = '11111111-1111-4111-8111-111111111111';
-const TWO = '22222222-2222-4222-8222-222222222222';
-const MADE = '33333333-3333-4333-8333-333333333333';
-
-interface Call {
-  readonly kind: 'read' | 'write';
-  readonly name: string;
-  readonly body: Readonly<Record<string, unknown>>;
-}
-
-const message = (id: string, role: 'person' | 'agent', body: string) => ({
-  id,
-  role,
-  body,
-  createdAt: '2026-10-06T10:00:00.000Z',
-});
-
-/** The server's conversations: their titles and stored messages, read as the case left them. */
-type Stored = Record<string, { title: string; messages: ReturnType<typeof message>[] }>;
-
-function serving(stored: Stored, mutate?: (call: Omit<Call, 'kind'>) => Promise<unknown>) {
-  const calls: Call[] = [];
-  const read = (name: string, body: Readonly<Record<string, unknown>>) => {
-    calls.push({ kind: 'read', name, body });
-    if (name === 'conversation.list') {
-      const conversations = Object.entries(stored).map(([id, one]) => ({
-        id,
-        address: `/agent/${id}`,
-        title: one.title,
-        lastActivityAt: '2026-10-06T10:00:00.000Z',
-        bodyPurged: false,
-      }));
-      return Promise.resolve({ ok: true, value: { ok: true, conversations } });
-    }
-    const id = String(body['conversationId']);
-    const one = stored[id];
-    if (name !== 'conversation.read' || one === undefined) {
-      return Promise.resolve({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] });
-    }
-    const conversation = {
-      id,
-      address: `/agent/${id}`,
-      title: one.title,
-      subject: null,
-      scope: null,
-      page: null,
-      createdAt: '2026-10-06T10:00:00.000Z',
-      lastActivityAt: '2026-10-06T10:00:00.000Z',
-      bodyPurgedAt: null,
-    };
-    return Promise.resolve({
-      ok: true,
-      value: { ok: true, conversation, messages: one.messages, wrapUp: null },
-    });
-  };
-  const client = {
-    read,
-    mutate: (name: string, body: Readonly<Record<string, unknown>>) => {
-      calls.push({ kind: 'write', name, body });
-      return mutate === undefined
-        ? Promise.resolve({ unavailable: true, because: 'n/a' })
-        : mutate({ name, body });
-    },
-  } as unknown as OperationsClient;
-  return { client, calls };
-}
-
-async function drawerFor(client: OperationsClient, grantKey = 'alpha:ana'): Promise<Mounted> {
-  const page = track(
-    await mount(
-      <AssistantView
-        client={client}
-        route="agency:settings"
-        here="/settings"
-        entry={null}
-        grantKey={grantKey}
-      />,
-    ),
-  );
-  await settle();
-  return page;
-}
-
-const tabTitles = (page: Mounted): (string | null)[] =>
-  page.all('[data-chat]').map((tab) => tab.textContent);
-
-const bodies = (page: Mounted): (string | null)[] =>
-  page
-    .all('[data-message-role]')
-    .map((line) => `${line.getAttribute('data-message-role')}: ${line.textContent}`);
-
-const STORED: Stored = {
-  [ONE]: {
-    title: 'Pacing question',
-    messages: [
-      message('m1', 'person', 'Is pacing on track?'),
-      message('m2', 'agent', 'Yes, 4% under.'),
-    ],
-  },
-  [TWO]: { title: 'Older chat', messages: [message('m3', 'person', 'Hello')] },
-};
 
 // eslint-disable-next-line max-lines-per-function -- one drawer, its history and kept tabs
 describe('MP-7-11 CS-7.33 drawer history', () => {
@@ -186,6 +94,13 @@ describe('MP-7-11 CS-7.33 drawer history', () => {
     await first.click('.aip__chip');
     await settle();
     await first.unmount();
+    // Only the opaque id is kept: no title or words of the conversation stay in the tab's storage.
+    expect(
+      JSON.parse(sessionStorage.getItem('ops-astro:drawer-tabs:alpha:ana') ?? 'null'),
+    ).toStrictEqual({
+      selected: MADE,
+      tabs: [MADE],
+    });
     const reloaded = await drawerFor(client);
     expect(tabTitles(reloaded)).toStrictEqual(['Chat 1']);
     expect(bodies(reloaded).at(-1)).toBe('ai: Answered.');
@@ -197,7 +112,7 @@ describe('MP-7-11 CS-7.33 drawer history', () => {
   it('C36 kept tabs are the session’s own: another sign-in in the tab gets none of them', async () => {
     sessionStorage.setItem(
       'ops-astro:drawer-tabs:alpha:ana',
-      JSON.stringify({ selected: ONE, tabs: [{ conversationId: ONE, title: 'Pacing question' }] }),
+      JSON.stringify({ selected: ONE, tabs: [ONE] }),
     );
     const { client, calls } = serving(STORED);
     const other = await drawerFor(client, 'alpha:bo');
@@ -208,7 +123,7 @@ describe('MP-7-11 CS-7.33 drawer history', () => {
   it('C36 a stored value of any other shape brings back nothing and reads nothing', async () => {
     sessionStorage.setItem(
       'ops-astro:drawer-tabs:alpha:ana',
-      JSON.stringify({ selected: ONE, tabs: [{ conversationId: '../account', title: 'x' }] }),
+      JSON.stringify({ selected: ONE, tabs: ['../account'] }),
     );
     const { client, calls } = serving(STORED);
     const page = await drawerFor(client);
