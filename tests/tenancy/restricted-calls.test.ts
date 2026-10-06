@@ -1020,6 +1020,20 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.trigger).toBe(trigger);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
     });
+
+    it("raises the owner's decision item only from an insert of a frontier row, at commit", async () => {
+      expect(definer('map_frontier_raise_decision()')?.firedBy).toStrictEqual([
+        { table: 'public.map_frontier', events: 'insert' },
+      ]);
+      const timing = await world.db.admin.execute<{ deferrable: boolean; deferred: boolean }>(
+        `select t.tgdeferrable as deferrable, t.tginitdeferred as deferred
+           from pg_trigger t join pg_proc p on p.oid = t.tgfoid
+          where p.oid = 'public.map_frontier_raise_decision()'::regprocedure and not t.tgisinternal`,
+      );
+      expect(timing.map((row) => Object.assign({}, row))).toStrictEqual([
+        { deferrable: true, deferred: true },
+      ]);
+    });
   });
 
   it('the reset token lookup is a definer taking the hash alone, pinned to read every business', () => {

@@ -222,11 +222,19 @@ function roleCases() {
       'map_frontier:delete,insert,select',
       'map_summaries:delete,insert,select,update',
       'map_versions:select',
-      'people:select',
       'record_links:select',
       'record_types:select',
       'records:select',
     ]);
+    // Of people, the two columns the owner join compares and nothing else:
+    // no name, no sign-in state.
+    const columns = await world.db.admin.execute<{ column: string }>(
+      `select a.attname as column from pg_attribute a
+        where a.attrelid = 'public.people'::regclass and a.attnum > 0 and not a.attisdropped
+          and has_column_privilege('ops_astro_map_path', a.attrelid, a.attnum, 'SELECT')
+        order by 1`,
+    );
+    expect(columns.map((row) => row.column)).toStrictEqual(['business_id', 'id']);
   });
 }
 

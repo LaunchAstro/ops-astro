@@ -83,6 +83,17 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       )
     )[0]?.value;
 
+  const countTitled = async (title: string) =>
+    Number(
+      (
+        await w.db.admin.execute<{ readonly n: string }>(
+          `select count(*)::text as n from public.records
+            where business_id = $1 and data->>'title' = $2`,
+          [w.business, title],
+        )
+      )[0]?.n,
+    );
+
   const revise = async (who: Member, map: string, change: Record<string, unknown>) =>
     await w.as(who, {
       command: 'map.revise',
@@ -724,6 +735,123 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       const filed = must(await asPerson(ada, taskType, `Ada's ${taskType}`), `Ada's ${taskType}`);
       expect(await dataOf(filed.id, 'type')).toBe(taskType);
     }
+  });
+
+  it("WF-1 a map nested under someone else's map is retyped to grilling or prototype by that map's owner alone", async () => {
+    const bea = owner;
+    const map = await newMap(bea, "Bea's outer map");
+    const OWNER_ONLY = "Only the map's owner files a grilling or prototype ticket on the map.";
+    const decisionItems = async (recordId: string) =>
+      Number(
+        (
+          await w.db.admin.execute<{ readonly n: string }>(
+            `select count(*)::text as n from public.inbox_items
+              where business_id = $1 and subject_record_id = $2 and reason = 'decision'`,
+            [w.business, recordId],
+          )
+        )[0]?.n,
+      );
+    // The teammate holds task:decide but does not own Bea's map. A map of
+    // their own lands under it twice: created there, and moved there.
+    const created = await w.create(
+      teammate,
+      { title: "the teammate's nested map" },
+      { taskType: 'map', parentId: map.id },
+    );
+    const moved = await newMap(teammate, "the teammate's loose map");
+    must(
+      await w.as(teammate, {
+        command: 'task.reparent',
+        recordId: moved.id,
+        expectedRevision: await w.revisionOf(moved.id),
+        parentId: map.id,
+      }),
+      "the teammate's map moves under Bea's",
+    );
+    for (const nested of [created, moved]) {
+      expect(await dataOf(nested.id, 'parent')).toBe(map.id);
+      for (const taskType of ['grilling', 'prototype']) {
+        const revision = await w.revisionOf(nested.id);
+        expect(await retype(teammate, nested.id, taskType)).toMatchObject({
+          code: 'SCOPE_NOT_GRANTED',
+          fixes: [OWNER_ONLY],
+        });
+        expect(await dataOf(nested.id, 'type')).toBe('map');
+        expect(await w.revisionOf(nested.id)).toBe(revision);
+      }
+      expect(await decisionItems(nested.id)).toBe(0);
+    }
+    // Bea retypes a map she nested under her own map.
+    const own = await w.create(bea, { title: "Bea's nested map" }, { taskType: 'map', parentId: map.id });
+    must(await retype(bea, own.id, 'grilling'), 'Bea retypes her own nested map');
+    expect(await dataOf(own.id, 'type')).toBe('grilling');
+  });
+
+  it("WF-1 graduating fog into a grilling ticket on someone else's map is refused, filing nothing", async () => {
+    const bea = owner;
+    const charted = must(
+      await w.as(bea, { command: 'map.chart', title: "Bea's foggy map", fog: ['which way'] }),
+      'Bea charts a map with fog',
+    );
+    const patch = async () =>
+      (
+        await w.db.admin.execute<{
+          readonly id: string;
+          readonly retired: string | null;
+          readonly into: string[] | null;
+        }>(
+          `select id, retired_version::text as retired, graduated_into as into
+             from public.map_components
+            where business_id = $1 and map_id = $2 and kind = 'fog'`,
+          [w.business, charted.id],
+        )
+      )[0];
+    const patchId = (await patch())?.id;
+    const NEEDS_DECIDE = 'Filing a grilling or prototype ticket on a map needs task:decide.';
+    const OWNER_ONLY = "Only the map's owner files a grilling or prototype ticket on the map.";
+    for (const [who, fix] of [
+      [writer, NEEDS_DECIDE],
+      [teammate, OWNER_ONLY],
+    ] as const) {
+      const title = `graduated by ${who.personId}`;
+      const revision = await w.revisionOf(charted.id);
+      const graduated = await w.as(who, {
+        command: 'map.graduate',
+        recordId: charted.id,
+        expectedRevision: revision,
+        patchId,
+        tickets: [{ title, type: 'grilling' }],
+      });
+      expect(graduated).toMatchObject({ code: 'SCOPE_NOT_GRANTED', fixes: [fix] });
+      expect(await countTitled(title)).toBe(0);
+      expect(await patch()).toStrictEqual({ id: patchId, retired: null, into: null });
+      expect(await w.revisionOf(charted.id)).toBe(revision);
+    }
+  });
+
+  it('WF-1 charting a new map with a grilling ticket needs task:decide, though the charter owns the new map', async () => {
+    const chart = async (who: Member, title: string) =>
+      await w.as(who, {
+        command: 'map.chart',
+        title,
+        tickets: [{ ref: 'g', title: `${title}: which way`, type: 'grilling' }],
+      });
+    const byWriter = 'charted by the writer';
+    expect(await chart(writer, byWriter)).toMatchObject({
+      code: 'SCOPE_NOT_GRANTED',
+      fixes: ['Filing a grilling or prototype ticket on a map needs task:decide.'],
+    });
+    expect(await countTitled(byWriter)).toBe(0);
+    expect(await countTitled(`${byWriter}: which way`)).toBe(0);
+    // A person holding decide charts the same and owns the map it files on.
+    const byDecider = 'charted by the teammate';
+    const answer = await chart(teammate, byDecider);
+    const made = must(answer, 'the teammate charts');
+    const ticketId = (answer as { detail?: { tickets?: Record<string, string> } }).detail
+      ?.tickets?.['g'];
+    expect(await dataOf(made.id, 'map_owner')).toBe(teammate.personId);
+    expect(await dataOf(ticketId ?? '', 'type')).toBe('grilling');
+    expect(await dataOf(ticketId ?? '', 'parent')).toBe(made.id);
   });
 
   it('WF-1 map scoped follows the client rules of task.set_party', async () => {
