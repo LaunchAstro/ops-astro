@@ -980,24 +980,39 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
       [r, 'Limit established'],
     ]);
   });
-  it('WF-2 a resolution answer is read only where its ticket is read', async () => {
+  it('WF-2 a resolution answer is read only where its ticket is read: client to client, person to person, business to business', async () => {
     const mapX = await scopedMap('answers-X', 'x ticket');
     const mapY = await scopedMap('answers-Y', 'y ticket');
     const onX = await w.member('on-x-answers', ['read'], { kind: 'record', id: mapX.map });
     const onY = await w.member('on-y-answers', ['read'], { kind: 'record', id: mapY.map });
     const bea = await w.outsider('bea-answers');
     const y = mapY.tickets['a'] as string;
+    // Same business and client: a person whose read is a sibling ticket's alone.
+    const sibling = await w.create(
+      owner,
+      { title: 'y sibling' },
+      { taskType: 'research', parentId: mapY.map },
+    );
+    const onSibling = await w.member('on-sibling-answers', ['read'], {
+      kind: 'record',
+      id: sibling.id,
+    });
     const canary = `canary-answer-${randomUUID()}`;
     must(
       await w.as(owner, { command: 'task.resolve', ...(await at(y)), answer: canary, gist: 'y' }),
       'resolve',
     );
     // A reader of map Y reads the answer on its ticket.
-    expect(JSON.stringify(await w.read(onY, { read: 'task.read', recordId: y }))).toContain(canary);
-    // A person on another client's map, and a person of another business, do not.
-    const crossed = await w.read(onX, { read: 'task.read', recordId: y });
-    expect(codeOf(crossed)).toBe('SCOPE_NOT_GRANTED');
-    expect(JSON.stringify(crossed)).not.toContain(canary);
+    expect(await w.read(onY, { read: 'task.read', recordId: y })).toMatchObject({
+      task: { comments: [{ body: canary, audience: 'internal' }] },
+    });
+    // A person on another client's map, a person on a sibling ticket alone, and
+    // a person of another business do not.
+    for (const who of [onX, onSibling]) {
+      const crossed = await w.read(who, { read: 'task.read', recordId: y });
+      expect(codeOf(crossed)).toBe('SCOPE_NOT_GRANTED');
+      expect(JSON.stringify(crossed)).not.toContain(canary);
+    }
     const foreign = await w.read(bea, { read: 'task.read', recordId: y }, w.bravo);
     expect(codeOf(foreign)).toBe('NOT_FOUND');
     expect(JSON.stringify(foreign)).not.toContain(canary);
