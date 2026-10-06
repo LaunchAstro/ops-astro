@@ -95,6 +95,7 @@ export function PromoteForm(props: {
   readonly label: string;
   readonly promote: (filing: Filing) => void;
   readonly cancel: () => void;
+  readonly locked: boolean;
 }): ReactElement {
   const values = useCeilingAndExpiry();
   const confirm = (): void => {
@@ -113,6 +114,7 @@ export function PromoteForm(props: {
       <button
         type="button"
         className="btn btn--sm btn--primary"
+        disabled={props.locked}
         onClick={confirm}
         data-promote-confirm
       >
@@ -165,9 +167,31 @@ function ScopePicker(props: {
   );
 }
 
+/** The filing the form's values make; null, with the first unset field focused, until all are set. */
+function mandateOf(draft: {
+  readonly label: string;
+  readonly scope: string;
+  readonly refuses: boolean;
+  readonly labelRef: RefObject<HTMLInputElement | null>;
+  readonly values: ReturnType<typeof useCeilingAndExpiry>;
+}): MandateFiling | null {
+  const { label, refuses, values } = draft;
+  const cents = centsOf(values.ceiling);
+  const expiresAt = expiryOf(values.expiry);
+  const set = allSet([
+    [label.trim() !== '', draft.labelRef],
+    [refuses || cents !== null, values.ceilingRef],
+    [expiresAt !== null, values.expiryRef],
+  ]);
+  if (!set || expiresAt === null) return null;
+  const ceiling = refuses || cents === null ? null : { amountMinor: cents, currency: CURRENCY };
+  return { classes: [draft.scope], refuses, ceiling, expiresAt, label: label.trim() };
+}
+
 export function MandateForm(props: {
   readonly scopes: readonly string[];
-  readonly file: (mandate: MandateFiling) => void;
+  readonly file: (mandate: MandateFiling, done: () => void) => void;
+  readonly locked: boolean;
 }): ReactElement {
   const [label, setLabel] = useState('');
   const [scope, setScope] = useState(props.scopes[0] ?? '');
@@ -175,18 +199,12 @@ export function MandateForm(props: {
   const labelRef = useRef<HTMLInputElement>(null);
   const values = useCeilingAndExpiry();
   const add = (): void => {
-    const cents = centsOf(values.ceiling);
-    const expiresAt = expiryOf(values.expiry);
-    const set = allSet([
-      [label.trim() !== '', labelRef],
-      [refuses || cents !== null, values.ceilingRef],
-      [expiresAt !== null, values.expiryRef],
-    ]);
-    if (!set || expiresAt === null) return;
-    const ceiling = refuses || cents === null ? null : { amountMinor: cents, currency: CURRENCY };
-    props.file({ classes: [scope], refuses, ceiling, expiresAt, label: label.trim() });
-    setLabel('');
-    labelRef.current?.focus();
+    const filing = mandateOf({ label, scope, refuses, labelRef, values });
+    if (filing === null) return;
+    props.file(filing, () => {
+      setLabel('');
+      labelRef.current?.focus();
+    });
   };
   return (
     <div className="fieldrow psadd">
@@ -208,7 +226,13 @@ export function MandateForm(props: {
         setRefuses={setRefuses}
       />
       <CeilingAndExpiry what="" marks="mandate" noCeiling={refuses} {...values} />
-      <button type="button" className="btn btn--sm btn--secondary" onClick={add} data-mandate-add>
+      <button
+        type="button"
+        className="btn btn--sm btn--secondary"
+        disabled={props.locked}
+        onClick={add}
+        data-mandate-add
+      >
         Add
       </button>
     </div>

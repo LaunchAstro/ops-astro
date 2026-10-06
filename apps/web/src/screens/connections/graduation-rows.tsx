@@ -10,6 +10,7 @@
 // the other is the expensive mistake.
 
 import type { ReactElement } from 'react';
+import { Button, Card } from '@launchastro/ui';
 import type {
   GraduationRowView,
   MandateView,
@@ -64,10 +65,12 @@ function GraduationSwitch(props: {
   readonly row: GraduationRowView;
   readonly clientLabel: string;
   readonly flip: () => void;
+  readonly locked: boolean;
 }): ReactElement {
   const { row } = props;
   const on = row.state === 'promoted';
   const live = on || row.state === 'ready';
+  const dead = !live || props.locked;
   let said = why(row);
   if (on) said = `Auto since ${row.promotedAt?.slice(0, 10) ?? ''}`;
   else if (live) said = 'Promote to auto';
@@ -78,8 +81,8 @@ function GraduationSwitch(props: {
         className="autosw"
         role="switch"
         aria-checked={on}
-        disabled={!live}
-        aria-disabled={!live}
+        disabled={dead}
+        aria-disabled={dead}
         aria-label={`Run ${row.classLabel} unattended for ${props.clientLabel}`}
         onClick={props.flip}
         data-auto
@@ -122,6 +125,7 @@ export function GraduationRow(props: {
   readonly row: GraduationRowView;
   readonly clientLabel: string;
   readonly promoting: boolean;
+  readonly locked: boolean;
   readonly flip: () => void;
   readonly promote: (filing: Filing) => void;
   readonly cancel: () => void;
@@ -142,13 +146,19 @@ export function GraduationRow(props: {
           {WORD[row.state]}
         </span>
       </div>
-      <GraduationSwitch row={row} clientLabel={props.clientLabel} flip={props.flip} />
+      <GraduationSwitch
+        row={row}
+        clientLabel={props.clientLabel}
+        flip={props.flip}
+        locked={props.locked}
+      />
       {props.promoting ? (
         <PromoteForm
           id={row.id}
           label={row.classLabel}
           promote={props.promote}
           cancel={props.cancel}
+          locked={props.locked}
         />
       ) : null}
       <GraduationRecord row={row} />
@@ -160,6 +170,7 @@ export function GraduationRow(props: {
 export function Mandate(props: {
   readonly mandate: MandateView;
   readonly revoke: () => void;
+  readonly locked: boolean;
 }): ReactElement {
   const { mandate } = props;
   const meta = [
@@ -180,11 +191,46 @@ export function Mandate(props: {
         type="button"
         className="ps__x"
         aria-label={`Revoke ${mandate.label}`}
+        disabled={props.locked}
         onClick={props.revoke}
         data-mandate-revoke
       >
         ×
       </button>
+    </div>
+  );
+}
+
+/** A revoke cannot be undone, so it waits on this; a refusal names the classes it stops holding. */
+export function ConfirmRevokeMandate(props: {
+  readonly mandate: MandateView;
+  readonly holds: readonly GraduationRowView[];
+  readonly onRevoke: () => void;
+  readonly onKeep: () => void;
+}): ReactElement {
+  const { mandate, holds } = props;
+  const freed = holds.map((row) => row.classLabel).join(', ');
+  let sub = 'A revoked approval cannot be restored; file a new one instead.';
+  if (mandate.refuses) {
+    sub =
+      holds.length === 0
+        ? 'It holds no class here now.'
+        : `It stops holding ${freed}; a promotion on any of them runs unattended again.`;
+  }
+  return (
+    <div data-confirm="revoke-mandate">
+      <Card title={`Revoke "${mandate.label}"?`} sub={sub}>
+        <span data-act="revoke">
+          <Button variant="primary" onClick={props.onRevoke}>
+            Revoke
+          </Button>
+        </span>
+        <span data-act="keep">
+          <Button variant="ghost" onClick={props.onKeep}>
+            Keep it
+          </Button>
+        </span>
+      </Card>
     </div>
   );
 }
