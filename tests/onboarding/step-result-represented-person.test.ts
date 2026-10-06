@@ -11,7 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { agentPath, PROPOSAL } from '../api/controls-fixture.ts';
 import { issueBody } from '../api/api-2-agent-credential-world.ts';
-import { grantTo, type Member } from '../commands/fixture.ts';
+import { enrol, grantTo, type Member } from '../commands/fixture.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { detail, useMoveWorld } from './c41-a-move-world.ts';
 
@@ -24,9 +25,34 @@ describe.skipIf(serverUrl === undefined)('C41-A step result: the represented per
   beforeAll(async () => {
     const { db, business } = the.controls.fixture;
     await db.app.withBusiness(business, async (tx) => {
-      await grantTo(tx, the.admin, 'write', { kind: 'business', id: null }, false, 'credential');
+      // The credential's person is the assignee, so it is told apart from the
+      // admin who starts every onboarding here.
+      await grantTo(tx, the.assignee, 'write', { kind: 'business', id: null }, false, 'credential');
+      await grantTo(tx, the.assignee, 'read', { kind: 'business', id: null }, false, 'task');
     });
   });
+
+  /** A person of their own whose task grants a delegation draws on, told apart from the admin. */
+  const delegator = async (): Promise<Member> => {
+    const { db, business } = the.controls.fixture;
+    const member = await enrol(db.app, business, 'step-on-behalf');
+    await db.app.withBusiness(business, async (tx) => {
+      for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
+        // oxlint-disable-next-line no-await-in-loop -- issueGrant reads the granter's rows
+        const issued = await issueGrant(tx, [], {
+          subject: { kind: 'person', id: member.personId },
+          scope: { kind: 'business', id: null },
+          collection: 'task',
+          action,
+          parentGrantId: null,
+          grantedByActorId: the.admin.actorId,
+          expiresAt: null,
+        });
+        if (!issued.ok) throw new Error(issued.refusal.code);
+      }
+    });
+    return member;
+  };
 
   /** The agent picked up on a step's task under a delegation `by` decided. */
   const delegatedOn = async (taskId: string, by: Member, purpose: string): Promise<string> => {
@@ -78,7 +104,8 @@ describe.skipIf(serverUrl === undefined)('C41-A step result: the represented per
   it('#414 an agent’s step results and the stop report record the person its delegation acts for', async () => {
     const steps = await onboard('Made-up Client Represented Agent');
     const welcome = String(steps.get('welcome-email'));
-    const credential = await delegatedOn(welcome, the.admin, 'step_on_behalf');
+    const by = await delegator();
+    const credential = await delegatedOn(welcome, by, 'step_on_behalf');
     const headers = {
       ...authorised(await tokenFor(the.controls.fixture.agent.subject)),
       'x-agent-delegation': credential,
@@ -91,17 +118,30 @@ describe.skipIf(serverUrl === undefined)('C41-A step result: the represented per
     const written = await comments(welcome);
     expect(written.some((one) => /stopped after two failed attempts/iu.test(one.body))).toBe(true);
     expect(written.length).toBeGreaterThanOrEqual(3);
-    expect(written.map((one) => one.person)).toStrictEqual(written.map(() => the.admin.personId));
+    expect(written.map((one) => one.person)).toStrictEqual(written.map(() => by.personId));
+    expect(by.personId).not.toBe(the.admin.personId);
   }, 60_000);
 
   it('#414 an API-2 credential’s step result records the credential’s person', async () => {
     const steps = await onboard('Made-up Client Represented Credential');
     const welcome = String(steps.get('welcome-email'));
-    const issued = await as(the.admin, 'credential.issue', issueBody());
+    const issued = await as(the.assignee, 'credential.issue', issueBody());
     expect(issued.status, JSON.stringify(issued.body)).toBe(200);
     const answer = await result(welcome, 'done', authorised(String(detail(issued)['credential'])));
     expect(answer.status, JSON.stringify(answer.body)).toBe(200);
     const written = await comments(welcome);
-    expect(written.map((one) => one.person)).toStrictEqual([the.admin.personId]);
+    expect(written.map((one) => one.person)).toStrictEqual([the.assignee.personId]);
+  }, 60_000);
+
+  it('#414 a person’s own step result records no one', async () => {
+    const steps = await onboard('Made-up Client Represented None');
+    const welcome = String(steps.get('welcome-email'));
+    const answer = await as(the.admin, 'onboarding.step_result', {
+      recordId: welcome,
+      outcome: 'done',
+      result: 'done by a person',
+    });
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    expect((await comments(welcome)).map((one) => one.person)).toStrictEqual([null]);
   }, 60_000);
 });
