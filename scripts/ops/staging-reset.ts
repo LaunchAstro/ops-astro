@@ -65,6 +65,34 @@ export function notInvented(cast: readonly CastMember[]): string[] {
 
 export class Refusal extends Error {}
 
+// Migration 20261006140500's stop (#999): a list of plain names, no address.
+const NAME = String.raw`(?:schema )?[a-z_][a-z0-9_]{0,62}(?:\.[a-z_][a-z0-9_]{0,62})?`;
+const BACKUP_GAP = new RegExp(
+  String.raw`^the backup identity cannot read ${NAME}(?:, ${NAME}){0,49}$`,
+  'u',
+);
+
+/**
+ * Why a run stopped: the backup identity's gap by name, any other error by its
+ * class and SQLSTATE alone, since its message may carry an address.
+ */
+export function stoppedBecause(error: unknown): string {
+  const { cause } = (error ?? {}) as { cause?: { code?: unknown; message?: unknown } };
+  if (
+    cause?.code === '42501' &&
+    typeof cause.message === 'string' &&
+    BACKUP_GAP.test(cause.message)
+  )
+    return cause.message;
+  const { name, code } = (error ?? {}) as { name?: unknown; code?: unknown };
+  return [
+    typeof name === 'string' ? name : 'error',
+    typeof code === 'string' && /^[0-9A-Z]{5}$/u.test(code) ? code : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 const REF = /^[a-z]{20}$/u;
 /** Supabase's shared pooler in Sydney, staging's region (NATHAN-SUPABASE-FREE). */
 export const POOLER: RegExp = /^aws-[0-9]+-ap-southeast-2\.pooler\.supabase\.com$/u;
