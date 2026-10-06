@@ -151,12 +151,15 @@ it('refuses a run answer that lands while a failed sweep waits to repeat, and re
   await state.handle(op('start', ID));
   const release = hold(w, 'wait');
   const waited = state.handle(op('wait', ID));
+  const releasePing = hold(w, 'ping');
+  const pinged = state.handle({ kind: 'ping' });
   await settle();
   w.answer.delete = 500;
   w.answer.info = 500;
   await state.handle(op('delete', ID));
   release();
-  expect(await waited).toEqual(UNAVAILABLE);
+  releasePing();
+  expect([await waited, await pinged]).toEqual([UNAVAILABLE, UNAVAILABLE]);
   expect(candidateOf(w)?.runs).toEqual([{ statusCode: null, inTime: false }]);
 });
 
