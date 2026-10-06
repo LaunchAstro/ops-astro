@@ -4,7 +4,8 @@
 // CS-7.30, the drawer's model picker: it lists the models `conversation.models`
 // answers, a choice made before the tab starts rides in `conversation.start`
 // itself (so the first question is asked of it, not the default), and a choice
-// in a started tab goes at once by `conversation.set_model`. The
+// in a started tab goes at once by `conversation.set_model`, a question sent
+// straight after it waiting for it to land. The
 // operations client is a recorder standing in for the network only; the read
 // and the write themselves are proven on the real routes in
 // `tests/api/conversation-model-choice-reaches-the-call.test.ts`.
@@ -28,7 +29,8 @@ interface Call {
   readonly body: Readonly<Record<string, unknown>>;
 }
 
-function recorder(): {
+/** `hold`, where given, keeps each `conversation.set_model` from answering until it settles. */
+function recorder(hold: Promise<void> = Promise.resolve()): {
   readonly client: OperationsClient;
   readonly reads: Call[];
   readonly sent: Call[];
@@ -45,6 +47,7 @@ function recorder(): {
     },
     mutate: async (name: string, body: Readonly<Record<string, unknown>>) => {
       sent.push({ name, body });
+      if (name === 'conversation.set_model') await hold;
       return await Promise.resolve({
         ok: true,
         value: { recordId: '', revision: 0, detail: { conversationId: CONVERSATION } },
@@ -54,8 +57,8 @@ function recorder(): {
   return { client, reads, sent };
 }
 
-async function view() {
-  const { client, reads, sent } = recorder();
+async function view(hold?: Promise<void>) {
+  const { client, reads, sent } = recorder(hold);
   const page = track(
     await mount(
       <AssistantView
@@ -108,6 +111,34 @@ describe('CS-7.30 the model picker', () => {
     await settle();
     expect(sent.slice(1)).toStrictEqual([
       { name: 'conversation.set_model', body: { conversationId: CONVERSATION, model: 'replay-1' } },
+    ]);
+  });
+});
+
+describe('CS-7.30 a question after a choice', () => {
+  it('in a started tab waits for the choice to land, so it is asked of the model chosen', async () => {
+    let land: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      land = resolve;
+    });
+    const { page, sent } = await view(held);
+    await ask(page, 'What is due?');
+    await page.choose('[data-assistant="model"]', 'replay-2');
+    await ask(page, 'And next week?');
+    await settle();
+    // The choice is out but not landed: the question has not gone.
+    expect(sent.map((call) => call.name)).toStrictEqual([
+      'conversation.start',
+      'conversation.set_model',
+    ]);
+    land?.();
+    await settle();
+    expect(sent.slice(1)).toStrictEqual([
+      { name: 'conversation.set_model', body: { conversationId: CONVERSATION, model: 'replay-2' } },
+      {
+        name: 'conversation.message',
+        body: { conversationId: CONVERSATION, body: 'And next week?' },
+      },
     ]);
   });
 });
