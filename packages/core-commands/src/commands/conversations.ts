@@ -88,35 +88,40 @@ export interface StartFields {
  * The cited task, if the caller may read it, and the instant read once its row
  * is locked. A task that is not there, is in the trash, or is not the caller's
  * to read is one answer, `NOT_FOUND`, so citing a task tells the caller nothing
- * they could not already read. The row is read `for key share`, the lock the
- * scope's foreign key takes, so the start waits for a task write here, before
- * its grants are asked at that instant (#444): one that lapsed in the wait no
- * longer counts.
+ * they could not already read. Read is asked before the row is taken, so a
+ * caller who cannot read it waits on no task write and holds no lock on it.
+ * Then the row is read `for key share`, the lock the scope's foreign key
+ * takes, and both grants are asked again at the instant after that wait
+ * (#444): one that lapsed in the wait no longer counts.
  */
 async function citable(
   tx: TenantQuery,
   context: CommandContext,
   scope: Scope,
 ): Promise<{ readonly at: string } | CommandRefusal> {
-  const rows = await tx.query<{ readonly id: string }>(
-    `select id from records
-      where business_id = $1 and id = $2 and record_type_id = $3 and deleted_at is null
-      for key share`,
-    [tx.businessId, scope.id, context.spine.taskTypeId],
-  );
-  if (rows.length === 0) return refuseNotFound(['scope']);
-  const at = await lockedInstant(tx);
   const subjects = subjectsOf(context.session);
+  const read = {
+    collection: 'task',
+    action: 'read',
+    scope: { kind: 'record', id: scope.id },
+  } as const;
+  const live = (lock: '' | 'for key share') =>
+    tx.query<{ readonly id: string }>(
+      `select id from records
+        where business_id = $1 and id = $2 and record_type_id = $3 and deleted_at is null
+        ${lock}`,
+      [tx.businessId, scope.id, context.spine.taskTypeId],
+    );
+  if ((await live('')).length === 0) return refuseNotFound(['scope']);
+  if (!(await checkAuthorityAt(tx, subjects, read, await lockedInstant(tx))).ok) {
+    return refuseNotFound(['scope']);
+  }
+  if ((await live('for key share')).length === 0) return refuseNotFound(['scope']);
+  const at = await lockedInstant(tx);
   // The door's grant first, as the door asked it.
   const own = await checkAuthorityAt(tx, subjects, OWN_WRITE, at);
   if (!own.ok) return own.refusal;
-  const readable = await checkAuthorityAt(
-    tx,
-    subjects,
-    { collection: 'task', action: 'read', scope: { kind: 'record', id: scope.id } },
-    at,
-  );
-  return readable.ok ? { at } : refuseNotFound(['scope']);
+  return (await checkAuthorityAt(tx, subjects, read, at)).ok ? { at } : refuseNotFound(['scope']);
 }
 
 /** The first message's fields, refused by name; undefined when they will do. */

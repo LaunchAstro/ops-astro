@@ -6,7 +6,7 @@
 // Once a task has content its client is locked, and the way to serve another
 // client is a new task from the bare shell: the old task's type for the chosen
 // client, the title and one subtask per step name as the person edited them,
-// and nothing else. Only the old task's type is read; the old task is untouched.
+// and nothing else. Only the old task's type and client are read; it is untouched.
 //
 // The three asks of the authority are made in the transaction that creates the
 // task, with the caller's task grants held for share: `task:read` on the old
