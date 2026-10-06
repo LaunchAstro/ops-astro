@@ -2,10 +2,12 @@
 //
 // C52-A run start under concurrent writers (Sol PRV-oa-1048-R1, both races).
 // R1.1: a worker that claims and dispatches in one transaction never
-// deadlocks with another claimer of the same activation. R1.2: a worker
-// stopped while its admitted dispatch is still open either waits for the run
-// start to commit or, stopped first, gets no run. Each race runs on separate
-// connections, and the wait is proved by pg_blocking_pids, not by timing.
+// deadlocks with another claimer of the same activation, and a transaction
+// never takes a second activation after the first's business-wide locks.
+// R1.2: a worker stopped while its admitted dispatch is still open either
+// waits for the run start to commit or, stopped first or in flight, gets no
+// run. Each race runs on separate connections, and the wait is proved by
+// pg_blocking_pids, not by timing.
 
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -14,6 +16,7 @@ import {
   claimOccurrence,
   connect,
   dispatchOccurrence,
+  type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
 import { barrier } from '../runtime/gate-negatives-cases.ts';
 import { databaseUrlFromEnvironment, type FreshDatabase } from '../support/fresh-database.ts';
@@ -139,5 +142,72 @@ describe.skipIf(serverUrl === undefined)('C52-A dispatch and claim races', () =>
       async (tx) => await dispatchOccurrence(tx, next.id, occurrenceRunStarter(worker)),
     );
     expect(refused).toEqual({ kind: 'refused', code: 'WORKER_REQUIRED' });
+  }, 60_000);
+
+  it('a transaction that claimed for one activation is refused a claim or a dispatch for another, so no writer takes a second activation row after its business-wide locks', async () => {
+    const x = await f.approved();
+    const y = await f.approved();
+    const yDue = occurrenceOf(await w.claim(y.activation.id, { dueAt: f.nextDue() }));
+    const worker = await insertWorker(w.db, w.alpha);
+    const afterClaimingX = async (then: (tx: TenantQuery) => Promise<unknown>): Promise<unknown> =>
+      await w.inAlpha(async (tx) => {
+        await claimOccurrence(tx, x.activation.id, { dueAt: f.nextDue() });
+        return await then(tx);
+      });
+    await expect(
+      afterClaimingX(
+        async (tx) => await claimOccurrence(tx, y.activation.id, { dueAt: f.nextDue() }),
+      ),
+    ).rejects.toThrow('one transaction locks one activation');
+    await expect(
+      afterClaimingX(
+        async (tx) => await dispatchOccurrence(tx, yDue.id, occurrenceRunStarter(worker)),
+      ),
+    ).rejects.toThrow('one transaction locks one activation');
+  }, 60_000);
+
+  it('a run start that arrives while its worker is being stopped waits for the stop and is refused, writing no run and no dispatch', async () => {
+    const { activation } = await f.approved();
+    const worker = await insertWorker(w.db, w.alpha);
+    const due = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
+    const held = barrier();
+    const stopIn = barrier();
+    const other = connect(w.db.appUrl, { source: 'runtime' });
+    try {
+      // The stop is written and held open, uncommitted, before the start arrives.
+      const stopping = other.withBusiness(w.alpha, async (tx) => {
+        try {
+          await tx.query(
+            `update public.actors set active = false, deactivated_at = clock_timestamp()
+              where business_id = $1 and id = $2`,
+            [w.alpha, worker],
+          );
+          stopIn.release();
+          await held.held;
+        } finally {
+          stopIn.release();
+        }
+      });
+      await stopIn.held;
+      const start = w.inAlpha(
+        async (tx) => await dispatchOccurrence(tx, due.id, occurrenceRunStarter(worker)),
+      );
+      await awaitBlocked(w.db);
+      held.release();
+      await stopping;
+      expect(await start).toEqual({ kind: 'refused', code: 'WORKER_REQUIRED' });
+      const runs = await w.count(
+        'select count(*) as n from public.planned_runs where origin_occurrence_id = $1',
+        [due.id],
+      );
+      const dispatches = await w.count(
+        'select count(*) as n from public.occurrence_dispatches where occurrence_id = $1',
+        [due.id],
+      );
+      expect([runs, dispatches]).toEqual([0, 0]);
+    } finally {
+      held.release();
+      await other.close();
+    }
   }, 60_000);
 });
