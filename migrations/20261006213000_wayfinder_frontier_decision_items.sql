@@ -23,10 +23,12 @@
 --
 -- It runs as the map read models' role (20261006181500), as its siblings do,
 -- so the made-up guard and row security judge its inserts as the
--- application's. The role gains reads of people and inbox_items and inserts
--- to inbox_items, nothing more. Every statement carries the tenancy test.
+-- application's. The role gains reads of two columns of people (the owner
+-- join's business and id, never a name or sign-in state) and of inbox_items,
+-- and inserts to inbox_items, nothing more. Every statement carries the
+-- tenancy test.
 
-grant select on public.people to ops_astro_map_path;
+grant select (business_id, id) on public.people to ops_astro_map_path;
 grant select, insert on public.inbox_items to ops_astro_map_path;
 
 create or replace function public.map_frontier_raise_decision()

@@ -108,6 +108,10 @@ export async function setTaskType(
     });
     if (refusal !== undefined) return refused(refusal);
   }
+  if (to !== 'map' && OWNER_TYPES.has(to)) {
+    const filing = await refuseRetypeOntoMap(tx, context, target.id);
+    if (filing !== undefined) return refused(filing);
+  }
   // Any typed task, or a ticket of a map, is a wayfinder record (`isWayfinderRecord`):
   // none keeps client access, and a new map's subtasks become its tickets.
   if (to !== 'task' || facts.mapId !== null) {
@@ -124,6 +128,31 @@ export async function setTaskType(
     [tx.businessId, target.id, retypeChange(context, from, to)],
   );
   return applied(target.id, Number(rows[0]?.revision), { type: to, from });
+}
+
+/**
+ * A retype into grilling or prototype files the record on the map it sits
+ * under, as a create or a move there would: the filing rule judges that map
+ * too. A map nested under someone else's map is its creator's, so the
+ * record's own rule alone would let a non-owner turn it into the outer map's
+ * grilling or prototype ticket.
+ */
+async function refuseRetypeOntoMap(
+  tx: TenantQuery,
+  context: CommandContext,
+  recordId: string,
+): Promise<CommandRefusal | undefined> {
+  const rows = await tx.query<{ readonly parent: string | null }>(
+    `select uuid_4 as parent from records where business_id = $1 and id = $2`,
+    [tx.businessId, recordId],
+  );
+  const parentId = rows[0]?.parent ?? null;
+  if (parentId === null) return undefined;
+  // Parent held `for share` before its type is read: a retype in flight is seen.
+  await wayfinderFacts(tx, parentId, true);
+  const parent = await wayfinderFacts(tx, parentId);
+  if (parent?.type !== 'map') return undefined;
+  return await refuseFilingOnMap(tx, context, parent);
 }
 
 /** The data a retype writes: the type, one more history entry, and an owner for a new map. */
