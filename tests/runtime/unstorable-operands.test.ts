@@ -247,7 +247,7 @@ describe.skipIf(serverUrl === undefined)('operands the stores cannot hold', () =
       ['a lone surrogate', { n: LONE }],
     ] as const) {
       // FR2-JSONB-CONT: the agent entry reads `report` and `successor` in
-      // `agent-operations.ts` `handbackOperands`; `it.fails` until that line landed.
+      // `agent-operands.ts` `handbackOperands`; `it.fails` until that line landed.
       it(`agent, live fence: a report holding ${label} is refused, the lease still live`, async () => {
         const { picked, as } = await freshPickup(`agent handback ${label}`);
         await refusedCleanly(
