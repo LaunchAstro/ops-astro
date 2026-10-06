@@ -50,6 +50,11 @@ const REFUSED_LABELS: readonly [string, string][] = [
   ['braille blank', at(0x2800).repeat(3)],
   ['null notehead', at(0x1d159)],
   ['hieroglyph format control', `a${at(0x13430)}b posts`],
+  // PRV-oa-1053-R1.3: the hieroglyph full and half blanks, alone and inside a label.
+  ['hieroglyph full blank', at(0x13441)],
+  ['hieroglyph half blank', at(0x13442)],
+  ['hieroglyph full blank inside', `Posts${at(0x13441)} approved`],
+  ['hieroglyph half blank inside', `Posts ${at(0x13442)}approved`],
   ['stacked combining marks', `Ok${at(0x336).repeat(5)}`],
   ['combining mark first', `${at(0x301)}Posts`],
   // SEC-P05B-RB2: selectors only where they change what draws, and nothing blank or unassigned.
