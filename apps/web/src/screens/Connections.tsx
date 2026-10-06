@@ -17,8 +17,9 @@
 // Sections 003 to 005 (credentials and quota, data quality, band health) draw
 // on data the phase 6 sources bring; until MP-14-7b they say so. Sections 006
 // to 008 (grants, tripwires, the night round) are MP-14-8's, read apart on
-// `connection.signal`. The per-client region from the scope bar down is
-// MP-14-10a's, read apart on `connection.graduation`. Skill costing is later.
+// `connection.signal`; 009, skill costing, is MP-14-9's, read apart on
+// `finance.skill_costs`. The per-client region from the scope bar down (010
+// to 012) is MP-14-10a's, read apart on `connection.graduation`.
 //
 // The screen is keyed on the grant in `screen-registry.tsx`, so a change of
 // business or person starts its view state and repair attempts over, and
@@ -40,6 +41,7 @@ import { useCommand } from '../records/use-command.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { FleetTable } from './connections/fleet-table.tsx';
 import { SignalSections } from './connections/signal.tsx';
+import { SkillCostingSection } from './connections/costing.tsx';
 import { GraduationRegion } from './connections/graduation.tsx';
 import type { RepairControl } from './connections/fleet-row.tsx';
 import { initialFleetView, withFacet, withOpen, type FleetView } from './connections/fleet-view.ts';
@@ -258,6 +260,7 @@ export function ConnectionsScreen(props: {
       </RecordState>
       <NotConnected />
       <SignalSections client={client} grantKey={grantKey} clock={clock} {...rollup} />
+      <SkillCostingSection client={client} grantKey={grantKey} {...rollup} />
       <GraduationRegion client={client} grantKey={grantKey} {...rollup} />
     </div>
   );

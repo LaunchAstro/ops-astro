@@ -119,6 +119,26 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // The Executive page: section 005, what our agents cost us, reads for real
+  // and 001 to 004 stand in. The manifest's Dashboard section already lists
+  // this address, so it adds no rail door.
+  'agency:executive': {
+    namespace: 'agency',
+    path: '/dashboard/executive/',
+    title: 'Executive',
+    surface: 'none',
+    authenticated: true,
+  },
+  // A new client's onboarding in phases, drawn from made-up data under the
+  // mock label until an onboarding read exists; no manifest page, so no rail
+  // entry.
+  'agency:onboarding': {
+    namespace: 'agency',
+    path: '/onboarding/',
+    title: 'Onboarding',
+    surface: 'none',
+    authenticated: true,
+  },
   // The business's own two operation-classified settings. It draws no pinned
   // surface — the mockup has no settings screen — so `surface` is `none`
   // rather than a letter it would be borrowing. The manifest places it in the
