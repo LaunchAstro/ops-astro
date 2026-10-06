@@ -70,7 +70,7 @@ function DockPanel(props: {
   if (taskPanel.draft !== null) {
     return (
       <DraftPanel
-        key={grantKey}
+        key={`${grantKey}\u0000${String(taskPanel.draftKey)}`}
         client={client}
         storage={props.storage}
         person={`${session.businessKey}:${session.email}`}

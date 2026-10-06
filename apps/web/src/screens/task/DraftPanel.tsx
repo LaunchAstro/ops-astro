@@ -116,7 +116,7 @@ function DraftBody(
     <>
       <DraftHead busy={creating.busy} docked={props.docked === true} onClose={props.onClose} />
       <p className="card__sub" data-draft-admission>
-        New task, filed from {props.scope.from}.{' '}
+        New task, filed from {kept.draft.from ?? props.scope.from}.{' '}
         {kept.draft.why === null ? '' : `${kept.draft.why} `}
         Nothing is stored until Create.
       </p>
@@ -184,10 +184,12 @@ function useKeptDraft(props: DraftPanelProps) {
   const { storage, person } = props;
   const [draft, setDraft] = useState<TaskDraft>(
     () =>
-      readDraft(storage, person) ??
-      (props.scope.prefill === undefined
-        ? emptyDraft(props.scope.clientId)
-        : prefilledDraft(props.scope.prefill)),
+      readDraft(storage, person) ?? {
+        ...(props.scope.prefill === undefined
+          ? emptyDraft(props.scope.clientId)
+          : prefilledDraft(props.scope.prefill)),
+        from: props.scope.from,
+      },
   );
   // The create's identity, kept across an unknown outcome and a remount, and
   // dropped by any edit.

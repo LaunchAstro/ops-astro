@@ -51,6 +51,8 @@ export interface TaskDraft {
   readonly owner: { readonly id: string; readonly name: string } | null;
   /** The sentence admitting what the page's guesses came from (DN-02), or null. */
   readonly why: string | null;
+  /** The page it was filed from, kept with it so a reopened draft still names its own. */
+  readonly from: string | null;
 }
 
 export const emptyDraft = (clientId: string | null): TaskDraft => ({
@@ -65,6 +67,7 @@ export const emptyDraft = (clientId: string | null): TaskDraft => ({
   category: null,
   owner: null,
   why: null,
+  from: null,
 });
 
 /** A fresh draft with the page's guesses in it (DN-02). */

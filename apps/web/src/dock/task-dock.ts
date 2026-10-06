@@ -52,12 +52,15 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
   const file = task?.file ?? null;
   // A door's shift press opens the panel beside what is open.
   const beside = useRef(false);
+  const openNow = useRef(open);
+  openNow.current = open;
   useEffect(() => {
     const onClick = (event: MouseEvent): void => {
       const door = (event.target as Element | null)?.closest<HTMLElement>('[data-new-task]');
-      if (file === null || door === null || door === undefined) return;
+      if (event.defaultPrevented || file === null || door === null || door === undefined) return;
       event.preventDefault();
-      beside.current = event.shiftKey;
+      // Beside applies to the panel's own open; a panel already open stays where it is.
+      beside.current = event.shiftKey && !openNow.current;
       file(doorContext(door));
     };
     document.addEventListener('click', onClick);
