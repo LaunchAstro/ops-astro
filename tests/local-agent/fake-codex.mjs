@@ -26,7 +26,9 @@ process.stdin.on('end', () => {
   const answer = () => {
     if (knobs.limit) {
       const limit = { type: 'error', message: "You've hit your usage limit. Try again later." };
-      process.stdout.write(`${JSON.stringify(limit)}\n`);
+      process.stdout.write(
+        `${JSON.stringify({ type: 'turn.started' })}\n${JSON.stringify(limit)}\n`,
+      );
     } else if (typeof knobs.raw === 'string') {
       process.stdout.write(knobs.raw);
     } else {

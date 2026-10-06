@@ -11,14 +11,14 @@
 // operation lists as proof that nothing happened, so it moves no money. Calls
 // run one at a time: the ledger's total is read and the cap checked with no
 // other call in flight, so two calls never both start under the cap. One
-// runner holds a home at a time (its lock file), so a second runner on the
-// same ledger refuses to start. A call whose caller has gone while it queued
-// is never run.
+// runner holds a home at a time (its lock file). A call whose caller has gone,
+// or whose turn comes as the runner closes, is never run.
 
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
 import { promptOf, runCodex, UNKNOWN } from './codex.ts';
 import {
@@ -285,10 +285,11 @@ export async function createRunner(
     origin: `http://127.0.0.1:${String(address.port)}`,
     port: address.port,
     close: async () => {
-      // The call in flight is killed and its row written before the home is let go.
+      // The call in flight is killed and its row written, and every answer sent, before the home goes.
       state.closing = true;
       for (const call of state.inFlight) call.abort();
       await state.queue;
+      await nextTurn();
       server.closeAllConnections();
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
