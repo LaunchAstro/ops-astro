@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // LA-1: one runner holds a home at a time. A lock left by a runner that has
-// gone is taken over by one runner only, however the takeovers interleave.
+// gone is taken over by one runner only, however the takeovers interleave,
+// and a runner lets go of its own hold only.
 
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -28,7 +29,7 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...actual, readFileSync };
 });
 
-const { opened, own } = runnerWorld();
+const { opened, own, start } = runnerWorld();
 
 function settingsOf(w: World): RunnerSettings {
   const read = readSettings(w.env, w.userHome);
@@ -77,5 +78,17 @@ describe('a home left by a runner that has gone', () => {
     const started = await outcomes([first, second]);
     expect(started.filter((outcome) => outcome === 'started')).toHaveLength(1);
     expect(started.find((outcome) => outcome !== 'started')).toContain('LOCAL_HOME_IN_USE');
+  });
+});
+
+describe('a runner closed twice', () => {
+  it('never lets go of the home a runner after it holds', async () => {
+    const { w, r: first } = await start();
+    await first.close();
+    opened.length = 0;
+    opened.push(await createRunner(settingsOf(w), () => null));
+    await first.close();
+    const [third] = await outcomes([createRunner(settingsOf(w), () => null)]);
+    expect(third).toContain('LOCAL_HOME_IN_USE');
   });
 });
