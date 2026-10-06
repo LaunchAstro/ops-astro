@@ -80,8 +80,34 @@ const FALLBACK = 'admin';
 const DUE_DAYS = 7;
 const DUE_DAYS_URGENT = 3;
 
-export function prefillOf(page: PageContext, _now: Date): Prefill {
-  return { category: FALLBACK, estimate: 60, due: '', clientId: null, owner: null, why: page.from };
+export function prefillOf(page: PageContext, now: Date): Prefill {
+  const own = TASK_CATEGORIES.has(page.category) ? page.category : null;
+  const routed = page.channel === undefined ? undefined : BY_CHANNEL[page.channel];
+  const category = own ?? routed ?? FALLBACK;
+  const urgent = page.urgent === true;
+  const days = urgent ? DUE_DAYS_URGENT : DUE_DAYS;
+  const from = [
+    page.subject === undefined || page.subject === '' ? null : `“${page.subject}”`,
+    routed === undefined || own !== null ? null : `the ${page.channelLabel ?? page.from} board`,
+    urgent ? 'the move being flagged urgent' : null,
+  ].filter((part) => part !== null);
+  const owner = page.owner ?? null;
+  const why = [
+    from.length > 0 ? `Guessed from ${from.join(', ')}: due in` : 'Nothing here to guess from: due in',
+    ` ${String(days)} days`,
+    urgent ? ', pulled in because this move is flagged urgent' : '',
+    own === null && routed === undefined ? ', and the category fell back to Admin' : '',
+    owner === null ? '; no owner guessed' : `; owner ${owner.name}`,
+    '.',
+  ].join('');
+  return {
+    category,
+    estimate: ESTIMATE[category] ?? 60,
+    due: addDays(todayOn(now), days),
+    clientId: page.clientId ?? null,
+    owner,
+    why,
+  };
 }
 
 /** The page's name, as the mockup reads it: the main heading, else the document's title. */
@@ -91,6 +117,18 @@ export function pageName(): string {
 }
 
 /** A task-filing door's context from its `data-new-task*` attributes, on the page it sits on. */
-export function doorContext(_door: HTMLElement): PageContext {
-  return { from: pageName() };
+export function doorContext(door: HTMLElement): PageContext {
+  const read = (name: string): string | undefined => door.dataset[name] || undefined;
+  const ownerId = read('newTaskOwner');
+  return {
+    from: read('newTaskLabel') ?? pageName(),
+    subject: read('newTask'),
+    channel: read('newTaskChannel'),
+    channelLabel: read('newTaskLabel'),
+    category: read('newTaskCategory'),
+    urgent: door.dataset['newTaskUrgent'] !== undefined,
+    clientId: read('newTaskClient') ?? null,
+    owner:
+      ownerId === undefined ? null : { id: ownerId, name: read('newTaskOwnerName') ?? 'them' },
+  };
 }
