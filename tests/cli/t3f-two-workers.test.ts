@@ -139,13 +139,19 @@ describe.skipIf(serverUrl === undefined)('T3f two worker processes, one lease', 
         note: 'the plan',
       }),
     );
-    // AW-08: the plan fires nothing. Ada works it under her own lease and hands
-    // the output back for review; her accept of it is the launch the two race for.
+    // AW-08: the plan fires nothing. The agent works it and hands the output
+    // back for review, so the launch is a version the agent proposed (a worker
+    // applies only its own); Ada's accept of it is the launch the two race for.
+    const asAgent = async (credential: string | undefined, body: Record<string, unknown>) =>
+      await executeAgentCommand(world.db.app, world.alpha, world.agent.presented, credential, {
+        operationId: randomUUID(),
+        ...body,
+      } as never);
     const working = detailOf(
-      await asAda({ command: 'task.pickup', reservationId: plan['reservationId'] }),
+      await asAgent(undefined, { command: 'task.pickup', reservationId: plan['reservationId'] }),
     );
     const handed = detailOf(
-      await asAda({
+      await asAgent(String(working['credential']), {
         command: 'task.handback',
         leaseId: working['leaseId'],
         fence: working['fence'],
@@ -198,7 +204,7 @@ describe.skipIf(serverUrl === undefined)('T3f two worker processes, one lease', 
       JSON.stringify(loser),
     ).toBe(true);
 
-    // The launch's leases: ada's own on the plan ended at its hand-back.
+    // The launch's leases: the agent's own on the plan ended at its hand-back.
     const leases = await world.db.admin.execute<{ readonly id: string; readonly fence: string }>(
       `select l.id, l.fence::text as fence from public.leases l
          join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
