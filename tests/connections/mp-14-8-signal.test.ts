@@ -876,6 +876,22 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     }
   });
 
+  it('MP-14-8 a live child grant shows its parent-bounded end, not its own later expiry', async () => {
+    // #1029 (SEC-P04B-RB1.2): a child stands only while its parent does, so
+    // the end the screen counts down to is the earlier of the two expiries.
+    const [parentId, parentCredential] = await delegate('bounded_parent', null);
+    const { child } = await mintHelperChild(parentCredential);
+    await owner(
+      `update public.delegations set expires_at = now() + interval '10 minutes' where id = $1`,
+      [parentId],
+    );
+    const result = await signal(admin);
+    const parentEnd = grantOf(result, parentId)?.expiresAt;
+    const shown = grantOf(result, child.delegation.id);
+    expect(Date.parse(String(parentEnd))).toBeLessThan(Date.now() + 15 * 60_000);
+    expect([shown?.state, shown?.expiresAt]).toStrictEqual(['live', parentEnd]);
+  });
+
   it('MP-14-8 parity: the sections are one read on connection:read, person only, and add no action', () => {
     const row = COMMAND_SURFACE.find((one) => one.name === 'connection.signal');
     expect([row?.collection, row?.action, row?.agent]).toStrictEqual([
