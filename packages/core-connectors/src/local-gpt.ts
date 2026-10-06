@@ -31,7 +31,7 @@ export const LOCAL_GPT_PROVIDER = 'local_gpt';
 /** The runner's one path. */
 export const LOCAL_GPT_PATH = '/v1/local-gpt/complete';
 
-/** The model Sol runs on, unless the owner approves another; the runner's gate holds that. */
+/** The model Codex runs on the owner's laptop, unless the owner approves another; the runner's gate holds that. */
 export const LOCAL_GPT_DEFAULT_MODEL = 'gpt-6.1-sol';
 
 /** The runner's refusals, each answered with nothing kept. */
