@@ -209,7 +209,6 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...client('attempts', 'budget_answers', 'budget_approvals', 'planned_runs', 'reservations'),
     ...client('task_envelopes'),
   ]),
-  // The end also closes the attempt of each unstarted hold it releases.
   'run.end_at_budget_stop': writing(
     client('attempts', 'budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
   ),
