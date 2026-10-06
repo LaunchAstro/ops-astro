@@ -185,9 +185,12 @@ function revokedCase() {
   // revocation committed, after her question and before the reply.
   it('keeps no reply once Ada loses conversation:write between her question and its reply', async () => {
     revoked = await openCast('sr1clickrevoke');
-    const { w, asked } = await revokingWorld(revoked);
+    const { w, asked, revocation } = await revokingWorld(revoked);
     const { askTheAgent } = await chatPart();
     const ran = await askTheAgent(w).then(() => 'kept', String);
+    // The revocation applied, so the refusal below is the one under test.
+    const gone = revocation();
+    expect(gone !== undefined && !isCommandRefusal(gone), JSON.stringify(gone)).toBe(true);
     expect(ran).toMatch(/'Newsletter ideas'.*conversation:write/u);
     const [after] = await revoked.db.admin.execute<{ roles: string[]; moved: boolean }>(
       `select array_agg(m.role order by m.created_at) as roles,
@@ -220,6 +223,7 @@ async function revokingWorld(cast: Cast) {
       ...body,
     } as never);
   let asked: { conversationId: string; messageId: string } | undefined;
+  let revocation: object | undefined;
   const w = {
     admin: 'Ada Alpha',
     database: cast.db.app,
@@ -232,12 +236,11 @@ async function revokingWorld(cast: Cast) {
       const started = await command(body);
       if (isCommandRefusal(started)) throw new Error(JSON.stringify(started));
       asked = started.detail as unknown as { conversationId: string; messageId: string };
-      const gone = await command({ command: 'access.revoke', grantId: held!.grant });
-      expect('code' in gone, JSON.stringify(gone)).toBe(false);
+      revocation = await command({ command: 'access.revoke', grantId: held!.grant });
       return asked;
     },
   };
-  return { w, asked: () => asked! };
+  return { w, asked: () => asked!, revocation: () => revocation };
 }
 
 /** Ada gives Mia conversation:write through the product. */
