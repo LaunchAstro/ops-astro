@@ -120,6 +120,8 @@ interface Opening {
   readonly hold?: Promise<void>;
   /** A step-up the page may call, where the case needs one. */
   readonly stepUp?: (code: string) => Promise<{ ok: true; sessionId: string }>;
+  /** The first matching command is stored, then its answer is lost on the way back. */
+  readonly lose?: RegExp;
 }
 
 const FLEET = {
@@ -129,8 +131,13 @@ const FLEET = {
 };
 
 /** The stub's answer to one call; `refusing` says whether a matching command is refused. */
-function answer(at: string, refusing: () => boolean, code: string): Response {
-  if (at.endsWith('/connection/graduation')) return json(BODY);
+function answer(
+  at: string,
+  refusing: () => boolean,
+  code: string,
+  region: ConnectionGraduationResult,
+): Response {
+  if (at.endsWith('/connection/graduation')) return json(region);
   if (at.endsWith('/connection/fleet')) return json(FLEET);
   if (COMMAND.test(at) && refusing()) {
     return json(
@@ -157,22 +164,40 @@ async function open(
   readonly page: Mounted;
   readonly sent: string[];
   readonly signInAgain: () => Promise<void>;
+  readonly as: (businessKey: string, grantKey: string) => Promise<void>;
 }> {
   const sent: string[] = [];
   let refused = 0;
+  let lost = 0;
+  // What the stub has stored: a filing adds its mandate to the next read, a revoke ends it.
+  let filed: MandateView[] = [];
+  const store = (at: string, body: Record<string, unknown>): void => {
+    if (at.endsWith('/mandate/file') && filed.length === 0) {
+      filed = [
+        mandate('m-new', { clientId: String(body['clientId']), label: String(body['label']) }),
+      ];
+    }
+    if (at.endsWith('/mandate/revoke') && body['mandateId'] === 'm-new') filed = [];
+  };
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
     sent.push(`${at} ${String(init?.body ?? '')}`);
     if (COMMAND.test(at)) await opening.hold;
     const refusing = (): boolean =>
       refuse?.test(at) === true && (opening.once !== true || refused++ === 0);
-    return answer(at, refusing, opening.code ?? 'VERSION_STALE');
+    const reply = answer(at, refusing, opening.code ?? 'VERSION_STALE', {
+      ...BODY,
+      mandates: [...BODY.mandates, ...filed],
+    });
+    if (COMMAND.test(at) && reply.ok) store(at, bodyOf(`${at} ${String(init?.body ?? '')}`));
+    if (opening.lose?.test(at) === true && lost++ === 0) throw new TypeError('Failed to fetch');
+    return reply;
   }) as typeof globalThis.fetch;
-  const screen = (): ReactElement => (
+  const screen = (businessKey = 'alpha', grantKey = 'alpha:a@x:0'): ReactElement => (
     <StepUpContext.Provider value={opening.stepUp ?? null}>
       <ConnectionsScreen
-        client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
-        grantKey="alpha:a@x:0"
+        client={new OperationsClient({ origin: '', businessKey, signedIn: true, fetch })}
+        grantKey={grantKey}
         now={() => NOW}
       />
     </StepUpContext.Provider>
@@ -185,7 +210,12 @@ async function open(
     await page.render(screen());
     await tick();
   };
-  return { page, sent, signInAgain };
+  // Another business, or another person in the same one: a new client and grant.
+  const as = async (businessKey: string, grantKey: string): Promise<void> => {
+    await page.render(screen(businessKey, grantKey));
+    await tick();
+  };
+  return { page, sent, signInAgain, as };
 }
 
 afterEach(async () => {
@@ -198,8 +228,9 @@ afterEach(async () => {
 const commands = (sent: readonly string[]): string[] =>
   sent.filter((call) => COMMAND.test(call.slice(0, call.indexOf(' '))));
 
-const bodyOf = (call: string | undefined): Record<string, unknown> =>
-  JSON.parse(call?.slice(call.indexOf(' ') + 1) ?? '{}') as Record<string, unknown>;
+function bodyOf(call: string | undefined): Record<string, unknown> {
+  return JSON.parse(call?.slice(call.indexOf(' ') + 1) || '{}') as Record<string, unknown>;
+}
 
 const sentTo = (sent: readonly string[], path: string): Record<string, unknown> =>
   bodyOf(commands(sent).find((call) => call.includes(path)));
@@ -228,13 +259,19 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect(new Date(expiry).toISOString()).toBe(expiry);
     expect(Date.parse(expiry)).toBeGreaterThan(NOW);
 
-    await page.click('[data-mandate="m-b"] [data-mandate-revoke]');
+    // The filed approval is on the card list, and the revoke ends that one.
+    expect(page.find('[data-mandate="m-new"]')?.textContent).toContain(
+      'Posts for B under five hundred dollars',
+    );
+    await page.click('[data-mandate="m-new"] [data-mandate-revoke]');
     await page.click(REVOKE_CONFIRMED);
     await tick();
     expect(sentTo(sent, '/mandate/revoke')).toMatchObject({
-      mandateId: 'm-b',
-      expectedRevision: 2,
+      mandateId: 'm-new',
+      expectedRevision: 1,
     });
+    expect(page.find('[data-mandate="m-new"]')).toBeNull();
+    expect(page.find('[data-mandate="m-b"]')).not.toBeNull();
   });
 
   it('each row shows its state chip, its reason, the three counts and its note', async () => {
@@ -506,5 +543,124 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     gate.release?.();
     await tick();
     expect(disabled('[data-mandate-add]')).toBe(false);
+  });
+
+  it('a filing whose answer is lost goes again under the same operation, so it files once', async () => {
+    const { page, sent } = await open(undefined, { lose: /\/mandate\/file$/u });
+    await page.type('[data-mandate-label]', 'Approve posts');
+    await page.type('[data-mandate-ceiling]', '500');
+    await page.type('[data-mandate-expiry]', '2026-10-31');
+    await page.click('[data-mandate-add]');
+    await tick();
+    await page.click('[data-mandate-add]');
+    await tick();
+    const files = commands(sent).filter((call) => call.includes('/mandate/file'));
+    expect(files).toHaveLength(2);
+    expect(bodyOf(files[1])['operationId']).toBe(bodyOf(files[0])['operationId']);
+  });
+
+  it('a write held for a fresh sign-in is withdrawn when the scope bar moves to another client', async () => {
+    const { page, sent, signInAgain } = await open(/\/graduation\/demote$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      stepUp: async () => await Promise.resolve({ ok: true, sessionId: 'stepped' }),
+    });
+    await page.click('[data-grad="auto"] [data-auto]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await page.choose('[data-client-scope] select', 'k-b');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).toBeNull();
+    expect(page.find('[data-region-said]')).toBeNull();
+    await signInAgain();
+    expect(commands(sent).filter((call) => call.includes('/graduation/demote'))).toHaveLength(1);
+  });
+
+  it('cancelling a promotion held for a fresh sign-in withdraws it, so nothing files later', async () => {
+    const { page, sent, signInAgain } = await open(/\/graduation\/promote$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      stepUp: async () => await Promise.resolve({ ok: true, sessionId: 'stepped' }),
+    });
+    await page.click('[data-grad="ready"] [data-auto]');
+    await page.type('[data-promote-form="ready"] [data-promote-ceiling]', '25');
+    await page.type('[data-promote-form="ready"] [data-promote-expiry]', '2026-10-15');
+    await page.click('[data-promote-form="ready"] [data-promote-confirm]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await page.click('[data-promote-form="ready"] [data-promote-cancel]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).toBeNull();
+    await signInAgain();
+    expect(commands(sent).filter((call) => call.includes('/graduation/promote'))).toHaveLength(1);
+  });
+
+  it('an open revoke confirmation cannot be pressed while another write is in flight', async () => {
+    const gate: { release?: () => void } = {};
+    const hold = new Promise<void>((resolve) => {
+      gate.release = resolve;
+    });
+    const { page, sent } = await open(undefined, { hold });
+    await page.click('[data-mandate="m-yes"] [data-mandate-revoke]');
+    await page.click('[data-grad="auto"] [data-auto]');
+    await tick();
+    expect(page.host.querySelector<HTMLButtonElement>(REVOKE_CONFIRMED)?.disabled).toBe(true);
+    gate.release?.();
+    await tick();
+    await page.click(REVOKE_CONFIRMED);
+    await tick();
+    expect(sentTo(sent, '/mandate/revoke')).toMatchObject({ mandateId: 'm-yes' });
+  });
+
+  it('the sentence cannot be edited while its filing is in flight, so no newer draft is lost', async () => {
+    const gate: { release?: () => void } = {};
+    const hold = new Promise<void>((resolve) => {
+      gate.release = resolve;
+    });
+    const { page } = await open(undefined, { hold });
+    await page.type('[data-mandate-label]', 'First rule');
+    await page.type('[data-mandate-ceiling]', '500');
+    await page.type('[data-mandate-expiry]', '2026-10-31');
+    await page.click('[data-mandate-add]');
+    await tick();
+    const label = (): HTMLInputElement | null =>
+      page.host.querySelector<HTMLInputElement>('[data-mandate-label]');
+    expect(label()?.disabled).toBe(true);
+    gate.release?.();
+    await tick();
+    expect(label()?.disabled).toBe(false);
+  });
+
+  it('a held write and its refusal do not cross to another business', async () => {
+    const { page, sent, as } = await open(/\/graduation\/demote$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      stepUp: async () => await Promise.resolve({ ok: true, sessionId: 'stepped' }),
+    });
+    await page.click('[data-grad="auto"] [data-auto]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await as('bravo', 'bravo:a@x:0');
+    expect(page.find('[data-step-up="prompt"]')).toBeNull();
+    expect(page.find('[data-region-said]')).toBeNull();
+    expect(sent.some((call) => call.startsWith('/api/b/bravo/connection/graduation'))).toBe(true);
+    await as('bravo', 'bravo:a@x:0');
+    expect(commands(sent).filter((call) => call.includes('/graduation/demote'))).toHaveLength(1);
+  });
+
+  it('a held write and its refusal do not cross to another person in the same business', async () => {
+    const { page, sent, as } = await open(/\/graduation\/demote$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      stepUp: async () => await Promise.resolve({ ok: true, sessionId: 'stepped' }),
+    });
+    await page.click('[data-grad="auto"] [data-auto]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await as('alpha', 'alpha:b@x:0');
+    expect(page.find('[data-step-up="prompt"]')).toBeNull();
+    expect(page.find('[data-region-said]')).toBeNull();
+    await as('alpha', 'alpha:b@x:0');
+    expect(commands(sent).filter((call) => call.includes('/graduation/demote'))).toHaveLength(1);
   });
 });

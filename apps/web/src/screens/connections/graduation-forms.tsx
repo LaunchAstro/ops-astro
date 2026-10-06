@@ -120,7 +120,12 @@ export function PromoteForm(props: {
       >
         Promote
       </button>
-      <button type="button" className="btn btn--sm btn--ghost" onClick={props.cancel}>
+      <button
+        type="button"
+        className="btn btn--sm btn--ghost"
+        onClick={props.cancel}
+        data-promote-cancel
+      >
         Cancel
       </button>
     </div>
