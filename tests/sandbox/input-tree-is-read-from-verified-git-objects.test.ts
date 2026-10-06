@@ -244,10 +244,8 @@ it("counts the changed file's new bytes against I3's 50 MB", async () => {
   ];
   const grown = { ...EDIT, content: bytes('<h1>New!</h1>\n') };
   // The outcome only: a failure diff of 50 MB of file bytes would exhaust the worker.
-  const outcome = async (edit: typeof EDIT) => {
-    const result = await assemble(rows, edit);
-    return result.ok ? { ok: true } : result;
-  };
+  const outcome = (edit: typeof EDIT) =>
+    assemble(rows, edit).then((result) => (result.ok ? { ok: true } : result));
   expect(await outcome(grown)).toEqual(refused('tree size'));
   expect(await outcome(EDIT)).toEqual({ ok: true });
 }, 60_000);
