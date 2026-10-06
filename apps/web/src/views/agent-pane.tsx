@@ -40,7 +40,7 @@ import { pathTo } from '../routes.ts';
 import type { Settlement } from '../records/use-command.ts';
 import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
-import { closedNote, type DecisionNote } from './gate-controls.tsx';
+import { closedNote, refusesRecipient, type DecisionNote } from './gate-controls.tsx';
 import { StepUpPrompt } from './step-up-prompt.tsx';
 import { wholeExecution } from './run-progress.tsx';
 
@@ -146,7 +146,7 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
           ...(recipientPersonId === undefined ? {} : { recipientPersonId }),
         }),
       (settlement) => {
-        if (settlement.kind === 'closed') {
+        if (settlement.kind === 'closed' && !refusesRecipient(settlement)) {
           props.onDecided(closedNote(props.proposals, gate.gateId, settlement.because));
         }
         settle(settlement, true);
