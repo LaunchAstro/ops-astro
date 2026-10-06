@@ -102,9 +102,17 @@ deactivates their login and ends their memberships, but their bearer still
 verifies until its hour is up, so the API answers their next call 403
 `AUTH_ACCESS_ENDED` (#641). That code is only ever an ended login's: a login
 that was never a member still gets `AUTH_NO_MEMBERSHIP`, a denial to draw (the
-browser's N2 row). The client ends its session on exactly 403 with
-`AUTH_ACCESS_ENDED`, on its first answer too, so a reload signs the person out
-as the open tab does, with the same notice. A person who signs out in the tab
+browser's N2 row). So two rules end the session, with the same notice. The
+client ends it on exactly 403 with `AUTH_ACCESS_ENDED`, on its first answer too,
+so a reload signs the person out as the open tab does, and then asks the API,
+best effort, to end that sign-in and clear its cookie, as a sign-out in the tab
+does. Standing can also go with no ending written (a last share revoked or
+expired), answered 403 `AUTH_NO_MEMBERSHIP`. So each client also remembers
+whether its bearer has had an answer only a member gets: a success (a live
+call's counts as a read's), or a refusal decided past login resolution such as
+`SCOPE_NOT_GRANTED` (a 401 or a door refusal proves nothing). A bearer that has
+ends its session on `AUTH_NO_MEMBERSHIP` too; a fresh client's first one is
+still a denial to draw. A person who signs out in the tab
 lands on `/sign-in` with a notice of its own (`data-reason="signed-out"`) saying
 that any edit they had not saved was not saved. In every ending the draft lived
 only in the screen's state, so it goes with the screen: no browser storage holds

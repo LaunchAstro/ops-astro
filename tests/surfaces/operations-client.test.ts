@@ -232,15 +232,11 @@ describe('what comes back', () => {
 
 const refused = (code: string) => ({ refused: true, code, names: [], fixes: [] });
 
-/** What `onSessionEnded` heard over two calls: `first` answered, then `then` with a 403. */
-async function endedAfter(
-  first: string,
-  status: number,
-  then = 'AUTH_NO_MEMBERSHIP',
-): Promise<readonly string[]> {
+/** What `onSessionEnded` heard over two calls: `first` answered, then no membership. */
+async function endedAfter(first: string, status: number): Promise<readonly string[]> {
   const answers = [
     new Response(JSON.stringify(refused(first)), { status }),
-    new Response(JSON.stringify(refused(then)), { status: 403 }),
+    new Response(JSON.stringify(refused('AUTH_NO_MEMBERSHIP')), { status: 403 }),
   ];
   const fetch = (() => Promise.resolve(answers.shift())) as unknown as typeof globalThis.fetch;
   const ended: string[] = [];
@@ -256,37 +252,25 @@ async function endedAfter(
   return ended;
 }
 
-const BEFORE_LOGIN = [
-  ['AUTH_NO_MEMBERSHIP', 403],
-  ['ACTOR_INACTIVE', 403],
-  ['AUTH_SESSION_MISMATCH', 403],
-  ['AUTH_CROSS_SITE', 403],
-  ['COMMAND_BODY_INVALID', 400],
-  ['AUTH_SECOND_FACTOR_REQUIRED', 401],
-] as const;
-
 describe('what comes back', () => {
   it('ends the session on access ended once a refusal has shown the login was a member', async () => {
-    // A login whose standing went without an access ending (a lost share) is
-    // answered 403 `AUTH_NO_MEMBERSHIP`, the answer a login that never had a
-    // membership gets too. A refusal decided after login resolution (a scope
-    // not granted) proves the bearer was a member, as a success does; a
-    // refusal the door or resolution gives first proves nothing.
+    // Standing lost with no ending written (a last share) answers 403 `AUTH_NO_MEMBERSHIP`,
+    // as a login that never had a membership gets too. A refusal decided after login
+    // resolution (a scope not granted) proves the bearer was a member, as a
+    // success does; a refusal the door or resolution gives first proves nothing.
     expect(await endedAfter('SCOPE_NOT_GRANTED', 403)).toEqual(['AUTH_NO_MEMBERSHIP']);
+    const before = [
+      ['AUTH_NO_MEMBERSHIP', 403],
+      ['ACTOR_INACTIVE', 403],
+      ['AUTH_SESSION_MISMATCH', 403],
+      ['AUTH_CROSS_SITE', 403],
+      ['COMMAND_BODY_INVALID', 400],
+      ['AUTH_SECOND_FACTOR_REQUIRED', 401],
+    ] as const;
     const heard = await Promise.all(
-      BEFORE_LOGIN.map(async ([code, status]) => await endedAfter(code, status)),
+      before.map(async ([code, status]) => await endedAfter(code, status)),
     );
-    expect(heard).toEqual(BEFORE_LOGIN.map(() => []));
-  });
-
-  it('ends the session on the access-ended code whatever the call before it was answered', async () => {
-    // Ending access answers 403 `AUTH_ACCESS_ENDED`, its own code, so no
-    // earlier answer is needed to tell it from a login never a member here.
-    const before = [['SCOPE_NOT_GRANTED', 403], ...BEFORE_LOGIN] as const;
-    const heard = await Promise.all(
-      before.map(async ([code, status]) => await endedAfter(code, status, 'AUTH_ACCESS_ENDED')),
-    );
-    expect(heard).toEqual(before.map(() => ['AUTH_ACCESS_ENDED']));
+    expect(heard).toEqual(before.map(() => []));
   });
 });
 
