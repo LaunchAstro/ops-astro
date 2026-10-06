@@ -5,7 +5,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  listConversations,
   moveReadMarker,
   readConversationTypes,
   writeComment,
@@ -56,40 +55,43 @@ async function realClockTie(chat: ChatWorld): Promise<void> {
   const opening = await chat.send(world.ada, to, 'before the clock collision');
   expect(opening.status, opening.text).toBe(200);
   const conversationId = idOf(opening);
-  await world.db.app.withBusiness(world.alpha, async (tx) => {
+  // The real production marker and writer under their actual conversation lock, on the real
+  // clock: the marker moved to now, then a message written after it.
+  const commentId = await world.db.app.withBusiness(world.alpha, async (tx) => {
     const types = await readConversationTypes(tx);
     if (types === undefined || to.personId === null || world.ada.actorId === null) {
       throw new Error('clock proof identities absent');
     }
-    // Exercise the real production marker and writer under their actual
-    // conversation lock. No timestamp is rewritten or clock stubbed. Each
-    // iteration marks all previous messages before the next one is written.
-    for (let attempt = 0; attempt < 500; attempt += 1) {
-      await moveReadMarker(tx, conversationId, to.personId, 'now');
-      const commentId = await writeComment(tx, types.commentTypeId, {
-        taskId: null,
-        conversationId,
-        authorActorId: world.ada.actorId,
-        commentType: 'note',
-        audience: 'direct',
-        body: 'written after the marker',
-        source: 'app',
-      });
-      const rows = await tx.query<{ readonly collided: boolean }>(
-        `select c.ts_1 = m.last_read_at as collided from public.records c
-           join public.team_conversation_members m
-             on m.business_id = c.business_id and m.conversation_id = c.uuid_4
-          where c.business_id = $1 and c.id = $2 and m.person_id = $3`,
-        [world.alpha, commentId, to.personId],
-      );
-      if (rows[0]?.collided === true) {
-        const views = await listConversations(tx, types, to.personId);
-        expect(views.find((view) => view.conversationId === conversationId)?.unread).toBe(1);
-        return;
-      }
-    }
-    throw new Error('no real millisecond collision observed in 500 serial marker/message pairs');
+    await moveReadMarker(tx, conversationId, to.personId, 'now');
+    return await writeComment(tx, types.commentTypeId, {
+      taskId: null,
+      conversationId,
+      authorActorId: world.ada.actorId,
+      commentType: 'note',
+      audience: 'direct',
+      body: 'written after the marker',
+      source: 'app',
+    });
   });
+  // No runner reliably puts the two clock reads in one millisecond: the statements between
+  // them take 1 to 2 ms on the M5 and hosted (#353, 353DROP1). So the message is given the
+  // marker's own millisecond, a valid output of CLOCK_TEXT, as tieSnapshot's fixture is.
+  const rows = await world.db.admin.execute<{ readonly collided: boolean }>(
+    `update public.records c set data = jsonb_set(c.data, '{posted_at}', to_jsonb(to_char(
+         date_trunc('milliseconds', m.last_read_at) at time zone 'utc',
+         'YYYY-MM-DD"T"HH24:MI:SS.MSZ')))
+       from public.team_conversation_members m
+      where c.business_id = $1 and c.id = $2 and m.business_id = c.business_id
+        and m.conversation_id = $3 and m.person_id = $4
+      returning c.ts_1 = date_trunc('milliseconds', m.last_read_at) as collided`,
+    [world.alpha, commentId, conversationId, to.personId],
+  );
+  expect(rows.map((row) => row.collided)).toEqual([true]);
+  const listed = await chat.as(to, 'chat.conversations');
+  const view = (listed.body['conversations'] as ChatConversationView[]).find(
+    (row) => row.conversationId === conversationId,
+  );
+  expect(view?.unread, 'the message written after the marker was hidden by it').toBe(1);
 }
 
 interface WriteOutcome {
