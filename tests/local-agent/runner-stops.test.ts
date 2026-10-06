@@ -59,16 +59,17 @@ describe('a call stopped part way', () => {
 
   it('a call whose deadline passed while it queued is not started', async () => {
     const w = makeWorld();
-    w.knobs({ waitMs: 900 });
+    // The first call outruns the shared deadline and is killed at it; the second's time is gone.
+    w.knobs({ waitMs: 5_000 });
     const read = readSettings(w.env, w.userHome);
     if (!read.ok) throw new Error(read.code);
     own(w);
     const r = await createRunner({ ...read.settings, timeoutMs: 1_000 }, () => null);
     opened.push(r);
     const [first, second] = await Promise.all([call(r, message), call(r, message)]);
-    expect(first.body?.['code']).toBeNull();
+    expect(first.body?.['code']).toBe('LOCAL_GPT_FAILED');
     expect(second.body?.['code']).toBe('LOCAL_GPT_FAILED');
-    // Refused before it was charged or spawned: the first call's two rows are the ledger.
+    // The second was refused before it was charged or spawned: the first call's two rows are the ledger.
     expect(w.ledger()).toHaveLength(2);
   });
 
