@@ -47,25 +47,10 @@ export interface World {
 }
 
 /** Every table the seed could write, so two runs can be compared whole. */
-const TABLES = [
-  'records',
-  'clients',
-  'actors',
-  'logins',
-  'actor_logins',
-  'grants',
-  'planned_runs',
-  'gates',
-  'gate_decisions',
-  'proposal_versions',
-  'leases',
-  'delegations',
-  'attempts',
-  'reservations',
-  'budget_asks',
-  'handback_reports',
-  'operations',
-];
+const TABLES: readonly string[] = (
+  'records clients actors logins actor_logins grants planned_runs gates gate_decisions ' +
+  'proposal_versions leases delegations attempts reservations budget_asks handback_reports operations'
+).split(' ');
 
 export function runSeed(script: string, db: FreshDatabase, local: string, confirm = false): Ran {
   const url = new URL(serverUrl ?? '');

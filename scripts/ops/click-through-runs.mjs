@@ -15,7 +15,7 @@ const COMPOSE = { kind: 'compose', payload: { tone: 'plain' } };
 const EFFECT = { kind: 'synthetic_comment', payload: {} };
 /** Below one call's priced maximum, so the run stops at its ceiling. */
 const SMALL_CEILING = 400;
-/** Long enough to dispatch under over a slow link, short enough to wait out. */
+/** Long enough to dispatch under across a slow link, short enough to wait out. */
 const LOST_LEASE_SECONDS = 10;
 
 /** A purpose of its own: an agent holds one live delegation per purpose. */
@@ -55,18 +55,7 @@ function approve(w, gateId, versionId) {
 
 /** The worker's handback; with a successor, its output as the next version for review. */
 function handBack(w, picked, successor) {
-  const asked =
-    successor === null
-      ? {}
-      : {
-          successor: {
-            purpose: purpose(w),
-            maximumMinor: 2_000,
-            currency: 'AUD',
-            payload: { change: 'the made-up output for review' },
-            step: successor,
-          },
-        };
+  const output = { maximumMinor: 2_000, currency: 'AUD', payload: { change: 'made-up output' } };
   return w.asAgent(picked.credential, {
     command: 'task.handback',
     leaseId: picked.leaseId,
@@ -74,7 +63,9 @@ function handBack(w, picked, successor) {
     outcome: 'completed',
     report: { summary: 'a made-up draft, done' },
     actualMinor: null,
-    ...asked,
+    ...(successor === null
+      ? {}
+      : { successor: { ...output, purpose: purpose(w), step: successor } }),
   });
 }
 
