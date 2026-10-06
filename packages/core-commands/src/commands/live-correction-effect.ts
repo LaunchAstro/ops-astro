@@ -9,10 +9,11 @@
 // unknown outcome with nothing registered waits on a person.
 //
 // The entry is written as soon as the executable returns the provider's
-// acceptance, in its own transaction, under the actor holding the dispatching lease, whether or not
-// that lease is still live: an effect that happened still happened (as
-// `observe.ts` says of an expired lease). Receipt L's observations stay in
-// `live_correction_receipts`, written under the live lease beside it.
+// acceptance, in its own transaction, under the actor holding the dispatching
+// lease, whether or not that lease is still live: an effect that happened
+// still happened (as `observe.ts` says of an expired lease). Receipt L's
+// observations stay in `live_correction_receipts`, written under the live lease
+// beside it.
 //
 // Read only after the correction is read under the run's lease, in this
 // business only, and only as written by an actor that held a lease on the

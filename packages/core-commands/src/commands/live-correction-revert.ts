@@ -6,8 +6,9 @@
 // saying why, and an unknown raises a task.
 //
 // The revert rides the effect register as the publish does: the revision it
-// reverts is the publish the register holds, and the provider's acceptance is
-// registered the moment it answers, with the time it was decided. A revert the
+// reverts is the publish the register holds, the page must return to the place
+// the publish was seen live at (its live receipt), and the provider's
+// acceptance is registered the moment it answers, with the time it was decided. A revert the
 // register holds is observed again and timed from that decision, never sent
 // again; an unknown revert the register does not hold waits on a person. So
 // that a revert whose answer never reached the register is never sent blind
