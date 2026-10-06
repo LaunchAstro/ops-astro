@@ -138,6 +138,19 @@ it('refuses a second create while the record holds a container, even one sent at
   expect(w.held.size).toBe(1);
 });
 
+it('answers a create internal when its forward or its count check throws', async () => {
+  const w = world();
+  const state = await opened(w);
+  const dropped = { ok: false, reason: 'internal', why: 'reply status' };
+  w.throws.add('create');
+  expect(await state.handle(create(P, s1('p')))).toEqual(dropped);
+  w.throws.clear();
+  w.throws.add('info');
+  expect(await state.handle(create(P, s1('p')))).toEqual(dropped);
+  w.throws.clear();
+  expect([heldId(w), await state.handle(create(P, s1('p')))]).toEqual([null, CREATED]);
+});
+
 it('refuses a create when the daemon counts a container the record lacks, and sweeps it', async () => {
   const w = world();
   const state = await opened(w);

@@ -121,7 +121,7 @@ export type World = {
   /** The created `Id` the daemon sends back is malformed. */
   badCreate: boolean;
   waitCode: number;
-  /** Daemon calls (`list` or a forwarded kind) that throw, as a reset socket does. */
+  /** Daemon calls (`list`, `info` or a forwarded kind) that throw, as a reset socket does. */
   readonly throws: Set<string>;
   /** Holds the next forwarded operation of each kind until the test releases it. */
   readonly holds: Map<string, Promise<void>>;
@@ -170,6 +170,7 @@ function daemon(w: World): ProxyPorts['daemon'] {
     },
     info: () => {
       w.calls.push('info');
+      if (w.throws.has('info')) return Promise.reject(new Error('socket reset'));
       return Promise.resolve(reply(w.answer['info'] ?? 200, { Containers: w.held.size }));
     },
     forward: async (step) => {
