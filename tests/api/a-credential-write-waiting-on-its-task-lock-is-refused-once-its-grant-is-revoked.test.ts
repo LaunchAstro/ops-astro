@@ -235,13 +235,15 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
   }, 240_000);
 
   // Sol round 1 on #1010, F5: a second lock waiter that waits on something
-  // other than the writer (here a transaction queued, as a revocation's
-  // `lockAccess` would be, behind an unrelated holder of the business's
-  // access lock) must not be taken for a revocation waiting behind the writer.
+  // other than the writer (here a transaction queued behind an unrelated
+  // holder of a lock of its own) must not be taken for a revocation waiting
+  // behind the writer. Not the access lock: the credential write holds it
+  // shared from before its task lock wait (#1008), so every waiter on it is
+  // behind the writer too.
   it('a lock waiter queued behind another holder is not taken for one waiting behind the writer', async () => {
     const { recordId, revision, credential } = await credentialWrite();
     const access = await hold(world.db.appUrl, world.alpha, async (tx) => {
-      await advisoryLock(tx, `access:${tx.businessId}`);
+      await advisoryLock(tx, `unrelated:${tx.businessId}`);
     });
     const other = connect(world.db.appUrl);
     let updating: Promise<Answer> | undefined;
@@ -265,7 +267,7 @@ describe.skipIf(serverUrl === undefined)('a credential write and a revocation of
         );
         await until(async () => (await count(execute, UPDATE_WAITING)) >= 1);
         queued = other.withBusiness(world.alpha, async (tx) => {
-          await advisoryLock(tx, `access:${tx.businessId}`);
+          await advisoryLock(tx, `unrelated:${tx.businessId}`);
         });
         await until(async () => (await count(execute, LOCK_WAITERS)) >= 2);
         expect(await count(execute, LOCK_WAITERS), 'the writer and the other waiter').toBe(2);
