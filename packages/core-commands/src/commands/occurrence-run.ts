@@ -270,11 +270,11 @@ export async function startOccurrenceRun(
 ): Promise<RuntimeResult<OccurrenceRun>> {
   if (!isUuid(request.occurrenceId)) return unknownOccurrence();
   const occurrenceId = request.occurrenceId.toLowerCase();
+  // Held to commit: a second start waits here and answers the first run; the
+  // worker is asked under it, so one deactivated meanwhile starts nothing (#443).
+  await advisoryLock(tx, `occurrence_run:${tx.businessId}:${occurrenceId}`);
   if (!(await isActor(tx, request.workerActorId, 'worker'))) return workerRequired();
   const workerActorId = request.workerActorId.toLowerCase();
-  // Held to commit: a second start of this occurrence waits here and then
-  // answers the first run.
-  await advisoryLock(tx, `occurrence_run:${tx.businessId}:${occurrenceId}`);
   const earlier = await existingRun(tx, occurrenceId);
   if (earlier !== undefined) return { ok: true, value: earlier };
 
