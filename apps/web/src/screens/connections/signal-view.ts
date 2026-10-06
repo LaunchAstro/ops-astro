@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The words sections 006 to 008 draw (MP-14-8), kept apart from the markup so
+// each rule is one small function: the TTL countdown, the stamps, the cause of
+// a grant taken back and the lede sentences.
+
+import type { GrantView } from '../../../../../packages/core-wire/src/index.ts';
+import { BUSINESS_CLOCK } from '../task/due-dates.ts';
+
+const HOUR = 60;
+
+export interface Countdown {
+  readonly words: string;
+  readonly tone: 'plain' | 'warn';
+}
+
+/**
+ * What is left on a grant: "37m left" in warning ink under an hour, "5h 0m
+ * left" otherwise, and a word once it has ended. Whether it ended is the
+ * read's to say: a grant the read calls live whose expiry this clock has
+ * passed waits for the next re-read in warning ink, never "Ran out".
+ */
+export function countdownOf(grant: GrantView, now: number): Countdown {
+  if (grant.state === 'taken_back') return { words: 'Taken back', tone: 'plain' };
+  if (grant.state === 'ran_out') return { words: 'Ran out', tone: 'plain' };
+  const left = Date.parse(grant.expiresAt) - now;
+  if (left <= 0) return { words: 'Expiry passed, re-reading', tone: 'warn' };
+  const minutes = Math.floor(left / 60_000);
+  if (minutes < 1) return { words: 'Under 1m left', tone: 'warn' };
+  if (minutes < HOUR) return { words: `${minutes}m left`, tone: 'warn' };
+  return { words: `${Math.floor(minutes / HOUR)}h ${minutes % HOUR}m left`, tone: 'plain' };
+}
+
+export const stamp = (at: string): string =>
+  new Date(at).toLocaleString('en-AU', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: BUSINESS_CLOCK,
+  });
+
+export const clock = (at: string): string =>
+  new Date(at).toLocaleTimeString('en-AU', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: BUSINESS_CLOCK,
+  });
+
+const CAUSE_WORDS: Readonly<Record<string, string>> = {
+  authority_lost: 'the delegating person lost the authority',
+  delegation_revoked: 'delegation revoked',
+  work_retired: 'the work was retired',
+};
+
+export const causeOf = (cause: string | null): string =>
+  cause === null ? 'no cause recorded' : (CAUSE_WORDS[cause] ?? cause.replaceAll('_', ' '));
+
+export const plural = (count: number, one: string, many = `${one}s`): string =>
+  `${count} ${count === 1 ? one : many}`;
+
+/**
+ * Null when there are no grants at all: the absence line says so once.
+ * With only ended grants it says nothing is live.
+ */
+export function grantsLede(total: number, live: number, liveExec: number): string | null {
+  if (total === 0) return null;
+  if (live === 0) return 'No grants live that you can see.';
+  // The read answers what the caller may see, which may be some clients only.
+  const held = `${plural(live, 'grant')} live that you can see.`;
+  if (liveExec === 0) return `${held} None of them carries execute access.`;
+  return `${held} ${liveExec} of them ${liveExec === 1 ? 'carries' : 'carry'} execute access.`;
+}
+
+export function tripwiresLede(armed: number, cannotBeArmed: number): string {
+  const counted = `${plural(armed, 'check')} armed`;
+  return cannotBeArmed === 0 ? `${counted}.` : `${counted}, and ${cannotBeArmed} that cannot be.`;
+}
+
+export function nightLede(roundOn: string, notClean: number): string {
+  const day = new Date(`${roundOn}T12:00:00Z`).toLocaleDateString('en-AU', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  });
+  const window = `${day} · 23:00 to 08:10`;
+  if (notClean === 0) return `${window}.`;
+  return `${window}, and ${plural(notClean, 'step')} did not go cleanly.`;
+}

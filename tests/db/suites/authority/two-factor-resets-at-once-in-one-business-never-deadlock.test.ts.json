@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "two access.reset_factor calls at once in one business, on separate connections, take the access lock in one mode and record no deadlock"
+}

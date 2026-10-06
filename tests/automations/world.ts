@@ -20,6 +20,7 @@ import {
   type DefinitionVersionRow,
   type OccurrenceCause,
   type OccurrenceClaim,
+  type StandingApprovalRow,
   type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
 import { enrol, type Member } from '../commands/fixture.ts';
@@ -27,6 +28,13 @@ import { insertBusiness } from '../identity/fixture.ts';
 import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 
 export const DIGEST: string = 'a'.repeat(64);
+
+/** A released version, an activation pinning it and the standing approval that adopted it. */
+export interface Approved {
+  readonly version: DefinitionVersionRow;
+  readonly activation: ActivationRow;
+  readonly approval: StandingApprovalRow;
+}
 
 export interface AutomationWorld {
   readonly db: FreshDatabase;

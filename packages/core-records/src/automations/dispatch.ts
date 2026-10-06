@@ -4,14 +4,19 @@
 // claim. It rechecks, under the activation's lock, that the activation is on
 // and that the approval the occurrence recorded is still the one standing and
 // unrevoked, and writes the result once. Only then is the run asked for,
-// through the starter the caller hands it; the agent engine's starter (AW-01
-// J) is not wired here.
+// through the starter the worker hands it (AW-01 J's write,
+// `occurrenceRunStarter` in core-commands), which reads its approval and
+// version facts here. A start the writer refuses writes nothing and records
+// no dispatch, so the worker may dispatch again. C33's run ceiling (migration
+// 20261006092531) is AW-01's durable limit.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { isUuid } from '../tenancy/ids.ts';
 import { lockActivation, readStandingApproval, type StandingApprovalRow } from './approvals.ts';
 import type { ActivationRow } from './automations.ts';
-import type { OccurrenceOutcome } from './occurrences.ts';
+import { hasRoom, type DurableLimit } from '../tenancy/limit.ts';
+import { FIRING_LIMITS, type OccurrenceOutcome } from './occurrences.ts';
 
 export type DispatchOutcome = 'started' | 'activation_off' | 'approval_revoked' | 'approval_ended';
 
@@ -27,12 +32,110 @@ export interface RunRequest {
   readonly versionId: string;
 }
 
-/** Starts the run in the dispatch's own transaction and answers its id. */
-export type RunStarter = (tx: TenantQuery, run: RunRequest) => Promise<string>;
+/** A start the run's writer refused, by its refusal code; it wrote nothing. */
+export interface RunRefused {
+  readonly refused: string;
+}
+
+/** Starts the run in the dispatch's own transaction and answers its id, or the writer's refusal. */
+export type RunStarter = (tx: TenantQuery, run: RunRequest) => Promise<string | RunRefused>;
+
+/** What the run's writer (AW-01 J) is told about an occurrence's approval and version. */
+export interface OccurrenceFacts {
+  readonly approvalId: string;
+  readonly approvalState: 'standing' | 'revoked' | 'ended' | 'superseded';
+  readonly approverActorId: string;
+  readonly definitionId: string;
+  readonly definitionVersionId: string;
+  /** A released version is never withdrawn: it is immutable (20261005003850). */
+  readonly versionState: 'released';
+  readonly contentDigest: string;
+  readonly contentSize: number;
+  /** Definitions are the business's own work and carry no client. */
+  readonly clientId: null;
+  readonly title: string;
+}
+
+interface FactsDbRow {
+  readonly approval_id: string;
+  readonly decided_by_actor_id: string;
+  readonly definition_id: string;
+  readonly version_id: string;
+  readonly content_digest: string;
+  readonly content_size: string;
+  readonly name: string;
+  readonly revoked: boolean;
+  readonly enabled: boolean;
+  readonly standing_id: string | null;
+}
+
+function approvalState(row: FactsDbRow): OccurrenceFacts['approvalState'] {
+  if (row.revoked) return 'revoked';
+  if (!row.enabled) return 'ended';
+  return row.standing_id === row.approval_id ? 'standing' : 'superseded';
+}
+
+/**
+ * The approval the occurrence recorded, the version it pins and its
+ * definition, read in the caller's transaction (dispatch holds the
+ * activation's lock), or undefined for an occurrence this business does not
+ * have or one recorded without an approval.
+ */
+export async function readOccurrenceFacts(
+  tx: TenantQuery,
+  occurrenceId: string,
+): Promise<OccurrenceFacts | undefined> {
+  if (!isUuid(occurrenceId)) return undefined;
+  const rows = await tx.query<FactsDbRow>(
+    `select s.id as approval_id, s.decided_by_actor_id, s.definition_id, s.version_id,
+            v.content_digest, v.content_size::text, d.name, a.enabled, a.approval_id as standing_id,
+            exists (select 1 from public.standing_approval_revocations r
+                     where r.business_id = s.business_id and r.approval_id = s.id) as revoked
+       from public.activation_occurrences o
+       join public.standing_approvals s on s.business_id = o.business_id and s.id = o.approval_id
+       join public.definition_versions v on v.business_id = s.business_id and v.id = s.version_id
+       join public.automation_definitions d
+         on d.business_id = s.business_id and d.id = s.definition_id
+       join public.activations a on a.business_id = o.business_id and a.id = o.activation_id
+      where o.business_id = $1 and o.id = $2`,
+    [tx.businessId, occurrenceId],
+  );
+  const row = rows[0];
+  if (row === undefined) return undefined;
+  return {
+    approvalId: row.approval_id,
+    approvalState: approvalState(row),
+    approverActorId: row.decided_by_actor_id,
+    definitionId: row.definition_id,
+    definitionVersionId: row.version_id,
+    versionState: 'released',
+    contentDigest: row.content_digest,
+    contentSize: Number(row.content_size),
+    clientId: null,
+    title: row.name,
+  };
+}
+
+/** C33's run ceiling: this business's activation runs not yet handed back or cancelled. */
+const runsInFlight: DurableLimit = {
+  name: 'c33.runs_in_flight',
+  limit: FIRING_LIMITS.runsInFlight,
+  async count(tx) {
+    const rows = await tx.query<{ readonly n: number }>(
+      `select count(*)::int as n from public.planned_runs
+        where business_id = $1 and origin_occurrence_id is not null
+          and state not in ('handed_back', 'cancelled')`,
+      [tx.businessId],
+    );
+    return rows[0]?.n ?? 0;
+  },
+};
 
 export type Dispatch =
   | { readonly kind: 'unknown' }
   | { readonly kind: 'not_approved'; readonly outcome: OccurrenceOutcome }
+  | { readonly kind: 'refused'; readonly code: string }
+  | { readonly kind: 'waiting' }
   | { readonly kind: 'dispatched' | 'replayed'; readonly dispatch: DispatchRow };
 
 interface ClaimedDbRow {
@@ -69,17 +172,23 @@ function dispatchOutcome(
  * rechecks the switch and the approval, each read in a statement after the
  * lock is held, so an occurrence claimed before a revoke or a turn-off starts
  * nothing once that change has committed; a second dispatch of the same
- * occurrence waits for the first and answers `replayed` with its result.
+ * occurrence waits for the first and answers `replayed` with its result. At
+ * the business's run ceiling it answers `waiting` and writes nothing: the
+ * occurrence stays listed as waiting until the worker dispatches it again
+ * after a run finishes. The ceiling's lock is held to commit, so the run is
+ * written before the next dispatch counts. A start the writer refuses
+ * answers `refused` with its code and records no dispatch.
  */
 export async function dispatchOccurrence(
   tx: TenantQuery,
   occurrenceId: string,
   startRun: RunStarter,
 ): Promise<Dispatch> {
+  if (!isUuid(occurrenceId)) return { kind: 'unknown' };
   const claimed = await tx.query<ClaimedDbRow>(
     `select activation_id, version_id, outcome, approval_id
-       from public.activation_occurrences where id = $1`,
-    [occurrenceId],
+       from public.activation_occurrences where business_id = $1 and id = $2`,
+    [tx.businessId, occurrenceId],
   );
   const occurrence = claimed[0];
   if (occurrence === undefined) return { kind: 'unknown' };
@@ -88,20 +197,24 @@ export async function dispatchOccurrence(
   }
   const activation = await lockActivation(tx, occurrence.activation_id);
   const earlier = await tx.query<DispatchDbRow>(
-    'select occurrence_id, outcome, run_id from public.occurrence_dispatches where occurrence_id = $1',
-    [occurrenceId],
+    `select occurrence_id, outcome, run_id from public.occurrence_dispatches
+      where business_id = $1 and occurrence_id = $2`,
+    [tx.businessId, occurrenceId],
   );
   if (earlier[0] !== undefined) return { kind: 'replayed', dispatch: dispatchOf(earlier[0]) };
   const standing = await readStandingApproval(tx, occurrence.activation_id);
   const outcome = dispatchOutcome(activation, standing, occurrence.approval_id);
-  const runId =
-    outcome === 'started'
-      ? await startRun(tx, {
-          occurrenceId,
-          activationId: occurrence.activation_id,
-          versionId: occurrence.version_id,
-        })
-      : null;
+  let runId: string | null = null;
+  if (outcome === 'started') {
+    if (!(await hasRoom(tx, [runsInFlight]))) return { kind: 'waiting' };
+    const started = await startRun(tx, {
+      occurrenceId,
+      activationId: occurrence.activation_id,
+      versionId: occurrence.version_id,
+    });
+    if (typeof started !== 'string') return { kind: 'refused', code: started.refused };
+    runId = started;
+  }
   const written = await tx.query<DispatchDbRow>(
     `insert into public.occurrence_dispatches (business_id, id, occurrence_id, outcome, run_id)
      values ((select public.app_business_id()), $1, $2, $3, $4)

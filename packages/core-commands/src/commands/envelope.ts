@@ -426,7 +426,7 @@ function keptApart(result: unknown): { stored: CommandResult; subject: string | 
  * out: the scope, the R4 rule and the grant decision are the ones the first
  * call answered to, and the revision is the one thing the first call itself
  * moved. Nothing is locked but a map-admitted create's parent, held `for share`
- * as a fresh create holds it, and the handler does not run.
+ * as a fresh create holds it, and the access lock in the command's mode; the handler does not run.
  *
  * An agent credential's issue (API-2) goes out with its secret derived again
  * while the credential is the caller's and live (`replayIssue`).

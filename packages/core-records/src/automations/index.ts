@@ -22,6 +22,8 @@ export {
 } from './automations.ts';
 export {
   claimOccurrence,
+  FIRING_LIMITS,
+  waitingOccurrences,
   type OccurrenceCause,
   type OccurrenceClaim,
   type OccurrenceOutcome,
@@ -52,9 +54,12 @@ export {
 } from './approvals.ts';
 export {
   dispatchOccurrence,
+  readOccurrenceFacts,
   type Dispatch,
   type DispatchOutcome,
   type DispatchRow,
+  type OccurrenceFacts,
+  type RunRefused,
   type RunRequest,
   type RunStarter,
 } from './dispatch.ts';
