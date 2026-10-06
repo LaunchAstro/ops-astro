@@ -53,6 +53,7 @@ import {
   correctionEffectId,
   readCorrectionEffect,
   registerCorrectionEffect,
+  settleAsk,
   takeDispatch,
 } from './live-correction-effect.ts';
 
@@ -123,7 +124,13 @@ export async function unknownWaits(
 ): Promise<RunResult> {
   const asked = await askOnce(db, run, at);
   if (typeof asked === 'string') return await leaseRefused(asked, ports);
-  if (asked) return await waiting('OUTCOME_UNKNOWN', ports);
+  if (asked) {
+    await ports.raiseTask('OUTCOME_UNKNOWN').catch(async (error: unknown) => {
+      await settleAsk(db, run, at, 'none');
+      throw error;
+    });
+    await settleAsk(db, run, at, 'person');
+  }
   return { kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' };
 }
 

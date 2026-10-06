@@ -52,8 +52,11 @@ export const coveringParameters = (covering: Covering): readonly unknown[] => {
  * revocation that committed first is seen by the caller's next statement; one
  * that comes later waits for the caller's write to commit.
  */
-export async function holdCoveringGrants(tx: TenantQuery, covering: Covering): Promise<void> {
-  await tx.query(
+export async function holdCoveringGrants(
+  tx: TenantQuery,
+  covering: Covering,
+): Promise<readonly string[]> {
+  const held = await tx.query<{ readonly id: string }>(
     `with recursive chain as (
        select g.id, g.parent_grant_id from public.grants g
         where g.business_id = $1 and g.collection = $2 and g.action = $3
@@ -70,6 +73,7 @@ export async function holdCoveringGrants(tx: TenantQuery, covering: Covering): P
       for share`,
     [tx.businessId, ...coveringParameters(covering)],
   );
+  return held.map((row) => row.id);
 }
 
 /**
@@ -95,6 +99,8 @@ export async function coveredAt(
 export interface OwnHeld {
   readonly own: readonly Subject[];
   readonly taskId: string;
+  /** The grants its hold locked: only these carry the write, as the delegated branch's. */
+  readonly held: readonly string[];
 }
 
 /**
@@ -113,8 +119,8 @@ export async function holdOwnWrite(
   const person = actor?.person_id;
   const own: Subject[] = [{ kind: 'actor', id: actorId }];
   if (typeof person === 'string') own.push({ kind: 'person', id: person });
-  await holdCoveringGrants(tx, { subjects: own, collection: 'task', action: 'write' });
-  return { own, taskId };
+  const held = await holdCoveringGrants(tx, { subjects: own, collection: 'task', action: 'write' });
+  return { own, taskId, held };
 }
 
 /**
@@ -124,7 +130,7 @@ export async function holdOwnWrite(
  */
 export async function ownWriteStands(
   tx: TenantQuery,
-  { own, taskId }: OwnHeld,
+  { own, taskId, held }: OwnHeld,
   at: string,
 ): Promise<{ readonly ok: true } | { readonly ok: false; readonly code: 'LEASE_NOT_OWNED' }> {
   const scope = { kind: 'record', id: taskId } as const;
@@ -133,7 +139,11 @@ export async function ownWriteStands(
     `select id from public.grants
       where business_id = $1 and id = any($2::uuid[])
         and (expires_at is null or expires_at > $3::timestamptz)`,
-    [tx.businessId, reach.ok ? reach.value.map((grant) => grant.id) : [], at],
+    [
+      tx.businessId,
+      reach.ok ? reach.value.map((grant) => grant.id).filter((id) => held.includes(id)) : [],
+      at,
+    ],
   );
   return live.length > 0 ? { ok: true } : { ok: false, code: 'LEASE_NOT_OWNED' };
 }
