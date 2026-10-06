@@ -665,30 +665,45 @@ async function seatOf(
   options: ApiOptions,
   live: LiveOptions,
   context: Context,
-  asks: Watching,
+  asks: DoorWatching,
 ): Promise<Seated | undefined> {
   const { presence } = live;
   if (presence === undefined) return undefined;
-  return await seatFor(presence, async () => {
+  const seated = await seatFor(presence, async () => {
     const presented = await options.verify(context.req);
     if (typeof presented !== 'object') return;
     const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
     return isCommandRefusal(viewer) ? undefined : viewer;
   });
+  // The person the door admitted, or no seat: a login remapped since never sits in their place.
+  return seated?.session.personId === asks.admitted() ? seated : undefined;
 }
+
+/** A task the caller may watch, and the person admitted to it. */
+type Watched = { readonly taskId: string; readonly personId: string };
+/** A stream's questions, and the person its door admitted: the only person its seat is for. */
+type DoorWatching = Watching & { readonly admitted: () => string | undefined };
 
 function watching(
   options: ApiOptions,
   live: LiveOptions,
   context: Context,
   businessId: string,
-): Watching {
+): DoorWatching {
+  let admitted: string | undefined;
   const ask = async (taskIds: readonly string[], at: AdmissionAt) => {
     const answers = await mayWatch(options, live, context, businessId, taskIds, at);
-    return isCommandRefusal(answers) ? taskIds.map(() => answers) : answers;
+    if (isCommandRefusal(answers)) return taskIds.map(() => answers);
+    return answers.map((answer) => {
+      if (isCommandRefusal(answer)) return answer;
+      if (at === 'recheck') return answer.personId;
+      admitted ??= answer.personId;
+      return answer.taskId;
+    });
   };
   return {
     businessId,
+    admitted: () => admitted,
     atDoor: async (taskIds) => await ask(taskIds, 'door'),
     async again(taskId) {
       const [answer] = await ask([taskId], 'recheck');
@@ -704,8 +719,7 @@ function watching(
  * reports: expiry, a lost membership, a revoked grant, a trashed or foreign
  * task and any external reader all refuse. It serves and audits nothing, since
  * the channel shows the person no content (C4 live-sync 6). Each answer is its
- * refusal, or at the door the task's identifier, the topic, and on a recheck
- * the person admitted.
+ * refusal, or the task's identifier (the topic) and the person admitted.
  */
 async function mayWatch(
   options: ApiOptions,
@@ -714,7 +728,7 @@ async function mayWatch(
   businessId: string,
   taskIds: readonly string[],
   at: AdmissionAt,
-): Promise<readonly (string | CommandRefusal)[] | CommandRefusal> {
+): Promise<readonly (Watched | CommandRefusal)[] | CommandRefusal> {
   const presented = await options.verify(context.req);
   if (typeof presented !== 'object') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
@@ -725,7 +739,7 @@ async function mayWatch(
   return admitted.map((answer) => {
     if (isCommandRefusal(answer)) return answer;
     if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
-    return at === 'door' ? answer.recordId : answer.personId;
+    return { taskId: answer.recordId, personId: answer.personId };
   });
 }
 
