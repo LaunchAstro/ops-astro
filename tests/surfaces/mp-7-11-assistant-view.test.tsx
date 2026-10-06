@@ -230,31 +230,6 @@ describe('MP-7-11 the agent’s answer', () => {
     expect(page.all('[data-message-role="note"]')).toHaveLength(0);
   });
 
-  it('MP-7-11 answer cites: the records an answer read are drawn under it, the product’s own address a link', async () => {
-    const cites = [{ label: 'Quarterly plan', href: '/task/T-12' }];
-    const { page } = await view({
-      reply: { answered: true, messageId: 'm1', body: 'Done.', cites },
-    });
-    await ask(page, 'What is this?');
-    const drawn = page.all('[data-message-role="ai"] [data-cites] a');
-    expect(drawn.map((a) => [a.textContent, a.getAttribute('href')])).toStrictEqual([
-      ['Quarterly plan', '/task/T-12'],
-    ]);
-  });
-
-  it('MP-7-11 answer cites: cites out of shape are not drawn at all', async () => {
-    const cites = [
-      { label: 'Quarterly plan', href: '/task/T-12' },
-      { label: 'planted', href: '/task/T-13', extra: 'x' },
-    ];
-    const { page } = await view({
-      reply: { answered: true, messageId: 'm1', body: 'Done.', cites },
-    });
-    await ask(page, 'What is this?');
-    expect(page.find('[data-message-role="ai"]')?.textContent).toBe('Done.');
-    expect(page.all('[data-cites]')).toHaveLength(0);
-  });
-
   it('MP-7-11 egress off: a question no model may take is a failed reply in the server’s words', async () => {
     const words = 'Models are off for this client: its material waits on a local model.';
     const { page } = await view({
@@ -280,5 +255,32 @@ describe('MP-7-11 the agent’s answer', () => {
     const { page } = await view();
     await ask(page, 'Hello');
     expect(page.find('[data-message-role="note"]')?.textContent).toContain('does not answer');
+  });
+});
+
+describe('MP-7-11 the answer’s cites', () => {
+  it('MP-7-11 answer cites: the records an answer read are drawn under it, the product’s own address a link', async () => {
+    const cites = [{ label: 'Quarterly plan', href: '/task/T-12' }];
+    const { page } = await view({
+      reply: { answered: true, messageId: 'm1', body: 'Done.', cites },
+    });
+    await ask(page, 'What is this?');
+    const drawn = page.all('[data-message-role="ai"] [data-cites] a');
+    expect(drawn.map((a) => [a.textContent, a.getAttribute('href')])).toStrictEqual([
+      ['Quarterly plan', '/task/T-12'],
+    ]);
+  });
+
+  it('MP-7-11 answer cites: cites out of shape are not drawn at all', async () => {
+    const cites = [
+      { label: 'Quarterly plan', href: '/task/T-12' },
+      { label: 'planted', href: '/task/T-13', extra: 'x' },
+    ];
+    const { page } = await view({
+      reply: { answered: true, messageId: 'm1', body: 'Done.', cites },
+    });
+    await ask(page, 'What is this?');
+    expect(page.find('[data-message-role="ai"]')?.textContent).toBe('Done.');
+    expect(page.all('[data-cites]')).toHaveLength(0);
   });
 });
