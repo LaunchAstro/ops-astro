@@ -92,6 +92,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['operations.read', {}],
   ['client.list', {}],
   ['client.create', { name: 'A made-up client made while bravo is watched' }],
+  // The one record-create command (C41-A) names no row; a name of its own each run.
+  ['record.create', { type: 'client', fields: { name: `a target-free client ${randomUUID()}` } }],
   [
     'privacy.draft_breach_notices',
     {
@@ -156,7 +158,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The fifty-two identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The fifty-four identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -211,6 +213,9 @@ export const IDENTIFIER_BEARING: Readonly<
   // C33: a version and an activation, and a definition to release on.
   'activation.change': ['versionId and activationId', 'control'],
   'definition.release': ['definitionId', 'control'],
+  // New client onboarding (C41-A): the client a start names, the step task a result names.
+  'onboarding.start': ['clientId', 'control'],
+  'onboarding.step_result': ['recordId', 'control'],
   // C52-A: an activation and the version it adopts, and an approval to revoke.
   'activation.adopt': ['activationId and versionId', 'control'],
   'activation.roll_back': ['activationId', 'control'],

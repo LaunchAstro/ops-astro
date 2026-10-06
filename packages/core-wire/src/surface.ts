@@ -16,7 +16,7 @@
 // does not exist is a field nobody can change". Specification 2.2's second
 // observable result asks a person to assign a task and move it through stages,
 // which are two of those ten. So the owning operations are declared here with
-// the nine, and `CONTRACT_NINE` below names the nine so the two sets stay
+// the nine, and `CONTRACT_NINE` (re-exported below) names the nine so the two sets stay
 // distinguishable rather than merged. The three trash-family operations are here for the same
 // reason: specification 14.3 requires the purge to write an audit event, and
 // an audit event is written by a command.
@@ -101,6 +101,7 @@ const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
+const RECORD_WRITE = { collection: 'record', targetsExistingRecord: false } as const;
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -463,6 +464,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: 'record',
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
+  }),
+  // C41-A (RC-13): `record:write` business-wide; the start and a step result ask `task:write` too.
+  declare('record.create', 'write', { ...RECORD_WRITE, untargetedIdentifiers: [] }),
+  declare('onboarding.start', 'write', { ...RECORD_WRITE, untargetedIdentifiers: ['clientId'] }),
+  declare('onboarding.step_result', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['recordId'],
+    agent: 'delegated',
   }),
   // C32: the tracked action `grant changed` on Settings ▸ Access, under
   // `access:manage` (the owner and administrators), never an agent's. A grant
@@ -886,18 +896,8 @@ export const NEEDS_NO_EXPECTED_REVISION: ReadonlySet<CommandName> = new Set(
   ),
 );
 
-/** The contract's nine, the first nine names of `CommandName`. */
-export const CONTRACT_NINE: readonly CommandName[] = [
-  'task.create',
-  'task.update',
-  'task.complete',
-  'task.reopen',
-  'task.comment',
-  'task.propose',
-  'task.decide',
-  'task.pickup',
-  'task.handback',
-];
+// The contract's nine, in its own file.
+export { CONTRACT_NINE } from './surface-contract-nine.ts';
 
 // An attempt's effect identity (T2c2), in its own file.
 export { effectAttemptOf, effectOperationId } from './effect-identity.ts';

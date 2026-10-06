@@ -30,7 +30,7 @@ import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { tableBody } from './role-case-setup.ts';
 import { moneyBody } from './role-case-money-bodies.ts';
 import { lineageBody } from './role-case-lineage-bodies.ts';
-import { laterBody } from './role-case-automations.ts';
+import { onboardingBody } from './role-case-onboarding.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -294,7 +294,7 @@ export function createPositiveBody(
         // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
         return await conversationBody(declaration.name, context);
       default:
-        return { body: await laterBody(declaration.name, context, target) };
+        return await onboardingBody(declaration.name, context, target);
     }
   };
 }

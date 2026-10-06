@@ -781,13 +781,17 @@ reaches the rows an agent may reach under a delegation that need no lease
 (`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.update`, `task.assign`,
 `task.set_scores`, `task.set_adhoc`, `task.set_category`, `task.comment`,
 `task.edit_comment`, `task.delete_comment`, `task.propose`,
-`run.child_handback` and `session.capabilities`), held to a delegated agent's
-limits where the handler has them (`updateTask`, `assignTask`, `commentOnTask`);
+`run.child_handback`, `onboarding.step_result` and `session.capabilities`), held
+to a delegated agent's limits where the handler has them (`updateTask`,
+`assignTask`, `commentOnTask`, and `onboarding.step_result`'s agent steps only);
 anything else is `DELEGATION_EXCLUDES_OPERATION`,
 `run.revise_state` included by name (`OUTSIDE_REACH`), though a run's delegation
 reaches it.
 A create asks the person's business-wide `task:write` within the ticked keys; it
 is audited against the agent and the task's `source` is `agent:api`.
+A step result is the agent's, so it records agent steps only: a person or
+client-wait step answers `DELEGATION_EXCLUDES_OPERATION` naming `kind`, and the
+step's comment has `source` `agent:api` (C41-A in API.md).
 `session.capabilities` answers the ticked keys the person's grants still cover,
 so a key the person holds and did not tick, or one revoked from them since, is
 not listed; `agentActorId` is the acting identity and `personId` the person it
