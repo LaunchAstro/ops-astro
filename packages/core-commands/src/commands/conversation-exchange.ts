@@ -164,22 +164,10 @@ async function questionOf(
   };
 }
 
-/**
- * Whether the caller may still read the conversation's task: the records
- * policies do not hold task grants, so the join above finds a task whose read
- * was revoked. No task is no question.
- */
-async function readsTask(
-  tx: TenantQuery,
-  session: Session,
-  taskId: string | null,
-): Promise<boolean> {
-  if (taskId === null) return true;
-  const read = {
-    collection: 'task',
-    action: 'read',
-    scope: { kind: 'record', id: taskId },
-  } as const;
+/** The caller may still read the task: the records policies do not hold task grants. */
+async function readsTask(tx: TenantQuery, session: Session, id: string | null): Promise<boolean> {
+  if (id === null) return true;
+  const read = { collection: 'task', action: 'read', scope: { kind: 'record', id } } as const;
   return (await checkAuthority(tx, subjectsOf(session), read)).ok;
 }
 
@@ -208,8 +196,7 @@ async function keep(
   const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
   const at = await lockedInstant(tx);
   if (!(await holdsOwnConversations(tx, session, { at, held }))) return undefined;
-  // A write after its last wait: a session ended meanwhile keeps nothing, and
-  // an ending not yet committed waits for this reply (the ending keys held shared).
+  // After the last wait: an ended session keeps nothing; an ending in flight waits for this.
   if (await sessionEndedSince(tx, session)) return undefined;
   const id = randomUUID();
   // The reply and the activity are stamped at that same instant, so a reply
@@ -241,40 +228,70 @@ function heldElsewhere(cause: unknown): undefined {
   return undefined;
 }
 
-/** The exchange over a deployment's broker, for the API's person path. */
+/** The model asked for one message, and the answer kept as its reply. */
+async function answerOnce(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+  asked: Asked,
+  found: { readonly session: Session; readonly question: Question },
+  broker: ModelBroker,
+): Promise<ConversationReply | null> {
+  const { session, question } = found;
+  const result = await callModelInConversation(
+    database,
+    businessId,
+    { actorId: session.actorId, delegationId: null, attendedByPersonId: session.personId },
+    {
+      conversation: question.scope,
+      operation: CONVERSATION_ANSWER.key,
+      fields: [{ name: 'message', source: 'outside', value: question.body }],
+    },
+    { ...broker, audit: auditAs(session.actorId) },
+  );
+  if (!result.ok) return refusedWith(result.code);
+  if (!bounded(result.text, REPLY_LIMIT)) return refusedWith('ANSWER_UNUSABLE');
+  const kept = await withSession(
+    database,
+    businessId,
+    presented,
+    async (tx, now) => await keep(tx, now, asked, result.text),
+  ).catch(heldElsewhere);
+  return kept === undefined || isCommandRefusal(kept) ? null : answered(kept);
+}
+
+/**
+ * The exchange over a deployment's broker, for the API's person path. A request whose
+ * own message is already with the model (in this process) waits for that answer: a
+ * retry asking again would spend tokens on a reply that is not kept.
+ */
 export function conversationExchange(broker: ModelBroker): ConversationExchange {
+  const asking = new Map<string, Promise<ConversationReply | null>>();
   return async (database, businessId, presented, asked) => {
     const found = await withSession(database, businessId, presented, async (tx, session) => ({
       session,
       question: await questionOf(tx, session, asked),
     }));
     if (isCommandRefusal(found) || found.question === undefined) return null;
-    const { session, question } = found;
+    const { question } = found;
     if (question.reply !== undefined) return answered(question.reply);
     // Owner line 72: a client's material reaches no model while no true local
     // model exists, and the laptop's GPT runner is a cloud model. A conversation
     // opened on a client's task asks nothing, whatever the provider; so does one whose
     // task this session cannot see, since its client cannot be known.
     if (question.clientOrUnseen) return refusedWith('CLIENT_MODEL_USE_OFF');
-    const result = await callModelInConversation(
-      database,
-      businessId,
-      { actorId: session.actorId, delegationId: null, attendedByPersonId: session.personId },
-      {
-        conversation: question.scope,
-        operation: CONVERSATION_ANSWER.key,
-        fields: [{ name: 'message', source: 'outside', value: question.body }],
-      },
-      { ...broker, audit: auditAs(session.actorId) },
-    );
-    if (!result.ok) return refusedWith(result.code);
-    if (!bounded(result.text, REPLY_LIMIT)) return refusedWith('ANSWER_UNUSABLE');
-    const kept = await withSession(
+    const key = `${businessId}/${asked.conversationId}/${asked.messageId}`;
+    const running = asking.get(key);
+    if (running !== undefined) return await running;
+    const answering = answerOnce(
       database,
       businessId,
       presented,
-      async (tx, now) => await keep(tx, now, asked, result.text),
-    ).catch(heldElsewhere);
-    return kept === undefined || isCommandRefusal(kept) ? null : answered(kept);
+      asked,
+      { ...found, question },
+      broker,
+    ).finally(() => asking.delete(key));
+    asking.set(key, answering);
+    return await answering;
   };
 }
