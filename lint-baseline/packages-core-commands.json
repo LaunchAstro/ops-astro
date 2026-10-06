@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "eslint(max-lines-per-function)": 23,
+    "eslint(max-lines)": 10,
+    "unicorn(no-array-callback-reference)": 1,
+    "unicorn(no-useless-undefined)": 5
+  }
+}

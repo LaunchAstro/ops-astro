@@ -48,10 +48,12 @@ import {
 import { TASK_SPINE } from '../../packages/core-records/src/tasks/spine.ts';
 import { COMMENT_SPINE } from '../../packages/core-records/src/tasks/comments.ts';
 import { TASK_STATE_FIELDS } from '../../packages/core-records/src/tasks/states.ts';
+import { CONVERSATION_SPINE } from '../../packages/core-records/src/team/conversations.ts';
 import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient, type ReadName } from '../../apps/web/src/operations/client.ts';
 import type { Harness } from './role-case-harness.ts';
 import { asBrowser } from '../support/sign-in.ts';
+import { isInvitation } from './role-case-invitation-bodies.ts';
 
 export type Surface = 'api' | 'cli' | 'web';
 export const SURFACES: readonly Surface[] = ['api', 'cli', 'web'];
@@ -64,8 +66,9 @@ export const SYSTEM_PAYLOAD_FIELDS: readonly string[] = TASK_SPINE.filter(
   .toSorted();
 
 /**
- * Every installed `write_mode = 'system'` field key, across the three record
- * types the spine installs: the task's, the comment's and the state's.
+ * Every installed `write_mode = 'system'` field key, across the four record
+ * types the spine installs: the task's, the comment's, the state's and the
+ * team conversation's (C71-D: every field the server's, so all four refused).
  *
  * The server refuses these at the top level from the installed `field_defs`
  * rows (root ruling 1); the list here is what the installer writes those rows
@@ -73,7 +76,7 @@ export const SYSTEM_PAYLOAD_FIELDS: readonly string[] = TASK_SPINE.filter(
  */
 export const INSTALLED_SYSTEM_FIELDS: readonly string[] = [
   ...new Set(
-    [...TASK_SPINE, ...COMMENT_SPINE, ...TASK_STATE_FIELDS]
+    [...TASK_SPINE, ...COMMENT_SPINE, ...TASK_STATE_FIELDS, ...CONVERSATION_SPINE]
       .filter((field) => field.writeMode === 'system')
       .map((field) => field.key),
   ),
@@ -186,32 +189,35 @@ export function surfacesOf(
   harness: Harness,
 ): (surface: Surface, name: CommandName, body: Readonly<Record<string, unknown>>) => Promise<Said> {
   const { world } = harness;
-  const cli = createCli({
-    businessKey: 'alpha',
-    credential: world.ada.token,
-    transport: async (path, body, credential) =>
-      await world.api.fetch(
-        new Request(`http://api.test${path}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
-          body,
-        }),
-      ),
+  const doors = (token: string) => ({
+    cli: createCli({
+      businessKey: 'alpha',
+      credential: token,
+      transport: async (path, body, credential) =>
+        await world.api.fetch(
+          new Request(`http://api.test${path}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` },
+            body,
+          }),
+        ),
+    }),
+    web: new OperationsClient({
+      origin: 'http://api.test',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch: asBrowser(token, async (url, init) => await world.api.fetch(new Request(url, init))),
+    }),
   });
-  const web = new OperationsClient({
-    origin: 'http://api.test',
-    businessKey: 'alpha',
-    signedIn: true,
-    fetch: asBrowser(
-      world.ada.token,
-      async (url, init) => await world.api.fetch(new Request(url, init)),
-    ),
-  });
+  const admin = doors(world.ada.token);
+  // C39-T's invitation acts come from the harness's current inviter (`freshInviter`).
   return async (surface, name, body) => {
+    const caller = isInvitation(name) ? harness.inviter() : world.ada;
     if (surface === 'api') {
-      const answer = await harness.asPerson(name, body);
+      const answer = await harness.asPerson(name, body, 'alpha', caller);
       return said(answer.body);
     }
+    const { cli, web } = caller === world.ada ? admin : doors(caller.token);
     if (surface === 'cli') return said((await cli.run(name, body)).body);
     const result =
       declarationFor(name).kind === 'read'

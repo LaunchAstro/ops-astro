@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "eslint(max-lines-per-function)": 30,
+    "eslint(max-lines)": 7,
+    "eslint(no-promise-executor-return)": 1,
+    "eslint(require-await)": 29,
+    "unicorn(no-array-callback-reference)": 5,
+    "unicorn(no-useless-undefined)": 2,
+    "unicorn(prefer-dom-node-dataset)": 55
+  }
+}

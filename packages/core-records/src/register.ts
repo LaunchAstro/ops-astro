@@ -27,6 +27,7 @@
 import { DEFINITION_ROWS } from './register-definitions.ts';
 import { EFFECT_ROWS } from './register-effects.ts';
 import { LAUNCH_ROWS } from './register-launch.ts';
+import { LIVE_CORRECTION_ROWS } from './site/refusal-rows.ts';
 
 export type Visibility = 'caller' | 'audit';
 
@@ -343,6 +344,14 @@ const ROWS_HEAD = [
     meaning: 'This person has no second factor to verify or remove',
     source: 'C59 TR-A2-2',
   },
+  // C59 (ORCH65-Q3): an owner's reset of a member's factor that this business
+  // may not make. One set of words for every reason, so none is told apart.
+  {
+    code: 'FACTOR_RESET_REFUSED',
+    status: 409,
+    meaning: "This member's second factor cannot be reset from this business",
+    source: 'C59 ORCH65-Q3',
+  },
   {
     code: 'SECOND_FACTOR_INVALID',
     status: 422,
@@ -501,6 +510,32 @@ const ROWS_HEAD = [
     status: 409,
     meaning: 'It would leave the business with nobody who can change access',
     source: 'C32 CS-2.15',
+  },
+  // C60: a client's privacy settings. LOCAL_MODEL_REQUIRED (owner line 72) is
+  // the broker's row, reused for a cloud provider named on a client.
+  {
+    code: 'CLIENT_REQUEST_REQUIRED',
+    status: 422,
+    meaning: "Model use goes on only with the client's written request in the same command",
+    source: 'C60 CS-7.40, owner line 51',
+  },
+  {
+    code: 'PROVIDER_NOT_ASSESSED',
+    status: 409,
+    meaning: 'The provider has no assessed row on the overseas-services register',
+    source: 'C60 CS-7.40, APP 8.1',
+  },
+  {
+    code: 'CLIENT_HANDLES_HEALTH',
+    status: 409,
+    meaning: 'A client that handles health information keeps model use off',
+    source: 'C60 CS-7.40',
+  },
+  {
+    code: 'CLIENT_NO_AGENT_EDITS',
+    status: 403,
+    meaning: 'No agent edits is on for this client, so no edit run works on its media',
+    source: 'C60 O2',
   },
   // S0-6c. 403s: the session may be good, and ending it would hand the sign-out to others.
   {
@@ -820,9 +855,16 @@ const ROWS_HEAD = [
 // effect and broker codes follow them, in `register-effects.ts`.
 
 /** Every registered code. Declared by the rows above and nowhere else. */
-/** Every row, in register order: the head, the definition codes, the effect codes, the launch. */
+/**
+ * Every row, in register order: the head, the definition codes, the effect codes, the
+ * launch, C80's.
+ */
 type Row = (
-  typeof ROWS_HEAD | typeof DEFINITION_ROWS | typeof EFFECT_ROWS | typeof LAUNCH_ROWS
+  | typeof ROWS_HEAD
+  | typeof DEFINITION_ROWS
+  | typeof EFFECT_ROWS
+  | typeof LAUNCH_ROWS
+  | typeof LIVE_CORRECTION_ROWS
 )[number];
 
 export type RefusalCode = Row['code'];
@@ -853,6 +895,7 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
   ...DEFINITION_ROWS,
   ...EFFECT_ROWS,
   ...LAUNCH_ROWS,
+  ...LIVE_CORRECTION_ROWS,
 ].map((row: Declared & { readonly code: RefusalCode }) => ({
   code: row.code,
   status: row.status,

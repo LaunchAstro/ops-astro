@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { isUuid } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { refuseCommand } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { BODY_LIMIT, invalid, notPermitted, textOk, type RequestOf } from './wayfinder.ts';
@@ -225,14 +225,21 @@ async function refuseForeignOperands(
     item.ticketId === null ? [] : [item.ticketId],
   );
   if (linked.length > 0) {
+    // A closed ticket of this map (CS-15.6); a map filed under it is its own,
+    // outside this map's grant, so it is never linked here.
     const children = await tx.query<{ readonly id: string }>(
-      `select id from records
-        where business_id = $1 and id = any($2::uuid[]) and uuid_4 = $3
-          and record_type_id = $4`,
+      `select c.id from records c
+         join records s on s.business_id = c.business_id and s.id = c.uuid_1
+        where c.business_id = $1 and c.id = any($2::uuid[]) and c.uuid_4 = $3
+          and c.record_type_id = $4 and c.deleted_at is null
+          and coalesce(c.data ->> 'type', 'task') <> 'map'
+          and s.data ->> 'machine_category' in ('completed', 'cancelled')`,
       [tx.businessId, linked, mapId, context.spine.taskTypeId],
     );
     if (children.length !== new Set(linked).size) {
-      return refused(refuseCommand('NOT_FOUND', ['addOutOfScope'], ['Link a ticket of this map.']));
+      return refused(
+        refuseCommand('NOT_FOUND', ['addOutOfScope'], ['Link a closed ticket of this map.']),
+      );
     }
   }
   if (parsed.retire.length > 0) {
@@ -258,6 +265,8 @@ export async function reviseMap(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('reviseMap: the envelope read no target');
+  // A trashed map is missing here, as `map.view` answers it.
+  if (target.deleted_at !== null) return refused(refuseNotFound());
   if (target.data['type'] !== 'map') {
     return notPermitted(['type'], ['Only a task of type map has components to revise.']);
   }

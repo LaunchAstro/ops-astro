@@ -27,6 +27,20 @@ const staging = JSON.parse(
 const PRODUCTION_MAJOR = staging['x-ops-astro'].productionDatabaseMajor;
 
 /**
+ * How many application tables with a business column show the reading role a
+ * row of a business other than `business`: run as that role under `business`,
+ * each table it may read (the drill grants it every one) read as it is, so its
+ * row security decides what it shows.
+ */
+const leaking = (business) =>
+  `(select count(*) from pg_class t join pg_namespace n on n.oid = t.relnamespace
+     join pg_attribute a on a.attrelid = t.oid and a.attname = 'business_id'
+     where n.nspname = 'public' and t.relkind in ('r', 'p') and not a.attisdropped
+       and has_table_privilege(t.oid, 'select') and (xpath('/row/n/text()', query_to_xml(format(
+         'select exists (select from %I.%I where business_id <> %L) as n',
+         n.nspname, t.relname, '${business}'), false, true, '')))[1]::text = 'true')`;
+
+/**
  * Restores the archive `fetchArchive(file)` writes into `file` (or answers as
  * `body`) into a container of `image` and checks it. Returns the drill's record; never throws. `image` defaults to
  * staging's pinned Postgres, the major production gets.
@@ -84,8 +98,10 @@ export async function restoreDrill({
       started = true;
       // No network and no published port: nothing outside can reach it, and it
       // can reach nothing. Local trust is safe for the same reason. The data
-      // directory is memory only, so restored rows never reach the disk.
-      const container = `-d --rm --network none --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
+      // directory is memory only, so restored rows never reach the disk, and
+      // the server's own messages (a failed restore's can quote a row) go
+      // to no log driver, so Docker keeps none of them either.
+      const container = `-d --rm --network none --log-driver none --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
       const env = `-e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=${DB}`;
       await must(run(['run', ...`${container} ${env}`.split(' '), image]));
       let ready = false;
@@ -121,7 +137,11 @@ export async function restoreDrill({
       // itself. Every read runs as that role under the named business, where
       // the forced business barrier shows exactly one business: more means the
       // barrier did not survive the restore, and a person or client of another
-      // business is not there to find. Within it, the named person must be a
+      // business is not there to find. One table shows nothing of the others,
+      // so every application table's barrier is checked as well: row security
+      // enabled and forced, as the tenancy law has it (tenancy/conformance.ts),
+      // and holding: no table with a business column shows the role a row of
+      // another business, or the copy fails. Within it, the named person must be a
       // current member holding a live grant to read the named client, as the
       // product's own read asks it (collection `person`, action `read`, at party
       // or business scope), or the business's people manager (Sol's reviews of
@@ -133,12 +153,16 @@ export async function restoreDrill({
         `grant execute on function public.app_business_id() to ${APP_ROLE}`,
       );
       const [p, c] = [scope.person, scope.client];
-      const [tables = '', granted, businesses, people] = (
+      const [tables = '', unbarred, leaks, granted, businesses, people] = (
         await psql(
           `set role ${APP_ROLE}`,
           `set app.business_id = '${scope.business}'`,
           `${EFFECTIVE_GRANTS} select (select string_agg(schemaname || '.' || tablename, ',') from pg_tables
              where schemaname not in ('pg_catalog', 'information_schema')),
+             (select count(*) from pg_class t join pg_namespace n on n.oid = t.relnamespace
+               where n.nspname = 'public' and t.relkind in ('r', 'p')
+                 and not (t.relrowsecurity and t.relforcerowsecurity)),
+             ${leaking(scope.business)},
              (exists (select from public.memberships where person_id = '${p}' and active)
              and exists (select from effective where subject_kind = 'person' and subject_id = '${p}'
                and collection = 'person' and (action = 'read' and (scope_kind = 'business'
@@ -149,7 +173,8 @@ export async function restoreDrill({
       ).split('|');
       const present = new Set(tables.split(','));
       const whole = expected.length > 0 && expected.every((t) => present.has(t));
-      if (!whole || granted !== '1' || businesses !== '1' || people !== '2')
+      const barred = unbarred === '0' && leaks === '0';
+      if (!whole || !barred || granted !== '1' || businesses !== '1' || people !== '2')
         throw new Error('check failed');
       record.tables = expected.length;
       record.readAs = APP_ROLE;

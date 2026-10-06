@@ -115,6 +115,10 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'record',
   // MP-2-11: the four-eyes threshold asks `spend:decide`, a money action.
   'spend',
+  // Custody (C31): `custody:manage` is the owner's and administrators'.
+  'custody',
+  // The connector fleet (MP-14-7a): `connection:read`.
+  'connection',
 ];
 
 /**
@@ -131,6 +135,10 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   ['access', 'share'],
   ['time', 'write'],
   ['tag', 'write'],
+  // Team conversations (C71-D): a direct message and the conversation reads.
+  ['chat', 'comment'],
+  // C33: releasing a definition version, the owner's and administrators'.
+  ['automation', 'manage'],
 ];
 
 export async function tokenFor(
@@ -223,7 +231,10 @@ export async function enrolCaller(
     return { personId, actorId };
   });
   const member = { ...identity, presented: { provider: 'supabase', subject } as VerifiedSubject };
-  if (options.actions.length > 0) await grantPairs(db, businessId, member, options);
+  // The extra pairs too: a caller holding only them (a seeded role's bundle) has no actions.
+  if (options.actions.length > 0 || (options.extraPairs?.length ?? 0) > 0) {
+    await grantPairs(db, businessId, member, options);
+  }
   return {
     name,
     businessKey,

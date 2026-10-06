@@ -24,3 +24,20 @@ export type CommentRequest<Targeted> =
       readonly body: string;
     } & Targeted)
   | ({ readonly command: 'task.delete_comment'; readonly commentId: string } & Targeted);
+
+/** Team conversations (C71-D): a direct message names its teammate; the marker, its conversation. */
+export type ChatRequest<E> =
+  | ({
+      readonly command: 'chat.send_direct';
+      readonly teammateId: string;
+      readonly body: string;
+    } & E)
+  | ({
+      readonly command: 'chat.mark_read';
+      readonly conversationId: string;
+      /** The newest message's time the reader saw, as ISO text. */
+      readonly upTo: string;
+    } & E);
+
+/** Both for `requests.ts`: a comment takes the targeted envelope, a chat command does not. */
+export type CommentOrChatRequest<Targeted, E> = CommentRequest<Targeted> | ChatRequest<E>;

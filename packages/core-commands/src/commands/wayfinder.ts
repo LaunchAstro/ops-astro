@@ -4,9 +4,7 @@
 // client scope. A map is a task of type `map` and its tickets are its
 // subtasks (W2, W3), so each command here targets a task the envelope has
 // already authorised, locked and revision-checked; what is left is the rule
-// that belongs to the type. The map's revisions are `wayfinder-revision.ts`;
-// WF-2's working commands are `wayfinder-chart.ts`, `wayfinder-blocking.ts`
-// and `wayfinder-resolve.ts`.
+// that belongs to the type; a map's revisions and WF-2's commands sit beside it.
 
 import {
   checkAuthority,
@@ -210,14 +208,14 @@ export async function refuseSharedIntoMap(
   );
 }
 
-/** The first subtask, live or trashed, still holding client access, refused. */
+/** A subtask, live or trashed, holding client access; locked first, so a share in flight is seen. */
 async function refuseSharedChildren(
   tx: TenantQuery,
   context: CommandContext,
   recordId: string,
 ): Promise<CommandRefusal | undefined> {
   const children = await tx.query<{ readonly id: string }>(
-    `select id from records where business_id = $1 and record_type_id = $2 and uuid_4 = $3`,
+    `select id from records where business_id = $1 and record_type_id = $2 and uuid_4 = $3 for update`,
     [tx.businessId, context.spine.taskTypeId, recordId],
   );
   for (const { id } of children) {
@@ -257,6 +255,8 @@ export async function refuseOwnerTicketMove(
     );
     if (leaving !== undefined) return leaving;
   }
+  // Parent held `for share` before its type is read: a retype in flight is seen.
+  if (parentId !== null) await wayfinderFacts(tx, parentId, true);
   const into = parentId === null ? undefined : await wayfinderFacts(tx, parentId);
   if (into?.type !== 'map' || into.mapId === facts.mapId) return undefined;
   const shared = await refuseSharedIntoMap(tx, recordId);

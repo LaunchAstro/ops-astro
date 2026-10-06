@@ -32,6 +32,7 @@ import {
   TASK_COLLECTION,
   TEST_SIGNING_KEY,
   type RuntimeFixture,
+  stepPlanRecord,
 } from './fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -65,6 +66,8 @@ async function held(
       currency: 'AUD',
       payload: { change: 'a comment' },
       step: { kind: 'synthetic_comment', payload: {} },
+      // As this schema writes it: no plan record columns before 20261003001115, none bound after.
+      planRecordId: await stepPlanRecord(tx),
       expiresAt: new Date(Date.now() + 3_600_000),
     });
     if (!proposed.ok) throw new Error(`propose refused ${proposed.refusal.code}`);

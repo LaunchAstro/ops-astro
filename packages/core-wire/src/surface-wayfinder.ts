@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The wayfinder commands' operands (WF-1, WF-2), spread into `surface.ts`'s
-// write operand table, which checks each against its `OperandSpec`.
+// write operand table, which checks each against its `OperandSpec`, and their
+// map lock, which `surface.ts` imports (moved whole to keep it under its line cap).
+
+/**
+ * The key every write to a map's structure serialises on, taken before any
+ * task row: no two writes hold a map and a ticket in opposite orders.
+ */
+export const WAYFINDER_MAP_LOCK = 'wayfinder.map';
 
 const TARGET = { recordId: 'id' } as const;
 

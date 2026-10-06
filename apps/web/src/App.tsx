@@ -22,12 +22,14 @@ import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice } from './held-address.tsx';
 import { shellDock, useDockShell } from './dock/dock-props.tsx';
+import { useAskOpensAgent } from './dock/agent-dock.ts';
 import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, sessionGeneration, type Session } from './session/token.ts';
 import { useSignedIn, type HeldNotice } from './session/use-signed-in.ts';
 import { stepUpSession, type StepUpResult } from './session/step-up.ts';
-import { StepUpContext } from './records/use-money-command.ts';
+import { signInAgainSession } from './session/sign-in-again.ts';
+import { StepUpProviders } from './records/step-up-providers.tsx';
 import { SignIn } from './screens/SignIn.tsx';
 import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
@@ -116,6 +118,7 @@ export function App(props: AppProps): ReactElement {
   const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
   const agency = face === 'agency';
   const docked = useDockShell(client, session, props.storage, props, taskDock.panel, agency);
+  useAskOpensAgent(docked.dock.change);
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:
@@ -132,26 +135,39 @@ export function App(props: AppProps): ReactElement {
     void endThenSignOut(() => client.mutate('session.end', {}), props, ended);
   };
 
-  // The money step-up (C59): the tab moves to the stepped-up sign-in as a sign-in does, without
-  // going anywhere, and only while the session that asked is still the one in hand.
-  const stepUp = async (code: string): Promise<StepUpResult> => {
-    const from = session;
-    if (from === null) return { ok: false, because: 'Sign in first.' };
+  // The money step-up (C59): the tab moves to the new sign-in without going anywhere, and only
+  // while the session that asked is still the one in hand. A password sign-in (a client's, or a
+  // set-up's) is a new provider session, so the old one is signed out once the tab has moved.
+  const route = { apiOrigin: props.apiOrigin, fetch: props.fetch };
+  const heldFrom = (from: Session) => {
     const generation = sessionGeneration();
-    return await stepUpSession({
-      code,
-      client,
-      route: { apiOrigin: props.apiOrigin, fetch: props.fetch },
+    return {
       from: from.sessionId,
       current: () => generation === sessionGeneration() && sessionRef.current === from,
-      adopt: (sessionId) => {
+      adopt: (sessionId: string) => {
         const next = { ...from, sessionId };
         props.sessions.set(next);
         sessionRef.current = next;
         setSession(next);
       },
-    });
+    };
   };
+  const signInFirst: StepUpResult = { ok: false, because: 'Sign in first.' };
+  const stepUp = async (code: string): Promise<StepUpResult> =>
+    session === null
+      ? signInFirst
+      : await stepUpSession({ code, client, route, ...heldFrom(session) });
+  const signInAgain = async (password: string): Promise<StepUpResult> =>
+    session === null
+      ? signInFirst
+      : await signInAgainSession({
+          ...heldFrom(session),
+          gotrueUrl: props.gotrueUrl,
+          email: session.email,
+          password,
+          route,
+          businessKey: session.businessKey,
+        });
 
   const personName = usePersonName(client, session, props.storage);
   const onSwitch = (businessKey: string, address: string): void => {
@@ -212,63 +228,70 @@ export function App(props: AppProps): ReactElement {
   // person or session drops every tab and a late reply has nowhere to land.
   const agent =
     dockScreen === null || match === null ? null : (
-      <AssistantView key={grantKey} client={client} route={match.id} here={here} entry={null} />
+      <AssistantView
+        key={grantKey}
+        grantKey={grantKey}
+        client={client}
+        route={match.id}
+        here={here}
+        entry={null}
+      />
     );
   return (
-    <SignedInName value={personName}>
-      <PageFreshnessProvider>
-        <PagePresenceProvider>
-          <Shell
-            face={face}
-            build={buildStamp()}
-            rail={rail}
-            here={bare}
-            strip={
-              <FrameStrip
-                face={face}
-                identity={identity}
-                clientSlug={at?.client ?? null}
-                steps={props.steps}
-                onSearch={searchable ? search.open : null}
-                searchRef={search.box}
-                session={session}
-                personName={personName}
-                navigate={navigate}
-                onSignOut={onSignOut}
-              />
-            }
-            tabs={tabs}
-            nav={{ open: navOpen, onToggle: setNavOpen }}
-            onNavigate={navigate}
-            meta={
-              <>
-                <StripFreshness
-                  fallback={
-                    offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
-                  }
+    <StepUpProviders on={session !== null} stepUp={stepUp} signInAgain={signInAgain}>
+      <SignedInName value={personName}>
+        <PageFreshnessProvider>
+          <PagePresenceProvider>
+            <Shell
+              face={face}
+              build={buildStamp()}
+              rail={rail}
+              here={bare}
+              strip={
+                <FrameStrip
+                  face={face}
+                  identity={identity}
+                  clientSlug={at?.client ?? null}
+                  steps={props.steps}
+                  onSearch={searchable ? search.open : null}
+                  searchRef={search.box}
+                  session={session}
+                  personName={personName}
+                  navigate={navigate}
+                  onSignOut={onSignOut}
                 />
-                {session === null ? null : <StripPresence />}
-              </>
-            }
-            title={title}
-            {...shellDock(docked, dockScreen, agent)}
-          >
-            <StepUpContext.Provider value={session === null ? null : stepUp}>
+              }
+              tabs={tabs}
+              nav={{ open: navOpen, onToggle: setNavOpen }}
+              onNavigate={navigate}
+              meta={
+                <>
+                  <StripFreshness
+                    fallback={
+                      offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
+                    }
+                  />
+                  {session === null ? null : <StripPresence />}
+                </>
+              }
+              title={title}
+              {...shellDock(docked, dockScreen, agent)}
+            >
               <FaceProvider face={face}>{content}</FaceProvider>
-            </StepUpContext.Provider>
-          </Shell>
-          {search.showing && searchable ? (
-            <SearchPalette
-              client={client}
-              onOpen={(address) => {
-                search.dismiss();
-                navigate(address);
-              }}
-              onClose={search.close}
-            />
-          ) : null}
-        </PagePresenceProvider>
-      </PageFreshnessProvider>
-    </SignedInName>
+            </Shell>
+            {search.showing && searchable ? (
+              <SearchPalette
+                client={client}
+                onOpen={(address) => {
+                  search.dismiss();
+                  navigate(address);
+                }}
+                onClose={search.close}
+              />
+            ) : null}
+          </PagePresenceProvider>
+        </PageFreshnessProvider>
+      </SignedInName>
+    </StepUpProviders>
   );
 }

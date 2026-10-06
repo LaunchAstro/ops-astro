@@ -81,23 +81,35 @@ module.exports = {
       to: { path: '^packages/', pathNot: '^packages/core-digest/' },
     },
     {
+      name: 'sandbox-imports-no-package',
+      severity: 'error',
+      comment:
+        "The sandbox's grammars decide what reaches the Docker daemon, so they read only " +
+        'their own modules: no record, credential or connector code can widen them.',
+      from: { path: '^packages/core-sandbox/' },
+      to: { path: '^packages/', pathNot: '^packages/core-sandbox/' },
+    },
+    {
       name: 'custody-process-imports-no-package',
       severity: 'error',
       comment:
         "Custody's process holds every provider credential, so adapter, connector and " +
-        'database code never load in it (AW-01): its entry and the two modules it runs on ' +
+        'database code never load in it (AW-01): its entry and every module it runs on ' +
         'import no other package.',
-      from: { path: '^packages/core-custody/src/(custody-main|egress|credentials)\\.ts$' },
+      from: {
+        path: '^packages/core-custody/src/(custody-main|egress|egress-routes|credentials|secret-spellings)\\.ts$',
+      },
       to: { path: '^packages/', pathNot: '^packages/core-custody/' },
     },
     {
-      name: 'connectors-are-a-leaf',
+      name: 'connectors-take-the-digest-only',
       severity: 'error',
       comment:
         'Provider operations say what a call is, what it may carry and to where. They hold ' +
-        'no credential and open no connection, so they import no other package.',
+        'no credential and take the payload digest and nothing else of the product, so no ' +
+        'path from them reaches a record, a grant or a command.',
       from: { path: '^packages/core-connectors/' },
-      to: { path: '^packages/', pathNot: '^packages/core-connectors/' },
+      to: { path: '^packages/', pathNot: '^packages/core-(connectors|digest)/' },
     },
     {
       name: 'index-only',

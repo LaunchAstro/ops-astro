@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Trace retention (#475): owed runs are read back in turn order across places, so unanswered runs wait behind the rest."
+}

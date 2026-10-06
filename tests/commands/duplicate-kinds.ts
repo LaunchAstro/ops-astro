@@ -171,10 +171,20 @@ export const DECLARED: Readonly<
   'access.grant': { carry: 'not carried', plant: 'authority, not task content' },
   'access.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'access.end': { carry: 'not carried', plant: 'authority, not task content' },
+  'access.reset_factor': { carry: 'not carried', plant: 'a sign-in factor, not task content' },
+  'invitation.create': { carry: 'not carried', plant: 'a team invitation, not task content' },
+  'invitation.resend': { carry: 'not carried', plant: 'a team invitation, not task content' },
+  'invitation.revoke': { carry: 'not carried', plant: 'a team invitation, not task content' },
   'credential.issue': { carry: 'not carried', plant: 'authority, not task content' },
   'credential.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'session.end': { carry: 'not carried', plant: 'a sign-in, not task content' },
   'client.create': { carry: 'not carried', plant: 'a client of the business, not task content' },
+  // C41-A: a client and its onboarding are not task content; a step's result is
+  // a system comment on the step's own task, which a duplicate leaves behind.
+  'record.create': { carry: 'not carried', plant: 'a client of the business, not task content' },
+  'onboarding.start': { carry: 'not carried', plant: 'lays new tasks out, not task content' },
+  'onboarding.step_result': { carry: 'not carried', plant: 'needs an onboarding step task' },
+  'client.set_privacy': { carry: 'not carried', plant: "a client's settings, not task content" },
   'preference.save': { carry: 'not carried', plant: 'a person’s setting' },
   'preference.dismiss_tip': { carry: 'not carried', plant: 'a person’s setting' },
   'settings.set_money_step_up': { carry: 'not carried', plant: 'a business setting' },
@@ -202,6 +212,21 @@ export const DECLARED: Readonly<
   'budget.set_planning_cap': { carry: 'not carried', plant: 'a business setting' },
   'run.delegate_child': { carry: 'not carried', plant: 'needs a lease' },
   'run.child_handback': { carry: 'not carried', plant: 'needs a child run' },
+  'chat.send_direct': { carry: 'not carried', plant: 'a team conversation’s, never on a task' },
+  'chat.mark_read': { carry: 'not carried', plant: 'the reader’s own marker, not the task' },
+  // C33: an automation of the business, carrying no task.
+  'activation.change': { carry: 'not carried', plant: 'an automation, not task content' },
+  'definition.release': { carry: 'not carried', plant: 'an automation, not task content' },
+  // C31: a business's custody key, never task content.
+  'secret.set': { carry: 'not carried', plant: 'a business key, not task content' },
+  'secret.clear': { carry: 'not carried', plant: 'a business key, not task content' },
+  // C52-A: an activation's standing approval, carrying no task.
+  'activation.adopt': { carry: 'not carried', plant: 'an automation, not task content' },
+  'activation.roll_back': { carry: 'not carried', plant: 'an automation, not task content' },
+  'activation.turn_off': { carry: 'not carried', plant: 'an automation, not task content' },
+  'approval.revoke': { carry: 'not carried', plant: 'an automation, not task content' },
+  // MP-14-7a: a repair names a connection, never task content.
+  'connector.repair': { carry: 'not carried', plant: 'a connection, not task content' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

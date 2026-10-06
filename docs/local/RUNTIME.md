@@ -113,8 +113,11 @@ the task and does not lock it (`prepareCommand`, `commands/prepare.ts`).
 Under those locks, `task.propose` checks the cap's currency and room and the
 open envelope's, T1's "existing budget authority", as the handback's successor
 bound does (`refuseBeyondBudget`, `propose.ts`). The envelope is asked first
-(`refuseBeyondEnvelope`), and each room is less the hold the superseded version
-releases. The cap is the open envelope's, else the one the caller passed, else
+(`refuseBeyondEnvelope`), and each room is less what superseding the live
+versions gives back, by the rule the classifier closes a hold by
+(`releasedOnClosing`, `budget-ledger.ts`, #836): a hold closes at its settled
+model calls' spend, and a marked hold or one with a call still open gives back
+nothing. The cap is the open envelope's, else the one the caller passed, else
 the business cap: with no `capId` passed, which is `task.restart`,
 `lockProposal` reads the business cap (`readBusinessCapId`) and locks it with
 the rest of the set. The check runs
@@ -740,9 +743,10 @@ claim (`record_unique_values_claim_idx`), a deadlock victim (`40P01`) and
 it is retried once, like a lost unique race, and a second one faults
 (`tests/commands/unstorable-values-direct-callers.test.ts` holds the retry). The
 identity case is the one an agent reaches. A same-operationId retry in flight
-behind its original loses `operations_identity_key` to the original's commit, and its whole
-transaction rolls back. The second attempt reads the committed register row and
-replays it (DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
+behind its original waits at the envelope's door (`enter`, #932), then reads
+the committed register row and replays it; `operations_identity_key` is the
+backstop, and its loser's whole transaction rolls back and the retry replays
+(DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
 
 **A trash can deadlock, and the retry answers from the winner's commit.**
 `trashSubtree` (`tasks/trash.ts`) locks the rows it walks in id order, but that
@@ -828,10 +832,14 @@ and the pickup is refused `BUDGET_UNAVAILABLE`, a refusal that keeps the stop
 and its ask. After the consolidated ask there is no ask left to raise: the run
 ends (`cancelled`, with no hold to release) and a person is told on the task
 (`awaiting_person`, `needs_approval`). The stop is written first, then the
+task's lease is met as a pickup meets it (`fenceLiveLease`), then the
 claimant's authority is read (`claimantMayWork`) before the refusal commits, so
 a caller without it is refused and the rollback takes the stop and its ask
 back (`tests/runtime/resume-sizing.test.ts`,
-`tests/runtime/resume-sizing-stop.test.ts`). A settled hold, a quarantined one,
+`tests/runtime/resume-sizing-stop.test.ts`). Another holder's live, unexpired
+lease refuses the stop `LEASE_HELD`, and the rollback takes it back too; an
+expired one is fenced and its hold classified, kept with the stop, as a pickup
+would (`tests/pickup/pickup-stop-at-spent-hold-lease.test.ts`). A settled hold, a quarantined one,
 or a version already holding elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`). Storage
 counts a quarantined hold as active too.
 
@@ -971,7 +979,9 @@ only a hold with no spend is `abandoned`. A budget top-up already moved the
 spend to date to the envelope's actual (`raiseHold`, `budget-answer.ts`), so a
 topped-up hold counts only the spend the top-up did not move: the ask's
 ceiling and the top-up less the hold now. Below zero, a call counted at its
-maximum came to less, and the envelope gets the difference back.
+maximum came to less, and the envelope gets the difference back. Settled or
+abandoned, the stopped hold records its cause and the cause's identity
+(`20261004040100_reservation_stop_cause`).
 
 A call open when its hold's spend was counted, by this settle, a top-up or the
 end at a budget stop (`budget_stop_ended`), was counted at its maximum. When
@@ -983,7 +993,16 @@ the difference comes off the envelope's actual; while a topped-up hold is
 still held it goes back onto that hold, so the hold's later settle and its
 replacement's size see it once. A hold ended any other way never counted its
 calls and gives nothing back (`tests/broker/spend-give-back.test.ts`,
-`tests/broker/spend-give-back-late.test.ts`). The sweep, a cancel, a lost
+`tests/broker/spend-give-back-late.test.ts`). A call closes once: a call a
+provider's proof released or its own answer settled ignores a later answer or
+release, and gives nothing back again (`broker-settle.ts`). A hold moves a call
+only out of `reserved` or `dispatched`; an answer that comes after the sweep
+held it still settles or releases it, since the answer is what happened, and
+gives back what its hold counted, as an open call's answer does
+(`tests/broker/unknown-call-settled-lower-gives-back.test.ts`). A call released
+unsent (a start refused, a sweep) gives nothing back
+(`tests/broker/spend-closes-once.test.ts`).
+The sweep, a cancel, a lost
 authority, pickup's expired-lease replacement and every hand-back, a drop
 included, reach this one step (`tests/runtime/classifier-counts-spend.test.ts`).
 
@@ -1087,18 +1106,19 @@ partly covered rather than proved.
   `pending`; from then on `decide` admits only a business-scope decider.
   Before the bound it is `TRANSITION_NOT_PERMITTED`; a recipient outside the
   role, or nobody, is `SCOPE_NOT_GRANTED` naming `recipientPersonId`, with
-  nothing written. The inbox follows in the same transaction (INB-1): open
+  nothing written. The inbox follows in the same transaction (INB-1). Open
   decision items on the gate held by anyone outside the business-scope role,
-  or by the task's assignee, are withdrawn, and every business-scope decider
-  but the assignee, the recipient among them, holds an open one, raised if
-  they had none (one granted the role after the gate was raised included).
-  Four eyes rules the inbox everywhere: no gate raises the assignee a
-  decision item, and an assignment reconciles each pending gate on the task
-  against the new assignee: their open decision items withdraw, and every
-  other person who decides the gate now (a record-scope decider, or once it
-  is escalated a business-scope one and the person it was escalated to)
-  holds an open one. A former assignee's withdrawn item is reopened, so they
-  are owed it again; anyone else without one is raised one.
+  or by the task's assignee, are withdrawn. Every business-scope decider but
+  the assignee, the recipient among them, holds an open one, raised if they
+  had none. That includes one granted the role after the gate was raised.
+  Four eyes rules the inbox everywhere. No gate raises the assignee a
+  decision item. An assignment reconciles each pending gate on the task
+  against the new assignee: the new assignee's open decision items withdraw,
+  and every other person who decides the gate now holds an open one. That is
+  a record-scope decider, or, once the gate is escalated, a business-scope
+  decider and the person it was escalated to. A former assignee's withdrawn
+  item is reopened, so they are owed it again. Anyone else without one is
+  raised one.
 - **Rejection is terminal** (G05): the rejected gate takes no second decision,
   a new version in the same lineage is refused `LINEAGE_TERMINAL` on the
   lineage rather than on the gate, and the authorised restart is a new lineage
@@ -1443,7 +1463,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:821-832`). With neither setting present, the
+  rewrites it (`local-seed.mjs:868-879`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1523,6 +1543,21 @@ both tenancy-scoped with row security forced, and the fair share's count
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
   account. The application group may select, insert and update.
+- Carrier (`20261005100149_model_call_carrier`, catalogue #439, #943): the
+  route's provider (`provider`) and custody credential (`credential_ref`) are
+  written with the route at every send, and the account custody names for
+  that credential (`describe`) before the send, not only at a priced settle.
+  The reconciliation pass asks only through the route with the row's key,
+  reach, kind, provider and credential, only while the operation still goes
+  to that provider, and releases only when custody's lookup answers on the
+  same credential kind and account. A row missing any of them (written
+  before the migration, or a replay credential, which has no account)
+  releases nothing: a person records its outcome. The account is the
+  credential file's `account` label, and the pass trusts it: it must be the
+  provider's own account or organisation id, never reused for another
+  account's key. A destination's address is not recorded: never re-point a
+  destination at another instance the same key reaches while calls on it are
+  held unknown. Test: `reconcile-releases-nothing-without-its-carrier`.
 - Usage (`0098_model_call_usage`, ORCH37): a settled call records the model
   the provider says answered (`model_id`, null when the answer named none)
   and the units its answer says it used (`input_units`, `output_units`, both
@@ -1560,7 +1595,17 @@ both tenancy-scoped with row security forced, and the fair share's count
   each through the gate a model call takes (`atCeiling`: the operation's
   ceiling for the business, then the route's ceiling and the business's fair
   share). A lookup with no room is not sent and writes nothing; the next pass
-  asks again. Only an answer in the
+  asks again. With room, the same transaction, under the gate's locks, takes
+  the lookup's slot on the asked call (`lookup_until`, `20261004040000_lookup_slot`)
+  before anything is sent. The route's ceiling, the fair share and the
+  business's own ceiling for the operation all count an unexpired slot as a
+  call in flight: the lookup uses the provider's capacity as a call does, so
+  two passes, or a pass and a model call, cannot both take the last place. A
+  call another pass holds a slot on waits too. The slot is given back when the
+  lookup ends, with proof, without, or when custody throws; a worker lost
+  while asking leaves it counting until the operation's timeout plus 60
+  seconds (`SLOT_MARGIN_MS`; custody's deadline covers the whole lookup).
+  Only an answer in the
   lookup's own shape with a declared code releases the call; the step then
   resumes through the register's answer (`withProviderCalls`). Anything else
   writes only `reconcile_note` ("could establish nothing: ..."); a provider
@@ -1573,6 +1618,16 @@ both tenancy-scoped with row security forced, and the fair share's count
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
   update and delete, and the application group may select and insert only.
+
+An observation settles its hold by the same rule (#832): the reservation and
+the envelope close at the attempt's priced cost plus what the hold's settled
+calls cost, and the attempt records its own cost. A call on the hold sent and
+never settled, or a total above the hold, keeps the whole hold as
+`liability_unknown` for a person; `task.observe` refuses `BUDGET_UNAVAILABLE`
+retaining it, in words that name which. Observe locks the envelope with the
+step, lease and reservation, ahead of them in the contract's order, so it never
+waits on the envelope while holding a lease a hand-back is parked on (#834;
+`tests/runtime/observe-counts-the-holds-calls.test.ts`).
 
 The broker (`core-custody/src/broker.ts`, with its steps in the
 `broker-*.ts` files beside it) writes both, and the `model.call`
@@ -1740,8 +1795,9 @@ totals.
   the page's AI planning budget field moves it through the command, opened only
   for a session holding `billing:decide` (`screens/settings/planning-cap.tsx`).
 
-Not here yet: the recent sign-in the command asks as a money action (C59), and
-the planning spend beside the plan.
+As a money action (`billing:decide`) the command asks C59's recent sign-in in
+the envelope (`STEP_UP_REQUIRED` past 60 minutes while the business's money
+step-up setting is on). Not here yet: the planning spend beside the plan.
 
 ## The budget wait
 
@@ -1772,11 +1828,11 @@ calls on one run reaching the ceiling at once stop it once.
   neither is a transition to classify, and the wait is not a clock. A
   cancelled, rejected or superseded lineage is still classified.
 - **Not here yet.** The question in the conversation where the plan was
-  approved, with its two buttons (AW-04's origin, SL12's drawer), and the
-  second-factor check on a money answer (C59). The answers themselves are
-  commands, `run.top_up` and `run.end_at_budget_stop`, on the API, the command
-  line and the app's client
-  ([API.md](API.md#the-answers-at-the-budget-stop)).
+  approved, with its two buttons (AW-04's origin, SL12's drawer). The answers
+  themselves are commands, `run.top_up` and `run.end_at_budget_stop`, on the
+  API, the command line and the app's client
+  ([API.md](API.md#the-answers-at-the-budget-stop)); `run.top_up` holds
+  `billing:decide`, so C59's step-up asks it in the envelope.
 
 ## The answers at the budget stop
 
@@ -1795,19 +1851,38 @@ or delete.
   unanswered, the grant live at the locked instant. The four-eyes threshold
   is read `for share` under those locks, so a change in flight is waited on.
   Two answers at once meet on the run lock and the second is refused
-  `TRANSITION_NOT_PERMITTED`. Every write is in one transaction: a failure at
-  any step applies nothing.
+  `TRANSITION_NOT_PERMITTED`. If the run stopped again between the find and
+  the locks, the open ask's hold is no longer the one found. An answer naming
+  the earlier ask is refused `TRANSITION_NOT_PERMITTED` with nothing written,
+  and the commands always name the ask (`run-answers.ts`), so that is what a
+  person meets. Only a runtime caller naming no ask follows the new one: its
+  answer rolls back with `AffectedSetChanged`, which the command entry would
+  retry once against the new ask's own hold, and a direct caller sees the
+  throw. Every write is in one transaction: a failure at any step applies
+  nothing.
 - **The top-up** (`topUpAtBudgetStop`, `billing:decide` on the task, a
   person). An agent is refused `DELEGATION_EXCLUDES_DECISION`. The plan's
   lineage must be live (`LINEAGE_TERMINAL`), the currency the envelope's
   (`CAP_BINDING_MISMATCH`) and the amount within the business cap
   (`BUDGET_EXHAUSTED`): the cap is the hard ceiling and no answer raises it.
-  The plan approver approves where they still hold `billing:decide`,
-  otherwise any holder (`SCOPE_NOT_GRANTED` names the approver). Four eyes
+  A trashed task takes no top-up: whether the task is live is read again
+  under the task lock, so a trash that commits before the lock is seen, and
+  the answer is `NOT_FOUND` with nothing written. The ordinary top-up
+  (`budget.ts`) reads it the same way. The plan approver approves where they
+  still hold `billing:decide`, otherwise any holder (`SCOPE_NOT_GRANTED`
+  names the approver). Where the plan approver's approval waits, it pairs
+  first, ahead of an earlier one (`pairFor`'s `prefer`). Four eyes
   is the core's one rule (`four-eyes.ts`), the one T2e's top-up and T3c's
   write-off use: the band is `four_eyes_threshold` in the envelope currency's
   major unit, read `for share` under the locks, null is off and no stored row
-  is the shipped 500. Above it the first approval is recorded and applies
+  is the shipped 500; the settings install lock (`lockSettingsInstall`,
+  advisory key `<business id>:business_settings`) is held shared first, so a
+  first row cannot commit under a decision that read none. Both are held
+  before the locked instant is read (`lockedInstant(tx, ['four_eyes_threshold'])`
+  in the top-up, the write-off and the budget-stop answer), so a grant that
+  ends while the decision waits on them no longer counts. Postgres floors the
+  band exactly to whole minor units, so a band of 500.005 makes 500.01 need
+  two people. Above it the first approval is recorded and applies
   nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
   threshold, a different amount is `FIELD_VALUE_INVALID`, and a second,
   distinct holder approving the same amount completes it, but only while the
@@ -1821,13 +1896,33 @@ or delete.
   fresh reservation, so the run spends the raised ceiling once and the cap
   counts the spend once. A stop raised because the step's calls spent its
   whole hold (`budget-stop.ts`) has no hold left to raise: completing it holds
-  the amount on a fresh reservation for the step (`holdTopUp`).
+  the amount on a fresh reservation for the step (`holdTopUp`). A step
+  settled `completed` in any transaction but the ask's own had its outcome
+  recorded after the stop, whether a person recorded `happened` or
+  `happened_differently` or a worker's observation settled it
+  (`settleAtObserved`). Its top-up is refused `TRANSITION_NOT_PERMITTED`
+  with nothing written, saying a top-up cannot apply, and the end answers the
+  stop (`recordedRefusal`). After `happened_differently` the work reopens
+  and resume has already reserved its replacement, which the refusal leaves
+  held and the end releases. A settle and ask made in one transaction would still top up, but no
+  path raises that today.
 - **The end** (`endAtBudgetStop`, `gate:decide` on the task, a person). One
   call with no confirmation (U7). The hold becomes `abandoned` with the cause
   `budget_stop_ended`; the envelope releases the unspent part and keeps the
   spend to date as actual. The run becomes `cancelled`. The task is not
-  written: it stays open for a person. A hold a lineage cancel already
-  classified is not released again.
+  written: it stays open for a person. A trashed task is reached too: its
+  hold is still counted, and the end is how it is given back. A hold a
+  lineage cancel already classified is not released again. The run's other
+  holds on the envelope that never started (no lease, no call, every attempt
+  still reserved), such as the replacement resume reserved after
+  `happened_differently`, are abandoned with the same cause and given back
+  whole (`releaseUnstarted`); a leased or dispatched one is left as it is. A
+  hold with an attempt left `liability_unknown` is not ended: an observation
+  or a failed report kept it whole at a priced cost above the hold, or the
+  classifier or a lost worker left a call on it open. That cost is counted
+  nowhere yet, so the end is refused `TRANSITION_NOT_PERMITTED` with nothing
+  written, and the hold waits for a person's recorded outcome
+  (`budget.record_outcome`).
 - **The spend to date** is counted as the broker counts it: settled calls at
   their actual, calls still open at the maximum they hold.
 
@@ -1850,22 +1945,54 @@ and codes, never a sentence, to a trace target an operator reads.
 - `core-runtime/src/trace-export.ts`: `exportOnce` reads up to 100 events after
   the business's cursor, registers each run's copy (`diagnostic_trace`,
   `run:<id>`, retained as `trace`) before it is materialised, delivers through
-  the `Deliver` port, then advances the cursor or records a gap. The read and
+  the `Deliver` port, then advances the cursor or records a gap. An event
+  already older than the trace window (30 days, `TRACE_WINDOW_DAYS`) when it
+  is read is passed by the cursor and never sent, and registers no copy:
+  retention would owe it a delete at once, and a run retention confirmed has
+  only such events, so a retention step back that re-reads them brings no
+  trace back. The read and
   the advance are separate transactions and no transaction is open while the
   target is asked. Anything short of a 2xx JSON reply is a gap with a fixed
   code (`target_unreachable`, `target_redirect`, `target_timeout`,
-  `target_oversized_reply`, `target_malformed_reply`, `target_refused`,
-  `target_forbidden`) and the cursor stays. No run reads either table and no
-  run waits on the exporter.
+  `target_oversized_reply`, `target_oversized_body` for a 413 (the target
+  must take a body of 100 spans; below that, it holds the cursor),
+  `target_malformed_reply`, `target_refused`, `target_forbidden`) and the
+  cursor stays. The gap names the cursor the
+  batch was read after, read once in the read's transaction, never the row as
+  it is when the gap is written: another export may have moved it while this
+  one waited on the target. No run reads either table and no run waits on the
+  exporter.
 - `trace_export_cursors`: one row per business, the last delivered event by
   its writing transaction's id and its own, `(tx, id)` (`run_events.tx`,
   `xid8`, 0090). The read takes only events below its snapshot's horizon
   (`pg_snapshot_xmin`): every transaction below it has finished and any later
   write has a higher id, so an event that commits late never lands behind
   the cursor. A long transaction anywhere on the cluster holds the export
-  back until it ends; it never loses an event. The cursor moves forward only: two exports at once may read the
-  same batch, and the slower one never moves it back (the upsert's row lock
-  orders them, the comparison under it keeps the later). `trace_export_gaps`: append only (a trigger refuses
+  back until it ends; it never loses an event. One export per business at a
+  time (`trace-lease.ts`, #963): the read's transaction first takes a lease on
+  the row (`lease_holder`, `lease_until`, 60 s), only when no export holds it
+  or its lease has expired, read under the row lock by `clock_timestamp()`;
+  another export meanwhile is `held` and sends nothing. The holder renews the
+  lease before each body, on the row's version (`xmin`) it last wrote, and
+  gives it up when it advances or records its gap; the advance lands only on
+  that version. A takeover or a retention step back gives the row a new
+  version, so the old holder sends nothing more and its advance changes
+  nothing. A failing export can delay a healthy one's tick, never undo it. A
+  gap whose body the target may still store (`target_timeout`,
+  `target_unreachable`, `target_malformed_reply`, `target_oversized_reply`)
+  keeps the lease to its end, even past a retention step meanwhile, so a late
+  store lands before the next export sends; while the target times out, a
+  business exports at most once a lease. The other codes are answers that
+  say the target took nothing; a target that stores a body and answers 5xx
+  anyway is not held off, nor is a store later than the lease. The lease has no
+  token the target checks: a holder stalled for most of a minute between its
+  renewal and custody's send could still send after a takeover. Such a body,
+  stored after a delete, restores only its own spans, and retention's
+  read-back of every sent span (below) finds the rest gone. Its own spans
+  may already be past the window; they go at the run's next due delete. A
+  cursor row
+  with no place yet (the lease creates it) owes no expiry ask.
+  `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and
   insert, and update the cursor.
 - The port is custody's egress (`apps/api/trace-exporter.ts`): a custody
@@ -1877,9 +2004,10 @@ and codes, never a sentence, to a trace target an operator reads.
   this machine's loopback address; the trace key is read by the exporter from its
   own file. The destination (`traceDestination`) also names a fixed header,
   `x-langfuse-ingestion-version: 4` (the contract wants it on every request;
-  the value is the vendor's documented one), and two routes beyond the
-  export's POST: `DELETE /api/public/traces` and `GET /api/public/traces/*`
-  (one id segment). Custody (`core-custody/src/egress-routes.ts`) adds the
+  the value is the vendor's documented one), and three routes beyond the
+  export's POST: `DELETE /api/public/traces`, `GET /api/public/traces/*` and
+  `GET /api/public/observations/*` (one id segment each; the target keeps an
+  OpenTelemetry span as an observation of the span's id). Custody (`core-custody/src/egress-routes.ts`) adds the
   header itself and answers any other method or path with `bad_path`; a
   request naming a header, or any key beyond its six, is refused whole; a
   header that is reserved (the credential, framing, host), not lower case, or
@@ -1903,22 +2031,110 @@ and codes, never a sentence, to a trace target an operator reads.
   product is the trace store's deletion authority. A pass for one business
   takes the runs with a registered trace copy, every event behind the
   export's cursor (a pending event would be exported after its trace went),
-  the newest event older than the window (30 days) and no batch confirming
-  them since; deletes their derived ids through custody, at most 1,000 per
+  the newest event older than the window (30 days) and an event after the
+  place of their last confirmation, if any; writes an ask per run
+  (`trace_expiry_asks`, append only, under tenancy; select and insert) with
+  the export's cursor that check read, the run's place, in the same
+  transaction; deletes their derived ids through custody, at most 1,000 per
   call; then reads each id back, because the endpoint may answer success for
   work it skipped: only a 404 confirms a run. Each page is one
   `trace_expiry_batches` row (append only, under tenancy; the application
   group may select and insert): the window, the runs asked, the runs
-  confirmed, and the gap code when it did not finish (a delivery code, or
-  `expiry_unconfirmed`). A failed delete confirms nothing; an unconfirmed run
-  is due again next pass. Two passes at once are harmless: deletion by
-  derived id is idempotent. The server runs it hourly beside the export.
+  confirmed at their place, and the gap code when it did not finish (a
+  delivery code, or `expiry_unconfirmed`). A failed delete confirms nothing;
+  an unconfirmed run is due again next pass. The store applies a delete
+  whenever it likes, even after a timeout or after the pass failed, so an
+  ask is owed until a batch confirms its run at its place or later, and
+  while the run has an event after that place inside the window: a
+  confirmation proves one delete landed, never that no other is still
+  queued. Each pass reads back every owed ask it did not just make, page
+  after page; a run the export has sent events of since its place (ones
+  the window still holds) is read by each such event's span, newest first,
+  until one is not there. A delete that landed between two bodies of a
+  resend, or before a stale body landed (one a stalled export sent after a
+  takeover, or one the target stored after a timeout and the hold), leaves
+  some span missing, and the trace only grows until the run is sent again,
+  so the run counts as gone. Each owed run costs one read per such event
+  each pass. A span the store does not answer does not end the run's read:
+  an older one may answer absent. Three reads in a row the store does not
+  answer end the pass. A pass that leaves a run unanswered records the runs
+  it read on a batch row (code `expiry_unconfirmed`, nothing confirmed;
+  rows older than the window are not read again): those answered
+  (`read_run_ids`), and those not (`unanswered_run_ids`), each with the span
+  where its read stopped (`resume_ids`: the first unanswered span after the
+  last one the store answered, or, when it answered none, the span after the
+  one the read began at). A run read after the pass's other reads with
+  nothing answered (the store's allowance may be spent) is left off the row:
+  it keeps its turn and where it stopped. The next pass reads the runs it
+  read longest ago first, never-read ones before all, and of one pass's,
+  those it left unanswered first, each from where its read stopped and round
+  to it. So each read moves on and, while the owed reads are the pass's
+  only reads, passes no span the store would have answered; neither a few traces that never answer nor runs that always
+  answer can spend every read a pass has before another run; and a run with
+  more spans than the store answers in a pass is read through across
+  passes. A block of L spans the store never answers, where a read resumes,
+  takes about L - 2 passes as head to cross, one span each, up to about
+  twice that when other owed runs are read. Reads the pass made before its
+  owed read-back (its own asks') can still spend the allowance unseen
+  (#994). A run found gone has
+  its events after its place sent again, in the transaction that confirms
+  it, and a run that has such events is held back with its ask still owed
+  (`expiry_unconfirmed`): the cursor steps back to just before the earliest such event (or
+  stays, if already behind it) under its row lock, the lock the export's
+  advance takes, and its version changes, so an export that read before
+  the step never advances. While a run's ask is owed, an export that sends
+  one of its events sends all of them since the place inside the window,
+  earliest first, in bodies of at most 100 owed events with the export's own
+  (up to 100 more) in the last, a body over 100 that the target refuses as
+  too large (413) going again as two halves in order, so a delete landing between two exports leaves the trace whole
+  and one landing between two bodies takes spans the read looks for. A
+  confirmation covers only
+  the events up to its place: a run with a later event, even one committed
+  after the pass, is due again once that event is past the window. Two
+  passes at once are harmless: deletion by derived id is idempotent, and a
+  step back re-sends only events after a gone run's place, never the old
+  events of a run the other pass just confirmed (the export passes events
+  older than the window without sending them). The server runs it hourly beside the export.
 - Readers: `trace.read` serves a task's runs' spans from `run_events`
   (`readTaskTrace`), held to the same allowlist without the ids
   (`traceCells`), behind `operations:read` and the task's own read
   ([AUTHORITY.md](AUTHORITY.md#trace-readers-aw-13)). The trace target's own
   logins (the owner, and the second operator after the timed restore
   rehearsal) are the installation's, not the product's.
+
+## The email hook
+
+The provider's delivery and bounce events reach `POST /api/hooks/email`
+(AW-07b, `apps/api/mail-hook.ts`). `main` mounts the route only when
+`EMAIL_HOOK_SECRET` holds a secret in the provider's form (`whsec_` and its
+base64 key); a malformed one stops the server, naming the setting and never
+the value. There is no sign-in on the route: the signature is the authority,
+checked over the raw bytes before the body is parsed
+(`packages/core-connectors/src/email-hook.ts`), within five minutes either side
+of now. A verified event moves only the attempt of the business that sent the
+message (`landEmailEvent`, `core-custody/src/broker-email-hook.ts`):
+`email.delivered` moves an accepted attempt to delivered, and `email.bounced`
+moves an accepted or delivered one to failed, which is final in either arrival
+order (a delivery is the receiving server's acceptance, and a bounce can follow
+it); `sent`, `opened` and `clicked` move
+nothing, and no hook path writes a decision. The hosted function
+(`apps/api/function.ts`) does not mount the hook yet, as it does not wire the
+model broker.
+
+Two parts are Stage 1 only, held for Sol in `stage1/SOL-OWED.md`:
+
+- **The sender check is a mock.** The sending subdomain's setup check (DKIM,
+  SPF, the return-path MX) and the root's DMARC policy are read from the fake
+  source (`email-sender-fake.ts`), and every report from it says `mock: true`.
+  The send refuses `SENDER_NOT_VERIFIED` until the report verified. The real
+  read needs a GET through custody, which is POST-only today; it is its own
+  sensitive piece.
+- **A replay of an event that moved nothing is refused from memory.** A
+  replayed event id that moved an attempt is refused by the database, across
+  processes. One that moved nothing (a `sent`, an `opened`, an event for an
+  attempt already settled) is held only in the process that took it, for
+  twice the timestamp window, so a second process could take it once more.
+  It moves nothing either time, so local and staging accept it.
 
 ## An automation occurrence's run
 
@@ -2101,7 +2317,13 @@ launch of the reviewed output is the only decision an effect waits on.
   and writes nothing), and the dispatch recheck refuses every lease of the
   business with the same code, whatever approved it. The setting's row is held
   `for share` before it is read, so a change in flight is waited for and then
-  seen. The client's own sign-off is MP-11-5's (phase 8); until the portal
+  seen. A missing row locks nothing, so the business's settings install lock
+  (`lockSettingsInstall`, advisory key `<business id>:business_settings`) is
+  held shared first; the install takes it exclusive before adding rows, so a
+  first row cannot commit between the check and the dispatch marker
+  (catalogue #463). Dispatch and the decision hold both before they read the
+  locked instant (`lockedInstant(tx, ['client_sign_off_required'])`), so a
+  lease, delegation or grant that ends during that wait is judged ended. The client's own sign-off is MP-11-5's (phase 8); until the portal
   exists the work stays held, visibly, under that code.
 - **The receipt link.** The worker reads the provider's answer
   (`readProviderAnswer`, `apps/worker/usage.ts`): a status outside 2xx (a
@@ -2112,8 +2334,16 @@ launch of the reviewed output is the only decision an effect waits on.
   it on the attempt (`attempts.receipt_link`, 0109) only when `receiptLinkOf`
   does: `https:`, exactly the step kind's declared host
   (`EFFECT_RECEIPT_HOSTS`), no user, password, port, query or fragment, at most
-  512 characters, and the parsed form byte for byte the text sent. Anything
-  else is stored as null, which a reader shows as "no link", never as a link.
+  512 characters, the parsed form byte for byte the text sent, and no run of
+  43 base64url characters, a delegation credential's length, as sent or once
+  its percent escapes decode (`CREDENTIAL_RUN`), and, for an agent's
+  observation, not the letters and digits of any live credential the agent
+  holds in order: its delegations, the child delegations they minted, and its
+  logins, unexpired (each derived again from its row, `agentCredentials`; one
+  that cannot be derived keeps no link), nor those letters reversed or the
+  credential's bytes in hex. The check is best effort against re-spellings: an
+  agent set on leaking a credential has other ways out, and its short-lived
+  sign-in token is not among them. Anything else is stored as null, which a reader shows as "no link", never as a link.
   0109's check repeats the shape and allows a link only on an observed
   attempt; its trigger fixes the link once the attempt is observed, so a link
   resolved later is not a receipt. `task.receipt` names it as `link` beside
@@ -2121,7 +2351,8 @@ launch of the reviewed output is the only decision an effect waits on.
 
 Tests: `aw-08-approval-gate`, `aw-08-client-sign-off`, `aw-08-isolation` and
 `aw-08-receipt-provider` (`AW-08 receipt link`, `AW-08 hostile provider`,
-`AW-08 canary`).
+`AW-08 canary`), `receipt-link-keeps-no-credential`,
+`receipt-link-keeps-no-respelled-credential` and `receipt-link-credential-run`.
 
 ## What is not here
 

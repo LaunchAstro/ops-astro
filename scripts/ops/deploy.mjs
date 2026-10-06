@@ -6,10 +6,12 @@
 // Usage (the runbook sets the environment, the operator runs it):
 //   node scripts/ops/deploy.mjs --version <id> --artefacts <store>
 //
-// The operator gate (`operator.ts`) answers before any argument is read and
-// before Docker is asked; a refusal writes nothing. The live services are read
-// through S0-1a's service report, never a saved one, and compared with its own
-// compare, both imported. It builds no image: the app is on Vercel
+// The installation's operator gate (`operator.ts`, requireOperatingOperator:
+// operations:manage in the installation's operating business, since the
+// services are the installation's, not one business's) answers before any
+// argument is read and before Docker is asked; a refusal writes nothing. The
+// live services are read through S0-1a's service report, never a saved one,
+// and compared with its own compare, both imported. It builds no image: the app is on Vercel
 // (`web-deploy.mjs`), and Compose starts the M5's unit on its pinned images.
 // The deployment record is written only once staging is up on its pinned
 // images with every live service unchanged. Exit 0 when deployed, 1 when
@@ -19,7 +21,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { deploy } from './deploy.ts';
-import { recordDeployment, requireOperator } from './operator.ts';
+import { recordDeployment, requireOperatingOperator } from './operator.ts';
 import { compare, snapshot } from './service-report.mjs';
 
 const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
@@ -29,7 +31,7 @@ function usage(message) {
   process.exit(2);
 }
 
-const gate = await requireOperator();
+const gate = await requireOperatingOperator();
 if (!gate.ok) {
   console.error(`deploy: REFUSED: ${gate.reason}`);
   process.exit(1);

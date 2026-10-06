@@ -27,6 +27,7 @@ import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
+import { foreignInvitation } from './foreign-invitation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 
@@ -144,6 +145,12 @@ const pause = async (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+/** An activation named at revision 1, as the seeded ones are (C52-A's cells). */
+const atFirst = (activationId: string): Record<string, unknown> => ({
+  activationId,
+  expectedRevision: 1,
+});
+
 describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
   let w: IdentWorld;
 
@@ -217,6 +224,24 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     }
     /* eslint-enable no-await-in-loop */
     return { foreign, fabricated };
+  }
+
+  /** A direct conversation of bravo's, opened by bravo's admin writing to bea. */
+  async function bravoConversation(): Promise<string> {
+    const { world } = w.h;
+    const bram = w.foreign.admin;
+    await world.db.app.withBusiness(world.bravo, async (tx) => {
+      await grantTo(tx, bram as unknown as Member, 'comment', undefined, false, 'chat');
+    });
+    const sent = await w.person(
+      bram,
+      'chat.send_direct',
+      { teammateId: world.bea.personId, body: 'bravo timing' },
+      'bravo',
+    );
+    const id = (sent.body['detail'] as Body | undefined)?.['conversationId'];
+    if (typeof id !== 'string') throw new Error(`bravo opened no conversation: ${sent.text}`);
+    return id;
   }
 
   /** The cells: the record-targeted operations, then those with their own operand. */
@@ -322,6 +347,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       conversationId,
       page: null,
     }));
+    // C39-T: bravo's pending invitation, resent or revoked from alpha.
+    const invitation = await foreignInvitation(w.h.world.db.admin, w.h.world.bravo);
+    for (const op of ['invitation.resend', 'invitation.revoke'] as const) {
+      byAda(op, 'invitationId', invitation, (invitationId) => ({ invitationId }));
+    }
     byAda('task.restore', 'batchId', f.batchId, (batchId) => ({ batchId }));
     // MP-4-6: a task names what is timed, an entry what is noted or deleted.
     byAda('time.start', 'taskId', f.task.id, (taskId) => ({ taskId }));
@@ -340,6 +370,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       stepNames: [],
     }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('secret.clear', 'secretId', f.secretId, (secretId) => ({ secretId }));
+    byAda('connector.repair', 'connectionId', f.connectionId, (connectionId) => ({
+      connectionId,
+    }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
       holderId,
@@ -347,6 +381,18 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       action: 'read',
     }));
     byAda('access.end', 'holderId', f.admin.personId as string, (holderId) => ({ holderId }));
+    // C59: bravo's person named in an alpha authenticator reset.
+    byAda('access.reset_factor', 'holderId', f.admin.personId as string, (holderId) => ({
+      holderId,
+    }));
+    // C60: bravo's client named in an alpha privacy change.
+    byAda('client.set_privacy', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      modelEgress: false,
+      providers: [],
+      handlesHealth: false,
+      noAgentEdits: true,
+    }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
     }));
@@ -357,6 +403,40 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('legal.publish_version', 'versionId', f.legalVersionId, (versionId) => ({ versionId }));
     byAda('credential.revoke', 'credentialId', f.credentialId, (credentialId) => ({
       credentialId,
+    }));
+    byAda('onboarding.start', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      templateKey: 'standard',
+    }));
+    byAda('onboarding.step_result', 'recordId', f.stepTaskId, (recordId) => ({
+      recordId,
+      outcome: 'done',
+      result: 'a result aimed abroad',
+    }));
+    // C33: bravo's version and definition named in an alpha change and release.
+    byAda('activation.change', 'versionId', f.automation.versionId, (versionId) => ({
+      versionId,
+      mode: 'manual',
+      enabled: false,
+    }));
+    byAda('definition.release', 'definitionId', f.automation.definitionId, (definitionId) => ({
+      definitionId,
+      contentDigest: 'e'.repeat(64),
+      contentSize: 1,
+      inputs: [],
+      operations: [],
+      modes: ['manual'],
+    }));
+    // C52-A: bravo's activation and approval named in an alpha adoption, rollback, turn-off and revoke.
+    const at = atFirst;
+    byAda('activation.adopt', 'activationId', f.automation.activationId, (activationId) => ({
+      ...at(activationId),
+      versionId: f.alphaVersionId,
+    }));
+    byAda('activation.roll_back', 'activationId', f.automation.activationId, at);
+    byAda('activation.turn_off', 'activationId', f.automation.activationId, at);
+    byAda('approval.revoke', 'approvalId', f.automation.approvalId, (approvalId) => ({
+      approvalId,
     }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
@@ -420,6 +500,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     );
     if (bravoItem === undefined) throw new Error('bravo raised no inbox item to aim at');
     byAda('inbox.seen', 'itemId', bravoItem.id, (itemId) => ({ itemId }));
+    // C71-D: bravo's admin and bravo's conversation, named from alpha.
+    const bravoDirect = await bravoConversation();
+    const bram = f.admin.personId as string;
+    byAda('chat.send_direct', 'teammateId', bram, (teammateId) => ({ teammateId, body: NOBODY }));
+    byAda('chat.messages', 'conversationId', bravoDirect, (conversationId) => ({ conversationId }));
+    byAda('chat.mark_read', 'conversationId', bravoDirect, (conversationId) => ({
+      conversationId,
+      upTo: new Date().toISOString(),
+    }));
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',
@@ -472,11 +561,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 81 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 98 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(81);
-    expect(names).toHaveLength(81);
+    expect(new Set(names).size, 'distinct operations').toBe(98);
+    expect(names).toHaveLength(98);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

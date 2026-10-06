@@ -60,13 +60,15 @@ import type { CommandContext, TaskRow } from './context.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { isIdentifier } from './operands.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { refuseUnstorable, storableText } from './values.ts';
 import { replyParent } from './tasks-comment-reply.ts';
 import { effectRefusal } from './tasks-comment-effect.ts';
 
 const AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal', 'client']);
 const EXTERNAL_AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['client']);
+/** What an agent writes a comment in, delegated or by credential: its team's notes, not the client's thread. */
+export const AGENT_AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal']);
 const TYPES: ReadonlySet<string> = new Set<CommentType>(['note', 'client', 'system']);
 
 /** What a person writing on a task writes, when they say nothing else. */
@@ -92,6 +94,18 @@ const MENTIONS_FIXES: readonly string[] = [
   'Send mentions as a list of person ids, or leave it out.',
 ];
 
+/**
+ * Who a person-entry caller writes for: an agent credential (API-2) is its
+ * agent and writes team notes only, as the agent row does (#420); an external
+ * party writes to the client; a member writes either.
+ */
+function audiencesOf(session: CommandContext['session']): ReadonlySet<string> {
+  if (session.credentialScope === undefined) {
+    return session.roleKey === null ? EXTERNAL_AUDIENCES : AUDIENCES;
+  }
+  return AGENT_AUDIENCES;
+}
+
 export async function commentOnTask(
   tx: TenantQuery,
   context: CommandContext,
@@ -114,7 +128,7 @@ export async function commentOnTask(
       target,
       authorActorId: context.session.actorId,
       entryPoint: context.entryPoint,
-      audiences: context.session.roleKey === null ? EXTERNAL_AUDIENCES : AUDIENCES,
+      audiences: audiencesOf(context.session),
       operationId,
       delegationId: null,
     },
@@ -136,8 +150,8 @@ export interface CommentTarget {
   readonly entryPoint: EntryPoint;
   /**
    * The audiences this caller may write in. A member holding `comment` writes
-   * in either; an external party (`EXTERNAL_AUDIENCES`) and a delegated agent
-   * (`AGENT_AUDIENCES`, `agent-operations.ts`) are narrower, and an audience
+   * in either; an external party (`EXTERNAL_AUDIENCES`) and an agent, delegated
+   * or by credential (`AGENT_AUDIENCES`), are narrower, and an audience
    * outside this set is `AUDIENCE_NOT_PERMITTED` rather than the shape
    * refusal an unknown audience gets.
    */
@@ -152,25 +166,44 @@ export interface CommentTarget {
  * The refusal of mentions that cannot read the comment. It names each person
  * only to an author who could already see them (`seenBy`), and otherwise gives
  * back the identifier exactly as sent: its stored letter case would say it exists.
+ * The register keeps the identifiers-only form, so a replay names nobody the
+ * author may no longer see.
  */
 async function unreadableMentions(
   tx: TenantQuery,
   on: CommentTarget,
   named: readonly string[],
   unreadable: readonly Mentioned[],
-): Promise<CommandRefusal> {
+): Promise<Refused> {
   const ids = unreadable.map((person) => person.personId);
   const seen = await seenBy(tx, on.authorActorId, ids);
   const sent = new Map(named.map((id) => [id.toLowerCase(), id] as const));
-  const shown = (person: Mentioned): string =>
-    seen.has(person.personId)
-      ? person.label
-      : (sent.get(person.personId.toLowerCase()) ?? person.personId);
-  return refuseCommand(
-    'MENTION_NOT_READABLE',
-    ['mentions'],
-    unreadable.map((person) => `${shown(person)} cannot read this comment: remove the mention.`),
-  );
+  const asSent = (person: Mentioned): string =>
+    sent.get(person.personId.toLowerCase()) ?? person.personId;
+  const refusal = (shown: (person: Mentioned) => string): CommandRefusal =>
+    refuseCommand(
+      'MENTION_NOT_READABLE',
+      ['mentions'],
+      unreadable.map((person) => `${shown(person)} cannot read this comment: remove the mention.`),
+    );
+  return {
+    refusal: refusal((person) => (seen.has(person.personId) ? person.label : asSent(person))),
+    kept: refusal(asSent),
+  };
+}
+
+/**
+ * A comment's body, or its refusal: words in it, and storable. Shared by every
+ * comment writer, a team conversation's message (C71) among them.
+ */
+export function commentBodyOf(body: unknown): string | HandlerOutcome {
+  if (typeof body !== 'string' || body.trim() === '') {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['body'], BODY_FIXES));
+  }
+  // The person path refuses this at the door (`prepare.ts`); the agent entry
+  // does not pass that door, and reaches here. Past this line, Postgres would
+  // raise on a NUL and the driver would write an unpaired surrogate as U+FFFD.
+  return storableText(body) ? body : refused(refuseUnstorable(['body']));
 }
 
 /**
@@ -191,7 +224,7 @@ export async function writeTaskComment(
   audience: unknown,
   commentType: unknown,
   parentId: unknown = undefined,
-  mentions: unknown = [],
+  mentions?: unknown,
 ): Promise<HandlerOutcome> {
   if (on.target.deleted_at !== null) return refused(refuseNotFound());
   const commentTypeId = on.commentTypeId;
@@ -205,13 +238,8 @@ export async function writeTaskComment(
     );
   }
 
-  if (typeof body !== 'string' || body.trim() === '') {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['body'], BODY_FIXES));
-  }
-  // The person path refuses this at the door (`prepare.ts`); the agent entry
-  // does not pass that door, and reaches here. Past this line, Postgres would
-  // raise on a NUL and the driver would write an unpaired surrogate as U+FFFD.
-  if (!storableText(body)) return refused(refuseUnstorable(['body']));
+  const words = commentBodyOf(body);
+  if (typeof words !== 'string') return words;
   if (typeof audience !== 'string' || !AUDIENCES.has(audience)) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['audience'], AUDIENCE_FIXES));
   }
@@ -226,16 +254,16 @@ export async function writeTaskComment(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['comment_type'], TYPE_FIXES));
   }
   const named = mentions ?? [];
-  if (!Array.isArray(named) || !named.every((id) => isIdentifier(id))) {
+  if (!Array.isArray(named) || !named.every((id): id is string => isIdentifier(id))) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTIONS_FIXES));
   }
   // INB-1: a mention of someone who cannot read the comment is refused before
   // it saves, rather than raising an item they could never open.
   const task = { taskId: on.target.id, audience };
-  const mentioned = await readMentions(tx, task, named as string[]);
+  const mentioned = await readMentions(tx, task, named);
   const unreadable = mentioned.filter((person) => !person.readable);
   if (unreadable.length > 0) {
-    return refused(await unreadableMentions(tx, on, named as string[], unreadable));
+    return await unreadableMentions(tx, on, named, unreadable);
   }
 
   const effect = await effectRefusal(tx, on, audience);
@@ -248,7 +276,7 @@ export async function writeTaskComment(
     authorActorId: on.authorActorId,
     commentType: (commentType as CommentType | undefined) ?? DEFAULT_TYPE,
     audience: audience as CommentAudience,
-    body,
+    body: words,
     source: on.entryPoint,
     parentId: parent,
   });

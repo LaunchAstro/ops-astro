@@ -868,8 +868,13 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       expect(codeOf(answer)).not.toBe('applied');
       clean(answer);
     }
-    // Map B is unchanged by every crossing.
+    // Map B is unchanged by every crossing, and its owner's frontier names its ticket and fog.
     expect((await view(owner, mapB.id)).version).toBe(1);
     expect((await view(owner, mapB.id)).tickets.map((t) => t.type)).toStrictEqual(['research']);
+    expect(await w.read(owner, { read: 'map.frontier', recordId: mapB.id })).toMatchObject({
+      ok: true,
+      frontier: [{ id: ticketB.id, title: 'canary-ticket-B', type: 'research' }],
+      fog: [{ text: 'canary-fog-B' }],
+    });
   });
 });

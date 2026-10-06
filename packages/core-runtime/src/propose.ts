@@ -22,6 +22,7 @@ import { checkAuthority } from '../../core-records/src/index.ts';
 import type { TenantQuery, Subject } from '../../core-records/src/index.ts';
 import { readBusinessCapId } from './runtime-config.ts';
 import { capCommitted, exceeds, openEnvelopeOf } from './budget.ts';
+import { releasedOnClosing } from './budget-ledger.ts';
 import type { LockSet } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';
 import {
@@ -31,7 +32,8 @@ import {
   liveWorkLocks,
   retireWork,
 } from './recovery.ts';
-import { writeProposal } from './proposal-writer.ts';
+import { BEFORE_STEP_PLAN_RECORD, writeProposal } from './proposal-writer.ts';
+import { readProjectedPlan } from './plan-binding.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { markRevision } from './reviewed-output.ts';
@@ -41,7 +43,7 @@ import { markRevision } from './reviewed-output.ts';
 // code rather than a second copy of it (T4). `roundsUsed` moved with them and
 // is re-exported here, because `index.ts` pins it under this module's name and
 // the command layer imports it from there.
-export { roundsUsed } from './proposal-writer.ts';
+export { BEFORE_STEP_PLAN_RECORD, roundsUsed } from './proposal-writer.ts';
 
 export interface ProposeRequest {
   readonly taskId: string;
@@ -62,6 +64,11 @@ export interface ProposeRequest {
     readonly payload: Record<string, unknown>;
     readonly planStep?: string;
   };
+  /**
+   * The bound plan record the command read under the task lock (20261003001115), or
+   * null; see `ProposalWrite`. Absent, it is read under this proposal's locks.
+   */
+  readonly planRecordId?: string | null | typeof BEFORE_STEP_PLAN_RECORD;
   readonly expiresAt: Date;
   /** Present to add a version to a live lineage; absent to open one. */
   readonly lineageId?: string;
@@ -328,6 +335,13 @@ export async function proposeUnderLocks(
     lineage = only(opened, 'propose: the lineage inserted above');
   }
 
+  // The plan bound now, stored with the step (20261003001115). A command that checked a
+  // step key read it already; `restart` and the rest read it here, under the
+  // task lock this set holds, so no run is left to be placed by time.
+  const planRecordId =
+    request.planRecordId === undefined
+      ? ((await readProjectedPlan(tx, request.taskId))?.planRecordId ?? null)
+      : request.planRecordId;
   const written = await writeProposal(
     tx,
     {
@@ -341,6 +355,7 @@ export async function proposeUnderLocks(
       currency: request.currency,
       payload: request.payload,
       step: request.step,
+      planRecordId,
       expiresAt: request.expiresAt,
     },
     locks,
@@ -388,9 +403,10 @@ export async function proposeUnderLocks(
  * it expired. The handback successor already refuses the
  * same operands (`withinBounds` in `handback.ts`); this is the same two checks.
  *
- * The room excludes what the superseded version still holds: that hold is
- * released by this transaction, so a new version of an approved lineage may
- * ask for the room its predecessor gives back. With no cap to read (no envelope
+ * The room excludes what superseding the live versions gives back in this
+ * transaction, by the classifier's rule (`releasedOnClosing`): a hold closes
+ * at its settled calls' spend, and a marked hold or one with a call still open
+ * gives back nothing. A new version may ask only for that room. With no cap to read (no envelope
  * and no `capId`), there is no ceiling here, and the decision answers
  * `BUDGET_UNAVAILABLE`.
  *
@@ -420,26 +436,14 @@ async function refuseBeyondBudget(
       'Propose the work in the currency the cap holds.',
     );
   }
-  const { released, fromEnvelope } =
-    liveVersions.length === 0
-      ? { released: '0', fromEnvelope: '0' }
-      : await tx
-          .query<{ readonly released: string; readonly from_envelope: string }>(
-            `select coalesce(sum(held_minor), 0)::text as released,
-                    coalesce(sum(held_minor) filter (where envelope_id = $3), 0)::text as from_envelope
-               from public.reservations
-              where business_id = $1 and state = 'held' and version_id = any($2::uuid[])`,
-            [tx.businessId, liveVersions, envelopeId],
-          )
-          .then((rows) => ({
-            released: rows[0]?.released ?? '0',
-            fromEnvelope: rows[0]?.from_envelope ?? '0',
-          }));
+  // What superseding the live versions gives back is what the classifier will release, not
+  // their whole holds: spent calls stay spent, and a marked or open hold stays whole (#836).
+  const { released, fromEnvelope } = await releasedOnClosing(tx, liveVersions, envelopeId);
   if (envelopeId !== null) {
     const pastEnvelope = await refuseBeyondEnvelope(tx, request, envelopeId, fromEnvelope);
     if (pastEnvelope !== null) return pastEnvelope;
   }
-  const committed = String(BigInt(cap.committed) - BigInt(released));
+  const committed = String(BigInt(cap.committed) - released);
   if (exceeds(committed, BigInt(request.maximumMinor), cap.limitMinor)) {
     return refuse(
       'PROPOSAL_SCOPE_EXCEEDED',
@@ -452,14 +456,14 @@ async function refuseBeyondBudget(
 
 /**
  * The envelope half of `refuseBeyondBudget`: the task's open envelope, which
- * `budgetRoom` asks before the cap. `fromEnvelope` is what the superseded
- * version holds in it, released by this transaction.
+ * `budgetRoom` asks before the cap. `fromEnvelope` is what superseding the
+ * live versions gives back to it in this transaction.
  */
 async function refuseBeyondEnvelope(
   tx: TenantQuery,
   request: ProposeRequest,
   envelopeId: string,
-  fromEnvelope: string,
+  fromEnvelope: bigint,
 ): Promise<RuntimeResult<never> | null> {
   // By the locked id, not by task: `openEnvelopeOf` is the discovery read, and
   // this is a read under the lock of what discovery found.
@@ -489,7 +493,7 @@ async function refuseBeyondEnvelope(
     );
   }
   const inEnvelope = String(
-    BigInt(envelope.held_minor) + BigInt(envelope.actual_minor) - BigInt(fromEnvelope),
+    BigInt(envelope.held_minor) + BigInt(envelope.actual_minor) - fromEnvelope,
   );
   if (exceeds(inEnvelope, BigInt(request.maximumMinor), envelope.maximum_minor)) {
     return refuse(

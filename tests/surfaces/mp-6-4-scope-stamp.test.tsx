@@ -78,6 +78,16 @@ describe('MP-6-4 scope stamp', () => {
     );
   });
 
+  // OW-075.2, security review low on d03b2b3: Sol's proof asserts an absence;
+  // this names what a head no lease claimed (startedAt null) reads instead.
+  it('a head no lease claimed reads not pinned yet, never its predecessor lease', async () => {
+    const head = version({ startedAt: null });
+    const page = await pane({ lineages: [lineage({ versions: [head], scopes: [scope()] })] });
+    const line = page.find('[data-agent="snapshot-line"]')?.textContent ?? '';
+    expect(line).toContain('not pinned yet');
+    expect(line).not.toContain('2026-09-29T09:00:00.000Z');
+  });
+
   it('MP-6-4 the granted scope facts', async () => {
     const page = await pane({ lineages: [lineage({ scopes: [scope()] })] });
     const fact = (name: string): string =>

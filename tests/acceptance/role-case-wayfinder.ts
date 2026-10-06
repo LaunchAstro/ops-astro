@@ -2,14 +2,15 @@
 //
 // The positive control's Wayfinder recipes (WF-1, WF-2): the minimal valid
 // body for each map and ticket command, with the map or chart it needs filed
-// first through the routes. `role-case-positive-body.ts` calls `wayfinderBody` in its switch's
-// default, which throws for a declaration with no recipe.
+// first through the routes. `role-case-positive-body.ts` reaches `wayfinderBody`
+// through its switch's default and `onboardingBody`'s; it throws for a
+// declaration with no recipe.
 
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { BodyContext } from './role-case-bodies.ts';
 import { madeClient } from './role-case-access-bodies.ts';
 
-type Target = () => Promise<Record<string, unknown>>;
+export type Target = () => Promise<Record<string, unknown>>;
 type Body = Record<string, unknown>;
 type Recipe = (context: BodyContext, target: Target) => Body | Promise<Body>;
 

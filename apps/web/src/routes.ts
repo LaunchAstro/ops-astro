@@ -22,6 +22,8 @@
 // Every address the working slice serves is registered here, a conversation's
 // `/agent/:conversation` (C36) included.
 
+import type { MatchIn, ParamsIn, StaticIn } from './route-params.ts';
+
 /** `agency` is the Hub; `clients` and `portal` are one client's two faces. */
 export type Namespace = 'agency' | 'clients' | 'portal';
 
@@ -93,6 +95,16 @@ export const ROUTES = {
     namespace: 'agency',
     path: '/task/',
     title: 'Task',
+    surface: 'none',
+    authenticated: true,
+  },
+  // Connections & signal, the fleet (MP-14-7a). The mockup's `/connections/`
+  // page; it has no pinned surface letter, so `surface` is `none`. The
+  // manifest places it in the Hub rail.
+  'agency:connections': {
+    namespace: 'agency',
+    path: '/connections/',
+    title: 'Connections & signal',
     surface: 'none',
     authenticated: true,
   },
@@ -199,6 +211,12 @@ export const ROUTES = {
 
 export type RouteId = keyof typeof ROUTES;
 
+// A route's parameters, the ids linked to bare, and a resolved address, each
+// typed over this registry (the shapes are in `route-params.ts`).
+export type ParamsOf<Id extends RouteId> = ParamsIn<typeof ROUTES, Id>;
+export type StaticRouteId = StaticIn<typeof ROUTES>;
+export type RouteMatch<Id extends RouteId = RouteId> = MatchIn<typeof ROUTES, Id>;
+
 type Route<Id extends RouteId> = (typeof ROUTES)[Id];
 
 /** A route a signed-out person may be drawn. */
@@ -211,32 +229,6 @@ export type OpenRouteId = Exclude<PublicRouteId, 'agency:sign-in'>;
 
 /** A route that needs a session. Each one has a screen in `SCREENS`. */
 export type AuthenticatedRouteId = Exclude<RouteId, PublicRouteId>;
-
-/** The `:name` parameters a path declares, read off the path itself. */
-type ParamNames<Path extends string> = Path extends `${string}:${infer Name}/${infer Rest}`
-  ? Name | ParamNames<Rest>
-  : Path extends `${string}:${infer Name}`
-    ? Name
-    : never;
-
-/** A route's parameters, decoded: one string for each `:name` in its path. */
-export type ParamsOf<Id extends RouteId> = {
-  readonly [Name in ParamNames<Route<Id>['path']>]: string;
-};
-
-/** A route whose address has no parameters, so it can be linked to bare. */
-export type StaticRouteId = {
-  [Id in RouteId]: [keyof ParamsOf<Id>] extends [never] ? Id : never;
-}[RouteId];
-
-/** A resolved address: the route, its id, and its parameters typed by route. */
-export type RouteMatch<Id extends RouteId = RouteId> = {
-  [Each in Id]: {
-    readonly id: Each;
-    readonly route: Route<Each>;
-    readonly params: ParamsOf<Each>;
-  };
-}[Id];
 
 // The registry's own ids. `satisfies` above admits no key the type lacks, so
 // the keys read back are exactly `RouteId`.

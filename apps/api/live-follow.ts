@@ -7,15 +7,16 @@
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
 import { TOPIC, type LiveSignal, type LiveTopics } from './live.ts';
-import type { LivePresence } from './live-presence.ts';
-import type { PresenceSession } from './presence.ts';
+import type { Seated, Sitter } from './live-presence.ts';
+
+export { seatFor, type Seated } from './live-presence.ts';
 
 /** How a stream asks, for its business, whether its caller may still watch a task. */
 export interface Watching {
   readonly businessId: string;
   /** At join, every topic in one transaction: the login's one authentication attempt, nothing else. */
   atDoor(taskIds: readonly string[]): Promise<readonly (string | CommandRefusal)[]>;
-  /** Before each delivery and on the recheck: writes nothing. */
+  /** Before each delivery and on the recheck: the person admitted, or the refusal; writes nothing. */
   again(taskId: string): Promise<string | CommandRefusal>;
 }
 
@@ -23,12 +24,6 @@ export interface Watching {
 export interface Watch {
   readonly label: string;
   readonly taskId: string;
-}
-
-/** A stream's seat in the presence book (C2): its id is handed to the tab alone. */
-export interface Seated {
-  readonly session: PresenceSession;
-  readonly presence: LivePresence;
 }
 
 const MOST_TOPICS = 32;
@@ -138,8 +133,8 @@ export async function follow(
     stream.abort();
     await done;
   };
-  const follower = new Follower(stream, asks);
-  for (const watch of watches) follower.watch(watch, live.topics, seated, stop);
+  const follower = new Follower(stream, asks, seated);
+  for (const watch of watches) follower.watch(watch, live.topics, stop);
   const timer = setInterval(() => follower.checkAll(), live.recheckMs ?? RECHECK_MS);
   try {
     if (seated !== undefined)
@@ -160,30 +155,33 @@ export async function follow(
 /**
  * The deliveries of one stream, one at a time. Signals that arrive for a task
  * while one is pending merge into it, the strongest kept; a presence change
- * rides with it. Every delivery asks again first, and writes nothing.
+ * rides with it. Every delivery asks again first, and writes nothing. The
+ * seat, under one id, holds on each task the person the bearer resolves to
+ * once that task's recheck admitted that same person. A new person leaves
+ * every seat, and what was due waits for each task's next answer; a recheck
+ * that answered for anyone else closes the task.
  */
 class Follower {
   readonly #stops = new Map<Watch, () => void>();
+  readonly #leaves = new Map<Watch, () => void>();
   readonly #pending = new Map<Watch, LiveSignal | 'check'>();
   readonly #presence = new Set<Watch>();
   readonly #stream: LiveStream;
   readonly #asks: Watching;
+  readonly #seated: Seated | undefined;
+  #sitter: Sitter | undefined;
   #chain = Promise.resolve();
 
-  constructor(stream: LiveStream, asks: Watching) {
+  constructor(stream: LiveStream, asks: Watching, seated: Seated | undefined) {
     this.#stream = stream;
     this.#asks = asks;
+    this.#seated = seated;
+    this.#sitter = seated?.session;
   }
 
-  watch(
-    watch: Watch,
-    topics: LiveTopics,
-    seated: Seated | undefined,
-    stop: () => Promise<void>,
-  ): void {
-    const { businessId } = this.#asks;
+  watch(watch: Watch, topics: LiveTopics, stop: () => Promise<void>): void {
     const unsubscribe = topics.subscribe(
-      businessId,
+      this.#asks.businessId,
       watch.taskId,
       (signal) => {
         this.want(watch, signal);
@@ -191,14 +189,8 @@ class Follower {
       // Each topic's own handle: a topic closed alone must not take the stream's stop with it.
       async () => await stop(),
     );
-    const leave = seated?.presence.seat(businessId, watch.taskId, seated.session, () => {
-      this.#queue(watch);
-      this.#presence.add(watch);
-    });
-    this.#stops.set(watch, () => {
-      unsubscribe();
-      leave?.();
-    });
+    this.#stops.set(watch, unsubscribe);
+    this.#sit(watch);
   }
 
   checkAll(): void {
@@ -211,13 +203,52 @@ class Follower {
   }
 
   stopAll(): void {
-    for (const stop of this.#stops.values()) stop();
+    for (const watch of this.#stops.keys()) this.#end(watch);
   }
 
   want(watch: Watch, signal: LiveSignal | 'check'): void {
     const was = this.#pending.get(watch);
     this.#queue(watch);
     if (was === undefined || RANK[signal] > RANK[was]) this.#pending.set(watch, signal);
+  }
+
+  #sit(watch: Watch): void {
+    if (this.#seated === undefined || this.#sitter === undefined) return;
+    const session = { ...this.#sitter, sessionId: this.#seated.session.sessionId };
+    const leave = this.#seated.presence.seat(this.#asks.businessId, watch.taskId, session, () => {
+      this.#queue(watch);
+      this.#presence.add(watch);
+    });
+    this.#leaves.set(watch, leave);
+  }
+
+  #end(watch: Watch): void {
+    this.#stops.get(watch)?.();
+    this.#leaves.get(watch)?.();
+    this.#stops.delete(watch);
+    this.#leaves.delete(watch);
+  }
+
+  /**
+   * `watch` passed its recheck for `admitted`: `sits` when that person still
+   * sits, seated as before; `moved` when the login now resolves to someone
+   * else, every seat left and every task asked again; `other` when the
+   * recheck answered for someone who does not sit.
+   */
+  async #reseat(watch: Watch, admitted: string): Promise<'sits' | 'moved' | 'other'> {
+    if (this.#seated === undefined) return 'sits';
+    const now = await this.#seated.sitter();
+    const was = this.#sitter;
+    if (now?.personId !== was?.personId || now?.name !== was?.name || now?.side !== was?.side) {
+      for (const leave of this.#leaves.values()) leave();
+      this.#leaves.clear();
+      this.#sitter = now;
+      this.checkAll();
+      return 'moved';
+    }
+    if (now?.personId !== admitted) return 'other';
+    if (!this.#leaves.has(watch)) this.#sit(watch);
+    return 'sits';
   }
 
   #queue(watch: Watch): void {
@@ -233,8 +264,16 @@ class Follower {
     const shown = this.#presence.delete(watch);
     if ((signal === undefined && !shown) || this.#stream.aborted) return;
     if (!this.#stops.has(watch)) return;
-    if (typeof (await this.#asks.again(watch.taskId)) !== 'string') {
+    const admitted = await this.#asks.again(watch.taskId);
+    const seat = typeof admitted === 'string' ? await this.#reseat(watch, admitted) : 'other';
+    if (seat === 'other') {
       await this.#close(watch);
+      return;
+    }
+    if (seat === 'moved') {
+      // Held for the task's next answer, which is about the new person.
+      this.want(watch, signal ?? 'check');
+      if (shown) this.#presence.add(watch);
       return;
     }
     if (signal !== undefined && signal !== 'check') {
@@ -244,8 +283,7 @@ class Follower {
   }
 
   async #close(watch: Watch): Promise<void> {
-    this.#stops.get(watch)?.();
-    this.#stops.delete(watch);
+    this.#end(watch);
     await this.#stream.writeSSE({ event: 'closed', data: watch.label });
     if (this.#stops.size === 0) this.#stream.abort();
   }

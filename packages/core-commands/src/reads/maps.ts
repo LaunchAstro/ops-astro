@@ -119,15 +119,16 @@ async function readMapTickets(
             s.data ->> 'key' as state, s.data ->> 'machine_category' as category,
             c.data ->> 'gist' as gist, c.data ->> 'closed_as' as closed_as,
             c.ts_2 as closed_at, c.revision::text as revision,
-            -- Its blockers: only live tickets of this same map (a blocks link
-            -- from any other record is never shown under a task grant).
+            -- Its blockers: only live non-map tickets of this same map (a blocks
+            -- link from any other record, a nested map included, is never shown).
             coalesce((select array_agg(l.from_record_id::text order by l.from_record_id)
                         from public.record_links l
                         join public.records o on o.business_id = l.business_id
                          and o.id = l.from_record_id
                        where l.business_id = c.business_id and l.to_record_id = c.id
                          and l.link_type = 'blocks' and o.record_type_id = c.record_type_id
-                         and o.uuid_4 = c.uuid_4 and o.deleted_at is null), '{}') as blocked_by
+                         and o.uuid_4 = c.uuid_4 and o.deleted_at is null
+                         and coalesce(o.data ->> 'type', 'task') <> 'map'), '{}') as blocked_by
        from public.records c
        left join public.records s on s.business_id = c.business_id and s.id = c.uuid_1
       where c.business_id = $1 and c.uuid_4 = $2 and c.record_type_id = $3
@@ -161,17 +162,33 @@ export async function readMapView(
   );
   const map = maps[0];
   if (map === undefined) return undefined;
-  const components = await tx.query<ComponentRow>(
-    `select id, kind, body, ticket_id from public.map_components
-      where business_id = $1 and map_id = $2 and retired_version is null
-      order by kind, position`,
+  // Read again, held `for share` before any child is read, as `dispatch.ts`
+  // holds a ticket's map: a retype committed since is seen, none until served.
+  const held = await tx.query(
+    `select 1 from public.records where business_id = $1 and id = $2
+        and deleted_at is null and data ->> 'type' = 'map' for share`,
     [tx.businessId, mapId],
+  );
+  if (held.length === 0) return undefined;
+  // The components and versions as of the version read with the map, so a
+  // revision committed since is not mixed into this one. A linked ticket's id
+  // shows only while it is still a live non-map ticket of this map.
+  const components = await tx.query<ComponentRow>(
+    `select c.id, c.kind, c.body, t.id as ticket_id
+       from public.map_components c
+       left join public.records t on t.business_id = c.business_id and t.id = c.ticket_id
+        and t.uuid_4 = c.map_id and t.record_type_id = $4 and t.deleted_at is null
+        and coalesce(t.data ->> 'type', 'task') <> 'map'
+      where c.business_id = $1 and c.map_id = $2 and c.created_version <= $3
+        and (c.retired_version is null or c.retired_version > $3)
+      order by c.kind, c.position`,
+    [tx.businessId, mapId, map.version ?? 0, taskTypeId],
   );
   const tickets = await readMapTickets(tx, taskTypeId, mapId);
   const versions = await tx.query<VersionRow>(
     `select version, changed, actor_id, created_at from public.map_versions
-      where business_id = $1 and map_id = $2 order by version`,
-    [tx.businessId, mapId],
+      where business_id = $1 and map_id = $2 and version <= $3 order by version`,
+    [tx.businessId, mapId, map.version ?? 0],
   );
   const reached =
     map.client === null ? [] : ((await clientsReached(tx, subjects, [map.client])) ?? []);
