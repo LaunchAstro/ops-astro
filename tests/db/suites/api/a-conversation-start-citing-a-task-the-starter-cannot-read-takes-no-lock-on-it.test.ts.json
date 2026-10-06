@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a conversation start citing a task the starter cannot read is refused without waiting on its row"
+}
