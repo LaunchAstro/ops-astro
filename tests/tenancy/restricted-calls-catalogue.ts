@@ -20,7 +20,7 @@ const COLUMN_UPDATES: readonly {
 }[] = [
   { table: 'public.planned_runs', from: '0086', columns: ['state'] },
   // C39-T: an enrolment token is spent by `spent_at` alone.
-  { table: 'public.enrolment_tokens', from: '20261005214435', columns: ['spent_at'] },
+  { table: 'public.enrolment_tokens', from: '20261006082308', columns: ['spent_at'] },
   // C40B: a reset token is spent by `spent_at` alone.
   { table: 'public.password_reset_tokens', from: '20261005144947', columns: ['spent_at'] },
   // C33: an activation's setting, pin and switch, each change by a person.
@@ -44,6 +44,17 @@ const COLUMN_UPDATES: readonly {
     table: 'public.leases',
     from: '20261004040200',
     columns: ['expires_at', 'released_at', 'state'],
+  },
+  // C41-A: an onboarding's state, stop and revision, a step's state, failures and close.
+  {
+    table: 'public.onboardings',
+    from: '20261005200007',
+    columns: ['revision', 'state', 'stopped_at'],
+  },
+  {
+    table: 'public.onboarding_steps',
+    from: '20261005200007',
+    columns: ['closed_at', 'failures', 'state'],
   },
   // C60: a client's four privacy settings, by `client.set_privacy` alone.
   {

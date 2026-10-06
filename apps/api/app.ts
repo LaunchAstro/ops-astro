@@ -58,7 +58,6 @@ import {
 } from '../../packages/core-commands/src/index.ts';
 import {
   readServiceHealth,
-  settleAccessEndings,
   type FactorProvider,
   type HealthSources,
   type LoginProvider,
@@ -103,6 +102,7 @@ import {
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
 import { recordsIn } from './records-in.ts';
+import { settleAfterCommit } from './settle-after-commit.ts';
 import { mountFactorRoutes, mountPublicLegal } from './account-routes.ts';
 import { mountEnrolment, type EnrolmentOptions } from './enrolment.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
@@ -459,18 +459,11 @@ export function createApi(options: ApiOptions): Hono {
     });
 
     if (isCommandRefusal(result)) return refuse(context, result);
-    // C58: the provider steps an ending owes are tried as soon as it commits,
-    // outside its transaction; what fails stays owed for the server's retry.
-    const { logins, sharedLogin } = options;
-    if (name === 'access.end' && logins !== undefined && sharedLogin !== undefined) {
-      const only = endingIdsOf(result);
-      const sharedElsewhere = async (subject: string) => await sharedLogin(subject, businessId);
-      if (only.length > 0) {
-        await settleAccessEndings(options.database, businessId, logins, { only, sharedElsewhere });
-      }
-    }
-    const reply = await replyTo(options, businessId, presented, result);
-    return context.json({ ...result, ...(reply === null ? {} : { reply }) }, 200);
+    // C58 and C59: the provider steps the act owes, tried as soon as it
+    // commits, outside its transaction; what fails stays owed for the retry.
+    const settled = await settleAfterCommit(options, businessId, name, result);
+    const reply = await replyTo(options, businessId, presented, settled);
+    return context.json({ ...settled, ...(reply === null ? {} : { reply }) }, 200);
   });
 
   // The second entry point. Same surface table, same paths, a different
@@ -987,12 +980,4 @@ async function readLimited(request: Request, limit: number): Promise<string | un
   } catch {
     return undefined;
   }
-}
-
-/** The endings an `access.end` answer names (C58): ids, and nothing else. */
-function endingIdsOf(result: object): readonly string[] {
-  const detail = (result as { readonly detail?: unknown }).detail;
-  if (typeof detail !== 'object' || detail === null) return [];
-  const ids = (detail as { readonly endingIds?: unknown }).endingIds;
-  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
 }

@@ -108,6 +108,8 @@ export interface BodyContext {
   freshInviter?(): Promise<void>;
   /** C58: a new member of this business with a login, for a case that ends one. */
   freshMember?(): Promise<string>;
+  /** C59: a new member of this business with a verified factor, for a case that resets it. */
+  freshFactorMember?(): Promise<string>;
   /** S0-5: a gate item's record removed by the owner, so the next record of it applies. */
   clearGateItem?(item: string): Promise<void>;
   /** C81: the links to the published legal versions gate items 3 to 6 take (`legalEvidence`). */

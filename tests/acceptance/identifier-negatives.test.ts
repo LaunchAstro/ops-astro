@@ -64,6 +64,10 @@ const runOf = (recordId: string, runId: string, op: CommandName): Body =>
       ? { recordId, runId, expectedVersion: 0, knowledge: [NOBODY], unknowns: [] }
       : { recordId, runId, askId: randomUUID() };
 
+/** An onboarding start and a step result (C41-A), aimed abroad. */
+const START = (clientId: string): Body => ({ clientId, templateKey: 'standard' });
+const STEP = (recordId: string): Body => ({ recordId, outcome: 'done', result: 'aimed abroad' });
+
 /** An operand in its foreign and fabricated forms. */
 const pair = (
   operand: string,
@@ -387,6 +391,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       ],
       // C58: bravo's person named in an alpha ending.
       ['access.end', pair('holderId', person, (holderId) => ({ holderId }))],
+      // C59: bravo's person named in an alpha authenticator reset.
+      ['access.reset_factor', pair('holderId', person, (holderId) => ({ holderId }))],
       // C60: bravo's client named in an alpha privacy change.
       [
         'client.set_privacy',
@@ -464,6 +470,9 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ],
         ['access.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
         ...accessGrantCells(f.admin.personId as string, f.clientId),
+        // An onboarding start on bravo's client and a result on bravo's step (C41-A).
+        ['onboarding.start', pair('clientId', f.clientId, (id) => START(id))],
+        ['onboarding.step_result', pair('recordId', f.stepTaskId, (id) => STEP(id))],
         ...automationCells(f),
       );
       // AW-05's answers name the task and the run on it. Bravo's run is the
