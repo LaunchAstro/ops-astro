@@ -15,7 +15,9 @@
 // read, compared in the update itself, so two changes at one revision apply
 // once. The mode a version permits is checked here for the refusal and again
 // by the database's constraint trigger. Changing a mode starts nothing: a run
-// needs an occurrence and C52-A's standing approval.
+// needs an occurrence and C52-A's standing approval, which a change of the
+// pin, mode, schedule or event, or a switch off, ends (the database's
+// `activations_approval_stands`); adopting is `automation-approvals.ts`.
 //
 // The version's bytes are pinned by the digest and size the caller sends:
 // AW-02's pinned read, which would compute them from the bytes, is not on
@@ -75,15 +77,15 @@ const FIXES: Readonly<Record<string, string>> = {
   modes: 'Send modes as a list of distinct entries from manual, scheduled and event.',
 };
 
-const invalid = (field: string): HandlerOutcome =>
+export const invalid = (field: string): HandlerOutcome =>
   refused(refuseCommand('FIELD_VALUE_INVALID', [field], [FIXES[field] ?? '']));
 
-const notPermitted = (state: string, fix: string): HandlerOutcome =>
+export const notPermitted = (state: string, fix: string): HandlerOutcome =>
   refused(refuseCommand('TRANSITION_NOT_PERMITTED', [state], [fix]));
 
 const absent = (value: unknown): boolean => value === undefined || value === null;
 
-const isRevision = (value: unknown): value is number =>
+export const isRevision = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
 
 const isMode = (value: unknown): value is ActivationMode =>
@@ -160,14 +162,18 @@ async function changeExisting(
   const changed = await changeActivation(tx, activationId, expectedRevision, to.setting);
   if (changed !== null) return appliedActivation(changed);
   const now = await readActivation(tx, activationId);
-  return refused(
+  return staleAt(now?.revision ?? current.revision);
+}
+
+/** A stale revision, naming the one the activation is at now (C33, C52-A). */
+export const staleAt = (revision: number): HandlerOutcome =>
+  refused(
     refuseCommand(
       'VERSION_STALE',
-      [`revision=${now?.revision ?? current.revision}`],
+      [`revision=${revision}`],
       ['Read the registry again and act on the revision it is at now.'],
     ),
   );
-}
 
 const appliedActivation = (row: {
   readonly id: string;

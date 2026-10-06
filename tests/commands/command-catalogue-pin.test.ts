@@ -61,6 +61,9 @@
 // untargeted person writes no agent reaches, one row each in the tables that
 // list every write, every untargeted one or every operation with no expected
 // revision, beside the `automation.registry` read.
+// The sixteenth is C52-A's `activation.adopt`, `activation.roll_back`,
+// `activation.turn_off` and `approval.revoke`: untargeted person writes no
+// agent reaches, one row each in the same three tables and the handler map.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -230,6 +233,13 @@ vi.mock('../../packages/core-commands/src/commands/automations.ts', async (origi
   changeActivationAsPerson: recorder('changeActivationAsPerson'),
   releaseDefinitionVersion: recorder('releaseDefinitionVersion'),
 }));
+vi.mock('../../packages/core-commands/src/commands/automation-approvals.ts', async (original) => ({
+  ...(await original<object>()),
+  adoptActivationVersion: recorder('adoptActivationVersion'),
+  rollBackActivation: recorder('rollBackActivation'),
+  turnOffActivationAsPerson: recorder('turnOffActivationAsPerson'),
+  revokeStandingApproval: recorder('revokeStandingApproval'),
+}));
 vi.mock('../../packages/core-commands/src/commands/wayfinder.ts', async (original) => ({
   ...(await original<object>()),
   setTaskType: recorder('setTaskType'),
@@ -353,6 +363,10 @@ const PINNED_RUNTIME_SHAPED = {
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'activation.change': ['activationId', 'versionId'],
   'definition.release': ['definitionId'],
+  'activation.adopt': ['activationId', 'versionId'],
+  'activation.roll_back': ['activationId'],
+  'activation.turn_off': ['activationId'],
+  'approval.revoke': ['approvalId'],
   'budget.record_outcome': ['recordId', 'attemptId'],
   'budget.set_planning_cap': [],
   'budget.top_up': ['recordId'],
@@ -429,7 +443,11 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'access.grant',
   'access.read',
   'access.revoke',
+  'activation.adopt',
   'activation.change',
+  'activation.roll_back',
+  'activation.turn_off',
+  'approval.revoke',
   'automation.registry',
   'budget.record_outcome',
   'budget.set_planning_cap',
@@ -760,6 +778,10 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'map.scope', operationId: 'op', recordId: 'r', client: 'c' },
   { command: 'activation.change', operationId: 'op', versionId: 'v', mode: 'manual' },
   { command: 'definition.release', operationId: 'op', name: 'n', modes: ['manual'] },
+  { command: 'activation.adopt', operationId: 'op', activationId: 'a', versionId: 'v' },
+  { command: 'activation.roll_back', operationId: 'op', activationId: 'a' },
+  { command: 'activation.turn_off', operationId: 'op', activationId: 'a' },
+  { command: 'approval.revoke', operationId: 'op', approvalId: 'p' },
   {
     command: 'budget.set_planning_cap',
     operationId: 'op',
@@ -935,6 +957,10 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'map.scope': ['scopeMap', 'request'],
   'activation.change': ['changeActivationAsPerson', 'request'],
   'definition.release': ['releaseDefinitionVersion', 'request'],
+  'activation.adopt': ['adoptActivationVersion', 'request'],
+  'activation.roll_back': ['rollBackActivation', 'request'],
+  'activation.turn_off': ['turnOffActivationAsPerson', 'request'],
+  'approval.revoke': ['revokeStandingApproval', 'request'],
   'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
@@ -1002,7 +1028,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and seven from an expected revision', () => {
+  it('exempts the same one hundred and eleven from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
