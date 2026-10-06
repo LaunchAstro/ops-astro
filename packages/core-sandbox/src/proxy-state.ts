@@ -137,7 +137,8 @@ export class ProxyState {
     const started = 'id' in op && this.#started === op.id;
     const reply = await this.#call(op);
     if (op.kind === 'start' && reply.status === NO_CONTENT) this.#started = op.id;
-    if (op.kind === 'wait') await this.#exclusive(() => this.#waited(op.id, started, reply));
+    const at = this.#ports.now();
+    if (op.kind === 'wait') await this.#exclusive(() => this.#waited(op.id, started, reply, at));
     if (op.kind === 'delete') await this.#exclusive(() => this.#deleted(op.id, reply));
     return reply === THREW ? fault('reply status') : { ok: true, reply };
   }
@@ -231,16 +232,17 @@ export class ProxyState {
     return { ok: true, reply };
   }
 
-  async #waited(id: string, started: boolean, reply: Reply): Promise<void> {
+  /** A wait's answer, judged at `at`, when it returned, not when its write took the lock. */
+  async #waited(id: string, started: boolean, reply: Reply, at: number): Promise<void> {
     const held = this.#containers.container;
     const status = reply.status === OK ? readWaitStatus(reply.body) : null;
     if (held?.id !== id || !started || status?.ok !== true) return;
-    const [now, run, code] = [this.#ports.now(), this.#run, status.statusCode];
+    const [run, code] = [this.#run, status.statusCode];
     const candidates =
       run === null
         ? this.#candidates
-        : recordCandidateWait(this.#candidates, run.image, run.run, code, now < held.deadline);
-    await this.#save(candidates, noteWaitReturned(this.#containers, now));
+        : recordCandidateWait(this.#candidates, run.image, run.run, code, at < held.deadline);
+    await this.#save(candidates, noteWaitReturned(this.#containers, at));
   }
 
   async #deleted(id: string, reply: Reply): Promise<void> {
