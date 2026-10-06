@@ -163,7 +163,8 @@ export async function markIfClients(
 ): Promise<void> {
   if (taskId === null) return;
   const [task] = await tx.query<{ readonly client: string | null }>(
-    `select ${CLIENT} as client from records where business_id = $1 and id = $2`,
+    // Held for share, as the exchange holds it: a link being written is waited for and seen.
+    `select ${CLIENT} as client from records where business_id = $1 and id = $2 for share`,
     [tx.businessId, taskId],
   );
   if (task !== undefined && task.client !== null) await markRefusedForPage(tx, session, asked);
