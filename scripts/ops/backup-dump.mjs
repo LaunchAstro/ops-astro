@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The scheduled backup's dump (ticket S0-3, line C1; backup.mjs): pg_dump of
-// the product's schemas and `auth` in a throwaway container of staging's own
+// the product's schemas and `auth` (not on hosted Supabase) in a throwaway container of staging's own
 // pinned Postgres image, handed on as it prints, so the job never holds a dump
 // whole (REV158S criterion 5).
 
@@ -14,6 +14,17 @@ const BACKUP_ROLE = 'ops_astro_backup';
 // and staging's made-up guard, whose functions the guarded tables' triggers call.
 // A database without the guard has no such schema, and pg_dump skips it.
 export const SCHEMAS = ['public', 'ops', 'auth', 'ops_astro_made_up'];
+// On hosted Supabase `auth` is the platform's: our owner may use it but not
+// grant on it, and no platform role is granted to the backup identity (#999,
+// migrations/20261006140500_backup_reach_checked.sql). The hosted dump leaves it
+// out; its sign-ins stay in Supabase's own project backup, and staging's
+// made-up cast gets them back from the reset's sign-in step (staging-reset.mjs).
+const HOSTED = /^[a-z0-9-]+\.pooler\.supabase\.com$/u;
+
+/** The schemas dumped from `host`, as the URL parser reads it. */
+export function schemasFrom(host) {
+  return HOSTED.test(host.toLowerCase()) ? SCHEMAS.filter((schema) => schema !== 'auth') : SCHEMAS;
+}
 
 const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -42,7 +53,7 @@ export function pgDump(sourceUrl) {
     'pg_dump',
     '--format=custom',
     `--role=${BACKUP_ROLE}`,
-    ...SCHEMAS.map((schema) => `--schema=${schema}`),
+    ...schemasFrom(url.hostname).map((schema) => `--schema=${schema}`),
     `--host=${url.hostname}`,
     `--port=${url.port || '5432'}`,
     `--username=${decodeURIComponent(url.username)}`,
