@@ -284,14 +284,14 @@ describe.skipIf(serverUrl === undefined)('the models a conversation is offered',
     const off = await read(onB);
     const kept = await modelOf(onB);
     expect({
-      allowed: ids(allowed),
-      set: [set.status, set.body['code']],
-      same: off.body,
+      allowed: [allowed.status, ids(allowed)],
+      set: [set.status, set.body['code'], set.body['names']],
+      same: [off.status, off.body],
       model: kept,
     }).toStrictEqual({
-      allowed: [],
-      set: [422, 'FIELD_VALUE_INVALID'],
-      same: allowed.body,
+      allowed: [200, []],
+      set: [422, 'FIELD_VALUE_INVALID', ['model']],
+      same: [200, allowed.body],
       model: null,
     });
     for (const answer of [allowed, set, off]) carriesNothing(answer);
