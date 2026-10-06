@@ -357,3 +357,21 @@ it('refuses a run answer that lands after a sweep removed its container as unava
   release();
   expect(await waited).toEqual(UNAVAILABLE);
 });
+
+it('keeps the deadline once reached when the clock steps back: kills, refuses a start, runs late', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(C));
+  await state.handle(op('start', ID));
+  w.answer.kill = 500;
+  const deadline = T0 + S1_WALL;
+  w.now = deadline;
+  w.calls.length = 0;
+  await state.tick();
+  w.now = deadline - 60_000;
+  await state.tick();
+  expect([w.calls, heldId(w)]).toEqual([['kill', 'kill'], ID]);
+  expect(await state.handle(op('start', ID))).toEqual(refused('deadline'));
+  await state.handle(op('wait', ID));
+  expect(candidateOf(w)?.runs).toEqual([{ statusCode: 0, inTime: false }]);
+});
