@@ -122,7 +122,7 @@ async function seedRuns(w) {
     await build(await task(w, { title: RUNS[key] }, NORTH, ADMIN));
     made.push(RUNS[key]);
   }
-  if (lost.length > 0) await sweepLost(w);
+  if (lost.length > 0) await sweepLost(w, lost);
   return made;
 }
 
@@ -137,8 +137,10 @@ function world(database, cast) {
     query,
     as: (name, body) =>
       applied(executeCommand(database, cast.businessId, cast.people[name], 'api', operation(body))),
-    asAgent: (credential, body, agent = cast.agent) =>
-      applied(executeAgentCommand(database, cast.businessId, agent, credential, operation(body))),
+    asAgent: (credential, body) =>
+      applied(
+        executeAgentCommand(database, cast.businessId, cast.agent, credential, operation(body)),
+      ),
     revision: async (id) =>
       Number((await query('select revision from public.records where id = $1', [id]))[0].revision),
     taskTitled: async (title) => (await query(`${TASKS} and r.txt_4 = $1`, [title]))[0]?.id,

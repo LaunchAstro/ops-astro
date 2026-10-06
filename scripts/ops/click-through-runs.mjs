@@ -15,6 +15,8 @@ const COMPOSE = { kind: 'compose', payload: { tone: 'plain' } };
 const EFFECT = { kind: 'synthetic_comment', payload: {} };
 /** Below one call's priced maximum, so the run stops at its ceiling. */
 const SMALL_CEILING = 400;
+/** Long enough to dispatch under over a slow link, short enough to wait out. */
+const LOST_LEASE_SECONDS = 10;
 
 /** A purpose of its own: an agent holds one live delegation per purpose. */
 function purpose(w) {
@@ -117,7 +119,7 @@ export async function dispatched(w, id) {
   const picked = await w.asAgent(undefined, {
     command: 'task.pickup',
     reservationId: launch.reservationId,
-    leaseSeconds: 3,
+    leaseSeconds: LOST_LEASE_SECONDS,
   });
   await w.asAgent(picked.credential, {
     command: 'task.dispatch',
@@ -127,9 +129,17 @@ export async function dispatched(w, id) {
   return picked;
 }
 
-/** The worker is gone: its lease runs out and the sweep leaves the outcome to a person. */
-export async function sweepLost(w) {
-  await wait(3_500);
+/**
+ * The worker is gone: its leases run out, judged by the database's clock, and
+ * the sweep leaves each outcome to a person.
+ */
+export async function sweepLost(w, lost) {
+  const [left] = await w.query(
+    `select greatest(0, extract(epoch from max(expires_at) - clock_timestamp()))::float8 as s
+       from public.leases where id = any($1)`,
+    [lost.map((picked) => picked.leaseId)],
+  );
+  await wait(Math.ceil(Number(left.s) * 1000) + 500);
   await w.database.withBusiness(w.cast.businessId, (tx) => sweepExpiredLeases(tx));
 }
 
