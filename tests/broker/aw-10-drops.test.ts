@@ -158,11 +158,11 @@ it("AW-10 fault from evidence: a timeout is undetermined, a hostile answer the p
   }
 });
 
-it("AW-10 a heartbeat provider start is not cleared by a call's absence proof: the step's own provider may have acted, so the pass leaves it unanswered and the hold whole", async () => {
-  world.provider.lookupMode('honest');
-  const work = await workerLost(s, true);
-  // The silent call's request reaches the provider while it is down, which refuses it before
-  // any work began: the honest lookup's declared proof, so the pass releases the call.
+/**
+ * The silent call's request reaches the provider while it is down, which refuses it before any
+ * work began: the honest lookup's declared proof, so the pass releases the call.
+ */
+const refusedBeforeWork = async (work: Awaited<ReturnType<typeof workerLost>>): Promise<void> => {
   world.provider.mode('unavailable');
   const [call] = await callsOf(s, work);
   await fetch(`${world.provider.origin}${REPLAY_PATH}`, {
@@ -170,6 +170,12 @@ it("AW-10 a heartbeat provider start is not cleared by a call's absence proof: t
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ operation_id: String(call?.['id']) }),
   }).then(async (response) => await response.text());
+};
+
+it("AW-10 a heartbeat provider start is not cleared by a call's absence proof: the step's own provider may have acted, so the pass leaves it unanswered and the hold whole", async () => {
+  world.provider.lookupMode('honest');
+  const work = await workerLost(s, true);
+  await refusedBeforeWork(work);
   const swept = await pass();
   expect(await callsOf(s, work)).toMatchObject([{ state: 'released', outcome: null }]);
   const reconciled = swept.ok ? (swept.businesses[0]?.reconciled ?? []) : [];
