@@ -176,3 +176,43 @@ describe.skipIf(serverUrl === undefined)(
     });
   },
 );
+
+describe.skipIf(serverUrl === undefined)(
+  'the version room after an upgrade, with a start stamp shared by another hold',
+  () => {
+    it('reads a top-up made while held as held, even when another hold on the run was reserved at its start stamp', async () => {
+      // SEC-P2R18 L1: two transactions on one run started in the same microsecond.
+      // The first hold's attempt (500, not the top-up's 100) shares the answer's stamp.
+      const { work, versionId, first, r1 } = await countedWriteOff(100);
+      await stampBefore(s, first, r1);
+      const moved = await s.db.admin.execute(
+        `update public.budget_answers a set answered_at = t.created_at
+           from public.budget_asks k, public.attempts t
+          where k.business_id = a.business_id and k.id = a.ask_id and a.kind = 'top_up'
+            and a.business_id = $1 and k.reservation_id = $2
+            and t.business_id = a.business_id and t.reservation_id = $3
+          returning a.id`,
+        [s.business, r1, first],
+      );
+      expect(moved, "the top-up's stamp now the first hold's").toHaveLength(1);
+      await asBeforeHoldState(s);
+      const again = await asAgent(s, {
+        command: 'task.pickup',
+        operationId: randomUUID(),
+        reservationId: first,
+        leaseSeconds: 600,
+      });
+      const live = (await holdsOf(s, versionId)).filter((hold) => hold.state === 'held');
+      expect({
+        code: codeOf(again),
+        recorded: await holdStateOf(s, r1),
+        live: live.map((hold) => hold.held),
+        envelope: await envelopeOf(s, work),
+      }).toMatchObject({
+        code: 'BUDGET_UNAVAILABLE',
+        recorded: [{ hold_state: 'held' }],
+        live: [],
+      });
+    });
+  },
+);
