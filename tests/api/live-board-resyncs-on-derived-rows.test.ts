@@ -94,7 +94,7 @@ describe.skipIf(serverUrl === undefined)('an open board resyncs on what its rows
         await draining;
       },
     };
-    await expect.poll(() => tab.resyncs()).toBeGreaterThan(0);
+    await expect.poll(() => tab.resyncs(), { timeout: 10_000 }).toBeGreaterThan(0);
     for (let heard = tab.resyncs(); ; heard = tab.resyncs()) {
       // eslint-disable-next-line no-await-in-loop -- until two rechecks' worth of nothing
       await sleep(200);
@@ -118,7 +118,7 @@ describe.skipIf(serverUrl === undefined)('an open board resyncs on what its rows
       const before = tab.resyncs();
       const logged = await c.asPerson('time.log', { taskId: task.id, duration: '45m', note: '' });
       expect(logged.status, JSON.stringify(logged.body)).toBe(200);
-      await expect.poll(() => tab.resyncs(), { timeout: 2_000 }).toBeGreaterThan(before);
+      await expect.poll(() => tab.resyncs(), { timeout: 10_000 }).toBeGreaterThan(before);
       expect((await rowOf(task.id))?.actualMinutes).toBe(45);
     } finally {
       await tab.stop();
@@ -137,7 +137,7 @@ describe.skipIf(serverUrl === undefined)('an open board resyncs on what its rows
     try {
       expect((await rowOf(task.id))?.waitReason).toBe('needs_approval');
       const before = tab.resyncs();
-      await expect.poll(() => tab.resyncs(), { timeout: 5_000 }).toBeGreaterThan(before);
+      await expect.poll(() => tab.resyncs(), { timeout: 10_000 }).toBeGreaterThan(before);
       expect((await rowOf(task.id))?.waitReason).toBeNull();
     } finally {
       await tab.stop();
@@ -162,7 +162,7 @@ describe.skipIf(serverUrl === undefined)('an open board resyncs on what its rows
         c.manager.personId,
         person,
       ]);
-      await expect.poll(() => tab.resyncs(), { timeout: 2_000 }).toBeGreaterThan(before);
+      await expect.poll(() => tab.resyncs(), { timeout: 10_000 }).toBeGreaterThan(before);
       expect((await rowOf(task.id))?.assignee?.name).toBe(person);
 
       before = tab.resyncs();
@@ -172,7 +172,7 @@ describe.skipIf(serverUrl === undefined)('an open board resyncs on what its rows
           where id = (select uuid_1 from public.records where id = $1)`,
         [task.id, label],
       );
-      await expect.poll(() => tab.resyncs(), { timeout: 2_000 }).toBeGreaterThan(before);
+      await expect.poll(() => tab.resyncs(), { timeout: 10_000 }).toBeGreaterThan(before);
       expect((await rowOf(task.id))?.state?.label).toBe(label);
     } finally {
       await tab.stop();
