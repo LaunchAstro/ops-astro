@@ -11,10 +11,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { task, tick } from './task-page-stub.tsx';
-import { json, mount, unmountAll } from './perspective-support.tsx';
+import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
 import { store } from './draft-support.tsx';
 
-afterEach(unmountAll);
+afterEach(() => {
+  unmountAll();
+  sent.length = 0;
+});
 
 const KEY = 'Proj-Verity-Pacing';
 const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
@@ -36,8 +39,20 @@ function sessions(): SessionStore {
   return new SessionStore(kept);
 }
 
-const fetch = ((url: string | URL) => {
+/** What the app sent to the task and time commands, in order. */
+const sent: { readonly to: string; readonly body: Record<string, unknown> }[] = [];
+
+const fetch = ((url: string | URL, init?: RequestInit) => {
   const where = String(url);
+  const write = /\/(task\/(create|set_party|set_category|assign))$/u.exec(where)?.[1];
+  if (write !== undefined) {
+    const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Record<
+      string,
+      unknown
+    >;
+    sent.push({ to: write, body });
+    return Promise.resolve(json({ recordId: 'r-new', revision: 1, detail: { key: 'Proj-New' } }));
+  }
   if (where.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
   if (where.endsWith('/task/queue')) {
     return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
@@ -98,6 +113,65 @@ describe('MP-4-13 any task-filing control opens the draft through the gesture la
     expect((view.find('#panel-draft-category') as HTMLSelectElement | null)?.value).toBe('seo');
     expect(view.find('[data-draft-admission]')?.textContent).toContain(
       'New task, filed from Search. Guessed from “Checkout down”, the Search board',
+    );
+  });
+});
+
+const doorFor = (
+  view: Awaited<ReturnType<typeof app>>,
+  subject: string,
+  data: Record<string, string>,
+) => {
+  const door = document.createElement('button');
+  door.dataset['newTask'] = subject;
+  for (const [key, value] of Object.entries(data)) door.dataset[key] = value;
+  view.host.querySelector('main')?.append(door);
+  return door;
+};
+
+describe('MP-4-13 each door files its own draft', () => {
+  it('a second door replaces an untouched draft’s guesses, client included', async () => {
+    const view = await app(store());
+    const first = doorFor(view, 'A thing', { newTaskChannel: 'search', newTaskClient: 'c-a' });
+    first.click();
+    await tick();
+    first.remove();
+    const second = doorFor(view, 'B thing', {
+      newTaskChannel: 'ads',
+      newTaskLabel: 'Ads',
+      newTaskClient: 'c-b',
+    });
+    second.click();
+    await tick();
+    expect((view.find('#panel-draft-category') as HTMLSelectElement | null)?.value).toBe(
+      'paid-ads',
+    );
+    expect(view.find('[data-draft-admission]')?.textContent).toContain(
+      'filed from Ads. Guessed from “B thing”, the Ads board',
+    );
+    await typeInto(view, '#panel-draft-name', 'From B');
+    await view.click('[data-draft="create"]');
+    for (let settle = 0; settle < 8; settle += 1) {
+      // eslint-disable-next-line no-await-in-loop -- the chain is one request at a time
+      await tick();
+    }
+    expect(sent.find((one) => one.to === 'task/set_party')?.body).toMatchObject({
+      fields: { client: 'c-b' },
+    });
+  });
+
+  it('a kept draft reopened from another door still says where it was filed from', async () => {
+    const view = await app(store());
+    const first = doorFor(view, 'A thing', { newTaskChannel: 'search', newTaskLabel: 'Search' });
+    first.click();
+    await tick();
+    first.remove();
+    await typeInto(view, '#panel-draft-name', 'Kept');
+    doorFor(view, 'B thing', { newTaskChannel: 'ads', newTaskLabel: 'Ads' }).click();
+    await tick();
+    expect((view.find('#panel-draft-name') as HTMLInputElement | null)?.value).toBe('Kept');
+    expect(view.find('[data-draft-admission]')?.textContent).toContain(
+      'filed from Search. Guessed from “A thing”, the Search board',
     );
   });
 });
