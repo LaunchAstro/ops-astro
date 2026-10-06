@@ -68,6 +68,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['secret.set', { name: 'target-free.key', value: 'target-free-value' }],
   // The connector fleet (MP-14-7a) names no row.
   ['connection.fleet', {}],
+  ['connection.signal', {}],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
   // AW-04: a digest names a file's bytes, not a record of any business.

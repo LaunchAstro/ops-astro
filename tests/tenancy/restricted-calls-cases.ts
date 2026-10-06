@@ -180,6 +180,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // the broker, and a repair is recorded once and never changed.
   ['s', 'connection_clients connections'],
   ['si', 'connection_repairs'],
+  // 20261005201200 (MP-14-8): tripwires and night round steps are written by the
+  // checks and the round (not built) and read here.
+  ['s', 'night_round_steps tripwires'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

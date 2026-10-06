@@ -525,6 +525,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The connector fleet (MP-14-7a): `connection:read`, asked per row of the caller's scopes. A
   // repair touches the credential's custody, so `custody:manage` business-wide, never an agent.
   read('connection.fleet', 'connection'),
+  read('connection.signal', 'connection'),
   declare('connector.repair', 'manage', {
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,

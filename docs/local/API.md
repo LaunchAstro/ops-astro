@@ -1671,6 +1671,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.clear`                             | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connection.fleet`                         | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `connector.repair`                         | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `connection.signal`                        | `readConnectionSignal` (`reads/signal.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.start`                               | `startTime` (`commands/tasks-time.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.stop`                                | `stopTime` (`commands/tasks-time.ts`)                                                     | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `time.log`                                 | `logTimeEntry` (`commands/tasks-time.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -3599,3 +3600,37 @@ value, never any part of one. No sealed column is read. It is shown only for a
 secret the caller's scopes reach (a business-wide reader, a business-wide
 secret, or one of the caller's clients'); a secret scoped to another client the
 connection serves shows as `{ secretId: null, state: 'not set' }`.
+
+## Grants, tripwires and the night round (MP-14-8)
+
+Connections & signal sections 006 to 008, one read on `connection:read`, never
+an agent. Each list is filtered in its statement by the scopes the caller holds
+the key at. A business-wide reader sees every row; a client-scoped reader sees
+only the rows bound to one of their clients (a grant whose task carries that
+client, a tripwire or a night round step naming it), never a fleet row nor a
+grant on a trashed task, a map or a map's ticket, and a roster of only the
+agents holding a grant it can see. The night round is the
+latest round among the steps the caller can see. Every count is derived from
+the rows beside it, and every row handed out counts toward the export-volume
+signal.
+
+A grant is a delegation, live while it stands as a call through it would: a
+child whose parent ended first is taken back or ran out by what ended the
+parent first, at that time and for that cause, and counts calls only until
+then. Its client is its
+purpose task's client, shown by its name (`label` null when no client row
+answers the id); its `redemptions` are the applied calls its agent made on that task while
+it held it, less the pickup that minted it. Nothing records what each call
+reached, and the credential is never read. Tripwires and night round steps are
+written by the checks and the round itself (`tripwires`, `night_round_steps`,
+migration 20261005201200); the application role only reads them. Every
+tripwire and step column drawn as words is `signal_text`, an explicit
+allow-list (printable ASCII, Latin letters and signs, visible punctuation,
+currency signs and arrows; a space only inside); a task cite is a task key
+and a filed item a display id; a client named is a client of the same
+business by foreign key. A grant's client label is the client's name as
+`clients` holds it, outside that grammar.
+
+| Operation           | Route                | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------- | -------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.signal` | `/connection/signal` | `{}` | `{ ok: true, grants: [{ id, agentId, purpose, collections, access: 'read' \| 'exec', client: { id, label \| null } \| null, grantedAt, expiresAt, endedAt, revocationCause, state: 'live' \| 'ran_out' \| 'taken_back', redemptions }], grantCounts: { live, ranOut, takenBack, liveExec }, tripwires: [{ id, what, rule, watching, state, blockedReason, firedCount, lastFiredAt, filedItem, filedNothing, note }], tripwireCounts: { armed, cannotBeArmed }, nightRound: { roundOn, steps: [{ id, at, tone, what, who, say, cite: { kind, ref, label } \| null }], notClean } \| null, roster: [{ agentId, active, liveGrants }] }`; `SCOPE_NOT_GRANTED` 403 |
