@@ -642,6 +642,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
                  when r.rolname = 'ops_astro_upkeep' then 'upkeep'
                  when r.rolname = 'ops_astro_lease_path' then 'lease path'
+                 when r.rolname = 'ops_astro_map_path' then 'map path'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -757,6 +758,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // 20261004040200: the pickup path's role owns public.take_lease and inserts leases under row security,
     // proved in tests/db/take-lease-path.test.ts.
     expect(classes['lease path']).toStrictEqual(['ops_astro_lease_path']);
+    // 20261006181500: the map read models' role owns their four writers and writes the summary and
+    // frontier under row security, proved in tests/db/click-through-seed-map.test.ts.
+    expect(classes['map path']).toStrictEqual(['ops_astro_map_path']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
