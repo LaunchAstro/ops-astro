@@ -6,13 +6,13 @@
 // `sites`. The probe entry is one image id (S0 only). `base` holds one entry
 // per known platform for the base-plus-entrypoint image, with the one S2
 // `Env` list. Each site entry, keyed by a site id, holds its lockfile
-// digest, its S1 image id, its attempt number, the site commit F2 builds and
-// its S1 `Env` list; the image id is empty exactly while a pin is being
-// made, and only then is the commit named. An `Env` list opens with its
-// class's fixed B3 pairs in order (S1 for a site, S2 for a base), then
-// uppercase `NAME=value` items of printable ASCII, each name once and none of
-// them npm configuration. A file that breaks any of this is `internal`: the
-// proxy admits no create from it.
+// digest, its S1 image id, its attempt number, the site commit the
+// reproducibility check builds and its S1 `Env` list; the image id is empty
+// exactly while a pin is being made, and only then is the commit named. An
+// `Env` list opens with its class's fixed B3 pairs in order (S1 for a site,
+// S2 for a base), then uppercase `NAME=value` items of printable ASCII, each
+// name once and none of them npm configuration. A file that breaks any of
+// this is `internal`: the proxy admits no create from it.
 
 import { fault, type SandboxResult } from './refusal.ts';
 import { basePair, S1_OPENING, S2_OPENING } from './run-env.ts';
