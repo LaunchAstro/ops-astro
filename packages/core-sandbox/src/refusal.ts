@@ -8,8 +8,10 @@
 // site with no record is `unknown site`, a pin being made is `no pin`, a
 // tree whose manifests miss the pin's digest is `pin mismatch` (I4), and a
 // daemon reply that breaks the preamble's rules, or a site record or pin
-// list that breaks its own, is `internal`. `why` names the clause that
-// refused, for the person reading the refusal and for the corpus tests.
+// list that breaks its own, is `internal`, and while the proxy's sweep has
+// not passed, every request, and a run whose container a sweep removed, is
+// `unavailable` (P6). `why` names the clause that refused, for the person
+// reading the refusal and for the corpus tests.
 
 export type Why =
   | 'not utf-8'
@@ -76,7 +78,8 @@ export type Why =
   | 'candidate record'
   | 'container record'
   | 'container count'
-  | 'sweep';
+  | 'sweep'
+  | 'proxy record';
 
 /** R1's reasons (section 9), in the contract's order, `internal` last. */
 export const REASONS = [
@@ -110,6 +113,7 @@ export const readReason = (value: unknown): Reason =>
 export type Refused = {
   readonly ok: false;
   readonly reason:
+    | 'unavailable'
     | 'unknown site'
     | 'no pin'
     | 'pin mismatch'
@@ -125,3 +129,4 @@ export type SandboxResult<T> = ({ readonly ok: true } & T) | Refused;
 
 export const refuse = (why: Why): Refused => ({ ok: false, reason: 'proxy refused', why });
 export const fault = (why: Why): Refused => ({ ok: false, reason: 'internal', why });
+export const unavailable = (why: Why): Refused => ({ ok: false, reason: 'unavailable', why });
