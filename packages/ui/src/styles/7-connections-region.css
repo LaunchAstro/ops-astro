@@ -96,6 +96,7 @@
 }
 .autosw__lbl {
   max-width: 12.5rem;
+  overflow-wrap: anywhere;
   color: var(--text-muted);
   font: var(--type-small);
   letter-spacing: var(--type-small-tracking);
@@ -268,21 +269,25 @@
 .ps__x:hover {
   color: var(--danger);
 }
-.fieldrow {
+/* The graduation forms' row. Scoped to the region, since Projects > Work log
+   has a `.fieldrow` of its own that keeps the kit button's height. A row wraps
+   when its fields no longer fit, and each field keeps room to be read. */
+.gradsec .fieldrow {
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
   gap: 0.35rem;
 }
-.fieldrow > input {
-  flex: 1;
-  min-width: 0;
+.gradsec .fieldrow > input {
+  flex: 1 1 8rem;
 }
-.fieldrow > .btn {
+.gradsec .fieldrow > .btn {
   align-self: stretch;
   height: auto;
   white-space: nowrap;
 }
 .connnote__field {
+  min-width: 8rem;
   padding: 0.45rem 0.55rem;
   border: 1px solid var(--border);
   background: var(--paper);
@@ -320,10 +325,7 @@
     width: 100%;
     min-width: 0;
   }
-  .psadd {
-    flex-wrap: wrap;
-  }
-  .psadd > input {
+  .gradsec .fieldrow > input {
     flex: 1 1 100%;
   }
 }

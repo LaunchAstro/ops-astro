@@ -256,7 +256,7 @@ export const GRADUATION: ConnectionGraduationResult = {
       classLabel: 'Connector force resync',
       clearance: 'Observe',
       state: 'held',
-      heldBy: 'a standing refusal',
+      heldBy: 'a1b2c3d4-0000-4000-8000-000000000002',
       approved: 84,
       since: '11 Feb',
       note: 'Clears the bar and is held by the refusal below.',
