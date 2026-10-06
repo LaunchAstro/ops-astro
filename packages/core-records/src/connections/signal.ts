@@ -114,7 +114,8 @@ interface GrantDbRow {
 
 const GRANTS_SQL = `with visible as (
      select d.business_id, d.id, d.agent_actor_id, d.purpose, d.collections, d.actions,
-            d.purpose_scope_id, d.granted_at, d.expires_at, t.uuid_7 as client_id,
+            d.purpose_scope_id, d.granted_at, least(d.expires_at, p.expires_at) as expires_at,
+            t.uuid_7 as client_id,
             least(e.own_end, e.parent_end) as window_end,
             case when o.stands then null
                  when o.by_parent then e.parent_end
