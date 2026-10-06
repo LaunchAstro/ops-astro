@@ -26,6 +26,7 @@ import {
   callState,
   dispatchedCall,
   envelopeOf,
+  holdStateOf,
   holdsOf,
   roomyWork,
   spend,
@@ -91,7 +92,11 @@ async function countedWriteOff(charge = 0) {
     ),
     'budget.write_off',
   );
-  const closed = { call: await callState(s, c2), counted: await counted(s, r1) };
+  const closed = {
+    call: await callState(s, c2),
+    counted: await counted(s, r1),
+    recorded: await holdStateOf(s, r1),
+  };
   return { work, versionId, first, r1, closed };
 }
 
@@ -111,7 +116,7 @@ describe.skipIf(serverUrl === undefined)(
         actual: envelope?.actual,
         live: holds.filter((hold) => hold.state === 'held').map((hold) => hold.held),
       }).toEqual({
-        closed: { call: 'liability_unknown', counted: true },
+        closed: { call: 'liability_unknown', counted: true, recorded: [{ hold_state: 'held' }] },
         actual: '500',
         live: ['100'],
       });

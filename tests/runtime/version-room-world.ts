@@ -256,6 +256,29 @@ export async function envelopeOf(s: Schedules, work: Work): Promise<unknown> {
   );
 }
 
+/** The state the stopped hold's top-up recorded it in (`budget_answers.hold_state`). */
+export async function holdStateOf(s: Schedules, reservationId: unknown): Promise<unknown> {
+  return await rows(
+    s,
+    `select a.hold_state from public.budget_answers a
+       join public.budget_asks k on k.business_id = a.business_id and k.id = a.ask_id
+      where a.business_id = $1 and k.reservation_id = $2 and a.kind = 'top_up'`,
+    [s.business, reservationId],
+  );
+}
+
+/** The hold's top-up as one written before the answer recorded the hold's state. */
+export async function forgetHoldState(s: Schedules, reservationId: unknown): Promise<unknown> {
+  return await s.db.admin.execute(
+    `update public.budget_answers a set hold_state = null
+       from public.budget_asks k
+      where k.business_id = a.business_id and k.id = a.ask_id
+        and a.business_id = $1 and k.reservation_id = $2 and a.kind = 'top_up'
+      returning a.id`,
+    [s.business, reservationId],
+  );
+}
+
 /** The money a refusal must leave alone: every hold, the envelope and the cap. */
 export async function moneyOf(s: Schedules, work: Work, versionId: unknown): Promise<unknown> {
   return {

@@ -17,6 +17,8 @@ import {
   callState,
   envelopeOf,
   expireLease,
+  forgetHoldState,
+  holdStateOf,
   holdsOf,
   roomyWork,
   spend,
@@ -141,10 +143,11 @@ describe.skipIf(serverUrl === undefined)('a pickup after a top-up on a closed ho
     await stopWorker(s, third);
 
     const again = await claim(fresh?.id);
-    expect({ code: codeOf(again), live: await liveOf(versionId) }).toEqual({
-      code: 'applied',
-      live: ['60'],
-    });
+    expect({
+      code: codeOf(again),
+      live: await liveOf(versionId),
+      recorded: await holdStateOf(s, first),
+    }).toEqual({ code: 'applied', live: ['60'], recorded: [{ hold_state: 'actual' }] });
   });
 });
 
@@ -175,6 +178,32 @@ describe.skipIf(serverUrl === undefined)('a pickup after a top-up on a causeless
       live: ['60'],
     });
   });
+
+  it('counts a closed hold once when its top-up was written before the answer recorded the hold state', async () => {
+    // As above, the top-up's hold_state also null, as a top-up written before
+    // the column was: the room counts it closed first, at the greater.
+    const { work, versionId, first } = await roomyWork(s);
+    await spend(s, first, 300);
+    await unsentCall(s, first, 200);
+    expect(await stopForRoom(work, first, 200)).toBe('BUDGET_UNAVAILABLE');
+    await s.db.admin.execute(
+      `update public.reservations set classified_cause = null, classified_cause_id = null
+        where business_id = $1 and id = $2 and state = 'actual'`,
+      [s.business, first],
+    );
+    expect(codeOf(await topUp(s, work, first, 100))).toBe('applied');
+    expect(await forgetHoldState(s, first), 'the top-up row, its state dropped').toHaveLength(1);
+    const fresh = (await holdsOf(s, versionId)).find((hold) => hold.state === 'held');
+    const third = await pickup(s, fresh?.id);
+    await spend(s, third['reservationId'], 40);
+    await stopWorker(s, third);
+
+    const again = await claim(fresh?.id);
+    expect({ code: codeOf(again), live: await liveOf(versionId) }).toEqual({
+      code: 'applied',
+      live: ['60'],
+    });
+  });
 });
 
 describe.skipIf(serverUrl === undefined)('a top-up on an abandoned hold with a call unsent', () => {
@@ -192,12 +221,14 @@ describe.skipIf(serverUrl === undefined)('a top-up on an abandoned hold with a c
       answered,
       swept: await envelopeOf(s, work),
       call: await callState(s, unsent),
+      recorded: await holdStateOf(s, first),
     }).toEqual({
       stopped: 'BUDGET_UNAVAILABLE',
       code: 'applied',
       answered: [{ maximum: '1100', held: '100', actual: '500' }],
       swept: [{ maximum: '1100', held: '100', actual: '500' }],
       call: 'released',
+      recorded: [{ hold_state: 'abandoned' }],
     });
   });
 });
