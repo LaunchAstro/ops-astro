@@ -37,6 +37,7 @@ import type {
   TaskLedgerView,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { pathTo } from '../routes.ts';
 import type { Settlement } from '../records/use-command.ts';
 import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
@@ -255,9 +256,8 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
           decide(gate, 'reject');
         }}
         onCancel={cancel}
-        // The access ledger has no screen yet, so the stamp names each grant it
-        // draws on without a link; the ledger's route supplies one when it lands.
-        ledgerHref={null}
+        // Each grant the stamp names leads to the access ledger, Settings ▸ Access (F71).
+        ledgerHref={() => pathTo('agency:access')}
         ledger={props.ledger ?? null}
         onOutcome={recordOutcome}
         onWriteOff={writeOff}

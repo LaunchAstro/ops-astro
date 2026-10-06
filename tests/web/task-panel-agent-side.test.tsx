@@ -21,7 +21,7 @@ import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { TaskPanel } from '../../apps/web/src/screens/task/Panel.tsx';
 import type { RunScope } from '../../packages/ui/src/index.ts';
 import { DIGEST, lineage, running, version } from '../surfaces/mp-6-1-agent-fixtures.tsx';
-import { json, mount, unmountAll } from './perspective-support.tsx';
+import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
 import { TASK_ID, task, tick } from './task-page-stub.tsx';
 
 afterEach(unmountAll);
@@ -149,6 +149,7 @@ const unknown = lineage({
   ],
 });
 
+// eslint-disable-next-line max-lines-per-function -- one panel side, each control on it
 describe('S3 the dock panel Agent side', () => {
   it('DA-01 the panel draws the task page’s Agent pane, never a not-connected line', async () => {
     const { view } = await agentSide(serving({ proposals: [lineage()] }).client);
@@ -172,6 +173,7 @@ describe('S3 the dock panel Agent side', () => {
     const proposals = [lineage({ reservations: [running] })];
     const { client, sent } = serving({ proposals, ledger: { envelopes: [], stops: [stop] } });
     const { view } = await agentSide(client);
+    await typeInto(view, `${PANE} [data-stop="amount"]`, '5');
     await view.click(`${PANE} [data-stop="top-up"]`);
     await tick();
     expect(sent.map((call) => call.to)).toStrictEqual(['/run/top_up']);
@@ -183,6 +185,7 @@ describe('S3 the dock panel Agent side', () => {
     const over = { proposals, ledger: { envelopes: [], stops: [stop] } };
     const { client } = serving(over, 'STEP_UP_REQUIRED');
     const { view } = await agentSide(client);
+    await typeInto(view, `${PANE} [data-stop="amount"]`, '5');
     await view.click(`${PANE} [data-stop="top-up"]`);
     await tick();
     expect(view.find(`${AGENT} [data-step-up="prompt"]`)).not.toBeNull();
@@ -197,7 +200,10 @@ describe('S3 the dock panel Agent side', () => {
   });
 
   it('S3 beside the task page, the two Agent panes repeat no id', async () => {
-    const { client } = serving({ proposals: [unknown] });
+    const { client } = serving({
+      proposals: [unknown],
+      ledger: { envelopes: [], stops: [stop] },
+    });
     const { view } = await agentSide(
       client,
       <TaskDetailScreen client={client} grantKey="alpha:member" taskKey={KEY} />,
@@ -205,6 +211,7 @@ describe('S3 the dock panel Agent side', () => {
     await view.click('[data-tabs="perspective"] [role="tab"]:nth-of-type(2)');
     await tick();
     expect(view.all('[data-write-off="amount"]')).toHaveLength(2);
+    expect(view.all('[data-stop="amount"]')).toHaveLength(2);
     const ids = view.all('[id]').map((element) => element.id);
     expect(ids.filter((id, index) => ids.indexOf(id) !== index)).toStrictEqual([]);
   });
