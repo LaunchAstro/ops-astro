@@ -86,91 +86,101 @@ const owedNow = async (): Promise<number> =>
     )[0]?.n,
   );
 
-describe.skipIf(serverUrl === undefined)('an access ending whose provider user is gone', () => {
-  it("is settled for good in its own business, while another business's ending stays owed", async () => {
-    const { world } = harness;
-    const gone = await memberWithProviderSubject(world.alpha, 'gone');
-    const elsewhere = await memberWithProviderSubject(world.bravo, 'elsewhere');
-    // The act with no provider: both steps owed on both endings.
-    expect(outcome(await end(apiWith(), gone.person.personId))).toEqual({
+async function settleGoneEndingForGood() {
+  const { world } = harness;
+  const gone = await memberWithProviderSubject(world.alpha, 'gone');
+  const elsewhere = await memberWithProviderSubject(world.bravo, 'elsewhere');
+  // The act with no provider: both steps owed on both endings.
+  expect(outcome(await end(apiWith(), gone.person.personId))).toEqual({
+    status: 200,
+    code: 'ok',
+  });
+  expect(
+    outcome(await end(apiWith(), elsewhere.person.personId, world.bea.token, 'bravo')),
+  ).toEqual({ status: 200, code: 'ok' });
+  const owedBefore = await owedNow();
+
+  const goneSubject = gone.subject;
+  const elsewhereSubject = elsewhere.subject;
+  const { logins, asked } = goTrueAnswering({
+    [goneSubject]: () => Response.json(USER_GONE, { status: 404 }),
+    [elsewhereSubject]: () => new Response(null, { status: 503 }),
+  });
+
+  // The gone ending leaves the backlog; bravo's stays in it.
+  expect(await pass(logins)).toBe(owedBefore - 1);
+  expect((await stateOf(gone.person)).endings).toEqual([
+    expect.objectContaining({ sessions: true, login: true, fault: null }),
+  ]);
+  expect((await stateOf(elsewhere.person, world.bravo)).endings).toEqual([
+    expect.objectContaining({ sessions: false, login: false, fault: 'unreachable' }),
+  ]);
+  expect(asked[goneSubject]).toBe(2);
+  expect(asked[elsewhereSubject]).toBe(1);
+
+  // The next pass never asks about the gone user again; bravo's is asked again.
+  expect(await pass(logins)).toBe(owedBefore - 1);
+  expect(asked[goneSubject]).toBe(2);
+  expect(asked[elsewhereSubject]).toBe(2);
+  expect((await stateOf(gone.person)).endings).toEqual([
+    expect.objectContaining({ sessions: true, login: true, attempts: 1 }),
+  ]);
+  expect((await stateOf(elsewhere.person, world.bravo)).endings).toEqual([
+    expect.objectContaining({ sessions: false, login: false, attempts: 2 }),
+  ]);
+}
+
+async function retryTransientAndDoubtful() {
+  const answers: readonly (readonly [string, () => Response, string])[] = [
+    ['busy', () => Response.json(USER_GONE, { status: 429 }), 'refused'],
+    ['down', () => Response.json(USER_GONE, { status: 503 }), 'unreachable'],
+    ['plain404', () => new Response('not found', { status: 404 }), 'refused'],
+    [
+      'other404',
+      () => Response.json({ error_code: 'mfa_factor_not_found' }, { status: 404 }),
+      'refused',
+    ],
+  ];
+  const people: Member[] = [];
+  const subjects: string[] = [];
+  for (const [name] of answers) {
+    // oxlint-disable-next-line no-await-in-loop
+    const { person, subject } = await memberWithProviderSubject(harness.world.alpha, name);
+    subjects.push(subject);
+    // oxlint-disable-next-line no-await-in-loop
+    expect(outcome(await end(apiWith(), person.personId)), name).toEqual({
       status: 200,
       code: 'ok',
     });
-    expect(
-      outcome(await end(apiWith(), elsewhere.person.personId, world.bea.token, 'bravo')),
-    ).toEqual({ status: 200, code: 'ok' });
-    const owedBefore = await owedNow();
+    people.push(person);
+  }
+  const script = Object.fromEntries(
+    answers.map(([, answer], index) => [subjects[index] ?? '', answer]),
+  );
+  const { logins, asked } = goTrueAnswering(script);
+  const owedBefore = await owedNow();
 
-    const goneSubject = gone.subject;
-    const elsewhereSubject = elsewhere.subject;
-    const { logins, asked } = goTrueAnswering({
-      [goneSubject]: () => Response.json(USER_GONE, { status: 404 }),
-      [elsewhereSubject]: () => new Response(null, { status: 503 }),
-    });
-
-    // The gone ending leaves the backlog; bravo's stays in it.
-    expect(await pass(logins)).toBe(owedBefore - 1);
-    expect((await stateOf(gone.person)).endings).toEqual([
-      expect.objectContaining({ sessions: true, login: true, fault: null }),
+  expect(await pass(logins)).toBe(owedBefore);
+  expect(await pass(logins)).toBe(owedBefore);
+  for (const [index, [name, , fault]] of answers.entries()) {
+    const person = people[index];
+    if (person === undefined) throw new Error(name);
+    expect(asked[subjects[index] ?? ''], name).toBe(2);
+    // oxlint-disable-next-line no-await-in-loop
+    expect((await stateOf(person)).endings, name).toEqual([
+      expect.objectContaining({ sessions: false, login: false, attempts: 2, fault }),
     ]);
-    expect((await stateOf(elsewhere.person, world.bravo)).endings).toEqual([
-      expect.objectContaining({ sessions: false, login: false, fault: 'unreachable' }),
-    ]);
-    expect(asked[goneSubject]).toBe(2);
-    expect(asked[elsewhereSubject]).toBe(1);
+  }
+}
 
-    // The next pass never asks about the gone user again; bravo's is asked again.
-    expect(await pass(logins)).toBe(owedBefore - 1);
-    expect(asked[goneSubject]).toBe(2);
-    expect(asked[elsewhereSubject]).toBe(2);
-    expect((await stateOf(gone.person)).endings).toEqual([
-      expect.objectContaining({ sessions: true, login: true, attempts: 1 }),
-    ]);
-    expect((await stateOf(elsewhere.person, world.bravo)).endings).toEqual([
-      expect.objectContaining({ sessions: false, login: false, attempts: 2 }),
-    ]);
-  });
+describe.skipIf(serverUrl === undefined)('an access ending whose provider user is gone', () => {
+  it(
+    "is settled for good in its own business, while another business's ending stays owed",
+    settleGoneEndingForGood,
+  );
 
-  it('stays owed and retried on a transient failure or a 404 that does not name the user gone', async () => {
-    const answers: readonly (readonly [string, () => Response, string])[] = [
-      ['busy', () => Response.json(USER_GONE, { status: 429 }), 'refused'],
-      ['down', () => Response.json(USER_GONE, { status: 503 }), 'unreachable'],
-      ['plain404', () => new Response('not found', { status: 404 }), 'refused'],
-      [
-        'other404',
-        () => Response.json({ error_code: 'mfa_factor_not_found' }, { status: 404 }),
-        'refused',
-      ],
-    ];
-    const people: Member[] = [];
-    const subjects: string[] = [];
-    for (const [name] of answers) {
-      // oxlint-disable-next-line no-await-in-loop
-      const { person, subject } = await memberWithProviderSubject(harness.world.alpha, name);
-      subjects.push(subject);
-      // oxlint-disable-next-line no-await-in-loop
-      expect(outcome(await end(apiWith(), person.personId)), name).toEqual({
-        status: 200,
-        code: 'ok',
-      });
-      people.push(person);
-    }
-    const script = Object.fromEntries(
-      answers.map(([, answer], index) => [subjects[index] ?? '', answer]),
-    );
-    const { logins, asked } = goTrueAnswering(script);
-    const owedBefore = await owedNow();
-
-    expect(await pass(logins)).toBe(owedBefore);
-    expect(await pass(logins)).toBe(owedBefore);
-    for (const [index, [name, , fault]] of answers.entries()) {
-      const person = people[index];
-      if (person === undefined) throw new Error(name);
-      expect(asked[subjects[index] ?? ''], name).toBe(2);
-      // oxlint-disable-next-line no-await-in-loop
-      expect((await stateOf(person)).endings, name).toEqual([
-        expect.objectContaining({ sessions: false, login: false, attempts: 2, fault }),
-      ]);
-    }
-  });
+  it(
+    'stays owed and retried on a transient failure or a 404 that does not name the user gone',
+    retryTransientAndDoubtful,
+  );
 });

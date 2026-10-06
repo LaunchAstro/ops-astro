@@ -29,29 +29,34 @@ import {
 
 useEndAccessWorld();
 
-describe.skipIf(serverUrl === undefined)('the answer to a person whose access ended', () => {
-  it('names the ending in the business that ended it, and the other business still serves them', async () => {
-    const api = apiWith(scripted().provider);
-    const { person, token } = await teammate('ended-here');
-    const subject = person.presented.subject;
-    await harness.world.db.app.withBusiness(harness.world.bravo, async (tx) => {
-      const personId = await insertPerson(tx, 'still-in-bravo');
-      const actorId = await insertActor(tx, personId);
-      await insertMembership(tx, personId);
-      await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
-      await grantTo(
-        tx,
-        { personId, actorId, presented: { provider: 'supabase', subject } },
-        'read',
-        WHOLE_BUSINESS,
-      );
-    });
-
-    expect(outcome(await end(api, person.personId))).toEqual({ status: 200, code: 'ok' });
-
-    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_ACCESS_ENDED' });
-    expect(outcome(await ownCall(api, token, 'bravo'))).toEqual({ status: 200, code: 'ok' });
+async function namesEndingInEndingBusiness() {
+  const api = apiWith(scripted().provider);
+  const { person, token } = await teammate('ended-here');
+  const subject = person.presented.subject;
+  await harness.world.db.app.withBusiness(harness.world.bravo, async (tx) => {
+    const personId = await insertPerson(tx, 'still-in-bravo');
+    const actorId = await insertActor(tx, personId);
+    await insertMembership(tx, personId);
+    await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
+    await grantTo(
+      tx,
+      { personId, actorId, presented: { provider: 'supabase', subject } },
+      'read',
+      WHOLE_BUSINESS,
+    );
   });
+
+  expect(outcome(await end(api, person.personId))).toEqual({ status: 200, code: 'ok' });
+
+  expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_ACCESS_ENDED' });
+  expect(outcome(await ownCall(api, token, 'bravo'))).toEqual({ status: 200, code: 'ok' });
+}
+
+describe.skipIf(serverUrl === undefined)('the answer to a person whose access ended', () => {
+  it(
+    'names the ending in the business that ended it, and the other business still serves them',
+    namesEndingInEndingBusiness,
+  );
 
   it('is not given to a login another business ended, nor to a member removed without an ending', async () => {
     const api = apiWith(scripted().provider);

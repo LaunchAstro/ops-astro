@@ -22,14 +22,7 @@
 // leak that makes a wrong-business read return NOT_FOUND. One refusal, one message, one shape.
 
 import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
-import { refuseCommand, type CommandRefusal } from '../register.ts';
-import type { IdentityRefusalCode } from './refusals.ts';
-
-type Refusal = CommandRefusal<IdentityRefusalCode>;
-
-/** Identity names nothing: which of several reasons applied is itself an inference. */
-const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
-  refuseCommand(code, [], fixes);
+import { refuse, noMembership, NO_MEMBERSHIP_FIXES, type Refusal } from './access-ended.ts';
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
 import { admitQuota, type QuotaRefusal } from './quota.ts';
 import { loginHasVerifiedFactor } from './second-factor.ts';
@@ -37,6 +30,7 @@ import { sessionEnded, sessionEndedHeld } from './sessions.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
+export { NO_MEMBERSHIP_FIXES };
 
 /** What a resolved call runs as. The business is the server's value, not the caller's. */
 export interface Session {
@@ -82,16 +76,8 @@ interface ResolutionRow {
   readonly by_subject: boolean;
 }
 
-export const NO_MEMBERSHIP_FIXES = [
-  'ask an administrator of this business to link this login to a person',
-  'check that the business named in the request is the intended one',
-] as const;
-
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
 export const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
-const ACCESS_ENDED_FIXES = [
-  'ask an administrator of this business to restore your access',
-] as const;
 const SECOND_FACTOR_FIXES = [
   'enter the code from your authenticator app to finish signing in',
 ] as const;
@@ -198,22 +184,6 @@ export async function standingOf(
  */
 export async function sessionEndedSince(tx: TenantQuery, session: Session): Promise<boolean> {
   return session.presented !== undefined && (await sessionEndedHeld(tx, session.presented));
-}
-
-/**
- * A login here with no standing: `AUTH_ACCESS_ENDED` when its access was ended
- * here (C58), so a client that never saw it served (a reload) still signs the
- * person out; otherwise `AUTH_NO_MEMBERSHIP`. Only this business's endings of
- * this login are read, so it says nothing the login did not already hold.
- */
-async function noMembership(tx: TenantQuery, loginId: string): Promise<Refusal> {
-  const ended = await tx.query(
-    `select 1 from public.access_endings where business_id = $1 and login_id = $2 limit 1`,
-    [tx.businessId, loginId],
-  );
-  return ended.length > 0
-    ? refuse('AUTH_ACCESS_ENDED', ACCESS_ENDED_FIXES)
-    : refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
 }
 
 /** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */

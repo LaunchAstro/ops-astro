@@ -30,6 +30,32 @@ function loginsAnswering(answer: () => Response | Promise<Response>) {
   return { logins, sent };
 }
 
+async function doubtfulStaysOwed() {
+  const doubtful: readonly (() => Response)[] = [
+    () => new Response(null, { status: 404 }),
+    () => new Response('<html>not found</html>', { status: 404 }),
+    () => Response.json({ code: 404, msg: 'User not found' }, { status: 404 }),
+    () => Response.json({ error_code: 'mfa_factor_not_found' }, { status: 404 }),
+    () => Response.json({ error_code: 'USER_NOT_FOUND' }, { status: 404 }),
+    () => Response.json({ error_code: ['user_not_found'] }, { status: 404 }),
+    () => Response.json({ error: { error_code: 'user_not_found' } }, { status: 404 }),
+    () => Response.json([USER_GONE], { status: 404 }),
+    // The words alone, at any status but 404, are not the user gone.
+    () => Response.json(USER_GONE, { status: 400 }),
+    () => Response.json(USER_GONE, { status: 410 }),
+    () => Response.json(USER_GONE, { status: 200 }),
+  ];
+  for (const [index, answer] of doubtful.entries()) {
+    const { logins } = loginsAnswering(answer);
+    // oxlint-disable-next-line no-await-in-loop
+    const both = [await logins.endSessions(subject), await logins.deactivate(subject)];
+    expect(
+      both.every((each) => !each.ok),
+      `doubtful answer ${String(index)}`,
+    ).toBe(true);
+  }
+}
+
 describe('a provider user already gone counts as banned', () => {
   it("GoTrue's 404 naming the user gone answers both ban steps done", async () => {
     const { logins, sent } = loginsAnswering(() => Response.json(USER_GONE, { status: 404 }));
@@ -38,31 +64,7 @@ describe('a provider user already gone counts as banned', () => {
     expect(sent).toEqual([`${base}/admin/users/${subject}`, `${base}/admin/users/${subject}`]);
   });
 
-  it('a 404 that does not name the user gone is doubt, and the step stays owed', async () => {
-    const doubtful: readonly (() => Response)[] = [
-      () => new Response(null, { status: 404 }),
-      () => new Response('<html>not found</html>', { status: 404 }),
-      () => Response.json({ code: 404, msg: 'User not found' }, { status: 404 }),
-      () => Response.json({ error_code: 'mfa_factor_not_found' }, { status: 404 }),
-      () => Response.json({ error_code: 'USER_NOT_FOUND' }, { status: 404 }),
-      () => Response.json({ error_code: ['user_not_found'] }, { status: 404 }),
-      () => Response.json({ error: { error_code: 'user_not_found' } }, { status: 404 }),
-      () => Response.json([USER_GONE], { status: 404 }),
-      // The words alone, at any status but 404, are not the user gone.
-      () => Response.json(USER_GONE, { status: 400 }),
-      () => Response.json(USER_GONE, { status: 410 }),
-      () => Response.json(USER_GONE, { status: 200 }),
-    ];
-    for (const [index, answer] of doubtful.entries()) {
-      const { logins } = loginsAnswering(answer);
-      // oxlint-disable-next-line no-await-in-loop
-      const both = [await logins.endSessions(subject), await logins.deactivate(subject)];
-      expect(
-        both.every((each) => !each.ok),
-        `doubtful answer ${String(index)}`,
-      ).toBe(true);
-    }
-  });
+  it('a 404 that does not name the user gone is doubt, and the step stays owed', doubtfulStaysOwed);
 
   it('a transient failure (5xx, 429, a time-out) stays a fault, whatever its body says', async () => {
     const transient: readonly (readonly [() => Response | Promise<Response>, string])[] = [

@@ -125,6 +125,21 @@ async function heard(
   return ended;
 }
 
+async function endsNothingOnANearMiss() {
+  const nearMisses: readonly (readonly [unknown, number])[] = [
+    [refusal('AUTH_ACCESS_ENDED'), 401],
+    [refusal('AUTH_ACCESS_ENDED'), 400],
+    [refusal('auth_access_ended'), 403],
+    [refusal('AUTH_ACCESS_ENDED '), 403],
+    [refusal('AUTH_ACCESS_ENDED_SOON'), 403],
+    [refusal('AUTH_NO_MEMBERSHIP', { fixes: ['AUTH_ACCESS_ENDED'] }), 403],
+    [refusal('AUTH_NO_MEMBERSHIP', { names: ['AUTH_ACCESS_ENDED'], accessEnded: true }), 403],
+    [{ code: 'AUTH_ACCESS_ENDED' }, 403],
+  ];
+  const each = await Promise.all(nearMisses.map(async (answer) => await heard([answer])));
+  expect(each).toEqual(nearMisses.map(() => []));
+}
+
 describe('the client decides on the code, not on what it remembers', () => {
   it('ends the session on the first answer of a new client when it is 403 access ended', async () => {
     expect(await heard([[refusal('AUTH_ACCESS_ENDED'), 403]])).toEqual(['AUTH_ACCESS_ENDED']);
@@ -163,18 +178,8 @@ describe('the client decides on the code, not on what it remembers', () => {
     ).toEqual([]);
   });
 
-  it('ends nothing on a near miss: another status, another spelling, or the words in the body', async () => {
-    const nearMisses: readonly (readonly [unknown, number])[] = [
-      [refusal('AUTH_ACCESS_ENDED'), 401],
-      [refusal('AUTH_ACCESS_ENDED'), 400],
-      [refusal('auth_access_ended'), 403],
-      [refusal('AUTH_ACCESS_ENDED '), 403],
-      [refusal('AUTH_ACCESS_ENDED_SOON'), 403],
-      [refusal('AUTH_NO_MEMBERSHIP', { fixes: ['AUTH_ACCESS_ENDED'] }), 403],
-      [refusal('AUTH_NO_MEMBERSHIP', { names: ['AUTH_ACCESS_ENDED'], accessEnded: true }), 403],
-      [{ code: 'AUTH_ACCESS_ENDED' }, 403],
-    ];
-    const each = await Promise.all(nearMisses.map(async (answer) => await heard([answer])));
-    expect(each).toEqual(nearMisses.map(() => []));
-  });
+  it(
+    'ends nothing on a near miss: another status, another spelling, or the words in the body',
+    endsNothingOnANearMiss,
+  );
 });

@@ -31,7 +31,6 @@ import { mount, settle, type Mounted } from './mount.tsx';
 /** The typing that must not outlive the session, in every store the tab has. */
 const DRAFT_TITLE = 'c58-unsaved-title-canary';
 const DRAFT_COMMENT = 'c58-unsaved-comment-canary';
-
 const SESSION = { token: 'the-live-token', businessKey: 'alpha', email: 'mia@alpha.local' };
 
 const TASK = {
