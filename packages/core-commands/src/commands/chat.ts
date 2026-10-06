@@ -23,12 +23,10 @@
 // holds the access lock takes a conversation's. A conversation the send has
 // just started goes with the refusal (the envelope's savepoint).
 //
-// A message's `mentions` (CS-7.42) take a task comment's path, after that
-// re-read: each person named must be a current member of the conversation,
-// or the message is refused `MENTION_NOT_READABLE` before it saves, and each
-// is raised a `mention` inbox item about the conversation (`raiseMentions`),
-// never the author. Nothing is emailed here: email is the batched mention
-// rule's.
+// A message's `mentions` (CS-7.42) take a task comment's path, after that re-read: each person
+// named must be a current member of the conversation, or the message is refused
+// `MENTION_NOT_READABLE` before it saves, and each is raised a `mention` inbox item about the
+// conversation (`raiseMentions`), never the author. Email is the batched mention rule's, not here.
 //
 // `chat.mark_read`: the reader's own marker on a conversation they are in,
 // moved to the newest message they saw and never back. Their own member row
@@ -126,9 +124,8 @@ export async function writeMessage(
     body: words,
     source: context.entryPoint,
   });
-  // The inbox item is about the conversation: its members alone are shown it.
-  // It is raised when the message is posted, under the lock, so a member who
-  // reads the message (joined by then) is shown its mention too.
+  // The item is about the conversation (its members alone are shown it), raised as the message
+  // is posted, under the lock, so a member who reads the message is shown its mention too.
   const posted = await tx.query<{ readonly at: string }>(
     'select ts_1::text as at from public.records where business_id = $1 and id = $2',
     [tx.businessId, commentId],

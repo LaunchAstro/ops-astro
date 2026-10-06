@@ -10,11 +10,11 @@
 // topic of its business (each asked per event before it is said) and only its
 // own person's inbox topic, `business:inbox:person` (migration 0043).
 //
-// C71 (CS-7.42) adds a team conversation's topic, `business:conversation:id`
-// (migration 20261006235000): its own subscribers hear it as a task's hear theirs, and
-// every board of its business is handed it, to say to a current member alone
-// (`live-board.ts`). A task and a conversation are both records, so their ids
-// share one key space and a subscriber is filed by business and id alone.
+// C71 (CS-7.42) adds a team conversation's topic, `business:conversation:id` (migration
+// 20261006235000): its own subscribers hear it as a task's hear theirs, and every board of its
+// business is handed it, to say to a current member alone (`live-board.ts`). A task and a
+// conversation are both records, so their ids share one key space and a subscriber is filed by
+// business and id alone.
 
 import type { Listener } from '../../packages/core-records/src/index.ts';
 

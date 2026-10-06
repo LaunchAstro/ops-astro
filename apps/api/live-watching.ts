@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// How a tab's stream asks about the topics it follows (C4), moved out of
-// app.ts unchanged for a task: `task.execution`'s own admission, with the
-// bearer verified again. C71 (CS-7.42) adds a team conversation, admitted for
-// a current member alone (`reads/live-chat.ts`), and the board's question of
-// whether its person is in a conversation that moved. None serves, audits or
-// shows anything (C4 live-sync 6).
+// How a tab's stream asks about the topics it follows (C4), moved out of app.ts unchanged for
+// a task: `task.execution`'s own admission, with the bearer verified again. C71 (CS-7.42) adds a
+// team conversation, admitted for a current member alone (`reads/live-chat.ts`), and the board's
+// question of whether its person is in a conversation that moved. None serves, audits or shows
+// anything (C4 live-sync 6).
 
 import type { Context } from 'hono';
 import { EXPIRED_FIXES } from '../../packages/core-records/src/index.ts';
