@@ -83,7 +83,7 @@ it('lists each name once, compared whole', () => {
   const listed = env(s1Env(['HOMEDIR=/x', 'HOME_X=y'], record([['PUBLIC_A', '1']])));
   expect(listed).toContain('HOMEDIR=/x');
   expect(listed).toContain('HOME_X=y');
-  const names = (listed as string[]).map((item) => item.slice(0, item.indexOf('=')));
+  const names = (listed as string[]).map((item) => item.split('=', 1)[0]);
   expect(new Set(names).size).toBe(names.length);
 });
 
