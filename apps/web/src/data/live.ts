@@ -189,10 +189,15 @@ class TabStream implements LiveHub {
     this.#status(null);
   }
 
-  /** Refused, unreachable or lost: the floor rereads until a join opens, even one that stalls. */
+  /** No stream open: the floor rereads until a join opens, even one that stalls; one interval only. */
+  #floorOn(): void {
+    this.#floor ??= setInterval(this.#refresh, FLOOR_MS);
+  }
+
+  /** Refused, unreachable or lost. */
   #down(): void {
     this.#status(this.#downSince ?? this.#now());
-    this.#floor ??= setInterval(this.#refresh, FLOOR_MS);
+    this.#floorOn();
   }
 
   #wanted(): string[] {
@@ -216,6 +221,8 @@ class TabStream implements LiveHub {
   };
 
   async #run(abort: AbortController): Promise<void> {
+    // Every join in flight, the first and each after a topic change too, until #up.
+    this.#floorOn();
     const topics = this.#wanted();
     const body =
       topics.length === 0 ? null : await this.#open(topics, abort.signal).catch(() => null);
