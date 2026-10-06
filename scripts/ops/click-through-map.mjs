@@ -38,8 +38,8 @@ const CHART = {
  * Its end state, asked of the map ($1) in the business ($2), with the
  * operands after: a live ticket resolved now (its state completed, not ruled
  * out of scope, as Decisions so far reads it) carrying its gist, and a live
- * claimed one, both filed under it. A reopened ticket keeps its gist, so the
- * gist alone never stands for the decision.
+ * claimed one, both tickets of it, never a map filed under it. A reopened
+ * ticket keeps its gist, so the gist alone never stands for the decision.
  */
 export const MAP_ENDED = [
   `select from public.records r
@@ -47,11 +47,14 @@ export const MAP_ENDED = [
       and exists (select from public.records t
           join public.records s on s.business_id = t.business_id and s.id = t.uuid_1
         where t.business_id = $2 and t.uuid_4 = r.id and t.deleted_at is null
+          and t.record_type_id = r.record_type_id and t.data ->> 'type' is distinct from 'map'
           and t.txt_4 = $3 and t.data ->> 'gist' = $4
           and s.data ->> 'machine_category' = 'completed'
           and t.data ->> 'closed_as' is distinct from 'out_of_scope')
       and exists (select from public.records t where t.business_id = $2 and t.uuid_4 = r.id
-        and t.deleted_at is null and t.txt_4 = $5 and t.data ->> 'assignee' is not null)`,
+        and t.deleted_at is null and t.record_type_id = r.record_type_id
+        and t.data ->> 'type' is distinct from 'map'
+        and t.txt_4 = $5 and t.data ->> 'assignee' is not null)`,
   RESEARCH,
   GIST,
   BUILD,
