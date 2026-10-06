@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "MP-14-8 grants, tripwires and night round: each list stays inside one business and one client's reach"
+}
