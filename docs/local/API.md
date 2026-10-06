@@ -3663,8 +3663,8 @@ then; a child's `expiresAt` is the earlier of its own expiry and its
 parent's. `expiresAt` is when a grant was due to end. `endedAt` is when its
 parent ended it, or when it was taken back or settled: handed back, or settled
 when its agent was next minted a grant for the same purpose after it ran out.
-It is null for a live grant and for one that ran out and was never settled,
-and can fall before or after `expiresAt`. Its
+It is null for a live grant and for one that ran out at its own expiry and was
+never settled, and can fall before or after `expiresAt`. Its
 client is its
 purpose task's client, shown by its name (`label` null when no client row
 answers the id); its `redemptions` are the applied calls its agent made on that task while

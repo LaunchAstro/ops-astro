@@ -18,8 +18,8 @@
  * end. `endedAt` is when its parent ended it, or when it was taken back or
  * settled: handed back, or settled when its agent was next minted a grant
  * for the same purpose after it ran out. It is null for a live grant and for
- * one that ran out and was never settled, and can fall before or after
- * `expiresAt`.
+ * one that ran out at its own expiry and was never settled, and can fall
+ * before or after `expiresAt`.
  */
 export interface GrantView {
   readonly id: string;
