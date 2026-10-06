@@ -183,6 +183,17 @@ const FUNCTION_FACTS = `select p.proname as fn, p.prosecdef as definer, p.procon
          join pg_database d on d.datname = current_database()
         where n.nspname = 'public' and p.proname = any($1) order by 1`;
 
+/** The columns of people the map read models' role may select. */
+async function mapPathPeopleColumns(): Promise<readonly string[]> {
+  const columns = await world.db.admin.execute<{ column: string }>(
+    `select a.attname as column from pg_attribute a
+      where a.attrelid = 'public.people'::regclass and a.attnum > 0 and not a.attisdropped
+        and has_column_privilege('ops_astro_map_path', a.attrelid, a.attnum, 'SELECT')
+      order by 1`,
+  );
+  return columns.map((row) => row.column);
+}
+
 function roleCases() {
   it('runs the five map read-model functions as their own pinned role, which no caller becomes or calls', async () => {
     const functions = await world.db.admin.execute<Record<string, unknown>>(FUNCTION_FACTS, [
@@ -228,13 +239,7 @@ function roleCases() {
     ]);
     // Of people, the two columns the owner join compares and nothing else:
     // no name, no sign-in state.
-    const columns = await world.db.admin.execute<{ column: string }>(
-      `select a.attname as column from pg_attribute a
-        where a.attrelid = 'public.people'::regclass and a.attnum > 0 and not a.attisdropped
-          and has_column_privilege('ops_astro_map_path', a.attrelid, a.attnum, 'SELECT')
-        order by 1`,
-    );
-    expect(columns.map((row) => row.column)).toStrictEqual(['business_id', 'id']);
+    expect(await mapPathPeopleColumns()).toStrictEqual(['business_id', 'id']);
   });
 }
 

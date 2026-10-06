@@ -79,6 +79,8 @@ export async function wayfinderDataOnCreate(
   return data;
 }
 
+const OWNER_LINE = "Only the map's owner retypes to or from grilling, prototype or map.";
+
 /**
  * `ticket type changed`. A retype between research, task and build is the
  * row's `task:write`. To or from grilling, prototype or map it is the map
@@ -104,9 +106,15 @@ export async function setTaskType(
   if (OWNER_TYPES.has(from) || OWNER_TYPES.has(to)) {
     const refusal = await refuseUnlessOwner(tx, context, facts, {
       decide: 'Retyping to or from grilling, prototype or map needs task:decide.',
-      owner: "Only the map's owner retypes to or from grilling, prototype or map.",
+      owner: OWNER_LINE,
     });
     if (refusal !== undefined) return refused(refusal);
+  }
+  // A demoted map keeps its owner, so making it a map again is that owner's
+  // alone: anyone else would hand the owner a map, and its tickets, unasked.
+  const kept = target.data['map_owner'];
+  if (to === 'map' && typeof kept === 'string' && kept !== context.session.personId) {
+    return refused(refuseCommand('SCOPE_NOT_GRANTED', ['map owner'], [OWNER_LINE]));
   }
   if (to !== 'map' && OWNER_TYPES.has(to)) {
     const filing = await refuseRetypeOntoMap(tx, context, target.id);
