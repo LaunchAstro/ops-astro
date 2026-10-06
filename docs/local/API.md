@@ -2622,7 +2622,7 @@ are a current member of it. Anyone else is `NOT_FOUND` 404, the same bytes for
 another person's conversation, another business's, one the caller has left and
 an id never issued; an open stream of a member who leaves or is removed is
 `closed`. The topic is `business:conversation:<id>`, stamped in the live
-change record (`subject_kind` `conversation`, migration 20261006213000) and notified at
+change record (`subject_kind` `conversation`, migration 20261006235000) and notified at
 commit by a message, a change to the conversation's record and a member joining
 or leaving, never by a read marker. The board stream hears it too and asks
 `hearsConversation` whether its person is a current member, before the join
