@@ -48,7 +48,9 @@ const PAIR = /^(?<name>[A-Z_][A-Z0-9_]*)=(?<value>[ -~]*)$/u;
 
 /** A base image variable as a pair, or null when it breaks uppercase NAME=value or is npm's. */
 export function basePair(item: string): Pair | null {
-  const { name, value } = PAIR.exec(item)?.groups ?? {};
+  const groups = PAIR.exec(item)?.groups;
+  if (groups === undefined) return null;
+  const { name, value } = groups;
   if (name === undefined || value === undefined) return null;
   return name.toLowerCase().startsWith('npm_config_') ? null : [name, value];
 }
