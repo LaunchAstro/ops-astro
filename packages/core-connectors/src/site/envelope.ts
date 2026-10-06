@@ -111,14 +111,19 @@ function bodyStart(source: string): number | undefined {
 // An expression: names, numbers, space, these operators and elements; no string, comment or regex.
 const EXPRESSION = /[\p{L}\p{N}\s_$.,()[\]?:!=&|+\-*%>]/u;
 // A tag's name opens with an ASCII letter, as HTML's does; otherwise its `<` is text there.
-const TAG_NAME = /!?[A-Za-z][\p{L}\p{N}_.:-]*/uy;
+const TAG_NAME = /[A-Za-z][\p{L}\p{N}_.:-]*/uy;
 const ATTRIBUTE = /[\p{L}_@][\p{L}\p{N}_.:-]*/uy;
+// CommonMark's own tag and attribute names, for a Markdown page: ASCII, no `.`, `:` or `@` in a tag.
+const MD_TAG_NAME = /[A-Za-z][A-Za-z0-9-]*/uy;
+const MD_ATTRIBUTE = /[A-Za-z_:][A-Za-z0-9_.:-]*/uy;
 // Directives that leave children as written; any other (`is:raw`, `set:html`, ...) refuses.
 const DIRECTIVE = /^(?:client|class|transition|server):/u;
 // Elements whose content is not markup: everything up to their end tag is one construct.
 const RAW = new Set(
   'script style textarea title xmp iframe noembed noframes noscript plaintext'.split(' '),
 );
+// Foreign content, where HTML reads `script` and `style` as markup: refused whole.
+const FOREIGN = new Set(['svg', 'math']);
 const SPACES = /\s*/uy;
 const END_TAG_FOLLOWS = /[\t\n\f\r />]/u;
 const BLANK_LINE = /\n[\t ]*(?:\n|$)/gu;
@@ -146,7 +151,8 @@ function expressionEnd(source: string, at: number): number | undefined {
       if (depth === 0) return next + 1;
     } else if (character === '<') {
       const tag = tagEnd(source, next);
-      if (tag === undefined || RAW.has(asciiLower(tag.name))) return undefined;
+      const name = tag === undefined ? '' : asciiLower(tag.name);
+      if (tag === undefined || RAW.has(name) || FOREIGN.has(name)) return undefined;
       next = tag.end - 1;
     } else if (!EXPRESSION.test(character)) return undefined;
   }
@@ -154,31 +160,35 @@ function expressionEnd(source: string, at: number): number | undefined {
 }
 
 /** One attribute at `at`: an expression, or a name with a quoted or expression value or none. */
-function attributeEnd(source: string, at: number): number | undefined {
-  if (source.charAt(at) === '{') return expressionEnd(source, at);
-  ATTRIBUTE.lastIndex = at;
-  const name = ATTRIBUTE.exec(source)?.[0];
+function attributeEnd(source: string, at: number, markdown: boolean): number | undefined {
+  if (source.charAt(at) === '{') return markdown ? undefined : expressionEnd(source, at);
+  const grammar = markdown ? MD_ATTRIBUTE : ATTRIBUTE;
+  grammar.lastIndex = at;
+  const name = grammar.exec(source)?.[0];
   if (name === undefined || (name.includes(':') && !DIRECTIVE.test(name))) return undefined;
   const equals = skipSpace(source, at + name.length);
   if (source.charAt(equals) !== '=') return equals;
   const value = skipSpace(source, equals + 1);
   const quote = source.charAt(value);
-  if (quote === '{') return expressionEnd(source, value);
+  if (quote === '{') return markdown ? undefined : expressionEnd(source, value);
   if (quote !== '"' && quote !== "'") return undefined;
   const close = source.indexOf(quote, value + 1);
   return close < 0 ? undefined : close + 1;
 }
 
+type Tag = { readonly end: number; readonly name: string };
+
 /** A tag opening at `at` (`<`): `<`, `/`?, a name, attributes, `/`?, `>`. Undefined otherwise. */
-function tagEnd(source: string, at: number): { end: number; name: string } | undefined {
+function tagEnd(source: string, at: number, markdown = false): Tag | undefined {
   let next = source.charAt(at + 1) === '/' ? at + 2 : at + 1;
-  TAG_NAME.lastIndex = next;
-  const name = TAG_NAME.exec(source)?.[0];
+  const grammar = markdown ? MD_TAG_NAME : TAG_NAME;
+  grammar.lastIndex = next;
+  const name = grammar.exec(source)?.[0];
   if (name === undefined) return undefined;
   for (next = skipSpace(source, next + name.length); ; next = skipSpace(source, next)) {
     if (source.charAt(next) === '>') return { end: next + 1, name };
     if (source.startsWith('/>', next)) return { end: next + 2, name };
-    const end = attributeEnd(source, next);
+    const end = attributeEnd(source, next, markdown);
     if (end === undefined) return undefined;
     next = end;
   }
@@ -189,18 +199,19 @@ function rawEnd(source: string, start: number, name: string): number | undefined
   const close = `</${name}`;
   for (let at = source.indexOf('</', start); at >= 0; at = source.indexOf('</', at + 1)) {
     const candidate = asciiLower(source.slice(at, at + close.length));
-    if (candidate === close && END_TAG_FOLLOWS.test(source.charAt(at + close.length)))
-      return tagEnd(source, at)?.end;
+    if (candidate !== close || !END_TAG_FOLLOWS.test(source.charAt(at + close.length))) continue;
+    // HTML's script escape (`<!--` inside a script) can carry the script past this end tag.
+    return source.slice(start, at).includes('<!--') ? undefined : tagEnd(source, at)?.end;
   }
   return undefined;
 }
 
-/** The end of a Markdown link's destination opening at `at` (`(` after `]`), on its own line. */
+/** The end of a Markdown link's destination at `at` (`(` after `]`): no space, quote or `<`. */
 function destinationEnd(source: string, at: number): number | undefined {
   let depth = 0;
   for (let next = at; next < source.length; next += 1) {
     const character = source.charAt(next);
-    if (character === '\n') return undefined;
+    if (/[\s<"']/u.test(character)) return undefined;
     if (character === '(') depth += 1;
     else if (character === ')') {
       depth -= 1;
@@ -223,9 +234,12 @@ function constructEnd(source: string, at: number, markdown: boolean): number | u
     const close = source.indexOf('-->', at + 4);
     return close < 0 ? undefined : close + 3;
   }
+  // Any other `<!` is a declaration HTML ends at its first `>`: only the HTML doctype is read.
+  if (source.startsWith('<!', at))
+    return asciiLower(source.slice(at, at + 15)) === '<!doctype html>' ? at + 15 : undefined;
   if (character === '<') {
-    const tag = tagEnd(source, at);
-    if (tag === undefined) return undefined;
+    const tag = tagEnd(source, at, markdown);
+    if (tag === undefined || FOREIGN.has(asciiLower(tag.name))) return undefined;
     const name = asciiLower(tag.name);
     const raw = source.charAt(at + 1) !== '/' && RAW.has(name);
     return raw ? rawEnd(source, tag.end, name) : tag.end;

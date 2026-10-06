@@ -101,6 +101,9 @@ describe('Envelope directives, raw end tags and Markdown destinations', () => {
       '<p title=friendly>x</p>\n',
       '<textarea><b>friendly</b></textarea>\n',
       '<éx title="</p><script>">friendly</script>\n',
+      '<!x a="><script>" >friendly</script>\n',
+      '<svg><text>friendly</text></svg>\n',
+      '<script><!--<script></script>friendly</script>\n',
     ]);
     const held = '<Counter client:load />\n<p class:list={[a, b]}>We are a friendly studio.</p>\n';
     expect(verdict(held)).toMatchObject({ ok: true, value: { line: 2 } });
@@ -116,6 +119,9 @@ describe('Envelope directives, raw end tags and Markdown destinations', () => {
         'See https://friendly.example/about or www.friendly.example.\n',
         'Write to friendly@example.test today.\n',
         'See ![a friendly studio](studio.png) here.\n',
+        'See [the guide](<docs/a) friendly b.md>) now.\n',
+        'See [the guide](docs/a "a) friendly") now.\n',
+        '<b.x title="<script>"> friendly </script>\n',
       ],
       page,
     );
