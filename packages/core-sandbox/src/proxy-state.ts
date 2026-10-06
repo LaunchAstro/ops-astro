@@ -17,13 +17,14 @@
 // has passed every request is `unavailable`, and the sweep repeats every
 // 30 s; a run whose container a sweep removed stays `unavailable`, an
 // answer that lands after that sweep included (a delete's own sweep is its
-// answer). A throw
-// fails a sweep or delete and answers the launcher `internal`, a create's too. A wait counts
-// only if sent after a start answered 204 (a created container's wait
-// answers at once), and a start at the deadline is refused. `tick` is the
-// caller's timer: it kills at every tick from the deadline until the record
-// clears, whatever any answer, and deletes when P4 and P6 say so. Loads and
-// image calls are P5's (piece 2d-ii).
+// answer). A throw anywhere in a create, sweep or delete answers the
+// launcher `internal`. A wait counts only if sent after a start answered
+// 204 (a created container's wait answers at once), and is judged when its
+// answer lands. A start at the deadline is refused. `tick` is the caller's
+// timer: it kills at every tick from the deadline until the record clears,
+// whatever any answer, and deletes when P4 and P6 say so, without waiting
+// for a create's I/O. A deadline once reached stays reached when the clock
+// steps back. Loads and image calls are P5's (piece 2d-ii).
 
 import {
   candidateCreate,
@@ -100,6 +101,8 @@ export class ProxyState {
   readonly #swept = new Set<string>();
   /** The last id whose start the daemon answered 204. */
   #started: string | null = null;
+  /** The recorded id whose deadline came: it stays come, whatever the clock does after. */
+  #expired: string | null = null;
   /** The recorded container's counted candidate run, if it is one. */
   #run: { readonly image: string; readonly run: number } | null = null;
 
@@ -133,14 +136,16 @@ export class ProxyState {
       if (this.#swept.has(op.id)) return UNAVAILABLE;
       const admitted = admitContainerOp(this.#containers, op.id);
       if (!admitted.ok) return admitted;
-      const deadline = this.#containers.container?.deadline ?? 0;
-      if (op.kind === 'start' && this.#ports.now() >= deadline) return refuse('deadline');
+      if (op.kind === 'start' && this.#reached(op.id, this.#ports.now())) return refuse('deadline');
     }
     const started = 'id' in op && this.#started === op.id;
     const reply = await this.#call(op);
     if (op.kind === 'start' && reply.status === NO_CONTENT) this.#started = op.id;
     const at = this.#ports.now();
-    if (op.kind === 'wait') await this.#exclusive(() => this.#waited(op.id, started, reply, at));
+    if (op.kind === 'wait') {
+      const late = this.#reached(op.id, at);
+      await this.#exclusive(() => this.#waited(op.id, started, reply, at, late));
+    }
     if (op.kind === 'delete') await this.#exclusive(() => this.#deleted(op.id, reply));
     if ('id' in op && op.kind !== 'delete' && this.#swept.has(op.id)) return UNAVAILABLE;
     return reply === THREW ? fault('reply status') : { ok: true, reply };
@@ -153,8 +158,9 @@ export class ProxyState {
    */
   async tick(): Promise<void> {
     const id = this.#containers.container?.id;
-    const due = containerDue(this.#containers, this.#ports.now());
-    if (id !== undefined && due.kill) await this.#call({ kind: 'kill', id });
+    const now = this.#ports.now();
+    const due = containerDue(this.#containers, now);
+    if (id !== undefined && this.#reached(id, now)) await this.#call({ kind: 'kill', id });
     if (this.#retryAt !== null) {
       await this.#exclusive(async () => {
         if (this.#retryAt !== null && this.#ports.now() >= this.#retryAt) await this.#sweep();
@@ -173,6 +179,13 @@ export class ProxyState {
   /** The launcher closed the recorded container's attach connection in both directions. */
   attachClosed(id: string): Promise<void> {
     return this.#note(id, (book, now) => noteAttachClosed(book, now));
+  }
+
+  /** Whether recorded container `id` has reached its deadline, latched against a clock step back. */
+  #reached(id: string, now: number): boolean {
+    if (containerDue(this.#containers, now).kill && this.#containers.container?.id === id)
+      this.#expired = id;
+    return this.#expired === id;
   }
 
   /** A forwarded call; a throw reads as an answer no rule accepts. */
@@ -241,7 +254,13 @@ export class ProxyState {
   }
 
   /** A wait's answer, judged at `at`, when it returned, not when its write took the lock. */
-  async #waited(id: string, started: boolean, reply: Reply, at: number): Promise<void> {
+  async #waited(
+    id: string,
+    started: boolean,
+    reply: Reply,
+    at: number,
+    late: boolean,
+  ): Promise<void> {
     const held = this.#containers.container;
     const status = reply.status === OK ? readWaitStatus(reply.body) : null;
     if (held?.id !== id || !started || status?.ok !== true) return;
@@ -249,7 +268,7 @@ export class ProxyState {
     const candidates =
       run === null
         ? this.#candidates
-        : recordCandidateWait(this.#candidates, run.image, run.run, code, at < held.deadline);
+        : recordCandidateWait(this.#candidates, run.image, run.run, code, !late);
     await this.#save(candidates, noteWaitReturned(this.#containers, at));
   }
 
