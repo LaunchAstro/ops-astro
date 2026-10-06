@@ -101,6 +101,17 @@ function runCases() {
     }
   });
 
+  // Before the stranded task below: the seed names the first stranded item, and the map is its last.
+  it('refuses a map charted without its decision and claim, naming it', async () => {
+    const made = await executeCommand(cast.db.app, cast.business, ada(cast), 'api', {
+      command: 'map.chart',
+      operationId: `made-up:${randomUUID()}`,
+      title: 'Plan the new agency website',
+    } as never);
+    expect('code' in made, JSON.stringify(made)).toBe(false);
+    await refusedUnchanged({}, /'Plan the new agency website' .*reset/u);
+  });
+
   it('refuses an item whose task is there without its end state, naming it', async () => {
     const made = await executeCommand(cast.db.app, cast.business, ada(cast), 'api', {
       command: 'task.create',

@@ -28,6 +28,7 @@ import {
   stopAtCap,
   sweepLost,
 } from './click-through-runs.mjs';
+import { chartMap, MAP_ENDED, MAP_TITLE } from './click-through-map.mjs';
 
 /** The cast's first business, and who works in it. */
 export const BUSINESS = 'alpha';
@@ -109,6 +110,7 @@ function items(w, lost) {
     run('Post the event reminder', ENDED.unknown, async (id) => lost.push(await dispatched(w, id))),
     run('Reply to the supplier', ENDED.unknown, async (id) => lost.push(await dispatched(w, id))),
     run('Collect quotes for printing', ENDED.helper, (id) => handToHelper(w, id)),
+    { title: MAP_TITLE, ended: MAP_ENDED, build: () => chartMap(w) },
   ];
 }
 
