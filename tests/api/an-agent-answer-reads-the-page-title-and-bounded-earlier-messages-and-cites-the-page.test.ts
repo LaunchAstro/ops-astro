@@ -18,7 +18,7 @@ import {
   EARLIER_LIMIT,
 } from '../../packages/core-commands/src/commands/conversation-context.ts';
 import { revokeGrant, withSession } from '../../packages/core-records/src/index.ts';
-import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
+import { addClient, enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
@@ -122,6 +122,42 @@ describe.skipIf(serverUrl === undefined)('an agent answer’s context and cites'
     expect(JSON.stringify(earlier)).not.toContain('question 1"');
     expect(JSON.stringify(earlier)).not.toContain('never in the first conversation');
     expect(lastFields()['message']).toBe('question 7');
+  }, 60_000);
+
+  it('a question refused on a client’s task never reaches the model, even once the task has no client', async () => {
+    const { db, business } = w.fixture;
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, w.owner, 'share');
+    });
+    const clientId = randomUUID();
+    await addClient(db.app, business, clientId, w.owner);
+    const made = await w.as(w.owner, 'task.create', { fields: { title: 'for a client' } });
+    const taskId = String(made.body['recordId']);
+    const linked = await w.as(w.owner, 'task.set_party', {
+      operationId: randomUUID(),
+      recordId: taskId,
+      expectedRevision: made.body['revision'],
+      fields: { client: clientId },
+    });
+    expect(linked.status).toBe(200);
+    const canary = `CANARY-${randomUUID()}`;
+    const opened = await w.as(w.owner, 'conversation.start', {
+      body: `${canary} about this client`,
+      scope: { kind: 'task', id: taskId },
+    });
+    expect(replyOf(opened)).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+    const cleared = await w.as(w.owner, 'task.set_party', {
+      operationId: randomUUID(),
+      recordId: taskId,
+      expectedRevision: linked.body['revision'],
+      fields: { client: null },
+    });
+    expect(cleared.status).toBe(200);
+    const seen = model.provider.seen.length;
+    const next = await say(String(detail(opened)['conversationId']), 'and now?');
+    expect(replyOf(next)).toMatchObject({ answered: true });
+    expect(model.provider.seen.length).toBe(seen + 1);
+    expect(model.provider.seen.map((request) => request.body).join('')).not.toContain(canary);
   }, 60_000);
 
   it('earlier bound: a long history is sent under the character bound, the oldest dropped first', async () => {
