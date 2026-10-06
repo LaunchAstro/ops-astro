@@ -645,7 +645,7 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     must(await reparent(owner, loose.id, map.id), "the owner files it on the owner's map");
   });
 
-  it('WF-1 files a grilling or prototype ticket on a map by its owner alone (#959)', async () => {
+  it('WF-1 files a grilling or prototype ticket on a map by its owner alone', async () => {
     // Bea owns the map. Ada holds task:write but neither owns it nor holds
     // task:decide; the teammate holds decide but does not own it.
     const bea = owner;
