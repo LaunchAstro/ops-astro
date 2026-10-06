@@ -51,8 +51,6 @@ export interface TaskPanelState {
   /** Closes the panel; false, closing nothing, while the draft's Create is out. */
   readonly close: () => boolean;
   readonly openDraft: (scope: DraftScope) => void;
-  /** A draft filed from the page or a door, with the page's guesses (DN-02). */
-  readonly file: (page: PageContext) => void;
   /** The open task's stop for this person's running timer, or null when none runs. */
   readonly leaving: (stop: (() => void) | null) => void;
   /** The draft's Create is out: no door opens until the release, which says whether the session held. */
@@ -139,10 +137,24 @@ function dropOtherOpen(storage: Storage | null, person: string | null): void {
   }
 }
 
+/** A draft's scope filed from the page or a door, with the page's guesses (DN-02). */
+export function scopeOf(page: PageContext): DraftScope {
+  const prefill = prefillOf(page, new Date());
+  return { clientId: prefill.clientId, from: page.from, prefill };
+}
+
+/** The panel's open task, kept for its owner across a reload; the session's end clears it with the panel. */
+function useKeptOpening(owner: PanelOwner) {
+  const { storage, person } = owner;
+  const [opening, setOpening] = useState<PanelOpening | null>(() => readOpen(storage, person));
+  useEffect(() => {
+    keepOpen(storage, person, opening);
+  }, [storage, person, opening]);
+  return [opening, setOpening] as const;
+}
+
 export function useTaskPanel(owner: PanelOwner): TaskPanelState {
-  const [opening, setOpening] = useState<PanelOpening | null>(() =>
-    readOpen(owner.storage, owner.person),
-  );
+  const [opening, setOpening] = useKeptOpening(owner);
   const [draft, setDraft] = useState<DraftScope | null>(null);
   const { creating, hold } = useOwner(owner, setOpening, setDraft);
   const [changes, setChanges] = useState(0);
@@ -171,17 +183,6 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
     },
     [leave],
   );
-  const file = useCallback(
-    (page: PageContext) => {
-      const prefill = prefillOf(page, new Date());
-      openDraft({ clientId: prefill.clientId, from: page.from, prefill });
-    },
-    [openDraft],
-  );
-  // The open task outlives a reload; the session's end clears it with the panel.
-  useEffect(() => {
-    keepOpen(owner.storage, owner.person, opening);
-  }, [owner.storage, owner.person, opening]);
   const leaving = useCallback((next: (() => void) | null) => {
     stop.current = next;
   }, []);
@@ -200,5 +201,5 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
     return true;
   }, [opening, leave, creating]);
   const host = useMemo(() => ({ open, changes }), [open, changes]);
-  return { host, opening, draft, changed, close, openDraft, file, leaving, hold };
+  return { host, opening, draft, changed, close, openDraft, leaving, hold };
 }

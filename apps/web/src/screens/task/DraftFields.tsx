@@ -30,6 +30,7 @@ export function DraftFields(props: DraftFieldsProps): ReactElement {
   return (
     <div className="dtp__fields">
       <DraftFacts {...props} />
+      <DraftGuesses {...props} />
       <DraftParts {...props} />
     </div>
   );
@@ -98,7 +99,6 @@ function DraftFacts({ draft, put, name, locked }: DraftFieldsProps): ReactElemen
           ))}
         </select>
       </Field>
-      <DraftGuesses draft={draft} put={put} locked={locked} />
     </>
   );
 }

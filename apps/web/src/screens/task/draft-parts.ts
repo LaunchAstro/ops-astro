@@ -24,6 +24,8 @@ interface Part {
 /** A part only when the draft holds it. */
 const when = (held: boolean, part: Part): readonly Part[] => (held ? [part] : []);
 
+type Revision = (operationId: string) => { expectedRevision: number; operationId: string };
+
 /** Each part the draft holds, in the order Create writes them; `at` is the task's latest revision. */
 export function partsOf(
   client: OperationsClient,
@@ -36,10 +38,7 @@ export function partsOf(
   // The vocabulary is read once, at the first tag.
   let held: Promise<Map<string, string>> | null = null;
   const tags = (): Promise<Map<string, string>> => (held ??= vocabulary(client));
-  const revision = (operationId: string): { expectedRevision: number; operationId: string } => ({
-    expectedRevision: at.revision,
-    operationId,
-  });
+  const revision: Revision = (operationId) => ({ expectedRevision: at.revision, operationId });
   return [
     ...when(draft.clientId !== null, {
       what: 'the client',
@@ -50,24 +49,7 @@ export function partsOf(
           revision(operationId),
         ),
     }),
-    ...when(draft.category !== null, {
-      what: 'the category',
-      run: (operationId) =>
-        client.mutate(
-          'task.set_category',
-          { recordId, fields: { category: draft.category } },
-          revision(operationId),
-        ),
-    }),
-    ...when(draft.owner !== null, {
-      what: 'the owner',
-      run: (operationId) =>
-        client.mutate(
-          'task.assign',
-          { recordId, fields: { assignee: draft.owner?.id } },
-          revision(operationId),
-        ),
-    }),
+    ...guessParts(client, draft, recordId, revision),
     ...when(note !== '', {
       what: 'the note',
       run: (operationId) =>
@@ -90,6 +72,35 @@ export function partsOf(
       what: 'the time',
       run: (operationId) =>
         client.mutate('time.log', { taskId: recordId, duration: time }, { operationId }),
+    }),
+  ];
+}
+
+/** The category and the owner the draft holds, each by its own command. */
+function guessParts(
+  client: OperationsClient,
+  draft: TaskDraft,
+  recordId: string,
+  revision: Revision,
+): readonly Part[] {
+  return [
+    ...when(draft.category !== null, {
+      what: 'the category',
+      run: (operationId) =>
+        client.mutate(
+          'task.set_category',
+          { recordId, fields: { category: draft.category } },
+          revision(operationId),
+        ),
+    }),
+    ...when(draft.owner !== null, {
+      what: 'the owner',
+      run: (operationId) =>
+        client.mutate(
+          'task.assign',
+          { recordId, fields: { assignee: draft.owner?.id } },
+          revision(operationId),
+        ),
     }),
   ];
 }

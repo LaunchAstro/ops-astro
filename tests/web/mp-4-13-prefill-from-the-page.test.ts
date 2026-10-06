@@ -33,7 +33,9 @@ describe('MP-4-13 any task-filing control prefills the draft from the page', () 
     expect(prefillOf({ from: 'Inbox', category: 'paid-ads' }, NOW).estimate).toBe(60);
     expect(prefillOf({ from: 'Inbox' }, NOW).estimate).toBe(30);
   });
+});
 
+describe('MP-4-13 the draft’s due, owner and client come from the page', () => {
   it('due is a week out on the business’s day, three days when the move is urgent', () => {
     expect(prefillOf({ from: 'Inbox' }, NOW).due).toBe('2026-10-14');
     const urgent = prefillOf({ from: 'Inbox', urgent: true, subject: 'Checkout down' }, NOW);

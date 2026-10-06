@@ -95,7 +95,7 @@ describe('MP-4-13 any task-filing control opens the draft through the gesture la
     await view.click('main [data-new-task]');
     await tick();
     expect(view.find(`${TASK} [data-draft-panel]`)).not.toBeNull();
-    expect(view.find<HTMLSelectElement>('#panel-draft-category')?.value).toBe('seo');
+    expect((view.find('#panel-draft-category') as HTMLSelectElement | null)?.value).toBe('seo');
     expect(view.find('[data-draft-admission]')?.textContent).toContain(
       'New task, filed from Search. Guessed from “Checkout down”, the Search board',
     );

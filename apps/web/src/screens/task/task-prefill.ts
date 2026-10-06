@@ -26,11 +26,11 @@ export interface PageContext {
   /** The page's name, for "filed from". */
   readonly from: string;
   /** The thing the door is about, for the name's placeholder and the sentence. */
-  readonly subject?: string;
-  readonly channel?: string;
-  readonly channelLabel?: string;
-  readonly category?: string;
-  readonly urgent?: boolean;
+  readonly subject?: string | undefined;
+  readonly channel?: string | undefined;
+  readonly channelLabel?: string | undefined;
+  readonly category?: string | undefined;
+  readonly urgent?: boolean | undefined;
   readonly clientId?: string | null;
   readonly owner?: { readonly id: string; readonly name: string } | null;
 }

@@ -38,7 +38,9 @@ describe('MP-4-13 a draft filed from a door opens with the page’s guesses', ()
       'New task, filed from Site health. Guessed from “Checkout down”: due in 7 days; owner Len. Nothing is stored until Create.',
     );
   });
+});
 
+describe('MP-4-13 CS-4.37 Create writes the page’s guesses', () => {
   it('Create writes the guessed client, category and owner, each by its own command', async () => {
     const { client, sent } = server();
     const { view } = await draft({ client, scope: DOOR });
