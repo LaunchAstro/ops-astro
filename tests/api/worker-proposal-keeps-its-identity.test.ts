@@ -14,6 +14,7 @@ import { resolve } from 'node:path';
 import type { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { grantTo } from '../commands/fixture.ts';
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { readIdentity } from '../../apps/api/identity.ts';
@@ -61,10 +62,11 @@ describe.skipIf(serverUrl === undefined)('a worker proposal keeps its identity',
     });
 
   /** The first task.propose reaches the API and commits; its answer is replaced by a 503. */
-  const losingFirstPropose = (): Transport => {
+  const losingFirstPropose = (sent: string[] = [], inner: Transport = transport): Transport => {
     let lose = true;
     return async (path, body, bearer, delegation) => {
-      const response = await transport(path, body, bearer, delegation);
+      if (path.endsWith('/task/propose')) sent.push(String(JSON.parse(body)['operationId']));
+      const response = await inner(path, body, bearer, delegation);
       if (!lose || !path.endsWith('/task/propose')) return response;
       lose = false;
       expect(response.status).toBe(200);
@@ -82,7 +84,7 @@ describe.skipIf(serverUrl === undefined)('a worker proposal keeps its identity',
     });
 
   /** A new task and the agent's read, comment and write delegation scoped to it. */
-  async function delegatedTask() {
+  async function delegatedTask(collections: readonly string[] = ['task']) {
     const created = await post(
       api,
       `/api/b/${BUSINESS_KEY}${pathOf('task.create')}`,
@@ -96,7 +98,7 @@ describe.skipIf(serverUrl === undefined)('a worker proposal keeps its identity',
         delegatePersonId: fixture.member.personId,
         mintedByActorId: fixture.member.actorId,
         purpose: `identity_${randomUUID().slice(0, 8)}`,
-        collections: ['task'],
+        collections: [...collections],
         actions: ['read', 'comment', 'write'],
         purposeScope: { kind: 'record', id: taskId },
         expiresAt: new Date(Date.now() + 3_600_000),
@@ -191,5 +193,72 @@ describe.skipIf(serverUrl === undefined)('a worker proposal keeps its identity',
     heldReads.shift()?.();
     await second;
     expect(await gatesOfOnlyLineage(taskId)).toHaveLength(1);
+  });
+
+  /** Three passes: the first loses its committed answer, the second meets `narrowed`, the third recovers. */
+  async function recoversAfter(
+    taskId: string,
+    worker: ReturnType<typeof workerOn>,
+    narrowed: () => Promise<unknown>,
+    sent: readonly string[],
+  ): Promise<void> {
+    expect(await worker.proposeOnce()).toStrictEqual({ fault: { status: 503 } });
+    try {
+      expect(await narrowed()).toMatchObject({ refused: { code: 'DELEGATION_NARROWED' } });
+    } finally {
+      await writeGrants(false);
+    }
+    const recovered = await worker.proposeOnce();
+    if (!('proposed' in recovered)) throw new Error(`propose: ${JSON.stringify(recovered)}`);
+    expect(new Set(sent).size).toBe(1);
+    expect(await gatesOfOnlyLineage(taskId)).toStrictEqual([recovered.proposed.gateId]);
+  }
+
+  it('a task write grant expiring after the capabilities read and before the replay keeps the committed proposal: the next pass recovers its gate', async () => {
+    const { taskId, credential } = await delegatedTask();
+    // The second session.capabilities answer is held after the API served it.
+    let capabilities = 0;
+    let release: (() => void) | undefined;
+    const holding: Transport = async (path, body, bearer, delegation) => {
+      const response = await transport(path, body, bearer, delegation);
+      if (!path.endsWith('/session/capabilities') || (capabilities += 1) !== 2) return response;
+      expect(response.status).toBe(200);
+      await new Promise<void>((resume) => {
+        release = resume;
+      });
+      return response;
+    };
+    const sent: string[] = [];
+    const worker = workerOn(losingFirstPropose(sent, holding), credential);
+    await recoversAfter(
+      taskId,
+      worker,
+      async () => {
+        const second = worker.proposeOnce();
+        await expect.poll(() => release).toBeDefined();
+        await writeGrants(true);
+        release?.();
+        return await second;
+      },
+      sent,
+    );
+  });
+
+  it('a run write surviving while the task write grant expires keeps the committed proposal: the next pass recovers its gate', async () => {
+    await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+      await grantTo(tx, fixture.member, 'write', undefined, false, 'run');
+    });
+    const { taskId, credential } = await delegatedTask(['task', 'run']);
+    const sent: string[] = [];
+    const worker = workerOn(losingFirstPropose(sent), credential);
+    await recoversAfter(
+      taskId,
+      worker,
+      async () => {
+        await writeGrants(true);
+        return await worker.proposeOnce();
+      },
+      sent,
+    );
   });
 });
