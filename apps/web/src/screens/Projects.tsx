@@ -114,6 +114,15 @@ function ProjectBoard(
   });
   // A change made in the panel is the board's next read, as it is the task page's.
   useRereadOn(panel?.changes ?? 0, reload);
+  // Once the board has drawn this grant's rows it stays drawn through an
+  // empty reread, so a filter the person has on stays on and removable (#902);
+  // with none on, the board draws the page's empty state in its place.
+  const [drew, setDrew] = useState<string | null>(null);
+  useEffect(() => {
+    if (state.outcome === 'ready') setDrew(state.grantKey);
+  }, [state]);
+  const board: ReadState<TaskBoardResult> =
+    state.outcome === 'empty' && drew === state.grantKey ? { ...state, outcome: 'ready' } : state;
   // The last board write's refusal or unknown outcome, in the server's words.
   // It belongs to the grant the write was sent under: another business's
   // board never draws it, a late answer included.
@@ -168,19 +177,7 @@ function ProjectBoard(
         Kept drawn while it reads again: a re-read after an edit or a live
         change leaves the filters, an open editor and focus where they were.
       */}
-      <RecordState
-        state={state}
-        subject="board"
-        onRetry={reload}
-        keep
-        empty={
-          <Empty
-            title="No tasks on this board yet."
-            description="You are permitted to see it and it has nothing in it."
-            hint="Create one with the form above."
-          />
-        }
-      >
+      <RecordState state={board} subject="board" onRetry={reload} keep empty={NO_TASKS}>
         {(value) =>
           // At a client filter the board waits for the names, so its filter holds.
           named && clients === null ? null : (
@@ -207,6 +204,7 @@ function ProjectBoard(
               })}
               address={query}
               clients={clients ?? NO_CLIENTS}
+              nothing={NO_TASKS}
               onAddress={(next) => {
                 if (props.inPanel === true) return;
                 window.history.replaceState(
@@ -224,6 +222,14 @@ function ProjectBoard(
 }
 
 const NO_CLIENTS: readonly string[] = [];
+
+const NO_TASKS = (
+  <Empty
+    title="No tasks on this board yet."
+    description="You are permitted to see it and it has nothing in it."
+    hint="Create one with the form above."
+  />
+);
 
 /** The reached clients' names; null while the read is out, none when it is refused or fails. */
 function clientNamesOf(state: ReadState<ClientListResult>): readonly string[] | null {

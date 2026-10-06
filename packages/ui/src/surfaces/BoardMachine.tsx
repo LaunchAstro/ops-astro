@@ -19,7 +19,7 @@
 // widths (MP-5-6) go through the history too, but not into the address: they
 // are the person's own, handed out through `onWidths` for the one store.
 
-import { useMemo, useRef, type ReactElement } from 'react';
+import { useCallback, useMemo, useRef, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { Empty } from '../primitives/Absence.tsx';
 import { rankFacets } from '../board/funnel.ts';
@@ -57,20 +57,36 @@ function useKnownFacets<Row>(offered: readonly Facet<Row>[]): readonly Facet<Row
 }
 
 /**
- * What the bar, the chips and the body draw: the offered facets and the gone
- * ones still on. Row counts (`rankFacets`) stay on the offered ones, once per
- * set of rows, never per drag move.
+ * The offered facets and the gone ones still on: what the bar, the chips and
+ * the body draw, and what a step reads a filter from. A gone facet not on is
+ * no word a new search can mean (#902). Row counts (`rankFacets`) stay on the
+ * offered ones, once per set of rows, never per drag move.
  */
 const heldOf = <Row,>(known: readonly Facet<Row>[], offered: number, on: readonly string[]) =>
   known.filter((facet, at) => at < offered || on.includes(facet.id));
 
+/** The context a step is taken in, given the filters on in the view it is taken on. */
+function useStepContext<Row>(props: BoardMachineProps<Row>, known: readonly Facet<Row>[]) {
+  const offered = props.facets.length;
+  const { columns, presets, modes } = props;
+  return useCallback(
+    (on: readonly string[]): BoardContext<Row> => ({
+      facets: heldOf(known, offered, on),
+      columns,
+      presets: presets ?? [],
+      modes: modes ?? [],
+    }),
+    [known, offered, columns, presets, modes],
+  );
+}
+
+/** No row, and no filter or word on: nothing on the board for a person to drop. */
+const isBare = (rows: readonly unknown[], view: BoardView): boolean =>
+  rows.length === 0 && view.ids.length === 0 && view.text.length === 0;
+
 export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const facets = useKnownFacets(props.facets);
-  const { columns, presets, modes } = props;
-  const context = useMemo<BoardContext<Row>>(
-    () => ({ facets, columns, presets: presets ?? [], modes: modes ?? [] }),
-    [facets, columns, presets, modes],
-  );
+  const context = useStepContext(props, facets);
   const ranked = useMemo(() => rankFacets(props.rows, props.facets), [props.rows, props.facets]);
   const { machine, dispatch } = useBoardMachine(context, props, props);
   const held = heldOf(facets, props.facets.length, machine.view.ids);
@@ -82,6 +98,7 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const menu = useFunnelMenu();
   const chipRow = useRef<HTMLDivElement>(null);
   useChipRowFit(chipRow, card);
+  if (props.nothing !== undefined && isBare(props.rows, machine.view)) return <>{props.nothing}</>;
   const command = (
     <CommandBar
       facets={held}
