@@ -188,6 +188,7 @@ async function fromAnotherClient(
   const onA = await enrol(s.db.app, s.business, 'on-client-a');
   const authorised = await s.db.app.withBusiness(s.business, async (tx) => {
     await grantTo(tx, onA, 'decide', { kind: 'party', id: clientA }, false, 'gate');
+    await grantTo(tx, onA, 'decide', { kind: 'record', id: theirs.taskId }, false, 'gate');
     return await checkAuthority(
       tx,
       [
