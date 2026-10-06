@@ -233,3 +233,24 @@ it('sweeps after a failed delete even when the store is dead', async () => {
   await state.handle(op('delete', ID));
   expect(w.calls).toEqual(['delete', 'list', 'remove', 'list', 'info']);
 });
+
+it('repeats a sweep whose pass the dead store could not write, and records no run meanwhile', async () => {
+  const w = world();
+  const state = await opened(w);
+  await state.handle(create(C));
+  await state.handle(op('start', ID));
+  const release = hold(w, 'wait');
+  const waited = state.handle(op('wait', ID));
+  await settle();
+  w.answer.delete = 500;
+  w.crash = true;
+  await state.handle(op('delete', ID));
+  w.crash = false;
+  delete w.answer.delete;
+  release();
+  expect(await waited).toEqual(UNAVAILABLE);
+  expect(candidateOf(w)?.runs).toEqual([{ statusCode: null, inTime: false }]);
+  w.now = T0 + GRACE;
+  await state.tick();
+  expect(heldId(w)).toBeNull();
+});
