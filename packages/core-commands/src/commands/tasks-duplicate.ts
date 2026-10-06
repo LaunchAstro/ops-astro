@@ -179,6 +179,13 @@ async function readOld(
   return { typeId: row.type_id, client: row.client };
 }
 
+/** The old task as `authorise` admitted it, and its grants asked again at a later clock. */
+interface Admitted {
+  readonly typeId: string;
+  readonly client: string | null;
+  readonly askAgain: (at: string) => Promise<CommandRefusal | null>;
+}
+
 /**
  * The authority, asked with the caller's task grants held for share (grants
  * before records, as `task.decide` holds them), each answer resting on a grant
@@ -188,14 +195,15 @@ async function readOld(
  * read it takes no lock on it; and again at the clock after that lock, so a
  * grant that lapsed while this waited no longer counts (#444). Share is asked
  * last, of the old task's client as read under its lock. Answers the old task,
- * or the refusal.
+ * or the refusal. The writes wait again (the sibling-rank lock, the key), so
+ * `askAgain` asks all three at the clock after the last of them.
  */
 async function authorise(
   tx: TenantQuery,
   context: CommandContext,
   oldId: string,
   client: string | null,
-): Promise<CommandRefusal | { readonly typeId: string; readonly client: string | null }> {
+): Promise<CommandRefusal | Admitted> {
   const subjects = subjectsOf(context.session);
   const there: Scope =
     client === null ? { kind: 'business', id: null } : { kind: 'party', id: client };
@@ -217,12 +225,10 @@ async function authorise(
   const before = await readAndWrite(await lockedInstant(tx));
   if (before !== null) return before;
   const old = await readOld(tx, context.spine.taskTypeId, oldId, client);
-  const at = await lockedInstant(tx);
-  const after = await readAndWrite(at);
-  if (after !== null) return after;
-  if (old === undefined) return refuseNotFound();
-  if (old.client === client) return old;
-  return (await ask('share', there, at)) ?? old;
+  if (old === undefined) return (await readAndWrite(await lockedInstant(tx))) ?? refuseNotFound();
+  const askAgain = async (at: string) =>
+    (await readAndWrite(at)) ?? (old.client === client ? null : await ask('share', there, at));
+  return (await askAgain(await lockedInstant(tx))) ?? { ...old, askAgain };
 }
 
 /** The new top-level task: the shell's title, the chosen client, the server's placement. */
@@ -290,6 +296,10 @@ export async function duplicateTask(
      values ($1, $2, $3, $4, $5)`,
     [tx.businessId, randomUUID(), DUPLICATED_FROM, made.id, oldId],
   );
+  // After the last write's wait: a grant that lapsed while the shell waited
+  // for its rank refuses, and the envelope's savepoint takes every write back.
+  const still = await old.askAgain(await lockedInstant(tx));
+  if (still !== null) return refused(still);
   const rows = await tx.query<{ readonly revision: string }>(
     `select revision::text as revision from public.records where business_id = $1 and id = $2`,
     [tx.businessId, made.id],
