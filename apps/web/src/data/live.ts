@@ -189,9 +189,10 @@ class TabStream implements LiveHub {
     this.#status(null);
   }
 
-  #down(refused: boolean): void {
+  /** Refused, unreachable or lost: the floor rereads until a join opens, even one that stalls. */
+  #down(): void {
     this.#status(this.#downSince ?? this.#now());
-    if (refused) this.#floor ??= setInterval(this.#refresh, FLOOR_MS);
+    this.#floor ??= setInterval(this.#refresh, FLOOR_MS);
   }
 
   #wanted(): string[] {
@@ -219,13 +220,13 @@ class TabStream implements LiveHub {
     const body =
       topics.length === 0 ? null : await this.#open(topics, abort.signal).catch(() => null);
     if (abort.signal.aborted) return;
-    if (body === null) this.#down(true);
+    if (body === null) this.#down();
     else {
       this.#up();
       await readEvents(body, this.#onEvent, abort.signal).catch(() => {});
       if (abort.signal.aborted) return;
       this.#reseat(null);
-      this.#down(false);
+      this.#down();
     }
     await wait(body === null ? FLOOR_MS : REJOIN_MS, abort.signal);
     if (!abort.signal.aborted) await this.#run(abort);
