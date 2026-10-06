@@ -26,7 +26,8 @@ import {
 import { readSlotTable, type Slot } from '../records/slots.ts';
 import { isRecordsRefusal } from '../records/refusals.ts';
 import { TASK_SPINE, TASK_TYPE_KEY, type SpineField } from './spine.ts';
-import { COMMENT_SPINE, COMMENT_TYPE_KEY } from './comments.ts';
+import { COMMENT_TYPE_KEY } from './comments.ts';
+import { COMMENT_SPINE } from './comment-spine.ts';
 import { TASK_STATE_FIELDS, TASK_STATE_SEED, TASK_STATE_TYPE_KEY } from './states.ts';
 import { CONVERSATION_SPINE, CONVERSATION_TYPE_KEY } from '../team/conversations.ts';
 

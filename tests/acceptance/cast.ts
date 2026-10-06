@@ -140,6 +140,8 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   ['tag', 'write'],
   // Team conversations (C71-D): a direct message and the conversation reads.
   ['chat', 'comment'],
+  // Group conversations (C71-G): renaming one and changing its members.
+  ['chat', 'manage'],
   // C33: releasing a definition version, the owner's and administrators'.
   ['automation', 'manage'],
 ];

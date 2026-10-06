@@ -95,6 +95,16 @@ const MENTIONS_FIXES: readonly string[] = [
 ];
 
 /**
+ * The person a person-entry caller's comment is written for: none for a
+ * person writing their own, and for an agent credential (API-2), whose actor
+ * is the agent, the person it acts for (`session.personId`), as a delegation
+ * records its own (OW-036.1).
+ */
+export function representedPerson(session: CommandContext['session']): string | null {
+  return session.credentialScope === undefined ? null : session.personId;
+}
+
+/**
  * Who a person-entry caller writes for: an agent credential (API-2) is its
  * agent and writes team notes only, as the agent row does (#420); an external
  * party writes to the client; a member writes either.
@@ -131,6 +141,7 @@ export async function commentOnTask(
       audiences: audiencesOf(context.session),
       operationId,
       delegationId: null,
+      onBehalfOfPersonId: representedPerson(context.session),
     },
     body,
     audience,
@@ -160,6 +171,8 @@ export interface CommentTarget {
   readonly operationId: string;
   /** The delegation the author acts under, or `null` for a person. */
   readonly delegationId: string | null;
+  /** The person an agent acts for (its delegation's, or its credential's), stored on the comment; `null` for a person. */
+  readonly onBehalfOfPersonId: string | null;
 }
 
 /**
@@ -279,6 +292,7 @@ export async function writeTaskComment(
     body: words,
     source: on.entryPoint,
     parentId: parent,
+    onBehalfOfPersonId: on.onBehalfOfPersonId,
   });
   await raiseMentions(tx, { ...task, commentId, authorActorId: on.authorActorId }, mentioned);
 

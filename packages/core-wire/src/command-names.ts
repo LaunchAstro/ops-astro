@@ -254,6 +254,13 @@ export type CommandName =
   | 'chat.conversations'
   | 'chat.messages'
   | 'chat.mark_read'
+  // Group conversations (C71-G): started, written to, renamed, their members
+  // changed, and left.
+  | 'chat.start_group'
+  | 'chat.send_group'
+  | 'chat.rename_group'
+  | 'chat.change_members'
+  | 'chat.leave'
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
   | 'trace.read'
   // The harness adoption test's result on one run (AW-12): the team's.
