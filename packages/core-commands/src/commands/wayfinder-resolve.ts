@@ -163,6 +163,12 @@ export async function closeOutOfScope(
   const line = typeof reason === 'string' ? `${title}: ${reason.trim()}` : title;
   const mapId = facts.mapId;
   return await completeWith(tx, context, { closed_as: 'out_of_scope' }, async () => {
+    // The map's row before its version, as every other writer of the map
+    // takes it ahead of the map's summary lock, which the version's insert takes.
+    await tx.query(`select 1 from records where business_id = $1 and id = $2 for update`, [
+      tx.businessId,
+      mapId,
+    ]);
     await applyRevision(tx, context, mapId, {
       addFog: [],
       addOutOfScope: [{ text: line.slice(0, 4000), ticketId: target.id }],
