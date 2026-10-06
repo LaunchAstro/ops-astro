@@ -30,6 +30,8 @@ export function useDockPanel(props: DockPanelProps): {
     readonly door: string;
     /** False, closing nothing, while the draft's Create is out. */
     readonly close: () => boolean;
+    /** A draft filed from the page or a door (DN-02); null signed out. */
+    readonly file: TaskPanelState['file'] | null;
   };
 } {
   const { grantKey, session, storage } = props;
@@ -49,6 +51,7 @@ export function useDockPanel(props: DockPanelProps): {
           ? pathTo('agency:projects-board')
           : pathTo('agency:task-detail', { key: opening.taskKey }),
       close: taskPanel.close,
+      file: session === null ? null : taskPanel.file,
     },
   };
 }

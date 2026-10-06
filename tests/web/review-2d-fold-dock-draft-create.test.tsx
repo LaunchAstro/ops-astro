@@ -162,6 +162,6 @@ describe('A11-1 in the dock: the draft is not left while Create is in flight', (
     await view.click(`${TASK} [data-act="close"]`);
     await tick();
     expect(view.find('[data-task-panel]')).toBeNull();
-    expect(view.host.querySelector(TAB)).toBeNull();
+    expect(view.host.querySelector(TAB)?.getAttribute('aria-expanded')).toBe('false');
   });
 });

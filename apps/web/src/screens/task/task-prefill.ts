@@ -93,7 +93,9 @@ export function prefillOf(page: PageContext, now: Date): Prefill {
   ].filter((part) => part !== null);
   const owner = page.owner ?? null;
   const why = [
-    from.length > 0 ? `Guessed from ${from.join(', ')}: due in` : 'Nothing here to guess from: due in',
+    from.length > 0
+      ? `Guessed from ${from.join(', ')}: due in`
+      : 'Nothing here to guess from: due in',
     ` ${String(days)} days`,
     urgent ? ', pulled in because this move is flagged urgent' : '',
     own === null && routed === undefined ? ', and the category fell back to Admin' : '',
@@ -128,7 +130,6 @@ export function doorContext(door: HTMLElement): PageContext {
     category: read('newTaskCategory'),
     urgent: door.dataset['newTaskUrgent'] !== undefined,
     clientId: read('newTaskClient') ?? null,
-    owner:
-      ownerId === undefined ? null : { id: ownerId, name: read('newTaskOwnerName') ?? 'them' },
+    owner: ownerId === undefined ? null : { id: ownerId, name: read('newTaskOwnerName') ?? 'them' },
   };
 }
