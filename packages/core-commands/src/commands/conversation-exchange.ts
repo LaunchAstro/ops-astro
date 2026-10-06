@@ -14,7 +14,9 @@
 // 2. Its words go to AW-01's broker on the conversation seam
 //    (`callModelInConversation`): the owner in their own session, a local
 //    route only, nothing held. A cloud route is refused there before anything
-//    is written or sent (AW-03 egress off).
+//    is written or sent (AW-03 egress off). It asks for the conversation's
+//    model (CS-7.30), the default when none is chosen; a chosen model no
+//    longer offered it (`offeredModels`) is refused first, nothing sent.
 // 3. The answer is kept as the agent's message answering that one message
 //    (0099), in a second transaction that resolves the caller again, takes
 //    the conversation's row lock, as a message and the purge do, so a reply
@@ -50,7 +52,7 @@ import type {
 } from '../../../core-records/src/index.ts';
 import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
 import { bounded, holdsOwnConversations } from './conversations.ts';
-import { modelFacts, type ModelFacts } from './conversation-model.ts';
+import { modelFacts, offeredModels, type ModelFacts } from './conversation-model.ts';
 import { auditAs, type ModelBroker } from './model-call.ts';
 import { isCommandRefusal } from './refusal.ts';
 
@@ -179,9 +181,9 @@ async function modelToAsk(
   provider: string,
   facts: ModelFacts,
 ): Promise<string | undefined | null> {
-  // The red step's stand-in: the choice is not asked again.
-  void tx;
-  return await Promise.resolve(facts.model ?? conversationModelsOf(provider)[0]?.id);
+  if (facts.model === null) return conversationModelsOf(provider)[0]?.id;
+  const offered = await offeredModels(tx, provider, facts);
+  return offered.some((model) => model.id === facts.model) ? facts.model : null;
 }
 
 /** The answer, kept as the reply to the message, or the reply already kept. */

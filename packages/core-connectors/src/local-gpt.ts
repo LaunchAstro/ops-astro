@@ -52,12 +52,12 @@ export const LOCAL_GPT_NOTHING_HAPPENED: readonly string[] = [
 export function localGptAdapter(
   values: Readonly<Record<string, string>>,
   _operationId?: string,
-  _model?: string,
+  model: string = LOCAL_GPT_DEFAULT_MODEL,
 ): AdapterRequest {
   return {
     path: LOCAL_GPT_PATH,
     method: 'POST',
-    body: JSON.stringify({ model: LOCAL_GPT_DEFAULT_MODEL, fields: values }),
+    body: JSON.stringify({ model, fields: values }),
   };
 }
 

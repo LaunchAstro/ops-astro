@@ -15,10 +15,10 @@
 //
 // **Nothing about a client's material is sent** (owner line 72): the drawer
 // refuses the question itself while the offer is empty with a reason
-// (`modelOffer`), so no command leaves for it. The model picker holds its
-// choice in the tab until conversations carry a model (CS-7.30, on AW-01's
-// seam); the catalogue is empty until the business's price book is readable
-// here, so the picker offers nothing and the choice is not sent.
+// (`modelOffer`), so no command leaves for it. The model picker offers what
+// `conversation.models` answers for the selected tab (CS-7.30, `assistant/models.ts`);
+// a choice is held in the tab until it starts and sent by `conversation.set_model`
+// straight after the start, then each later choice in turn, like a rename.
 //
 // The agent's answer comes back beside each kept question (AW-03's exchange,
 // on AW-01's conversation seam) and is drawn after its question, as text.
@@ -49,7 +49,8 @@ import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useStore, type Store } from '../assistant/store.ts';
-import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
+import { useModels } from '../assistant/models.ts';
+import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
 import type {
   CallResult,
   CommandOutcome,
@@ -61,9 +62,6 @@ import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 import { AllowanceLine } from './allowance-line.tsx';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
-
-/** The business's models, empty until its price book is readable here. */
-const CATALOGUE: readonly ModelChoice[] = [];
 
 export interface AssistantViewProps {
   readonly client: OperationsClient;
@@ -103,7 +101,7 @@ async function startWith(
   report: (key: string, sent: Sent) => Promise<boolean>,
 ): Promise<string | null> {
   const { chat, body, subject, scope } = opening;
-  const { title, page } = store.chat(chat.key) ?? chat;
+  const { title, page, model } = store.chat(chat.key) ?? chat;
   const settled = settle(
     await client.mutate('conversation.start', { body, title, subject: subject.label, scope }),
   );
@@ -119,6 +117,7 @@ async function startWith(
   store.update((current) => started(current, chat.key, id));
   replied(store, chat.key, settled.kind === 'ok' ? settled.value.reply : undefined);
   if (page !== null) await report(chat.key, setScope(client, id, page));
+  if (model !== null) await report(chat.key, setModel(client, id, model));
   return id;
 }
 
@@ -172,6 +171,9 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
 const setScope = (client: OperationsClient, conversationId: string, page: AssistantPage): Sent =>
   client.mutate('conversation.set_scope', { conversationId, page });
 
+const setModel = (client: OperationsClient, conversationId: string, model: string): Sent =>
+  client.mutate('conversation.set_model', { conversationId, model });
+
 /** A rename and a page: held in the tab until it starts, then sent after the start, in turn. */
 function useWrites(
   props: AssistantViewProps,
@@ -180,6 +182,7 @@ function useWrites(
 ): {
   readonly rename: (key: string, title: string) => void;
   readonly addPage: (key: string) => void;
+  readonly chooseModel: (key: string, model: string) => void;
 } {
   const written = (key: string, write: (conversationId: string) => Sent): void => {
     const turn = sender.starts.get(key)?.then(async (id) => {
@@ -200,6 +203,10 @@ function useWrites(
       const page = { address: props.here, shows: ROUTES[props.route].title };
       store.update((current) => addPage(current, key, page));
       written(key, (conversationId) => setScope(props.client, conversationId, page));
+    },
+    chooseModel: (key, model) => {
+      store.update((current) => chooseModel(current, key, model));
+      written(key, (conversationId) => setModel(props.client, conversationId, model));
     },
   };
 }
@@ -228,12 +235,13 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
   const writes = useWrites(props, store, sender);
   const chat = state.chats.find((each) => each.key === state.selected);
   const opened = chat?.conversationId ?? null;
+  const models = useModels(props.client, opened);
   return (
     <AssistantPanel
       subject={subject}
       chats={state.chats}
       selected={state.selected}
-      offer={modelOffer(subject, CATALOGUE, null)}
+      offer={modelOffer(subject, models, null)}
       address={
         opened === null ? null : pathTo('agency:agent-conversation', { conversation: opened })
       }
@@ -250,9 +258,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
       onNew={() => {
         update(fresh);
       }}
-      onModel={(key, model) => {
-        update((current) => chooseModel(current, key, model));
-      }}
+      onModel={writes.chooseModel}
       onAddPage={writes.addPage}
       onSend={sender.send}
       onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}

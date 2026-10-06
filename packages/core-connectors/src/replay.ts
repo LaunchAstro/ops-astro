@@ -48,13 +48,13 @@ export const REPLAY_PATH = '/v1/complete';
 export function replayAdapter(
   values: Readonly<Record<string, string>>,
   operationId?: string,
-  _model?: string,
+  model: string = REPLAY_MODEL_WINDOW.model,
 ): AdapterRequest {
   return {
     path: REPLAY_PATH,
     method: 'POST',
     body: JSON.stringify({
-      model: REPLAY_MODEL_WINDOW.model,
+      model,
       fields: values,
       ...(operationId === undefined ? {} : { operation_id: operationId }),
     }),

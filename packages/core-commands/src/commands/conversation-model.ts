@@ -23,7 +23,7 @@ import {
   conversationProviderOf,
   type ConversationModel,
 } from '../../../core-connectors/src/index.ts';
-import { slotOf, TASK_SPINE } from '../../../core-records/src/index.ts';
+import { checkClientModelUse, slotOf, TASK_SPINE } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 
 /** What the offer turns on, from the caller's own conversation row. */
@@ -66,10 +66,17 @@ export async function offeredModels(
   provider: string,
   facts: ModelFacts | null,
 ): Promise<readonly ConversationModel[]> {
-  // The red step's stand-in: every model, whatever the client allows.
-  void tx;
-  void facts;
-  return await Promise.resolve(conversationModelsOf(provider));
+  const models = conversationModelsOf(provider);
+  if (facts === null) return models;
+  if (facts.unseen) return [];
+  const { clientId } = facts;
+  if (clientId === null) return models;
+  const offered: ConversationModel[] = [];
+  for (const model of models) {
+    // oxlint-disable-next-line no-await-in-loop -- one privacy read per model, at most two
+    if ((await checkClientModelUse(tx, clientId, model.egressName)).ok) offered.push(model);
+  }
+  return offered;
 }
 
 /** This install's conversation provider, by the composition root's own rule. */
