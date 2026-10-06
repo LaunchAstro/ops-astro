@@ -899,6 +899,31 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
     expect([shown?.state, shown?.expiresAt]).toStrictEqual(['live', parentEnd]);
   });
 
+  it('MP-14-8 a grant that ran out and was settled by its agent next mint ends at the settlement', async () => {
+    // Sol PRV-oa-1045-R1.1: minting a grant settles the same agent's expired,
+    // unsettled grant for the same purpose, so endedAt is that settlement,
+    // after expiresAt, not null.
+    const [oldId] = await delegate('settled_on_mint', null);
+    await owner(
+      `update public.delegations
+          set granted_at = now() - interval '2 hours', expires_at = now() - interval '1 hour'
+        where id = $1`,
+      [oldId],
+    );
+    await delegate('settled_on_mint', null);
+    const settled = await controls.fixture.db.admin.execute<{ readonly settled_at: Date | null }>(
+      `select settled_at from public.delegations where id = $1`,
+      [oldId],
+    );
+    const at = settled[0]?.settled_at;
+    expect(at).toBeInstanceOf(Date);
+    const shown = grantOf(await signal(admin), oldId);
+    expect([shown?.state, shown?.endedAt]).toStrictEqual(['ran_out', at?.toISOString()]);
+    expect(Date.parse(String(shown?.endedAt))).toBeGreaterThan(
+      Date.parse(String(shown?.expiresAt)),
+    );
+  });
+
   it('MP-14-8 parity: the sections are one read on connection:read, person only, and add no action', () => {
     const row = COMMAND_SURFACE.find((one) => one.name === 'connection.signal');
     expect([row?.collection, row?.action, row?.agent]).toStrictEqual([
