@@ -15,7 +15,7 @@
 // chip opens a clearance document that does not exist yet, so it is drawn
 // unavailable too.
 
-import type { ReactElement } from 'react';
+import { useEffect, useReducer, type ReactElement } from 'react';
 import { Empty, SectionHead, StatusLine, type MarkTone } from '@launchastro/ui';
 import type {
   ConnectionSignalResult,
@@ -205,6 +205,9 @@ function NightSection(props: { readonly signal: ConnectionSignalResult }): React
   );
 }
 
+/** How often the sections redraw on their own, so a countdown moves while a read waits. */
+const REDRAW_MS = 30_000;
+
 /** Nothing on the ledger at all: no grant, no tripwire, no round and no agent. */
 const isEmpty = (signal: ConnectionSignalResult): boolean =>
   signal.grants.length === 0 &&
@@ -227,6 +230,11 @@ export function SignalSections(props: {
     ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
     deps: [],
   });
+  const [, redraw] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    const timer = setInterval(redraw, REDRAW_MS);
+    return () => clearInterval(timer);
+  }, []);
   return (
     <div className="secs" data-signal>
       <RecordState
