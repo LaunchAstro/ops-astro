@@ -159,6 +159,7 @@ const EXACT: ReadonlySet<string> = new Set([
   'conversation.message',
   'conversation.rename',
   'conversation.set_scope',
+  'conversation.set_model',
   'run.top_up',
   'run.end_at_budget_stop',
   'run.revise_state',

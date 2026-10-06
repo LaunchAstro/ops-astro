@@ -181,6 +181,9 @@ export type CommandName =
   | 'conversation.allowance'
   | 'conversation.rename'
   | 'conversation.set_scope'
+  // CS-7.30: the models a conversation may run on, and the one it runs on.
+  | 'conversation.models'
+  | 'conversation.set_model'
   // One priced model call, made by the lease holder through the credential
   // broker (AW-01). The grant is the run's delegation, one of the six facts
   // the broker verifies from rows; no person grant carries it.

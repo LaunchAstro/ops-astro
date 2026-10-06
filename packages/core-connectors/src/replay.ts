@@ -48,6 +48,7 @@ export const REPLAY_PATH = '/v1/complete';
 export function replayAdapter(
   values: Readonly<Record<string, string>>,
   operationId?: string,
+  _model?: string,
 ): AdapterRequest {
   return {
     path: REPLAY_PATH,

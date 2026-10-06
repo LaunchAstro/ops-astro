@@ -220,6 +220,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'conversation.message': { conversationId: 'any', body: 'any' },
   'conversation.rename': { conversationId: 'any', title: 'any' },
   'conversation.set_scope': { conversationId: 'any', page: 'any' },
+  'conversation.set_model': { conversationId: 'any', model: 'any' },
   'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
   'run.top_up': {
     recordId: 'any',
@@ -229,8 +230,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     currency: 'any',
   },
   'run.end_at_budget_stop': { recordId: 'any', runId: 'any', askId: 'any' },
-  // The version the caller read (0 before the first); the two lists are
-  // checked item by item by the handler.
+  // The version the caller read (0 before the first); the handler checks both lists item by item.
   'run.revise_state': {
     recordId: 'any',
     runId: 'any',

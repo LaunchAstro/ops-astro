@@ -291,6 +291,8 @@ export function createPositiveBody(
       case 'conversation.allowance':
       case 'conversation.rename':
       case 'conversation.set_scope':
+      case 'conversation.models':
+      case 'conversation.set_model':
         // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
         return await conversationBody(declaration.name, context);
       default:

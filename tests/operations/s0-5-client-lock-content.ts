@@ -31,6 +31,7 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'conversation.message': "a message in the caller's own conversation",
   'conversation.rename': "the caller's own conversation's title",
   'conversation.set_scope': "the page the caller's own conversation is about",
+  'conversation.set_model': "the model the caller's own conversation runs on",
   'chat.send_direct': 'a team conversation message (C71-D), a record beside tasks naming none',
   'chat.mark_read': "the reader's own member row in a team conversation (C71-D)",
   'model.call':

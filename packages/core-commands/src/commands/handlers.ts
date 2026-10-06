@@ -61,7 +61,7 @@ import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
 import { setPlanningCap } from './budget-planning-cap.ts';
 import { messageConversation, startConversation } from './conversations.ts';
-import { renameConversation, setConversationScope } from './conversation-tabs.ts';
+import { renameConversation, setConversationScope, setModel } from './conversation-tabs.ts';
 import { refuseChildWorkAsPerson } from './child-work-person.ts';
 import { refuseModelCallAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
@@ -215,12 +215,12 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // AW-03: the conversation's first message mints it; later ones are its owner's.
   'conversation.start': startConversation,
   'conversation.message': messageConversation,
-  // MP-7-11: the tab row's title and the page it is about, the owner's alone.
+  // MP-7-11, CS-7.30: the tab row's title, the page it is about and its model, the owner's alone.
   'conversation.rename': renameConversation,
   'conversation.set_scope': setConversationScope,
+  'conversation.set_model': setModel,
   // AW-01: the run's worker's, through the broker, on the agent prefix only.
   'model.call': refuseModelCallAsPerson,
-
   // AW-05: a person's answers to a run waiting at its approved ceiling.
   'run.top_up': topUpOnRun,
   'run.end_at_budget_stop': endOnRun,

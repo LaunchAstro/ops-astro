@@ -50,6 +50,7 @@ import { readConnectionGraduation } from './graduation.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
+import { readConversationModels } from './conversation-models.ts';
 import { readAllowance } from './allowance.ts';
 import { DIGEST, readAttribution } from './attribution.ts';
 import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
@@ -255,6 +256,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session, { conversationId }) =>
       await readAllowance(tx, session, conversationId),
+  },
+  // CS-7.30: the drawer's model picker. The rule is the read's own, as the
+  // allowance's is; the conversation is optional and must be the caller's own.
+  'conversation.models': {
+    identifiers: ['conversationId'],
+    parse: ({ conversationId }) => parsed({ conversationId }),
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, { conversationId }) =>
+      await readConversationModels(tx, session, conversationId),
   },
   'task.read': {
     identifiers: ['recordId'],

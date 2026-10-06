@@ -106,6 +106,7 @@ const DECLARED_READS = [
   'connection.signal',
   'conversation.allowance',
   'conversation.list',
+  'conversation.models',
   'conversation.read',
   'definition.attribution',
   'gate.pending',

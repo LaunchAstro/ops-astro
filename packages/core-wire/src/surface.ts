@@ -356,6 +356,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['conversationId'],
   }),
+  // CS-7.30: the drawer's model picker, under the list's rule (the owner's
+  // own, holding `conversation:write`), so the catalogue names that grant
+  // (API-1). Not audited beyond the command's own event; no agent entry.
+  read('conversation.models', CONVERSATION_COLLECTION, { authority: ['conversation:write'] }),
+  declare('conversation.set_model', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was

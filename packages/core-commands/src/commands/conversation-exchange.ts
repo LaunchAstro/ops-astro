@@ -29,7 +29,7 @@
 // words, never the model's or the person's.
 
 import { randomUUID } from 'node:crypto';
-import { CONVERSATION_ANSWER } from '../../../core-connectors/src/index.ts';
+import { CONVERSATION_ANSWER, conversationModelsOf } from '../../../core-connectors/src/index.ts';
 import {
   callModelInConversation,
   type ConversationScope,
@@ -50,6 +50,7 @@ import type {
 } from '../../../core-records/src/index.ts';
 import { holdCoveringGrants, lockedInstant } from '../../../core-runtime/src/index.ts';
 import { bounded, holdsOwnConversations } from './conversations.ts';
+import { modelFacts, type ModelFacts } from './conversation-model.ts';
 import { auditAs, type ModelBroker } from './model-call.ts';
 import { isCommandRefusal } from './refusal.ts';
 
@@ -82,6 +83,9 @@ const WORDS: Readonly<Record<string, string>> = {
   LOCAL_MODEL_REQUIRED: OFF,
   CLIENT_MODEL_USE_OFF: OFF,
   RATE_LIMITED: 'The model is busy, so nothing was sent. Your message is kept; ask again shortly.',
+  MODEL_NOT_OFFERED:
+    'The model chosen for this conversation is not offered for it now, so nothing was sent. ' +
+    'Your message is kept; choose another model.',
 };
 
 const UNUSABLE =
@@ -110,6 +114,8 @@ interface Question {
   readonly reply: Kept | undefined;
   /** The conversation was opened on a task with a client, or on one this session cannot see. */
   readonly clientOrUnseen: boolean;
+  /** The model to ask (CS-7.30): the chosen one, else the default; null when the choice is not offered now. */
+  readonly model: string | undefined | null;
 }
 
 const CLIENT = slotOf(TASK_SPINE, 'client');
@@ -129,6 +135,7 @@ async function questionOf(
   tx: TenantQuery,
   session: Session,
   asked: Asked,
+  provider: string,
 ): Promise<Question | undefined> {
   if (!isUuid(asked.conversationId) || !isUuid(asked.messageId)) return undefined;
   if (!(await holdsOwnConversations(tx, session))) return undefined;
@@ -148,7 +155,9 @@ async function questionOf(
     [tx.businessId, asked.conversationId, asked.messageId, session.actorId],
   );
   if (found === undefined) return undefined;
+  const facts = await modelFacts(tx, session, asked.conversationId);
   return {
+    model: facts === undefined ? null : await modelToAsk(tx, provider, facts),
     scope: {
       id: asked.conversationId,
       businessId: tx.businessId,
@@ -158,6 +167,21 @@ async function questionOf(
     reply: await replyTo(tx, asked),
     clientOrUnseen: found.client_or_unseen,
   };
+}
+
+/**
+ * The model the exchange asks for, asked again before any call: a choice no
+ * longer offered (the client's egress turned off since, or a model this
+ * install does not run) is null, and refused. No choice is the default.
+ */
+async function modelToAsk(
+  tx: TenantQuery,
+  provider: string,
+  facts: ModelFacts,
+): Promise<string | undefined | null> {
+  // The red step's stand-in: the choice is not asked again.
+  void tx;
+  return await Promise.resolve(facts.model ?? conversationModelsOf(provider)[0]?.id);
 }
 
 /** The answer, kept as the reply to the message, or the reply already kept. */
@@ -218,13 +242,16 @@ function heldElsewhere(cause: unknown): undefined {
 /** The exchange over a deployment's broker, for the API's person path. */
 export function conversationExchange(broker: ModelBroker): ConversationExchange {
   return async (database, businessId, presented, asked) => {
+    // The provider the deployment's broker runs the conversation on: what it can send.
+    const provider = broker.operations.get(CONVERSATION_ANSWER.key)?.provider ?? '';
     const found = await withSession(database, businessId, presented, async (tx, session) => ({
       session,
-      question: await questionOf(tx, session, asked),
+      question: await questionOf(tx, session, asked, provider),
     }));
     if (isCommandRefusal(found) || found.question === undefined) return null;
     const { session, question } = found;
     if (question.reply !== undefined) return answered(question.reply);
+    if (question.model === null) return refusedWith('MODEL_NOT_OFFERED');
     // Owner line 72: a client's material reaches no model while no true local
     // model exists, and the laptop's GPT runner is a cloud model. A conversation
     // opened on a client's task asks nothing, whatever the provider; so does one whose
@@ -238,6 +265,7 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
         conversation: question.scope,
         operation: CONVERSATION_ANSWER.key,
         fields: [{ name: 'message', source: 'outside', value: question.body }],
+        ...(question.model === undefined ? {} : { model: question.model }),
       },
       { ...broker, audit: auditAs(session.actorId) },
     );

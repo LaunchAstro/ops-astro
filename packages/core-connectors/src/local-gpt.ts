@@ -48,8 +48,12 @@ export const LOCAL_GPT_NOTHING_HAPPENED: readonly string[] = [
   'http_413',
 ];
 
-/** The adapter: fields in, a request for the default model with neither origin nor credential out. */
-export function localGptAdapter(values: Readonly<Record<string, string>>): AdapterRequest {
+/** The adapter: fields in, a request for the model asked for (the default unless named), with neither origin nor credential out. */
+export function localGptAdapter(
+  values: Readonly<Record<string, string>>,
+  _operationId?: string,
+  _model?: string,
+): AdapterRequest {
   return {
     path: LOCAL_GPT_PATH,
     method: 'POST',

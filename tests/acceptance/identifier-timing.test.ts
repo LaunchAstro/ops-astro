@@ -343,6 +343,13 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       conversationId,
       page: null,
     }));
+    byAda('conversation.models', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+    }));
+    byAda('conversation.set_model', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      model: null,
+    }));
     // C39-T: bravo's pending invitation, resent or revoked from alpha.
     const invitation = await foreignInvitation(w.h.world.db.admin, w.h.world.bravo);
     for (const op of ['invitation.resend', 'invitation.revoke'] as const) {

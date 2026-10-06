@@ -28,6 +28,8 @@ type ConversationCommand = Extract<
   | 'conversation.allowance'
   | 'conversation.rename'
   | 'conversation.set_scope'
+  | 'conversation.models'
+  | 'conversation.set_model'
 >;
 
 export async function leaseBody(name: LeaseCommand, context: BodyContext): Promise<Prepared> {
@@ -87,5 +89,10 @@ export async function conversationBody(
           page: { address: '/settings', shows: 'Settings' },
         },
       };
+    // CS-7.30: the picker's offer and a choice back to the default.
+    case 'conversation.models':
+      return { body: { conversationId: await ownConversation(context) } };
+    case 'conversation.set_model':
+      return { body: { conversationId: await ownConversation(context), model: null } };
   }
 }

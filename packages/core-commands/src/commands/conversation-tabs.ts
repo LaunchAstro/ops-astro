@@ -4,6 +4,10 @@
 // and "Add page to context" (CS-7.31), its owner's alone like every other
 // write to it (AW-03).
 //
+// CS-7.30 adds the model it runs on, from those offered it
+// (`conversation-model.ts`): a model not offered is refused by field name,
+// never echoing what was sent, and null is the default again.
+//
 // The page is one slot: a second pointer replaces the first, and `null`
 // clears it. Its address is a page of this product: one leading slash, never
 // two and never a slash then a backslash, printable ASCII without a
@@ -18,6 +22,7 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { bounded, conversationAddress, NOT_YOURS, PURGED, TITLE_LIMIT } from './conversations.ts';
+import { installProvider, modelFacts, offeredModels } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
@@ -56,7 +61,7 @@ function pageOf(value: unknown): Page | null | undefined {
  * the wrap-up and the purge take, so a pointer never lands on a body being
  * purged. Another business's and a made-up id are the same `NOT_FOUND`.
  */
-async function ownedForUpdate(
+export async function ownedForUpdate(
   tx: TenantQuery,
   context: CommandContext,
   conversationId: unknown,
@@ -138,5 +143,44 @@ export async function setConversationScope(
       where business_id = $1 and id = $2`,
     [tx.businessId, conversationId, page?.address ?? null, page?.shows.trim() ?? null],
   );
+  return applied(null, null, { conversationId, address: conversationAddress(conversationId) });
+}
+
+const NOT_OFFERED = refuseCommand(
+  'FIELD_VALUE_INVALID',
+  ['model'],
+  [
+    'Choose one of the models conversation.models offers for this conversation, or null for the default.',
+  ],
+);
+
+export interface ModelFields {
+  readonly conversationId: unknown;
+  readonly model: unknown;
+}
+
+/** `conversation.set_model`: the conversation's model, from those offered it, or null for the default. */
+export async function setModel(
+  tx: TenantQuery,
+  context: CommandContext,
+  fields: ModelFields,
+): Promise<HandlerOutcome> {
+  if (fields.model !== null && typeof fields.model !== 'string') return refused(NOT_OFFERED);
+  const refusal = await ownedForUpdate(tx, context, fields.conversationId);
+  if (refusal !== undefined) return refused(refusal);
+  const conversationId = fields.conversationId as string;
+  // Asked under the row lock, after the owner check: what is offered turns on
+  // the conversation's own task and client, read here, never the body.
+  const facts = await modelFacts(tx, context.session, conversationId);
+  if (facts === undefined) return refused(refuseNotFound());
+  const offered = await offeredModels(tx, installProvider(), facts);
+  if (fields.model !== null && !offered.some((model) => model.id === fields.model)) {
+    return refused(NOT_OFFERED);
+  }
+  await tx.query(`update conversations set model_id = $3 where business_id = $1 and id = $2`, [
+    tx.businessId,
+    conversationId,
+    fields.model,
+  ]);
   return applied(null, null, { conversationId, address: conversationAddress(conversationId) });
 }

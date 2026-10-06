@@ -28,4 +28,9 @@ export type ConversationRequest =
       readonly command: 'conversation.set_scope';
       readonly conversationId: unknown;
       readonly page: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'conversation.set_model';
+      readonly conversationId: unknown;
+      readonly model: unknown;
     } & Envelope);
