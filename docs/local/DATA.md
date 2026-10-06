@@ -372,6 +372,13 @@ its one insert as the application's; its search path is `pg_catalog, pg_temp`, P
 nothing answers null. `tests/db/take-lease-path.test.ts` and
 `tests/db/lease-holder-guard.test.ts` prove it.
 
+The map read models' four writers (`map_summary_refresh` and its three
+triggers, WF-1) follow the same pattern (migration 20261006181500): they belong
+to `ops_astro_map_path` (no login, no bypass, not the owner), which reads what
+they count and writes `map_summaries` and `map_frontier` under row security, so
+the made-up guard judges a map edit on staging as the application's.
+`tests/db/click-through-seed-map.test.ts` proves it.
+
 `ops_astro_occurrence` (migration 0097, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's
 `business_id`, `id` and `revision` (for 0032's trigger), the columns of
