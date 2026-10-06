@@ -18,6 +18,7 @@ import { createApiFixture } from './fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// eslint-disable-next-line max-lines-per-function -- one stack, set up and asked in one case
 describe.skipIf(serverUrl === undefined)('the side panel on the local GPT runner', () => {
   let laptop: World;
   let stack: Stack;

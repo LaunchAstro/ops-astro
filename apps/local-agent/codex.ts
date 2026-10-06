@@ -275,13 +275,9 @@ export async function runCodex(
   });
 }
 
-/** The one login the runner runs on: the ChatGPT plan. An API key would bill per call. */
 const PLAN_LOGIN = 'Logged in using ChatGPT';
 
-/**
- * Whether the runner's own Codex home is signed in to the ChatGPT plan, by
- * `codex login status`: exit 0 and that exact line, nothing else counts.
- */
+/** On the ChatGPT plan (an API key bills per call): `codex login status` exits 0 with that line. */
 export async function codexLogin(settings: RunnerSettings): Promise<boolean> {
   mkdirSync(settings.codexHome, { recursive: true, mode: 0o700 });
   return await new Promise((resolve) => {
@@ -292,8 +288,7 @@ export async function codexLogin(settings: RunnerSettings): Promise<boolean> {
       shell: false,
     });
     const parts: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => parts.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => parts.push(chunk));
+    for (const out of [child.stdout, child.stderr]) out.on('data', (b: Buffer) => parts.push(b));
     const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
     child.on('error', () => resolve(false));
     child.on('close', (code) => {
