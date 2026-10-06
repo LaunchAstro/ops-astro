@@ -2,8 +2,9 @@
 // @vitest-environment jsdom
 //
 // CS-7.30, the drawer's model picker: it lists the models `conversation.models`
-// answers, a choice made before the tab starts goes by `conversation.set_model`
-// straight after the start, and a choice in a started tab goes at once. The
+// answers, a choice made before the tab starts rides in `conversation.start`
+// itself (so the first question is asked of it, not the default), and a choice
+// in a started tab goes at once by `conversation.set_model`. The
 // operations client is a recorder standing in for the network only; the read
 // and the write themselves are proven on the real routes in
 // `tests/api/conversation-model-choice-reaches-the-call.test.ts`.
@@ -78,12 +79,16 @@ async function ask(page: Awaited<ReturnType<typeof view>>['page'], text: string)
 
 describe('CS-7.30 the model picker', () => {
   it('lists the models the read answers, for the empty drawer then the started tab', async () => {
-    const { page, reads } = await view();
+    const { page, reads, sent } = await view();
     const options = (): readonly (string | null)[] =>
       page.all('[data-assistant="model"] option').map((option) => option.getAttribute('value'));
     expect(options()).toStrictEqual(['replay-1', 'replay-2']);
     await ask(page, 'What is due?');
     await settle();
+    // No choice made: the start names no model, and the default answers.
+    expect(sent.find((call) => call.name === 'conversation.start')?.body).not.toHaveProperty(
+      'model',
+    );
     const asked = reads
       .filter((call) => call.name === 'conversation.models')
       .map((call) => call.body);
@@ -92,19 +97,16 @@ describe('CS-7.30 the model picker', () => {
     expect(options()).toStrictEqual(['replay-1', 'replay-2']);
   });
 
-  it('a choice before the first question goes after the start; one in a started tab goes at once', async () => {
+  it('a choice before the first question rides in the start; one in a started tab goes at once', async () => {
     const { page, sent } = await view();
     await page.choose('[data-assistant="model"]', 'replay-2');
     expect(sent).toStrictEqual([]);
     await ask(page, 'What is due?');
-    expect(sent.map((call) => call.name)).toStrictEqual([
-      'conversation.start',
-      'conversation.set_model',
-    ]);
-    expect(sent[1]?.body).toStrictEqual({ conversationId: CONVERSATION, model: 'replay-2' });
+    expect(sent.map((call) => call.name)).toStrictEqual(['conversation.start']);
+    expect(sent[0]?.body).toMatchObject({ body: 'What is due?', model: 'replay-2' });
     await page.choose('[data-assistant="model"]', 'replay-1');
     await settle();
-    expect(sent.slice(2)).toStrictEqual([
+    expect(sent.slice(1)).toStrictEqual([
       { name: 'conversation.set_model', body: { conversationId: CONVERSATION, model: 'replay-1' } },
     ]);
   });
