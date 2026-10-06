@@ -240,16 +240,17 @@ async function move(
     if (unmanaged !== undefined) return unmanaged;
     const limit = await overLimit(tx, found.address, context.session.actorId);
     if (limit !== undefined) return limit;
-    // The limit locks may have been waited on: judged again with every lock held.
-    if (!(await liveNow(tx, found.id))) return notPending();
   }
   const gone = await noLongerHeld(tx, context, resend ? found.role_key : '');
   if (gone !== undefined) return gone;
+  // The limit and access locks may have been waited on: a resend is judged
+  // live again by its own write, on the clock, with every lock held.
   const [moved] = resend
     ? await tx.query<{ revision: number; state: string }>(
         `update invitations set expires_at = now() + make_interval(days => $3::int),
                 revision = revision + 1
-          where business_id = $1 and id = $2 returning revision, state`,
+          where business_id = $1 and id = $2 and expires_at > clock_timestamp()
+          returning revision, state`,
         [tx.businessId, found.id, INVITATION_LIFETIME_DAYS],
       )
     : await tx.query<{ revision: number; state: string }>(
@@ -257,9 +258,10 @@ async function move(
           where business_id = $1 and id = $2 returning revision, state`,
         [tx.businessId, found.id],
       );
-  return applied(found.id, moved?.revision ?? null, {
+  if (moved === undefined) return notPending();
+  return applied(found.id, moved.revision, {
     invitationId: found.id,
-    state: moved?.state,
+    state: moved.state,
   });
 }
 
