@@ -17,8 +17,7 @@ import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts'
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { requestOperands } from './live-corrections.ts';
-import { requestAsAgent } from './live-correction-agent.ts';
+import { CORRECTION_REQUEST } from './live-correction-agent.ts';
 import { invalid, isFieldMap } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
@@ -900,17 +899,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       operands: NONE,
     }),
   ],
-  [
-    'live_correction.request',
-    row({
-      authority: 'purpose',
-      // Released only to a delegation that could make this request now.
-      replay: 'correctionRequest',
-      operands: requestOperands,
-      serve: async (tx, { session }, operands, delegation) =>
-        await requestAsAgent(tx, session.actorId, operands, delegation),
-    }),
-  ],
+  ['live_correction.request', row(CORRECTION_REQUEST)],
   [
     'model.call',
     modelCallRow(() =>

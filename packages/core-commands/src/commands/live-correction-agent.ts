@@ -11,7 +11,12 @@ import type { Delegation, TenantQuery } from '../../../core-records/src/index.ts
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refused, type HandlerOutcome } from './outcome.ts';
-import { storeRequest, typedOperands, type RequestOperands } from './live-corrections.ts';
+import {
+  requestOperands,
+  storeRequest,
+  typedOperands,
+  type RequestOperands,
+} from './live-corrections.ts';
 
 const OUT_OF_PURPOSE = refuseCommand(
   'DELEGATION_OUT_OF_PURPOSE',
@@ -96,3 +101,22 @@ export async function replayRefusal(
   const within = await withinDelegation(tx, sent, delegation);
   return 'refusal' in within ? within.refusal : undefined;
 }
+
+/** `live_correction.request`'s agent row: replayed only to a delegation that could make it now. */
+export const CORRECTION_REQUEST: {
+  readonly authority: 'purpose';
+  readonly replay: 'correctionRequest';
+  readonly operands: typeof requestOperands;
+  readonly serve: (
+    tx: TenantQuery,
+    call: { readonly session: { readonly actorId: string } },
+    operands: Readonly<Record<string, unknown>>,
+    delegation: Delegation,
+  ) => Promise<HandlerOutcome>;
+} = {
+  authority: 'purpose',
+  replay: 'correctionRequest',
+  operands: requestOperands,
+  serve: async (tx, { session }, operands, delegation) =>
+    await requestAsAgent(tx, session.actorId, operands, delegation),
+};
