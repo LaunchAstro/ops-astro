@@ -155,8 +155,9 @@ describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => 
     const id = await approved();
     const seenBy: { address: string; family: number; method: string | undefined }[] = [];
     const site = doubles();
+    // The site's own double takes the publish, so its page shows the new word after it.
     const fenced = doubles(
-      {},
+      { publish: site.publish },
       {
         transport: async (request) => {
           seenBy.push({ address: request.address, family: request.family, method: request.method });
@@ -165,9 +166,11 @@ describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => 
       },
     );
     expect(await publish(id, fenced)).toMatchObject({ kind: 'recorded', state: 'live' });
-    expect(site.seen.captured).toEqual([PAGE]);
-    expect(seenBy).toEqual([{ address: PUBLIC_ADDRESS, family: 4, method: 'GET' }]);
-    expect(fenced.seen.resolved).toEqual(['agency.example']);
+    // Before the send (the pre-image the live check is placed on) and after it.
+    expect(site.seen.captured).toEqual([PAGE, PAGE]);
+    const resolved = { address: PUBLIC_ADDRESS, family: 4, method: 'GET' };
+    expect(seenBy).toEqual([resolved, resolved]);
+    expect(fenced.seen.resolved).toEqual(['agency.example', 'agency.example']);
   });
 });
 
@@ -179,15 +182,16 @@ describe.skipIf(serverUrl === undefined)(
       const ports = doubles({}, { resolve: () => Promise.resolve([PUBLIC_ADDRESS, '10.0.0.5']) });
       expect(await publish(id, ports)).toMatchObject({ kind: 'recorded', state: 'accepted' });
       expect([ports.seen.dispatched.length, ports.seen.captured.length]).toEqual([1, 0]);
-      expect(ports.seen.fenceRefusals).toEqual([
-        { code: 'CAPTURE_ADDRESS_DENIED', hop: 0, origin: 'https://agency.example' },
-      ]);
+      // Refused before the send and again after it, never fetched either time.
+      const denied = { code: 'CAPTURE_ADDRESS_DENIED', hop: 0, origin: 'https://agency.example' };
+      expect(ports.seen.fenceRefusals).toEqual([denied, denied]);
       const rows = await w.world.db.admin.execute<{ readonly r: string }>(
         `select observations -> 'refusals_raised' ->> 'observed' as r
-         from public.live_correction_receipts where correction_id = $1`,
+         from public.live_correction_receipts where correction_id = $1
+           and observations ? 'refusals_raised'`,
         [id],
       );
-      expect(rows.map((row) => row.r)).toEqual(['CAPTURE_ADDRESS_DENIED']);
+      expect(rows.map((row) => row.r)).toEqual(['CAPTURE_ADDRESS_DENIED CAPTURE_ADDRESS_DENIED']);
     });
 
     it('does not observe an accepted publish again once its page has left the catalogue', async () => {
@@ -203,7 +207,7 @@ describe.skipIf(serverUrl === undefined)(
         code: 'CAPTURE_HOST_NOT_CATALOGUED',
       });
       expect(untouched(again)).toEqual([0, 0, 0, 0, 0]);
-      expect([await w.stateOf(id), await w.receiptsOf(id)]).toEqual(['accepted', 1]);
+      expect([await w.stateOf(id), await w.receiptsOf(id)]).toEqual(['accepted', 2]);
     });
 
     it('does not revert a live page that has left the catalogue, sending nothing', async () => {
@@ -215,7 +219,7 @@ describe.skipIf(serverUrl === undefined)(
         code: 'CAPTURE_HOST_NOT_CATALOGUED',
       });
       expect(untouched(later)).toEqual([0, 0, 0, 0, 0]);
-      expect([await w.stateOf(id), await w.receiptsOf(id)]).toEqual(['live', 1]);
+      expect([await w.stateOf(id), await w.receiptsOf(id)]).toEqual(['live', 2]);
     });
   },
 );

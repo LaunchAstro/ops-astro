@@ -90,7 +90,8 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, a s
       1,
       1,
     ]);
-    const again = doubles();
+    // The site as the lost run left it: the page shows the new word.
+    const again = doubles({}, lost.capture);
     expect(await publish(id, again)).toMatchObject({ kind: 'recorded', state: 'live' });
     expect([lost.seen.dispatched.length, again.seen.dispatched.length]).toEqual([1, 0]);
     expect([again.seen.sourceReads, await w.receiptsOf(id)]).toEqual([0, 2]);
