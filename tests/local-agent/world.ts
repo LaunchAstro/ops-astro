@@ -79,3 +79,13 @@ export function makeWorld(): World {
     },
   };
 }
+
+/** The settings back out of the stack's `api.env`, as the API sees them after sourcing it. */
+export function sourced(file: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const match = /^export ([A-Z_]+)='([^']*)'$/u.exec(line);
+    if (match?.[1] !== undefined && match[2] !== undefined) env[match[1]] = match[2];
+  }
+  return env;
+}
