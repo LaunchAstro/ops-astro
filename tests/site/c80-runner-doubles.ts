@@ -57,6 +57,10 @@ function fenceDouble(seen: Seen, page: () => string): CaptureOptions {
   };
 }
 
+/** The site as the doubles left it: the new word once a publish was sent, until a revert. */
+const pageNow = (seen: Seen): string =>
+  seen.dispatched.length > 0 && seen.reverted === 0 ? AFTER : BEFORE;
+
 /** Doubles of the providers, and the fence over a pool holding the agency's page. */
 export function doubles(
   overrides: Partial<Omit<RunnerPorts, 'capture'>> = {},
@@ -71,7 +75,6 @@ export function doubles(
     reverted: 0,
     raised: [],
   };
-  let page = BEFORE;
   return {
     seen,
     readSource: () => {
@@ -81,7 +84,6 @@ export function doubles(
     readBack: () => Promise.resolve({ state: 'absent' }),
     publish: (input) => {
       seen.dispatched.push(input);
-      page = AFTER;
       return Promise.resolve({
         kind: 'ok',
         value: { revision: 'rev-2', deploymentId: 'dep-2', liveUrl: PAGE },
@@ -92,11 +94,10 @@ export function doubles(
         kind: 'ok',
         value: { revision: id === 'dep-3' ? 'rev-3' : 'rev-2', served: true },
       }),
-    capture: { ...fenceDouble(seen, () => page), ...fence },
+    capture: { ...fenceDouble(seen, () => pageNow(seen)), ...fence },
     revertReadBack: () => Promise.resolve({ state: 'absent' }),
     revert: () => {
       seen.reverted += 1;
-      page = BEFORE;
       return Promise.resolve({ kind: 'ok', value: { revision: 'rev-3', deploymentId: 'dep-3' } });
     },
     raiseTask: (reason) => {

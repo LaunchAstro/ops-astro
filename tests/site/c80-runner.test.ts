@@ -214,7 +214,8 @@ describe.skipIf(serverUrl === undefined)('C80 publish runner, crossings', () => 
     const id = await correction(true);
     const ports = doubles();
     const answer = await runLivePublish(w.world.db.app, { ...at(id), business: w.beta }, ports);
-    expect(answer).toEqual({ kind: 'refused', code: 'NOT_FOUND' });
+    // The lease is asked first, in the run's business: there it names nothing.
+    expect(answer).toEqual({ kind: 'refused', code: 'LEASE_NOT_OWNED' });
     expect([ports.seen.dispatched.length, await w.stateOf(id)]).toEqual([0, 'approved']);
   });
 
@@ -223,7 +224,8 @@ describe.skipIf(serverUrl === undefined)('C80 publish runner, crossings', () => 
     const id = String(detail['correctionId']);
     await w.approve(w.ben, id, String(detail['versionId']));
     const ports = doubles();
-    expect(await publish(id, ports)).toEqual({ kind: 'refused', code: 'LEASE_NOT_OWNED' });
+    // Another task's correction answers as an id that names none.
+    expect(await publish(id, ports)).toEqual({ kind: 'refused', code: 'NOT_FOUND' });
     expect([ports.seen.dispatched.length, await w.stateOf(id)]).toEqual([0, 'approved']);
   });
 });

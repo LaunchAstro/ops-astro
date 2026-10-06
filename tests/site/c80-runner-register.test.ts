@@ -12,6 +12,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { doubles } from './c80-runner-doubles.ts';
+import { PAGE } from './c80-world.ts';
 import {
   correctionEffectId,
   registerCorrectionEffect,
@@ -75,7 +76,7 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, a s
         await expireLease();
         return {
           kind: 'ok',
-          value: { revision: 'rev-2', deploymentId: 'dep-2', liveUrl: 'x' },
+          value: { revision: 'rev-2', deploymentId: 'dep-2', liveUrl: PAGE },
         };
       },
     });
@@ -225,7 +226,7 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, cro
     await publish(id, ports);
     served = true;
     const answer = await runLivePublish(w.world.db.app, at(id, w.beta), ports);
-    expect(answer).toEqual({ kind: 'refused', code: 'NOT_FOUND' });
+    expect(answer).toEqual({ kind: 'refused', code: 'LEASE_NOT_OWNED' });
     expect([asked.length, ports.seen.dispatched.length, await w.stateOf(id)]).toEqual([
       1,
       1,
