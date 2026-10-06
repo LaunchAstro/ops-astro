@@ -8,8 +8,8 @@
 //
 // The deadline runs from the durable create record, so a container never
 // started has one too. The kill is due at the deadline until it lands (a
-// kill refused because the container is not running counts as landed) or
-// the wait returns. The delete is due 30 s after the later of the wait
+// kill refused because the container is not running counts as landed),
+// whatever the wait has answered. The delete is due 30 s after the later of the wait
 // returning and the attach ending, 30 s after the launcher fully closes
 // its attach before the wait returns, and at the latest 30 s after the
 // deadline; a `wall` crossing's container (the probe's) not before then. The id
@@ -109,7 +109,7 @@ export function containerDue(book: ContainerBook, now: number): { kill: boolean;
   const held = book.container;
   if (held === null) return { kill: false, delete: false };
   return {
-    kill: now >= held.deadline && !held.killed && held.waitAt === null,
+    kill: now >= held.deadline && !held.killed,
     delete: now >= deleteAt(held),
   };
 }
