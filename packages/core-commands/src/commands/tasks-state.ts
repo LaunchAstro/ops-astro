@@ -459,14 +459,19 @@ export async function writeOwnedFields(
   return applied(target.id, Number(written.revision), { changed: keys });
 }
 
-/** Whether a pending gate before its deadline sits on any lineage of this task. */
+/**
+ * Whether a pending gate before its deadline sits on a live lineage's current
+ * version of this task, as `gate.pending` lists one: a gate left pending on a
+ * cancelled lineage or a superseded version waits on nobody.
+ */
 async function openGateOn(tx: TenantQuery, taskId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly open: boolean }>(
     `select exists (
        select 1 from public.gates g
          join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+         join public.proposal_versions ver on ver.business_id = g.business_id and ver.id = g.version_id
         where g.business_id = $1 and l.task_id = $2 and g.state = 'pending'
-          and g.expires_at > now()) as open`,
+          and g.expires_at > now() and l.state = 'live' and ver.superseded_at is null) as open`,
     [tx.businessId, taskId],
   );
   return rows[0]?.open === true;

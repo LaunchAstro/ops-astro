@@ -65,11 +65,13 @@
 // lineage check each returned row's gate must still be bound to the row's own
 // version and pack; that version's pack must hold the digest the decision
 // signed, and its stored body must still hash to that digest; and the body's
-// version number, lineage, ceiling and currency must be the version row's.
+// version number, lineage, ceiling, currency, purpose and payload must be the
+// version row's, and the row's payload digest the one the body recomputes.
 // A gate moved onto another version, a pack body rewritten under its old
-// digest or a version's ceiling rewritten fails as a broken link does. A
-// gate is per version (`gates_version_idx`) and so is a pack, so a decision
-// on a version later superseded stays bound to that version.
+// digest or a version's ceiling, purpose, payload or digest rewritten fails
+// as a broken link does. A gate is per version (`gates_version_idx`) and so
+// is a pack, so a decision on a version later superseded stays bound to that
+// version.
 //
 // **A chain cannot see what was never in it.** Removing the newest decisions
 // in a business leaves a shorter chain that verifies from genesis to its new
@@ -93,6 +95,7 @@
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import {
+  canonicalise,
   decidedAtText,
   decisionLink,
   digestOf,
@@ -148,6 +151,9 @@ interface BoundEvidence {
   readonly dv_lineage_id: string | null;
   readonly dv_maximum_minor: string | null;
   readonly dv_currency: string | null;
+  readonly dv_purpose: string | null;
+  readonly dv_payload: unknown;
+  readonly dv_payload_digest: string | null;
   readonly dp_id: string | null;
   readonly dp_rendered: Record<string, unknown> | null;
   readonly dp_rendered_digest: string | null;
@@ -283,20 +289,26 @@ function splitShown({
   dv_lineage_id,
   dv_maximum_minor,
   dv_currency,
+  dv_purpose,
+  dv_payload,
+  dv_payload_digest,
   dp_id,
   dp_rendered,
   dp_rendered_digest,
   ...row
 }: ChainRow): readonly [VerifiedDecisionRow, BoundEvidence] {
   const shown = { gate_version_id, gate_evidence_pack_id, dv_version, dv_lineage_id };
-  return [row, { ...shown, dv_maximum_minor, dv_currency, dp_id, dp_rendered, dp_rendered_digest }];
+  const version = { dv_maximum_minor, dv_currency, dv_purpose, dv_payload, dv_payload_digest };
+  return [row, { ...shown, ...version, dp_id, dp_rendered, dp_rendered_digest }];
 }
 
 /**
  * Where the gate, version and pack the read shows stop being what the
  * decision signed, or `null` when they are. The signed evidence digest is
  * compared with the pack's, the pack's body is hashed again as `evidence.ts`
- * hashed it, and the body's fields are compared with the version row.
+ * hashed it, and the body's fields are compared with the version row. The
+ * version's payload digest is recomputed from the body as `proposal-writer.ts`
+ * computed it, so a purpose, payload or digest rewritten on the version fails.
  */
 function unboundEvidence(row: VerifiedDecision, shown: BoundEvidence | undefined): string | null {
   if (shown === undefined || shown.gate_version_id !== row.version_id) {
@@ -321,11 +333,34 @@ function unboundEvidence(row: VerifiedDecision, shown: BoundEvidence | undefined
     ['lineage_id', shown.dv_lineage_id, rendered['lineage']],
     ['maximum_minor', Number(shown.dv_maximum_minor), signed?.['maximumMinor']],
     ['currency', shown.dv_currency, signed?.['currency']],
+    ['purpose', shown.dv_purpose, rendered['purpose']],
+    ['payload', canonicalise(shown.dv_payload), canonicalise(rendered['payload'])],
+    ['payload_digest', shown.dv_payload_digest, digestOf(versionDigestBody(rendered))],
   ] as const;
   const differs = fields.find(([, column, evidence]) => column !== evidence);
   return differs === undefined
     ? null
     : `version ${row.version_id}'s ${differs[0]} is not what the signed evidence bound`;
+}
+
+/**
+ * What `proposal-writer.ts` digests into a version's `payload_digest`, read
+ * back from the evidence body rendered from that version and its one step.
+ */
+function versionDigestBody(rendered: Record<string, unknown>): Record<string, unknown> {
+  const bound = rendered['bound'] as Record<string, unknown> | null | undefined;
+  const steps = rendered['steps'];
+  const step = (Array.isArray(steps) ? steps[0] : undefined) as Record<string, unknown> | undefined;
+  return {
+    lineage: rendered['lineage'],
+    version: rendered['version'],
+    task: rendered['task'],
+    purpose: rendered['purpose'],
+    maximumMinor: bound?.['maximumMinor'],
+    currency: bound?.['currency'],
+    payload: rendered['payload'],
+    step: { kind: step?.['kind'], payload: step?.['payload'], planStep: step?.['planStep'] },
+  };
 }
 
 /**
@@ -518,6 +553,8 @@ async function readSnapshot(
                 g.version_id as gate_version_id, g.evidence_pack_id as gate_evidence_pack_id,
                 dv.version as dv_version, dv.lineage_id as dv_lineage_id,
                 dv.maximum_minor::text as dv_maximum_minor, dv.currency as dv_currency,
+                dv.purpose as dv_purpose, dv.payload as dv_payload,
+                dv.payload_digest as dv_payload_digest,
                 dp.id as dp_id, dp.rendered as dp_rendered, dp.rendered_digest as dp_rendered_digest
            from public.gate_decisions d
            cross join wanted
