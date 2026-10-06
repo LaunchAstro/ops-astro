@@ -116,6 +116,8 @@ interface Opening {
   /** The refusal code, stale by default; `once` refuses only the first matching call. */
   readonly code?: string;
   readonly once?: boolean;
+  /** How many matching calls are answered before the refusing starts; none by default. */
+  readonly after?: number;
   /** Commands wait on this before they are answered. */
   readonly hold?: Promise<void>;
   /** A step-up the page may call, where the case needs one. */
@@ -156,23 +158,43 @@ function answer(
   return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
 }
 
-/** What the stub has stored: a filing adds its mandate to the next read, a revoke ends it. */
+/**
+ * What the stub has stored: a filing adds its mandate to the next read once
+ * per operation, as the server's register does, and a revoke ends its mandate.
+ */
 function stubStore(): {
   readonly region: () => ConnectionGraduationResult;
   readonly keep: (at: string, body: Record<string, unknown>) => void;
 } {
-  let filed: MandateView[] = [];
+  const filed = new Map<string, MandateView>();
+  const ended = new Set<string>();
   return {
-    region: () => ({ ...BODY, mandates: [...BODY.mandates, ...filed] }),
+    region: () => ({
+      ...BODY,
+      mandates: [...BODY.mandates, ...filed.values()].filter((one) => !ended.has(one.id)),
+    }),
     keep: (at, body) => {
-      if (at.endsWith('/mandate/file') && filed.length === 0) {
-        filed = [
-          mandate('m-new', { clientId: String(body['clientId']), label: String(body['label']) }),
-        ];
+      const operation = String(body['operationId']);
+      if (at.endsWith('/mandate/file') && !filed.has(operation)) {
+        const id = filed.size === 0 ? 'm-new' : `m-new-${filed.size}`;
+        filed.set(
+          operation,
+          mandate(id, { clientId: String(body['clientId']), label: String(body['label']) }),
+        );
       }
-      if (at.endsWith('/mandate/revoke') && body['mandateId'] === 'm-new') filed = [];
+      if (at.endsWith('/mandate/revoke')) ended.add(String(body['mandateId']));
     },
   };
+}
+
+/** Whether a call to `at` is refused: it matches, comes after `after` calls, and is the first if `once`. */
+function refuser(refuse: RegExp | undefined, opening: Opening): (at: string) => boolean {
+  let refused = 0;
+  let matched = 0;
+  return (at) =>
+    refuse?.test(at) === true &&
+    matched++ >= (opening.after ?? 0) &&
+    (opening.once !== true || refused++ === 0);
 }
 
 /** Open the page; a command whose path matches `refuse` is refused, as stale by default. */
@@ -186,16 +208,14 @@ async function open(
   readonly as: (businessKey: string, grantKey: string) => Promise<void>;
 }> {
   const sent: string[] = [];
-  let refused = 0;
+  const refusing = refuser(refuse, opening);
   let lost = 0;
   const stored = stubStore();
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
     sent.push(`${at} ${String(init?.body ?? '')}`);
     if (COMMAND.test(at)) await opening.hold;
-    const refusing = (): boolean =>
-      refuse?.test(at) === true && (opening.once !== true || refused++ === 0);
-    const reply = answer(at, refusing, opening.code ?? 'VERSION_STALE', stored.region());
+    const reply = answer(at, () => refusing(at), opening.code ?? 'VERSION_STALE', stored.region());
     if (COMMAND.test(at) && reply.ok) stored.keep(at, bodyOf(`${at} ${String(init?.body ?? '')}`));
     if (opening.lose?.test(at) === true && lost++ === 0) throw new TypeError('Failed to fetch');
     return reply;
@@ -241,6 +261,28 @@ function bodyOf(call: string | undefined): Record<string, unknown> {
 
 const sentTo = (sent: readonly string[], path: string): Record<string, unknown> =>
   bodyOf(commands(sent).find((call) => call.includes(path)));
+
+const operationsTo = (sent: readonly string[], path: string): unknown[] =>
+  commands(sent)
+    .filter((call) => call.includes(path))
+    .map((call) => bodyOf(call)['operationId']);
+
+const steppedUp = async () => await Promise.resolve({ ok: true as const, sessionId: 'stepped' });
+
+/** Fill the standing approval form with the one approval the cases file. */
+async function fillApproval(page: Mounted): Promise<void> {
+  await page.type('[data-mandate-label]', 'Approve posts');
+  await page.choose('[data-mandate-scope]', 'social.ready');
+  await page.type('[data-mandate-ceiling]', '500');
+  await page.type('[data-mandate-expiry]', '2026-10-31');
+}
+
+/** Enter a code in the open step-up prompt and confirm it. */
+async function stepUpWith(page: Mounted, code = '123456'): Promise<void> {
+  await page.type('[data-step-up="code"]', code);
+  await page.click('[data-step-up="confirm"]');
+  await tick();
+}
 
 // eslint-disable-next-line max-lines-per-function -- one stub server, the cases that share it
 describe('Connections & signal: client scope bar, graduation and standing approvals', () => {
@@ -669,5 +711,92 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect(page.find('[data-region-said]')).toBeNull();
     await as('alpha', 'alpha:b@x:0');
     expect(commands(sent).filter((call) => call.includes('/graduation/demote'))).toHaveLength(1);
+  });
+
+  it('a lost filing refused for a fresh sign-in on its retry goes again under its operation once stepped up, so it files once', async () => {
+    const { page, sent, signInAgain } = await open(/\/mandate\/file$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      after: 1,
+      lose: /\/mandate\/file$/u,
+      stepUp: steppedUp,
+    });
+    await fillApproval(page);
+    await page.click('[data-mandate-add]');
+    await tick();
+    await page.click('[data-mandate-add]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await stepUpWith(page);
+    await signInAgain();
+    const operations = operationsTo(sent, '/mandate/file');
+    expect(operations).toHaveLength(3);
+    expect(new Set(operations).size).toBe(1);
+    expect(page.find('[data-mandate="m-new"]')?.textContent).toContain('Approve posts');
+    expect(page.find('[data-mandate="m-new-1"]')).toBeNull();
+  });
+
+  it('a lost filing refused for a fresh sign-in keeps its operation when pressed again', async () => {
+    const { page, sent } = await open(/\/mandate\/file$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      after: 1,
+      lose: /\/mandate\/file$/u,
+      stepUp: steppedUp,
+    });
+    await fillApproval(page);
+    await page.click('[data-mandate-add]');
+    await tick();
+    await page.click('[data-mandate-add]');
+    await tick();
+    await page.click('[data-step-up="cancel"]');
+    await tick();
+    await page.click('[data-mandate-add]');
+    await tick();
+    const operations = operationsTo(sent, '/mandate/file');
+    expect(operations).toHaveLength(3);
+    expect(new Set(operations).size).toBe(1);
+    expect(page.find('[data-mandate="m-new-1"]')).toBeNull();
+  });
+
+  it('a fresh filing refused for a fresh sign-in goes again under a new operation once stepped up', async () => {
+    const { page, sent, signInAgain } = await open(/\/mandate\/file$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      stepUp: steppedUp,
+    });
+    await fillApproval(page);
+    await page.click('[data-mandate-add]');
+    await tick();
+    await stepUpWith(page);
+    await signInAgain();
+    const operations = operationsTo(sent, '/mandate/file');
+    expect(operations).toHaveLength(2);
+    expect(operations[1]).not.toBe(operations[0]);
+    expect(page.find('[data-mandate="m-new"]')?.textContent).toContain('Approve posts');
+  });
+
+  it('cancelling an unsent promotion form keeps another write held for a fresh sign-in', async () => {
+    const { page, sent, signInAgain } = await open(/\/mandate\/revoke$/u, {
+      code: 'STEP_UP_REQUIRED',
+      once: true,
+      stepUp: steppedUp,
+    });
+    await page.click('[data-grad="ready"] [data-auto]');
+    expect(page.find('[data-promote-form="ready"]')).not.toBeNull();
+    await page.click('[data-mandate="m-yes"] [data-mandate-revoke]');
+    await page.click(REVOKE_CONFIRMED);
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await page.click('[data-promote-form="ready"] [data-promote-cancel]');
+    await tick();
+    expect(page.find('[data-promote-form="ready"]')).toBeNull();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    expect(page.find('[data-region-said]')?.textContent).toContain('STEP_UP_REQUIRED');
+    await stepUpWith(page);
+    await signInAgain();
+    expect(commands(sent).filter((call) => call.includes('/mandate/revoke'))).toHaveLength(2);
+    expect(commands(sent).filter((call) => call.includes('/graduation/promote'))).toHaveLength(0);
+    expect(page.find('[data-mandate="m-yes"]')).toBeNull();
   });
 });
