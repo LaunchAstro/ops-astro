@@ -17,11 +17,14 @@ import {
 
 export const DEFAULT_MODEL: string = LOCAL_GPT_DEFAULT_MODEL;
 
-/** A call needs this much left under the cap: one call reads about 11,000 tokens of instructions. */
-export const MIN_CALL_TOKENS = 20_000;
-
 /** What a call killed or unreadable is charged: its usage is unknown, so never nothing. */
 export const UNKNOWN_CALL_TOKENS = 50_000;
+
+/**
+ * A call needs this much left under the cap: the charge written before codex
+ * runs, so that charge, or a call killed and charged as unknown, never passes the cap.
+ */
+export const MIN_CALL_TOKENS: number = UNKNOWN_CALL_TOKENS;
 
 export type CallRefusal =
   'LOCAL_CAP_REACHED' | 'LOCAL_MODEL_NOT_APPROVED' | 'LOCAL_PLAN_LIMIT' | 'LOCAL_GPT_FAILED';

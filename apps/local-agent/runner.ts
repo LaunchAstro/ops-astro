@@ -19,7 +19,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 import { LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
-import { promptOf, runCodex, UNKNOWN } from './codex.ts';
+import { promptOf, runCodex, UNKNOWN, type CodexResult } from './codex.ts';
 import {
   DEFAULT_MODEL,
   decide,
@@ -177,6 +177,23 @@ async function complete(
     result === UNKNOWN
   ) {
     return refusal(call.model, 'LOCAL_GPT_FAILED');
+  }
+  return answerOf(call, result, decision.tokensLeft, log);
+}
+
+/**
+ * A finished call's answer. Codex reports usage only at the end, so a call
+ * that used more than the tokens left when it was let in is recorded, never answered.
+ */
+function answerOf(
+  call: CallRequest,
+  result: CodexResult,
+  tokensLeft: number,
+  log: (line: string) => void,
+): LocalAnswer {
+  if (result.inputTokens + result.outputTokens > tokensLeft) {
+    log(`LOCAL_CAP_REACHED: ${REFUSAL_MESSAGES.LOCAL_CAP_REACHED}`);
+    return refusal(call.model, 'LOCAL_CAP_REACHED');
   }
   if (result.limited) {
     log(`LOCAL_PLAN_LIMIT: ${REFUSAL_MESSAGES.LOCAL_PLAN_LIMIT}`);

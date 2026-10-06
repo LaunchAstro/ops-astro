@@ -88,7 +88,7 @@ describe('a call that does not answer', () => {
 
 // eslint-disable-next-line max-lines-per-function -- one case per way a call does not answer
 describe('the cap stops a run', () => {
-  it('refuses with under 20,000 tokens left, in plain words, and never spawns codex', async () => {
+  it('refuses with under 50,000 tokens left, in plain words, and never spawns codex', async () => {
     const { w, r } = await start();
     w.write('ledger.jsonl', used(1_990_000));
     const reply = await call(r, message);
@@ -125,7 +125,7 @@ describe('the cap stops a run', () => {
 
   it('stops the run once a call takes the total to the cap', async () => {
     const { w, r } = await start();
-    w.write('ledger.jsonl', used(1_970_000));
+    w.write('ledger.jsonl', used(1_940_000));
     w.knobs({ usage: { input_tokens: 15_000, output_tokens: 0 } });
     expect((await call(r, message)).body?.['code']).toBeNull();
     expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
@@ -134,10 +134,10 @@ describe('the cap stops a run', () => {
 
   it("replaces a call's unknown charge with what it used, never adds the two", async () => {
     const { w, r } = await start();
-    w.write('ledger.jsonl', used(1_940_000));
+    w.write('ledger.jsonl', used(1_900_000));
     w.knobs({ usage: { input_tokens: 15_000, output_tokens: 0 } });
     expect((await call(r, message)).body?.['code']).toBeNull();
-    // 1,955,000 used, 45,000 left: added, the 50,000 charge would have reached the cap.
+    // 1,915,000 used, 85,000 left: added, the 50,000 charge would have left under 50,000.
     expect((await call(r, message)).body?.['code']).toBeNull();
   });
 
@@ -169,7 +169,7 @@ describe('the cap the owner sets', () => {
     w.write('ledger.jsonl', used(1_990_000));
     expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
     w.write('approvals.json', { capTokens: 99_000_000 });
-    w.write('ledger.jsonl', used(9_985_000));
+    w.write('ledger.jsonl', used(9_960_000));
     expect((await call(r, message)).body?.['code']).toBe('LOCAL_CAP_REACHED');
     w.write('ledger.jsonl', used(1_990_000));
     expect((await call(r, message)).body?.['code']).toBeNull();
