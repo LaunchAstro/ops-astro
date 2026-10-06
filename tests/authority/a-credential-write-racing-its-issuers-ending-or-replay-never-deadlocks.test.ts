@@ -183,7 +183,7 @@ async function race(
       agentDb,
       world.alpha,
       { credential: credential.credential, now: new Date() },
-      { command: 'task.create', operationId, title: 'written by the agent' },
+      { command: 'task.create', operationId, fields: { title: 'written by the agent' } },
     );
     const otherAnswer = other(otherDb);
     await behindTheAgent(world, door.pid);
