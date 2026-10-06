@@ -236,6 +236,7 @@ const todo = (at: number, tags: readonly TagView[], waitingComments = 0): TodoVi
   ...(TASKS[at] as BoardTask),
   tags,
   waitingComments,
+  whoseMove: 'Team',
 });
 export const TODOS: readonly TodoView[] = [
   todo(0, TAGS.slice(0, 1)),
