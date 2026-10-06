@@ -98,7 +98,7 @@ const CODE: readonly (readonly [string, string, Claim])[] = [
   [`${C}/prepare.ts`, 'prepareCommand', /askCovered\([\s\S]*parseRequest\(request/u],
   [`${C}/prepare.ts`, 'prepareCommand', /refuseUnstorableOperands\(request\)[\s\S]*lockTask\(/u],
   [`${C}/prepare.ts`, 'refuseOtherTarget', "refuseCommand('COMMAND_BODY_INVALID', other"],
-  [`${C}/agent-operations.ts`, 'handbackOperands', "unstorableOperands(request, ['report',"],
+  [`${C}/agent-operands.ts`, 'handbackOperands', "unstorableOperands(request, ['report',"],
   [`${C}/values.ts`, 'isTimestamp', '(zoneHours ?? 0) <= 15'],
   [`${C}/values.ts`, 'isTimestamp', 'hour === 24 && minute === 0 && second === 0'],
   [`${C}/tasks-state.ts`, '', 'const REASON_LIMIT = 500;'],

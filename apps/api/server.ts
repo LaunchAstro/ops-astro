@@ -44,15 +44,18 @@ import {
   connect,
   connectAsAdmin,
   connectListener,
+  createQuotaGate,
   loginLiveElsewhere,
   isBusinessId,
   KEY_FILE_VARIABLE,
   readEnvFile,
+  withQuotaScope,
 } from '../../packages/core-records/src/index.ts';
 import type {
   AdminConnection,
   BusinessId,
   Database,
+  QuotaOptions,
 } from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
@@ -240,6 +243,8 @@ export interface ApiConfig {
   readonly alerts?: Alerts;
   /** The agent credential's limits in this process (API-2); absent, the defaults. */
   readonly agentLimits?: AgentLimits;
+  /** The quota table and clock; absent means `QUOTAS` and the wall clock. */
+  readonly quota?: QuotaOptions;
 }
 
 export interface ComposedApi {
@@ -274,6 +279,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
   });
   // This app's keys, for this request only: no other composition can replace them.
   server.use(async (_context, next) => await withRuntimeKeys(config.keys, next));
+  // Each request charged once to its quotas, after login resolution admits it.
+  const quota = createQuotaGate(config.quota);
+  server.use(async (_context, next) => await withQuotaScope(quota, next));
 
   // Measured, not assumed. `reachable` is the result of a statement that ran
   // on the runtime login (G2): the lookup answering proves nothing about it.

@@ -5,16 +5,20 @@
 // each step's own grant. The completer holds independent record grants on the
 // parent and on its one subtask, and nothing business-wide. A fixture
 // transaction holds the subtask's row; the completion parks on it; the
-// parent's grant is revoked through `access.revoke` and commits; then the
-// fixture lets go. The completion must be refused `SCOPE_NOT_GRANTED`: the
-// parent's state and revision and the subtask's archive fields stay as they
-// were (Sol round 1 on #1010, F1).
+// parent's grant is revoked through `access.revoke`; then the fixture lets
+// go. Either the revocation commits during the wait and the completion is
+// refused `SCOPE_NOT_GRANTED`, the parent's state and revision and the
+// subtask's archive fields as they were (Sol round 1 on #1010, F1); or the
+// revocation waits behind the completer, which holds the business's access
+// lock shared from before its grant check (#1008), and the completion commits
+// first on a grant still live. Never a completion committed after the
+// revocation of its grant.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { hold, waitingOn } from '../support/lock-waits.ts';
+import { chainPlaces, hold, revokedOrBehindWriter, waitingOn } from '../support/lock-waits.ts';
 import { grantTo, WHOLE_BUSINESS } from './fixture.ts';
 import {
   alpha,
@@ -66,6 +70,8 @@ it.skipIf(serverUrl === undefined)(
     const before = { parent: await state(parent.recordId), child: await state(child) };
     const completer = connect(db.appUrl);
     const revoker = connect(db.appUrl);
+    const completion = randomUUID();
+    const revocation = randomUUID();
     try {
       const row = await hold(db.appUrl, alpha, async (tx) => {
         await tx.query(
@@ -74,24 +80,40 @@ it.skipIf(serverUrl === undefined)(
         );
       });
       let completing: ReturnType<typeof executeCommand> | undefined;
+      let revoking: ReturnType<typeof executeCommand> | undefined;
+      let order: Awaited<ReturnType<typeof revokedOrBehindWriter>> | undefined;
       try {
         completing = executeCommand(completer, alpha, clientAWriter.presented, 'api', {
           command: 'task.complete',
-          operationId: randomUUID(),
+          operationId: completion,
           recordId: parent.recordId,
           expectedRevision: Number(before.parent?.['revision']),
         });
         await waitingOn(db.admin, 'transactionid', LOCK_STEPS);
-        const revoked = await executeCommand(revoker, alpha, writer.presented, 'api', {
+        let answered = false;
+        revoking = executeCommand(revoker, alpha, writer.presented, 'api', {
           command: 'access.revoke',
-          operationId: randomUUID(),
+          operationId: revocation,
           grantId: parentGrant,
         });
-        expect(outcomeOf(revoked)).toEqual({ applied: true });
+        const settle = (): void => {
+          answered = true;
+        };
+        void revoking.then(settle, settle);
+        order = await revokedOrBehindWriter(db.admin, LOCK_STEPS, () => answered);
       } finally {
         await row.letGo();
       }
       const answer = await completing;
+      expect(outcomeOf(await revoking)).toEqual({ applied: true });
+      if (order === 'behind the writer') {
+        const [completed, revoked] = await chainPlaces(db.admin, [completion, revocation]);
+        expect({
+          answer: outcomeOf(answer)['code'] ?? 'applied',
+          committedFirst: Number(completed) < Number(revoked) ? 'completion' : 'revocation',
+        }).toEqual({ answer: 'applied', committedFirst: 'completion' });
+        return;
+      }
       expect({
         answer: outcomeOf(answer)['code'] ?? 'applied',
         parent: await state(parent.recordId),

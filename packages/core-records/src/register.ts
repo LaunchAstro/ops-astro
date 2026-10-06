@@ -550,6 +550,13 @@ const ROWS_HEAD = [
     meaning: 'Session cookies arrived and the tab named none of its own',
     source: 'S0-6 isolation',
   },
+  // A 429: the same call answers once the window passes or a call in flight ends (`quota.ts`).
+  {
+    code: 'QUOTA_EXCEEDED',
+    status: 429,
+    meaning: 'A request or concurrency quota is used up; send again later',
+    source: 'API-3 quota',
+  },
 
   // Delegation and lease, T1's pickup and handback. No table yet.
   {

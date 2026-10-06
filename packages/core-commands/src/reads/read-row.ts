@@ -116,6 +116,8 @@ export interface SpineRow<K extends ReadName> extends RowBase<K> {
 /** A read about the business that needs no spine and names no record. */
 export interface BusinessRow<K extends ReadName> extends RowBase<K> {
   readonly spine: false;
+  /** The record a served answer (never a refusal) disclosed: its audit row's subject. */
+  readonly disclosed?: (answer: ReadResult) => string | undefined;
   readonly serve: (
     tx: TenantQuery,
     session: Session,

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A run's pinned definition, read ledger, checks and lease scope (AW-02,
-// MP-6-1, MP-6-4), and the task's execution and receipt reads (T2a). Split from
-// `views.ts`, which re-exports every one, to keep that file under the
-// 1,000-line cap for product source.
+// MP-6-1, MP-6-4), the task's execution and receipt reads (T2a), and C80's
+// decision read. Split from `views.ts`, which re-exports every one, to keep
+// that file under the 1,000-line cap for product source.
 
 /**
  * The run's pinned definition reference, as stored: a bootstrap file by path,
@@ -189,5 +189,21 @@ export interface ReceiptResult {
           readonly releasedMinor: number;
         }
       | { readonly state: string; readonly heldMinor: number };
+  };
+}
+
+/**
+ * C80: one live correction's decision as a card reads it again. The state as
+ * the request and decide commands name it, the person who decided it (the
+ * configured approver at that moment) by name or null, and its version; the
+ * card already holds the page, the word and the lines, so none comes back.
+ */
+export interface LiveCorrectionReadResult {
+  readonly ok: true;
+  readonly correction: {
+    readonly correctionId: string;
+    readonly state: string;
+    readonly approver: string | null;
+    readonly versionId: string;
   };
 }

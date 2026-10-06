@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's person request, approver setting and decision each read their grant again after their last lock wait, so one revoked or expired while they waited keeps nothing."
+}
