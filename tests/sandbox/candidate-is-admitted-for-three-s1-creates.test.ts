@@ -161,8 +161,8 @@ it('keeps an accepted id only while the entry keeps its id, lockfile digest and 
   expect(effective(emptied, sites({ a: pinned(C) }))).toBe('');
   const changed = readDeployed(imageGone, sites({ a: pinned(D) })).book;
   expect(effective(changed, sites({ a: pinned(C) }))).toBe('');
-  const raised = readDeployed(accepted, sites({ a: pinned(C, 2) })).book;
-  expect(effective(raised, sites({ a: pinned(C) }))).toBe('');
+  const raised = readDeployed(accepted, sites({ a: making(2) })).book;
+  expect(effective(raised, sites({ a: pinned(C, 2) }))).toBe('');
 });
 
 it('reads the book back whole after a restart, and refuses any other shape', () => {

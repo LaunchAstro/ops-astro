@@ -5,6 +5,19 @@
 // product and runs no container.
 
 export { AttachFrames, type AttachEnd } from './attach-frames.ts';
+export {
+  admitCandidateLoad,
+  candidateCreate,
+  type CandidateBook,
+  countCandidateCreate,
+  dropCandidateImage,
+  EMPTY_BOOK,
+  holdsCandidateImage,
+  readBook,
+  readDeployed,
+  recordCandidateWait,
+  writeBook,
+} from './candidate-book.ts';
 export { readBuildRequest, type BuildRequest, type SiteOf } from './build-request.ts';
 export {
   fixedCreateBody,

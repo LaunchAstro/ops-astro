@@ -67,7 +67,8 @@ function baseEntry(value: Json | undefined): BaseEntry | null {
   return isImage(id) && env !== null ? { image: id, env } : null;
 }
 
-function siteEntry(value: Json | undefined): SiteEntry | null {
+/** One site entry as the pin list holds it, or null (also the candidate record's entry). */
+export function siteEntry(value: Json | undefined): SiteEntry | null {
   const keys = ['lockfile', 'image', 'attempt', 'commit', 'env'];
   if (!hasExactKeys(value, keys) || !isJsonObject(value)) return null;
   const { lockfile, image: id, attempt, commit } = value;
