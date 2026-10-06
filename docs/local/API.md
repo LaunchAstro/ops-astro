@@ -2976,7 +2976,9 @@ password is set at the provider through custody under the catalogued
 `auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
 held by custody alone, whose `auth` destination lists that route and takes no
 POST, `post: false`; the answer must name the same user). In each business
-the login is mapped in, one transaction ends the sessions seen there. Last,
+the login is mapped in, one transaction, holding the login's session-ending
+keys first, ends the sessions seen there, so a factor change there that holds
+them commits first (C52-A). Last,
 whatever happened, one transaction in the token's business, holding the login's
 session-ending keys first, settles the window
 (`clock_timestamp()`; a sign-in after it is served) and, only when the
