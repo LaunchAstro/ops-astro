@@ -4,7 +4,6 @@
 // (minimum contract 4.2: "one shape, so that no surface can grow its own").
 //
 // Two things are deliberately *not* in the type.
-//
 // The actor, the business and the entry point are absent. All three are
 // constructed by the server — the first two from trusted authentication, the
 // third from which surface the call arrived on — so there is no field here for
@@ -263,6 +262,7 @@ export type CommandRequest =
       readonly lineageId: string;
       readonly expiresInSeconds?: number;
     } & Envelope)
+  | import('./live-correction-requests.ts').LiveCorrectionRequest
   | ({
       readonly command: 'task.heartbeat';
       readonly leaseId: string;

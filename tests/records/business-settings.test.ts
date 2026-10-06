@@ -116,6 +116,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       'client_sign_off_required',
       'conversation_window_days',
       'four_eyes_threshold',
+      'live_correction_approver',
       'money_step_up_required',
       'retention_window_days',
     ]);
@@ -178,6 +179,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
         ['client_sign_off_required', 1],
         ['conversation_window_days', 1],
         ['four_eyes_threshold', 1],
+        ['live_correction_approver', 1],
         ['money_step_up_required', 1],
         ['retention_window_days', 1],
       ]);
