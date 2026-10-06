@@ -34,7 +34,6 @@ export function partsOf(
   at: { revision: number },
 ): readonly Part[] {
   const note = draft.note.trim();
-  const time = draft.time.trim();
   // The vocabulary is read once, at the first tag.
   let held: Promise<Map<string, string>> | null = null;
   const tags = (): Promise<Map<string, string>> => (held ??= vocabulary(client));
@@ -68,11 +67,7 @@ export function partsOf(
       run: (operationId: string) =>
         client.mutate('task.create', { fields: { title }, parentId: recordId }, { operationId }),
     })),
-    ...when(time !== '', {
-      what: 'the time',
-      run: (operationId) =>
-        client.mutate('time.log', { taskId: recordId, duration: time }, { operationId }),
-    }),
+    ...timeParts(client, draft, recordId),
   ];
 }
 
@@ -100,6 +95,27 @@ function guessParts(
           'task.assign',
           { recordId, fields: { assignee: draft.owner?.id } },
           revision(operationId),
+        ),
+    }),
+  ];
+}
+
+/** The time typed on the draft and the minutes its timer timed (DN-05), each through `time.log`. */
+function timeParts(client: OperationsClient, draft: TaskDraft, recordId: string): readonly Part[] {
+  const time = draft.time.trim();
+  return [
+    ...when(time !== '', {
+      what: 'the time',
+      run: (operationId) =>
+        client.mutate('time.log', { taskId: recordId, duration: time }, { operationId }),
+    }),
+    ...when(draft.timed > 0, {
+      what: 'the timed time',
+      run: (operationId) =>
+        client.mutate(
+          'time.log',
+          { taskId: recordId, duration: `${String(draft.timed)}m` },
+          { operationId },
         ),
     }),
   ];

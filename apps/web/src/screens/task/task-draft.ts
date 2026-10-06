@@ -51,6 +51,10 @@ export interface TaskDraft {
   readonly owner: { readonly id: string; readonly name: string } | null;
   /** The sentence admitting what the page's guesses came from (DN-02), or null. */
   readonly why: string | null;
+  /** When the draft's running timer started, ISO, or null (DN-05). */
+  readonly timerFrom: string | null;
+  /** Whole minutes the draft's timer has timed, logged on the task at Create. */
+  readonly timed: number;
 }
 
 export const emptyDraft = (clientId: string | null): TaskDraft => ({
@@ -65,7 +69,16 @@ export const emptyDraft = (clientId: string | null): TaskDraft => ({
   category: null,
   owner: null,
   why: null,
+  timerFrom: null,
+  timed: 0,
 });
+
+/** The draft with its running timer stopped at `now`, its whole minutes added; as it was if none runs. */
+export function stopTimer(draft: TaskDraft, now: number): TaskDraft {
+  if (draft.timerFrom === null) return draft;
+  const minutes = Math.max(0, Math.floor((now - Date.parse(draft.timerFrom)) / 60_000));
+  return { ...draft, timerFrom: null, timed: draft.timed + minutes };
+}
 
 /** A fresh draft with the page's guesses in it (DN-02). */
 export const prefilledDraft = (prefill: Prefill): TaskDraft => ({

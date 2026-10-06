@@ -20,8 +20,9 @@
 // has already taken the panel out and put it back, which mounts the draft
 // again: the new mount finds the Create still out (`flights`) and waits too.
 //
-// **Timer on the draft.** DN-05's running timer on a draft waits on the dock
-// frame's timer (MP-3-1); time spent is logged here and written at Create.
+// **Timer on the draft (DN-05).** The draft's own timer (`DraftTimer.tsx`) is
+// kept with it; Create stops a running one first, so its minutes go with the
+// task as a new request, and they are written with the time typed here.
 
 import {
   useEffect,
@@ -41,6 +42,7 @@ import {
   keepDraft,
   newAttempt,
   prefilledDraft,
+  stopTimer,
   readAttempt,
   readDraft,
   saveAttempt,
@@ -204,9 +206,9 @@ function useKeptDraft(props: DraftPanelProps) {
   };
   // Stored before Create goes out, with each part's id and count as it goes;
   // cleared once its outcome is known.
-  const begin = (next: Attempt): void => {
+  const begin = (next: Attempt, sent: TaskDraft = draft): void => {
     setAttempt(next);
-    keepDraft(storage, person, draft, next);
+    keepDraft(storage, person, sent, next);
   };
   const progress = (next: Attempt): void => {
     setAttempt((held) => (held?.id === next.id ? next : held));
@@ -265,15 +267,19 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
       kept.name.current?.focus();
       return;
     }
-    const attempt = kept.attempt ?? newAttempt(props.client.newOperationId());
-    kept.begin(attempt);
+    // A running timer stops at Create: its minutes go with the task (DN-05), a new request.
+    const sent = stopTimer(kept.draft, Date.now());
+    if (sent !== kept.draft) kept.put(sent);
+    const held = sent === kept.draft ? kept.attempt : null;
+    const attempt = held ?? newAttempt(props.client.newOperationId());
+    kept.begin(attempt, sent);
     const release = props.hold();
     const flight = { person: props.person, show };
     flights.set(props.hold, flight);
     setView({ busy: true, refusal: null, missed: null });
     let outcome: CreateOutcome | null = null;
     try {
-      outcome = await createFromDraft(props.client, kept.draft, attempt, kept.progress);
+      outcome = await createFromDraft(props.client, sent, attempt, kept.progress);
     } finally {
       // The session changed while it was out: the draft and the panel went with it.
       if (!release()) outcome = null;
