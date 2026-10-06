@@ -69,6 +69,7 @@ export {
 export { s1Env, s2Env } from './run-env.ts';
 export { runOutcome, type RunEnd, type RunOutcome } from './run-outcome.ts';
 export { readSiteRecord, type SiteRecord } from './site-record.ts';
+export { sweep, SWEEP_RETRY_MS, type SweepDaemon } from './sweep.ts';
 export { parseStrictJson, type Json } from './strict-json.ts';
 export {
   OUTPUT_CAP,
