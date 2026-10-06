@@ -20,7 +20,7 @@ import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { markIfClients } from './conversation-context.ts';
+import { keptRefused, markRefusedForPage } from './conversation-context.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
@@ -91,15 +91,16 @@ export interface StartFields {
  * to read is one answer, `NOT_FOUND`, so citing a task tells the caller nothing
  * they could not already read. Read is asked before the row is taken, so a
  * caller who cannot read it waits on no task write and holds no lock on it.
- * Then the row is read `for key share`, the lock the scope's foreign key
- * takes, and both grants are asked again at the instant after that wait
- * (#444): one that lapsed in the wait no longer counts.
+ * Then the row is read `for share`, the page's client with it, which covers
+ * the `for key share` the scope's foreign key takes, and both grants are
+ * asked again at the instant after that wait (#444, Sol PRV-oa-1088-SC1.2):
+ * one that lapsed in the wait no longer counts.
  */
 async function citable(
   tx: TenantQuery,
   context: CommandContext,
   scope: Scope,
-): Promise<{ readonly at: string } | CommandRefusal> {
+): Promise<{ readonly at: string; readonly pageRefused: boolean } | CommandRefusal> {
   const subjects = subjectsOf(context.session);
   const read = {
     collection: 'task',
@@ -117,12 +118,14 @@ async function citable(
   if (!(await checkAuthorityAt(tx, subjects, read, await lockedInstant(tx))).ok) {
     return refuseNotFound(['scope']);
   }
+  const pageRefused = await keptRefused(tx, context.session, scope.id);
   if ((await live('for key share')).length === 0) return refuseNotFound(['scope']);
   const at = await lockedInstant(tx);
   // The door's grant first, as the door asked it.
   const own = await checkAuthorityAt(tx, subjects, OWN_WRITE, at);
   if (!own.ok) return own.refusal;
-  return (await checkAuthorityAt(tx, subjects, read, at)).ok ? { at } : refuseNotFound(['scope']);
+  const reads = (await checkAuthorityAt(tx, subjects, read, at)).ok;
+  return reads ? { at, pageRefused } : refuseNotFound(['scope']);
 }
 
 /** The first message's fields, refused by name; undefined when they will do. */
@@ -150,9 +153,11 @@ export async function startConversation(
   const scope = scopeOf(fields.scope);
   const invalid = startRefusal(fields, scope);
   if (invalid !== undefined) return refused(invalid);
+  let pageRefused = false;
   if (scope) {
     const cited = await citable(tx, context, scope);
     if (!('at' in cited)) return refused(cited);
+    pageRefused = cited.pageRefused;
   }
   const { session } = context;
   const subject = typeof fields.subject === 'string' ? fields.subject.trim() : null;
@@ -181,7 +186,7 @@ export async function startConversation(
      values ($1, $2, $3, 'person', $4, $5)`,
     [tx.businessId, messageId, conversationId, session.actorId, fields.body],
   );
-  await markIfClients(tx, session, { conversationId, messageId }, scope?.id ?? null);
+  if (pageRefused) await markRefusedForPage(tx, session, { conversationId, messageId });
   return applied(null, null, {
     conversationId,
     messageId,
@@ -241,6 +246,9 @@ export async function messageConversation(
   if (conversation === undefined) return refused(refuseNotFound());
   if (conversation.owner_actor_id !== context.session.actorId) return refused(NOT_YOURS);
   if (conversation.body_purged_at !== null) return refused(PURGED);
+  // The page is judged first, under its share lock, so the grant asked below
+  // is asked after every wait this keep makes (Sol PRV-oa-1088-SC1).
+  const pageRefused = await keptRefused(tx, context.session, conversation.scope_record_id);
   const messageId = randomUUID();
   // Stamped after the row lock, so messages list in the order kept (#444).
   // The grant the door asked is asked again at that clock: one that lapsed
@@ -260,7 +268,7 @@ export async function messageConversation(
     [tx.businessId, fields.conversationId, at],
   );
   const asked = { conversationId: fields.conversationId, messageId };
-  await markIfClients(tx, context.session, asked, conversation.scope_record_id);
+  if (pageRefused) await markRefusedForPage(tx, context.session, asked);
   return applied(null, null, {
     conversationId: fields.conversationId,
     messageId,

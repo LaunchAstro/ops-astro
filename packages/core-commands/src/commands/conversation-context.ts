@@ -12,7 +12,11 @@
 //   so a revoked reader never waits behind the task's writer. A refusal is
 //   marked in the audit chain in the same transaction, as the broker marks
 //   its own, and so is a question kept while its page is a client's, in the
-//   transaction that keeps it. A marked message is refused ever after: sent
+//   transaction that keeps it. The keep judges the page as the exchange does
+//   (the read first, then the share lock, then the read again), before it
+//   asks its own write grant, so no grant counts across that wait. A question
+//   kept on a page its sender may not read is marked too, the task untouched.
+//   A marked message is refused ever after: sent
 //   again with its operation id once the client is cleared or the task
 //   purged, it asks no model.
 // - Earlier: this conversation's messages before the asked one, oldest
@@ -154,20 +158,17 @@ export async function markRefusedForPage(
   return REFUSED;
 }
 
-/** At keep, in the message's own transaction: a question kept on a client's task is marked refused. */
-export async function markIfClients(
+/**
+ * At keep, before the keep asks its grants: whether a question kept on this
+ * page task is refused for it (a client's, gone, or not the sender's to read).
+ * The caller marks it once the message is written.
+ */
+export async function keptRefused(
   tx: TenantQuery,
   session: Session,
-  asked: Asked,
   taskId: string | null,
-): Promise<void> {
-  if (taskId === null) return;
-  const [task] = await tx.query<{ readonly client: string | null }>(
-    // Held for share, as the exchange holds it: a link being written is waited for and seen.
-    `select ${CLIENT} as client from records where business_id = $1 and id = $2 for share`,
-    [tx.businessId, taskId],
-  );
-  if (task !== undefined && task.client !== null) await markRefusedForPage(tx, session, asked);
+): Promise<boolean> {
+  return taskId !== null && (await pageOf(tx, session, taskId)) === 'refused';
 }
 
 /** The page and earlier messages for the asked message, in the caller's transaction. */
