@@ -507,10 +507,10 @@ const NO_ROOM = "this run's spend and holds already fill the version's approved 
  * custody counted (`countedHold`: a top-up moved its spend, or the end) is at
  * its calls plus its actual when its top-up found it held: a later close
  * charges only what it adds (`modelCallsOn`). One settled (`actual`) before
- * its top-up, or whose top-up predates `hold_state`, is at the greater, counted
- * once. Any other is at its actual, its unsent calls never counted. Read under
- * the run lock. A replacement is held at most this, whatever the newest-hold
- * order says.
+ * its top-up (every top-up records which, `hold_state`) is at the greater,
+ * counted once. Any other is at its actual, its unsent calls never counted.
+ * Read under the run lock. A replacement is held at most this, whatever the
+ * newest-hold order says.
  */
 async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
   const [row] = await tx.query<{ readonly room: string }>(
