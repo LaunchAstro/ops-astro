@@ -574,7 +574,8 @@ async function coveringMap(
 }
 
 /** OWNER-3 A: writes judged under revocations' access lock; exclusive where the handler takes it. */
-const ACCESS_LOCKERS = /^(?:access\.(?:grant|revoke|end)|grant\.revoke|credential\.issue)$/u;
+const ACCESS_LOCKERS =
+  /^(?:access\.(?:grant|revoke|end|reset_factor)|grant\.revoke|credential\.issue)$/u;
 
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
