@@ -32,25 +32,28 @@ import {
   type ReactElement,
 } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
-import { DraftFields } from './DraftFields.tsx';
+import { DraftFields, Missed } from './DraftFields.tsx';
+import type { Prefill } from './task-prefill.ts';
 import {
-  createFromDraft,
   dropDraft,
   emptyDraft,
   keepDraft,
   newAttempt,
+  prefilledDraft,
   readAttempt,
   readDraft,
   saveAttempt,
   type Attempt,
-  type CreateOutcome,
   type TaskDraft,
 } from './task-draft.ts';
+import { createFromDraft, type CreateOutcome } from './draft-parts.ts';
 
 /** Where the draft was filed from: the page's client, if it has one, and its name for the admission line. */
 export interface DraftScope {
   readonly clientId: string | null;
   readonly from: string;
+  /** The page's guesses for a fresh draft (DN-02); a kept draft comes back as left. */
+  readonly prefill?: Prefill;
 }
 
 export interface DraftPanelProps {
@@ -112,7 +115,9 @@ function DraftBody(
     <>
       <DraftHead busy={creating.busy} docked={props.docked === true} onClose={props.onClose} />
       <p className="card__sub" data-draft-admission>
-        New task, filed from {props.scope.from}. Nothing is stored until Create.
+        New task, filed from {kept.draft.from ?? props.scope.from}.{' '}
+        {kept.draft.why === null ? '' : `${kept.draft.why} `}
+        Nothing is stored until Create.
       </p>
       <DraftFields draft={kept.draft} put={kept.put} name={kept.name} locked={creating.busy} />
       {creating.refusal === null ? null : (
@@ -177,7 +182,13 @@ function DraftHead(props: {
 function useKeptDraft(props: DraftPanelProps) {
   const { storage, person } = props;
   const [draft, setDraft] = useState<TaskDraft>(
-    () => readDraft(storage, person) ?? emptyDraft(props.scope.clientId),
+    () =>
+      readDraft(storage, person) ?? {
+        ...(props.scope.prefill === undefined
+          ? emptyDraft(props.scope.clientId)
+          : prefilledDraft(props.scope.prefill)),
+        from: props.scope.from,
+      },
   );
   // The create's identity, kept across an unknown outcome and a remount, and
   // dropped by any edit.
@@ -272,29 +283,4 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
     if (outcome !== null) flight.show(land(props, kept, outcome, attempt));
   };
   return { ...view, create };
-}
-
-/** A task created with parts refused after it: named, and a door to the task (never a second create). */
-function Missed(props: {
-  readonly taskKey: string;
-  readonly parts: readonly string[];
-  readonly onOpen: (key: string) => void;
-}): ReactElement {
-  return (
-    <>
-      <p className="card__sub" role="status" data-draft-missed>
-        Created {props.taskKey}; not added: {props.parts.join(', ')}. Add them on the task.
-      </p>
-      <button
-        className="btn btn--primary"
-        type="button"
-        data-draft="open-created"
-        onClick={() => {
-          props.onOpen(props.taskKey);
-        }}
-      >
-        Open the task
-      </button>
-    </>
-  );
 }
