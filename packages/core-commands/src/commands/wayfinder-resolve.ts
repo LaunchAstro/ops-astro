@@ -13,14 +13,13 @@ import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
 import { invalid, notPermitted, textOk, type RequestOf } from './wayfinder.ts';
 import { refuseUnlessOwner } from './wayfinder-owner.ts';
 import { applyRevision } from './wayfinder-revision.ts';
+import { holdSteps, refuseCompletion } from './tasks-state.ts';
+import { moveSteps } from './tasks-steps.ts';
 
 const GIST_LIMIT = 200;
 const ANSWER_LIMIT = 20_000;
 
-/** What a closing command reads from its context: the spine and the locked ticket. */
-type Closing = Pick<CommandContext, 'spine' | 'target'>;
-
-export function completed(context: Closing, stateId: unknown): boolean {
+export function completed(context: Pick<CommandContext, 'spine'>, stateId: unknown): boolean {
   return (
     context.spine.states.find((state) => state.id === stateId)?.machineCategory === 'completed'
   );
@@ -29,21 +28,34 @@ export function completed(context: Closing, stateId: unknown): boolean {
 /**
  * Complete a ticket and write what its closing records, in one update, so the
  * revision moves by exactly one as for every other command. The state is the
- * installation's first `completed` one, as `task.complete` chooses it.
+ * installation's first `completed` one, as `task.complete` chooses it, and
+ * `task.complete`'s guards and step archive run around it; a ticket an agent
+ * holds goes to review through `task.complete` first. `before` runs once the
+ * guards have passed, ahead of the ticket's write.
  */
 async function completeWith(
   tx: TenantQuery,
-  context: Closing,
+  context: CommandContext,
   extra: Readonly<Record<string, string>>,
+  before?: () => Promise<void>,
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('completeWith: the envelope read no target');
+  const current = context.spine.states.find((candidate) => candidate.id === target.data['state']);
+  if (typeof target.data['agent'] === 'string' && current?.machineCategory !== 'unstarted') {
+    return notPermitted(['agent'], ['An agent holds this ticket: complete it for review first.']);
+  }
   const state = context.spine.states.find((candidate) => candidate.machineCategory === 'completed');
   if (state === undefined) {
     return refused(
       refuseCommand('NOT_FOUND', ['completed'], ['This installation seeds no completed state.']),
     );
   }
+  const guarded = await refuseCompletion(tx, context, target.id);
+  if (guarded !== undefined) return guarded;
+  const steps = await holdSteps(tx, context, target.id, 'archive');
+  if ('refusal' in steps) return steps;
+  await before?.();
   const rows = await tx.query<{ readonly revision: string }>(
     `update records
         set data = data || jsonb_build_object('state', $3::text, 'completed_at', now()::text)
@@ -57,6 +69,7 @@ async function completeWith(
   if (written === undefined) {
     return refused(refuseCommand('NOT_FOUND', [], ['No live task carries that identifier here.']));
   }
+  await moveSteps(tx, steps, 'archive');
   // Completing a ticket can unblock its map's grilling and prototype tickets (WF-2).
   await raiseFrontierDecisions(tx, target.id);
   return applied(target.id, Number(written.revision), { state: state.key, ...extra });
@@ -85,7 +98,7 @@ export async function resolveTicket(
 
 async function resolveWith(
   tx: TenantQuery,
-  context: Closing,
+  context: CommandContext,
   request: RequestOf<'task.resolve'>,
   typeRule: (facts: WayfinderFacts) => Promise<CommandRefusal | undefined>,
 ): Promise<HandlerOutcome> {
@@ -148,10 +161,12 @@ export async function closeOutOfScope(
   }
   const title = typeof target.data['title'] === 'string' ? target.data['title'] : 'a ticket';
   const line = typeof reason === 'string' ? `${title}: ${reason.trim()}` : title;
-  await applyRevision(tx, context, facts.mapId, {
-    addFog: [],
-    addOutOfScope: [{ text: line.slice(0, 4000), ticketId: target.id }],
-    retire: [],
+  const mapId = facts.mapId;
+  return await completeWith(tx, context, { closed_as: 'out_of_scope' }, async () => {
+    await applyRevision(tx, context, mapId, {
+      addFog: [],
+      addOutOfScope: [{ text: line.slice(0, 4000), ticketId: target.id }],
+      retire: [],
+    });
   });
-  return await completeWith(tx, context, { closed_as: 'out_of_scope' });
 }
