@@ -52,9 +52,11 @@ export const ROUTES = {
     surface: 'none',
     authenticated: false,
   },
-  // A business's published legal documents (C81, CS-16.20): the client terms, the privacy policy
-  // and the data-handling statement, linked from sign-in and drawn signed in or not. The breach
-  // runbook is the operators' own and has no public address.
+  // A business's published legal documents (C81, CS-16.20): the client terms,
+  // the privacy policy and the data-handling statement, each at an address
+  // that needs no sign-in and is linked from sign-in. It draws the public read
+  // alone, signed in or not; the breach runbook is the operators' own and has
+  // no public address.
   'agency:legal': {
     namespace: 'agency',
     path: '/legal/:business/:document/',
@@ -161,9 +163,11 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
-  // The component gallery (MP-1-3): every piece of the kit in its states, for the owner's checks
-  // and the width-and-theme harness. Sample words, no record; it asks for a session like every
-  // working page, and has no rail entry: it is not a place work happens.
+  // The component gallery (MP-1-3): every piece of the kit in its states,
+  // for the owner's checks and the width-and-theme harness. It draws sample
+  // words and no record; it asks for a session like every working page, and
+  // the route manifest has no page for it, so it has no rail entry: it is not
+  // a place work happens.
   'agency:gallery': {
     namespace: 'agency',
     path: '/gallery/',

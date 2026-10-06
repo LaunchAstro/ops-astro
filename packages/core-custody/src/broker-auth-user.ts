@@ -1,21 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C39-T, piece P3: a login made at the login provider when an invitation is
-// accepted, under the catalogued `auth.create_user`, and set again under
-// `auth.update_user` when an earlier accept made it and never bound it, each
-// through custody, so the service key stays in custody's process. The
-// broker's process sends the id, the address and the password once and keeps
-// none of them.
-//
-// What comes back is read by the operation's answer schema to the user's id
-// alone, and it must be the id asked for. The provider's positive proof that
-// nothing was made or changed is `refused`: `email_exists` on either, the
-// address holding another login, and `user_not_found` on an update, no user
-// under that id, read from the refusal's code (custody passes on nothing
-// else of it), since 422 is also `weak_password`, the provider's no to the
-// password itself: `password`. Any other answer, one that names another user, one
-// with a field for a password, or one oversized, redirected, malformed or
-// slow, is a fault, and the caller spends nothing and binds nothing.
+// C39-T, piece P3: a login made at the login provider (`auth.create_user`), or
+// set again under our id (`auth.update_user`), through custody, so the service
+// key stays there; this process sends the id, address and password once and
+// keeps none. The operation's schema reads the answer's user id, which must be
+// the one asked for. `refused` is the provider's proof nothing changed
+// (`email_exists`, or `user_not_found` on an update); `weak_password` is
+// `password`. Anything else, another user's id, a field for a password, or an
+// answer oversized, redirected, malformed or slow, is a fault.
 
 import {
   AUTH_CREATE_USER,
@@ -38,11 +30,7 @@ export type LoginMade =
 
 const FAULT = { ok: false, kind: 'fault' } as const;
 
-/**
- * Whether an answer has a field named for a password, at any depth. Its
- * names, not its values: an honest user object's `aud` and `role` are
- * `authenticated`, which a password may be too.
- */
+/** Whether an answer has a field named for a password, at any depth: names, not values. */
 function namesPassword(text: string): boolean {
   let named = false;
   try {
@@ -80,7 +68,6 @@ async function ask(broker: Broker, key: string, login: LoginAsked): Promise<Logi
       const refused = code !== undefined && proof !== 'not_reconcilable' && proof.includes(code);
       return refused ? { ok: false, kind: 'refused' } : FAULT;
     }
-    // An answer is the user's id, never a place the password is kept.
     if (namesPassword(outbound.body)) return FAULT;
   }
   const answer = answerOf(outcome, operation);
@@ -97,24 +84,17 @@ export async function updateLogin(broker: Broker, login: LoginAsked): Promise<Lo
   return await ask(broker, AUTH_UPDATE_USER.key, login);
 }
 
-/** What an accept's provider calls may hold: how many per business, the route's ceiling, how long. */
-export interface LoginLimits {
-  readonly concurrency: number;
-  readonly ceiling: number;
-  readonly boundMs: number;
-}
+/** How many calls per business, the route's ceiling, and how long a claim holds. */
+export type LoginLimits = Readonly<Record<'concurrency' | 'ceiling' | 'boundMs', number>>;
 
-/** A claim outlives both calls' timeouts by this much, then lapses. */
-const CLAIM_GRACE_MS = 5_000;
-
-/** The limits `createLogin` and `updateLogin` share, or nothing when either is not catalogued. */
+/** The limits both calls share (a claim outlives both timeouts by 5 s); none when one is missing. */
 export function loginLimits(broker: Broker): LoginLimits | undefined {
-  const both = [AUTH_CREATE_USER.key, AUTH_UPDATE_USER.key].map((key) => routed(broker, key));
-  if (both.includes(undefined)) return undefined;
-  const found = both as Routed[];
+  const found = [AUTH_CREATE_USER.key, AUTH_UPDATE_USER.key].map((key) => routed(broker, key));
+  if (found.some((one) => one === undefined)) return undefined;
+  const [create, update] = found as [Routed, Routed];
   return {
-    concurrency: Math.min(...found.map(({ operation }) => operation.concurrency)),
-    ceiling: Math.min(...found.map(({ route }) => route.ceiling)),
-    boundMs: found.reduce((sum, { operation }) => sum + operation.timeoutMs, CLAIM_GRACE_MS),
+    concurrency: Math.min(create.operation.concurrency, update.operation.concurrency),
+    ceiling: Math.min(create.route.ceiling, update.route.ceiling),
+    boundMs: create.operation.timeoutMs + update.operation.timeoutMs + 5_000,
   };
 }

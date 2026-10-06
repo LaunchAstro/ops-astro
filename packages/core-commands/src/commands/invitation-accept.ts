@@ -1,25 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C39-T, piece P3: `invitation accepted` and `login created (person,
-// business)` on the one-time enrolment token alone: no one is signed in, the
-// token is the authority, and the writes are the business's worker's.
+// business)` on the one-time enrolment token alone: the token is the
+// authority, and the writes are the business's worker's.
 //
-// 1. Find the token: its SHA-256 looked up once, with no business, by
-//    `enrolment_token_find` (SEC27 F6), then read in its own business: live
-//    while unspent (a resend or revoke spends those before it, SEC27 F5), in
-//    its lifetime, its invitation's newest and pending. Else
-//    `ENROLMENT_LINK_INVALID`.
+// 1. Find the token (`enrolment_token_find`, SEC27 F6), live (unspent, in its
+//    lifetime, its pending invitation's newest), else `ENROLMENT_LINK_INVALID`.
 // 2. Claim the invitation under its lock, every check again. A login bound
 //    here under our id already: `sign_in`. A live claim, or no room under the
 //    provider calls' limits: `ENROLMENT_UNAVAILABLE`, nothing asked.
 // 3. Through custody, make the login under our id (`loginSubject`), or set
-//    the address's login again under it (`auth.update_user`), adopting one an
-//    earlier accept stranded. No user under our id: someone else's login,
-//    untouched, `sign_in`. A refused password is `PASSWORD_INVALID`; a fault
-//    binds nothing. Either lets the claim go; a lost one lapses.
-// 4. Under the lock and this accept's claim, every check again: spend the
-//    tokens, accept, seat the person, map the login, audit both events. An
-//    adopted login's sessions all end (C40's reset window). No session opens.
+//    the address's login again under it, adopting one an earlier accept
+//    stranded. No user under our id: someone else's login, untouched,
+//    `sign_in`. A refused password is `PASSWORD_INVALID`; a fault binds
+//    nothing. Either lets the claim go; a lost one lapses.
+// 4. Under the lock and the claim, every check again: spend the tokens,
+//    accept, seat the person, map the login, audit both events. An adopted
+//    login's sessions all end (C40's reset window). No session opens.
 
 import { createHash } from 'node:crypto';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
@@ -178,7 +175,6 @@ async function claim(tx: TenantQuery, asked: Found, subject: string, limits: Log
   return taken?.id ?? 'busy';
 }
 
-/** A claim let go when nothing was bound under it; a claim no one lets go lapses. */
 const RELEASE = `update invitations set accept_claim = null, accept_claimed_until = null
   where business_id = $1 and id = $2 and accept_claim = $3`;
 

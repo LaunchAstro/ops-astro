@@ -11,13 +11,16 @@
 // read: every refusal in a response came back from the operation, which is
 // what "no authority check may live only in the transport layer" means.
 //
-// It is not a second surface shape. The routes are generated from `COMMAND_SURFACE`, so an
-// operation cannot exist without an endpoint nor an endpoint without an operation: a declaration
-// added by another part appears here with no edit to this file, as the loop reads the table.
+// It is not a second surface shape. The routes are generated from
+// `COMMAND_SURFACE`, so an operation cannot exist without an endpoint and an
+// endpoint cannot exist without an operation. A declaration added by another
+// part appears here with no edit to this file — which is the whole reason the
+// loop reads the table rather than a list of its own.
 //
-// It is not a place a caller can reach the server's own facts. The actor, the business and the
-// entry point are not request fields, so a body carrying `actorId`, `businessId` or `entryPoint`
-// is data with nowhere to go rather than a value something has to remember to ignore.
+// It is not a place a caller can reach the server's own facts. The actor, the
+// business and the entry point are not fields in the request type, so a body
+// carrying `actorId`, `businessId` or `entryPoint` is data with nowhere to go
+// rather than a value something has to remember to ignore.
 //
 // **The business is named in the path and verified, never trusted** (N7). The
 // prefix `/api/b/:businessKey` says which business the caller means; the

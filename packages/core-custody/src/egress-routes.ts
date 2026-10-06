@@ -124,13 +124,10 @@ export function pathAllowed(extras: Extras, method: Method, path: string): boole
   });
 }
 
-// How a request that did not succeed comes back: the fault's kind and the
-// status, and for a provider's refusal its `error_code` when that is one of
-// the few codes listed here. One status can mean more than one thing (the
-// login provider's 422 is an address holding a login, or a password its rules
-// refuse, C39-T SEC-P3A-1 S1); the code says which. Nothing else of the
-// answer leaves custody: it may carry anything, a credential among it, so a
-// code is never one custody did not name.
+// A request that did not succeed comes back as the fault's kind and the status,
+// and for a refusal its `error_code` when custody names that code: one status
+// can mean two things (the login provider's 422, C39-T SEC-P3A-1 S1). Nothing
+// else of the answer leaves custody, which may carry anything, a credential too.
 
 export type OutboundFault =
   | 'unlisted'

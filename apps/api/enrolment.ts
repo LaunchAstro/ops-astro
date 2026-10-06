@@ -1,20 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `POST /api/enrol` (C39-T, piece P3): the enrolment page sends the link's
-// one-time token and the password its holder set, and the invitation is
-// accepted (`acceptInvitation`). Mounted by `createApi` when it is given the
-// businesses and a broker: outside the business prefix, with no sign-in and
-// no person grant. The token is the authority, and it travels in the body,
-// never in an address a log keeps. No cookie is read, so there is no ambient
-// credential for another site to ride and no same-site header is asked.
-//
-// The answer opens no session and sets no cookie: 200 `{ state }`, `enrolled`
-// when a login was made, `sign_in` when the address already holds one. Every
-// token that is not live (unknown, spent, expired, revoked, replaced by a
-// resend) is one answer, 404 `ENROLMENT_LINK_INVALID`; a password out of
-// bounds 400 `PASSWORD_INVALID`; the login provider failing 503
-// `ENROLMENT_UNAVAILABLE`, nothing spent. An answer carries a code and
-// nothing else, and nothing is logged.
+// `POST /api/enrol` (C39-T, piece P3): the enrolment page's token and password,
+// and the invitation accepted (`acceptInvitation`), outside the business
+// prefix: no sign-in, grant or cookie; the token, in the body, is the
+// authority. The answer is a code (API.md), no session; nothing is logged.
 
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';

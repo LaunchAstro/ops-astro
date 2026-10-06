@@ -2,20 +2,12 @@
 --
 -- 20261005214435 an invitation accepted on its one-time link (C39-T, piece P3).
 --
--- A token moves once, by `spent_at` alone: when its invitation is accepted,
--- and when a resend or a revoke ends every token minted before it, so a link
--- an email already carried does nothing after either (SEC27 F5). Nothing
--- else of a token is ever rewritten.
---
--- The accept arrives with the token and no business, and a token's hash is
--- unique in its business only (`enrolment_tokens_hash_key`), which a tenant
--- transaction cannot see past. So the lookup by hash is one narrow function
--- that reads every business's tokens (SEC27 F6): it answers the business, the
--- invitation and the token ids of the one token with that hash, and nothing
--- (nulls) when no business or more than one holds it. Nothing else about the
--- token or its invitation leaves it; the accept reads the rest in the token's
--- own business, under its tenancy. PUBLIC may not run it; the application
--- group alone may.
+-- A token moves once, by `spent_at` alone: when its invitation is accepted, or
+-- when a resend or revoke ends every token before it (SEC27 F5). The accept
+-- arrives with no business, and a hash is unique in its business only, so the
+-- lookup is one narrow function reading every business's tokens (SEC27 F6):
+-- the three ids of the one token with that hash, nulls otherwise. PUBLIC may
+-- not run it; the application group alone may.
 
 grant update (spent_at) on public.enrolment_tokens to ops_astro_app;
 
@@ -40,13 +32,11 @@ $$;
 revoke all on function public.enrolment_token_find(text) from public;
 grant execute on function public.enrolment_token_find(text) to ops_astro_app;
 
--- An accept claims its invitation before it asks the login provider anything,
--- and binds only under its own claim, so two accepts of one link never both
--- set a password. A live claim is a provider call in flight: per business no
--- more than the operations' concurrency, and on the route no more than its
--- ceiling, shared fairly between businesses as `model_route_room` (0085)
--- shares a model route. That share reads every business's claims, so it is
--- one narrow function answering 1 (room) or 0, for the caller's business only.
+-- An accept claims its invitation before it asks the login provider anything
+-- and binds only under its claim. Live claims are its calls in flight: per
+-- business within the operations' concurrency, and within the route's ceiling
+-- shared fairly as `model_route_room` (0085) shares a model route, which reads
+-- every business's claims, so one narrow function answers 1 (room) or 0.
 alter table public.invitations
   add column accept_claim         uuid,
   add column accept_claimed_until timestamptz;
@@ -66,13 +56,10 @@ as $$
       from public.invitations i
      where i.accept_claimed_until > clock_timestamp()
   )
-  select case
-           when public.app_business_id() is null or route_ceiling is null or route_ceiling < 1 then 0
-           when f.total >= route_ceiling then 0
-           when f.mine >= greatest(1, route_ceiling
-                  / (f.holding + case when f.mine = 0 then 1 else 0 end)) then 0
-           else 1
-         end
+  select case when public.app_business_id() is null or coalesce(route_ceiling, 0) < 1
+                or f.total >= route_ceiling
+                or f.mine >= greatest(1, route_ceiling / (f.holding + (f.mine = 0)::integer))
+              then 0 else 1 end
     from flight f
 $$;
 

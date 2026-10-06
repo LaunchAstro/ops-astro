@@ -2426,41 +2426,29 @@ Auth mail (a reset among it) has no attempt yet and is not sent (C40).
 
 `POST /api/enrol` with `token` and `password` accepts an invitation
 (`acceptInvitation`, mounted by `mountEnrolment` with the deployment's
-businesses and a broker cataloguing `auth.create_user` and
-`auth.update_user`, custody's `auth` destination taking no POST but its
-listed `POST /auth/v1/admin/users`, and the PUT `/auth/v1/admin/users/*`).
-No sign-in and no
-grant: the one-time token is the authority, its SHA-256 looked up once by
-`enrolment_token_find`, the one security definer function that answers a
-business, an invitation and a token id for a hash exactly one business holds
-(SEC27 F6). It is live while it is unspent (a resend or a revoke spends every
-token before it, SEC27 F5), in its lifetime, its invitation's newest and its
-invitation pending. Before the provider is asked, the accept claims the
-invitation under its lock, all of that checked again; a live claim on it, or
-no room under the calls' limits (the operations' concurrency per business,
-the route's ceiling shared fairly, `enrolment_route_room`), is 503
-`ENROLMENT_UNAVAILABLE` with nothing asked. The provider makes a login for
-the invited address, confirmed, through custody, under a user id that is
-ours, the same for one address in one business; when the address holds one,
-the login under our id is set again with this password, adopting one an
-earlier accept stranded, and every session it had ends (C40's reset window).
-Then, under the lock and the claim, every token of the invitation is spent,
-it is accepted, its person gets an actor, a membership and the confirmed
-address, the login is mapped to them, and `invitation.accept` and
-`login.create` are audited as the business's worker. The answer is 200
-`{ state: 'enrolled' }` and opens no session. An
-address whose login is someone else's (no user under our id), or one this
-business has bound under our id already, gets none and no password is set:
-200 `{ state: 'sign_in' }`, nothing spent. Every other token is 404
-`ENROLMENT_LINK_INVALID`, a password outside 12 to 72 bytes, or one the
-provider's rules refuse (its `weak_password`), 400 `PASSWORD_INVALID`, and a
-provider fault or hostile answer 503 `ENROLMENT_UNAVAILABLE`, nothing spent
-or bound. A body over 2 KiB is 413 `ENROL_TOO_LARGE`, one that is not a JSON
-object holding the token and password as strings 400 `ENROL_MALFORMED`, and
-any other fault 503 `ENROL_FAULT`. The page
-is `/enrol/:token`. Not here yet: the send mounted after the command, the
-hook and the enrolment route wired in `main`, the signed-in accept for an
-address with a login, the second factor first (C59) and the Access screen.
+businesses and a broker cataloguing `auth.create_user` and `auth.update_user`;
+custody's `auth` destination takes no POST but its listed
+`POST /auth/v1/admin/users`, and the PUT `/auth/v1/admin/users/*`). No
+sign-in and no grant: the token is the authority, found by its SHA-256 through
+`enrolment_token_find`, live while unspent, in its lifetime, its invitation's
+newest and pending. The accept claims the invitation under its lock before
+the provider is asked; a live claim, or no room under the calls' limits
+(concurrency per business, the route's ceiling shared by
+`enrolment_route_room`), is 503 `ENROLMENT_UNAVAILABLE`. The provider makes a
+confirmed login under our user id for the address in this business, or sets
+the address's login again under it, adopting one an earlier accept stranded,
+whose sessions all end (C40's reset window). Then, under the lock and the
+claim, the tokens are spent, the invitation accepted, its person seated, the
+login mapped, and both events audited: 200 `{ state: 'enrolled' }`, no
+session. Someone else's login, or one bound here already: 200
+`{ state: 'sign_in' }`, nothing spent. Any other token is 404
+`ENROLMENT_LINK_INVALID`; a password outside 12 to 72 bytes or refused by the
+provider 400 `PASSWORD_INVALID`; a provider fault or hostile answer 503
+`ENROLMENT_UNAVAILABLE`; a body over 2 KiB 413 `ENROL_TOO_LARGE`, a malformed
+one 400 `ENROL_MALFORMED`, any other fault 503 `ENROL_FAULT`. The page is
+`/enrol/:token`. Not here yet: the send after the command, the hook and route
+wired in `main`, the signed-in accept, the second factor first (C59) and the
+Access screen.
 
 ## Tags
 

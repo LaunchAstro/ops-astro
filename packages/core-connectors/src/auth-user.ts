@@ -1,24 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The login provider's two catalogued operations (C39-T, piece P3), read the
-// way every catalogued operation is (`operation.ts`): `auth.create_user`, a
-// login made when an invitation is accepted, and `auth.update_user`, the same
-// login set again when an earlier accept made it and never bound it.
-//
-// Each adapter takes the user's id, the invited address and the password the
-// enrolment page set, and asks Supabase Auth's admin route for a user under
-// that id whose address is confirmed: the address is the invitation's, and
-// only its holder had the link. The id is ours, chosen by the caller, so a
-// login the provider made behind an answer that never arrived is found again.
-// Custody adds the origin and the service key, so the key never leaves
-// custody's process. Of the answer only the user's id is read, the subject
-// the product's `logins` row keeps; the password goes into the request and
-// nowhere else.
-//
-// An address that already holds a login is answered 422 by the provider, and
-// nothing is made or changed (`AUTH_EMAIL_EXISTS`); an update naming no user
-// is answered 404, and nothing is changed (`AUTH_USER_NOT_FOUND`). A password
-// its rules refuse is 422 too, on either (`AUTH_WEAK_PASSWORD`).
+// The login provider's two catalogued operations (C39-T, piece P3), read as
+// every catalogued operation is (`operation.ts`): `auth.create_user`, a login
+// made when an invitation is accepted, and `auth.update_user`, the same login
+// set again when an earlier accept made it and never bound it. Each asks
+// Supabase Auth's admin route for a confirmed user under the caller's id;
+// custody adds the origin and the service key. Of the answer only the user's
+// id is read; the password goes into the request and nowhere else. 422
+// `email_exists` and 404 `user_not_found` mean nothing changed; 422
+// `weak_password` is the provider's no to the password.
 
 import { AUTH_USERS_PATH } from './auth-password.ts';
 import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';

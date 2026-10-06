@@ -1,19 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `/enrol/:token` (C39-T, piece P3). The page an invitation's link opens: set
-// a password, submit, and the invitation is accepted. It is drawn the same
-// whether or not anyone is signed in, and it signs nobody in: when it is
-// done, the person signs in with their address and the password they set,
-// as anyone does.
-//
-// The token goes to the API in the body (`POST /api/enrol`), never as an
-// address the API logs, and no credential goes with it. Four answers:
-// `enrolled`; `sign_in`, when the address already holds a login, which tells
-// them to sign in with it; a link that is no longer good (used, expired,
-// revoked or replaced by a newer invitation), said once for all of them; and
-// the login provider being unavailable, which keeps the form and the link.
-//
-// Built from the kit and the sign-in form's own classes: no new style.
+// `/enrol/:token` (C39-T, piece P3): the invitation link's page. Set a
+// password, the invitation is accepted, nobody is signed in. Four answers:
+// enrolled; sign in with the address's login; a link no longer good, one
+// wording for every reason; the provider unavailable, keeping the form.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Banner, Button, FieldError } from '@launchastro/ui';
