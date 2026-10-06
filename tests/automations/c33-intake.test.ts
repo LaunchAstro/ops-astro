@@ -223,10 +223,13 @@ describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () 
     await dispatchEach(await approvedOccurrences(activation.id, FIRING_LIMITS.runsInFlight));
     const [rival] = await approvedOccurrences(other.id, 1);
     await queueTo(FIRING_LIMITS.eventQueue, events);
-    // One transaction locks one activation: the held dispatch is of the events' own queue.
-    const [queued] = await w.db.admin.execute<{ readonly id: string }>(
-      "select id from public.activation_occurrences where activation_id = $1 and outcome = 'approved'",
-      [events.activation.id],
+    // One transaction locks one activation: the held claim and dispatch name the queue's oldest.
+    const [queued] = await w.db.admin.execute<{ readonly id: string; readonly activation: string }>(
+      `select o.id, o.activation_id as activation from public.activation_occurrences o
+        where o.business_id = $1 and o.event_id is not null and o.outcome = 'approved'
+          and not exists (select 1 from public.occurrence_dispatches d where d.occurrence_id = o.id)
+        order by o.recorded_at, o.id limit 1`,
+      [w.alpha],
     );
     const { activationId: bravo } = await bravoApproved(w, 'event', 'Bravo digest');
     const bravoStarter = workerStarter(k.bravoWorker);
@@ -243,7 +246,7 @@ describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () 
       // An alpha worker, refused at intake and told to wait, holds both locks open.
       const first = w.inAlpha(async (tx) => {
         try {
-          const claim = await claimOccurrence(tx, events.activation.id, { eventId: 'evt-busy' });
+          const claim = await claimOccurrence(tx, queued!.activation, { eventId: 'evt-busy' });
           const dispatch = await dispatchOccurrence(tx, queued!.id, s.start);
           firstIn.release();
           await held.held;
