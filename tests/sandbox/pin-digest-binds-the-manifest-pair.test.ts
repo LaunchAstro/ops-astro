@@ -63,12 +63,15 @@ it('refuses a tree whose pair hashes to another digest, or that lacks either fil
 });
 
 it('refuses a site whose pin has no image id with no pin, before the digest', () => {
-  const files = tree({ 'package.json': MANIFEST, 'package-lock.json': LOCK });
-  expect(checkPin(files, entry(pinDigest(MANIFEST, LOCK), ''))).toEqual({
-    ok: false,
-    reason: 'no pin',
-    why: 'pin image',
-  });
+  const noPin = { ok: false, reason: 'no pin', why: 'pin image' };
+  const making = entry(pinDigest(MANIFEST, LOCK), '');
+  expect(checkPin(tree({ 'package.json': MANIFEST, 'package-lock.json': LOCK }), making)).toEqual(
+    noPin,
+  );
+  expect(checkPin(tree({}), making)).toEqual(noPin);
+  expect(
+    checkPin(tree({ 'package.json': MANIFEST, 'package-lock.json': bytes('{}') }), making),
+  ).toEqual(noPin);
 });
 
 it('refuses a missing file even when the pin was made from an empty one', () => {

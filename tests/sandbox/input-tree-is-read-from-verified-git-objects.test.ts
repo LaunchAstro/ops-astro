@@ -179,6 +179,18 @@ it('refuses a name that is not UTF-8 or that holds a slash', async () => {
   );
 });
 
+it('refuses a name opening with a byte-order mark, never reading it as the name without one', async () => {
+  const page = blob('<h1>Old</h1>\n');
+  const site = (pages: readonly string[]) =>
+    commit(level([`040000 ${level([`040000 ${level(pages)} pages`])} src`]));
+  const markOnly = site([`100644 ${page} \uFEFFindex.astro`]);
+  const beside = site([`100644 ${page} \uFEFFindex.astro`, `100644 ${page} index.astro`]);
+  await allRefused(
+    [markOnly, beside].map((top) => assembleTree(read, top, EDIT)),
+    'tree name',
+  );
+});
+
 it('stops at 20,001 entries before reading any blob', async () => {
   const one = blob('x');
   const rows = Array.from({ length: 20_001 }, (_, n) => `100644 ${one} f${String(n)}.md`);
@@ -222,6 +234,21 @@ it('judges the edited tree by I3', async () => {
     refused('tree duplicate'),
   );
 });
+
+it("counts the changed file's new bytes against I3's 50 MB", async () => {
+  const rows = [
+    `100644 ${blob(Buffer.alloc(49_999_987, 0x61))} a.md`,
+    `100644 ${blob('<h1>Old</h1>\n')} src/pages/index.astro`,
+  ];
+  const grown = { ...EDIT, content: bytes('<h1>New!</h1>\n') };
+  // The outcome only: a failure diff of 50 MB of file bytes would exhaust the worker.
+  const outcome = async (edit: typeof EDIT) => {
+    const result = await assemble(rows, edit);
+    return result.ok ? { ok: true } : result;
+  };
+  expect(await outcome(grown)).toEqual(refused('tree size'));
+  expect(await outcome(EDIT)).toEqual({ ok: true });
+}, 60_000);
 
 it('refuses a name over 255 bytes and a path over 4,096 bytes', async () => {
   const fileId = blob('x');
