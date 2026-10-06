@@ -71,3 +71,22 @@ export async function holdCoveringGrants(tx: TenantQuery, covering: Covering): P
     [tx.businessId, ...coveringParameters(covering)],
   );
 }
+
+/**
+ * Whether a grant live at this statement's own instant covers `partyId` (null:
+ * only a business-wide grant counts). A write asks it after its last lock wait,
+ * with its grants held, so one revoked or expired during a wait covers nothing.
+ */
+export async function coveredAt(
+  tx: TenantQuery,
+  covering: Covering,
+  partyId: string | null,
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly covered: boolean }>(
+    `${EFFECTIVE_AT}
+     select true as covered from (select $1::uuid as business_id, $6::uuid as party_id) c
+      where ${COVERED}`,
+    [tx.businessId, ...coveringParameters(covering), partyId],
+  );
+  return rows.length > 0;
+}

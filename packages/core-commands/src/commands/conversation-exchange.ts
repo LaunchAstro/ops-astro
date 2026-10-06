@@ -185,6 +185,9 @@ async function keep(
     [tx.businessId, asked.conversationId, session.actorId],
   );
   if (conversation === undefined || conversation.body_purged_at !== null) return undefined;
+  // An ended session keeps nothing, and an ending in flight waits for this; asked
+  // before the grants, so the grant is judged at the clock after this wait too.
+  if (await sessionEndedSince(tx, session)) return undefined;
   // The caller's conversation grants are held for share once the row is
   // locked, a grant issued while this waited included: a revocation that
   // committed first is seen by the check below, and one that comes later waits
@@ -196,8 +199,6 @@ async function keep(
   const held = new Set(await holdCoveringGrants(tx, subjectsOf(session), 'conversation', 'nowait'));
   const at = await lockedInstant(tx);
   if (!(await holdsOwnConversations(tx, session, { at, held }))) return undefined;
-  // After the last wait: an ended session keeps nothing; an ending in flight waits for this.
-  if (await sessionEndedSince(tx, session)) return undefined;
   const id = randomUUID();
   // The reply and the activity are stamped at that same instant, so a reply
   // that waited behind a message is listed and dated after it (#444). The
@@ -238,6 +239,9 @@ async function answerOnce(
   broker: ModelBroker,
 ): Promise<ConversationReply | null> {
   const { session, question } = found;
+  // A read that came back after an earlier answer was kept and its flight ended: read again.
+  const earlier = await withSession(database, businessId, presented, (tx) => replyTo(tx, asked));
+  if (earlier !== undefined) return isCommandRefusal(earlier) ? null : answered(earlier);
   const result = await callModelInConversation(
     database,
     businessId,
@@ -275,10 +279,8 @@ export function conversationExchange(broker: ModelBroker): ConversationExchange 
     if (isCommandRefusal(found) || found.question === undefined) return null;
     const { question } = found;
     if (question.reply !== undefined) return answered(question.reply);
-    // Owner line 72: a client's material reaches no model while no true local
-    // model exists, and the laptop's GPT runner is a cloud model. A conversation
-    // opened on a client's task asks nothing, whatever the provider; so does one whose
-    // task this session cannot see, since its client cannot be known.
+    // Owner line 72: a client's material reaches no model (the laptop's GPT is a cloud
+    // model); nor does a task this session cannot see, whose client cannot be known.
     if (question.clientOrUnseen) return refusedWith('CLIENT_MODEL_USE_OFF');
     const key = `${businessId}/${asked.conversationId}/${asked.messageId}`;
     const running = asking.get(key);

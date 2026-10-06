@@ -5,23 +5,20 @@
 // a lock file, `<home>/runner.lock`, naming the runner's process and its hold.
 
 import { randomUUID } from 'node:crypto';
-import { linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 
 /**
  * Hold the home for this runner: a second runner on the same ledger would read
  * the same total and both start under the cap. A lock left by a process that
- * has gone is moved aside, then a new one created where none is, so of two
- * runners taking it over at once one holds the home and the other is refused.
+ * has gone is replaced in place, never moved or removed, so the lock path always
+ * names one runner and a runner that starts meanwhile is refused.
  */
 export function holdHome(home: string): () => void {
   mkdirSync(home, { recursive: true });
   const lock = `${home}/runner.lock`;
   // The process and this hold: runners in one process each hold their own.
   const mine = `${String(process.pid)} ${randomUUID()}`;
-  if (!created(lock, mine)) {
-    setAside(lock);
-    if (!created(lock, mine)) throw inUse();
-  }
+  if (!created(lock, mine)) takeOver(lock, mine);
   return () => {
     // Only this runner's own lock goes: a later runner's hold on the home stays.
     let held: string;
@@ -48,36 +45,46 @@ function created(lock: string, text: string): boolean {
   }
 }
 
-/**
- * Move a gone runner's lock aside. Only one runner's move of it succeeds, and
- * the file moved must still be the one read: a lock another runner took over
- * in between is put back, and this runner refused.
- */
-function setAside(lock: string): void {
-  let seen: string;
+/** The lock's text, or undefined when there is none. */
+function lockText(lock: string): string | undefined {
   try {
-    seen = readFileSync(lock, 'utf8');
+    return readFileSync(lock, 'utf8');
   } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Take over a gone runner's lock. One runner at a time holds the takeover lock
+ * beside it, and replaces the lock only while it is still the one read as gone.
+ */
+function takeOver(lock: string, mine: string): void {
+  const seen = lockText(lock);
+  if (seen === undefined) {
+    // The holder let go in between: the home is free again.
+    if (!created(lock, mine)) throw inUse();
     return;
   }
   const holder = Number(seen.split(' ', 1)[0]);
-  if (Number.isSafeInteger(holder) && holder > 0 && alive(holder)) throw inUse();
-  const aside = `${lock}.${randomUUID()}`;
+  // An empty lock is one a starting runner has made and not yet written.
+  if (seen === '' || (Number.isSafeInteger(holder) && holder > 0 && alive(holder))) throw inUse();
+  const takeover = `${lock}.takeover`;
+  if (!created(takeover, mine)) {
+    // Fail closed: a takeover left by a process that died is removed by hand.
+    throw new Error(
+      `LOCAL_HOME_IN_USE: another runner is taking over this OPS_LOCAL_AGENT_HOME; if no runner is running, remove ${takeover}`,
+    );
+  }
+  const fresh = `${lock}.${randomUUID()}`;
   try {
-    renameSync(lock, aside);
-  } catch {
-    throw inUse();
+    if (lockText(lock) !== seen) throw inUse();
+    writeFileSync(fresh, mine, { flag: 'wx' });
+    // One rename replaces the gone runner's lock: the path is never empty.
+    renameSync(fresh, lock);
+  } finally {
+    rmSync(fresh, { force: true });
+    rmSync(takeover, { force: true });
   }
-  const moved = readFileSync(aside, 'utf8');
-  if (moved !== seen) {
-    try {
-      linkSync(aside, lock);
-    } catch {
-      // A third runner holds the home now; it keeps it.
-    }
-  }
-  rmSync(aside, { force: true });
-  if (moved !== seen) throw inUse();
 }
 
 function alive(pid: number): boolean {

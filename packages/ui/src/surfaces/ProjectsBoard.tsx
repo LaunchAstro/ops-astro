@@ -120,7 +120,8 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     withWorkOrder(openWithViewer(props.address ?? '', props.viewerOn === false ? null : viewer)),
   );
   const [address, setAddress] = useState(opening);
-  const now = useMemo(() => props.now ?? new Date(), [props.now]);
+  // The real clock is taken again with every fresh read, so a day that turned is judged as the new one.
+  const now = useMemo(() => props.now ?? new Date(), [props.now, props.rows, props.changedAt]);
   const { facets, presets, modes } = useChips(props.rows, viewer, now, props);
   const clientFilters = clientFiltersIn(address, facets);
   const columns = useMemo(
