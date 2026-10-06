@@ -12,7 +12,7 @@
 // the wait returns. The delete is due 30 s after the later of the wait
 // returning and the attach ending, 30 s after the launcher fully closes
 // its attach before the wait returns, and at the latest 30 s after the
-// deadline; a `wall` crossing's container (F1) not before then. The id
+// deadline; a `wall` crossing's container (the probe's) not before then. The id
 // leaves only on a delete answered success or "no such container"; any
 // other answer keeps it and the caller sweeps.
 //

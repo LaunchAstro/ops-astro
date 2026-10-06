@@ -3,7 +3,7 @@
 // P3 and B8 (docs/plan/sandbox-contract.md, sections 4 and 6): the proxy's
 // durable candidate record. A pin being made (a site entry with a lockfile
 // digest and no image id) has a candidate: the image id the proxy computed
-// at its load. One load per entry and attempt; it admits exactly F2's three
+// at its load. One load per entry and attempt; it admits exactly the reproducibility check's three
 // S1 creates of that entry's own body, each counted in the write that
 // records its container, and a deploy that changes the entry in any way
 // ends the admission. An ended or superseded candidate stays until its
@@ -17,7 +17,7 @@
 // accepted id.
 //
 // The record is read back as text, so `readBook` is a closed reader: exact
-// keys, the pin list's own entry grammar, and the counts F2 allows.
+// keys, the pin list's own entry grammar, and the counts that check allows.
 
 import type { CreateShape } from './create-body.ts';
 import { SITE_ID, type SiteEntry, siteEntry } from './pin-list.ts';
@@ -46,7 +46,7 @@ export type CandidateBook = {
 };
 type Sites = ReadonlyMap<string, SiteEntry>;
 
-/** F2's creates: a load admits its candidate for exactly this many. */
+/** The reproducibility check's creates: a load admits its candidate for exactly this many. */
 export const F2_CREATES = 3;
 const IMAGE = /^sha256:[0-9a-f]{64}$/u;
 const MAX_ATTEMPT = 2 ** 31 - 1;
