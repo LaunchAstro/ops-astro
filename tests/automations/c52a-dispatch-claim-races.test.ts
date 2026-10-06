@@ -42,6 +42,15 @@ async function awaitBlocked(db: FreshDatabase): Promise<void> {
   throw new Error('no backend was ever blocked by another: the race was not established');
 }
 
+/** Stops a worker: the actor row's authority ends with this write. */
+async function stopWorker(tx: TenantQuery, business: string, worker: string): Promise<void> {
+  await tx.query(
+    `update public.actors set active = false, deactivated_at = clock_timestamp()
+      where business_id = $1 and id = $2`,
+    [business, worker],
+  );
+}
+
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('C52-A dispatch and claim races', () => {
   let w: AutomationWorld;
@@ -103,38 +112,41 @@ describe.skipIf(serverUrl === undefined)('C52-A dispatch and claim races', () =>
   it('a worker stopped while its admitted dispatch is open waits for the run start to commit, and a worker stopped first starts no run', async () => {
     const { activation } = await f.approved();
     const worker = await insertWorker(w.db, w.alpha);
-    const stop = async (): Promise<void> => {
-      await w.db.admin.execute(
-        `update public.actors set active = false, deactivated_at = clock_timestamp()
-          where business_id = $1 and id = $2`,
-        [w.alpha, worker],
-      );
-    };
+    // The stop has its own connection: the admin pool holds one, and the
+    // pg_blocking_pids poll must not queue behind a stop that is waiting.
+    const other = connect(w.db.appUrl, { source: 'runtime' });
     const due = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
     const held = barrier();
     const startedIn = barrier();
     const order: string[] = [];
-    const first = w.inAlpha(async (tx) => {
-      try {
-        const dispatch = await dispatchOccurrence(tx, due.id, occurrenceRunStarter(worker));
-        startedIn.release();
-        await held.held;
-        return dispatch.kind;
-      } finally {
-        startedIn.release();
-      }
-    });
-    await startedIn.held;
-    const stopped = stop().then(() => order.push('stopped'));
     try {
-      await awaitBlocked(w.db);
+      const first = w.inAlpha(async (tx) => {
+        try {
+          const dispatch = await dispatchOccurrence(tx, due.id, occurrenceRunStarter(worker));
+          startedIn.release();
+          await held.held;
+          return dispatch.kind;
+        } finally {
+          startedIn.release();
+        }
+      });
+      await startedIn.held;
+      const stopped = other
+        .withBusiness(w.alpha, async (tx) => await stopWorker(tx, w.alpha, worker))
+        .then(() => order.push('stopped'));
+      try {
+        await awaitBlocked(w.db);
+      } finally {
+        order.push('released');
+        held.release();
+      }
+      expect(await first).toBe('dispatched');
+      await stopped;
+      expect(order).toEqual(['released', 'stopped']);
     } finally {
-      order.push('released');
       held.release();
+      await other.close();
     }
-    expect(await first).toBe('dispatched');
-    await stopped;
-    expect(order).toEqual(['released', 'stopped']);
 
     // Stopped first: the next approved occurrence of that worker starts nothing.
     const next = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
@@ -177,11 +189,7 @@ describe.skipIf(serverUrl === undefined)('C52-A dispatch and claim races', () =>
       // The stop is written and held open, uncommitted, before the start arrives.
       const stopping = other.withBusiness(w.alpha, async (tx) => {
         try {
-          await tx.query(
-            `update public.actors set active = false, deactivated_at = clock_timestamp()
-              where business_id = $1 and id = $2`,
-            [w.alpha, worker],
-          );
+          await stopWorker(tx, w.alpha, worker);
           stopIn.release();
           await held.held;
         } finally {
