@@ -191,6 +191,9 @@ describe('the event grammar', () => {
     const other = line({ type: 'turn.failed', error: { message: 'stream disconnected' } });
     expect(readCodexEvents(other + completed, MODEL)).toMatchObject({ limited: false });
     expect(readCodexEvents(line({ type: 'error', message: 'boom' }), MODEL)).toBeUndefined();
+    // After a turn began, work may have been done: unknown, never nothing.
+    const late = line({ type: 'turn.started' }) + limit;
+    expect(readCodexEvents(late, MODEL)).toBeUndefined();
   });
 
   it('a turn with no agent message fails', () => {

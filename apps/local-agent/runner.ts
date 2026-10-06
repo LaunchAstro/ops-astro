@@ -106,6 +106,8 @@ function send(response: ServerResponse, status: number, body?: unknown): void {
 /** The runner's own state: a ledger row that could not be written stops every later call. */
 interface RunnerState {
   ledgerBroken: boolean;
+  /** The runner is closing: a call whose turn comes now is refused, never run. */
+  closing: boolean;
   /** The call in flight, stopped when its caller goes or the runner closes. */
   readonly inFlight: Set<AbortController>;
   /** Calls run one at a time, in arrival order. */
@@ -148,7 +150,7 @@ async function complete(
 ): Promise<LocalAnswer> {
   // Custody gives up on the call 120 s after it sent it, however long it queued here.
   const left = deadline - Date.now();
-  if (left < settings.timeoutMs * MIN_RUN_SHARE || signal.aborted) {
+  if (left < settings.timeoutMs * MIN_RUN_SHARE || signal.aborted || state.closing) {
     return refusal(call.model, 'LOCAL_GPT_FAILED');
   }
   if (state.ledgerBroken) {
@@ -261,7 +263,12 @@ export async function createRunner(
   port = 0,
 ): Promise<Runner> {
   const releaseHome = holdHome(settings.home);
-  const state: RunnerState = { ledgerBroken: false, inFlight: new Set(), queue: Promise.resolve() };
+  const state: RunnerState = {
+    ledgerBroken: false,
+    closing: false,
+    inFlight: new Set(),
+    queue: Promise.resolve(),
+  };
   const handle = handler(settings, log, state);
   const server = createServer((request, response) => {
     // A caller that drops mid-body ends only its own request, never the runner.
@@ -279,6 +286,7 @@ export async function createRunner(
     port: address.port,
     close: async () => {
       // The call in flight is killed and its row written before the home is let go.
+      state.closing = true;
       for (const call of state.inFlight) call.abort();
       await state.queue;
       server.closeAllConnections();
