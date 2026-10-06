@@ -240,7 +240,12 @@ describe('Connections & signal: skill costing', () => {
     expect(numbers).toEqual(numbers.toSorted());
     expect(new Set(numbers).size).toBe(numbers.length);
     expect(numbers).toContain('012');
-    expect(text(page, '[data-section="009"] .sec')).toMatch(/009\s*Skill costing/u);
-    expect(text(page, '[data-section="010"] .sec')).toMatch(/010\s*Graduation/u);
+    for (const [index, title] of [
+      ['009', 'Skill costing'],
+      ['010', 'Graduation'],
+    ] as const) {
+      expect(text(page, `[data-section="${index}"] .sec .marker`)).toBe(index);
+      expect(text(page, `[data-section="${index}"] .sec__head`)).toBe(title);
+    }
   });
 });

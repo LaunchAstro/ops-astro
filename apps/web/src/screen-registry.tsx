@@ -28,6 +28,8 @@ import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
 import { MapScreen } from './screens/Map.tsx';
+import { ExecutiveScreen } from './screens/Executive.tsx';
+import { OnboardingScreen } from './screens/Onboarding.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
@@ -110,7 +112,11 @@ export const SCREENS: {
       rollup={tabRollupFloor()}
     />
   ),
+  'agency:executive': (context) => (
+    <ExecutiveScreen key={context.grantKey} client={context.client} grantKey={context.grantKey} />
+  ),
   'agency:gallery': () => <Gallery />,
+  'agency:onboarding': (context) => <OnboardingScreen client={context.client} />,
   // Settings ▸ General, then the person's own sessions (C58) and authenticator app (C59),
   // which post to their own account routes rather than to the settings commands.
   'agency:settings': (context) => (
