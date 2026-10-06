@@ -947,3 +947,14 @@ are rows of its own business (`planned_runs_origin_occurrence_fkey`,
 own occurrence started (`occurrence_dispatches_run_fkey` on business, run and
 occurrence). That the origin occurrence was approved is still the code's
 check, under the activation lock.
+
+## A conversation's model (20261006205800, CS-7.30)
+
+`conversations.model_id` is the model the conversation runs on, null until
+`conversation.set_model` sets it from the models offered it (null is the
+deployment's default). It holds 0098's model id shape
+(`conversations_model_id_shape`), so a stored choice is always an id a call
+row could hold. The exchange asks again whether it is still offered before
+any call; the call records the model the answer named (`model_calls.model_id`).
+The table's grants already cover it, and the purge keeps it, as it keeps the
+title and the page.

@@ -25,6 +25,8 @@ export interface ProviderAdapter {
   readonly build: (
     values: Readonly<Record<string, string>>,
     operationId?: string,
+    /** The exact model to ask for (CS-7.30); absent, the provider's default. */
+    model?: string,
   ) => AdapterRequest;
   readonly price: (answer: ModelAnswer) => number;
   readonly lookup?: (operationId: string) => AdapterRequest;
