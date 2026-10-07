@@ -239,10 +239,14 @@ describe('Connections & signal: skill costing', () => {
     const numbers = page.all('[data-section]').map((one) => data(one)['section']);
     expect(numbers).toEqual(numbers.toSorted());
     expect(new Set(numbers).size).toBe(numbers.length);
-    // 010 to 012, the per-client region, are MP-14-10a's (P06) and land apart.
-    expect(numbers.at(-1)).toBe('009');
-    expect(text(page, '[data-section="009"] .sec .marker')).toBe('009');
-    expect(text(page, '[data-section="009"] .sec__head')).toBe('Skill costing');
+    expect(numbers).toContain('012');
+    for (const [index, title] of [
+      ['009', 'Skill costing'],
+      ['010', 'Graduation'],
+    ] as const) {
+      expect(text(page, `[data-section="${index}"] .sec .marker`)).toBe(index);
+      expect(text(page, `[data-section="${index}"] .sec__head`)).toBe(title);
+    }
   });
 
   it('a figure from fewer priced runs than the skill has run alone says which runs it rests on', async () => {
