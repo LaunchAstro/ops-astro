@@ -36,15 +36,25 @@ Verdict: approve
 BUILDER=claude-opus-5-5
 # The pull request's labels, newline separated; none unless a case sets LABELS.
 LABELS=""
+DEFER_EPOCH=""
+DEFER_BASE=""
+EXPECT_TEXT=""
+unset OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL
 
 # run <label> <expect> <body> <changed files, newline separated>
 run_case() {
-  local label="$1" expect="$2" body="$3" files="$4" actual
-  actual="$(
+  local label="$1" expect="$2" body="$3" files="$4" actual output
+  output="$(
     PR_BODY="${RECORD//@HEAD@/$HEAD}$body" PR_LABELS="$LABELS" HEAD_SHA="$HEAD" CHANGED_FILES="$files" AGENT_MODELS="$BUILDER" \
-      node "$CHECKER" >/dev/null 2>&1; echo $?
+      OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL="$DEFER_EPOCH" BASE_SHA="$DEFER_BASE" \
+      node "$CHECKER" 2>&1
   )"
-  if [ "$actual" = "$expect" ]; then pass "$label"; else fail "$label" "expected exit $expect, got $actual"; fi
+  actual=$?
+  if [ "$actual" = "$expect" ] && { [ -z "$EXPECT_TEXT" ] || [[ "$output" == *"$EXPECT_TEXT"* ]]; }; then
+    pass "$label"
+  else
+    fail "$label" "expected exit $expect and '$EXPECT_TEXT', got $actual: $output"
+  fi
 }
 
 echo "review evidence cases, against $CHECKER"
@@ -55,6 +65,7 @@ if [ ! -f "$CHECKER" ]; then
   echo; echo "review evidence cases: $PASSED passed, $FAILED failed"; exit 1
 fi
 
+if [ "${DOMAIN_FIRST_ONLY:-0}" != 1 ]; then
 BARE_BLOCK="Review checkpoint
   branch:      work
   base:        main
@@ -980,6 +991,182 @@ run_case "Sol owed: work partly built by Sol's company cannot owe Sol" 1 "$OWED_
 BUILDER=claude-opus-5-5
 RECORD="$SAVED"
 LABELS=""
+
+fi
+
+# Owner epoch enables review deferral only for internal Stage 1. No review
+# outcomes or reviewer records are supplied by these fixtures.
+RECORD=""
+BUILDER=gpt-6.1-sol
+DEFER_BASE="$OTHER"
+DEFER_EPOCH=DOMAINFIRST20261008
+LABELS=$'needs-second-model\nunreviewed'
+DEFERRAL="Review deferral: DOMAINFIRST20261008 internal-stage1 $OTHER..$HEAD stage1/SOL-OWED.md"
+DEFER_CHECKPOINT="Review checkpoint
+  head: $HEAD"
+# P2 is also needed when this focused group runs alone.
+P2=$'\n\n'
+FENCE='```'
+DEFER_BODY="$DEFER_CHECKPOINT$P2$DEFERRAL"
+EXPECT_TEXT="REVIEW DEFERRED INTERNAL STAGE1"
+run_case "domain first: Sol build passes without any review approval or outcome" 0 "$DEFER_BODY" "scripts/review-evidence-check.mjs"
+EXPECT_TEXT=""
+DEFER_EPOCH=""
+run_case "domain first: absent trusted epoch refuses Sol deferral" 1 "$DEFER_BODY" "scripts/review-evidence-check.mjs"
+DEFER_EPOCH=DOMAINFIRST20261007
+run_case "domain first: mismatched trusted epoch refuses" 1 "$DEFER_BODY" "README.md"
+DEFER_EPOCH=DOMAINFIRST20261008
+for labels in unreviewed needs-second-model $'needs-sol\nunreviewed' ''; do
+  LABELS="$labels"
+  run_case "domain first: missing or incorrect labels '$labels' refuse" 1 "$DEFER_BODY" "README.md"
+done
+LABELS=$'needs-second-model\nunreviewed'
+for marker in \
+  "${DEFERRAL/DOMAINFIRST20261008/DOMAINFIRST20261007}" \
+  "${DEFERRAL/$HEAD/$OTHER}" \
+  "${DEFERRAL/$OTHER/$HEAD}" \
+  "${DEFERRAL/internal-stage1/production}" \
+  "${DEFERRAL/internal-stage1/stage2}" \
+  "${DEFERRAL/SOL-OWED.md/TODO.md}" \
+  "$DEFERRAL later" \
+  "${DEFERRAL/$HEAD/${HEAD:0:7}}" \
+  "${DEFERRAL/Review deferral/Review-deferral}" \
+  "${DEFERRAL/Review deferral:/Review deferral: }" \
+  "$DEFERRAL." \
+  "**$DEFERRAL**" \
+  "- $DEFERRAL" \
+  "> $DEFERRAL" \
+  "## $DEFERRAL" \
+  "    $DEFERRAL" \
+  "\`$DEFERRAL\`" \
+  "$FENCE$P2$DEFERRAL$P2$FENCE" \
+  "<!--$P2$DEFERRAL$P2-->" \
+  "<div>$P2$DEFERRAL$P2</div>" \
+  "[${DEFERRAL}](https://example.com)" \
+  "${DEFERRAL/Review deferral:/Review deferral\\:}" \
+  "$DEFERRAL$P2$DEFERRAL"; do
+  run_case "domain first: malformed, hidden, stale or ambiguous marker '$marker' refuses" 1 "$DEFER_CHECKPOINT$P2$marker" "README.md"
+done
+for claim in "Code review: no findings" "Security review: run against $HEAD, no findings" \
+  "Verdict: approve" "Reviewer: someone" "Model: claude-opus-5-5" "Head SHA: $HEAD" \
+  "Sol-owed: stage1/SOL-OWED.md MAIN-GATE-1" "Independently approved." \
+  "The human accepted this change." "This was reviewed." "Independent approval granted." \
+  "The review passed."; do
+  run_case "domain first: contradictory review claim '$claim' refuses" 1 "$DEFER_BODY$P2$claim" "README.md"
+done
+for hidden in "- $DEFERRAL" "> $DEFERRAL" "\`$DEFERRAL\`" "<!--$P2$DEFERRAL$P2-->"; do
+  run_case "domain first: valid marker plus hidden second marker refuses" 1 "$DEFER_BODY$P2$hidden" "README.md"
+done
+DEFER_EPOCH="DOMAINFIRST20261008 "
+run_case "domain first: whitespace in trusted epoch refuses" 1 "$DEFER_BODY" "README.md"
+DEFER_EPOCH=DOMAINFIRST20261008
+# Even with the trusted epoch, an ordinary fully reviewed PR uses normal rules.
+BUILDER=claude-opus-5-5
+RECORD="Reviewer: Sol
+Model: gpt-6-sol
+Head SHA: $HEAD
+Verdict: approve
+
+"
+run_case "domain first: trusted epoch without marker retains normal evidence" 0 "$DEFER_CHECKPOINT
+
+Code review: no findings
+Security review: run against $HEAD, no findings" "scripts/review-evidence-check.mjs"
+RECORD=""
+BUILDER=gpt-6.1-sol
+run_case "domain first: no checkpoint still refuses" 1 "$DEFERRAL" "README.md"
+run_case "domain first: stale checkpoint still refuses" 1 "Review checkpoint
+  head: $OTHER$P2$DEFERRAL" "README.md"
+run_case "domain first: missing marker still refuses" 1 "$DEFER_CHECKPOINT" "README.md"
+DEFER_BASE=""
+run_case "domain first: missing range base refuses" 1 "$DEFER_BODY" "README.md"
+DEFER_BASE="$OTHER"
+BUILDER=unknown-model
+run_case "domain first: unknown builder company refuses" 1 "$DEFER_BODY" "README.md"
+BUILDER=""
+run_case "domain first: missing builder provenance refuses" 1 "$DEFER_BODY" "README.md"
+BUILDER=$'gpt-6.1-sol\nclaude-opus-5-5'
+run_case "domain first: truthful mixed builder companies pass" 0 "$DEFER_BODY" "README.md"
+BUILDER=claude-opus-5-5
+LABELS=$'needs-sol\nunreviewed'
+run_case "domain first: Anthropic build owes Sol and passes" 0 "$DEFER_BODY" "README.md"
+BUILDER=gpt-6.1-sol
+LABELS=needs-sol
+DEFER_EPOCH=""
+run_case "domain first: Sol-built normal Sol-owed mode remains refused" 1 "Review checkpoint
+  head: $HEAD
+
+Code review: no findings
+Security review: run against $HEAD, no findings
+Sol-owed: stage1/SOL-OWED.md $OTHER..$HEAD" "scripts/review-evidence-check.mjs"
+
+# Exercise the unchanged CI adapter for both events, including its live PR
+# body/labels read. Synthetic Git objects live only in a disposable fixture.
+if CHECKER_PATH="$CHECKER" REPO_ROOT="$REPO_ROOT" node --input-type=module <<'JS'
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { parse } from 'yaml';
+const workflow = parse(readFileSync(join(process.env.REPO_ROOT, '.github/workflows/review-evidence.yml'), 'utf8'));
+const step = workflow.jobs['review-evidence'].steps.find((s) => s.name === 'The review must cover the head being merged');
+if (step?.env?.OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL !== '${{ vars.OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL }}') {
+  throw new Error('The workflow must read the trusted repository variable.');
+}
+console.log('  PASS  domain first workflow: trusted repository variable only');
+const dir = mkdtempSync(join(tmpdir(), 'domain-first-route-'));
+const env = { ...process.env, GIT_AUTHOR_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@example.test',
+  GIT_COMMITTER_NAME: 'Fixture', GIT_COMMITTER_EMAIL: 'fixture@example.test' };
+const git = (...args) => execFileSync('git', args, { cwd: dir, env, encoding: 'utf8' }).trim();
+try {
+  git('init', '--quiet');
+  const tree = git('write-tree');
+  const base = git('commit-tree', tree, '-m', 'Fixture base');
+  const head = git('commit-tree', tree, '-p', base, '-m', 'Fixture Sol build\n\nAgent-model: gpt-6.1-sol');
+  const group = git('commit-tree', tree, '-p', base, '-p', head, '-m', 'Merge pull request #1 from fixture/work');
+  git('update-ref', 'refs/heads/main', base);
+  mkdirSync(join(dir, 'pr-1'));
+  const eventPath = join(dir, 'event.json');
+  const pullPath = join(dir, 'pr-1', 'pull.json');
+  const body = `Review checkpoint\n  head: ${head}\n\nReview deferral: DOMAINFIRST20261008 internal-stage1 ${base}..${head} stage1/SOL-OWED.md`;
+  const events = {
+    pull_request: { pull_request: { number: 1, head: { sha: head }, base: { sha: base, ref: 'main' } } },
+    merge_group: { merge_group: { head_sha: group, base_ref: 'refs/heads/main',
+      head_ref: `refs/heads/gh-readonly-queue/main/pr-1-${head}` } },
+  };
+  const variants = [
+    ['valid', body, ['needs-second-model', 'unreviewed'], 'DOMAINFIRST20261008', 0],
+    ['absent epoch', body, ['needs-second-model', 'unreviewed'], '', 1],
+    ['wrong epoch', body, ['needs-second-model', 'unreviewed'], 'wrong', 1],
+    ['missing label', body, ['unreviewed'], 'DOMAINFIRST20261008', 1],
+    ['stale range', body.replace(`${base}..${head}`, `${base}..${base}`), ['needs-second-model', 'unreviewed'], 'DOMAINFIRST20261008', 1],
+    ['contradiction', `${body}\n\nVerdict: approve`, ['needs-second-model', 'unreviewed'], 'DOMAINFIRST20261008', 1],
+  ];
+  for (const [name, payload] of Object.entries(events)) {
+    writeFileSync(eventPath, JSON.stringify(payload));
+    for (const [label, value, labels, epoch, expected] of variants) {
+      writeFileSync(pullPath, JSON.stringify({ number: 1, state: 'open', head: { sha: head },
+        base: { ref: 'main' }, body: value, labels: labels.map((name) => ({ name })) }));
+      const run = spawnSync(process.execPath, [join(process.env.REPO_ROOT, 'scripts/merge-group.mjs'),
+        'each', '--pulls', dir, process.execPath, process.env.CHECKER_PATH], {
+        cwd: dir, encoding: 'utf8', env: { ...env, GITHUB_EVENT_NAME: name, GITHUB_EVENT_PATH: eventPath,
+          // Supply a local origin for the adapter's unchanged fetch without repository config.
+          GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'remote.origin.url', GIT_CONFIG_VALUE_0: dir,
+          OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL: epoch, CHANGED_FILES: 'scripts/review-evidence-check.mjs' },
+      });
+      const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+      if (run.status !== expected || (expected === 0 && !output.includes('REVIEW DEFERRED INTERNAL STAGE1'))) {
+        throw new Error(`${name}/${label}: expected ${expected}, got ${run.status}\n${output}`);
+      }
+      console.log(`  PASS  domain first adapter: ${name}/${label}`);
+    }
+  }
+} finally {
+  rmSync(dir, { recursive: true, force: true });
+}
+JS
+then pass "domain first: real PR and merge-group adapter routes agree";
+else fail "domain first: real PR and merge-group adapter routes agree" "adapter fixture failed"; fi
 
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"
