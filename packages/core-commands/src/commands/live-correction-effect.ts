@@ -196,7 +196,7 @@ export async function latestRevert(
 }
 
 /**
- * The dispatch taken under the effect's lease (SOL-OWED cross-runner single dispatch): the
+ * The dispatch taken under the effect's lease (one dispatch across overlapping runners): the
  * correction, read under the lease and still `approved` by a person, moves to unknown with its
  * receipt in one transaction. A runner that loses this race, or holds a lost lease, gets the
  * refusal's code and sends nothing; the winner's send can then only be observed.

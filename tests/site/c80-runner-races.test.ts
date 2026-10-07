@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C80's runner when two runs of one job overlap (Sol R1): only one takes an
+// C80's runner when two runs of one job overlap: only one takes an
 // unregistered revert for dispatch, and concurrent retries of an unknown
 // publish ask a person once. Every provider here is a double.
 
