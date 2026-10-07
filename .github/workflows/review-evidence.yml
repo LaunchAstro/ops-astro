@@ -125,6 +125,8 @@ jobs:
       # pull request at the head being judged; on a group, open and on the
       # group's base branch too (scripts/merge-group.mjs).
       - name: The review must cover the head being merged
+        env:
+          OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL: ${{ vars.OPS_INTERNAL_STAGE1_REVIEW_DEFERRAL }}
         run: |
           OPEN_ISSUES="$(cat "${RUNNER_TEMP}/open-issues.txt")" \
             node scripts/merge-group.mjs each --pulls "${RUNNER_TEMP}" node scripts/review-evidence-check.mjs
