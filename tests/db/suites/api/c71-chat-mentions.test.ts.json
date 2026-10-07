@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "CS-7.42: an @mention in a conversation lands in the inbox as a task mention does, one outside it refused as a task mention of someone who cannot read is, held by current members alone; nothing emailed (c71-live-world.ts is its helper and is not named)"
+}

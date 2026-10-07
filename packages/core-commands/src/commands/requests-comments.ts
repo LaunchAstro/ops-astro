@@ -22,6 +22,8 @@ export type CommentRequest<Targeted> =
       readonly command: 'task.edit_comment';
       readonly commentId: string;
       readonly body: string;
+      /** The `edited_at` the words were typed against; null for never edited. */
+      readonly expectedEditedAt?: unknown;
     } & Targeted)
   | ({ readonly command: 'task.delete_comment'; readonly commentId: string } & Targeted);
 
@@ -31,6 +33,8 @@ export type ChatRequest<E> =
       readonly command: 'chat.send_direct';
       readonly teammateId: string;
       readonly body: string;
+      /** CS-7.42: the people the message names, checked by value. */
+      readonly mentions?: unknown;
     } & E)
   | ({
       readonly command: 'chat.mark_read';
@@ -48,6 +52,7 @@ export type ChatRequest<E> =
       readonly command: 'chat.send_group';
       readonly conversationId: string;
       readonly body: string;
+      readonly mentions?: unknown;
     } & E)
   | ({
       readonly command: 'chat.rename_group';

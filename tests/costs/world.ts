@@ -45,8 +45,17 @@ export interface RunSpec {
   readonly skill?: string;
   readonly calls: readonly Call[];
   readonly finish?: boolean;
+  /** Not finished: left live for a helper or a replacement, else revoked and then handed back late. */
+  readonly end?: 'open' | 'late';
+  /** The lease's length, so a replacement can pick the work up once it runs out. */
+  readonly leaseSeconds?: number;
   /** How long ago its first call started. */
   readonly hoursAgo?: number;
+}
+
+/** A run the world made and the pickup that holds it: its lease, fence, delegation and credential. */
+export interface Started extends Ran {
+  readonly picked: Record<string, unknown>;
 }
 
 export interface CostWorld {
@@ -70,7 +79,9 @@ export interface CostWorld {
   readonly answers: Answer[];
   client(name: string): Promise<string>;
   skill(name: string): Promise<{ readonly id: string; readonly versionId: string }>;
-  run(spec: RunSpec): Promise<Ran>;
+  run(spec: RunSpec): Promise<Started>;
+  /** More of the broker's calls on a run, on the lease and delegation `picked` names. */
+  calls(on: Started, calls: readonly Call[], hoursAgo?: number): Promise<void>;
   read(who: Member, name: string, body?: object, business?: string): Promise<Answer>;
   drop(): Promise<void>;
 }
@@ -207,7 +218,7 @@ export async function createCostWorld(part: string): Promise<CostWorld> {
         task = { id: task.id, revision: Number(set.body['revision']) };
       }
       const proposal = await controls.propose(task.id, task.revision);
-      const picked = await controls.pickup(await controls.approve(proposal));
+      const picked = await controls.pickup(await controls.approve(proposal), spec.leaseSeconds);
       const [run] = await db.admin.execute<{ readonly run_id: string }>(
         `select run_id from public.leases where business_id = $1 and id = $2`,
         [alpha, picked['leaseId']],
@@ -226,10 +237,27 @@ export async function createCostWorld(part: string): Promise<CostWorld> {
           String(picked['credential']),
         );
         expect(handed.status, JSON.stringify(handed.body)).toBe(200);
-      } else {
+      } else if (spec.end !== 'open') {
         await controls.asPerson('delegation.revoke', { delegationId: picked['delegationId'] });
       }
-      return ran;
+      if (spec.end === 'late') {
+        // T4: the revoked holder's completed report, kept and never accepted.
+        const late = await controls.asAgent(
+          'task.handback',
+          {
+            leaseId: picked['leaseId'],
+            fence: picked['fence'],
+            outcome: 'completed',
+            report: { wrote: 'a late draft' },
+          },
+          String(picked['credential']),
+        );
+        expect(late.body['refused'], JSON.stringify(late.body)).toBe(true);
+      }
+      return { ...ran, picked };
+    },
+    async calls(on, calls, hoursAgo = 1) {
+      await seedRunCalls(db, alpha, on.runId, on.picked, calls, hoursAgo);
     },
     async read(who, name, body = {}, business = 'alpha') {
       const answer = await post(

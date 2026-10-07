@@ -79,7 +79,10 @@ describe.skipIf(serverUrl === undefined)('INB-1 four eyes and the inbox', () => 
     )[0]?.state;
 
   const owed = async (person: string): Promise<number> =>
-    await s.db.app.withBusiness(s.business, async (tx) => await countOwed(tx, person));
+    await s.db.app.withBusiness(
+      s.business,
+      async (tx) => await countOwed(tx, person, [{ kind: 'person', id: person }]),
+    );
 
   const assign = async (taskId: string, assignee: Member): Promise<void> => {
     appliedDetail(

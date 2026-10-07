@@ -90,7 +90,12 @@ export function StopAnswer(props: StopAnswerProps): ReactElement {
   const minor = minorOf(amount, stop.currency);
   const ready = !props.busy && minor !== null && minor > 0;
   return (
-    <div className="sb__sect" data-agent="budget-stop" data-stop-kind={stop.kind}>
+    <div
+      className="sb__sect"
+      data-agent="budget-stop"
+      data-stop-kind={stop.kind}
+      data-stop-run={stop.runId}
+    >
       <StopHead stop={stop} />
       <Amount stop={stop} busy={props.busy} amount={amount} onAmount={setAmount} />
       {props.awaiting === null ? null : (
@@ -104,6 +109,7 @@ export function StopAnswer(props: StopAnswerProps): ReactElement {
           type="button"
           disabled={!ready}
           data-stop="top-up"
+          aria-label={`Top up run ${stop.runId}`}
           onClick={() => {
             if (ready) props.onTopUp(stop.runId, stop.askId, minor, stop.currency);
           }}
@@ -115,6 +121,7 @@ export function StopAnswer(props: StopAnswerProps): ReactElement {
           type="button"
           disabled={props.busy}
           data-stop="end"
+          aria-label={`End the work on run ${stop.runId}`}
           onClick={() => {
             props.onEnd(stop.runId, stop.askId);
           }}
@@ -155,7 +162,7 @@ function Amount(props: {
   );
 }
 
-/** What the answer is for: the stop's count and, on the third, the consolidated decision. */
+/** What the answer is for: the run, the stop's count and, on the third, the consolidated decision. */
 function StopHead(props: { readonly stop: LedgerStop }): ReactElement {
   const consolidated = props.stop.kind === 'consolidated';
   return (
@@ -166,6 +173,9 @@ function StopHead(props: { readonly stop: LedgerStop }): ReactElement {
         </span>
         <span className="sbact__meta">{count(props.stop)}</span>
       </div>
+      <p className="card__sub" data-stop="run">
+        For run <span className="u-mono">{props.stop.runId}</span>
+      </p>
       <p className="card__sub">
         {consolidated
           ? 'The run has stopped three times. Top it up once more or end the work; it will not ask again.'

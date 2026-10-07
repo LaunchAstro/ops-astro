@@ -23,6 +23,7 @@
 //      the person approved and the structured record, each by digest, with
 //      the origin conversation. Checked by the caller before any of this
 //      (`boundPlanOf`); a row that cannot be written fails the transaction.
+//      Accepted in a conversation, it moves the conversation's last activity.
 //
 // The plan decision authorises no effect: the effect gate is AW-08's launch.
 
@@ -132,5 +133,18 @@ async function bindPlan(
       request.decidedByActorId,
     ],
   );
+  if (request.originConversationId !== null) {
+    // The accept is activity in its conversation, as a message is: a wrap-up
+    // written before it no longer covers it, so it cannot release the body,
+    // and the next one, at quiet, lists this run and gate (PRV-oa-1111). The
+    // purge's clock is unmoved in effect: the gate decided here is the
+    // conversation's work and ends now. The caller holds the conversation's
+    // key-share lock (`originOf`), which this update keeps.
+    await tx.query(
+      `update public.conversations set last_activity_at = greatest(clock_timestamp(), last_activity_at)
+        where business_id = $1 and id = $2`,
+      [tx.businessId, request.originConversationId],
+    );
+  }
   return planRecordId;
 }

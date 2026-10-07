@@ -7,9 +7,11 @@
 // that belongs to the type; a map's revisions and WF-2's commands sit beside it.
 
 import {
+  checkAuthority,
   isTaskType,
   isUuid,
   OWNER_TYPES,
+  subjectsOf,
   TASK_TYPES,
   wayfinderFacts,
 } from '../../../core-records/src/index.ts';
@@ -53,18 +55,41 @@ export function taskTypeOperand(value: unknown): TaskType | CommandRefusal {
 /**
  * What a new task's `data` gains from its type and its parent: the type, the
  * owner of a new map (its creator), and the client of the map it is filed
- * under, so a client-scoped map's tickets carry the client too.
+ * under, so a client-scoped map's tickets carry the client too. Filing a
+ * grilling or prototype ticket applies the map's owner and decide rule.
  */
 export async function wayfinderDataOnCreate(
   tx: TenantQuery,
   context: CommandContext,
   type: TaskType,
   parentId: string | null,
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, unknown> | CommandRefusal> {
   const data: Record<string, unknown> = { type };
   if (type === 'map') data['map_owner'] = context.session.personId;
   if (parentId !== null) {
     const parent = await wayfinderFacts(tx, parentId);
+    if (parent?.type === 'map' && type !== 'map' && OWNER_TYPES.has(type)) {
+      // A create has no ticket yet, so task:decide is checked at the map.
+      const decide = await checkAuthority(tx, subjectsOf(context.session), {
+        collection: context.declaration.collection,
+        action: 'decide',
+        scope: { kind: 'record', id: parentId },
+      });
+      if (!decide.ok) {
+        return refuseCommand(
+          'SCOPE_NOT_GRANTED',
+          ['task:decide'],
+          ['Filing a grilling or prototype ticket on a map needs task:decide.'],
+        );
+      }
+      if (parent.mapOwner !== context.session.personId) {
+        return refuseCommand(
+          'SCOPE_NOT_GRANTED',
+          ['map owner'],
+          ["Only the map's owner files a grilling or prototype ticket on the map."],
+        );
+      }
+    }
     if (parent?.type === 'map' && parent.client !== null) data['client'] = parent.client;
   }
   return data;

@@ -24,6 +24,11 @@
 // takes a conversation's. A conversation the send has just started goes with
 // the refusal (the envelope's savepoint).
 //
+// A message's `mentions` (CS-7.42) take a task comment's path, after that re-read: each person
+// named must be a current member of the conversation, or the message is refused
+// `MENTION_NOT_READABLE` before it saves, and each is raised a `mention` inbox item about the
+// conversation (`raiseMentions`), never the author. Email is the batched mention rule's, not here.
+//
 // `chat.mark_read`: the reader's own marker on a conversation they are in,
 // moved to the newest message they saw and never back. Their own member row
 // only, no grant asked, and not audited (CS-7.25): anyone else's conversation
@@ -35,8 +40,10 @@ import {
   isStaff,
   lockConversation,
   moveReadMarker,
-  readPositionOf,
   noMembership,
+  raiseMentions,
+  readConversationMentions,
+  readPositionOf,
   readConversationTypes,
   shareAccessLock,
   subjectsOf,
@@ -48,7 +55,12 @@ import { isInternalReader } from '../reads/tasks.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import { commentBodyOf, NO_COMMENT_TYPE_FIXES } from './tasks-comment.ts';
+import {
+  commentBodyOf,
+  mentionsOf,
+  NO_COMMENT_TYPE_FIXES,
+  unreadableMentions,
+} from './tasks-comment.ts';
 
 const UP_TO_FIXES: readonly string[] = [
   'Send upTo as the newest message you read, its `at` exactly as chat.messages gave it.',
@@ -59,11 +71,14 @@ export async function sendDirect(
   context: CommandContext,
   teammateId: string,
   body: unknown,
+  mentions?: unknown,
 ): Promise<HandlerOutcome> {
   const { session } = context;
   if (!isInternalReader(session.roleKey)) return refused(refuseNotFound());
   const words = commentBodyOf(body);
   if (typeof words !== 'string') return words;
+  const named = mentionsOf(mentions);
+  if (!Array.isArray(named)) return named as HandlerOutcome;
   const types = await conversationTypesFor(tx, context);
   if (!('conversationTypeId' in types)) return types;
   if (teammateId.toLowerCase() === session.personId || !(await isStaff(tx, teammateId))) {
@@ -77,13 +92,14 @@ export async function sendDirect(
   );
   const lost = await standsNow(tx, context, teammateId.toLowerCase());
   if (lost !== undefined) return refused(lost);
-  return await writeMessage(tx, context, types, conversationId, 'direct', words);
+  return await writeMessage(tx, context, types, conversationId, 'direct', words, named);
 }
 
 /**
  * A message into a conversation whose lock the caller holds: a comment on the
- * one comment record with the conversation's audience, then the sender's own
- * marker past it (R36). The one path for a direct and a group message.
+ * one comment record with the conversation's audience, its mentions raised,
+ * then the sender's own marker past it (R36). The one path for a direct and a
+ * group message.
  */
 export async function writeMessage(
   tx: TenantQuery,
@@ -92,16 +108,32 @@ export async function writeMessage(
   conversationId: string,
   audience: 'direct' | 'group',
   words: string,
+  named: readonly string[],
 ): Promise<HandlerOutcome> {
+  const authorActorId = context.session.actorId;
+  const mentioned = await readConversationMentions(tx, conversationId, named);
+  const unreadable = mentioned.filter((person) => !person.readable);
+  if (unreadable.length > 0) {
+    return await unreadableMentions(tx, authorActorId, named, unreadable);
+  }
   const commentId = await writeComment(tx, types.commentTypeId, {
     taskId: null,
     conversationId,
-    authorActorId: context.session.actorId,
+    authorActorId,
     commentType: 'note',
     audience,
     body: words,
     source: context.entryPoint,
   });
+  // The item is about the conversation (its members alone are shown it), raised as the message
+  // is posted, under the lock, so a member who reads the message is shown its mention too.
+  const posted = await tx.query<{ readonly at: string }>(
+    'select ts_1::text as at from public.records where business_id = $1 and id = $2',
+    [tx.businessId, commentId],
+  );
+  const postedAt = posted[0]?.at;
+  const about = { taskId: conversationId, commentId, authorActorId, audience, postedAt };
+  await raiseMentions(tx, about, mentioned);
   await moveReadMarker(tx, conversationId, context.session.personId, 'now');
   return applied(conversationId, null, { conversationId, commentId });
 }

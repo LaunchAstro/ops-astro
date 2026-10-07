@@ -126,16 +126,14 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
             {props.refusal}
           </p>
         )}
-        <div className="sb__sh">
-          <span className="sb__k">Current run</span>
-          <span className="sbact__meta u-mono" data-agent="run-id">
-            {shown.head.runId ?? 'not planned'}
-          </span>
-        </div>
+        <CurrentRun runId={shown.head.runId} />
         <Summary story={shown} />
         <RunKnowledge runId={shown.head.runId} states={props.ledger?.states} />
         <Unknown {...props} shown={shown} />
-        <StopAnswers {...props} />
+        <StopAnswers
+          {...props}
+          runIds={(lineage?.versions ?? [shown.head]).map((each) => each.runId)}
+        />
         <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
         <StagedOutput story={shown} />
         <Gate
@@ -154,6 +152,18 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         )}
       </div>
       <RunSide {...props} shown={shown} />
+    </div>
+  );
+}
+
+/** The shown run's id, or that none is planned yet. */
+function CurrentRun({ runId }: { readonly runId: RunStory['head']['runId'] }): ReactElement {
+  return (
+    <div className="sb__sh">
+      <span className="sb__k">Current run</span>
+      <span className="sbact__meta u-mono" data-agent="run-id">
+        {runId ?? 'not planned'}
+      </span>
     </div>
   );
 }
@@ -190,11 +200,19 @@ function Unknown(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
   );
 }
 
-/** C54's answers at each run's waiting stop, where the host offers both. */
-function StopAnswers(props: AgentPaneProps): ReactElement | null {
+/**
+ * C54's answers at the waiting stop of each of the shown attempt's own runs,
+ * where the host offers both. Another attempt's stop is answered from that
+ * attempt, never from this one's column.
+ */
+function StopAnswers(
+  props: AgentPaneProps & { readonly runIds: readonly (string | null)[] },
+): ReactElement | null {
   const { onTopUpAtStop, onEndAtStop } = props;
   if (onTopUpAtStop === undefined || onEndAtStop === undefined) return null;
-  const waiting = latestStops(props.ledger).filter((stop) => stop.answer === null);
+  const waiting = latestStops(props.ledger).filter(
+    (stop) => stop.answer === null && props.runIds.includes(stop.runId),
+  );
   return (
     <>
       {waiting.map((stop) => (

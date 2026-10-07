@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's runner under a person's own lease: once the holder's write grants expire, the correction read and send are refused, the lease being no standing permission."
+}

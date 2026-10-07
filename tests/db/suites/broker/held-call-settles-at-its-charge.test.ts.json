@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "money: a call the provider has not received stays held through its lookup, and its late answer settles it at its charge, counted once"
+}

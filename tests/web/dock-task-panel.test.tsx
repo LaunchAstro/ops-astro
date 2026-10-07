@@ -109,6 +109,18 @@ describe('MP-3-1 the dock draws the task panel as its Task panel', () => {
     // Its door is the task's own page.
     expect(view.find(`${TASK} [data-act="door"]`)?.getAttribute('href')).toBe(`/task/${KEY}`);
   });
+  it('a plain door opens it solo: the panels open before it close', async () => {
+    const view = await app(1700);
+    await view.click('.dock__tab[data-panel="clients"]');
+    await tick();
+    await view.click(DOOR);
+    await tick();
+    expect(
+      [...view.host.querySelectorAll<HTMLElement>('.dpanel')].map(
+        (each) => each.dataset['panelId'],
+      ),
+    ).toEqual(['task']);
+  });
 });
 
 describe('MP-3-1 the Task panel closes from either side', () => {

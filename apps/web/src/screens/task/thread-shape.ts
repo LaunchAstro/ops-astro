@@ -15,6 +15,28 @@ export interface Message {
   readonly at: number;
 }
 
+/**
+ * The row being edited: its words as typed, the row's `edited_at` when the
+ * box opened (what the words were typed against), why they were refused, and
+ * whether that was a stale refusal, which the person has now been shown.
+ */
+export interface RowEdit {
+  readonly commentId: string;
+  readonly body: string;
+  readonly editedAt: string | null;
+  readonly because: string | null;
+  readonly stale: boolean;
+}
+
+/** A row's edit as it opens: its stored words, against the stamp the read shows. */
+export const editOf = (comment: InternalCommentView): RowEdit => ({
+  commentId: comment.id,
+  body: comment.body,
+  editedAt: comment.edited_at,
+  because: null,
+  stale: false,
+});
+
 const timeOf = (comment: InternalCommentView): number => Date.parse(comment.posted_at);
 
 /** The message a reply answers; null on a message, and on a read that predates replies. */

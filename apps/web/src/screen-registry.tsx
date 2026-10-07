@@ -41,13 +41,9 @@ import { TodosScreen } from './screens/todos/Todos.tsx';
 import { TeamScreen } from './screens/Team.tsx';
 import { TelemetryScreen } from './screens/Telemetry.tsx';
 import type { ConversationTab, PanelDoor } from './screens/task/Perspectives.tsx';
+import type { TaskPanelHost } from './screens/task/panel-host.ts';
 
-/** The dock task panel as a screen reaches it (MP-4-8): open it, and read its change count. */
-export interface TaskPanelHost {
-  readonly open: (taskKey: string, door: PanelDoor, tab?: ConversationTab) => void;
-  /** Changes made in the panel so far: a screen showing the task reads it again on a new one. */
-  readonly changes: number;
-}
+export type { TaskPanelHost };
 
 /** What the application hands whichever screen the address resolves to. */
 export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRouteId> {
@@ -136,6 +132,7 @@ export const SCREENS: {
       grantKey={context.grantKey}
       navigate={context.navigate}
       {...(context.openPanel === undefined ? {} : { openPanel: context.openPanel })}
+      {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
     />
   ),
   'agency:clients': (context) => (

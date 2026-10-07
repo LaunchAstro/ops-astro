@@ -52,6 +52,7 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
         sending = g.as(world.mia, 'chat.send_group', {
           conversationId: g.conversationId,
           body: queued,
+          mentions: [g.chat.tess.personId],
         });
         await expect.poll(async () => await advisoryWaiters(world), { timeout: 5_000 }).toBe(1);
         revoking = executeCommand(revoker, world.alpha, world.ada.presented, 'api', {
@@ -74,6 +75,7 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
       const refused = await g.as(world.mia, 'chat.send_group', {
         conversationId: g.conversationId,
         body: after,
+        mentions: [g.chat.tess.personId],
       });
       expect(refused.code, refused.text).toBe('SCOPE_NOT_GRANTED');
       expect(await g.bodiesOf(world.ada)).not.toContain(after);
@@ -83,7 +85,16 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
        where i.business_id = $1 and c.data ->> 'body' = $2`,
         [world.alpha, after],
       );
+      // The door refused that send, so no handler ran: no message, no mention.
       expect(written).toEqual([]);
+      // The queued send that landed raised the member it named one mention, of its own body.
+      const mentioned = await world.db.admin.execute<{ body: string }>(
+        `select c.data ->> 'body' as body from public.inbox_items i join public.records c
+        on c.business_id = i.business_id and c.id = i.fact_id
+       where i.business_id = $1 and i.recipient_person_id = $2 and i.reason = 'mention'`,
+        [world.alpha, g.chat.tess.personId],
+      );
+      expect(mentioned).toEqual([{ body: queued }]);
     } finally {
       await sending?.catch(settled);
       await revoking?.catch(settled);

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a plan accepted after a conversation's quiet wrap-up is activity there, so the stale wrap-up never releases the body and the next one lists the run and gate"
+}

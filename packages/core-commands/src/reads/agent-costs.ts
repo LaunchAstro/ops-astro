@@ -2,7 +2,9 @@
 //
 // `finance.agent_costs`, what our agents cost us for a period (MP-14-6):
 // the cost log, one row per run and agent, and its totals per agent and per
-// client summed from those same rows. It reads `listRunCosts` by the scopes
+// client summed from those same rows. A run with an open call is unpriced in
+// every one of its rows (`listRunCosts` counts the run's open calls), so no
+// part of it reaches a total. It reads `listRunCosts` by the scopes
 // the caller holds `finance:read` at, as skill costing does (`costs.ts`).
 
 import {
@@ -27,7 +29,8 @@ import {
   type CostOperands,
 } from './costs.ts';
 
-const UNPRICED = 'A call’s cost is not known yet: it is still running or its liability is unknown.';
+const UNPRICED =
+  'A call in this run is not priced yet: it is held, still running or its liability is unknown.';
 
 /** The window a cost log reads, an ISO start before an ISO end, and any key it does not take. */
 export interface CostPeriodOperands extends CostOperands {
@@ -38,13 +41,67 @@ export interface CostPeriodOperands extends CostOperands {
 /**
  * The whole of an ISO date-time with its zone, `Z` or an offset: one without
  * would be read in the server's own zone, so the same request would cover
- * different runs on different hosts.
+ * different runs on different hosts. Its fields are taken apart here, so an
+ * impossible one can be refused rather than rolled into the next real one.
  */
-const ZONED = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/u;
+const ZONED =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(?:Z|([+-])(\d{2}):(\d{2}))$/u;
 
-/** A zoned ISO date-time's instant, or NaN for anything else. */
-const instant = (value: unknown): number =>
-  typeof value === 'string' && ZONED.test(value) ? Date.parse(value) : Number.NaN;
+/** The days in a month of the proleptic Gregorian calendar ISO 8601 counts in. */
+function daysIn(year: number, month: number): number {
+  if (month === 2) return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+/**
+ * Whether each field is one the calendar and the clock have: a month of the
+ * year, a day of that month, an hour before 24, a minute and second before 60,
+ * and an offset no further than 14 hours from UTC.
+ */
+function realFields(fields: readonly number[]): boolean {
+  const [
+    year = 0,
+    month = 0,
+    day = 0,
+    hour = 0,
+    minute = 0,
+    second = 0,
+    offHours = 0,
+    offMinutes = 0,
+  ] = fields;
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= daysIn(year, month) &&
+    hour < 24 &&
+    minute < 60 &&
+    second < 60 &&
+    offMinutes < 60 &&
+    offHours * 60 + offMinutes <= 14 * 60
+  );
+}
+
+/**
+ * A zoned ISO date-time's instant, counted from its own fields, or NaN for
+ * anything else, an impossible date or time included: nothing here rolls a
+ * field over into the next one, so a refusal is the only way past a bad one.
+ */
+function instant(value: unknown): number {
+  const found = typeof value === 'string' ? ZONED.exec(value) : null;
+  if (found === null) return Number.NaN;
+  const [, ...parts] = found;
+  const [year, month, day, hour, minute, second, fraction = '', sign, offHours, offMinutes] = parts;
+  const fields = [year, month, day, hour, minute, second, offHours, offMinutes].map((one) =>
+    Number(one ?? '0'),
+  );
+  if (!realFields(fields)) return Number.NaN;
+  const [y = 0, mo = 0, d = 0, h = 0, mi = 0, se = 0, oh = 0, om = 0] = fields;
+  const at = new Date(0);
+  at.setUTCFullYear(y, mo - 1, d);
+  at.setUTCHours(h, mi, se, Number(fraction.padEnd(3, '0')));
+  return at.getTime() - (sign === '-' ? -1 : 1) * (oh * 60 + om) * 60_000;
+}
 
 /** The most rows one log answers, so no period hands out every run there is. */
 const LOG_ROWS = 1000;

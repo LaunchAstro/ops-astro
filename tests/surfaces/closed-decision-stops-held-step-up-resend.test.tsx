@@ -47,7 +47,9 @@ function twoGateTask() {
     lineageId: 'l-2',
     versions: [{ ...version, versionId: 'v-2', gate: { ...version.gate, id: 'g-2' } }],
   };
-  return { ...task, proposals: [first, later], ledger: { envelopes: [], stops: [stop] } };
+  // The stop is on the shown attempt's own run (the read lists the newest first).
+  const shown = { ...first, versions: [{ ...version, runId: stop.runId }] };
+  return { ...task, proposals: [shown, later], ledger: { envelopes: [], stops: [stop] } };
 }
 
 const STEP_UP = (): Response => refused('STEP_UP_REQUIRED', 403);

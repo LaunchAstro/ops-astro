@@ -15,6 +15,12 @@
 // actor speaks for many people, so a comment it wrote for P is P's to correct,
 // not Q's (OW-036.1). An agent credential's comment records its person the
 // same way. A person's own comment carries no such person.
+//
+// An edit may name the `edited_at` it was typed against (`expectedEditedAt`,
+// null for words never edited). The comment's own lock orders two edits, so
+// the second one re-reads the first's stamp and is refused `VERSION_STALE`
+// rather than silently replacing words its author never saw. An edit naming
+// none replaces whatever is there.
 
 import { lockComment, removeComment, rewriteComment } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -30,6 +36,14 @@ const BODY_FIXES: readonly string[] = [
 ];
 
 const NOT_AUTHOR_FIXES: readonly string[] = ['Only its author edits or deletes a message.'];
+
+const EDITED_AT_FIXES: readonly string[] = [
+  'Send expectedEditedAt as the edited_at task.read gave the message, or null if it gave none.',
+];
+
+const STALE_EDIT_FIXES: readonly string[] = [
+  'The message was edited since you read it. Read the task again and edit what it says now.',
+];
 
 /** What a comment change is made against, from whichever envelope reached it. */
 export interface CommentChange {
@@ -71,7 +85,10 @@ async function ownComment(
   tx: TenantQuery,
   on: CommentChange,
   commentId: unknown,
-): Promise<{ readonly typeId: string; readonly id: string } | HandlerOutcome> {
+): Promise<
+  | { readonly typeId: string; readonly id: string; readonly editedAt: string | null }
+  | HandlerOutcome
+> {
   if (on.target.deleted_at !== null) return refused(refuseNotFound());
   const typeId = on.commentTypeId;
   if (typeId === undefined) {
@@ -96,24 +113,40 @@ async function ownComment(
   ) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', ['commentId'], NOT_AUTHOR_FIXES));
   }
-  return { typeId, id: comment.id };
+  return { typeId, id: comment.id, editedAt: comment.editedAt?.toISOString() ?? null };
 }
 
 const isRefusal = (found: object): found is HandlerOutcome => !('typeId' in found);
+
+/** The instant an edit names, as the read writes it; undefined for none, false for no instant. */
+function instantOf(value: unknown): string | null | undefined | false {
+  if (value === undefined || value === null) return value;
+  if (typeof value !== 'string') return false;
+  const at = new Date(value);
+  return Number.isNaN(at.getTime()) ? false : at.toISOString();
+}
 
 export async function editTaskComment(
   tx: TenantQuery,
   on: CommentChange,
   commentId: unknown,
   body: unknown,
+  expectedEditedAt?: unknown,
 ): Promise<HandlerOutcome> {
   // The words first, so a bad edit says so without reading the comment.
   if (typeof body !== 'string' || body.trim() === '') {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['body'], BODY_FIXES));
   }
   if (!storableText(body)) return refused(refuseUnstorable(['body']));
+  const expected = instantOf(expectedEditedAt);
+  if (expected === false) {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['expectedEditedAt'], EDITED_AT_FIXES));
+  }
   const found = await ownComment(tx, on, commentId);
   if (isRefusal(found)) return found;
+  if (expected !== undefined && expected !== found.editedAt) {
+    return refused(refuseCommand('VERSION_STALE', ['expectedEditedAt'], STALE_EDIT_FIXES));
+  }
   await rewriteComment(tx, found.typeId, found.id, body);
   return applied(on.target.id, on.target.revision, { commentId: found.id });
 }

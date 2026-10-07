@@ -80,7 +80,14 @@ export async function liveFactor(
   return row === undefined ? undefined : shaped(row);
 }
 
-/** The login's lock, `second-factor-subject:<digest>`; first in its transaction. */
+/**
+ * The sign-in login's installation-wide lock, the advisory key
+ * `second-factor-subject:<digest>` on its provider subject, taken first in its
+ * transaction. A factor's record step takes it, a factor reset and an access
+ * ending's provider steps (C58) hold it across their live-elsewhere check, and
+ * the mapping trigger takes it before any live mapping of a login is written
+ * (20261006213000), with the same digest in SQL.
+ */
 export async function lockLoginFactors(tx: TenantQuery, subject: string): Promise<void> {
   const digest = createHash('sha256').update(subject).digest('hex');
   await advisoryLock(tx, `second-factor-subject:${digest}`);

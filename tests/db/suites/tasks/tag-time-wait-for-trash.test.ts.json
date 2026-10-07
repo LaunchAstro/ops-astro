@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a tag add, timer start or logged entry that reaches a task while a trash holds it waits for the trash and answers no-task, writing nothing"
+}

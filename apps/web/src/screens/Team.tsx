@@ -4,13 +4,13 @@
 // `team.list` and saving the person's own availability (CS-7.27) through
 // `account/availability`. The strip is `team.list`, staff only, and a client
 // is answered NOT_FOUND by the server, so this screen never decides who is
-// staff. It draws nothing of its own but a refused save.
+// staff. It draws nothing of its own but a refused save or send.
 //
-// Two of the panel's parts are withheld until what they stand on exists: the
-// conversations (C71-D direct, C71-G group), whose comment read and command
-// are MP-4-5's, and a teammate's name as the door to their work, which needs
-// a view of a person's work. Until then the names are plain and the
-// conversation room is empty.
+// The conversations (C71-D direct, C71-G group) are the chat reads and
+// commands, live on the tab's one stream (`team/chat.ts`); a reader refused
+// them gets a strip whose faces open nothing. The panel is drawn again once
+// they first answer, so it opens on the first unread (R36). A teammate's name
+// as the door to their work waits on a view of a person's work: plain for now.
 
 import { useState, type ReactElement } from 'react';
 import { TeamPanel, type AvailabilityChange, type Teammate } from '@launchastro/ui';
@@ -19,6 +19,7 @@ import { isRefusal, isUnavailable, type OperationsClient } from '../operations/c
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { describeRefusal } from '../records/submit.ts';
+import { talkOf, useChat } from './team/chat.ts';
 
 /** A member as the panel draws them: the first name under the face. */
 function teammate(member: TeamMemberView): Teammate {
@@ -46,6 +47,7 @@ export function TeamScreen(props: {
     deps: [],
   });
   const [because, setBecause] = useState<string | null>(null);
+  const chat = useChat(client, props.grantKey, setBecause);
 
   const onSetAvailability = (change: AvailabilityChange): void => {
     setBecause(null);
@@ -62,11 +64,12 @@ export function TeamScreen(props: {
       <RecordState state={state} subject="team" onRetry={reload}>
         {(value) => (
           <TeamPanel
+            key={chat.settled ? 'talk' : 'strip'}
             people={value.people.map(teammate)}
             me={value.you}
             onSetAvailability={onSetAvailability}
             work={null}
-            conversations={null}
+            conversations={chat.settled ? talkOf(chat, value.you) : null}
           />
         )}
       </RecordState>

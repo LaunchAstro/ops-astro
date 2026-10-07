@@ -2,9 +2,9 @@
 //
 // What agent runs cost (MP-14-9, MP-14-6), in money minor units, from the
 // broker's own model calls (AW-01). One row per run, agent and currency: the
-// spend of the run's settled calls, and how many of its started calls are
-// still open (in flight, or their liability unknown), so a run with any such
-// call is unpriced rather than cheaper than it was. A released call is a known
+// spend of that agent's settled calls, and how many of the run's calls are
+// still open (held, in flight, or their liability unknown), so a run with any
+// such call is unpriced in every row rather than cheaper than it was. A released call is a known
 // zero: the broker released it on proof that nothing happened. A call's currency is
 // its reservation's envelope's. A run's client is its task's client link,
 // named in `clients` (0055); its skill is the definition its
@@ -31,7 +31,7 @@ export interface RunCostRow {
   readonly currency: string;
   /** The settled calls' spend, as text: a bigint sum. */
   readonly settledMinor: string;
-  /** Started calls still open: in flight or liability unknown. */
+  /** The whole run's calls still open, in this currency: held, in flight or liability unknown. */
   readonly openCalls: number;
   /** The settled calls' input and output units, as text: bigint sums. */
   readonly inputUnits: string;
@@ -41,7 +41,9 @@ export interface RunCostRow {
   /** The exact model ids the settled calls named, and how many named none. */
   readonly modelIds: readonly string[];
   readonly unnamedCalls: number;
+  /** The run's first started call, any agent's. */
   readonly startedAt: Date;
+  /** Handed back completed and accepted. */
   readonly finished: boolean;
   readonly clientId: string | null;
   readonly clientName: string | null;
@@ -72,7 +74,14 @@ interface Row {
 /**
  * One row per run, agent and currency: `$1` business-wide, `$2` parties,
  * `$3`-`$4` the window, and one row past `$5`, when given, so a caller can
- * tell there were more.
+ * tell there were more. A call is its caller's (0104): a helper's calls spend
+ * on its parent's lease and delegation but are the helper's own. Every call
+ * counts towards the open count, started or not, as the broker's held row is
+ * open before it starts. The open count and the start are the run's, over all
+ * its agents, so a run is priced or unpriced whole and lies in one period
+ * whole; a run none of whose calls has started has no start and no row yet.
+ * Only an accepted completed handback (`settled`) finishes a run, never a
+ * report retained from a holder whose work was taken back (0018).
  */
 const RUN_COSTS = `with spent as (
      select c.business_id, c.run_id, d.agent_actor_id, e.currency,
@@ -87,28 +96,36 @@ const RUN_COSTS = `with spent as (
                      '{}') as model_ids,
             (count(*) filter (where c.state = 'settled' and c.model_id is null))::int
               as unnamed_calls,
-            min(c.started_at) as started_at
+            min(c.started_at) as agent_started_at
        from public.model_calls c
        join public.reservations r
          on r.business_id = c.business_id and r.id = c.reservation_id
        join public.task_envelopes e
          on e.business_id = r.business_id and e.id = r.envelope_id
        left join public.delegations d
-         on d.business_id = c.business_id and d.id = c.delegation_id
-      where c.run_id is not null and c.started_at is not null
+         on d.business_id = c.business_id
+        and d.id = coalesce(c.caller_delegation_id, c.delegation_id)
+      where c.run_id is not null
       group by c.business_id, c.run_id, d.agent_actor_id, e.currency
+   ), whole as (
+     select s.*,
+            (sum(s.open_calls) over (partition by s.business_id, s.run_id, s.currency))::int
+              as run_open_calls,
+            min(s.agent_started_at) over (partition by s.business_id, s.run_id) as started_at
+       from spent s
    )
-   select s.run_id, p.task_id, s.agent_actor_id, s.currency, s.settled_minor, s.open_calls,
+   select s.run_id, p.task_id, s.agent_actor_id, s.currency, s.settled_minor,
+          s.run_open_calls as open_calls,
           s.input_units, s.output_units, s.unmeasured_calls, s.model_ids, s.unnamed_calls,
           s.started_at,
           exists (select 1 from public.handback_reports h
                    where h.business_id = p.business_id and h.run_id = p.id
-                     and h.outcome = 'completed') as finished,
+                     and h.disposition = 'settled' and h.outcome = 'completed') as finished,
           t.uuid_7 as client_id,
           (select k.name from public.clients k
             where k.business_id = t.business_id and k.id = t.uuid_7) as client_name,
           sd.id as skill_id, sd.name as skill_name
-     from spent s
+     from whole s
      join public.planned_runs p on p.business_id = s.business_id and p.id = s.run_id
      join public.records t on t.business_id = p.business_id and t.id = p.task_id
      left join public.run_definition_pins pin
@@ -118,7 +135,8 @@ const RUN_COSTS = `with spent as (
        on v.business_id = pin.business_id and v.id = pin.definition_version_id
      left join public.automation_definitions sd
        on sd.business_id = v.business_id and sd.id = v.definition_id and sd.kind = 'skill'
-    where ($1::boolean or (t.uuid_7 = any($2::uuid[]) and t.deleted_at is null
+    where s.started_at is not null
+      and ($1::boolean or (t.uuid_7 = any($2::uuid[]) and t.deleted_at is null
                            and not ${wayfinderCondition('t')}))
       and ($3::timestamptz is null or s.started_at >= $3)
       and ($4::timestamptz is null or s.started_at < $4)

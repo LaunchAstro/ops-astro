@@ -27,6 +27,7 @@ export {
   type GroupMembership,
 } from './groups.ts';
 export { isStaff } from './staff.ts';
+export { currentConversations, readConversationMentions } from './members.ts';
 export { readPositionOf, type ReadPosition } from './read-position.ts';
 // Chat writes and access changes queue on the one access lock (C71-D).
 export { shareAccessLock } from '../authority/access.ts';
