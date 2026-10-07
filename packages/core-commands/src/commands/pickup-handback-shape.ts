@@ -2,7 +2,11 @@
 //
 // The `task.handback` operand shape a pickup hands its claimant.
 
-import type { PickedUp, PickedUpByPerson } from '../../../core-runtime/src/index.ts';
+import {
+  REPORTED_DROP_CAUSES,
+  type PickedUp,
+  type PickedUpByPerson,
+} from '../../../core-runtime/src/index.ts';
 import { type HandbackFields, OUTCOMES } from './tasks-handback.ts';
 import { DELEGATION_HEADER } from '../../../core-wire/src/index.ts';
 
@@ -36,10 +40,14 @@ const HANDBACK_OPERANDS: { readonly [K in keyof HandbackFields]-?: OperandShape<
     accepts:
       'the fence this pickup returned, a non-negative integer compared under the handback locks',
   },
-  outcome: { presence: 'required', accepts: 'completed, failed or dropped' },
+  outcome: {
+    presence: 'required',
+    accepts: 'completed, failed or dropped; dropped also meets conditions.dropped',
+  },
   report: {
     presence: 'optional',
-    accepts: 'an object of named values; absent is an empty report',
+    accepts:
+      'an object of named values; absent is an empty report, except on dropped, which needs report.dropCause',
   },
   actualMinor: {
     presence: 'optional',
@@ -48,7 +56,20 @@ const HANDBACK_OPERANDS: { readonly [K in keyof HandbackFields]-?: OperandShape<
   successor: {
     presence: 'optional',
     accepts:
-      "absent, or { purpose, maximumMinor, currency, payload, step: { kind, payload }, expiresInSeconds? } proposing the next version on this lineage with a pending gate; proposedByActorId is the server's",
+      "absent, or { purpose, maximumMinor, currency, payload, step: { kind, payload }, expiresInSeconds? } proposing the next version on this lineage with a pending gate; proposedByActorId is the server's; never with dropped",
+  },
+};
+
+/**
+ * What an outcome adds to the operands above. `task.handback` refuses a drop
+ * that names no reportable cause, or that asks for a successor,
+ * `FIELD_VALUE_INVALID`: the same work comes back by itself.
+ */
+const OUTCOME_CONDITIONS = {
+  dropped: {
+    required: ['report.dropCause'],
+    dropCause: [...REPORTED_DROP_CAUSES],
+    excluded: ['successor'],
   },
 };
 
@@ -85,9 +106,10 @@ export function handbackShapeFor(picked: PickedUp | PickedUpByPerson): Record<st
         "send both exactly as returned here; a lease that has expired answers LEASE_EXPIRED, and another holder's live lease or a stale fence answers LEASE_NOT_OWNED",
     },
     outcomes: [...OUTCOMES],
+    conditions: OUTCOME_CONDITIONS,
     report: 'kept with the settlement as one handback report; it is not read back',
     successor:
-      'optional; written in the same transaction as the settlement, never approved by it and opening no hold',
+      'optional, and refused with dropped; written in the same transaction as the settlement, never approved by it and opening no hold',
     credential:
       picked.claimant === 'agent'
         ? {

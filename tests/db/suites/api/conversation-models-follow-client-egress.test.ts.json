@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the models a conversation is offered follow its client's model egress, and a choice no longer offered refuses the exchange before any call"
+}
