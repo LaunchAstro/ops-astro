@@ -202,6 +202,9 @@ describe.skipIf(serverUrl === undefined)('a run is costed whole', () => {
       [{ from: '2026-03-01T00:00:00+10:60', to }, 'from'],
       [{ from: '2026-03-01T00:00:00Z', to: '2027-02-29T00:00:00Z' }, 'to'],
       [{ from: '2026-03-01T00:00:00Z', to: '2026-03-00T00:00:00Z' }, 'to'],
+      // Counted from the fields: west of UTC is later, and a fraction is part of the instant.
+      [{ from: '2026-03-01T00:00:00-10:00', to: '2026-03-01T09:00:00Z' }, 'to'],
+      [{ from: '2026-03-01T00:00:00.5Z', to: '2026-03-01T00:00:00.4Z' }, 'to'],
     ] as const) {
       // eslint-disable-next-line no-await-in-loop -- one body at a time
       const answer = await w.read(w.finance, 'finance.agent_costs', body);
@@ -209,9 +212,14 @@ describe.skipIf(serverUrl === undefined)('a run is costed whole', () => {
       expect(answer.body['code']).toBe('FIELD_VALUE_INVALID');
       expect(answer.body['names']).toStrictEqual([field]);
     }
-    const leap = await log({ from: '2028-02-29T00:00:00Z', to: '2028-03-01T00:00:00-14:00' });
+    // A tenth of a second apart is a period: the fraction is counted, not dropped.
+    await log({ from: '2026-03-01T00:00:00.4Z', to: '2026-03-01T00:00:00.5Z' });
+    const leap = await log({
+      from: '2028-02-29T00:00:00.5+00:00',
+      to: '2028-03-01T00:00:00-14:00',
+    });
     expect(leap.period).toStrictEqual({
-      from: '2028-02-29T00:00:00.000Z',
+      from: '2028-02-29T00:00:00.500Z',
       to: '2028-03-01T14:00:00.000Z',
     });
   });
