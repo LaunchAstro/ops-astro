@@ -8,10 +8,9 @@
 // the start itself, the page by `conversation.set_scope` straight after it.
 // After that, a rename and a page go to the conversation in turn, in order.
 //
-// **One start per tab.** A second question asked while the first is still
-// starting waits for that start and joins the conversation it made, so a
-// quick second press never opens a second conversation. Where that start is
-// refused, the next queued question starts the tab and the rest wait on it.
+// **One start per tab.** A second question asked while the first is still starting waits for it
+// and joins the conversation it made, so a quick second press never opens a second conversation.
+// Where that start is refused, the next queued question starts the tab and the rest wait on it.
 //
 // **Nothing about a client's material is sent** (owner line 72): the drawer
 // refuses the question itself while the offer is empty with a reason
