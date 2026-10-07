@@ -42,6 +42,7 @@
 // path here reads a permission the delegation stored.
 
 import { createHash, randomUUID } from 'node:crypto';
+import { raiseAssignment } from '../inbox/raise.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
@@ -832,7 +833,10 @@ export type RevocationCause = 'authority_lost' | 'delegation_revoked' | 'work_re
  * (`delegation.revoke`, `grant.revoke`, `access.end`, `task.cancel`,
  * `task.propose`'s supersession, `budget.record_outcome`). A caller naming
  * none gets the agent's own actor: the recovery pass and the restart replay,
- * which no person ran.
+ * which no person ran. An explicit revocation reconciles each task it cleared
+ * as an unassignment (`raiseAssignment`), so the person whose agent held it
+ * decides its gate again. The other causes do not: a revoked grant or ended
+ * access writes no inbox item, and retired work ends or replaces the gate.
  */
 export async function revokeDelegation(
   tx: TenantQuery,
@@ -842,17 +846,21 @@ export async function revokeDelegation(
   cause: RevocationCause = 'delegation_revoked',
   actorId: string | null = null,
 ): Promise<Date | null> {
-  const rows = await tx.query<{ readonly revoked_at: Date; readonly agent_actor_id: string }>(
+  const rows = await tx.query<{
+    readonly revoked_at: Date;
+    readonly agent_actor_id: string;
+    readonly delegate_person_id: string;
+  }>(
     // No earlier than the delegation itself, as `revokeGrant` stamps a grant:
     // a revocation that waited on a lock behind it began before it existed.
     `update public.delegations set revoked_at = greatest(now(), granted_at), revocation_cause = $3
       where business_id = $1 and id = $2 and revoked_at is null and settled_at is null
-      returning revoked_at, agent_actor_id`,
+      returning revoked_at, agent_actor_id, delegate_person_id`,
     [tx.businessId, delegationId, cause],
   );
   const revoked = rows[0];
   if (revoked === undefined) return null;
-  await tx.query(
+  const cleared = await tx.query<{ readonly id: string }>(
     `with cleared as (
        update public.records r set data = r.data - 'agent', revision = r.revision + 1
          from public.record_types t
@@ -866,9 +874,15 @@ export async function revokeDelegation(
               'recordId', cleared.id, 'fields', jsonb_build_object('agent', null),
               'delegationId', $2::text, 'cause', $4::text)::text, 'UTF8')), 'hex'),
             1, repeat('0', 64)
-       from cleared`,
+       from cleared
+     returning subject_record_id::text as id`,
     [tx.businessId, delegationId.toLowerCase(), actorId ?? revoked.agent_actor_id, cause],
   );
+  if (cause !== 'delegation_revoked') return revoked.revoked_at;
+  for (const task of cleared) {
+    // oxlint-disable-next-line no-await-in-loop
+    await raiseAssignment(tx, { taskId: task.id, assignee: null, by: revoked.delegate_person_id });
+  }
   return revoked.revoked_at;
 }
 
