@@ -16,6 +16,8 @@ import { until } from './screen-until.tsx';
 // The wait lives beside it in screen-until.tsx; the wayfinder tests still take it from here.
 export { until };
 import { MapScreen } from '../../apps/web/src/screens/Map.tsx';
+import { drawScreen } from '../../apps/web/src/screen-registry.tsx';
+import { matchRoute } from '../../apps/web/src/routes.ts';
 import { must } from '../wayfinder/world.ts';
 import type { CliWorld } from '../cli/api-3-world.ts';
 
@@ -121,4 +123,53 @@ export async function openMap(
     'the map or its refusal',
   );
   return mounted;
+}
+
+/** The map page as the application draws it, and a change of the person reading it. */
+export interface RegisteredMap {
+  readonly page: Mounted;
+  /** The same address drawn for `member` instead, through the registry, as a sign-in change does. */
+  readonly switchTo: (member: Member) => Promise<void>;
+}
+
+/**
+ * Open the map screen through the screen registry, which keys it by reader and
+ * map, so a change of reader goes through the registry's own remount rather
+ * than a fresh mount of the screen.
+ */
+export async function openRegisteredMap(
+  w: CliWorld,
+  opened: Mounted[],
+  member: Member,
+  mapKey: string,
+): Promise<RegisteredMap> {
+  const match = matchRoute(`/map/${encodeURIComponent(mapKey)}`);
+  if (match?.id !== 'agency:map') throw new Error('the map route is missing');
+  const draw = async (reader: Member) =>
+    drawScreen(match, {
+      client: await browserFor(w.api, reader, w.key),
+      grantKey: reader.presented.subject,
+      notice: null,
+      storage: null,
+      navigate: () => {},
+    });
+  const page = await mount(await draw(member));
+  opened.push(page);
+  // Any of the four views, or the refusal: the wait after a reader change
+  // never decides which view the page lands on.
+  const drawn = async () => {
+    await until(
+      page,
+      () => page.find('[data-map]') !== null || page.find('[data-map-refused]') !== null,
+      'the map or its refusal',
+    );
+  };
+  await drawn();
+  return {
+    page,
+    switchTo: async (next) => {
+      await page.render(await draw(next));
+      await drawn();
+    },
+  };
 }

@@ -37,6 +37,7 @@ import {
   isInProductLink,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import type { ReadState } from '../data/authorised-read.ts';
 import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useRereadOn } from './task/reread-on.ts';
@@ -46,7 +47,7 @@ import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 import { TABS, pageAddress, tabInAddress, writeTab } from './projects/tab-address.ts';
-import { NO_CLIENTS, clientNamesOf } from './projects/client-names.ts';
+import { NO_CLIENTS, clientNamesOf, readClients } from './projects/client-names.ts';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
@@ -125,6 +126,15 @@ function ProjectBoard(
   });
   // A change made in the panel is the board's next read, as it is the task page's.
   useRereadOn(panel?.changes ?? 0, reload);
+  // A grant's drawn board stays drawn through an empty reread, so a filter on stays removable
+  // (#902); with none on, the board draws the empty state. Another grant's first read is its own.
+  const [drew, setDrew] = useState<string | null>(null);
+  useEffect(() => {
+    if (state.outcome === 'ready') setDrew(state.grantKey);
+    else setDrew((before) => (before === state.grantKey ? before : null));
+  }, [state]);
+  const board: ReadState<TaskBoardResult> =
+    state.outcome === 'empty' && drew === state.grantKey ? { ...state, outcome: 'ready' } : state;
   // The last board write's refusal or unknown outcome, in the server's words.
   // It belongs to the grant the write was sent under: another business's
   // board never draws it, a late answer included.
@@ -147,20 +157,20 @@ function ProjectBoard(
   });
   const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
   // At a client filter (a Clients row door) every client the reader reaches (C32)
-  // is a Client filter even with no row, and the board waits for them, so a door
-  // to a quiet client keeps its filter. At none, nothing more is read. A failed
-  // read keeps the filters the address asks for, and says it failed.
+  // is a Client filter even with no row, and the board waits for them (and past
+  // the last address's answer), so a door to a quiet client keeps its filter. A
+  // failed read keeps the filters the address asks for, and says it failed.
   const query = queryOf(props.address);
   const named = clientFiltersIn(query) > 0;
   const reached = useRead<ClientListResult>({
     grantKey: props.grantKey,
-    run: async () =>
-      named
-        ? await client.read<ClientListResult>('client.list', {})
-        : { ok: true as const, value: { ok: true as const, clients: [] } },
+    run: () => readClients(client, named),
     deps: [named],
   });
-  const clients = useMemo(() => clientNamesOf(reached.state, query), [reached.state, query]);
+  const clients = useMemo(
+    () => (reached.own ? clientNamesOf(reached.state, query) : null),
+    [reached.own, reached.state, query],
+  );
   // INB-1f: one stream for the tab, shared by the board and the inbox panels.
   const followInbox = useBoardLive(client, props.grantKey, reload);
 
@@ -185,19 +195,7 @@ function ProjectBoard(
         Kept drawn while it reads again: a re-read after an edit or a live
         change leaves the filters, an open editor and focus where they were.
       */}
-      <RecordState
-        state={state}
-        subject="board"
-        onRetry={reload}
-        keep
-        empty={
-          <Empty
-            title="No tasks on this board yet."
-            description="You are permitted to see it and it has nothing in it."
-            hint="Create one with the form above."
-          />
-        }
-      >
+      <RecordState state={board} subject="board" onRetry={reload} keep empty={NO_TASKS}>
         {(value) =>
           // At a client filter the board waits for the names, so its filter holds.
           named && clients === null ? null : (
@@ -224,6 +222,7 @@ function ProjectBoard(
               })}
               address={query}
               clients={clients ?? NO_CLIENTS}
+              nothing={NO_TASKS}
               onAddress={(next) => {
                 if (props.inPanel === true) return;
                 window.history.replaceState(
@@ -239,6 +238,14 @@ function ProjectBoard(
     </div>
   );
 }
+
+const NO_TASKS = (
+  <Empty
+    title="No tasks on this board yet."
+    description="You are permitted to see it and it has nothing in it."
+    hint="Create one with the form above."
+  />
+);
 
 /** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
 const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);

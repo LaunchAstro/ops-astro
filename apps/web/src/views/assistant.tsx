@@ -8,10 +8,9 @@
 // the start itself, the page by `conversation.set_scope` straight after it.
 // After that, a rename and a page go to the conversation in turn, in order.
 //
-// **One start per tab.** A second question asked while the first is still
-// starting waits for that start and joins the conversation it made, so a
-// quick second press never opens a second conversation. Where that start is
-// refused, the next queued question starts the tab and the rest wait on it.
+// **One start per tab.** A second question asked while the first is still starting waits for it
+// and joins the conversation it made, so a quick second press never opens a second conversation.
+// Where that start is refused, the next queued question starts the tab and the rest wait on it.
 //
 // **Nothing about a client's material is sent** (owner line 72): the drawer
 // refuses the question itself while the offer is empty with a reason
@@ -50,6 +49,7 @@ import {
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
+import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import type { Store } from '../assistant/store.ts';
@@ -94,7 +94,7 @@ interface Opening {
 function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
   if (reply === undefined) store.line(key, 'note', KEPT);
   else if (reply.answered && reply.plan !== undefined) store.plan(key, reply.body, reply.plan);
-  else if (reply.answered) store.line(key, 'ai', reply.body);
+  else if (reply.answered) store.line(key, 'ai', reply.body, undefined, citesOf(reply.cites));
   else store.line(key, 'failed', reply.words);
 }
 
@@ -154,7 +154,7 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const question = store.line(key, 'user', body);
     const on: Store = {
       ...store,
-      line: (k, role, words) => store.line(k, role, words, question),
+      line: (k, role, words, _after, cites) => store.line(k, role, words, question, cites),
       plan: (k, words, offer) => store.plan(k, words, offer, question),
     };
     let known = chat.conversationId;

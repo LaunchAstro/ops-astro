@@ -49,6 +49,12 @@ export interface UseReadLive<T> extends UseReadResult<T> {
    * A reload, a new grant or a changed dependency is not one.
    */
   readonly live: boolean;
+  /**
+   * Whether `state` answers this render's grant and dependencies. A changed
+   * dependency renders once with the old read's state before the read resets;
+   * a host that must not draw from it treats it as still loading.
+   */
+  readonly own: boolean;
 }
 
 /** The states a projection starts from: a first read, not a re-read of one. */
@@ -170,7 +176,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
   // A changed grant or dependency renders once before the effect above resets
   // the read, still holding the old read's state: that read is not live here.
   const own = same(built.current, [grantKey, ...options.deps]);
-  return { state, reload, live: own && liveRef.current && state.outcome === 'loading' };
+  return { state, reload, own, live: own && liveRef.current && state.outcome === 'loading' };
 }
 
 /**

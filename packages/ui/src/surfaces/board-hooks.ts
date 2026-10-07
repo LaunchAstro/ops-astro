@@ -43,17 +43,18 @@ interface Follow {
   readonly hidden?: boolean;
 }
 
-/** The machine and its dispatch; the address and the widths follow its view out. */
+/** The machine and its dispatch; a step's context is the one for the filters then on. */
 export function useBoardMachine<Row>(
-  context: BoardContext<Row>,
+  context: (on: readonly string[]) => BoardContext<Row>,
   opening: { readonly address?: string; readonly widths?: ColumnWidths | null },
   follow: Follow,
 ): { readonly machine: MachineState; readonly dispatch: Send } {
-  const [machine, setMachine] = useState<MachineState>(() =>
-    initialMachine({ ...readView(opening.address ?? '', context), widths: opening.widths ?? null }),
-  );
+  const [machine, setMachine] = useState<MachineState>(() => {
+    const opened = readView(opening.address ?? '', context([]));
+    return initialMachine({ ...opened, widths: opening.widths ?? null });
+  });
   const dispatch = (action: BoardAction): void => {
-    setMachine((current) => reduceBoard(current, action, context));
+    setMachine((current) => reduceBoard(current, action, context(current.view.ids)));
   };
   useFollow(machine.view, follow);
   useUndoKeys(setMachine, context, follow.hidden === true);
@@ -91,7 +92,7 @@ function useFollow(view: BoardView, follow: Follow): void {
  */
 function useUndoKeys<Row>(
   setMachine: Dispatch<SetStateAction<MachineState>>,
-  context: BoardContext<Row>,
+  context: (on: readonly string[]) => BoardContext<Row>,
   hidden: boolean,
 ): void {
   useEffect(() => {
@@ -106,9 +107,8 @@ function useUndoKeys<Row>(
         return;
       }
       event.preventDefault();
-      setMachine((current) =>
-        reduceBoard(current, { type: event.shiftKey ? 'redo' : 'undo' }, context),
-      );
+      const type = event.shiftKey ? 'redo' : 'undo';
+      setMachine((current) => reduceBoard(current, { type }, context(current.view.ids)));
     };
     document.addEventListener('keydown', onKey);
     return () => {
@@ -117,17 +117,16 @@ function useUndoKeys<Row>(
   }, [setMachine, context, hidden]);
 }
 
-/** The card's width: the one handed in, else measured as it resizes. */
+/** The card's width: handed in, else measured as it resizes; a card drawn again is watched anew. */
 export function useMeasuredWidth(
   card: RefObject<HTMLDivElement | null>,
   width: number | undefined,
+  drawn: boolean,
 ): number {
   const [measured, setMeasured] = useState(FALLBACK_WIDTH);
   useEffect(() => {
     const element = card.current;
-    if (width !== undefined || element === null || typeof ResizeObserver === 'undefined') {
-      return;
-    }
+    if (width !== undefined || element === null || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(([entry]) => {
       if (entry !== undefined) setMeasured(entry.contentRect.width);
     });
@@ -135,7 +134,7 @@ export function useMeasuredWidth(
     return () => {
       observer.disconnect();
     };
-  }, [card, width]);
+  }, [card, width, drawn]);
   return width ?? measured;
 }
 

@@ -72,7 +72,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     const ended = await end(api, person.personId);
     expect(outcome(ended)).toEqual({ status: 200, code: 'ok' });
 
-    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_NO_MEMBERSHIP' });
+    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_ACCESS_ENDED' });
     const after = await stateOf(person);
     expect(after).toMatchObject({
       liveGrants: 0,
@@ -134,7 +134,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     const api = apiWith(provider);
     const { person, token } = await teammate('xan');
     expect(outcome(await end(api, person.personId))).toEqual({ status: 200, code: 'ok' });
-    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_NO_MEMBERSHIP' });
+    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_ACCESS_ENDED' });
     expect((await stateOf(person)).endings).toEqual([
       expect.objectContaining({ sessions: true, login: false, fault: 'unreachable' }),
     ]);
@@ -164,7 +164,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
       'deactivate',
       'deactivate',
     ]);
-    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_NO_MEMBERSHIP' });
+    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_ACCESS_ENDED' });
   });
 });
 describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act", () => {
@@ -201,7 +201,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
       // oxlint-disable-next-line no-await-in-loop
       expect(outcome(await ownCall(api, token)), each.name).toEqual({
         status: 403,
-        code: 'AUTH_NO_MEMBERSHIP',
+        code: 'AUTH_ACCESS_ENDED',
       });
       // oxlint-disable-next-line no-await-in-loop
       const after = await stateOf(person);
@@ -287,7 +287,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     const api = apiWith(hostileLogins);
     const { person, token } = await teammate('zed');
     expect(outcome(await end(api, person.personId))).toEqual({ status: 200, code: 'ok' });
-    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_NO_MEMBERSHIP' });
+    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_ACCESS_ENDED' });
     expect((await stateOf(person)).endings).toEqual([
       expect.objectContaining({ sessions: false, login: false, fault: 'malformed' }),
     ]);

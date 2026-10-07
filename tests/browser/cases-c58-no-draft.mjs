@@ -13,7 +13,7 @@
 //
 //   - ND1 access ended. Ada ends a person's access through the real
 //     `access.end`. Their bearer still verifies, so the API answers their next
-//     call 403 `AUTH_NO_MEMBERSHIP`. The person is ND1's own
+//     call 403 `AUTH_ACCESS_ENDED`. The person is ND1's own
 //     (`c58-no-draft-world.mjs`), never a seeded one.
 //   - ND2 the 12-hour limit. From the moment the session ends, the page's
 //     calls carry its own token re-signed with its first sign-in 12 hours and
@@ -97,7 +97,7 @@ async function accessEnded(page, task, leaver, adaToken) {
     case: 'ND1 access ended mid-edit, no draft',
     action: `ada ended the person's access (access.end ${String(ended.status)}), ${pressed}`,
     observed: after.observed,
-    ok: ended.status === 200 && after.ok && after.notice.includes('AUTH_NO_MEMBERSHIP'),
+    ok: ended.status === 200 && after.ok && after.notice.includes('AUTH_ACCESS_ENDED'),
     shot: await shot(page, 'ND1-access-ended'),
   });
 }
