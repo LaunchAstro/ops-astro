@@ -207,6 +207,25 @@ export interface AllowanceResult {
   readonly allowance: PlanningAllowanceView;
 }
 
+/**
+ * One model a conversation may run on (CS-7.30): its exact id, provider and
+ * route reach, and its price-book entry, the per-call ceiling in AUD cents.
+ */
+export interface ConversationModelView {
+  readonly id: string;
+  readonly provider: string;
+  readonly reach: 'local' | 'cloud';
+  readonly ceilingMinor: number;
+}
+
+/** `conversation.models`' answer: what the picker offers, and the conversation's choice. */
+export interface ConversationModelsResult {
+  readonly ok: true;
+  readonly models: readonly ConversationModelView[];
+  /** The model chosen for the conversation, or null: the default, the first offered. */
+  readonly chosen: string | null;
+}
+
 /** The attempt a reservation produced, on the proposal read (`ReservationView.attempt`). */
 export interface AttemptView {
   readonly id: string;

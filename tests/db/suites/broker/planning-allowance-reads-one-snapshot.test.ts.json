@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "the drawer's allowance read is one view of the cap and the spend while a planning hold or settlement commits"
+}

@@ -63,6 +63,8 @@ export const READ_NAMES = [
   'conversation.list',
   // The drawer's planning allowance line (AW-04, U10).
   'conversation.allowance',
+  // The models the drawer's picker offers (CS-7.30).
+  'conversation.models',
   // Which runs read an instruction file, by digest: pre-review (AW-04).
   'definition.attribution',
   // The business's tag vocabulary, which the tag field suggests from (MP-4-11).

@@ -49,6 +49,7 @@ import type {
   AwaitingReviewResult,
   ConversationListResult,
   AllowanceResult,
+  ConversationModelsResult,
   ConversationReadResult,
   SettingsReadResult,
   SecretListResult,
@@ -185,6 +186,8 @@ export interface ReadOperands {
   readonly 'conversation.list': NoOperands;
   /** The drawer's planning allowance, and the caller's own conversation's spend (AW-04). */
   readonly 'conversation.allowance': { readonly conversationId: unknown };
+  /** The models the caller's conversation may run on, or the empty drawer's (CS-7.30). */
+  readonly 'conversation.models': { readonly conversationId: unknown };
   /** The runs that read one file, by its digest: pre-review (AW-04). */
   readonly 'definition.attribution': { readonly digest: string };
   /** Who is signed in: the caller's own name (C23). It takes no grant either. */
@@ -269,6 +272,7 @@ export type ReadResult =
   | OperationsReadResult
   | BreachNoticesResult
   | AllowanceResult
+  | ConversationModelsResult
   | AttributionResult
   | InboxReadResult
   | InboxCountResult

@@ -5,6 +5,7 @@
 // under the line limit. Moved whole from its switch: same bodies, same order.
 
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
+import { REPLAY_MODEL_WINDOW } from '../../packages/core-connectors/src/index.ts';
 import { ownConversation } from './foreign-conversation.ts';
 import {
   type Prepared,
@@ -28,7 +29,25 @@ type ConversationCommand = Extract<
   | 'conversation.allowance'
   | 'conversation.rename'
   | 'conversation.set_scope'
+  | 'conversation.models'
+  | 'conversation.set_model'
 >;
+
+/** The admin's own conversation's commands (AW-03, MP-7-11, CS-7.30): `conversationBody`'s. */
+const CONVERSATION_COMMANDS: readonly ConversationCommand[] = [
+  'conversation.start',
+  'conversation.message',
+  'conversation.read',
+  'conversation.list',
+  'conversation.allowance',
+  'conversation.rename',
+  'conversation.set_scope',
+  'conversation.models',
+  'conversation.set_model',
+];
+
+export const isConversationCommand = (name: string): name is ConversationCommand =>
+  (CONVERSATION_COMMANDS as readonly string[]).includes(name);
 
 export async function leaseBody(name: LeaseCommand, context: BodyContext): Promise<Prepared> {
   switch (name) {
@@ -86,6 +105,14 @@ export async function conversationBody(
           conversationId: await ownConversation(context),
           page: { address: '/settings', shows: 'Settings' },
         },
+      };
+    // CS-7.30: the picker's offer and a choice of the install's own model, which
+    // writes the row (null on a fresh conversation would change nothing).
+    case 'conversation.models':
+      return { body: { conversationId: await ownConversation(context) } };
+    case 'conversation.set_model':
+      return {
+        body: { conversationId: await ownConversation(context), model: REPLAY_MODEL_WINDOW.model },
       };
   }
 }

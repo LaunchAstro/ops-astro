@@ -10,10 +10,9 @@
 // installed model and not a list in a module — which is the whole reason T1e
 // put the classification in the data.
 //
-// It is also what settles the count. The contract names nine commands and the
-// split is titled after them; the seeded task type names ten owning
-// operations. Nine is not enough for the model that landed, and this is where
-// that stops being an argument and becomes a failing test.
+// It is also what settles the count. The contract names nine commands and the split is titled
+// after them; the seeded task type names ten owning operations. Nine is not enough for the model
+// that landed, and this is where that stops being an argument and becomes a failing test.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -103,6 +102,7 @@ const DECLARED_READS = [
   'connection.signal',
   'conversation.allowance',
   'conversation.list',
+  'conversation.models',
   'conversation.read',
   'definition.attribution',
   'finance.agent_costs',

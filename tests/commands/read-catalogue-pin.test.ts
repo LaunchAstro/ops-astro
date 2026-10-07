@@ -32,6 +32,7 @@ const PINNED_IDENTIFIERS = {
   'connection.signal': [],
   'conversation.allowance': ['conversationId'],
   'conversation.list': [],
+  'conversation.models': ['conversationId'],
   'conversation.read': ['conversationId'],
   'definition.attribution': [],
   'finance.agent_costs': [],
@@ -211,6 +212,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'conversation.list': BODIES.map(() => null),
   // AW-04: an absent conversation is the empty drawer; the id is checked after the door.
   'conversation.allowance': BODIES.map(() => null),
+  // CS-7.30: the same, for the picker's offer.
+  'conversation.models': BODIES.map(() => null),
   // AW-04: the file's digest, which none of these bodies carries.
   'definition.attribution': BODIES.map(() => ({
     code: 'FIELD_VALUE_INVALID',

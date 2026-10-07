@@ -6,7 +6,6 @@
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
-//
 // A harness, not a suite: nothing here runs on its own.
 
 import { randomUUID } from 'node:crypto';
@@ -32,7 +31,6 @@ export const CASE = {
 
 /**
  * The fifty-four operations that name no identifier, each with a minimal valid body.
- *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed at bravo is
  * refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line 113, root ruling 3). There is no
  * foreign target to compare with a fabricated one, so their matrix row is "not applicable".
@@ -166,7 +164,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The sixty-two identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The sixty-four identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -205,6 +203,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'conversation.allowance': ['conversationId', 'conversation'],
   'conversation.rename': ['conversationId', 'conversation'],
   'conversation.set_scope': ['conversationId', 'conversation'],
+  'conversation.models': ['conversationId', 'conversation'],
+  'conversation.set_model': ['conversationId', 'conversation'],
   'run.top_up': ['runId and recordId', 'control'],
   'run.end_at_budget_stop': ['runId and recordId', 'control'],
   'run.revise_state': ['runId and recordId', 'control'],

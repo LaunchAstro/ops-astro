@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "SR-1: the click-through seed keeps one conversation of Ada's with the agent's reply to her question, read by her alone, naming no client, and refuses one left without its reply before its first write"
+}
