@@ -55,13 +55,14 @@ const TASK = {
 };
 
 /**
- * The empty inbox and count, for the inbox the board screen also mounts, and
- * the board topic on its tab stream (C4), refused, so the channel is down and nothing streams.
+ * The empty inbox and count, for the inbox the board screen also mounts, no
+ * team conversations for the Team tab's chip (C71), and the board topic on its tab stream (C4), refused, so the channel is down and nothing streams.
  */
 function inboxReply(url: string): Response | undefined {
   if (url.includes('/live?')) return new Response(null, { status: 503 });
   if (url.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
   if (url.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
+  if (url.endsWith('/chat/conversations')) return Response.json({ ok: true, conversations: [] });
   return undefined;
 }
 
