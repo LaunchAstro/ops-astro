@@ -197,28 +197,6 @@ describe('MP-4-13 the open task comes back after a reload (S1)', () => {
     );
   });
 
-  it('the task comes back beside the panels open with it, and the kept dock keeps them all', async () => {
-    const storage = store();
-    const first = await app(storage, `/task/${KEY}`, 1700);
-    await first.click(DOOR);
-    await tick();
-    const notifs = first.find('.dock__tab[data-panel="notifs"]');
-    await act(async () => {
-      notifs?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
-      await Promise.resolve();
-    });
-    await tick();
-    expect(first.find('.dpanel[data-panel-id="notifs"]')).not.toBeNull();
-    expect(first.find(TASK)).not.toBeNull();
-    await first.unmount();
-    const again = await app(storage, '/projects/', 1700);
-    await tick();
-    expect(again.find(`${TASK} [data-task-panel]`)).not.toBeNull();
-    expect(again.find('.dpanel[data-panel-id="notifs"]')).not.toBeNull();
-    const kept = JSON.parse(storage.getItem('ops-astro.dock.alpha') ?? '{}') as { open?: unknown };
-    expect(kept.open).toEqual(expect.arrayContaining(['task', 'notifs']));
-  });
-
   it('a task closed before the reload stays closed', async () => {
     const storage = store();
     const first = await app(storage);
@@ -229,5 +207,33 @@ describe('MP-4-13 the open task comes back after a reload (S1)', () => {
     await first.unmount();
     const again = await app(storage, '/projects/');
     expect(again.find('[data-task-panel]')).toBeNull();
+  });
+});
+
+describe('MP-4-13 the open task comes back with the dock the person left', () => {
+  it('the task comes back beside the panels open with it, and the kept dock keeps them all', async () => {
+    const storage = store();
+    const first = await app(storage, `/task/${KEY}`, 1700);
+    await first.click(DOOR);
+    await tick();
+    const notifs = first.find('.dock__tab[data-panel="notifs"]');
+    await act(async () => {
+      notifs?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }),
+      );
+      await Promise.resolve();
+    });
+    await tick();
+    expect(first.find('.dpanel[data-panel-id="notifs"]')).not.toBeNull();
+    expect(first.find(`${TASK} [data-task-panel]`)).not.toBeNull();
+    await first.unmount();
+    const again = await app(storage, '/projects/', 1700);
+    await tick();
+    expect(again.find(`${TASK} [data-task-panel]`)).not.toBeNull();
+    expect(again.find('.dpanel[data-panel-id="notifs"]')).not.toBeNull();
+    const kept = JSON.parse(storage.getItem('ops-astro.dock.alpha') ?? '{}') as {
+      open?: unknown;
+    };
+    expect(kept.open).toEqual(expect.arrayContaining(['task', 'notifs']));
   });
 });
