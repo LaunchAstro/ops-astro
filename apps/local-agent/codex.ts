@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the one file the egress allowlist lets spawn codex: its call and its login check */
 //
 // One `codex exec` call (LA-1, GPT in Claude's place, owner 7 October 2026):
 // the prompt on stdin, the answer read from `--json`'s events. The child is
@@ -277,22 +278,75 @@ export async function runCodex(
 
 const PLAN_LOGIN = 'Logged in using ChatGPT';
 
+/**
+ * Stops a detached child's process group, and while it is out stops it on the
+ * launcher's SIGINT, SIGTERM or exit too: the group sits outside the
+ * terminal's Ctrl-C, so a launcher stopped mid-check stops it, then goes as asked.
+ * The hold goes on before the spawn and takes the group's pid after it: a
+ * signal in between waits for its listener, which runs once the pid is known.
+ */
+function heldGroup(): {
+  holds: (pid: number | undefined) => void;
+  stopGroup: () => void;
+  release: () => void;
+} {
+  let pid: number | undefined;
+  const holds = (spawned: number | undefined): void => {
+    pid = spawned;
+  };
+  const stopGroup = (): void => {
+    try {
+      if (pid !== undefined) process.kill(-pid, 'SIGKILL');
+    } catch {
+      // The group has already gone.
+    }
+  };
+  const cancelled = (signal: NodeJS.Signals): void => {
+    stopGroup();
+    release();
+    process.kill(process.pid, signal);
+  };
+  const release = (): void => {
+    process.off('SIGINT', cancelled);
+    process.off('SIGTERM', cancelled);
+    process.off('exit', stopGroup);
+  };
+  process.once('SIGINT', cancelled);
+  process.once('SIGTERM', cancelled);
+  process.once('exit', stopGroup);
+  return { holds, stopGroup, release };
+}
+
 /** On the ChatGPT plan (an API key bills per call): `codex login status` exits 0 with that line. */
-export async function codexLogin(settings: RunnerSettings): Promise<boolean> {
-  mkdirSync(settings.codexHome, { recursive: true, mode: 0o700 });
+export async function codexLogin(settings: RunnerSettings, deadlineMs = 10_000): Promise<boolean> {
+  // Codex refuses a CODEX_HOME that is not there, so a missing one holds no login; nothing is made.
+  if (!existsSync(settings.codexHome)) return false;
   return await new Promise((resolve) => {
+    const { holds, stopGroup, release } = heldGroup();
     const child = spawn(settings.codexBin, ['login', 'status'], {
       cwd: settings.codexHome,
       env: { ...settings.childEnv, CODEX_HOME: settings.codexHome },
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: false,
+      // Its own process group, so the deadline stops a wrapper's descendants with it.
+      detached: true,
     });
     const parts: Buffer[] = [];
     for (const out of [child.stdout, child.stderr]) out.on('data', (b: Buffer) => parts.push(b));
-    const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
-    child.on('error', () => resolve(false));
+    holds(child.pid);
+    // At the deadline it is no login, whatever still holds the output open.
+    const timer = setTimeout(() => {
+      release();
+      resolve(false);
+      stopGroup();
+    }, deadlineMs);
+    child.on('error', () => {
+      release();
+      resolve(false);
+    });
     child.on('close', (code) => {
       clearTimeout(timer);
+      release();
       const lines = Buffer.concat(parts).toString('utf8').split('\n');
       resolve(code === 0 && lines.some((line) => line.trim() === PLAN_LOGIN));
     });

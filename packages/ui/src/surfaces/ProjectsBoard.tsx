@@ -10,7 +10,7 @@
 // unless `viewerOn` is false, as on a client's board), a chip per category in
 // scope, and the Review mode with its live count (MP-5-12).
 
-import { useMemo, useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { BoardMachine } from './BoardMachine.tsx';
 import { projectCell, type CellContext } from './ProjectCell.tsx';
 import {
@@ -55,6 +55,8 @@ export interface ProjectsBoardProps {
   readonly hidden?: boolean;
   /** The clients the reader reaches, by name: each a Client filter, with rows or none. */
   readonly clients?: readonly string[];
+  /** The page's empty state, drawn while there is no row and nothing narrows the view. */
+  readonly nothing?: ReactNode;
 }
 
 const WORK_ORDER = { key: 'rank', dir: 'asc' } as const;
@@ -150,6 +152,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
       name={(row) => row.name}
       noun="task"
       empty={BOARD_EMPTY}
+      {...(props.nothing === undefined ? {} : { nothing: props.nothing })}
       address={opening}
       onAddress={(next) => {
         setAddress(next);
