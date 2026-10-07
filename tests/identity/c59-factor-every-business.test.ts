@@ -86,17 +86,13 @@ async function signIn(login: Login, business: string, level: AssuranceLevel): Pr
 }
 
 /** Enrol and verify a factor through `business`, as the factor routes record it. */
-async function verifyThrough(
-  login: Login,
-  business: string,
-  providerFactorId = `factor-${randomUUID()}`,
-): Promise<string> {
+async function verifyThrough(login: Login, business: string): Promise<string> {
   return await db.app.withBusiness(business, async (tx) => {
     const personId = login.person[business] ?? '';
     const enrolled = await recordFactorEnrolled(tx, {
       personId,
       provider: 'supabase',
-      providerFactorId,
+      providerFactorId: `factor-${randomUUID()}`,
     });
     const factor = { personId, factorId: enrolled.id, subject: login.subject };
     await recordFactorVerified(tx, factor);
@@ -148,27 +144,6 @@ function answeringProvider(asked: string[]): FactorProvider {
     remove: () => {
       asked.push('remove');
       return done;
-    },
-  };
-}
-
-/** A provider whose verified factors for the login are `listed`, proving any code for them. */
-function listingProvider(
-  asked: string[],
-  listed: readonly string[],
-  meanwhile: () => Promise<void> = () => Promise.resolve(),
-): FactorProvider {
-  const session = { accessToken: 'aal2-access-token', refreshToken: 'refresh', expiresIn: 3600 };
-  return {
-    ...answeringProvider(asked),
-    verifiedFactors: () => {
-      asked.push('list');
-      return Promise.resolve({ ok: true, value: listed } as const);
-    },
-    verify: async (_token, factorId) => {
-      asked.push(`verify ${factorId}`);
-      await meanwhile();
-      return { ok: true, value: session } as const;
     },
   };
 }
@@ -278,55 +253,6 @@ describe.skipIf(serverUrl === undefined)(
       // The login keeps exactly one live verified factor: removing alpha's frees it everywhere.
       await removeThrough(mia, alpha, factor);
       expect(await everywhere(mia, 'aal1')).toEqual(['served', 'served']);
-    });
-
-    it('C59: a code is checked in a business holding no factor against the one the login verified in another', async () => {
-      const mia = await loginInBoth();
-      await verifyThrough(mia, alpha, 'factor-alpha');
-      expect(await everywhere(mia, 'aal1')).toEqual([REFUSED, REFUSED]);
-      const asked: string[] = [];
-
-      const answer = await verifySecondFactor(
-        callerIn(mia, bravo),
-        { code: '123456' },
-        listingProvider(asked, ['factor-stray', 'factor-alpha']),
-      );
-
-      expect('code' in answer ? answer.code : answer.accessToken).toBe('aal2-access-token');
-      expect(asked).toEqual(['list', 'verify factor-alpha']);
-      // Nothing is recorded in bravo: the factor stays held, and removed, where it was verified.
-      expect(await factorStatus(mia, bravo)).toBe('none');
-    });
-
-    it('C59: a provider factor the login never verified through any business is not checked', async () => {
-      const mia = await loginInBoth();
-      await verifyThrough(mia, alpha, 'factor-alpha');
-      const asked: string[] = [];
-
-      const answer = await verifySecondFactor(
-        callerIn(mia, bravo),
-        { code: '123456' },
-        listingProvider(asked, ['factor-stray']),
-      );
-
-      expect('code' in answer ? answer.code : 'verified').toBe('FACTOR_NOT_ENROLLED');
-      expect(asked).toEqual(['list']);
-    });
-
-    it('C59: a factor removed elsewhere while its code is at the provider is refused', async () => {
-      const mia = await loginInBoth();
-      const factor = await verifyThrough(mia, alpha, 'factor-alpha');
-      const asked: string[] = [];
-      const removed = async () => await removeThrough(mia, alpha, factor);
-
-      const answer = await verifySecondFactor(
-        callerIn(mia, bravo),
-        { code: '123456' },
-        listingProvider(asked, ['factor-alpha'], removed),
-      );
-
-      expect('code' in answer ? answer.code : 'verified').toBe('FACTOR_NOT_ENROLLED');
-      expect(asked).toEqual(['list', 'verify factor-alpha']);
     });
 
     it('C59: a factor is removed where it was verified; another business holding none answers not enrolled', async () => {

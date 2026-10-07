@@ -101,6 +101,12 @@ export async function events(business: string, command: string): Promise<readonl
   );
 }
 
+
+/** A provider's calls these cases never decide on: no factor listed, every sign-out done. */
+const QUIET: Pick<FactorProvider, 'verifiedFactors' | 'signOut'> = {
+  verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+  signOut: () => Promise.resolve({ ok: true, value: undefined }),
+};
 /**
  * Mia's code is good at the provider; while it is checked, alpha verifies her
  * other factor, and with `endOthers` ends her other sessions as it does so.
@@ -114,7 +120,7 @@ function racingProvider(
   const asked: string[] = [];
   const session = { accessToken: 'aal2-access-token', refreshToken: 'r', expiresIn: 3600 };
   const provider: FactorProvider = {
-    verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+    ...QUIET,
     enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
     verify: async () => {
       asked.push('verify');
@@ -125,7 +131,6 @@ function racingProvider(
       asked.push('remove');
       return Promise.resolve(removal);
     },
-    signOut: () => Promise.resolve({ ok: true, value: undefined }),
   };
   return { provider, asked };
 }
@@ -168,7 +173,7 @@ export async function stepUpAfterSignOut(): Promise<{
   await enrolHere(bravo, person, subject, true);
   const asked: string[] = [];
   const provider: FactorProvider = {
-    verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+    ...QUIET,
     enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
     verify: async () => {
       asked.push('verify');
@@ -182,7 +187,6 @@ export async function stepUpAfterSignOut(): Promise<{
       asked.push('remove');
       return Promise.resolve({ ok: true, value: undefined });
     },
-    signOut: () => Promise.resolve({ ok: true, value: undefined }),
   };
   const caller: FactorCaller = {
     database: db.app,
@@ -257,7 +261,7 @@ export function namingProvider(during: () => Promise<void> = async () => {}): {
   const asked: string[] = [];
   const session = { accessToken: 'aal2', refreshToken: 'r', expiresIn: 3600 };
   const provider: FactorProvider = {
-    verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
+    ...QUIET,
     enrol: () => {
       asked.push('enrol');
       const issued = {
@@ -277,7 +281,6 @@ export function namingProvider(during: () => Promise<void> = async () => {}): {
       asked.push(`remove ${factorId}`);
       return Promise.resolve({ ok: true, value: undefined });
     },
-    signOut: () => Promise.resolve({ ok: true, value: undefined }),
   };
   return { provider, asked };
 }

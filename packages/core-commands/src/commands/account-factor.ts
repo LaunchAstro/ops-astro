@@ -22,8 +22,6 @@
 import { randomUUID } from 'node:crypto';
 import {
   liveFactor,
-  loginHasVerifiedFactor,
-  loginVerifiedFactors,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,
@@ -44,7 +42,17 @@ import {
 } from './account-factor-orphan.ts';
 import { heldElsewhere, stillHeld, type CodeTarget } from './account-factor-elsewhere.ts';
 import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
-import { codeOf, freshSignIn, wrongCodeLock } from './account-factor-checks.ts';
+import {
+  BODY_FIXES,
+  checkCode,
+  codeOf,
+  ENROLLED_FIXES,
+  enrolledElsewhere,
+  freshSignIn,
+  NOT_ENROLLED_FIXES,
+  wrongCodeLock,
+  type CodeCheck,
+} from './account-factor-checks.ts';
 import { judged, type FactorCaller } from './account-factor-judged.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
@@ -53,11 +61,6 @@ export type { FactorCaller } from './account-factor-judged.ts';
 const FRESH_FIXES: readonly string[] = [
   'Sign in again with your password, then set up the authenticator app within 60 minutes.',
 ];
-const ENROLLED_FIXES: readonly string[] = [
-  'You already have an authenticator app. To replace it, remove it with a code from it first.',
-];
-const NOT_ENROLLED_FIXES: readonly string[] = ['Set up an authenticator app first.'];
-const BODY_FIXES: readonly string[] = ['Send only { "code": "<the six digits>" }.'];
 const NEWER_FIXES: readonly string[] = [
   'A newer set-up started while this one was on its way. Use the newest, or start again.',
 ];
@@ -135,27 +138,16 @@ export async function verifySecondFactor(
   const act = 'account.factor_verify';
   const code = codeOf(body);
   const sending = { ...caller, attempt: randomUUID() };
-  let factor: SecondFactor | undefined;
-  let held: readonly string[] = [];
+  const seen: CodeCheck = { held: [] };
   const precondition = await judged(
     sending,
     act,
-    async (tx, session) => {
-      if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
-      const locked = await wrongCodeLock(tx, caller.presented.subject);
-      if (locked !== undefined) return locked;
-      factor = await liveFactor(tx, session.personId);
-      if (factor !== undefined) return await enrolledElsewhere(tx, caller, factor);
-      held = await loginVerifiedFactors(tx, caller.presented.subject);
-      return held.length > 0
-        ? undefined
-        : refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
-    },
+    (tx, session) => checkCode(tx, session, caller, code, seen),
     'before',
   );
   if (precondition !== undefined || code === undefined)
     return precondition ?? refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
-  const found = factor ?? (await heldElsewhere(caller, provider, held));
+  const found = seen.factor ?? (await heldElsewhere(caller, provider, seen.held));
   if (found === undefined || 'code' in found) {
     const refused = found ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
     return (await judged(sending, act, () => Promise.resolve(refused))) ?? refused;
@@ -281,13 +273,3 @@ async function recordVerify(
   await recordFactorVerified(tx, ownFactor(caller, session, live.id));
   return { unrecorded, ended };
 }
-
-/** An unverified enrolment is refused while the login holds a verified factor anywhere (0064). */
-const enrolledElsewhere = async (
-  tx: TenantQuery,
-  caller: FactorCaller,
-  live: { readonly status: string },
-) =>
-  live.status !== 'verified' && (await loginHasVerifiedFactor(tx, caller.presented.subject))
-    ? refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES)
-    : undefined;

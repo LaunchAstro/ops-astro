@@ -31,6 +31,7 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(closeRoutes);
 
+// eslint-disable-next-line max-lines-per-function -- one sign-in through the real form, read as one case
 it('Sol proof, criterion correctness: a shared login completes its authenticator code in another business', async () => {
   await world.db.app.withBusiness(world.bravo, async (tx) => {
     const person = await insertPerson(tx, 'Mia in Bravo');
