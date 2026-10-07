@@ -7,6 +7,10 @@
 --
 --   \i deploy/staging/backup-store.sql
 --
+-- and then each deploy/staging/backup-store-upgrade-<n>.sql in order: later
+-- rules live there, one file each (README, the backup store), and a store made
+-- from this file alone lacks them.
+--
 -- The store is a server apart from staging's database, so it makes
 -- `ops_astro_backup` itself when the server has none (no login, no bypass of
 -- row security: here it only adds). Where one server holds both, as the test

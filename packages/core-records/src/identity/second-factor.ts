@@ -5,13 +5,13 @@
 //
 // The provider holds the factor and its secret. These rows hold only that the
 // person has one and where it stands. Whether the person has a *verified* one
-// is mirrored onto `people.second_factor_verified` in the same statement set,
-// because login resolution asks it on every call and reads it inside the one
-// query it already makes (`login-resolution.ts`). The factor is the login's,
-// not the business's, so a verification and a removal are also written
-// installation-wide by subject (0064), where resolution in every business the
-// login reaches finds them. Every function takes the serving transaction, so
-// the record and the audit event of the act that caused it commit together.
+// here is mirrored onto `people.second_factor_verified` in the same statement
+// set. The factor is the login's, not the person's or the business's, so a
+// verification and a removal are also written installation-wide by subject
+// (0064), and that is what login resolution asks in every business the login
+// reaches (`login-resolution.ts`): another login mapped to the same person
+// holds none of it. Every function takes the serving transaction, so the
+// record and the audit event of the act that caused it commit together.
 
 import { createHash, randomUUID } from 'node:crypto';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
@@ -89,9 +89,12 @@ export async function liveFactor(
  * (20261006213000), with the same digest in SQL.
  */
 export async function lockLoginFactors(tx: TenantQuery, subject: string): Promise<void> {
-  const digest = createHash('sha256').update(subject).digest('hex');
-  await advisoryLock(tx, `second-factor-subject:${digest}`);
+  await advisoryLock(tx, `second-factor-subject:${factorDigest(subject)}`);
 }
+
+/** The SHA-256 digest 0064 keeps of a subject or a provider factor id, as `DIGEST` writes it. */
+export const factorDigest = (text: string): string =>
+  createHash('sha256').update(text, 'utf8').digest('hex');
 
 /** A first enrolment: the provider has issued a factor that is not yet verified. */
 export async function recordFactorEnrolled(
@@ -166,22 +169,29 @@ export async function recordFactorRemoved(tx: TenantQuery, factor: FactorOfLogin
 }
 
 /**
- * Whether the login has a factor verified, and not removed, through any
- * business (0064). A removed factor is never verified again, so no order.
+ * The digests (`factorDigest`) of the provider factors the login has verified,
+ * and not removed, through any business (0064). A removed factor is never
+ * verified again, so no order.
  */
-export async function loginHasVerifiedFactor(tx: TenantQuery, subject: string): Promise<boolean> {
-  const rows = await tx.query<{ readonly held: boolean }>(
-    `select exists (
-       select 1 from ops.second_factor_subjects v
-        where v.subject_digest = ${DIGEST('$1')} and v.state = 'verified'
-          and not exists (
-            select 1 from ops.second_factor_subjects r
-             where r.subject_digest = v.subject_digest and r.factor_digest = v.factor_digest
-               and r.state = 'removed')
-     ) as held`,
+export async function loginVerifiedFactors(
+  tx: TenantQuery,
+  subject: string,
+): Promise<readonly string[]> {
+  const rows = await tx.query<{ readonly factor_digest: string }>(
+    `select distinct v.factor_digest from ops.second_factor_subjects v
+      where v.subject_digest = ${DIGEST('$1')} and v.state = 'verified'
+        and not exists (
+          select 1 from ops.second_factor_subjects r
+           where r.subject_digest = v.subject_digest and r.factor_digest = v.factor_digest
+             and r.state = 'removed')`,
     [subject],
   );
-  return rows[0]?.held === true;
+  return rows.map((row) => row.factor_digest);
+}
+
+/** Whether the login has a factor verified, and not removed, through any business (0064). */
+export async function loginHasVerifiedFactor(tx: TenantQuery, subject: string): Promise<boolean> {
+  return (await loginVerifiedFactors(tx, subject)).length > 0;
 }
 
 /** The person row's copy of "has a verified factor", recomputed from the factor rows. */

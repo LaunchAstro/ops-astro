@@ -51,6 +51,13 @@ export function Gate(props: {
   const box: GateBox = props.story.gate;
   if (box.kind === 'none') return null;
   const stale = box.kind === 'stale';
+  // Only a gate the story waits on is armed and waiting; a decided one says
+  // what was decided, as the summary card does.
+  const armed = box.kind === 'armed';
+  const say =
+    box.kind === 'decided'
+      ? props.story.sentence
+      : `${words(props.story.head.purpose)}, waiting on a person with the gate’s authority.`;
   return (
     <div
       className={stale ? 'gatebox gatebox--stale' : 'gatebox'}
@@ -58,13 +65,11 @@ export function Gate(props: {
       data-gate-kind={box.kind}
       data-gate-id={box.gateId}
     >
-      <div className={stale ? 'gate' : 'gate gate--armed'}>
+      <div className={armed ? 'gate gate--armed' : 'gate'}>
         <span className="gate__mark" aria-hidden="true" />
         <div>
           <div className="gate__word">{stale ? 'Gate stale' : 'Human approval gate'}</div>
-          <p className="gate__say">
-            {words(props.story.head.purpose)}, waiting on a person with the gate’s authority.
-          </p>
+          <p className="gate__say">{say}</p>
         </div>
       </div>
       <GateFacts box={box} story={props.story} effect={props.effect} />

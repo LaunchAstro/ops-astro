@@ -42,7 +42,8 @@ import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } fr
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
-import { remainingOf, stopAtSpentHold } from './budget-stop.ts';
+import { callsSpentOf, remainingOf, stopAtSpentHold, toppedUpHeld } from './budget-stop.ts';
+import { COUNTED_CAUSES, countedHold } from '../../core-custody/src/index.ts';
 
 export interface QueueEntry {
   readonly reservationId: string;
@@ -415,6 +416,10 @@ async function recheckClaim(
             exists (select 1 from public.reservations o
                      where o.business_id = res.business_id and o.version_id = res.version_id
                        and o.id <> res.id and o.state in ('held', 'quarantined')) as active_elsewhere,
+            exists (select 1 from public.reservations n
+                     where n.business_id = res.business_id and n.version_id = res.version_id
+                       and n.run_id = res.run_id
+                       and (n.created_at, n.id) > (res.created_at, res.id)) as replaced,
             g.state as gate_state, lin.state as lineage_state,
             (ver.superseded_at is not null) as superseded,
             att.id as attempt_id, att.state as attempt_state,
@@ -485,15 +490,50 @@ async function claimHold(
       where business_id = $1 and id = $2`,
     [tx.businessId, reservationId],
   );
-  const heldMinor = BigInt(state.held_minor) - BigInt(old?.spent ?? '0');
-  if (heldMinor <= 0n) return await stopSpentWhole(tx, reservationId, found);
+  const left = BigInt(state.held_minor) - BigInt(old?.spent ?? '0');
+  if (left <= 0n) return await stopSpentWhole(tx, reservationId, found);
+  const room = await versionRoom(tx, found);
+  if (room <= 0n) return await stopSpentWhole(tx, reservationId, found, NO_ROOM);
   return await reserve(tx, {
     envelopeId: found.envelope_id,
     versionId: found.version_id,
     runId: found.run_id,
     stepId: found.step_id,
-    heldMinor,
+    heldMinor: left < room ? left : room,
   });
+}
+
+const NO_ROOM = "this run's spend and holds already fill the version's approved ceiling";
+
+/**
+ * What the run may still hold under its version: the approved ceiling, raised by the run's applied
+ * top-ups, less what its reservations of the version committed (a live hold whole, a closed one at
+ * its spend). A closed hold custody counted (`countedHold`: a top-up moved its spend, or the end)
+ * is at its calls plus its actual when its top-up found it held (`hold_state`; every top-up from
+ * before the column reads held): a later close charges only what it adds (`modelCallsOn`). One
+ * settled (`actual`) before its top-up is at the greater, counted once. Any other is at its actual,
+ * its unsent calls never counted. Read under the run lock. A replacement holds at most this.
+ */
+async function versionRoom(tx: TenantQuery, found: Found): Promise<bigint> {
+  const [row] = await tx.query<{ readonly room: string }>(
+    `select (ver.maximum_minor
+             + coalesce((select sum(a.amount_minor) from public.budget_answers a
+                          where a.business_id = ver.business_id and a.run_id = $3
+                            and a.kind = 'top_up'), 0)
+             - coalesce((select sum(case when r.state in ('held', 'quarantined') then r.held_minor
+                                         when ${countedHold('$4')}
+                                           then case when r.state = 'actual' and not ${toppedUpHeld('r')}
+                                                     then greatest(r.actual_minor, ${callsSpentOf('r')})
+                                                     else coalesce(r.actual_minor, 0) + ${callsSpentOf('r')} end
+                                         else coalesce(r.actual_minor, 0) end)
+                           from public.reservations r
+                          where r.business_id = ver.business_id and r.version_id = ver.id
+                            and r.run_id = $3), 0))::text as room
+       from public.proposal_versions ver
+      where ver.business_id = $1 and ver.id = $2`,
+    [tx.businessId, found.version_id, found.run_id, COUNTED_CAUSES],
+  );
+  return BigInt(row?.room ?? '0');
 }
 
 const SPENT_WHOLE_HOLD =
@@ -503,12 +543,14 @@ const SPENT_WHOLE_HOLD =
  * AW-05: a step whose calls spent its whole hold has nothing left to hold, so
  * the run stops at its budget and asks a person, a refusal that keeps the ask;
  * after the run's last ask it ends the run and tells a person
- * (`stopAtSpentHold`). Never a refusal nothing answers.
+ * (`stopAtSpentHold`). Never a refusal nothing answers. A replacement the
+ * version has no room for stops the same way, saying `why`.
  */
 async function stopSpentWhole(
   tx: TenantQuery,
   reservationId: string,
   found: Found,
+  why = SPENT_WHOLE_HOLD,
 ): Promise<RuntimeResult<never>> {
   const words = await stopAtSpentHold(tx, {
     runId: found.run_id,
@@ -517,7 +559,7 @@ async function stopSpentWhole(
     delegationId: null,
     remaining: await remainingOf(tx, reservationId),
   });
-  const refusal = refuseCommand('BUDGET_UNAVAILABLE', [], [SPENT_WHOLE_HOLD, words]);
+  const refusal = refuseCommand('BUDGET_UNAVAILABLE', [], [why, words]);
   return { ok: false, refusal, retains: true };
 }
 
@@ -818,6 +860,8 @@ interface ClaimState {
   readonly run_state: string;
   readonly settled: boolean;
   readonly active_elsewhere: boolean;
+  /** A later hold of the version and run exists: this one is history. */
+  readonly replaced: boolean;
 }
 
 /**
@@ -935,19 +979,22 @@ function replaceable(state: {
   readonly settled: boolean;
   readonly marked: boolean;
   readonly active_elsewhere: boolean;
+  readonly replaced: boolean;
 }): boolean {
   // A hold the classifier settled at its calls' spend ended as one it abandoned:
   // its attempt is `abandoned`, where an observed or written-off cost settled it.
   const ended =
     state.state === 'abandoned' ||
     (state.state === 'actual' && state.attempt_state === 'abandoned');
-  // One active hold per version (0019): a version already holding elsewhere is
-  // claimed through that hold, from the queue, and not through this one.
+  // One active hold per version (0019): a version already holding elsewhere is claimed through
+  // that hold, from the queue, and not through this one. Only the newest hold is replaced: an
+  // older one's remainder ignores the spend on every hold after it, passing the version's ceiling.
   return (
     ended &&
     !state.settled &&
     !state.marked &&
     !state.active_elsewhere &&
+    !state.replaced &&
     (state.run_state === 'claimed' || state.run_state === 'planned')
   );
 }

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "OW-059.2: the backup store refuses a passed drill with no target major or table count, and a store made before the rule takes it from upgrade 1, run twice"
+}

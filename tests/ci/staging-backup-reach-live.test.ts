@@ -12,6 +12,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { backupStoreSql } from '../support/backup-store-sql.ts';
 import { carriedThroughPsql } from './staging-backup-reach-carried.fixture.ts';
 import {
   OPERATOR,
@@ -139,11 +140,11 @@ live('S0-3 store reach, live', () => {
     rmSync(scratch, { recursive: true, force: true });
   }, 120_000);
 
-  it('a fresh store server takes backup-store.sql and makes its own backup identity', () => {
+  it('a fresh store server takes backup-store.sql and its upgrades, and makes its own backup identity', () => {
     expect(asAdmin(`select count(*) from pg_roles where rolname = 'ops_astro_backup'`).out).toBe(
       '0',
     );
-    const made = asAdmin(read('deploy/staging/backup-store.sql'));
+    const made = asAdmin(backupStoreSql());
     expect(made.status, made.out).toBe(0);
     expect(
       asAdmin(

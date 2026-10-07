@@ -1,6 +1,7 @@
 {
   "note": "Suites that start containers. local checks runs pnpm check without them (CONTAINER_SUITES=apart) and runs them in a later step, so no network interface appears while the browser captures load (net::ERR_NETWORK_CHANGED). tests/ci/container-suites-run-apart.test.ts keeps this list equal to the suites that start one, themselves or through a module they import.",
   "suites": [
+    "tests/ci/backup-store-route-processes.test.ts",
     "tests/ci/fixture-clone-refuses-another-container.test.ts",
     "tests/ci/fixture-database-url-container-proof.test.ts",
     "tests/ci/restore-drill-keeps-staging-guards.test.ts",
@@ -13,7 +14,6 @@
     "tests/ci/staging-egress.test.ts",
     "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
     "tests/fixture/snapshot/snapshot-container-identity-proof.test.ts",
-    "tests/operations/s0-5-client-lock.test.ts",
     "tests/operations/s0-5-lock-order.test.ts",
     "tests/review/staging-logins-group-race-proof.test.ts",
     "tests/runtime/aw-13-local-target.test.ts",

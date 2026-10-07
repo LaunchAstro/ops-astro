@@ -715,6 +715,7 @@ const REQUESTS: readonly CommandRequest[] = [
     recordId: 'r',
     commentId: 'c-edit',
     body: 'b-edit',
+    expectedEditedAt: 'e-edit',
   },
   { command: 'task.delete_comment', operationId: 'op', recordId: 'r', commentId: 'c-delete' },
   {
@@ -1022,7 +1023,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
     'p-comment',
     'm-comment',
   ],
-  'task.edit_comment': ['editTaskComment', 'c-edit', 'b-edit'],
+  'task.edit_comment': ['editTaskComment', 'c-edit', 'b-edit', 'e-edit'],
   'task.delete_comment': ['deleteTaskComment', 'c-delete'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],

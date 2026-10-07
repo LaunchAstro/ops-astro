@@ -13,8 +13,8 @@
 // client. Run through the real API and the CLI client on a throwaway database.
 // The app and agent-credential legs are held in `s0-5-client-lock-held.test.ts`.
 
-import { spawn } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import {
@@ -34,7 +34,6 @@ if (serverUrl === undefined) {
 }
 
 let harness: Harness;
-const CONTAINER = process.env['FIXTURE_PG_CONTAINER'] ?? '';
 
 /** A fresh task on `client`, changed there while empty. */
 async function taskOn(client: string, title: string): Promise<string> {
@@ -68,41 +67,48 @@ async function clientOf(taskId: string): Promise<string> {
 }
 
 /**
- * The client change lands first. A separate session (the fixture container's
- * own psql, off the harness's connections) takes the task's row lock, waits
- * until another transaction is queued behind it, changes the client to `to`
- * and commits. Mia's comment is sent meanwhile. Whether the session saw it
- * waiting, and her answer.
+ * The client change lands first. A separate database connection takes the
+ * task's row lock, waits until the comment is queued behind it, changes the
+ * client to `to` and commits. Whether the session saw it waiting, and her answer.
  */
 async function changeLandsFirst(taskId: string, to: string): Promise<[boolean, string]> {
-  const [{ db }] = (await harness.world.db.admin.execute<{ db: string }>(
-    'select current_database() as db',
-  )) as [{ db: string }];
-  const locker = spawn(
-    'docker',
-    ['exec', '-i', CONTAINER, 'psql', '-U', 'postgres', '-d', db, '-v', 'ON_ERROR_STOP=1', '-q'],
-    { stdio: ['pipe', 'ignore', 'ignore'] },
-  );
-  const done = new Promise<number>((resolve) => {
-    locker.on('close', (code) => resolve(code ?? 1));
-  });
-  locker.stdin.end(`set statement_timeout = '10s';
-begin;
-select id from records where id = '${taskId}' for update;
-do $$ begin
-  loop
-    exit when exists (select 1 from pg_locks where not granted and locktype = 'transactionid');
-    perform pg_sleep(0.02);
-  end loop;
-end $$;
-update records set data = jsonb_set(data, '{client}', to_jsonb('${to}'::text)) where id = '${taskId}';
-commit;
-`);
-  await new Promise((resolve) => {
-    setTimeout(resolve, 400);
-  });
-  const answer = await miaComments(taskId);
-  return [(await done) === 0, answer.code];
+  if (serverUrl === undefined) throw new Error('This fixture requires Postgres.');
+  const url = new URL(serverUrl);
+  url.pathname = `/${harness.world.db.name}`;
+  const locker = connectAsAdmin(url.toString());
+  let comment: ReturnType<typeof miaComments> | undefined;
+  try {
+    const waited = await locker.transaction(async (execute) => {
+      await execute('select id from records where id = $1 for update', [taskId]);
+      comment = miaComments(taskId);
+      let waiting = false;
+      const deadline = Date.now() + 10_000;
+      while (!waiting && Date.now() < deadline) {
+        // eslint-disable-next-line no-await-in-loop -- Wait for this connection's row lock.
+        const [row] = await execute<{ waiting: boolean }>(
+          `select exists (select 1 from pg_locks where not granted and locktype = 'transactionid'
+             and pg_backend_pid() = any(pg_blocking_pids(pid))) as waiting`,
+        );
+        waiting = row?.waiting === true;
+        if (!waiting) {
+          // eslint-disable-next-line no-await-in-loop -- Poll until the comment is blocked.
+          await new Promise((resolve) => {
+            setTimeout(resolve, 20);
+          });
+        }
+      }
+      await execute(
+        "update records set data = jsonb_set(data, '{client}', to_jsonb($2::text)) where id = $1",
+        [taskId, to],
+      );
+      return waiting;
+    });
+    if (comment === undefined) throw new Error('The comment was not started.');
+    return [waited, (await comment).code];
+  } finally {
+    await Promise.allSettled([comment]);
+    await locker.close();
+  }
 }
 
 /** An empty task's client changes, twice. */

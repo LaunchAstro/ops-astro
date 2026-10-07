@@ -8,12 +8,11 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
-import {
-  NOW_TEXT,
-  type CommentAudience,
-  type CommentType,
-  type StoredComment,
-} from './comments.ts';
+import { type CommentAudience, type CommentType, type StoredComment } from './comments.ts';
+
+/** The server's now, or one millisecond past the comment's last edit if that is later. */
+const EDIT_TEXT = `to_char(greatest(now(), (data ->> 'edited_at')::timestamptz + interval '1 millisecond')
+  at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
 
 /** A comment row as the reads here select it (`COMMENT_COLUMNS`). */
 interface CommentRow {
@@ -110,7 +109,12 @@ export async function lockComment(
   return row === undefined ? undefined : storedFrom(row);
 }
 
-/** A comment's new words and the server's time of the edit. The caller holds its lock. */
+/**
+ * A comment's new words and the server's time of the edit. The caller holds its
+ * lock. The stamp is an edit's version, so it always moves: at least one
+ * millisecond past the one before, even for two edits in one transaction,
+ * whose `now()` is the same.
+ */
 export async function rewriteComment(
   tx: TenantQuery,
   commentTypeId: string,
@@ -119,7 +123,7 @@ export async function rewriteComment(
 ): Promise<void> {
   await tx.query(
     `update public.records
-        set data = data || jsonb_build_object('body', $4::text, 'edited_at', ${NOW_TEXT})
+        set data = data || jsonb_build_object('body', $4::text, 'edited_at', ${EDIT_TEXT})
       where business_id = $1 and record_type_id = $2 and id = $3`,
     [tx.businessId, commentTypeId, commentId, body],
   );

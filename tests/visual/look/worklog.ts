@@ -51,6 +51,20 @@ export const WORKLOG: LookScreen = {
       widths: WIDTHS,
     },
     {
+      // The search row keeps its Clear button at the kit button's height; the
+      // mockup stretches it to the search box, which the app's row does not.
+      id: 'worklog.clear',
+      mockup: { ...PAGE, selector: '[data-act-clear]' },
+      app: { ...APP, selector: '.act__find > .btn' },
+      props: ['box.height'],
+      widths: WIDTHS,
+      ruled: (['light', 'dark'] as const).map((theme) => ({
+        at: `box.height@${theme}`,
+        want: '27',
+        why: 'the ledger search row centres its button at the kit height',
+      })),
+    },
+    {
       id: 'worklog.who',
       mockup: { ...PAGE, selector: '.act__who' },
       app: { ...APP, selector: '.act__who' },

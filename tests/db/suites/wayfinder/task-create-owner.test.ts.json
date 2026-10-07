@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Creating grilling and prototype map tickets requires the map owner and task:decide, including calls through agent credentials."
+}

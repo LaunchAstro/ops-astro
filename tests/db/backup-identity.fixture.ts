@@ -9,6 +9,7 @@ import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import { afterAll, beforeAll } from 'vitest';
+import { backupStoreSql } from '../support/backup-store-sql.ts';
 import { operator } from './backup-drill-records.fixture.ts';
 import {
   createEmptyDatabase,
@@ -220,7 +221,7 @@ export function backupStoreHooks(): void {
     const source = await createFreshDatabase({ part: 's03bsrc' });
     await source.drop();
     store = await createEmptyDatabase({ part: 's03bstore' });
-    await store.admin.execute(read('deploy/staging/backup-store.sql'));
+    await store.admin.execute(backupStoreSql());
     backupLogin = await loginIn(store, BACKUP);
     retentionLogin = await loginIn(store, RETENTION);
     restoreLogin = await loginIn(store, RESTORE);
