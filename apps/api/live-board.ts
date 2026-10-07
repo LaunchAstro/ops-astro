@@ -20,13 +20,10 @@
 // frame for the new one. The join is asked after each digest and before its
 // frame, so a digest taken for a person the bearer has left is never said.
 //
-// C71 (CS-7.42): a team conversation heard is not digested. The stream asks
-// whether the bound person is a current member of it, then the join, then
-// membership again, and says `conversation` (naming none) to a member alone,
-// so the Team tab's unread chip re-reads through `chat.conversations`; anyone
-// else, one removed while the join was asked included, is told nothing. A
-// reconnected listener (`resync`) may have lost a conversation's signal, so
-// it asks the same of any conversation and says `conversation` once.
+// C71 (CS-7.42): a conversation heard is not digested. Membership, the join, then membership
+// again: a member alone is told `conversation` (naming none), so the Team tab's chip re-reads
+// `chat.conversations`; anyone else, one removed mid-join included, is told nothing. A
+// reconnect (`resync`) may have lost a signal, so it asks of any conversation, says it once.
 //
 // Stopping the stream (the tab leaving, or the topics closing) ends its
 // recheck, and the stream lets go only once no question it asked is in
@@ -191,10 +188,8 @@ async function rule(
 }
 
 /**
- * Conversations heard: `conversation` said when the bound person is a current
- * member of one, and the bearer is still that person, already told. A member
- * is asked again after the join, so one removed while it was asked is told
- * nothing.
+ * `conversation` said to a current member whose bearer is still that person, already told;
+ * asked again after the join, so one removed while it was asked is told nothing.
  */
 async function told(
   stream: BoardStream,

@@ -12,7 +12,7 @@
 // credentials file; nothing prints it.
 
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { LOCAL_GPT_PROVIDER } from '../../packages/core-connectors/src/index.ts';
@@ -138,8 +138,30 @@ async function ready(
       message: 'OPS_LOCAL_AGENT_PORT is a port number',
     };
   }
-  mkdirSync(settings.home, { recursive: true, mode: 0o700 });
-  const home = statSync(settings.home);
+  // Nothing is made before the login is checked; a home not there yet holds no login.
+  const before = homeRefusal(settings.home, false);
+  if (before !== null) return before;
+  if (!(await codexLogin(settings))) {
+    return {
+      ok: false,
+      code: 'CODEX_NOT_SIGNED_IN',
+      message: `sign the runner's Codex home in to ChatGPT once: mkdir -p -m 700 '${settings.home}' '${settings.codexHome}' && CODEX_HOME='${settings.codexHome}' codex login`,
+    };
+  }
+  // Checked again once signed in: the key is filed in this home next, as it stands now.
+  const after = homeRefusal(settings.home, true);
+  if (after !== null) return after;
+  return { ok: true, settings, port };
+}
+
+/** Why the runner's home cannot hold the key, or null; a home not there passes only before the login. */
+function homeRefusal(path: string, mustExist: boolean): Refusal | null {
+  const home = statSync(path, { throwIfNoEntry: false });
+  if (home === undefined) {
+    return mustExist
+      ? { ok: false, code: 'HOME_NOT_OWNED', message: 'OPS_LOCAL_AGENT_HOME is not there' }
+      : null;
+  }
   // A home someone else owns could hold their symlinks or read the key.
   if (home.uid !== process.getuid?.()) {
     return { ok: false, code: 'HOME_NOT_OWNED', message: 'OPS_LOCAL_AGENT_HOME is not yours' };
@@ -152,14 +174,7 @@ async function ready(
       message: 'others can write to OPS_LOCAL_AGENT_HOME: chmod 700 it',
     };
   }
-  if (!(await codexLogin(settings))) {
-    return {
-      ok: false,
-      code: 'CODEX_NOT_SIGNED_IN',
-      message: `sign the runner's Codex home in to ChatGPT once: CODEX_HOME=${settings.codexHome} codex login`,
-    };
-  }
-  return { ok: true, settings, port };
+  return null;
 }
 
 export async function startStack(

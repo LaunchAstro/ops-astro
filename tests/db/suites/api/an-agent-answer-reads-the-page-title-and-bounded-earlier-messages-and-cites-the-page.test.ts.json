@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the answer reads the page title and bounded earlier messages, and cites the page"
+}

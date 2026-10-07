@@ -59,10 +59,8 @@ export async function admitConversations(
 }
 
 /**
- * Whether `personId` is a current member of any of these conversations (or,
- * given `any`, of any conversation) now, asked on the board stream before it
- * says one moved; false unless the bearer still resolves to that same person.
- * Records nothing.
+ * Whether `personId` is a current member of any of these (given `any`, of any) now, asked by the
+ * board before it says one moved; false unless the bearer is still that person. Records nothing.
  */
 export async function hearsConversation(
   database: Database,

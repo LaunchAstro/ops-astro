@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a client link committed while the answer reads its page task asks no model"
+}

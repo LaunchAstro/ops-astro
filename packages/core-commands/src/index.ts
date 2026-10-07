@@ -24,6 +24,13 @@ export {
   type QuotaSlot,
 } from './commands/credential-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
+export { runLiveRevert } from './commands/live-correction-revert.ts';
+export {
+  runLivePublish,
+  type CorrectionRun,
+  type RunnerPorts,
+  type RunResult,
+} from './commands/live-correction-runner.ts';
 export { setOwnAvailability } from './commands/availability.ts';
 export {
   callerAudit,

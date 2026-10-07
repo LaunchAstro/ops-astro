@@ -96,8 +96,9 @@ const config: ViteUserConfig = defineConfig({
     // asks for), Sol's six F2 lost-answer retry proofs, Sol's two F3
     // save-order proofs and Sol's OW-016 route proof open their worlds with no
     // skip, as do Sol's three template lock and clone catalogue proofs and the
-    // cases written beside them, C31's Sol proof files and the Keys panel's DB
-    // proofs; without a database they are left out here, and the manifests run
+    // cases written beside them, C31's Sol proof files, the Keys panel's DB
+    // proofs, and Sol's two ending-claim proofs and agent-login proof (SOLOW-D
+    // D3); without a database they are left out here, and the manifests run
     // them where there is one. C31's corrupted audit chain fails by design: only
     // the proof that spawns it from inside a test worker collects it.
     exclude: [
@@ -150,9 +151,12 @@ const config: ViteUserConfig = defineConfig({
             'tests/db/run-end-stamped-after-lock-wait.test.ts',
             'tests/db/run-supersede-stamped-after-lock-wait.test.ts',
             'tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts',
+            'tests/api/live-presence-remap-before-mark-recheck-applies-nothing.test.ts',
+            'tests/api/live-presence-remap-before-seat-shows-no-unadmitted-person.test.ts',
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
             'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
+            'tests/api/live-presence-revoked-before-seat-shows-no-unadmitted-reader.test.ts',
             'tests/commands/mention-refusal-replay-name.test.ts',
             'tests/commands/mention-refusal-staff-name.test.ts',
             'tests/broker/counted-call-closes-give-back-once.test.ts',
@@ -190,6 +194,9 @@ const config: ViteUserConfig = defineConfig({
             'tests/commands/comment-change-revoked-before-write.test.ts',
             'tests/commands/comment-change-agent-helper-revoke-order.test.ts',
             'tests/commands/comment-change-revoked-while-waiting.test.ts',
+            'tests/review/ending-claim-per-row-proof.test.ts',
+            'tests/identity/ending-claim-and-shared-recheck-proof.test.ts',
+            'tests/identity/ending-spares-live-agent-login-elsewhere-proof.test.ts',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.

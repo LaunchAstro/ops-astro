@@ -26,6 +26,7 @@ export {
   type Session,
   type VerifiedSubject,
 } from './login-resolution.ts';
+export { noMembership } from './access-ended.ts';
 export { withStanding } from './standing.ts';
 export {
   NO_ASSURANCE,

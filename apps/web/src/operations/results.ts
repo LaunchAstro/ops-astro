@@ -35,6 +35,8 @@ export type ConversationReply =
       readonly body: string;
       /** AW-04: the plan version a planning reply composed, drawn as a card. */
       readonly plan?: PlanOffer;
+      /** The records the answer read, unchecked until `citesOf` reads them. */
+      readonly cites?: unknown;
     }
   | { readonly answered: false; readonly code: string; readonly words: string };
 

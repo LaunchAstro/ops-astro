@@ -8,17 +8,16 @@
 // the start itself, the page by `conversation.set_scope` straight after it.
 // After that, a rename and a page go to the conversation in turn, in order.
 //
-// **One start per tab.** A second question asked while the first is still
-// starting waits for that start and joins the conversation it made, so a
-// quick second press never opens a second conversation. Where that start is
-// refused, the next queued question starts the tab and the rest wait on it.
+// **One start per tab.** A second question asked while the first is still starting waits for it
+// and joins the conversation it made, so a quick second press never opens a second conversation.
+// Where that start is refused, the next queued question starts the tab and the rest wait on it.
 //
 // **Nothing about a client's material is sent** (owner line 72): the drawer
 // refuses the question itself while the offer is empty with a reason
-// (`modelOffer`), so no command leaves for it. The model picker holds its
-// choice in the tab until conversations carry a model (CS-7.30, on AW-01's
-// seam); the catalogue is empty until the business's price book is readable
-// here, so the picker offers nothing and the choice is not sent.
+// (`modelOffer`), so no command leaves for it. The model picker offers what
+// `conversation.models` answers for the selected tab (CS-7.30, `assistant/models.ts`);
+// a choice is held in the tab until it starts and sent by `conversation.set_model`
+// straight after the start, then each later choice in turn, landing before the next question.
 //
 // The agent's answer comes back beside each kept question (AW-03's exchange,
 // on AW-01's conversation seam) and is drawn after its question, as text.
@@ -50,10 +49,12 @@ import {
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
+import { citesOf } from '../assistant/cites.ts';
 import { useAsks } from '../assistant/asks.ts';
 import { useHistoryList, useKeptStore, type KeptStore } from '../assistant/kept.ts';
 import type { Store } from '../assistant/store.ts';
-import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
+import { useModels } from '../assistant/models.ts';
+import { modelOffer, subjectFor, type Subject } from '../assistant/subject.ts';
 import type {
   CallResult,
   CommandOutcome,
@@ -63,11 +64,9 @@ import type {
 import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 import { AllowanceLine } from './allowance-line.tsx';
+import { besideAllowance, type CorrectionHost } from './correction-card.tsx';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
-
-/** The business's models, empty until its price book is readable here. */
-const CATALOGUE: readonly ModelChoice[] = [];
 
 export interface AssistantViewProps {
   readonly client: OperationsClient;
@@ -95,11 +94,11 @@ interface Opening {
 function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
   if (reply === undefined) store.line(key, 'note', KEPT);
   else if (reply.answered && reply.plan !== undefined) store.plan(key, reply.body, reply.plan);
-  else if (reply.answered) store.line(key, 'ai', reply.body);
+  else if (reply.answered) store.line(key, 'ai', reply.body, undefined, citesOf(reply.cites));
   else store.line(key, 'failed', reply.words);
 }
 
-/** The tab's first question, its answer, then the page it was given before it started. */
+/** The tab's first question with its model, its answer, then the page it was given before it started. */
 async function startWith(
   client: OperationsClient,
   store: Store,
@@ -107,9 +106,18 @@ async function startWith(
   report: (key: string, sent: Sent) => Promise<boolean>,
 ): Promise<string | null> {
   const { chat, body, subject, scope } = opening;
-  const { title, page } = store.chat(chat.key) ?? chat;
+  const { title, page, model } = store.chat(chat.key) ?? chat;
+  // A model chosen before the first question rides in the start, so the first
+  // answer is asked of it (CS-7.30); none chosen, the default.
+  const chosen = model === null ? {} : { model };
   const settled = settle(
-    await client.mutate('conversation.start', { body, title, subject: subject.label, scope }),
+    await client.mutate('conversation.start', {
+      body,
+      title,
+      subject: subject.label,
+      scope,
+      ...chosen,
+    }),
   );
   const id = settled.kind === 'ok' ? settled.value.detail?.['conversationId'] : undefined;
   if (typeof id !== 'string') {
@@ -146,10 +154,12 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const question = store.line(key, 'user', body);
     const on: Store = {
       ...store,
-      line: (k, role, words) => store.line(k, role, words, question),
+      line: (k, role, words, _after, cites) => store.line(k, role, words, question, cites),
       plan: (k, words, offer) => store.plan(k, words, offer, question),
     };
     let known = chat.conversationId;
+    // A started tab's question waits for its writes so far: a model just chosen is the one asked.
+    if (known !== null) await starts.current.get(key);
     if (known === null) {
       // Queued behind the tab's last start: joins what it made, or starts
       // itself only once that start is refused.
@@ -176,6 +186,9 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
 const setScope = (client: OperationsClient, conversationId: string, page: AssistantPage): Sent =>
   client.mutate('conversation.set_scope', { conversationId, page });
 
+const setModel = (client: OperationsClient, conversationId: string, model: string): Sent =>
+  client.mutate('conversation.set_model', { conversationId, model });
+
 /** A rename and a page: held in the tab until it starts, then sent after the start, in turn. */
 function useWrites(
   props: AssistantViewProps,
@@ -184,6 +197,7 @@ function useWrites(
 ): {
   readonly rename: (key: string, title: string) => void;
   readonly addPage: (key: string) => void;
+  readonly chooseModel: (key: string, model: string) => void;
 } {
   const written = (key: string, write: (conversationId: string) => Sent): void => {
     // A tab kept or reopened was started elsewhere: its conversation is known.
@@ -206,6 +220,10 @@ function useWrites(
       const page = { address: props.here, shows: ROUTES[props.route].title };
       store.update((current) => addPage(current, key, page));
       written(key, (conversationId) => setScope(props.client, conversationId, page));
+    },
+    chooseModel: (key, model) => {
+      store.update((current) => chooseModel(current, key, model));
+      written(key, (conversationId) => setModel(props.client, conversationId, model));
     },
   };
 }
@@ -231,7 +249,7 @@ const answering =
     }
   };
 
-export function AssistantView(props: AssistantViewProps): ReactElement {
+export function AssistantView(props: AssistantViewProps & CorrectionHost): ReactElement {
   const store = useKeptStore(props.client, props.grantKey);
   const { state, update } = store;
   useEffect(() => {
@@ -247,17 +265,18 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
   const writes = useWrites(props, store, sender);
   const chat = state.chats.find((each) => each.key === state.selected);
   const opened = chat?.conversationId ?? null;
+  const models = useModels(props.client, opened);
   return (
     <AssistantPanel
       subject={subject}
       chats={state.chats}
       selected={state.selected}
-      offer={modelOffer(subject, CATALOGUE, null)}
+      offer={modelOffer(subject, models, null)}
       address={
         opened === null ? null : pathTo('agency:agent-conversation', { conversation: opened })
       }
       citation={state.citation}
-      allowance={allowanceFor(props.client, chat)}
+      allowance={besideAllowance(allowanceFor(props.client, chat), props)}
       draft={state.draft}
       answering={(state.answering[state.selected] ?? 0) > 0}
       history={useHistoryList(props.client, store)}
@@ -271,9 +290,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
       onNew={() => {
         update(fresh);
       }}
-      onModel={(key, model) => {
-        update((current) => chooseModel(current, key, model));
-      }}
+      onModel={writes.chooseModel}
       onAddPage={writes.addPage}
       onSend={answering(store, sender.send)}
       onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}

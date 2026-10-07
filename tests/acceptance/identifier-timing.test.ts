@@ -388,6 +388,13 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       conversationId,
       page: null,
     }));
+    byAda('conversation.models', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+    }));
+    byAda('conversation.set_model', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      model: null,
+    }));
     // C39-T: bravo's pending invitation, resent or revoked from alpha.
     const invitation = await foreignInvitation(w.h.world.db.admin, w.h.world.bravo);
     for (const op of ['invitation.resend', 'invitation.revoke'] as const) {
@@ -627,11 +634,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 110 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 112 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(110);
-    expect(names).toHaveLength(110);
+    expect(new Set(names).size, 'distinct operations').toBe(112);
+    expect(names).toHaveLength(112);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C80's runner on the effect register: the dispatch is taken under the lease so two runners never send one correction, a registered effect is observed again and never re-sent, and an entry written by anyone but a lease holder on the task is not the effect."
+}

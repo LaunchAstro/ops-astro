@@ -93,7 +93,10 @@ async function runWork(tx: TenantQuery, conversationId: string): Promise<readonl
          on lin.business_id = run.business_id and lin.id = run.lineage_id
        left join proposal_versions version
          on version.business_id = run.business_id and version.id = run.version_id
-      where run.business_id = $1 and run.origin_conversation_id = $2 order by run.id`,
+      where run.business_id = $1 and (run.origin_conversation_id = $2 or run.id in (
+              select run_id from plan_records
+               where business_id = $1 and origin_conversation_id = $2))
+      order by run.id`,
     [tx.businessId, conversationId],
   );
   return runs.map((run): Work => ({
@@ -117,7 +120,10 @@ async function gateWork(tx: TenantQuery, conversationId: string): Promise<readon
             end as ended_at
        from gates g
        join proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
-      where g.business_id = $1 and g.origin_conversation_id = $2 order by g.id`,
+      where g.business_id = $1 and (g.origin_conversation_id = $2 or g.id in (
+              select gate_id from plan_records
+               where business_id = $1 and origin_conversation_id = $2))
+      order by g.id`,
     [tx.businessId, conversationId],
   );
   return gates.map((gate): Work => ({
@@ -128,9 +134,12 @@ async function gateWork(tx: TenantQuery, conversationId: string): Promise<readon
 }
 
 /**
- * The runs and gates the conversation started, each pointing at its task. A
- * run ends when it is handed back or cancelled, at the instant the server
- * stamped (`ended_at`); a claim after a hand-back opens it again. A run
+ * The runs and gates the conversation started, each pointing at its task:
+ * by their own origin, or as the run and gate of a plan accepted in it,
+ * whose origin only the plan record holds (`0102_plan_records`: the run and
+ * gate keep theirs as created). A run ends when it is handed back or
+ * cancelled, at the instant the server stamped (`ended_at`); a claim after a
+ * hand-back opens it again. A run
  * planned or claimed has ended when its plan died under it: the lineage
  * ended, the version superseded, or its gate expired; pickup refuses all
  * three, so it never starts or resumes. An occurrence run has no plan. A run
