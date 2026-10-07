@@ -6,8 +6,9 @@
 // is said in plain words (`refusalWords`). An asked correction is then read
 // with `live_correction.read`, which answers its state, its approver and the
 // version a decision names. A decision is a person's approve or decline
-// through `live_correction.decide` on that version, then read again; its
-// refusal is said in the same plain words.
+// through `live_correction.decide` on that version, then read again whatever
+// it answered, so a refused or unanswered decision draws the state and version
+// the read answers now; its refusal is said in the same plain words.
 //
 // **Keyed on business.** Everything is held under the business it was asked
 // in (`client.businessKey`), and every answer lands under the business its
@@ -60,29 +61,33 @@ function useHeld(): { readonly held: ReadonlyMap<string, Held>; change: Change; 
 const failureWords = (failed: Failure): string =>
   refusalWords(failed.kind === 'unknown' ? 'UNAVAILABLE' : failed.refusal.code);
 
-/** The correction's decision as `live_correction.read` answers it now, under `key`. */
+/**
+ * The correction's decision as `live_correction.read` answers it now, under
+ * `key`; false where the read failed, its failure then the card's refusal.
+ */
 async function readInto(
   client: OperationsClient,
   amend: Amend,
   key: string,
   correctionId: string,
-): Promise<void> {
+): Promise<boolean> {
   const settled = settle(
     await client.read<LiveCorrectionReadResult>('live_correction.read', { correctionId }),
   );
   if (settled.kind !== 'ok') {
     amend(key, correctionId, { refusal: failureWords(settled) });
-    return;
+    return false;
   }
   const { state, approver, versionId } = settled.value.correction;
   amend(key, correctionId, { state: cardState(state), approver, versionId, refusal: null });
+  return true;
 }
 
 export function useCorrections(client: OperationsClient, propose: ProposePort): Corrections {
   const { held, change, amend } = useHeld();
   const business = client.businessKey;
   const mine = held.get(business) ?? EMPTY;
-  const read = (key: string, id: string): Promise<void> => readInto(client, amend, key, id);
+  const read = (key: string, id: string): Promise<boolean> => readInto(client, amend, key, id);
   const request = async (key: string, ask: CorrectionAsk): Promise<void> => {
     const answer = await propose(ask);
     if (!answer.ok) {
@@ -107,8 +112,8 @@ export function useCorrections(client: OperationsClient, propose: ProposePort): 
     const settled = settle(
       await client.mutate('live_correction.decide', { correctionId: id, versionId, decision }),
     );
-    if (settled.kind === 'ok') await read(key, id);
-    else amend(key, id, { refusal: failureWords(settled) });
+    const fresh = await read(key, id);
+    if (settled.kind !== 'ok' && fresh) amend(key, id, { refusal: failureWords(settled) });
   };
   const run = (work: Promise<void>): void => {
     change(business, (desk) => ({ ...desk, busy: desk.busy + 1 }));
