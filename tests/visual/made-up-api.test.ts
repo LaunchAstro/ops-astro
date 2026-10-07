@@ -27,9 +27,6 @@ const NOT_DRAWN = new Set([
   'harness.read',
   'privacy.draft_breach_notices',
   'live_correction.read',
-  // MP-14-9, MP-14-6: the cost data lands before the screens that draw it.
-  'finance.skill_costs',
-  'finance.agent_costs',
 ]);
 
 const at = (name: ReadName): string => `${PREFIX.person}alpha${pathOf(name)}`;
