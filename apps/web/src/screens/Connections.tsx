@@ -224,11 +224,12 @@ export function ConnectionsScreen(props: {
   const { client } = props;
   const clock = props.now ?? Date.now;
   const now = clock();
+  const rollup = props.rollup === undefined ? {} : { rollup: props.rollup };
   const { state, reload } = useRead<ConnectionFleetResult>({
     grantKey: props.grantKey,
     run: () => client.read<ConnectionFleetResult>('connection.fleet', {}),
     isEmpty: (value) => value.connections.length === 0,
-    ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
+    ...rollup,
     deps: [],
   });
   const repair = useRepair(client, reload);
@@ -256,17 +257,8 @@ export function ConnectionsScreen(props: {
         {(fleet) => <Shown fleet={fleet} now={now} repair={repair} />}
       </RecordState>
       <NotConnected />
-      <SignalSections
-        client={client}
-        grantKey={props.grantKey}
-        clock={clock}
-        {...(props.rollup === undefined ? {} : { rollup: props.rollup })}
-      />
-      <SkillCostingSection
-        client={client}
-        grantKey={props.grantKey}
-        {...(props.rollup === undefined ? {} : { rollup: props.rollup })}
-      />
+      <SignalSections client={client} grantKey={props.grantKey} clock={clock} {...rollup} />
+      <SkillCostingSection client={client} grantKey={props.grantKey} {...rollup} />
     </div>
   );
 }

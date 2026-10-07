@@ -23,6 +23,7 @@
 // `/agent/:conversation` (C36) included.
 
 import type { MatchIn, ParamsIn, StaticIn } from './route-params.ts';
+import { PAGE_ROUTES } from './routes-pages.ts';
 
 /** `agency` is the Hub; `clients` and `portal` are one client's two faces. */
 export type Namespace = 'agency' | 'clients' | 'portal';
@@ -109,9 +110,8 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
-  // Connections & signal, the fleet (MP-14-7a). The mockup's `/connections/`
-  // page; it has no pinned surface letter, so `surface` is `none`. The
-  // manifest places it in the Hub rail.
+  // Connections & signal, the fleet (MP-14-7a): the mockup's `/connections/` page, with no
+  // pinned surface letter, so `surface` is `none`. The manifest places it in the Hub rail.
   'agency:connections': {
     namespace: 'agency',
     path: '/connections/',
@@ -119,26 +119,7 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
-  // The Executive page: section 005, what our agents cost us, reads for real
-  // and 001 to 004 stand in. The manifest's Dashboard section already lists
-  // this address, so it adds no rail door.
-  'agency:executive': {
-    namespace: 'agency',
-    path: '/dashboard/executive/',
-    title: 'Executive',
-    surface: 'none',
-    authenticated: true,
-  },
-  // A new client's onboarding in phases, drawn from made-up data under the
-  // mock label until an onboarding read exists; no manifest page, so no rail
-  // entry.
-  'agency:onboarding': {
-    namespace: 'agency',
-    path: '/onboarding/',
-    title: 'Onboarding',
-    surface: 'none',
-    authenticated: true,
-  },
+  ...PAGE_ROUTES,
   // The business's own two operation-classified settings. It draws no pinned
   // surface — the mockup has no settings screen — so `surface` is `none`
   // rather than a letter it would be borrowing. The manifest places it in the
