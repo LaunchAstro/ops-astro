@@ -29,8 +29,20 @@ it('a mark whose login moves to another reader before its recheck marks nothing'
   const ids = { subject: '', first: '', second: '', task: '' };
   let phase: 'idle' | 'armed' | 'remapped' = 'idle';
   let admittedOnRecheck: string | undefined;
+  let seat = '';
+  let seatWasAsOnRecheck: boolean | undefined;
   // The mark's own calls only: the stream's rechecks and seat lookups run for the same login.
   const marking = new AsyncLocalStorage<true>();
+  // The stream's own calls for that login wait out the mark, so it cannot leave A's seat mid-crossing.
+  let markDone!: () => void;
+  const markSettled = new Promise<void>((resolve) => {
+    markDone = resolve;
+  });
+  const streamWaits = async (subject: string): Promise<void> => {
+    if (phase !== 'idle' && marking.getStore() !== true && subject === ids.subject) {
+      await markSettled;
+    }
+  };
   const api = composeApi({
     database: pool,
     admin: s.db.admin,
@@ -47,7 +59,10 @@ it('a mark whose login moves to another reader before its recheck marks nothing'
         if (phase === 'remapped' && own && args[4] === 'recheck') {
           const [answer] = Array.isArray(admitted) ? admitted : [];
           admittedOnRecheck ??= answer !== undefined && 'personId' in answer ? answer.personId : '';
+          seatWasAsOnRecheck ??=
+            presence.seenBy(s.business, ids.task, seat, ids.first) !== undefined;
         }
+        await streamWaits(args[2].subject);
         return admitted;
       },
       viewer: async (...args) => {
@@ -60,6 +75,7 @@ it('a mark whose login moves to another reader before its recheck marks nothing'
             [s.business, ids.second, ids.first],
           );
         }
+        await streamWaits(args[2].subject);
         return viewer;
       },
     },
@@ -86,21 +102,30 @@ it('a mark whose login moves to another reader before its recheck marks nothing'
     opened.push(tab);
     expect(tab.status, 'A may read the task').toBe(200);
     await within(2_000, () => tab.heard.some((frame) => frame.event === 'seat'), "A's seat");
-    const seat = tab.heard.find((frame) => frame.event === 'seat')!.data;
+    seat = tab.heard.find((frame) => frame.event === 'seat')!.data;
+    expect(
+      presence.seenBy(s.business, ids.task, seat, ids.first),
+      'A holds the seat',
+    ).toBeDefined();
 
     phase = 'armed';
-    const marked = await marking.run(
-      true,
-      async () =>
-        await fetchMark(api, key, token, { seat, topic: topic(ids.task), field: 'title' }),
-    );
+    const marked = await marking
+      .run(
+        true,
+        async () =>
+          await fetchMark(api, key, token, { seat, topic: topic(ids.task), field: 'title' }),
+      )
+      .finally(markDone);
     expect(phase, 'the login moved between the viewer and the recheck').toBe('remapped');
     expect(admittedOnRecheck, 'the recheck admitted B, who may read the task').toBe(ids.second);
+    // Only the person-match guard can refuse here: the seat-owner check would pass for A.
+    expect(seatWasAsOnRecheck, "A still held the seat when the mark's recheck answered").toBe(true);
     expect(marked.body, "A's seat was marked on a request whose login is B's").not.toHaveProperty(
       'marked',
     );
     expect(marked.status).not.toBe(200);
   } finally {
+    markDone();
     await Promise.allSettled(opened.map(async (each) => await each.stop()));
     await topics.close();
     await pool.close();
