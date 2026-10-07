@@ -18,9 +18,13 @@ import type { Session } from '../../apps/web/src/session/token.ts';
 import { useDockPanel } from '../../apps/web/src/screens/task/DockPanel.tsx';
 import { task, tick } from './task-page-stub.tsx';
 import { json, mount, press, unmountAll } from './perspective-support.tsx';
-import { NEW_ID, NEW_KEY, store } from './draft-support.tsx';
+import { dropOtherDrafts } from '../../apps/web/src/screens/task/task-draft.ts';
+import { NEW_ID, NEW_KEY, store, valueOf } from './draft-support.tsx';
 
-afterEach(unmountAll);
+afterEach(async () => {
+  await unmountAll();
+  dropOtherDrafts(null, null);
+});
 
 const ADA: Session = { businessKey: 'alpha', email: 'ada@example.test' };
 
@@ -75,7 +79,7 @@ function Dock(props: {
   readonly client: OperationsClient;
   readonly session: Session | null;
   readonly grantKey: string;
-  readonly storage: Storage;
+  readonly storage: Storage | null;
 }): ReactElement {
   const dock = useDockPanel(props);
   return (
@@ -90,6 +94,18 @@ function Dock(props: {
           }}
         >
           {key}
+        </button>
+      ))}
+      {['Site health', 'Inbox'].map((from) => (
+        <button
+          key={from}
+          type="button"
+          data-file={from}
+          onClick={() =>
+            dock.panel.file?.({ from, category: from === 'Site health' ? 'seo' : 'branding' })
+          }
+        >
+          {from}
         </button>
       ))}
       {/* The dock's X: in the dock the draft draws no Close of its own. */}
@@ -107,7 +123,10 @@ const panelTitle = (view: View): string | null =>
   view.find('[data-task-panel] [data-panel-title]')?.textContent ?? null;
 
 /** A draft named and its Create pressed, the create still out. */
-async function createInFlight(api: ReturnType<typeof server>, storage: Storage): Promise<View> {
+async function createInFlight(
+  api: ReturnType<typeof server>,
+  storage: Storage | null,
+): Promise<View> {
   const view = await mount(
     <Dock client={api.client} session={ADA} grantKey="alpha:ada:0" storage={storage} />,
   );
@@ -122,29 +141,38 @@ async function createInFlight(api: ReturnType<typeof server>, storage: Storage):
 }
 
 /** The kept drafts left in the store; the open task's own key (S1) is not a draft. */
-const draftKeys = (storage: Storage): readonly (string | null)[] =>
-  Array.from({ length: storage.length }, (_, index) => storage.key(index)).filter(
+const draftKeys = (storage: Storage | null): readonly (string | null)[] =>
+  Array.from({ length: storage?.length ?? 0 }, (_, index) => storage?.key(index) ?? null).filter(
     (key) => key?.startsWith('ops-astro.task-draft.') === true,
   );
 
 describe('A11-1 the draft cannot be left while Create is in flight', () => {
-  it('Close, Escape, Cancel and a door on the page wait for Create; one create, one operation id', async () => {
-    const api = server();
-    const storage = store();
-    const view = await createInFlight(api, storage);
-    await view.click('[data-dock-x]');
-    expect((view.find('[data-draft="cancel"]') as HTMLButtonElement).disabled).toBe(true);
-    await press(view, '[data-draft-panel]', 'Escape');
-    await view.click('[data-door="Proj-Other"]');
-    await tick();
-    expect(view.find('[data-draft-panel]')).not.toBeNull();
-    expect(view.find('[data-task-panel]')).toBeNull();
-    await view.click('[data-draft="create"]');
-    await api.land();
-    expect(api.creates).toHaveLength(1);
-    expect(panelTitle(view)).toBe(`Title of ${NEW_KEY}`);
-    expect(draftKeys(storage)).toStrictEqual([]);
-  });
+  it.each([
+    { name: 'working', make: store },
+    { name: 'blocked', make: blocked },
+    { name: 'absent', make: () => null },
+  ])(
+    '$name storage: Close, Escape, Cancel and a door on the page wait for Create; one create, one operation id',
+    async ({ make }) => {
+      const api = server();
+      const storage = make();
+      const view = await createInFlight(api, storage);
+      await view.click('[data-dock-x]');
+      expect((view.find('[data-draft="cancel"]') as HTMLButtonElement).disabled).toBe(true);
+      await press(view, '[data-draft-panel]', 'Escape');
+      await view.click('[data-door="Proj-Other"]');
+      await tick();
+      expect(view.find('[data-draft-panel]')).not.toBeNull();
+      expect(view.find('[data-task-panel]')).toBeNull();
+      await view.click('[data-draft="create"]');
+      await api.land();
+      expect(api.creates).toHaveLength(1);
+      expect(panelTitle(view)).toBe(`Title of ${NEW_KEY}`);
+      expect(draftKeys(storage)).toStrictEqual([]);
+      await view.click('[data-file="Inbox"]');
+      expect(valueOf(view, '#panel-draft-name')).toBe('');
+    },
+  );
 });
 
 describe('A11-1 a Create that lands after the session changed opens nothing', () => {
@@ -164,4 +192,102 @@ describe('A11-1 a Create that lands after the session changed opens nothing', ()
     expect(view.find('[data-draft-panel]')).toBeNull();
     expect(draftKeys(storage)).toStrictEqual([]);
   });
+});
+
+function blocked(): Storage {
+  return {
+    ...store(),
+    getItem: () => {
+      throw new DOMException('Storage blocked', 'SecurityError');
+    },
+    setItem: () => {
+      throw new DOMException('Storage blocked', 'SecurityError');
+    },
+  };
+}
+const unwritable = (): Storage => ({
+  ...store(),
+  setItem: () => {
+    throw new DOMException('Storage full', 'QuotaExceededError');
+  },
+});
+
+const unavailableStores = [
+  { name: 'absent', storage: () => null },
+  { name: 'blocked', storage: blocked },
+  { name: 'unreadable', storage: () => ({ ...store(), getItem: blocked().getItem }) },
+  { name: 'unwritable', storage: unwritable },
+];
+
+describe('an edited draft survives door remounts without browser storage', () => {
+  it.each(unavailableStores)(
+    '$name storage keeps the edits and original page across doors and close',
+    async ({ storage: makeStorage }) => {
+      const api = server();
+      const storage = makeStorage();
+      const view = await mount(
+        <Dock client={api.client} session={ADA} grantKey="alpha:ada:0" storage={storage} />,
+      );
+      await view.click('[data-file="Site health"]');
+      await view.type('#panel-draft-name', 'Kept name');
+      await view.type('#panel-draft-note', 'Kept note');
+      const first = view.find('[data-draft-panel]');
+      await view.click('[data-file="Inbox"]');
+      expect(view.find('[data-draft-panel]')).not.toBe(first);
+      expect(valueOf(view, '#panel-draft-name')).toBe('Kept name');
+      expect(valueOf(view, '#panel-draft-note')).toBe('Kept note');
+      expect(valueOf(view, '#panel-draft-category')).toBe('seo');
+      expect(view.find('[data-draft-admission]')?.textContent).toContain('filed from Site health');
+      await view.click('[data-dock-x]');
+      expect(view.find('[data-draft-panel]')).toBeNull();
+      await view.click('[data-file="Inbox"]');
+      expect(valueOf(view, '#panel-draft-name')).toBe('Kept name');
+      await view.click('[data-draft="cancel"]');
+      await view.click('[data-file="Inbox"]');
+      expect(valueOf(view, '#panel-draft-name')).toBe('');
+      expect(valueOf(view, '#panel-draft-category')).toBe('branding');
+      expect(api.creates).toHaveLength(0);
+    },
+  );
+});
+
+describe('owner changes clear drafts without browser storage', () => {
+  it.each([
+    { name: 'sign-out', session: null, grantKey: 'signed-out' },
+    {
+      name: 'person switch',
+      session: { businessKey: 'alpha', email: 'bea@example.test' },
+      grantKey: 'alpha:bea:0',
+    },
+    {
+      name: 'business switch',
+      session: { businessKey: 'bravo', email: ADA.email },
+      grantKey: 'bravo:ada:0',
+    },
+  ])(
+    '$name clears the in-memory draft before returning to its owner',
+    async ({ session, grantKey }) => {
+      const api = server();
+      const storage = blocked();
+      const view = await mount(
+        <Dock client={api.client} session={ADA} grantKey="alpha:ada:0" storage={storage} />,
+      );
+      await view.click('[data-file="Site health"]');
+      await view.type('#panel-draft-name', 'Kept name');
+      await view.render(
+        <Dock client={api.client} session={session} grantKey={grantKey} storage={storage} />,
+      );
+      expect(view.find('[data-draft-panel]')).toBeNull();
+      if (session !== null) {
+        await view.click('[data-file="Inbox"]');
+        expect(valueOf(view, '#panel-draft-name')).toBe('');
+      }
+      await view.render(
+        <Dock client={api.client} session={ADA} grantKey="alpha:ada:1" storage={storage} />,
+      );
+      await view.click('[data-file="Inbox"]');
+      expect(valueOf(view, '#panel-draft-name')).toBe('');
+      expect(valueOf(view, '#panel-draft-category')).toBe('branding');
+    },
+  );
 });

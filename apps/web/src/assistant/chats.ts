@@ -200,18 +200,18 @@ export const replaced = (
   );
 
 /**
- * The tab's first question started its conversation. A tab the history
- * reopened for that same conversation while the start was out folds into it,
- * so it is never open twice. What its read gave is the start's own question,
- * already here; what was asked and answered there since follows, each plan
- * version there replacing the older ones here; its questions still out are
- * this tab's, and a line still on its way to it lands here.
+ * A live tab's first question started its conversation; a closed tab takes nothing.
+ * Its reopened twin folds into it, so the conversation is never open twice.
+ * Read lines repeat the first question already here. Later lines follow, each
+ * plan version replacing older ones; questions still out and lines on their
+ * way to the twin belong to this tab.
  */
 export function started(
   state: AssistantState,
   key: string,
   conversationId: string,
 ): AssistantState {
+  if (!has(state, key)) return state;
   const twin = state.chats.find(
     (chat) => chat.key !== key && chat.conversationId === conversationId,
   );
