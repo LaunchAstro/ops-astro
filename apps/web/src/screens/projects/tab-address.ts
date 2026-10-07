@@ -16,8 +16,15 @@ export const TABS = [
 /** A tab's id: the board or the Work log. */
 type TabId = (typeof TABS)[number]['id'];
 
-export const tabInAddress = (): TabId =>
-  globalThis.location?.hash === WORK_LOG ? 'worklog' : 'board';
+/** The tab an address holds: its fragment's. */
+export const tabInAddress = (address: string): TabId =>
+  new URL(address, 'http://here').hash === WORK_LOG ? 'worklog' : 'board';
+
+/** The page's whole address, its fragment included, which a chosen tab writes. */
+export const pageAddress = (): string => {
+  const here = globalThis.location;
+  return here === undefined ? '' : `${here.pathname}${here.search}${here.hash}`;
+};
 
 /** Keeps the address on the open tab, so a reload lands on it. */
 export function writeTab(tab: TabId): void {

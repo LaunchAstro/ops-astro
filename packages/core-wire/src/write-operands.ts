@@ -4,6 +4,7 @@
 // `surface.ts` reads it into each declaration and re-exports the operand types.
 
 import type { CommandName } from './command-names.ts';
+import { CONVERSATION_OPERANDS } from './write-operands-conversation.ts';
 import { CHAT_OPERANDS } from './write-operands-chat.ts';
 import { LIVE_CORRECTION_OPERANDS } from './surface-live-correction.ts';
 import { SETUP_OPERANDS } from './surface-setup.ts';
@@ -216,10 +217,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     outcome: 'any',
     note: 'any',
   },
-  'conversation.start': { body: 'any', title: 'any', subject: 'any', scope: 'any' },
-  'conversation.message': { conversationId: 'any', body: 'any' },
-  'conversation.rename': { conversationId: 'any', title: 'any' },
-  'conversation.set_scope': { conversationId: 'any', page: 'any' },
+  ...CONVERSATION_OPERANDS,
   'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
   'run.top_up': {
     recordId: 'any',
@@ -229,8 +227,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     currency: 'any',
   },
   'run.end_at_budget_stop': { recordId: 'any', runId: 'any', askId: 'any' },
-  // The version the caller read (0 before the first); the two lists are
-  // checked item by item by the handler.
+  // The version the caller read (0 before the first); the handler checks both lists item by item.
   'run.revise_state': {
     recordId: 'any',
     runId: 'any',
