@@ -107,7 +107,7 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
       expect(ended.status, ended.text).toBe(200);
       expect(
         (await g.as(world.mia, 'chat.messages', { conversationId: g.conversationId })).code,
-      ).toBe('AUTH_NO_MEMBERSHIP');
+      ).toBe('AUTH_ACCESS_ENDED');
       resume.release();
       expect.soft(await sending).toEqual({ ok: false, code: 'ITEM_WITHHELD' });
       expect.soft(dispatched).toEqual([]);

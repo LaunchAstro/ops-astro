@@ -96,7 +96,7 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
       expect(ended.status, ended.text).toBe(200);
       expect(
         (await g.as(world.mia, 'chat.messages', { conversationId: g.conversationId })).code,
-      ).toBe('AUTH_NO_MEMBERSHIP');
+      ).toBe('AUTH_ACCESS_ENDED');
       await world.db.admin.execute(
         `insert into public.person_identifiers
          (business_id, id, person_id, kind, value, observed_value, source_system, review_state)
