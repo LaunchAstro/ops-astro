@@ -41,6 +41,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['AUTH_UNKNOWN_LOGIN', 401, 'caller'],
   ['AUTH_NO_MEMBERSHIP', 403, 'caller'],
   ['ACTOR_INACTIVE', 403, 'caller'],
+  ['AUTH_ACCESS_ENDED', 403, 'caller'],
   ['SCOPE_NOT_GRANTED', 403, 'caller'],
   ['GRANT_WIDENS', 403, 'caller'],
   ['GRANT_DEEPENS', 403, 'caller'],

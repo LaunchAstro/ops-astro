@@ -232,7 +232,7 @@ describe('what comes back', () => {
 
 const refused = (code: string) => ({ refused: true, code, names: [], fixes: [] });
 
-/** What `onSessionEnded` heard over two calls: `first` answered, then access ended. */
+/** What `onSessionEnded` heard over two calls: `first` answered, then no membership. */
 async function endedAfter(first: string, status: number): Promise<readonly string[]> {
   const answers = [
     new Response(JSON.stringify(refused(first)), { status }),
@@ -254,8 +254,8 @@ async function endedAfter(first: string, status: number): Promise<readonly strin
 
 describe('what comes back', () => {
   it('ends the session on access ended once a refusal has shown the login was a member', async () => {
-    // Ending access answers the next call 403 `AUTH_NO_MEMBERSHIP`, the answer a
-    // login that never had a membership gets too. A refusal decided after login
+    // Standing lost with no ending written (a last share) answers 403 `AUTH_NO_MEMBERSHIP`,
+    // as a login that never had a membership gets too. A refusal decided after login
     // resolution (a scope not granted) proves the bearer was a member, as a
     // success does; a refusal the door or resolution gives first proves nothing.
     expect(await endedAfter('SCOPE_NOT_GRANTED', 403)).toEqual(['AUTH_NO_MEMBERSHIP']);
