@@ -13,7 +13,8 @@
 // leaves the draft. Putting it back mounts the draft again, and the draft
 // finds its Create still out and waits for it (`DraftPanel.tsx`). The dock's
 // own storage and history never bring the id back; the task panel's host
-// keeps the open task and opens it again after a reload (S1).
+// keeps the open task and opens it again after a reload (S1), beside the rest
+// of the dock the person left.
 //
 // **New task on every page (DOCK T-17, DP-02).** The To-dos panel's head New
 // (`dock-props.tsx`) opens a draft filed from the page; the rail keeps the
@@ -51,8 +52,10 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
   const { change } = dock;
   const closeTask = task?.close;
   const file = task?.file ?? null;
-  // A door's shift press opens the panel beside what is open.
-  const beside = useRef(false);
+  // A door's shift press opens the panel beside what is open. A task open from
+  // the first frame is the one kept across a reload: it comes back beside the
+  // panels the dock kept, never in their place.
+  const beside = useRef(open);
   const openNow = useRef(open);
   openNow.current = open;
   useEffect(() => {
