@@ -12,9 +12,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { json, typeInto, unmountAll } from './perspective-support.tsx';
+import { dropOtherDrafts } from '../../apps/web/src/screens/task/task-draft.ts';
 import { NEW_ID, NEW_KEY, create, draft, store, type Sent } from './draft-support.tsx';
 
-afterEach(unmountAll);
+afterEach(async () => {
+  await unmountAll();
+  dropOtherDrafts(null, null);
+});
 
 /** A server whose first top-level create never answers, or fails on the wire; later ones answer. */
 function server(first: 'pending' | 'unknown') {
@@ -89,4 +93,23 @@ describe('REVIEW-2C1-17b the create identity is kept with the draft', () => {
     expect(second).toBeDefined();
     expect(second).not.toBe(first);
   });
+});
+
+it('an unknown Create keeps its operation id through a remount with blocked storage', async () => {
+  const storage: Storage = {
+    ...store(),
+    getItem: () => {
+      throw new DOMException('Storage blocked', 'SecurityError');
+    },
+    setItem: () => {
+      throw new DOMException('Storage blocked', 'SecurityError');
+    },
+  };
+  const api = await startAndLeave('unknown', storage);
+  const again = await draft({ client: api.client, storage });
+  await create(again.view);
+  const [first, second] = api.identities();
+  expect(api.identities()).toHaveLength(2);
+  expect(second, 'the reopened draft minted a new operation id').toBe(first);
+  expect(again.outcome.created).toBe(NEW_KEY);
 });
