@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the laptop GPT carve-out takes a conversation's page and earlier messages"
+}

@@ -9,15 +9,19 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import type { CorrectionAsk, ProposePort } from '../../apps/web/src/assistant/correction.ts';
-import {
-  requestPort,
-  type CorrectionTarget,
-} from '../../apps/web/src/assistant/correction-desks.ts';
+import { requestPort } from '../../apps/web/src/assistant/correction-desks.ts';
 import { SidebarCorrections } from '../../apps/web/src/views/correction-card.tsx';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { json, mount, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
+import {
+  ABOUT,
+  ABOUT_FILE,
+  aboutPage,
+  askFor,
+  controls,
+  mockPropose,
+} from './sidebar-corrections-support.tsx';
 
 afterEach(unmountAll);
 
@@ -59,38 +63,6 @@ function business(businessKey: string, state: string) {
   const client = new OperationsClient({ origin: '', businessKey, signedIn: true, fetch });
   return { client, calls };
 }
-
-/**
- * MOCK: stands in for the sidebar's `site.source.propose` until that command
- * is on main. It answers each ask with the next made-up id, or the given code.
- */
-function mockPropose(refusal: string | null = null) {
-  const asked: CorrectionAsk[] = [];
-  const port: ProposePort = (ask) => {
-    asked.push(ask);
-    return Promise.resolve(
-      refusal === null
-        ? { ok: true, correctionId: `mock-correction-${String(asked.length)}` }
-        : { ok: false, code: refusal },
-    );
-  };
-  return { port, asked };
-}
-
-type View = Awaited<ReturnType<typeof mount>>;
-
-async function askFor(view: View, ask: CorrectionAsk): Promise<void> {
-  await view.type('[data-correction-door] [name="page"]', ask.page);
-  await view.type('[data-correction-door] [name="word"]', ask.word);
-  await view.type('[data-correction-door] [name="replacement"]', ask.replacement);
-  await view.click('[data-correction-ask]');
-  await tick();
-}
-
-const ABOUT = { page: 'About', word: 'alongside', replacement: 'beside' };
-
-const controls = (view: View): string[] =>
-  view.all('[data-correction-card] button').map((button) => button.textContent ?? '');
 
 describe('the correction card says the state main’s read answers', () => {
   const cases: readonly (readonly [string, string, RegExp])[] = [
@@ -202,18 +174,6 @@ describe('the desks hold the active business’s corrections only', () => {
     expect(bravo.calls).toStrictEqual([]);
   });
 });
-
-/** MOCK: the site read that finds the About page's file, until one is on main. */
-const ABOUT_FILE: CorrectionTarget = {
-  partyId: '11111111-1111-4111-8111-111111111111',
-  taskId: '22222222-2222-4222-8222-222222222222',
-  path: 'src/pages/about.md',
-  pageUrl: 'https://client.example.test/about',
-  baseRevision: 'abc123',
-  before: '# About\n\nWe work alongside the teams who run your website.\n',
-};
-const aboutPage = (ask: CorrectionAsk): Promise<CorrectionTarget | null> =>
-  Promise.resolve(ask.page === 'About' ? ABOUT_FILE : null);
 
 describe('the door on the real command client', () => {
   it('sends live_correction.request with the located file and the one word changed', async () => {

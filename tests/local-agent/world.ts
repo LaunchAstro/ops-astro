@@ -45,13 +45,14 @@ function readLines(file: string): unknown[] {
     .map((line) => JSON.parse(line) as unknown);
 }
 
-export function makeWorld(): World {
+/** `absentHome`: the runner's home is not there yet, as on a first start. */
+export function makeWorld({ absentHome = false }: { absentHome?: boolean } = {}): World {
   const root = mkdtempSync(join(tmpdir(), 'local-agent-'));
   const userHome = join(root, 'home');
   const agentHome = join(root, 'agent');
   const codexHome = join(agentHome, 'codex');
   mkdirSync(join(userHome, '.codex'), { recursive: true });
-  mkdirSync(codexHome, { recursive: true });
+  if (!absentHome) mkdirSync(codexHome, { recursive: true });
   const calls = join(codexHome, 'calls.jsonl');
   return {
     userHome,

@@ -9,10 +9,12 @@ for. Staging has no real model yet.
 
 ## Start it
 
-1. Once: sign the runner's own Codex home in to ChatGPT. It is separate from
-   your `~/.codex`, so your own instructions and memories never reach a call:
+1. Once: make the runner's home and sign its own Codex home in to ChatGPT.
+   It is separate from your `~/.codex`, so your own instructions and memories
+   never reach a call. The launcher makes nothing until that login is there:
 
    ```sh
+   mkdir -p -m 700 ~/.ops-astro-local-agent ~/.ops-astro-local-agent/codex
    CODEX_HOME=~/.ops-astro-local-agent/codex codex login
    ```
 
