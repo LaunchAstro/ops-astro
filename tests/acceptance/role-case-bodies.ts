@@ -85,6 +85,10 @@ export interface BodyContext {
   readonly alphaTaskId: string;
   /** A person of this business, for the one field that must name one. */
   readonly assigneePersonId: string;
+  /** The admin the positive calls run as: C80's configured approver, where a harness has one. */
+  readonly adminPersonId?: string;
+  /** A live correction another member requested, for C80's approval (never the admin's own). */
+  seedCorrection?(): Promise<{ readonly correctionId: string; readonly versionId: string }>;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   /** The agent's own prefix, where a harness has one (`stopped-run.ts`). */
   asAgent?(
@@ -116,6 +120,8 @@ export interface BodyContext {
   legalEvidence?(): Promise<Readonly<Record<string, string>>>;
   /** MP-14-7a: a broken connection to repair, owner-written. */
   brokenConnection?(): Promise<string>;
+  /** MP-14-10a: a new client with one `ready` graduation row, owner-written. */
+  readyClass?(): Promise<{ readonly clientId: string; readonly classId: string }>;
 }
 
 export const batchOf = (answer: Answer): string =>

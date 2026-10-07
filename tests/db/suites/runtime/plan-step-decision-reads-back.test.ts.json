@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an approved run proposed under a plan step reads back as decided: the task read's recomputed payload digest includes the step's plan key as the proposal writer digested it"
+}

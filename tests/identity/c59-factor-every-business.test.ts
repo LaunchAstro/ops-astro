@@ -127,6 +127,7 @@ function lenientProvider(asked: string[]): FactorProvider {
     verify: () => Promise.resolve({ ok: false, fault: 'refused' }),
     remove: () => done,
     signOut: () => done,
+    verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
   };
 }
 

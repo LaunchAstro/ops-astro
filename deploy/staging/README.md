@@ -97,6 +97,15 @@ setting's value.
 Backups are never restored into staging: the restore drill takes no target and
 restores only into a throwaway container of its own.
 
+The dump from Supabase's pooler leaves out `auth`. On hosted Supabase that
+schema belongs to the platform, and staging's owner may use it but may not
+grant it. No platform role is granted to the backup identity, because each one
+would give it far more than reads. The sign-ins stay in Supabase's own project
+backup, and the reset makes staging's made-up sign-ins again. The drill passes
+without `auth`. Migration `20261006140500` stops if the backup identity cannot
+read a schema the dump names that is ours to grant, or a table in that schema
+(#999).
+
 The backup store is a database server of its own, `backups`
 (`ops-astro-staging-backups`), on staging's internal network with no port on
 the machine. Its data is on `ops-astro-staging-backups-data`, the one

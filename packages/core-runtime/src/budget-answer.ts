@@ -29,6 +29,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import {
+  deny,
   invalid,
   NOT_WAITING_FIX,
   openAnswer,
@@ -38,7 +39,14 @@ import {
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
-import { openCallOn, releaseUncounted, spentOn } from './budget-stop.ts';
+import {
+  observedRefusal,
+  openCallOn,
+  recordedRefusal,
+  releaseUncounted,
+  releaseUnstarted,
+  spentOn,
+} from './budget-stop.ts';
 import { giveBackReleased } from '../../core-custody/src/index.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
@@ -115,12 +123,22 @@ export async function topUpAtBudgetStop(
   return { ok: true, value: { state: 'applied', answerId, heldMinor } };
 }
 
-/** The plan still live, a hold to raise, the currency the envelope's, and room in the cap. */
+/**
+ * The task out of the trash, the plan still live, a hold to raise, the
+ * currency the envelope's, and room in the cap.
+ */
 async function topUpRefusal(
   tx: TenantQuery,
   request: BudgetStopTopUpRequest,
   { locked }: Opened,
 ): Promise<BudgetAnswerResult<never> | null> {
+  if (!locked.task_live) {
+    return deny(
+      'NOT_FOUND',
+      'the task this run works on is in the trash, and a trashed task takes no top-up',
+      'Restore the task to top it up, or end the work.',
+    );
+  }
   if (locked.lineage_state !== 'live' || locked.superseded) {
     return refuse(
       'LINEAGE_TERMINAL',
@@ -142,6 +160,8 @@ async function topUpRefusal(
       'End the run instead; a top-up cannot count a call left open when a person closed the hold.',
     );
   }
+  const recorded = await recordedRefusal(tx, locked);
+  if (recorded !== null) return recorded;
   if (request.currency !== locked.currency) {
     return refuse(
       'CAP_BINDING_MISMATCH',
@@ -261,6 +281,8 @@ export async function endAtBudgetStop(
   const opened = await openAnswer(tx, request, 'gate');
   if (!opened.ok) return opened;
   const { person, locked } = opened.value;
+  const refused = await observedRefusal(tx, locked.reservation_state, locked.reservation_id);
+  if (refused !== null) return refused;
   const answerId = randomUUID();
   await tx.query(
     `insert into public.budget_answers (business_id, id, ask_id, run_id, kind, first_person_id)
@@ -292,6 +314,7 @@ export async function endAtBudgetStop(
     spentMinor -= back;
     releasedMinor += back;
   }
+  releasedMinor += await releaseUnstarted(tx, request.runId, locked, answerId);
   await tx.query(
     `update public.planned_runs set state = 'cancelled' where business_id = $1 and id = $2`,
     [tx.businessId, request.runId],

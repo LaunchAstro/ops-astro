@@ -53,6 +53,8 @@ export interface QueueEntry {
   readonly lineageId: string;
   readonly purpose: string;
   readonly heldMinor: number;
+  /** Who proposed the version, so a worker takes only work it proposed itself. */
+  readonly proposedByActorId: string;
 }
 
 /**
@@ -96,9 +98,11 @@ export async function queue(
     readonly lineage_id: string;
     readonly purpose: string;
     readonly held_minor: string;
+    readonly proposed_by_actor_id: string;
   }>(
     `select res.id as reservation_id, run.task_id, run.id as run_id, res.version_id,
-            lin.id as lineage_id, ver.purpose, res.held_minor::text as held_minor
+            lin.id as lineage_id, ver.purpose, res.held_minor::text as held_minor,
+            ver.proposed_by_actor_id
        from public.reservations res
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
        join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
@@ -129,6 +133,7 @@ export async function queue(
     lineageId: row.lineage_id,
     purpose: row.purpose,
     heldMinor: Number(row.held_minor),
+    proposedByActorId: row.proposed_by_actor_id,
   }));
 }
 

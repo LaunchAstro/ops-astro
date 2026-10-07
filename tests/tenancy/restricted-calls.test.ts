@@ -228,6 +228,18 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select business_id, gen_random_uuid(), id, 'restricted calls seed', current_date,
             'https://files.example.test/seed.pdf', array['replay'], 'applied', created_by_actor_id
        from public.clients where business_id = $1 order by id limit 1 returning 1`,
+  // 20261006080000 (MP-14-10a): no journey graduates a class or files a
+  // mandate, so one of each is written here, on the business's seeded client,
+  // the mandate a live refusal by the client's author, so its own insert meets its keys.
+  'public.graduation_classes': `insert into public.graduation_classes
+       (business_id, id, client_id, action_class, class_label, earned)
+     select business_id, gen_random_uuid(), id, 'social.post', 'Social posts', 'none'
+       from public.clients where business_id = $1 order by id limit 1 returning 1`,
+  'public.standing_mandates': `insert into public.standing_mandates
+       (business_id, id, client_id, classes, refuses, expires_at, label, authored_by_actor_id)
+     select business_id, gen_random_uuid(), id, array['social.post'], true,
+            now() + interval '1 day', 'restricted calls seed', created_by_actor_id
+       from public.clients where business_id = $1 order by id limit 1 returning 1`,
   // C58: no journey ends a person's access, so an ending is written here for a
   // person's own login, as `access.end` writes one.
   'public.access_endings': `insert into public.access_endings
@@ -462,6 +474,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, person_id, state, reason)
      select business_id, id, 'away', 'restricted calls seed'
        from public.people where business_id = $1 order by id limit 1 returning 1`,
+  // 20261006074341: nothing in the journey opens a team conversation (C71-D); the member
+  // row names a record and a person of the business.
+  'public.team_conversation_members': `insert into public.team_conversation_members
+       (business_id, conversation_id, person_id)
+     select r.business_id, r.id, p.id
+       from public.records r join public.people p on p.business_id = r.business_id
+      where r.business_id = $1 order by r.id, p.id limit 1 returning 1`,
   // Nothing in the journey raises an inbox item yet (INB-1b does), so one item,
   // its recipient's attention row and one attempt are written here, in order.
   'public.inbox_items': `insert into public.inbox_items
@@ -623,6 +642,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
                  when r.rolname = 'ops_astro_upkeep' then 'upkeep'
                  when r.rolname = 'ops_astro_lease_path' then 'lease path'
+                 when r.rolname = 'ops_astro_map_path' then 'map path'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -738,6 +758,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // 20261004040200: the pickup path's role owns public.take_lease and inserts leases under row security,
     // proved in tests/db/take-lease-path.test.ts.
     expect(classes['lease path']).toStrictEqual(['ops_astro_lease_path']);
+    // 20261006181500: the map read models' role owns their four writers and writes the summary and
+    // frontier under row security, proved in tests/db/click-through-seed-map.test.ts.
+    expect(classes['map path']).toStrictEqual(['ops_astro_map_path']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -865,7 +888,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
         outcome = error instanceof RolledBack ? { kind: 'rows', n: error.n } : classify(error);
       } finally {
         // oxlint-disable-next-line no-await-in-loop
-        await asOwner(copyStatement(table), row);
+        await asOwner(copyStatement(table, true), row);
       }
       // oxlint-disable-next-line no-await-in-loop
       const after = await fingerprint(world.db.admin, table.qualified);

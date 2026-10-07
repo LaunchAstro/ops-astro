@@ -8,12 +8,11 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
-import {
-  NOW_TEXT,
-  type CommentAudience,
-  type CommentType,
-  type StoredComment,
-} from './comments.ts';
+import { type CommentAudience, type CommentType, type StoredComment } from './comments.ts';
+
+/** The server's now, or one millisecond past the comment's last edit if that is later. */
+const EDIT_TEXT = `to_char(greatest(now(), (data ->> 'edited_at')::timestamptz + interval '1 millisecond')
+  at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
 
 /** A comment row as the reads here select it (`COMMENT_COLUMNS`). */
 interface CommentRow {
@@ -27,13 +26,14 @@ interface CommentRow {
  * a person with no active membership in this business. An agent's actor has
  * no person and is the team's.
  */
-const COMMENT_COLUMNS = `r.id, r.data, exists (
+const FROM_OUTSIDE = `exists (
     select 1 from public.actors a
      where a.business_id = r.business_id and a.id::text = r.data ->> 'author'
        and a.person_id is not null
        and not exists (select 1 from public.memberships m
                         where m.business_id = a.business_id and m.person_id = a.person_id
                           and m.active)) as from_outside`;
+const COMMENT_COLUMNS = `r.id, r.data, ${FROM_OUTSIDE}`;
 
 function storedFrom(row: CommentRow): StoredComment {
   const data = row.data;
@@ -51,22 +51,36 @@ function storedFrom(row: CommentRow): StoredComment {
         : new Date(data['edited_at']),
     source: data['source'] ?? '',
     parentId: data['parent'] ?? null,
+    onBehalfOfPersonId: data['on_behalf_of'] ?? null,
     fromOutside: row.from_outside,
   };
 }
 
-/** Every comment on one task, oldest first, with nothing filtered. Storage is not the allowlist. */
+/**
+ * Every comment on one task, oldest first, with nothing filtered: storage is
+ * not the allowlist. Given `shared`, the field keys an external reader is
+ * shown, the allowlist is also in the query: only the comments addressed to
+ * the client, each with only those fields and its audience, so an internal
+ * note never leaves the database. `externalCommentProjection` still projects.
+ */
 export async function readTaskComments(
   tx: TenantQuery,
   commentTypeId: string,
   taskId: string,
+  shared?: readonly string[],
 ): Promise<readonly StoredComment[]> {
   const rows = await tx.query<CommentRow>(
-    `select ${COMMENT_COLUMNS} from public.records r
+    `select r.id,
+            case when $4::text[] is null then r.data
+                 else (select jsonb_object_agg(e.key, e.value) from jsonb_each(r.data) e
+                        where e.key = 'audience' or e.key = any($4::text[])) end as data,
+            ${FROM_OUTSIDE}
+       from public.records r
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
         and r.data ->> 'task' = $3
+        and ($4::text[] is null or r.data ->> 'audience' = 'client')
       order by r.data ->> 'posted_at', r.id`,
-    [tx.businessId, commentTypeId, taskId],
+    [tx.businessId, commentTypeId, taskId, shared ?? null],
   );
   return rows.map((row) => storedFrom(row));
 }
@@ -95,7 +109,12 @@ export async function lockComment(
   return row === undefined ? undefined : storedFrom(row);
 }
 
-/** A comment's new words and the server's time of the edit. The caller holds its lock. */
+/**
+ * A comment's new words and the server's time of the edit. The caller holds its
+ * lock. The stamp is an edit's version, so it always moves: at least one
+ * millisecond past the one before, even for two edits in one transaction,
+ * whose `now()` is the same.
+ */
 export async function rewriteComment(
   tx: TenantQuery,
   commentTypeId: string,
@@ -104,7 +123,7 @@ export async function rewriteComment(
 ): Promise<void> {
   await tx.query(
     `update public.records
-        set data = data || jsonb_build_object('body', $4::text, 'edited_at', ${NOW_TEXT})
+        set data = data || jsonb_build_object('body', $4::text, 'edited_at', ${EDIT_TEXT})
       where business_id = $1 and record_type_id = $2 and id = $3`,
     [tx.businessId, commentTypeId, commentId, body],
   );

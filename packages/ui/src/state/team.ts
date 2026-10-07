@@ -70,6 +70,8 @@ export interface GroupThread extends Readable {
   readonly members: readonly string[];
   /** The server's word that the reader holds `chat:manage` on it: its creator, the owner or an administrator. */
   readonly canManage: boolean;
+  /** The reader has left it: what they read while a member, with nothing to send or leave. */
+  readonly left: boolean;
 }
 
 /** Either kind of conversation: the thread, the unread and the marker treat them alike. */

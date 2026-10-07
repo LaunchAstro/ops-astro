@@ -155,12 +155,26 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
+  // C80's live correction: an agent may request it inside its delegation, a
+  // person decides the exact version, a named setting names who, the decision
+  // is read back; the publish, revert and receipt are system writes, not rows here.
+  | 'live_correction.request'
+  | 'live_correction.read'
+  | 'live_correction.decide'
+  | 'settings.set_live_correction_approver'
   // Wayfinder (WF-1): a map is a task of type `map`, its tickets its subtasks.
   // Retyping to or from grilling, prototype or map also asks the owner's `decide`.
   | 'task.set_type'
   | 'map.revise'
   | 'map.scope'
   | 'map.view'
+  // WF-2: chart a map, a ticket's blocking, claim and close, and fog graduating.
+  | 'map.chart'
+  | 'task.set_blocking'
+  | 'task.claim'
+  | 'map.graduate'
+  | 'task.resolve'
+  | 'task.close_out_of_scope'
   // WF-2: a map's frontier and fog, from their read models.
   | 'map.frontier'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
@@ -181,6 +195,9 @@ export type CommandName =
   | 'conversation.allowance'
   | 'conversation.rename'
   | 'conversation.set_scope'
+  // CS-7.30: the models a conversation may run on, and the one it runs on.
+  | 'conversation.models'
+  | 'conversation.set_model'
   // One priced model call, made by the lease holder through the credential
   // broker (AW-01). The grant is the run's delegation, one of the six facts
   // the broker verifies from rows; no person grant carries it.
@@ -233,6 +250,20 @@ export type CommandName =
   // own notification setting on one channel.
   | 'inbox.unattended'
   | 'notifications.set_channel'
+  // Team conversations (C71-D): a direct message on the one comment record,
+  // the reader's conversations and one conversation's messages, and the
+  // reader's own read marker.
+  | 'chat.send_direct'
+  | 'chat.conversations'
+  | 'chat.messages'
+  | 'chat.mark_read'
+  // Group conversations (C71-G): started, written to, renamed, their members
+  // changed, and left.
+  | 'chat.start_group'
+  | 'chat.send_group'
+  | 'chat.rename_group'
+  | 'chat.change_members'
+  | 'chat.leave'
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
   | 'trace.read'
   // The harness adoption test's result on one run (AW-12): the team's.
@@ -254,5 +285,9 @@ export type CommandName =
   | 'activation.roll_back'
   | 'activation.turn_off'
   | 'approval.revoke'
+  // What agent runs cost: skill costing (MP-14-9) and the agents' cost log
+  // (MP-14-6), each one read by `finance:read`, a person's only.
+  | 'finance.skill_costs'
+  | 'finance.agent_costs'
   // Setup's operations (C31 on), in `surface-setup.ts`.
   | SetupCommandName;

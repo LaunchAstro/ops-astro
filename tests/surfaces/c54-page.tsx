@@ -16,6 +16,8 @@ import { mount, type Mounted } from './mount.tsx';
 
 export const TASK_ID = '66666666-6666-4666-8666-666666666666';
 export const ATTEMPT_ID = '77777777-7777-4777-8777-777777777777';
+/** The shown attempt's run, which a budget stop on the page sits on. */
+export const RUN_ID = '88888888-8888-4888-8888-888888888888';
 
 export const pause = (): Promise<void> =>
   new Promise((resolve) => {
@@ -58,7 +60,7 @@ function lineageOf(world: World) {
         payloadDigest: 'digest-54',
         payload: {},
         supersededAt: null,
-        runId: 'run-54',
+        runId: RUN_ID,
         checks: [],
         evidence: null,
         gate: {
@@ -76,7 +78,7 @@ function lineageOf(world: World) {
       {
         id: 'res-54',
         envelopeId: 'env-54',
-        runId: 'run-54',
+        runId: RUN_ID,
         state: 'held',
         heldMinor: 1_800,
         actualMinor: null,

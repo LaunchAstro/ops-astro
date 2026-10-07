@@ -12,6 +12,7 @@
 import type {
   AwaitingReviewResult,
   ConversationListResult,
+  ConversationModelsResult,
   ConversationReadResult,
   ProposalVersionView,
   ProposalView,
@@ -214,6 +215,7 @@ export const AGENT_READS: {
   readonly 'gate.pending': AwaitingReviewResult;
   readonly 'conversation.list': ConversationListResult;
   readonly 'conversation.read': ConversationReadResult;
+  readonly 'conversation.models': ConversationModelsResult;
 } = {
   'gate.pending': {
     ok: true,
@@ -274,5 +276,14 @@ export const AGENT_READS: {
     ],
     wrapUp: null,
     wrapUpHistory: [],
+  },
+  // The drawer's picker (CS-7.30): the replay stand-in's model and the laptop runner's default.
+  'conversation.models': {
+    ok: true,
+    models: [
+      { id: 'replay-1', provider: 'replay', reach: 'local', ceilingMinor: 500 },
+      { id: 'gpt-6.1-sol', provider: 'local_gpt', reach: 'cloud', ceilingMinor: 100 },
+    ],
+    chosen: null,
   },
 };

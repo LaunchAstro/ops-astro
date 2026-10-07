@@ -78,7 +78,14 @@ export async function tagsOfTask(tx: TenantQuery, taskId: string): Promise<reado
   );
 }
 
-/** A live task of this business carrying the id, and a tag of its vocabulary. */
+/**
+ * A live task of this business carrying the id, and a tag of its vocabulary.
+ *
+ * The task is read `for share`, held to the end of the transaction: a trash
+ * or purge holding the row makes this wait, and once it commits the row is
+ * read again, deleted, so the tag never lands on a task that is gone. The
+ * key lock a plain insert takes does not wait for a trash's update.
+ */
 async function bothHere(
   tx: TenantQuery,
   taskId: string,
@@ -86,18 +93,19 @@ async function bothHere(
 ): Promise<'task' | 'tag' | undefined> {
   if (!isUuid(taskId)) return 'task';
   if (!isUuid(tagId)) return 'tag';
-  const rows = await tx.query<{ readonly task: boolean; readonly tag: boolean }>(
-    `select exists (
-              select 1 from public.records r
-                join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-               where r.business_id = $1 and r.id = $2::uuid and r.deleted_at is null and t.key = 'task'
-            ) as task,
-            exists (select 1 from public.tags where business_id = $1 and id = $3::uuid) as tag`,
-    [tx.businessId, taskId, tagId],
+  const task = await tx.query<{ readonly id: string }>(
+    `select r.id from public.records r
+       join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+      where r.business_id = $1 and r.id = $2::uuid and r.deleted_at is null and t.key = 'task'
+      for share of r`,
+    [tx.businessId, taskId],
   );
-  const row = rows[0];
-  if (row?.task !== true) return 'task';
-  return row.tag ? undefined : 'tag';
+  if (task.length === 0) return 'task';
+  const tag = await tx.query<{ readonly id: string }>(
+    `select id from public.tags where business_id = $1 and id = $2::uuid`,
+    [tx.businessId, tagId],
+  );
+  return tag.length === 0 ? 'tag' : undefined;
 }
 
 export async function addTaskTag(

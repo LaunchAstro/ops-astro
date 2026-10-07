@@ -6,9 +6,9 @@
 // asked while it was on its way.
 
 import { useRef, useState } from 'react';
-import type { AssistantRole } from '@launchastro/ui';
+import type { AssistantCite, AssistantRole } from '@launchastro/ui';
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
-import { initial, said, type AssistantState, type Chat } from './chats.ts';
+import { initial, keyIn, said, type AssistantState, type Chat } from './chats.ts';
 import { usePlanCards } from './plans.ts';
 
 type Move = (state: AssistantState) => AssistantState;
@@ -19,7 +19,13 @@ export interface Store {
   /** The state as the last move left it, for a step that resumes after a wait. */
   readonly now: () => AssistantState;
   readonly chat: (key: string) => Chat | undefined;
-  readonly line: (key: string, role: AssistantRole, body: string, after?: string) => string;
+  readonly line: (
+    key: string,
+    role: AssistantRole,
+    body: string,
+    after?: string,
+    cites?: readonly AssistantCite[],
+  ) => string;
   /** A reply's plan as the tab's newest card, and the offer kept for its click. */
   readonly plan: (key: string, body: string, offer: PlanOffer, after?: string) => void;
   readonly offer: (id: string) => PlanOffer | undefined;
@@ -37,8 +43,9 @@ function placed(state: AssistantState, key: string, after?: string): AssistantSt
   return { ...state, chats };
 }
 
-export function useStore(): Store {
-  const [state, setState] = useState(initial);
+/** The drawer's store, starting from `start` (one fresh tab unless told otherwise). */
+export function useStore(start: () => AssistantState = initial): Store {
+  const [state, setState] = useState(start);
   const latest = useRef(state);
   const count = useRef(0);
   const update = (move: Move): void => {
@@ -50,16 +57,18 @@ export function useStore(): Store {
     state,
     update,
     now: () => latest.current,
-    chat: (key) => latest.current.chats.find((each) => each.key === key),
-    line: (key, role, body, after) => {
+    chat: (key) => latest.current.chats.find((each) => each.key === keyIn(latest.current, key)),
+    line: (key, role, body, after, cites = []) => {
       count.current += 1;
       const id = `${role}-${String(count.current)}`;
-      update((current) => placed(said(current, key, { id, role, body, cites: [] }), key, after));
+      const into = keyIn(latest.current, key);
+      update((current) => placed(said(current, into, { id, role, body, cites }), into, after));
       return id;
     },
     plan: (key, body, offer, after) => {
-      cards.plan(key, body, offer);
-      update((current) => placed(current, key, after));
+      const into = keyIn(latest.current, key);
+      cards.plan(into, body, offer);
+      update((current) => placed(current, into, after));
     },
     offer: cards.offer,
   };

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's live correction decision: only the configured approver, a staff member, approves; the requester never approves their own change; the approval names the pinned version."
+}

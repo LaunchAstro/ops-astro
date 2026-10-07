@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a run-state write whose run grant was revoked during the run lock wait is refused, and appends nothing"
+}

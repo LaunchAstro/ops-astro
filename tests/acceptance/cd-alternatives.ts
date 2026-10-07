@@ -2,11 +2,10 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 17 of the 72. For each of the other 55 this file
+// `recordId`, which reaches 17 of the 75. For each of the other 58 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
-//
 // A harness, not a suite: nothing here runs on its own.
 
 import { randomUUID } from 'node:crypto';
@@ -25,23 +24,25 @@ export const CASE = {
   tag: 'refuses a foreign and a fabricated task alike on the tag commands',
   duplicate: 'refuses a duplicate of a foreign and a fabricated task alike',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
+  liveCorrection: 'refuses a foreign and a fabricated correction or task alike (C80)',
   conversation:
     'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
 
 /**
- * The fifty-one operations that name no identifier, each with a minimal valid body.
- *
- * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
- * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
- * 113, root ruling 3). There is no foreign target to compare with a fabricated
- * one, so their matrix row is "not applicable" with that reason.
+ * The fifty-seven operations that name no identifier, each with a minimal valid body.
+ * A positive request moves and shows nothing of bravo's, and a `recordId` aimed at bravo is
+ * refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line 113, root ruling 3). There is no
+ * foreign target to compare with a fabricated one, so their matrix row is "not applicable".
  */
 export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['task.create', { fields: { title: 'a task made while bravo is watched' } }],
+  // WF-2: a chart files a new map and its tickets, naming no existing record.
+  ['map.chart', { title: 'a map charted while bravo is watched' }],
   ['task.purge', {}],
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
+  ['settings.set_live_correction_approver', { value: null }],
   ['settings.set_money_step_up', { value: true }],
   ['settings.set_conversation_window', { value: 14 }],
   ['settings.set_retention_window', { value: 90 }],
@@ -66,9 +67,12 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   // Custody (C31): the list and a set of a business-wide key name no row.
   ['secret.list', {}],
   ['secret.set', { name: 'target-free.key', value: 'target-free-value' }],
-  // The connector fleet (MP-14-7a) names no row.
+  // Connections (MP-14-7a, MP-14-10a) and agent run costs (MP-14-9, MP-14-6) name no row.
   ['connection.fleet', {}],
   ['connection.signal', {}],
+  ['connection.graduation', {}],
+  ['finance.skill_costs', {}],
+  ['finance.agent_costs', { from: '2026-01-01T00:00:00.000Z', to: '2100-01-01T00:00:00.000Z' }],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
   // AW-04: a digest names a file's bytes, not a record of any business.
@@ -152,13 +156,15 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['inbox.count', {}],
   ['inbox.unattended', {}],
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
+  // The reader's own team conversations (C71-D).
+  ['chat.conversations', {}],
   // C39-T: a new invitation names a person and an address, no record.
   ['invitation.create', { name: 'Invited Ivy', email: 'ivy@example.test', role: 'member' }],
   // The Workflow triggers registry (C33) names no row.
   ['automation.registry', {}],
 ];
 
-/** The fifty-five identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The sixty-four identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -168,6 +174,10 @@ export const IDENTIFIER_BEARING: Readonly<
   'grant.revoke': ['grantId', 'control'],
   'secret.clear': ['secretId', 'control'],
   'connector.repair': ['connectionId', 'control'],
+  'mandate.file': ['clientId', 'control'],
+  'mandate.revoke': ['mandateId', 'control'],
+  'graduation.promote': ['classId', 'control'],
+  'graduation.demote': ['classId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.accept_plan': ['gateId', 'gate'],
@@ -184,12 +194,17 @@ export const IDENTIFIER_BEARING: Readonly<
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
   'budget.write_off': ['attemptId', 'control'],
+  'live_correction.request': ['taskId', 'liveCorrection'],
+  'live_correction.decide': ['correctionId', 'liveCorrection'],
+  'live_correction.read': ['correctionId', 'liveCorrection'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   // AW-04: the drawer's allowance names the caller's own conversation, or none.
   'conversation.allowance': ['conversationId', 'conversation'],
   'conversation.rename': ['conversationId', 'conversation'],
   'conversation.set_scope': ['conversationId', 'conversation'],
+  'conversation.models': ['conversationId', 'conversation'],
+  'conversation.set_model': ['conversationId', 'conversation'],
   'run.top_up': ['runId and recordId', 'control'],
   'run.end_at_budget_stop': ['runId and recordId', 'control'],
   'run.revise_state': ['runId and recordId', 'control'],
@@ -224,10 +239,20 @@ export const IDENTIFIER_BEARING: Readonly<
   'approval.revoke': ['approvalId', 'control'],
 };
 
-/**
- * The named row for an operation the (c) and (d) cells do not reach, or
- * `undefined` for one this file does not know, which the matrix throws on.
- */
+/** Identifier-bearing operations compared in their own isolation suite, not identifier-negatives. */
+const OWN_SUITE: Readonly<Partial<Record<CommandName, readonly [operand: string, suite: string]>>> =
+  {
+    'chat.send_direct': ['teammateId', 'c71-d'],
+    'chat.messages': ['conversationId', 'c71-d'],
+    'chat.mark_read': ['conversationId', 'c71-d'],
+    'chat.start_group': ['members', 'c71-g'],
+    'chat.send_group': ['conversationId', 'c71-g'],
+    'chat.rename_group': ['conversationId', 'c71-g'],
+    'chat.change_members': ['conversationId', 'c71-g'],
+    'chat.leave': ['conversationId', 'c71-g'],
+  };
+
+/** The named row for one the (c) and (d) cells miss; `undefined` if unknown (the matrix throws). */
 export function alternativeFor(name: CommandName): string | undefined {
   const bearing = IDENTIFIER_BEARING[name];
   if (bearing !== undefined) {
@@ -237,9 +262,15 @@ export function alternativeFor(name: CommandName): string | undefined {
       `and a fabricated ${operand} by status and raw bytes, audited at home (ledger I03)`
     );
   }
+  const own = OWN_SUITE[name];
+  if (own !== undefined) {
+    return (
+      `executed alternative: ${own[1]}-isolation.test.ts compares a foreign and a fabricated ` +
+      `${own[0]} by status and raw bytes, audited at home`
+    );
+  }
   if (name === 'run.child_handback') {
-    // AW-11: the body names nothing; the helper's own child credential is the
-    // target, so a foreign one and a made-up one are the operand compared.
+    // AW-11: the body names nothing; the target is the helper's own child credential.
     return (
       'executed alternative: aw-11-child-commands-isolation.test.ts "another business" ' +
       "compares another business's child credential and a fabricated one by status and bytes"

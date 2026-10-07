@@ -28,9 +28,18 @@ export interface AccessGrant {
   readonly clientId: string | null;
 }
 
-/** The business's one lock for a change to who may do what. */
-export async function lockAccess(tx: TenantQuery): Promise<void> {
-  await advisoryLock(tx, `access:${tx.businessId}`);
+/** The business's one lock for a change to who may do what; a write's judgement holds it shared. */
+export async function lockAccess(tx: TenantQuery, mode?: 'shared'): Promise<void> {
+  await advisoryLock(tx, `access:${tx.businessId}`, mode);
+}
+
+/**
+ * The same lock shared, for a write that only needs no change to who may do
+ * what to commit under it (team chat, C71-D): such writes do not queue behind
+ * each other, and every holder of `lockAccess` waits for them, and they for it.
+ */
+export async function shareAccessLock(tx: TenantQuery): Promise<void> {
+  await advisoryLock(tx, `access:${tx.businessId}`, 'shared');
 }
 
 /**

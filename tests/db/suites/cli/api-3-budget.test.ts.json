@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the brief and standard levels and the page size keep an agent's reads of a 40-ticket fixture map within their token budgets"
+}

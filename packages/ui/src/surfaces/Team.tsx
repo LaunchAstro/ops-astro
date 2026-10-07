@@ -89,6 +89,14 @@ function markRead(
   if (thread !== undefined && upTo !== null && unreadOf(thread, me) > 0) move(upTo);
 }
 
+/** A group's send, or null once the reader has left it: they read what they had, and send nothing. */
+function sendTo(talk: TeamConversations, group: GroupThread): ((body: string) => void) | null {
+  if (group.left) return null;
+  return (body) => {
+    talk.onGroup({ do: 'send', id: group.id, body });
+  };
+}
+
 function OpenConversation(props: {
   readonly talk: TeamConversations;
   readonly me: string;
@@ -130,16 +138,17 @@ function OpenConversation(props: {
         to={group.name}
         thread={group}
         me={me}
-        onRead={onRead}
-        onSend={(body) => {
-          talk.onGroup({ do: 'send', id: group.id, body });
-        }}
+        onRead={group.left ? null : onRead}
+        onSend={sendTo(talk, group)}
       />
     </>
   );
 }
 
-/** Read the selected conversation: the direct marker by `onMarkRead`, a group's by its `read` action. */
+/**
+ * Read the selected conversation: the direct marker by `onMarkRead`, a group's
+ * by its `read` action, and a group the reader has left not at all.
+ */
 function reader(talk: TeamConversations, me: string): (which: Selected) => void {
   return (which) => {
     if (which?.kind === 'person') {
@@ -148,13 +157,12 @@ function reader(talk: TeamConversations, me: string): (which: Selected) => void 
         talk.onMarkRead(which.id, upTo);
       });
     } else if (which?.kind === 'group') {
-      markRead(
-        talk.groups.find((g) => g.id === which.id),
-        me,
-        (upTo) => {
-          talk.onGroup({ do: 'read', id: which.id, upTo });
-        },
-      );
+      const group = talk.groups.find((g) => g.id === which.id);
+      // A group the reader has left keeps no marker for them: the server refuses one.
+      if (group?.left === true) return;
+      markRead(group, me, (upTo) => {
+        talk.onGroup({ do: 'read', id: which.id, upTo });
+      });
     }
   };
 }

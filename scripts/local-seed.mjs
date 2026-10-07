@@ -113,6 +113,12 @@ const GRANTS_BY_ROLE = {
     ['custody', 'manage'],
     // The connector fleet on Connections & signal (MP-14-7a).
     ['connection', 'read'],
+    // What agent runs cost (MP-14-9, MP-14-6): the key catalogue's `finance:read`.
+    ['finance', 'read'],
+    // Standing mandates and graduation (MP-14-10a): filing, revoking,
+    // promoting and demoting are `mandate:manage`, the owner's and
+    // administrators' and never an agent's; a money key, so C59's step-up.
+    ['mandate', 'manage'],
     // A person's own conversations with the agent (AW-03): the owner and
     // administrators hold `conversation:write` (the permission key catalogue).
     // `conversation:read`, the read-any grant, is seeded to nobody: it is given
@@ -148,6 +154,12 @@ const GRANTS_BY_ROLE = {
     // `spend:decide`, so C59's step-up judges it. Client sign-off and the
     // step-up switch stay `settings:manage` above.
     ['spend', 'decide'],
+    // Team conversations (C71-D): `chat:comment`, an agency member's key;
+    // within a conversation the query holds it to its members.
+    ['chat', 'comment'],
+    // Group conversations (C71-G): `chat:manage`, a group's creator's and the
+    // owner's and administrators', renames one and changes its members.
+    ['chat', 'manage'],
     // Settings ▸ Workflow triggers (C33): releasing a definition version is
     // `automation:manage`, the owner's and administrators' and never an agent's.
     ['automation', 'manage'],
@@ -162,6 +174,9 @@ const GRANTS_BY_ROLE = {
     // their own work stops at a second approver. The write is the admin's:
     // `settings:manage` is not widened by this line.
     ['settings', 'read'],
+    // Team conversations (C71-D): `chat:comment` is every agency member's
+    // key (the catalogue's default holders), not the administrators' alone.
+    ['chat', 'comment'],
   ],
   none: [],
   // The external party holds no business grant, and must not: a person with no

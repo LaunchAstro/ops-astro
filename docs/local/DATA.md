@@ -372,6 +372,13 @@ its one insert as the application's; its search path is `pg_catalog, pg_temp`, P
 nothing answers null. `tests/db/take-lease-path.test.ts` and
 `tests/db/lease-holder-guard.test.ts` prove it.
 
+The map read models' four writers (`map_summary_refresh` and its three
+triggers, WF-1) follow the same pattern (migration 20261006181500): they belong
+to `ops_astro_map_path` (no login, no bypass, not the owner), which reads what
+they count and writes `map_summaries` and `map_frontier` under row security, so
+the made-up guard judges a map edit on staging as the application's.
+`tests/db/click-through-seed-map.test.ts` proves it.
+
 `ops_astro_occurrence` (migration 0097, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's
 `business_id`, `id` and `revision` (for 0032's trigger), the columns of
@@ -547,6 +554,20 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 - `team.list {}` → the staff with an active membership and each one's
   availability (`person_availability`, 0066, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`
+- `chat.conversations {}` → the reader's own team conversations, direct
+  (C71-D) and group (C71-G), each with its kind, a group's name, its current
+  members and its unread, derived from the reader's own marker
+  (`team_conversation_members.last_read_at`, 20261006074341, set only by that person);
+  the reader's member row is the query's filter, so nobody else's is listed.
+  To a member who has left or been removed, a group shows no name and no
+  members: nothing of it changed after they left. Each carries when the
+  reader's own current membership began (`joined_at`, never another member's),
+  null to one who has left, so a group rejoined reads later
+- `chat.messages { conversationId }` → one of the reader's conversations'
+  messages: `task_comment` records with audience `direct` or `group`, anchored
+  by their `conversation` field, written while the reader was a member (from
+  `joined_at` to `left_at`; a re-added member's window starts again at the new
+  join); any other is `NOT_FOUND`
 
 The other six, `task.queue`, `task.ledger`, `preset.plan`, `settings.read`,
 `session.capabilities` and `access.read` (Settings ▸ Access, C32, under
@@ -910,3 +931,32 @@ their own business by foreign key. Every column drawn as words is the
 application may only select both; the checks and the round write them (not
 built). Tenancy-keyed with the restrictive policy. The records are
 `packages/core-records/src/connections/signal.ts`.
+
+## Occurrence intake (20261006092531, C33)
+
+An occurrence may also be `over_activation_rate`, `over_business_rate` or
+`over_intake_bound` (`activation_occurrences_outcome_known`): past its
+activation's 60 an hour, its business's 600 an hour, or its business's queue
+of 1,000 approved events with no dispatch. None names an approval or starts a
+run. Each count is read back from these rows under AW-01's durable limit
+(`hasRoom`), so there is no counter column. A run over the business's ceiling
+of five activation runs in flight writes nothing: its occurrence stays
+`approved` with no dispatch, which is how it shows as waiting. When dispatch
+starts the run, AW-01 J writes it (`planned_runs.origin_occurrence_id`, 0097) and the dispatch row names it.
+The keys 0097 deferred join here: a run's origin occurrence and definition
+are rows of its own business (`planned_runs_origin_occurrence_fkey`,
+`planned_runs_origin_definition_fkey`), and a dispatch's run is the run its
+own occurrence started (`occurrence_dispatches_run_fkey` on business, run and
+occurrence). That the origin occurrence was approved is still the code's
+check, under the activation lock.
+
+## A conversation's model (20261006205800, CS-7.30)
+
+`conversations.model_id` is the model the conversation runs on, null until
+`conversation.set_model` sets it from the models offered it (null is the
+deployment's default). It holds 0098's model id shape
+(`conversations_model_id_shape`), so a stored choice is always an id a call
+row could hold. The exchange asks again whether it is still offered before
+any call; the call records the model the answer named (`model_calls.model_id`).
+The table's grants already cover it, and the purge keeps it, as it keeps the
+title and the page.

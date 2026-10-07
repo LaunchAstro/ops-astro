@@ -22,7 +22,6 @@ import {
   listTags,
   readPreferences,
   subjectsOf,
-  taskAccess,
 } from '../../../core-records/src/index.ts';
 import { readAlerts, readOutages, readTaskTrace } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
@@ -32,8 +31,6 @@ import {
   refuseNotFound,
   type CommandRefusal,
 } from '../commands/refusal.ts';
-import type { TaskSpine } from '../commands/context.ts';
-import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import { isInternalReader, readSharedTask, readTaskDetail, resolveTaskId } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
 import { readMapFrontier, readMapView } from './maps.ts';
@@ -48,136 +45,38 @@ import { readSettings } from './settings.ts';
 import { listCustodySecrets } from './custody.ts';
 import { readConnectionFleet } from './connections.ts';
 import { readConnectionSignal } from './signal.ts';
+import { readConnectionGraduation } from './graduation.ts';
+import { parseCostPeriod, readAgentCosts } from './agent-costs.ts';
+import { parseNoCostOperands, readSkillCosts } from './costs.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
+import { readConversationModels } from './conversation-models.ts';
 import { readAllowance } from './allowance.ts';
 import { DIGEST, readAttribution } from './attribution.ts';
 import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { readHarnessTrigger } from './harness-trigger.ts';
+import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
 import { readAutomationRegistry } from './automations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
+import { boardPage, readerBlockers, sharedRead, taskAt, withPaging } from './detail.ts';
+import { readChatConversations, readChatMessages } from './chat.ts';
 
-export type ReadName = ReadRequest['read'];
-
-/** One read's request, narrowed by name and still unchecked. */
-export type ReadOf<K extends ReadName> = ReadRequest & { readonly read: K };
-
-/** A read's body checked: its operands, or the refusal the body earned. */
-export type Parsed<K extends ReadName> =
-  | { readonly ok: true; readonly operands: ReadOperands[K] }
-  | { readonly ok: false; readonly refusal: CommandRefusal };
-
-/** What the pipeline found for a row that reads the spine, before it is served. */
-export interface Found {
-  readonly spine: TaskSpine;
-  /** The one record the read is about, resolved; absent for a business read. */
-  readonly recordId: string | undefined;
-}
-
-interface RowBase<K extends ReadName> {
-  /**
-   * The identifier fields the read takes (root ruling 3). Any other is refused
-   * `COMMAND_BODY_INVALID`, as on the command path: a body whose identifier
-   * the server quietly ignores is a body the caller believes was honoured, and
-   * a read that ignored it cannot claim to have looked it up.
-   */
-  readonly identifiers: readonly string[];
-  /**
-   * The operands the read cannot be asked without, checked before any lookup
-   * so an absent or mistyped one is a refusal and not a fault at a bound
-   * parameter (checklist B7), and audited like every other refused read (I13).
-   * What it hands back is all the row's later steps are given.
-   */
-  readonly parse: (body: Readonly<Record<string, unknown>>) => Parsed<K>;
-  /**
-   * How the grant check is asked. `declared`: the row's own collection and
-   * action, at the subject's record scope or the business's. A function: the
-   * collection it names instead. `holds-any-grant`: no collection is asked;
-   * the read refuses a caller holding nothing (see `session.capabilities`).
-   * `declared-within`: a list read. For an external party, as `declared`.
-   * For a member, the row's `serve` decides from one read of their grants:
-   * a business grant answers every record with the withheld count (B-22), a
-   * grant on some records answers those and no count (a client login, owner
-   * answer 22), no grant is refused.
-   * `self`: no grant is asked; the answer is about the caller alone and names
-   * nobody else (`session.person`), or serves the caller's own rows only and
-   * derives access on each (the inbox).
-   */
-  readonly authority:
-    | 'declared'
-    | 'declared-within'
-    | 'holds-any-grant'
-    | 'self'
-    | ((operands: ReadOperands[K]) => string);
-  /**
-   * Whether an external party refused by the grant check is told `NOT_FOUND`
-   * rather than `SCOPE_NOT_GRANTED` (minimum contract 8.2 case 7: "Sibling
-   * tasks and the board are NOT_FOUND"). `SCOPE_NOT_GRANTED` means "in this
-   * business, exists, not yours", which is the fact an outsider must not learn
-   * about a sibling. A member keeps the in-tenant code (I05).
-   */
-  readonly outsiderNotFound: boolean;
-}
-
-/**
- * A read that needs the installed task type's identifiers. The pipeline reads
- * them before the grant check, and `subject` and `serve` are handed them, so
- * neither has a missing spine to answer.
- */
-export interface SpineRow<K extends ReadName> extends RowBase<K> {
-  readonly spine: true;
-  /**
-   * The one record the read is about, resolved before the grant check and
-   * never after it: a record-scoped grant is a grant on a record, not on
-   * whichever spelling the caller used. Absent on a read about the business.
-   */
-  readonly subject?: (
-    tx: TenantQuery,
-    spine: TaskSpine,
-    operands: ReadOperands[K],
-  ) => Promise<string | undefined>;
-  /**
-   * The row's own gate, asked after the grant and before `serve`: false is
-   * `NOT_FOUND`. It is apart from `serve` so a check that shows the person
-   * nothing can ask it without serving (`admitRead`).
-   */
-  readonly admits?: (tx: TenantQuery, session: Session, found: Found) => Promise<boolean>;
-  /**
-   * A list read's admission (`declared-within`), which its `serve` decides
-   * from the read of the caller's grants: the refusal `serve` would answer,
-   * or none. Apart from `serve` so `admitRead` refuses what the read refuses
-   * without serving it.
-   */
-  readonly listRefusal?: (
-    tx: TenantQuery,
-    session: Session,
-    operands: ReadOperands[K],
-    found: Found,
-  ) => Promise<CommandRefusal | undefined>;
-  readonly serve: (
-    tx: TenantQuery,
-    session: Session,
-    operands: ReadOperands[K],
-    found: Found,
-  ) => Promise<ReadResult | CommandRefusal>;
-}
-
-/** A read about the business that needs no spine and names no record. */
-export interface BusinessRow<K extends ReadName> extends RowBase<K> {
-  readonly spine: false;
-  readonly serve: (
-    tx: TenantQuery,
-    session: Session,
-    operands: ReadOperands[K],
-  ) => Promise<ReadResult | CommandRefusal>;
-}
-
-export type ReadRow<K extends ReadName> = SpineRow<K> | BusinessRow<K>;
+// A row's shape, in its own file (line cap).
+export type {
+  BusinessRow,
+  Found,
+  Parsed,
+  ReadName,
+  ReadOf,
+  ReadRow,
+  SpineRow,
+} from './read-row.ts';
+import type { Parsed, ReadName, ReadRow } from './read-row.ts';
 
 /**
  * An array of field maps. That is all a read checks of a preset's fields: the
@@ -360,11 +259,22 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     serve: async (tx, session, { conversationId }) =>
       await readAllowance(tx, session, conversationId),
   },
+  // CS-7.30: the drawer's model picker. The rule is the read's own, as the
+  // allowance's is; the conversation is optional and must be the caller's own.
+  'conversation.models': {
+    identifiers: ['conversationId'],
+    parse: ({ conversationId }) => parsed({ conversationId }),
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, { conversationId }) =>
+      await readConversationModels(tx, session, conversationId),
+  },
   'task.read': {
     identifiers: ['recordId'],
-    parse: ({ recordId }) =>
-      typeof recordId === 'string'
-        ? parsed({ recordId })
+    parse: (body) =>
+      typeof body['recordId'] === 'string'
+        ? withPaging(body, { recordId: body['recordId'] })
         : rejected('recordId', 'Send recordId as the task’s identifier or its key.'),
     spine: true,
     // The lookup answers nobody: a caller with no grant is refused after it
@@ -374,7 +284,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
     authority: 'declared',
     outsiderNotFound: true,
-    async serve(tx, session, _operands, { spine, recordId }) {
+    async serve(tx, session, operands, { spine, recordId }) {
       if (recordId === undefined) return refuseNotFound();
       // Internal readers get the detail; everyone else, the external party
       // first among them, gets the shared view, which is built from the
@@ -386,7 +296,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
           recordId,
           spine.taskCommentTypeId,
         );
-        return sharedTask === undefined ? refuseNotFound() : { ok: true, sharedTask };
+        return sharedTask === undefined
+          ? refuseNotFound()
+          : sharedRead(operands.detail, sharedTask);
       }
       // An agent credential's call stands as its person but is an agent's
       // (API-2, I09): it reads what the agent prefix reads, never as an
@@ -408,14 +320,19 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
       // The Client field's facts (MP-4-8) go to a member alone: an agent's
-      // detail and the shared view carry neither.
-      return {
-        ok: true,
-        task: agent
-          ? task
-          : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) },
-        states: await readStateChoices(tx, spine.taskStateTypeId),
-      };
+      // detail and the shared view carry neither, at any detail level.
+      const shown = agent
+        ? task
+        : { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) };
+      if (operands.detail !== undefined) {
+        const blockers = await readerBlockers(tx, session, recordId);
+        return {
+          ok: true,
+          detail: operands.detail,
+          view: taskAt(operands.detail, shown, blockers),
+        };
+      }
+      return { ok: true, task: shown, states: await readStateChoices(tx, spine.taskStateTypeId) };
     },
   },
   'task.board': {
@@ -424,9 +341,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     // not, and answering it with that list gave a body that asked nothing
     // the answer to a question it never put. A string is
     // looked up, and refused `NOT_FOUND` there if it names nothing here.
-    parse: ({ board }) =>
-      typeof board === 'string' || board === null
-        ? parsed({ board })
+    parse: (body) =>
+      typeof body['board'] === 'string' || body['board'] === null
+        ? withPaging(body, { board: body['board'] })
         : rejected(
             'board',
             'Send board as a board task’s identifier, or null for tasks on no board.',
@@ -461,7 +378,11 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
       // `viewer` is the caller's own person, the one the viewer preset
       // narrows to (MP-5-12), and `owed` their own count as `inbox.count` gives it.
-      const [viewer, owed] = [session.personId, await countOwed(tx, session.personId)];
+      const { board: _board, ...paging } = operands;
+      const page = boardPage(tasks, paging);
+      if (page !== undefined) return page;
+      const viewer = session.personId;
+      const owed = await countOwed(tx, viewer, subjectsOf(session));
       return scope.business
         ? { ok: true, tasks, changedAt, viewer, owed, withheld: 0 }
         : { ok: true, tasks, changedAt, viewer, owed };
@@ -746,6 +667,36 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session) => await readConnectionSignal(tx, session),
   },
+  // Every client the caller's `connection:read` scopes reach at once, so the
+  // scope bar asks nothing (MP-14-10a); held nowhere is refused, not empty.
+  'connection.graduation': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionGraduation(tx, session),
+  },
+  // What agent runs cost, asked per row by the scopes the caller holds
+  // `finance:read` at, as `connection.fleet` is by `connection:read`: a caller
+  // holding it nowhere, or sending a key the read does not take, is refused
+  // inside the read.
+  'finance.skill_costs': {
+    identifiers: [],
+    parse: parseNoCostOperands,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, operands) => await readSkillCosts(tx, session, operands),
+  },
+  'finance.agent_costs': {
+    identifiers: [],
+    parse: parseCostPeriod,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, period) => await readAgentCosts(tx, session, period),
+  },
   // No subject record, for the reason `task.queue` gives: the settings are
   // the business's own configuration rather than one record, and there is no
   // `settings` row in `records` to name in the column even if there were.
@@ -899,7 +850,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session) =>
       (await holdsAnyGrant(tx, session))
-        ? { ok: true, owed: await countOwed(tx, session.personId) }
+        ? { ok: true, owed: await countOwed(tx, session.personId, subjectsOf(session)) }
         : NO_GRANT_AT_ALL,
   },
   // Every path to a person broken (INB-1e): `operations:read` on the business,
@@ -914,6 +865,28 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       ok: true,
       unattended: await readUnattendedInbox(tx, session.personId),
     }),
+  },
+  // Team conversations (C71-D): `chat:comment` on the business, and the
+  // reader's own membership inside each query. Staff only.
+  'chat.conversations': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: true,
+    serve: async (tx, session) => await readChatConversations(tx, session),
+  },
+  'chat.messages': {
+    identifiers: ['conversationId'],
+    parse: ({ conversationId }) =>
+      isUuid(conversationId)
+        ? parsed({ conversationId })
+        : rejected('conversationId', 'Send conversationId as a conversation’s identifier.'),
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: true,
+    serve: async (tx, session, { conversationId }) =>
+      await readChatMessages(tx, session, conversationId),
   },
   // AW-13 readers: a task's runs' trace. `operations:read` (C55: the owner and
   // administrators by install default, never a member, never an agent) at the
@@ -933,12 +906,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (
         recordId === undefined ||
         !isInternalReader(session.roleKey) ||
-        !(await liveTask(tx, spine.taskTypeId, recordId)) ||
-        (await taskAccess(tx, session.personId, recordId)) !== 'readable'
+        !(await liveTask(tx, spine.taskTypeId, recordId))
       ) {
         return refuseNotFound();
       }
-      return { ok: true, trace: { taskId: recordId, ...(await readTaskTrace(tx, recordId)) } };
+      const trace = await readTaskTrace(tx, recordId, session.personId);
+      return trace === null
+        ? refuseNotFound()
+        : { ok: true, trace: { taskId: recordId, ...trace } };
     },
   },
   // AW-12: the harness test's result on one run. No subject record and no
@@ -958,6 +933,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const harness = await readHarnessTrigger(tx, session, runId);
       return 'refused' in harness ? harness : { ok: true, harness };
     },
+  },
+  // C80: a correction's decision; `run:write` at its party, asked inside the query.
+  'live_correction.read': {
+    identifiers: ['correctionId'],
+    parse: parseCorrectionRead,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    disclosed: (answer) => ('correction' in answer ? answer.correction.correctionId : undefined),
+    serve: serveCorrectionRead,
   },
   // The business's definitions, versions and activations (C33): asked like
   // `settings.read`, at the business, since no row carries a client.

@@ -3,8 +3,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { createFromDraft } from '../../apps/web/src/screens/task/draft-parts.ts';
 import {
-  createFromDraft,
   emptyDraft,
   keepDraft,
   newAttempt,

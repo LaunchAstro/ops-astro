@@ -6,13 +6,14 @@
 // `useDockPanel` holds the panel's state for the application: the host a
 // screen opens rows through, and what the dock draws.
 
-import type { ReactElement } from 'react';
+import { useCallback, type ReactElement } from 'react';
 import { pathTo } from '../../routes.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { Session } from '../../session/token.ts';
 import { DraftPanel } from './DraftPanel.tsx';
 import { TaskPanel } from './Panel.tsx';
-import { useTaskPanel, type TaskPanelState } from './panel-host.ts';
+import { scopeOf, useTaskPanel, type TaskPanelState } from './panel-host.ts';
+import type { PageContext } from './task-prefill.ts';
 
 interface DockPanelProps {
   readonly client: OperationsClient;
@@ -28,8 +29,11 @@ export function useDockPanel(props: DockPanelProps): {
     readonly open: boolean;
     readonly body: ReactElement;
     readonly door: string;
+    readonly beside: boolean;
     /** False, closing nothing, while the draft's Create is out. */
     readonly close: () => boolean;
+    /** A draft filed from the page or a door (DN-02); null signed out. */
+    readonly file: ((page: PageContext) => void) | null;
   };
 } {
   const { grantKey, session, storage } = props;
@@ -38,7 +42,8 @@ export function useDockPanel(props: DockPanelProps): {
     person: session === null ? null : `${session.businessKey}:${session.email}`,
     storage,
   });
-  const { opening, draft } = taskPanel;
+  const { opening, draft, openDraft } = taskPanel;
+  const file = useCallback((page: PageContext) => openDraft(scopeOf(page)), [openDraft]);
   return {
     host: taskPanel.host,
     panel: {
@@ -48,7 +53,9 @@ export function useDockPanel(props: DockPanelProps): {
         opening === null
           ? pathTo('agency:projects-board')
           : pathTo('agency:task-detail', { key: opening.taskKey }),
+      beside: taskPanel.beside,
       close: taskPanel.close,
+      file: session === null ? null : file,
     },
   };
 }
@@ -65,7 +72,7 @@ function DockPanel(props: {
   if (taskPanel.draft !== null) {
     return (
       <DraftPanel
-        key={grantKey}
+        key={`${grantKey}\u0000${String(taskPanel.draftKey)}`}
         client={client}
         storage={props.storage}
         person={`${session.businessKey}:${session.email}`}

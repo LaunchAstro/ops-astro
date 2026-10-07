@@ -18,6 +18,7 @@
 // Postgres, so the time measured is the handler, the tenancy wrapper and the
 // database lookups the two forms would differ in. It is not network timing.
 
+import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -26,6 +27,7 @@ import { grantTo, type Member } from '../commands/fixture.ts';
 import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
+import { enrolCaller } from './cast.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { foreignInvitation } from './foreign-invitation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
@@ -156,8 +158,9 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_timing');
-    // MP-6-2's revision asks run:write, which the cast's admin holds on no
-    // run; on the whole business, so a foreign task is judged by the handler.
+    // MP-6-2's revision and C80's decision read ask run:write, which the cast's
+    // admin holds on no run; on the whole business, so a foreign task or
+    // correction is judged by the handler.
     await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
       await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
     });
@@ -226,6 +229,29 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
+  /** A group conversation of bravo's, started by bravo's admin through the command. */
+  async function bravoConversation(): Promise<string> {
+    const { world } = w.h;
+    const bram = w.foreign.admin;
+    const bix = await enrolCaller(world.db, world.bravo, 'bravo', 'bix', {
+      membership: true,
+      actions: [],
+      collections: [],
+    });
+    await world.db.app.withBusiness(world.bravo, async (tx) => {
+      await grantTo(tx, bram as unknown as Member, 'comment', undefined, false, 'chat');
+    });
+    const started = await w.person(
+      bram,
+      'chat.start_group',
+      { name: 'bravo timing', members: [world.bea.personId, bix.personId] },
+      'bravo',
+    );
+    const id = (started.body['detail'] as Body | undefined)?.['conversationId'];
+    if (typeof id !== 'string') throw new Error(`bravo started no group: ${started.text}`);
+    return id;
+  }
+
   /** The cells: the record-targeted operations, then those with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
@@ -255,6 +281,10 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.set_type': { taskType: 'build' },
       'map.scope': { client: randomUUID() },
       'map.revise': { notes: NOBODY },
+      'task.set_blocking': { blockedBy: [] },
+      'map.graduate': { patchId: randomUUID(), tickets: [{ title: NOBODY, type: 'task' }] },
+      'task.resolve': { answer: NOBODY, gist: 'a gist nobody should find' },
+      'task.close_out_of_scope': { reason: NOBODY },
     };
     // Named by `recordId` (`targetKeyOf`): task.receipt names its task by
     // `attemptId` and has its own cell below.
@@ -296,6 +326,39 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       foreign: () => ({ gateId: f.proposal.gateId, versionId: f.proposal.versionId, ...decision }),
       fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...decision }),
     });
+    // C80: a correction of bravo's, and a request worked under bravo's task.
+    const theirs = await seedLiveCorrection(w.h.world.db.app, w.h.world.bravo, f.task.id, f.admin);
+    out.push(
+      {
+        op: 'live_correction.decide',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ ...theirs, decision: 'approve' }),
+        fabricated: () => ({
+          correctionId: randomUUID(),
+          versionId: randomUUID(),
+          decision: 'approve',
+        }),
+      },
+      {
+        op: 'live_correction.read',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ correctionId: theirs.correctionId }),
+        fabricated: () => ({ correctionId: randomUUID() }),
+      },
+    );
+    const request = { ...C80_REQUEST, partyId: randomUUID() };
+    out.push({
+      op: 'live_correction.request',
+      operand: 'taskId',
+      by: ada,
+      code: 'NOT_FOUND',
+      foreign: () => ({ ...request, taskId: f.task.id }),
+      fabricated: () => ({ ...request, taskId: randomUUID() }),
+    });
     const accept = { ...ACCEPTED_PLAN, note: NOBODY };
     out.push({
       op: 'task.accept_plan',
@@ -325,6 +388,13 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       conversationId,
       page: null,
     }));
+    byAda('conversation.models', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+    }));
+    byAda('conversation.set_model', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      model: null,
+    }));
     // C39-T: bravo's pending invitation, resent or revoked from alpha.
     const invitation = await foreignInvitation(w.h.world.db.admin, w.h.world.bravo);
     for (const op of ['invitation.resend', 'invitation.revoke'] as const) {
@@ -351,6 +421,23 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('secret.clear', 'secretId', f.secretId, (secretId) => ({ secretId }));
     byAda('connector.repair', 'connectionId', f.connectionId, (connectionId) => ({
       connectionId,
+    }));
+    // MP-14-10a: bravo's mandate, class and client named in an alpha change.
+    const ceiling = { amountMinor: 100, currency: 'AUD' };
+    const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+    byAda('mandate.revoke', 'mandateId', f.mandateId, (mandateId) => ({ mandateId }));
+    byAda('graduation.promote', 'classId', f.classId, (classId) => ({
+      classId,
+      ceiling,
+      expiresAt,
+    }));
+    byAda('graduation.demote', 'classId', f.classId, (classId) => ({ classId }));
+    byAda('mandate.file', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      classes: ['social.post'],
+      ceiling,
+      expiresAt,
+      label: NOBODY,
     }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
@@ -478,6 +565,23 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     );
     if (bravoItem === undefined) throw new Error('bravo raised no inbox item to aim at');
     byAda('inbox.seen', 'itemId', bravoItem.id, (itemId) => ({ itemId }));
+    // C71-D and C71-G: bravo's people and bravo's group, named from alpha.
+    const bravoGroup = await bravoConversation();
+    const mia = w.h.world.mia.personId;
+    const bram = f.admin.personId as string;
+    byAda('chat.send_direct', 'teammateId', bram, (teammateId) => ({ teammateId, body: NOBODY }));
+    byAda('chat.start_group', 'members', bram, (id) => ({ name: 'timing', members: [mia, id] }));
+    const inGroup: readonly [CommandName, Body][] = [
+      ['chat.messages', {}],
+      ['chat.mark_read', { upTo: new Date().toISOString() }],
+      ['chat.send_group', { body: NOBODY }],
+      ['chat.rename_group', { name: 'timing' }],
+      ['chat.change_members', { add: [mia] }],
+      ['chat.leave', {}],
+    ];
+    for (const [op, extra] of inGroup) {
+      byAda(op, 'conversationId', bravoGroup, (conversationId) => ({ conversationId, ...extra }));
+    }
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',
@@ -530,17 +634,18 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 90 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 112 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(90);
-    expect(names).toHaveLength(90);
+    expect(new Set(names).size, 'distinct operations').toBe(112);
+    expect(names).toHaveLength(112);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the twelve target-free ones').toStrictEqual(
-      bearing,
-    );
+    expect(
+      names.toSorted(),
+      'every declaration outside the forty-five target-free ones',
+    ).toStrictEqual(bearing);
     const outside: string[] = [];
     for (const cell of table) {
       // eslint-disable-next-line no-await-in-loop -- one operation at a time, so arms share load
@@ -554,6 +659,28 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     }
     expect(outside).toStrictEqual([]);
   }, 600_000);
+
+  it('times a correction at another party of the same business like a fabricated id', async () => {
+    // C80: the cross-business cell above never finds the row. Here it is found,
+    // in mia's own business, and only her grant at another party turns it away.
+    const { alpha, ada, mia, db } = w.h.world;
+    await db.app.withBusiness(alpha, async (tx) => {
+      await grantTo(tx, mia as Member, 'write', { kind: 'party', id: randomUUID() }, false, 'run');
+    });
+    const onA = await seedLiveCorrection(db.app, alpha, w.h.alphaTask.id, ada);
+    const cell: Cell = {
+      op: 'live_correction.read',
+      operand: 'correctionId (in tenant, another party)',
+      by: { kind: 'person', caller: mia },
+      code: 'NOT_FOUND',
+      foreign: () => ({ correctionId: onA.correctionId }),
+      fabricated: () => ({ correctionId: randomUUID() }),
+    };
+    const { foreign, fabricated } = await sample(cell);
+    const verdict = compare(foreign, fabricated);
+    console.log(line(cell, PAIRS, verdict));
+    expect(verdict.within).toBe(true);
+  }, 120_000);
 
   it('flags an injected delay, so the comparison is not vacuous', async () => {
     // Synthetic first: the comparator on its own says within for one

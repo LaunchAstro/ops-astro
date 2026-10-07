@@ -36,6 +36,10 @@ function recorder(answer: (body: Readonly<Record<string, unknown>>) => unknown):
   const asked: Asked[] = [];
   const client = {
     read: async (name: string, body: Readonly<Record<string, unknown>>) => {
+      // The model picker's read (CS-7.30) is its own suite's; nothing here is about it.
+      if (name === 'conversation.models') {
+        return await Promise.resolve({ unavailable: true, because: 'not asked here' });
+      }
       asked.push({ name, body });
       return await Promise.resolve(answer(body));
     },

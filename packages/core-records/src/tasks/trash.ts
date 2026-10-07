@@ -23,7 +23,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { refuse, type RecordsRefusal } from '../records/refusals.ts';
 import { slotOf, TASK_SPINE } from './spine.ts';
-import { COMMENT_SPINE } from './comments.ts';
+import { COMMENT_SPINE } from './comment-spine.ts';
 import { detachTaskTime } from './time.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');

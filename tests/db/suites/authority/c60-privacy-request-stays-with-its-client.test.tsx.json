@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "the privacy card's save sent through the real client.set_privacy: a second client's model-use request records never hold the first client's"
+}

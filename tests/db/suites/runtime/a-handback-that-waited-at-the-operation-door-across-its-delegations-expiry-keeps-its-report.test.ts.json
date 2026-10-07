@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a handback that waited at the operation door across its delegation expiry keeps its report"
+}

@@ -109,9 +109,20 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // C52-A: a change's last ask after its session takes the business's audit
   // chain key before `sessionEndedSince`, so no ending commits between them.
   'packages/core-commands/src/commands/automation-approvals.ts',
+  // #1088 (Sol PRV-oa-1088-SC1, SEC1-1): a question's keep takes the audit
+  // chain's key after its page task's share lock, as tasks-agent.ts does, so
+  // its grant and page-read re-asks come after every wait.
+  'packages/core-commands/src/commands/conversation-context.ts',
   'packages/core-commands/src/commands/conversation-lifecycle.ts',
   // #932: the operation identity's key, first in every identified call.
   'packages/core-commands/src/commands/envelope.ts',
+  // C80 (#1002 F3-F6): a correction write takes the audit chain's key after
+  // its row locks, as tasks-agent.ts does, so its authority re-read comes
+  // after every wait.
+  'packages/core-commands/src/commands/live-correction-standing.ts',
+  // MP-14-10a: a mandate command's last ask takes the audit chain key after
+  // its write, as C52-A's does, before `sessionEndedSince` (PRV-oa-1053-R1).
+  'packages/core-commands/src/commands/mandate-authority.ts',
   'packages/core-commands/src/commands/occurrence-run.ts',
   'packages/core-commands/src/commands/prepare.ts',
   // #413: an agent assignment takes the audit chain's key after its write,
@@ -149,6 +160,9 @@ const ADVISORY_LOCK_CALLERS: readonly string[] = [
   // so a first settings row cannot commit past a decision that found none.
   'packages/core-records/src/records/business-settings.ts',
   'packages/core-records/src/tasks/placement.ts',
+  // C71-D: a direct pair's one lock, so two first messages start one conversation, and a
+  // conversation's one lock, so a message and a read marker are stamped in commit order.
+  'packages/core-records/src/team/conversations.ts',
   'packages/core-records/src/tenancy/database.ts',
   'packages/core-records/src/tenancy/limit.ts',
   'packages/core-runtime/src/locks.ts',

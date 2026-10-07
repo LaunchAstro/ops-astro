@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a messages read under way when chat access is revoked serves no message written after"
+}

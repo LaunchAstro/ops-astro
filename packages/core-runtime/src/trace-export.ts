@@ -24,18 +24,11 @@ import type { TenantQuery } from '../../core-records/src/index.ts';
 import { gapOf, type Deliver, type GapCode } from './trace-delivery.ts';
 import { letGo, release, renew, take, type Cursor } from './trace-lease.ts';
 import { owedSince } from './trace-owed.ts';
-import {
-  TRACE_ERRORS,
-  TRANSFORM_VERSION,
-  derivedId,
-  otlp,
-  traceCells,
-  traceSpan,
-  type TraceCells,
-  type TraceSpan,
-} from './trace-span.ts';
+import { derivedId, otlp, traceSpan, type TraceSpan } from './trace-span.ts';
+import { cellsOf, EVENT_CELLS, type Row } from './trace-read.ts';
 
 export type { Cursor } from './trace-lease.ts';
+export { readTaskTrace, TRACE_READ_LIMIT, type ReadSpan } from './trace-read.ts';
 
 export type ExportOutcome =
   | { readonly kind: 'idle' }
@@ -50,16 +43,6 @@ export const TRACE_BATCH = 100;
 export const TRACE_WINDOW_DAYS = 30;
 
 type Pending = Row & { readonly past: boolean };
-
-interface Row {
-  readonly id: string;
-  readonly runId: string;
-  readonly kind: string;
-  readonly position: number;
-  readonly atMs: number;
-  readonly previousMs: number | null;
-  readonly cause: string | null;
-}
 
 /** The database side the exporter needs: one business's tenant transactions. */
 export interface TraceDatabase {
@@ -155,16 +138,6 @@ function bodiesOf(owed: readonly Row[], fresh: readonly Row[]): readonly (readon
   return tail.length === 0 ? bodies : [...bodies, tail];
 }
 
-/** What a span is made of, per event `ev`: the export's read and `trace.read`'s. */
-const EVENT_CELLS = `ev.id, ev.run_id as "runId", ev.kind, ev.position::float8 as position,
-            (extract(epoch from ev.created_at) * 1000)::float8 as "atMs",
-            (select (extract(epoch from prev.created_at) * 1000)::float8
-               from public.run_events prev
-              where prev.business_id = ev.business_id and prev.run_id = ev.run_id
-                and prev.position < ev.position
-              order by prev.position desc limit 1) as "previousMs",
-            ev.detail ->> 'cause' as cause`;
-
 /**
  * The batch after `from`, the cursor this export read: its gap, if it has one,
  * names the same. An event `past` the window is passed by the cursor, never
@@ -191,61 +164,6 @@ function spanOf(key: Buffer, businessId: string, row: Row): TraceSpan {
     spanId: derivedId(key, ['span', businessId, row.id], 16),
     ...cellsOf(row),
   });
-}
-
-/** An event's cells, unchecked: `traceSpan` and `traceCells` hold them to the allowlist. */
-function cellsOf(row: Row): Readonly<Record<string, unknown>> {
-  const startedAtMs = Math.floor(row.atMs);
-  return {
-    stage: row.kind,
-    transformVersion: TRANSFORM_VERSION,
-    startedAtMs,
-    durationMs:
-      row.previousMs === null ? null : Math.max(0, startedAtMs - Math.floor(row.previousMs)),
-    sequence: row.position,
-    errorCode:
-      row.cause !== null && (TRACE_ERRORS as readonly string[]).includes(row.cause)
-        ? row.cause
-        : null,
-  };
-}
-
-/** The most events one `trace.read` returns; `complete` says whether it reached the end. */
-export const TRACE_READ_LIMIT = 1_000;
-
-/** A span as `trace.read` shows it: the allowlist's cells, its run, and whether it has left. */
-export type ReadSpan = TraceCells & { readonly runId: string; readonly exported: boolean };
-
-/**
- * One task's trace as an operator reads it (AW-13 readers, `trace.read`): each
- * event of its runs as the export sends it, less the two ids only the
- * exporter's key derives, and whether it is behind the cursor. The grant is
- * asked before this, by the read's row (`operations:read`, then the task's own
- * read); the task is the query's, under the business's tenancy.
- */
-export async function readTaskTrace(
-  tx: TenantQuery,
-  taskId: string,
-): Promise<{ readonly spans: readonly ReadSpan[]; readonly complete: boolean }> {
-  const rows = await tx.query<Row & { readonly exported: boolean }>(
-    `select ${EVENT_CELLS},
-            coalesce((ev.tx, ev.id) <= (c.after_tx, c.after_id), false) as exported
-       from public.run_events ev
-       join public.planned_runs run on run.business_id = ev.business_id and run.id = ev.run_id
-       left join public.trace_export_cursors c on c.business_id = ev.business_id
-      where ev.business_id = $1 and run.task_id = $2
-      order by ev.position, ev.id
-      limit $3`,
-    [tx.businessId, taskId, TRACE_READ_LIMIT + 1],
-  );
-  return {
-    spans: rows
-      .slice(0, TRACE_READ_LIMIT)
-      .map((row): ReadSpan =>
-        Object.assign({ runId: row.runId, exported: row.exported }, traceCells(cellsOf(row))),
-      ),
-    complete: rows.length <= TRACE_READ_LIMIT,
-  };
 }
 
 async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> {

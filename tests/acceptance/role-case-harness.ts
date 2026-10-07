@@ -30,6 +30,7 @@ import { enrolCaller, type Caller } from './cast.ts';
 import { isInvitation } from './role-case-invitation-bodies.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { taskBodyContext } from './c80-bodies.ts';
 import { factorMember } from './role-case-access-bodies.ts';
 import { gateContext } from './role-case-gate-bodies.ts';
 import { probeOperands } from './role-case-fixed-bodies.ts';
@@ -37,7 +38,7 @@ import { ownTaskRecipes } from './role-case-own-tasks.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 import { heldByWithAdminTopUp } from './role-case-admin-grants.ts';
-import { seedBrokenConnection } from '../connections/fixture.ts';
+import { seedBrokenConnection, seedReadyClass } from '../connections/fixture.ts';
 
 export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
@@ -245,7 +246,7 @@ export async function createHarness(part: string): Promise<Harness> {
     freshTask,
     probeBody,
     positiveBody: createPositiveBody({
-      alphaTaskId: alphaTask.id,
+      ...taskBodyContext(world, alphaTask.id),
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) =>
         await asPerson(name, body, 'alpha', isInvitation(name) ? inviter : world.ada),
@@ -259,6 +260,8 @@ export async function createHarness(part: string): Promise<Harness> {
       freshFactorMember: async () => await factorMember(world.db.app, world.alpha),
       ...gateContext(world.db.admin, world.alpha),
       brokenConnection: async () => await seedBrokenConnection(world.db.admin, world.alpha),
+      readyClass: async () =>
+        await seedReadyClass(world.db.admin, world.alpha, world.ada.actorId as string),
     }),
     approvedReservation,
     reserve,

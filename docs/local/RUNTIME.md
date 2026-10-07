@@ -1463,7 +1463,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:862-873`). With neither setting present, the
+  rewrites it (`local-seed.mjs:877-888`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1851,15 +1851,27 @@ or delete.
   unanswered, the grant live at the locked instant. The four-eyes threshold
   is read `for share` under those locks, so a change in flight is waited on.
   Two answers at once meet on the run lock and the second is refused
-  `TRANSITION_NOT_PERMITTED`. Every write is in one transaction: a failure at
-  any step applies nothing.
+  `TRANSITION_NOT_PERMITTED`. If the run stopped again between the find and
+  the locks, the open ask's hold is no longer the one found. An answer naming
+  the earlier ask is refused `TRANSITION_NOT_PERMITTED` with nothing written,
+  and the commands always name the ask (`run-answers.ts`), so that is what a
+  person meets. Only a runtime caller naming no ask follows the new one: its
+  answer rolls back with `AffectedSetChanged`, which the command entry would
+  retry once against the new ask's own hold, and a direct caller sees the
+  throw. Every write is in one transaction: a failure at any step applies
+  nothing.
 - **The top-up** (`topUpAtBudgetStop`, `billing:decide` on the task, a
   person). An agent is refused `DELEGATION_EXCLUDES_DECISION`. The plan's
   lineage must be live (`LINEAGE_TERMINAL`), the currency the envelope's
   (`CAP_BINDING_MISMATCH`) and the amount within the business cap
   (`BUDGET_EXHAUSTED`): the cap is the hard ceiling and no answer raises it.
-  The plan approver approves where they still hold `billing:decide`,
-  otherwise any holder (`SCOPE_NOT_GRANTED` names the approver). Four eyes
+  A trashed task takes no top-up: whether the task is live is read again
+  under the task lock, so a trash that commits before the lock is seen, and
+  the answer is `NOT_FOUND` with nothing written. The ordinary top-up
+  (`budget.ts`) reads it the same way. The plan approver approves where they
+  still hold `billing:decide`, otherwise any holder (`SCOPE_NOT_GRANTED`
+  names the approver). Where the plan approver's approval waits, it pairs
+  first, ahead of an earlier one (`pairFor`'s `prefer`). Four eyes
   is the core's one rule (`four-eyes.ts`), the one T2e's top-up and T3c's
   write-off use: the band is `four_eyes_threshold` in the envelope currency's
   major unit, read `for share` under the locks, null is off and no stored row
@@ -1884,8 +1896,16 @@ or delete.
   fresh reservation, so the run spends the raised ceiling once and the cap
   counts the spend once. A stop raised because the step's calls spent its
   whole hold (`budget-stop.ts`) has no hold left to raise: completing it holds
-  the amount on a fresh reservation for the step (`holdTopUp`). The answer
-  records the stopped hold's state as the locks read it (`hold_state`:
+  the amount on a fresh reservation for the step (`holdTopUp`). A step
+  settled `completed` in any transaction but the ask's own had its outcome
+  recorded after the stop, whether a person recorded `happened` or
+  `happened_differently` or a worker's observation settled it
+  (`settleAtObserved`). Its top-up is refused `TRANSITION_NOT_PERMITTED`
+  with nothing written, saying a top-up cannot apply, and the end answers the
+  stop (`recordedRefusal`). After `happened_differently` the work reopens
+  and resume has already reserved its replacement, which the refusal leaves
+  held and the end releases. A settle and ask made in one transaction would still top up, but no
+  path raises that today. The answer records the stopped hold's state as the locks read it (`hold_state`:
   `held`, `actual` or `abandoned`; `20261007110600_budget_answer_hold_state`).
   The version room a replacement is sized by (`versionRoom`, `pickup.ts`)
   counts a hold topped up while `held` and closed later at its actual plus its
@@ -1901,8 +1921,19 @@ or delete.
   call with no confirmation (U7). The hold becomes `abandoned` with the cause
   `budget_stop_ended`; the envelope releases the unspent part and keeps the
   spend to date as actual. The run becomes `cancelled`. The task is not
-  written: it stays open for a person. A hold a lineage cancel already
-  classified is not released again.
+  written: it stays open for a person. A trashed task is reached too: its
+  hold is still counted, and the end is how it is given back. A hold a
+  lineage cancel already classified is not released again. The run's other
+  holds on the envelope that never started (no lease, no call, every attempt
+  still reserved), such as the replacement resume reserved after
+  `happened_differently`, are abandoned with the same cause and given back
+  whole (`releaseUnstarted`); a leased or dispatched one is left as it is. A
+  hold with an attempt left `liability_unknown` is not ended: an observation
+  or a failed report kept it whole at a priced cost above the hold, or the
+  classifier or a lost worker left a call on it open. That cost is counted
+  nowhere yet, so the end is refused `TRANSITION_NOT_PERMITTED` with nothing
+  written, and the hold waits for a person's recorded outcome
+  (`budget.record_outcome`).
 - **The spend to date** is counted as the broker counts it: settled calls at
   their actual, calls still open at the maximum they hold.
 
@@ -2134,7 +2165,11 @@ route, command-line verb or agent operation reaches it.
   occurrence's advisory lock makes a second start answer the first as
   replayed, and past the code the database's unique index holds it.
 - **Who writes it.** An active worker of the business, never a person or an
-  agent (`WORKER_REQUIRED`). The run row goes in through
+  agent (`WORKER_REQUIRED`). The worker's row is read `for share` under the
+  occurrence lock and held to commit: a stop that arrives during the start
+  waits for it to commit, a stop already committed refuses it, and a start
+  that meets a stop still in flight waits for it, then is refused. The run
+  row goes in through
   `ops_astro_occurrence`, taken for the one insert with
   `set_config('role', ..., true)`; 0097's trigger refuses an origin written by
   any other role, and any change to an origin after the insert.
@@ -2154,9 +2189,17 @@ route, command-line verb or agent operation reaches it.
   an occurrence's run. AW-04 builds its claim.
 
 The approval and version facts come through `ReadOccurrenceAuthority`, which
-C52-A fills from its own rows under the activation lock; its foreign keys and
-that read join at the batch 3 join. Tests: `aw-01-occurrence-run` and
-`aw-01-occurrence-run-isolation`.
+C52-A fills from its own rows under the activation lock (`readOccurrenceFacts`
+in core-records `automations/dispatch.ts`); the worker hands dispatch
+`occurrenceRunStarter(workerActorId)` (core-commands
+`commands/automation-run.ts`). Before the start, dispatch takes C33's run
+ceiling on the durable limit: at five runs in flight it answers `waiting` and
+writes nothing. A start J refuses records no dispatch. A claim locks the
+activation as dispatch does, and one transaction locks one activation
+(`lockActivation`), so no writer upgrades a lock or takes a second activation
+after the business-wide keys. Tests: `aw-01-occurrence-run`,
+`aw-01-occurrence-run-isolation`, `c52a-run-start`, `c33-intake` and
+`c52a-dispatch-claim-races`.
 
 ## The harness adoption test's trigger
 

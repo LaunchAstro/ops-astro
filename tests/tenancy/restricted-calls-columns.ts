@@ -47,10 +47,21 @@ export async function columnUpdateFindings(
   return wrong;
 }
 
+/**
+ * Tables whose BEFORE UPDATE trigger refuses the own business's no-op update,
+ * past privilege and tenancy. 20261006080000 (MP-14-10a): a standing mandate is
+ * written once, so an update that does not move its revision by one is refused
+ * as a constraint (23001, restrict_violation).
+ */
+const OWN_UPDATE_REFUSALS: Readonly<Record<string, string>> = {
+  'public.standing_mandates': 'constraint',
+};
+
 /** A column update's answer: the own business its own rows, other application positions none. */
-function columnExpected(caller: CallerName, own: string): string {
+function columnExpected(caller: CallerName, own: string, table: string): string {
   if (!APPLICATION_CALLERS.has(caller)) return 'denied';
-  return caller === 'login in the wrapper, own tenant' ? own : 'rows 0';
+  if (caller !== 'login in the wrapper, own tenant') return 'rows 0';
+  return OWN_UPDATE_REFUSALS[table] ?? own;
 }
 
 async function columnCalls(
@@ -77,7 +88,7 @@ async function columnCalls(
     const outcome = describeOutcome(await callers.call(caller, text, [business]));
     // oxlint-disable-next-line no-await-in-loop
     const after = await fingerprint(admin, table);
-    const expected = columnExpected(caller, own);
+    const expected = columnExpected(caller, own, table);
     const line = `${pair} update ${caller}: ${outcome}`;
     if (outcome !== expected) wrong.push(`${line}, expected ${expected}`);
     if (before !== after) wrong.push(`${line}, the table changed`);

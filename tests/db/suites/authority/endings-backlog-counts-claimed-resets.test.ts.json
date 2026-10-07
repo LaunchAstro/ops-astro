@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a claimed factor reset is still counted in the owed backlog, and a fault fails the pass"
+}

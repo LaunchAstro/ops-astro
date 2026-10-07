@@ -128,6 +128,7 @@ describe('CQ-11 the tree', () => {
         audiences: new Set(['internal', 'client']),
         operationId: randomUUID(),
         delegationId: null,
+        onBehalfOfPersonId: null,
       },
       'a body',
       'internal',
@@ -160,8 +161,12 @@ describe('CQ-11 the tree', () => {
     expect(existsSync('packages/core-records/src/tasks/reconcile-visibility.ts')).toBe(false);
     const install = read('core-records/src/tasks/install.ts');
     expect(install.match(/visibilityClass \?\? 'internal'/gu)).toHaveLength(1);
-    // The handback operands carry the lease and the actual, typed.
-    const operations = read('core-commands/src/commands/agent-operations.ts');
+    // The handback operands carry the lease and the actual, typed: read where
+    // they are parsed (`agent-operands.ts`) and where they are served.
+    const operations = [
+      read('core-commands/src/commands/agent-operands.ts'),
+      read('core-commands/src/commands/agent-operations.ts'),
+    ].join('\n');
     expect(operations).not.toContain("request['actualMinor'] as");
     expect(operations).toContain('leaseId: operands.leaseId');
   });

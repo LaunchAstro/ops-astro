@@ -44,15 +44,18 @@ import {
   connect,
   connectAsAdmin,
   connectListener,
+  createQuotaGate,
   loginLiveElsewhere,
   isBusinessId,
   KEY_FILE_VARIABLE,
   readEnvFile,
+  withQuotaScope,
 } from '../../packages/core-records/src/index.ts';
 import type {
   AdminConnection,
   BusinessId,
   Database,
+  QuotaOptions,
 } from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
@@ -94,6 +97,7 @@ import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
 import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
+import { startConversationSweeper } from './conversation-sweeper.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -240,6 +244,8 @@ export interface ApiConfig {
   readonly alerts?: Alerts;
   /** The agent credential's limits in this process (API-2); absent, the defaults. */
   readonly agentLimits?: AgentLimits;
+  /** The quota table and clock; absent means `QUOTAS` and the wall clock. */
+  readonly quota?: QuotaOptions;
 }
 
 export interface ComposedApi {
@@ -274,6 +280,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
   });
   // This app's keys, for this request only: no other composition can replace them.
   server.use(async (_context, next) => await withRuntimeKeys(config.keys, next));
+  // Each request charged once to its quotas, after login resolution admits it.
+  const quota = createQuotaGate(config.quota);
+  server.use(async (_context, next) => await withQuotaScope(quota, next));
 
   // Measured, not assumed. `reachable` is the result of a statement that ran
   // on the runtime login (G2): the lookup answering proves nothing about it.
@@ -432,6 +441,8 @@ export async function shutDown(
 export interface ServerParts {
   readonly topics: Stopping;
   readonly mail: Stopping;
+  /** R7: the conversation sweep's running pass. */
+  readonly conversations: Stopping;
   readonly database: Stopping;
   readonly admin: Stopping;
   readonly broker: Stopping;
@@ -439,14 +450,14 @@ export interface ServerParts {
 }
 
 /**
- * The two stages `main` hands `shutDown`: the live streams and the mail worker's running pass
- * first, then the pools and processes they use.
+ * The two stages `main` hands `shutDown`: the live streams, the mail worker's and the
+ * conversation sweep's running passes first, then the pools and processes they use.
  */
 export function shutdownStages(
   parts: ServerParts,
 ): readonly [readonly Stopping[], readonly Stopping[]] {
   return [
-    [parts.topics, parts.mail],
+    [parts.topics, parts.mail, parts.conversations],
     [parts.database, parts.admin, parts.broker, parts.tracer],
   ];
 }
@@ -570,8 +581,9 @@ async function main(): Promise<void> {
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
   // keys through the same resolver the requests will.
+  const identity = readIdentity(ROOT);
   const { app, resolveBusiness } = composeApi({
-    identity: readIdentity(ROOT),
+    identity,
     database,
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
@@ -659,6 +671,13 @@ async function main(): Promise<void> {
       }),
   );
 
+  // R7: the conversation sweep (AW-03) over the same businesses, hourly, as
+  // system work once the port is bound; each wrap-up names this commit.
+  const conversations = startConversationSweeper(database, {
+    businesses: async () => await Promise.resolve(traced),
+    codeRevision: identity.commit,
+  });
+
   // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
   const stop = (): void => {
@@ -666,6 +685,7 @@ async function main(): Promise<void> {
     const stages = shutdownStages({
       topics: async () => await topics.close(),
       mail: mail?.stop,
+      conversations: conversations.stop,
       database: async () => await database.close(),
       admin: async () => await admin.close(),
       broker: broker?.stop,

@@ -26,10 +26,11 @@ import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient } from './role-case-access-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
-import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
+import { conversationBody, isConversationCommand, leaseBody } from './role-case-run-bodies.ts';
 import { tableBody } from './role-case-setup.ts';
 import { moneyBody } from './role-case-money-bodies.ts';
 import { lineageBody } from './role-case-lineage-bodies.ts';
+import { chatBody, isChatName } from './role-case-chat-bodies.ts';
 import { onboardingBody } from './role-case-onboarding.ts';
 
 export function createPositiveBody(
@@ -49,9 +50,8 @@ export function createPositiveBody(
     };
     const tabled = await tableBody(declaration.name, context);
     if (tabled !== undefined) return tabled;
+    if (isChatName(declaration.name)) return await chatBody(declaration.name, context);
     switch (declaration.name) {
-      case 'task.create':
-        return { body: { fields: { title: 'the admin creates a task' } } };
       case 'task.update':
         return { body: { ...(await target()), fields: { title: 'edited by the admin' } } };
       case 'task.start':
@@ -284,16 +284,11 @@ export function createPositiveBody(
       case 'task.receipt':
         // The person's own lease and the effect applied on it: `role-case-run-bodies.ts`.
         return await leaseBody(declaration.name, context);
-      case 'conversation.start':
-      case 'conversation.message':
-      case 'conversation.read':
-      case 'conversation.list':
-      case 'conversation.allowance':
-      case 'conversation.rename':
-      case 'conversation.set_scope':
-        // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
-        return await conversationBody(declaration.name, context);
       default:
+        // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
+        if (isConversationCommand(declaration.name)) {
+          return await conversationBody(declaration.name, context);
+        }
         return await onboardingBody(declaration.name, context, target);
     }
   };

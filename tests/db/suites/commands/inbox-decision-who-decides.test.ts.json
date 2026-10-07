@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "decision items and the unattended list ask who decides as task.decide does"
+}

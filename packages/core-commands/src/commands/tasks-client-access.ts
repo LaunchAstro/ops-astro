@@ -113,24 +113,40 @@ async function clientOf(
  * The client's existing people: outside the membership, standing on the
  * client through a party-scoped `task:read` that is live by the one
  * live-grant expression (`effectiveGrants`), so a grant cut from a revoked
- * parent counts for nothing. Candidates first, then each confirmed.
+ * parent counts for nothing. Candidates first, each grant and the parents it
+ * is cut from held `for share` to the end of the transaction, then each
+ * person confirmed: a revocation that committed first is seen here, and one
+ * that comes later waits for the shares (#443, OW-033.6).
  */
 async function clientPeople(tx: TenantQuery, client: string): Promise<readonly string[]> {
   const candidates = await tx.query<{ readonly person_id: string }>(
-    `select distinct g.subject_id as person_id
+    `with recursive standing as (
+       select g.id, g.parent_grant_id, g.subject_id
+         from public.grants g
+        where g.business_id = $1 and g.subject_kind = 'person'
+          and g.scope_kind = 'party' and g.scope_id = $2
+          and g.collection = 'task' and g.action = 'read'
+          and g.revoked_at is null and (g.expires_at is null or g.expires_at > now())
+          and not exists (select 1 from public.memberships m
+                           where m.business_id = g.business_id and m.person_id = g.subject_id
+                             and m.active)
+       union
+       select p.id, p.parent_grant_id, s.subject_id
+         from public.grants p
+         join standing s on p.id = s.parent_grant_id
+        where p.business_id = $1
+     )
+     select s.subject_id as person_id
        from public.grants g
-      where g.business_id = $1 and g.subject_kind = 'person'
-        and g.scope_kind = 'party' and g.scope_id = $2
-        and g.collection = 'task' and g.action = 'read'
-        and g.revoked_at is null and (g.expires_at is null or g.expires_at > now())
-        and not exists (select 1 from public.memberships m
-                         where m.business_id = g.business_id and m.person_id = g.subject_id
-                           and m.active)
-      order by 1`,
+       join standing s on s.id = g.id
+      where g.business_id = $1
+      order by g.id
+        for share of g`,
     [tx.businessId, client],
   );
   const people: string[] = [];
-  for (const { person_id: personId } of candidates) {
+  // Locked in grant order, served in person order.
+  for (const personId of [...new Set(candidates.map((row) => row.person_id))].toSorted()) {
     // oxlint-disable-next-line no-await-in-loop
     const live = await effectiveGrants(tx, [{ kind: 'person', id: personId }], {
       collection: TASK,

@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What a caller sends. One discriminated union, so a surface cannot grow a
-// shape of its own (minimum contract 4.2: "one shape, so that no surface can
-// grow its own").
+// What a caller sends. One discriminated union, so a surface cannot grow a shape of its own
+// (minimum contract 4.2: "one shape, so that no surface can grow its own").
 //
 // Two things are deliberately *not* in the type.
-//
 // The actor, the business and the entry point are absent. All three are
 // constructed by the server — the first two from trusted authentication, the
 // third from which surface the call arrived on — so there is no field here for
@@ -29,7 +27,7 @@ import type { ConversationRequest } from './requests-conversation.ts';
 import type { RunRequest } from './requests-run.ts';
 import type { Envelope, Targeted } from './request-envelope.ts';
 import type { WayfinderRequest } from './requests-wayfinder.ts';
-import type { CommentRequest } from './requests-comments.ts';
+import type { CommentOrChatRequest } from './requests-comments.ts';
 import type { DuplicateRequest } from './requests-duplicate.ts';
 import type { OnboardingRequest } from './requests-onboarding.ts';
 import type { TagRequest } from './requests-tags.ts';
@@ -86,7 +84,8 @@ export type CommandRequest =
   | ({ readonly command: 'task.set_state'; readonly stateId: string } & Targeted)
   // In requests-*.ts files: duplicate (MP-4-8), comments (MP-4-5), onboarding (C41-A).
   | DuplicateRequest<Envelope>
-  | CommentRequest<Targeted>
+  // Comments (MP-4-5) and team chat (C71-D), in `requests-comments.ts`.
+  | CommentOrChatRequest<Targeted, Envelope>
   | OnboardingRequest<Envelope>
   // A proposal is a record beside the task and targets it, so it names the
   // revision it was written against like every other targeted command. What it
@@ -263,6 +262,7 @@ export type CommandRequest =
       readonly lineageId: string;
       readonly expiresInSeconds?: number;
     } & Envelope)
+  | import('./live-correction-requests.ts').LiveCorrectionRequest
   | ({
       readonly command: 'task.heartbeat';
       readonly leaseId: string;

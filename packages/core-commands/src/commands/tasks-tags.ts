@@ -6,7 +6,8 @@
 // - `tag.create`: the envelope has asked `tag:write` of the business. A name
 //   the business already has, in any case, is `UNIQUE_VALUE_TAKEN`.
 // - `task.add_tag` and `task.remove_tag`: the envelope has asked `task:write`
-//   of the task the body names. A tag that is not in this business's
+//   of the task the body names, and asks it again once the task's row is
+//   held (`heldThenAskedAgain`). A tag that is not in this business's
 //   vocabulary is `NOT_FOUND` on `tagId`, the answer a tag that does not exist
 //   gets, so a refusal never says whether another business has it. Both answer
 //   with the task, so the audit event's subject is the task: a tag on it, or
@@ -26,6 +27,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
+import { heldThenAskedAgain } from './prepare.ts';
 
 type TagContext = Pick<CommandContext, 'session'>;
 
@@ -68,10 +70,12 @@ export async function createTagNamed(
 /** `task.add_tag`: one of the vocabulary's tags onto this task. */
 export async function addTagToTask(
   tx: TenantQuery,
-  context: TagContext,
+  context: CommandContext,
   taskId: string,
   tagId: string,
 ): Promise<HandlerOutcome> {
+  const lost = await heldThenAskedAgain(tx, context, taskId);
+  if (lost !== undefined) return lost;
   const added = await addTaskTag(tx, { taskId, tagId, actorId: context.session.actorId });
   if (added === 'no-task') return NO_TASK;
   if (added === 'no-tag') return NO_TAG;
@@ -86,10 +90,12 @@ export async function addTagToTask(
 /** `task.remove_tag`: the tag off this task; the vocabulary keeps it. */
 export async function removeTagFromTask(
   tx: TenantQuery,
-  _context: TagContext,
+  context: CommandContext,
   taskId: string,
   tagId: string,
 ): Promise<HandlerOutcome> {
+  const lost = await heldThenAskedAgain(tx, context, taskId);
+  if (lost !== undefined) return lost;
   const removed = await removeTaskTag(tx, { taskId, tagId });
   if (removed === 'no-task') return NO_TASK;
   if (removed === 'not-carried') return NO_TAG;

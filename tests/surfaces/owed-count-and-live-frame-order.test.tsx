@@ -4,7 +4,7 @@
 import { act } from 'react';
 import { expect, it } from 'vitest';
 import { createLiveHub } from '../../apps/web/src/data/live.ts';
-import { useOwedCount } from '../../apps/web/src/data/owed-count.ts';
+import { useOwedCount } from '../../apps/web/src/data/dock-counts.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle } from './mount.tsx';
 

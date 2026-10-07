@@ -29,6 +29,8 @@ export {
   type OperandKind,
   type OperandSpec,
 } from './surface.ts';
+// The key a map's structural writes serialise on, which the envelope asks about.
+export { WAYFINDER_MAP_LOCK } from './surface-wayfinder.ts';
 // A currency's minor digits, the ISO 4217 table the server and the browser share.
 export { minorDigits } from './currency.ts';
 // What a task's page link may hold, for the server's check and the web's door.
@@ -103,6 +105,7 @@ export type {
   InboxEntry,
   InboxReadResult,
   UnattendedView,
+  LiveCorrectionReadResult,
   InternalCommentView,
   InternalTaskDetail,
   InternalTaskRead,
@@ -157,11 +160,15 @@ export type {
   TaskTimeView,
   TimeEntryView,
 } from './views.ts';
+// the team conversation reads' answers (C71-D)
+export type * from './views-chat.ts';
 export type { MapComponentView, MapView, MapViewResult, MapFrontierResult } from './views-map.ts';
 // AW-04's attribution and allowance answers, beside the other agent views.
 export type {
   AllowanceResult,
   AttributionResult,
+  ConversationModelsResult,
+  ConversationModelView,
   PlanningAllowanceView,
   PreReviewAttribution,
   PreReviewRun,
@@ -175,10 +182,14 @@ export type {
   StandingApprovalView,
 } from './views-automations.ts';
 // Custody's secrets as Settings ▸ Keys reads them (C31), and the connector
-// fleet as Connections & signal reads it (MP-14-7a).
+// fleet and the per-client graduation region as Connections & signal reads
+// them (MP-14-7a, MP-14-10a).
 export type {
   ConnectionFleetResult,
+  ConnectionGraduationResult,
   ConnectionView,
+  GraduationRowView,
+  MandateView,
   SecretListResult,
   SecretView,
 } from './connection-views.ts';
@@ -198,3 +209,16 @@ export * from './catalogue.ts';
 export * from './data-effects.ts';
 // the operations whose value is visual, and the command line's hand-off to them (AW-09)
 export { handoffAddress, handoffOf, VISUAL_HANDOFFS, type VisualHandoff } from './handoff.ts';
+// What agent runs cost: skill costing and the agents' cost log (MP-14-9, MP-14-6)
+export type {
+  AgentCostRowView,
+  AgentCostsResult,
+  AttributionSplitView,
+  CostAttachment,
+  ModelsView,
+  SkillCostsResult,
+  SkillCostView,
+  SkillFigure,
+  SkillUsageView,
+  Unavailable,
+} from './cost-views.ts';
