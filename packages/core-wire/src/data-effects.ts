@@ -87,7 +87,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.move': TASK,
   'task.rank': TASK,
   'task.trash': TASK,
-  'task.purge': TASK,
+  // A purge clears what still names the task before it deletes the row (`tasks/trash.ts`): its
+  // links and tags go, its record grants are revoked, a conversation on it and its time detach.
+  'task.purge': writing([
+    ...TASK.writes,
+    ...client('record_links', 'grants', 'conversations', 'time_entries', 'task_tags'),
+  ]),
   'task.read': READ,
   'task.board': READ,
   'task.queue': READ,
