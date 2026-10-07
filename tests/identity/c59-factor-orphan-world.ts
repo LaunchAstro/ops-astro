@@ -101,12 +101,12 @@ export async function events(business: string, command: string): Promise<readonl
   );
 }
 
-
 /** A provider's calls these cases never decide on: no factor listed, every sign-out done. */
 const QUIET: Pick<FactorProvider, 'verifiedFactors' | 'signOut'> = {
   verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
   signOut: () => Promise.resolve({ ok: true, value: undefined }),
 };
+
 /**
  * Mia's code is good at the provider; while it is checked, alpha verifies her
  * other factor, and with `endOthers` ends her other sessions as it does so.

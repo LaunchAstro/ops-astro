@@ -147,14 +147,14 @@ export const enrolledElsewhere = async (
   tx: TenantQuery,
   caller: { readonly presented: VerifiedSubject },
   live: { readonly status: string },
-) =>
+): Promise<CommandRefusal | undefined> =>
   live.status !== 'verified' && (await loginHasVerifiedFactor(tx, caller.presented.subject))
     ? refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES)
     : undefined;
 
 /** What a verify's check found: this business's live factor, or the login's held elsewhere. */
 export interface CodeCheck {
-  factor?: SecondFactor;
+  factor?: SecondFactor | undefined;
   held: readonly string[];
 }
 

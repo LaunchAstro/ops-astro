@@ -26,7 +26,7 @@ import {
   recordFactorRemoved,
   recordFactorVerified,
 } from '../../../core-records/src/index.ts';
-import type { SecondFactor, Session, TenantQuery } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import {
   providerRefusal,
   type FactorProvider,
