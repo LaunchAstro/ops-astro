@@ -92,8 +92,8 @@ it('MP-7-10 the Team panel opens from its dock tab with the people strip and ava
     page.all('.tmc__strip [data-person]').map((el) => (el as HTMLElement).dataset['person']),
   ).toEqual(['p-bo']);
   expect(mine(page)).toContain('You are in');
-  // Room for the conversations C71-D and C71-G draw next; none drawn yet, so a
-  // face opens nothing and no group list or composer is drawn.
+  // This stand-in answers no chat read (C71's are proven in c71-c-team-chat-web),
+  // so a face opens nothing and no group list or composer is drawn.
   expect(page.find('[data-team="conversations"]')?.childElementCount).toBe(0);
   expect(page.find('.tmc__strip button')).toBeNull();
   expect(page.find('.composer')).toBeNull();

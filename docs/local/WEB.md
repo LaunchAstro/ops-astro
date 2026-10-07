@@ -325,7 +325,7 @@ panel's task read so a reread keeps it.
 The Notifications tab carries INB-1's owed figure from the first frame on every
 agency screen (MP-7-3 bell count at load): `inbox.count`, read in the frame's
 load and again on the `board` topic, with no badge at zero and none when the
-count is refused or fails (`apps/web/src/data/owed-count.ts`, handed to the
+count is refused or fails (`apps/web/src/data/dock-counts.ts`, handed to the
 tab's count chip by `useDockShell` in `apps/web/src/dock/dock-props.tsx`).
 The dock's Projects tab (`todos` in `PANELS`) opens the reader's own to-dos
 (MP-7-1, `screens/todos/Todos.tsx`) in its panel, whose door is `/todos`. The

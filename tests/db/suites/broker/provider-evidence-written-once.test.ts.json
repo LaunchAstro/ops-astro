@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "money: a step's provider start and a drop's cause, on the attempt and its held call, are written once, so the pass never loses a step that may have acted"
+}
