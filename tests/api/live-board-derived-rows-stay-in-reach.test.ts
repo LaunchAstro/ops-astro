@@ -254,7 +254,8 @@ describe.skipIf(serverUrl === undefined)('an open board hears nothing of a hidde
     });
     expect((await rowsOf(business, readerB)).map((row) => row.id)).toEqual([hidden.taskId]);
     await stirUnheard(readerA, taskA.id, hidden);
-  });
+    // A quiet stream, a two-second deadline and two rechecks' worth of nothing.
+  }, 90_000);
 
   it('business to business: time, a gate expiring and names on another business’s task never move this board', async () => {
     const db = c.fixture.db.app;
@@ -279,5 +280,5 @@ describe.skipIf(serverUrl === undefined)('an open board hears nothing of a hidde
     // The alpha reader reads every task in alpha: only the business stands between.
     const own = await c.createTask('alpha’s own task');
     await stirUnheard(c.reader, own.id, hidden);
-  });
+  }, 90_000);
 });
