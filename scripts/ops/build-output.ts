@@ -22,7 +22,7 @@
 // is the one passing answer. Nothing it cannot read is taken as passing.
 
 import { createHash } from 'node:crypto';
-import { lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { STAMP_FILE } from '../../apps/web/build-stamp.ts';
 
@@ -111,10 +111,18 @@ export function buildOutputProblems(root: string): string[] {
   return problems;
 }
 
-function filesUnder(directory: string): string[] {
+/**
+ * Every file under `directory`. A release output holds regular files and
+ * folders only: anything else (a link, whose bytes live elsewhere and can
+ * change; a pipe; a device) throws, naming its path in the output.
+ */
+function filesUnder(directory: string, root = directory): string[] {
   return readdirSync(directory).flatMap((name) => {
     const path = join(directory, name);
-    return statSync(path).isDirectory() ? filesUnder(path) : [path];
+    const entry = lstatSync(path);
+    if (entry.isDirectory()) return filesUnder(path, root);
+    if (entry.isFile()) return [path];
+    throw new Error(`${relative(root, path)} is not a regular file or folder`);
   });
 }
 
@@ -131,13 +139,25 @@ function digested(out: string, path: string): Buffer {
   return bytes.equals(written) ? Buffer.from(JSON.stringify(record)) : bytes;
 }
 
-/** One digest over every file's path and bytes, in path order. */
+/**
+ * One digest over every file's path and bytes, in path order. Each path and
+ * each file's bytes go in after their length in eight bytes, so where one ends
+ * is never read from what it holds, and two different sequences of paths and
+ * bytes never share a digest (#492). Throws on an output holding anything but
+ * regular files and folders.
+ */
 export function outputDigest(out: string): string {
   const hash = createHash('sha256');
+  const framed = (bytes: Buffer): void => {
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(bytes.length));
+    hash.update(length).update(bytes);
+  };
   for (const path of filesUnder(out)
     .map((file) => relative(out, file))
     .toSorted()) {
-    hash.update(`${path}\0`).update(digested(out, path)).update('\0');
+    framed(Buffer.from(path, 'utf8'));
+    framed(digested(out, path));
   }
   return `sha256:${hash.digest('hex')}`;
 }

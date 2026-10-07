@@ -23,9 +23,10 @@
 // Every act on the machine goes through `PromotionEffects`, so the decisions
 // here are tested with the effects watched and the command stays thin.
 
-import { readFileSync, statSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { outputDigest, recordedStamp } from './build-output.ts';
+import { frozenCopy, holds } from './served-copy.ts';
 
 /** A service as the service manager names it. */
 export interface ServiceRef {
@@ -131,7 +132,8 @@ export function storedArtefact(version: string, store: string): StoredArtefact |
   const path = resolve(store, name);
   let isDirectory = false;
   try {
-    isDirectory = statSync(path).isDirectory();
+    // The folder itself, never a link to one: a link's bytes live elsewhere.
+    isDirectory = lstatSync(path).isDirectory();
   } catch {
     // Not there is refused below, the same as not a directory.
   }
@@ -142,7 +144,13 @@ export function storedArtefact(version: string, store: string): StoredArtefact |
     return `${name} carries ${carried}, not ${version}; production gets the build staging ran, never another`;
   }
   if (typeof digest !== 'string') return `${name} records no digest; it is not a release output`;
-  if (digest !== outputDigest(path)) return `${name} does not hold the bytes its digest records`;
+  let held: string;
+  try {
+    held = outputDigest(path);
+  } catch (error) {
+    return `${name}: ${(error as Error).message}; a release output holds nothing else, so it is not promoted`;
+  }
+  if (digest !== held) return `${name} does not hold the bytes its digest records`;
   return { path, name, digest };
 }
 
@@ -165,28 +173,44 @@ export function promote(request: PromotionRequest, effects: PromotionEffects): P
       reason: 'a promotion needs the API, the auth server and the production link named',
     };
   }
-  const states = effects.services();
-  const problems = [api, auth].flatMap((wanted) => {
-    const found = states.find((s) => s.manager === wanted.manager && s.name === wanted.name);
-    if (!found)
-      return [`the service manager cannot find ${label(wanted)}, so it cannot say it is stopped`];
-    return found.running ? [`${label(wanted)} is running`] : [];
-  });
+  const problems = notStopped(effects.services(), [api, auth]);
   if (problems.length > 0) {
     return {
       kind: 'refused',
       reason: `${problems.join('; ')}. Stop the API and the auth server with the service manager, then run the promotion again. Nothing was migrated or promoted.`,
     };
   }
-
+  // The link as the walk checks it: absolute, with no `.` or `..` for the kernel to read otherwise.
+  const link = resolve(current);
+  const copied = frozenCopy(selected, link);
+  if ('why' in copied) {
+    return { kind: 'refused', reason: `${copied.why}; nothing was migrated or promoted` };
+  }
+  const served = copied.path;
   if (!effects.migrate()) {
     return {
       kind: 'failed',
       reason: `the migration did not complete; nothing was promoted and the API and the auth server are left stopped`,
     };
   }
-  effects.point(current, selected.path);
+  if (!holds(served, selected.digest)) {
+    return {
+      kind: 'failed',
+      reason: `the copy of ${selected.name} for production changed during the migration; nothing was promoted and the API and the auth server are left stopped`,
+    };
+  }
+  effects.point(link, served);
   effects.start(auth);
   effects.start(api);
-  return { kind: 'promoted', record, artefactPath: selected.path };
+  return { kind: 'promoted', record, artefactPath: served };
+}
+
+/** Why each wanted service is not known to be stopped; empty when all are. */
+function notStopped(states: readonly ServiceState[], wanted: readonly ServiceRef[]): string[] {
+  return wanted.flatMap((service) => {
+    const found = states.find((s) => s.manager === service.manager && s.name === service.name);
+    if (!found)
+      return [`the service manager cannot find ${label(service)}, so it cannot say it is stopped`];
+    return found.running ? [`${label(service)} is running`] : [];
+  });
 }

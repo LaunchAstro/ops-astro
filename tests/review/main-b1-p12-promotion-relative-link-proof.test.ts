@@ -11,22 +11,14 @@
 // The step's decisions are watched through `promote`, and the link is made
 // exactly as promote.mjs's `point` makes it.
 
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  symlinkSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, realpathSync, renameSync, rmSync, symlinkSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { afterAll, expect, it } from 'vitest';
 import { promote, type PromotionEffects } from '../../scripts/ops/promotion.ts';
-import { LINE, named, STAGED, store } from '../ci/promotion.fixture.ts';
+import { LINE, named, STAGED, store, trustedTemp } from '../ci/promotion.fixture.ts';
 
-const production = mkdtempSync(join(tmpdir(), 'p12-2-prod-'));
+// Under a folder the promotion's trust walk accepts (OPS497TRUST).
+const production = trustedTemp('p12-2-prod-');
 afterAll(() => rmSync(production, { recursive: true, force: true }));
 
 it('p12-2 a promotion run with a relative --artefacts leaves production linked to the artefact', () => {
@@ -69,5 +61,11 @@ it('p12-2 a promotion run with a relative --artefacts leaves production linked t
     existsSync(current),
     `DEFECT p12-2: after migrating, the promotion pointed production's link at the relative ${join(given, named(STAGED))}, which resolves from the link's own folder and dangles`,
   ).toBe(true);
-  expect(realpathSync(current)).toBe(realpathSync(join(absolute, named(STAGED))));
+  // Since #497 production's link names a copy of the staged bytes beside it,
+  // by their digest; it must still resolve from the link's own folder.
+  if (outcome.kind !== 'promoted') return;
+  expect(realpathSync(current)).toBe(realpathSync(outcome.artefactPath));
+  expect(realpathSync(outcome.artefactPath).startsWith(realpathSync(join(folder, 'served')))).toBe(
+    true,
+  );
 });
