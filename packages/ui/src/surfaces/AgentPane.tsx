@@ -135,7 +135,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         <Summary story={shown} />
         <RunKnowledge runId={shown.head.runId} states={props.ledger?.states} />
         <Unknown {...props} shown={shown} />
-        <StopAnswers {...props} />
+        <StopAnswers {...props} runIds={(lineage?.versions ?? [shown.head]).map((each) => each.runId)} />
         <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
         <StagedOutput story={shown} />
         <Gate
@@ -190,11 +190,19 @@ function Unknown(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
   );
 }
 
-/** C54's answers at each run's waiting stop, where the host offers both. */
-function StopAnswers(props: AgentPaneProps): ReactElement | null {
+/**
+ * C54's answers at the waiting stop of each of the shown attempt's own runs,
+ * where the host offers both. Another attempt's stop is answered from that
+ * attempt, never from this one's column.
+ */
+function StopAnswers(
+  props: AgentPaneProps & { readonly runIds: readonly (string | null)[] },
+): ReactElement | null {
   const { onTopUpAtStop, onEndAtStop } = props;
   if (onTopUpAtStop === undefined || onEndAtStop === undefined) return null;
-  const waiting = latestStops(props.ledger).filter((stop) => stop.answer === null);
+  const waiting = latestStops(props.ledger).filter(
+    (stop) => stop.answer === null && props.runIds.includes(stop.runId),
+  );
   return (
     <>
       {waiting.map((stop) => (
