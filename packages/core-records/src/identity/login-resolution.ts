@@ -70,6 +70,8 @@ interface ResolutionRow {
   readonly membership_id: string | null;
   readonly role_key: string | null;
   readonly actor_id: string | null;
+  /** Whether the login's factors are kept (0064); an installation stopped before it holds none. */
+  readonly by_subject: boolean;
 }
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
@@ -87,7 +89,8 @@ const RESOLUTION = `
          pl.person_id,
          m.id as membership_id,
          m.role_key,
-         a.id as actor_id
+         a.id as actor_id,
+         to_regclass('ops.second_factor_subjects') is not null as by_subject
     from public.logins l
     left join public.person_logins pl
       on pl.business_id = l.business_id and pl.login_id = l.id and pl.active
@@ -152,7 +155,8 @@ export async function standingOf(
   // the provider, so is never asked for its code.
   const assurance = presented.assurance ?? NO_ASSURANCE;
   const short = assurance.level !== 'aal2';
-  if (rule === 'required' && short && (await loginHasVerifiedFactor(tx, presented.subject))) {
+  const asked = rule === 'required' && short && found.by_subject;
+  if (asked && (await loginHasVerifiedFactor(tx, presented.subject))) {
     return refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES);
   }
 
