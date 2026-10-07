@@ -72,7 +72,7 @@ async function memberWithProviderSubject(
 
 /** One loop pass, claims expiring at once: what `pnpm endings` prints as owed. */
 const pass = async (logins: ReturnType<typeof goTrueAnswering>['logins']): Promise<number> =>
-  await retryOwedSteps(harness.world.db.admin, harness.world.db.app, logins, 0);
+  (await retryOwedSteps(harness.world.db.admin, harness.world.db.app, logins, 0)).owed;
 
 /** Every step owed across businesses, as the loop counts them: endings and factor resets. */
 const owedNow = async (): Promise<number> =>

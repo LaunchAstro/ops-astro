@@ -3374,7 +3374,7 @@ business-wide `access:manage` of a person who can sign in is
 From the commit the person's next call is `AUTH_ACCESS_ENDED` 403 (a login
 this business ended; a login it never knew stays `AUTH_NO_MEMBERSHIP`), whatever
 the sign-in provider has done. Each ending owes the provider two steps, never
-taken inside a transaction: end every session of the login, then deactivate
+taken inside the act's transaction: end every session of the login, then deactivate
 the login. Both are a 100-year ban through GoTrue's admin API
 (`PUT /admin/users/<id>`), each done once the ban holds: GoTrue has no admin
 call that ends a user's sessions, and it refuses a banned user's every refresh
@@ -3386,7 +3386,16 @@ one person's across every business, while a login is one business's: while the
 subject still has a live login in another business (mapped, its access not
 ended there), both steps are stamped done with the reason `shared` and nothing
 is sent, so ending access here never ends it there; the business that ends it
-last bans (`loginLiveElsewhere`, on the owner's connection, answers yes or no). The calls carry the
+last bans (`loginLiveElsewhere`, on the owner's connection, answers yes or no).
+The check is asked again under the login's subject lock
+(`second-factor-subject:<digest>`, `lockLoginFactors`), through
+`public.factor_login_live_elsewhere`, and the lock is held until the steps are
+stamped, so a login another business maps under that lock is either seen or
+mapped after the stamp. The wait for that lock is bounded
+(`ACCESS_ENDING_LOCK_WAIT_MS`, 5 seconds, as `lock_timeout`): an ending that
+cannot take it in time is left unstamped and owed for the next pass, and
+counted as a fault, so `--once` exits 1. Under the lock the ending's stamps are read again with its row locked,
+so a step another retry stamped while this one waited is never asked again. The calls carry the
 admin key, `SUPABASE_SERVICE_KEY` (hosted, the project's service key; with none
 set on a local stack, a five-minute `service_role` bearer signed with the local
 auth key, minted per call); with neither, nothing is sent and both steps stay
@@ -3401,12 +3410,18 @@ neither the key nor the owner login, and the endings loop (`pnpm endings`,
 every owed step each `ACCESS_ENDING_RETRY_SECONDS` (60): it reads business ids
 and the shared check on the owner login only, and settles business by
 business on the application login under each one's tenancy
-(`retryAccessEndings`). `pnpm endings --once` runs one pass and exits 1 if it
-failed, so a scheduler sees the backlog. It refuses to start without `DATABASE_URL`,
+(`retryAccessEndings`). Each pass prints its backlog, every ending and reset
+still owed, one another retry holds included. `pnpm endings --once` runs one
+pass and exits 1 if it could not finish or a step ended on a fault, so
+a scheduler sees the backlog. It refuses to start without `DATABASE_URL`,
 `DATABASE_ADMIN_URL`, `GOTRUE_URL` (https or loopback) and
-`SUPABASE_SERVICE_KEY`. A 30-second claim on the row stops two retries
-calling the provider at once, and a step done is stamped once and never asked
-again (`settleAccessEndings`, `commands/access-end.ts`).
+`SUPABASE_SERVICE_KEY`, and refuses a database setting postgres.js would not
+read as written (a host list, or a raw comma or second `@` before the host),
+naming the setting and never its value. Each owed ending is claimed for 30
+seconds just before its own calls, so two retries never call the provider at
+once for one ending and a slow pass never lets a later row's claim lapse; a
+step done is stamped once and never asked again (`settleAccessEndings`,
+`commands/access-end.ts`).
 
 ### Resetting a member's authenticator (C59)
 
