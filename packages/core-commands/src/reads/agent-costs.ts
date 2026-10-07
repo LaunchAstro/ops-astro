@@ -50,7 +50,8 @@ const instant = (value: unknown): number =>
 const LOG_ROWS = 1000;
 
 const PERIOD_FIX = 'Send from and to as ISO date-times, from before to.';
-const LOG_ROWS_FIX = `Ask for a shorter period: more than ${String(LOG_ROWS)} runs fall in this one.`;
+const fixFor = (bound: number): string =>
+  `Ask for a shorter period: more than ${String(bound)} runs fall in this one.`;
 
 export function parseCostPeriod(
   body: Readonly<Record<string, unknown>>,
@@ -104,13 +105,14 @@ export async function readAgentCosts(
   tx: TenantQuery,
   session: Session,
   period: CostPeriodOperands,
+  bound: number = LOG_ROWS,
 ): Promise<AgentCostsResult | CommandRefusal> {
   const scopes = await financeScopes(tx, session, period);
   if (!Array.isArray(scopes)) return scopes as CommandRefusal;
   const window = { from: new Date(period.from), to: new Date(period.to) };
-  const found = await listRunCosts(tx, scopes, { ...window, rows: LOG_ROWS });
-  if (found.length > LOG_ROWS) {
-    return refuseCommand('FIELD_VALUE_INVALID', ['from', 'to'], [LOG_ROWS_FIX]);
+  const found = await listRunCosts(tx, scopes, { ...window, rows: bound });
+  if (found.length > bound) {
+    return refuseCommand('FIELD_VALUE_INVALID', ['from', 'to'], [fixFor(bound)]);
   }
   const runs = found.map((row) => logRow(row));
   return {
