@@ -12,7 +12,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { TaskLedger } from '../../packages/ui/src/index.ts';
 import { lineage, pane, unmountAll, version } from './mp-6-1-agent-fixtures.tsx';
-import { open, press, type } from './c54-page.tsx';
+import { RUN_ID, open, press, type } from './c54-page.tsx';
 
 afterEach(unmountAll);
 
@@ -30,8 +30,6 @@ const JPY_ENVELOPE: Envelope = {
   openedBy: { versionId: 'v-1' },
   cap: { key: 'agent_work', limitMinor: 100_000, currency: 'JPY' },
 };
-
-const RUN_ID = '88888888-8888-4888-8888-888888888888';
 
 describe('REVIEW-3A-23 money in a currency without two minor digits', () => {
   it('REVIEW-3A-23: a JPY allowance of 5000 minor units shows five thousand yen, not JPY 50.00', async () => {
