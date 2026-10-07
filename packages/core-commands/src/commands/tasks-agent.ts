@@ -38,12 +38,37 @@ import { writeOwnedFields } from './tasks-state.ts';
 
 const UUID = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu;
 
-/** `task.assign` by a person: an agent, a person, or clearing either. */
+/** What an agent's `task.assign` sets: the assignee (MP-4-8), not the delegate. */
+export const AGENT_ASSIGN_FIELDS: readonly string[] = ['assignee'];
+
+/** The refusal of fields an agent does not write through this command, naming them; none is written. */
+export function outsideAgentReach(
+  fields: FieldValues,
+  reach: readonly string[],
+): CommandRefusal | undefined {
+  const outside = Object.keys(fields)
+    .filter((key) => !reach.includes(key))
+    .toSorted();
+  if (outside.length === 0) return undefined;
+  return refuseCommand('SCOPE_NOT_GRANTED', outside, [
+    `An agent writes only ${reach.join(', ')} through this command.`,
+  ]);
+}
+
+/**
+ * `task.assign` by a person: an agent, a person, or clearing either. An agent
+ * credential (API-2) reaches here as its agent and sets only what a delegated
+ * agent sets, the assignee (#420).
+ */
 export async function assignTask(
   tx: TenantQuery,
   context: CommandContext,
   fields: FieldValues,
 ): Promise<HandlerOutcome> {
+  if (context.session?.credentialScope !== undefined) {
+    const outside = outsideAgentReach(fields, AGENT_ASSIGN_FIELDS);
+    if (outside !== undefined) return refused(outside);
+  }
   const map = typeof fields === 'object' && fields !== null && !Array.isArray(fields);
   const agent: unknown = map ? fields['agent'] : undefined;
   const person: unknown = map ? fields['assignee'] : undefined;

@@ -123,6 +123,15 @@ setting's value.
 Backups are never restored into staging: the restore drill takes no target and
 restores only into a throwaway container of its own.
 
+The dump from Supabase's pooler leaves out `auth`. On hosted Supabase that
+schema belongs to the platform, and staging's owner may use it but may not
+grant it. No platform role is granted to the backup identity, because each one
+would give it far more than reads. The sign-ins stay in Supabase's own project
+backup, and the reset makes staging's made-up sign-ins again. The drill passes
+without `auth`. Migration `20261006140500` stops if the backup identity cannot
+read a schema the dump names that is ours to grant, or a table in that schema
+(#999).
+
 The backup store is a database server of its own, `backups`
 (`ops-astro-staging-backups`), on staging's internal network with no port on
 the machine. Its data is on `ops-astro-staging-backups-data`, the one
@@ -204,6 +213,7 @@ Before staging is prepared, and again after, the owner runs
 
 ```sh
 node scripts/ops/service-report.mjs snapshot > before.json
+# exit 2 here: stop, prepare nothing, and read the error it printed
 # prepare staging, as the runbook says
 node scripts/ops/service-report.mjs snapshot > after.json
 node scripts/ops/service-report.mjs compare before.json after.json
@@ -211,6 +221,9 @@ node scripts/ops/service-report.mjs compare before.json after.json
 
 It exits 1 when a live service stopped, restarted, vanished, moved port or
 was reconfigured, and 0 when all are unchanged (`S0-1 services unchanged`).
+A snapshot that cannot be taken exits 2 with Docker's or launchd's own error
+and prints nothing. Stop there: compare refuses the empty file the redirect
+leaves, but only after staging was prepared without a before.
 
 ## The deploy
 

@@ -32,7 +32,6 @@
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { createAgentQuota, DEFAULT_AGENT_LIMITS, type AgentLimits } from './auth/agent-quota.ts';
 import {
@@ -58,7 +57,6 @@ import {
 } from '../../packages/core-commands/src/index.ts';
 import {
   readServiceHealth,
-  settleAccessEndings,
   type FactorProvider,
   type HealthSources,
   type LoginProvider,
@@ -80,7 +78,6 @@ import type {
   CommandRefusal,
   executeRead,
   admitReads,
-  AdmissionAt,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 import { executorFor, replyTo, type AgentAnswerOptions } from './agent-answers.ts';
@@ -90,7 +87,6 @@ import type { LiveSignal, LiveTopics } from './live.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
 import {
   BOARD,
-  endsWithRequest,
   follow as followTopics,
   RECHECK_MS,
   seatFor,
@@ -99,9 +95,12 @@ import {
   TOPICS,
   type LiveStream,
   type Seated,
-  type Watching,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
+import { hearing, watching, type DoorWatching } from './live-watching.ts';
+import { liveStream } from './live-stream.ts';
+import { recordsIn } from './records-in.ts';
+import { settleAfterCommit } from './settle-after-commit.ts';
 import { mountFactorRoutes, mountPublicLegal } from './account-routes.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 import type { ErrorSinkLink } from './health/error-sink-link.ts';
@@ -454,18 +453,12 @@ export function createApi(options: ApiOptions): Hono {
     });
 
     if (isCommandRefusal(result)) return refuse(context, result);
-    // C58: the provider steps an ending owes are tried as soon as it commits,
-    // outside its transaction; what fails stays owed for the server's retry.
-    const { logins, sharedLogin } = options;
-    if (name === 'access.end' && logins !== undefined && sharedLogin !== undefined) {
-      const only = endingIdsOf(result);
-      const sharedElsewhere = async (subject: string) => await sharedLogin(subject, businessId);
-      if (only.length > 0) {
-        await settleAccessEndings(options.database, businessId, logins, { only, sharedElsewhere });
-      }
-    }
-    const reply = await replyTo(options, businessId, presented, result);
-    return context.json({ ...result, ...(reply === null ? {} : { reply }) }, 200);
+    // C58 and C59: the provider steps the act owes, tried as soon as it
+    // commits, in transactions of their own after the act's
+    // (`settle-after-commit.ts`); what fails stays owed for the retry.
+    const settled = await settleAfterCommit(options, businessId, name, result);
+    const reply = await replyTo(options, businessId, presented, settled);
+    return context.json({ ...settled, ...(reply === null ? {} : { reply }) }, 200);
   });
 
   // The second entry point. Same surface table, same paths, a different
@@ -521,8 +514,7 @@ export function createApi(options: ApiOptions): Hono {
       if (taskId === undefined) throw new Error('the door answered no topic');
       if (typeof taskId !== 'string') return refuse(context, taskId);
       // Batch 1's dedicated task stream: its frames carry no identifier (REVB1ENDFIXAPID).
-      return streamSSE(context, async (stream) => {
-        endsWithRequest(stream, context.req.raw.signal);
+      return liveStream(context, async (stream) => {
         await follow(
           stream,
           live,
@@ -551,7 +543,13 @@ export function createApi(options: ApiOptions): Hono {
       }
       const asks = watching(options, live, context, businessId);
       const tasks = named.watches;
-      const answers = tasks.length === 0 ? [] : await asks.atDoor(tasks.map((each) => each.taskId));
+      const answers =
+        tasks.length === 0
+          ? []
+          : await asks.atDoor(
+              tasks.map((each) => each.taskId),
+              tasks,
+            );
       const board = named.board ? await mayJoinBoard(options, context, businessId) : undefined;
       const watched = tasks.filter((_, at) => typeof answers[at] === 'string');
       const joined = board === undefined || isCommandRefusal(board) ? undefined : board;
@@ -560,8 +558,7 @@ export function createApi(options: ApiOptions): Hono {
       const none = watched.length === 0 && joined === undefined;
       if (none && refused !== undefined && isCommandRefusal(refused))
         return refuse(context, refused);
-      return streamSSE(context, async (stream) => {
-        endsWithRequest(stream, context.req.raw.signal);
+      return liveStream(context, async (stream) => {
         for (const watch of tasks.filter((each) => !watched.includes(each))) {
           // eslint-disable-next-line no-await-in-loop -- written in the order named.
           await stream.writeSSE({ event: 'closed', data: watch.label });
@@ -665,6 +662,8 @@ async function onSeat<A extends SeatAsk>(
   if (admission === undefined || isCommandRefusal(admission)) {
     return refuse(context, admission ?? refuseNotFound());
   }
+  // Only for the person the recheck admitted: a login remapped since never acts through another's seat.
+  if (admission.personId !== viewer.personId) return refuse(context, refuseNotFound());
   const answered = answer(asked, viewer.personId, businessId);
   return answered === undefined ? refuse(context, refuseNotFound()) : context.json(answered);
 }
@@ -674,68 +673,18 @@ async function seatOf(
   options: ApiOptions,
   live: LiveOptions,
   context: Context,
-  asks: Watching,
+  asks: DoorWatching,
 ): Promise<Seated | undefined> {
   const { presence } = live;
   if (presence === undefined) return undefined;
-  return await seatFor(presence, async () => {
+  const seated = await seatFor(presence, async () => {
     const presented = await options.verify(context.req);
     if (typeof presented !== 'object') return;
     const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
     return isCommandRefusal(viewer) ? undefined : viewer;
   });
-}
-
-function watching(
-  options: ApiOptions,
-  live: LiveOptions,
-  context: Context,
-  businessId: string,
-): Watching {
-  const ask = async (taskIds: readonly string[], at: AdmissionAt) => {
-    const answers = await mayWatch(options, live, context, businessId, taskIds, at);
-    return isCommandRefusal(answers) ? taskIds.map(() => answers) : answers;
-  };
-  return {
-    businessId,
-    atDoor: async (taskIds) => await ask(taskIds, 'door'),
-    async again(taskId) {
-      const [answer] = await ask([taskId], 'recheck');
-      if (answer === undefined) throw new Error('the recheck answered no topic');
-      return answer;
-    },
-  };
-}
-
-/**
- * Whether this caller may watch each task, asked after verifying the bearer
- * again, of `task.execution`'s own admission, the internal activity the channel
- * reports: expiry, a lost membership, a revoked grant, a trashed or foreign
- * task and any external reader all refuse. It serves and audits nothing, since
- * the channel shows the person no content (C4 live-sync 6). Each answer is its
- * refusal, or at the door the task's identifier, the topic, and on a recheck
- * the person admitted.
- */
-async function mayWatch(
-  options: ApiOptions,
-  live: LiveOptions,
-  context: Context,
-  businessId: string,
-  taskIds: readonly string[],
-  at: AdmissionAt,
-): Promise<readonly (string | CommandRefusal)[] | CommandRefusal> {
-  const presented = await options.verify(context.req);
-  if (typeof presented !== 'object') {
-    return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
-  }
-  const requests = taskIds.map((recordId) => ({ read: 'task.execution' as const, recordId }));
-  const admitted = await live.admit(options.database, businessId, presented, requests, at);
-  if (isCommandRefusal(admitted)) return admitted;
-  return admitted.map((answer) => {
-    if (isCommandRefusal(answer)) return answer;
-    if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
-    return at === 'door' ? answer.recordId : answer.personId;
-  });
+  // The person the door admitted, or no seat: a login remapped since never sits in their place.
+  return seated?.session.personId === asks.admitted() ? seated : undefined;
 }
 
 /**
@@ -751,8 +700,7 @@ async function boardStream(
 ): Promise<Response> {
   const joined = await mayJoinBoard(options, context, businessId);
   if (isCommandRefusal(joined)) return refuse(context, joined);
-  return streamSSE(context, async (stream) => {
-    endsWithRequest(stream, context.req.raw.signal);
+  return liveStream(context, async (stream) => {
     await followBoardOn(stream, options, live, context, businessId, joined);
   });
 }
@@ -777,6 +725,7 @@ async function followBoardOn(
       },
       reach: async (personId) => await mayReach(options, context, businessId, personId),
       shown: async (personId) => await mayShowInbox(options, context, businessId, personId),
+      hears: hearing(options, context, businessId),
     },
   );
 }
@@ -917,13 +866,6 @@ const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
 const NO_CREDENTIAL = 'no-credential';
 
-/** How many records a read handed out: a task is one, a list (a search's hits too) is its length. */
-function recordsIn(read: object): number {
-  const lists = ['tasks', 'persons', 'queue', 'hits'].map((key): unknown => Reflect.get(read, key));
-  const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
-  if (listed !== undefined) return listed.length;
-  return 'task' in read || 'sharedTask' in read ? 1 : 0;
-}
 /** The answer's outcome, as the detector reads it: no content, only scopes and a code. */
 function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
   const presented = context.get(PRESENTED) as VerifiedSubject | undefined;
@@ -989,12 +931,4 @@ async function readLimited(request: Request, limit: number): Promise<string | un
   } catch {
     return undefined;
   }
-}
-
-/** The endings an `access.end` answer names (C58): ids, and nothing else. */
-function endingIdsOf(result: object): readonly string[] {
-  const detail = (result as { readonly detail?: unknown }).detail;
-  if (typeof detail !== 'object' || detail === null) return [];
-  const ids = (detail as { readonly endingIds?: unknown }).endingIds;
-  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
 }

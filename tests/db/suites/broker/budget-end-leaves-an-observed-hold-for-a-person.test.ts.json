@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "ending a budget-stopped run is refused while an observation kept its hold whole, so the step's priced cost is never released to the cap as unspent and a person's outcome still answers the hold; once that outcome says the step happened, a top-up is refused so the finished step never runs again, even when that outcome's transaction began before the stop"
+}

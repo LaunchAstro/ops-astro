@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "MP-14-10a mandate commands up to commit: a grant that runs out during the audit-chain wait, and a sign-out through another business after the last session read"
+}

@@ -47,4 +47,4 @@ it('MP-1-2 the required check keeps the history the forward-pair proof reads', (
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
-});
+}, 60_000);

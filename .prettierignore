@@ -161,3 +161,18 @@ tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts
 # Sol's PR 364 round-2 proofs, byte-for-byte as the review patch held them apart from their titles,
 # which name what they prove (tests/docs/test-files-by-behaviour.test.ts).
 tests/site/c80-picture-sheets-applied.test.ts
+
+# Sol's proofs for the Keys screen, byte-for-byte as the review patch held them apart from
+# their titles, which name what they prove (tests/docs/test-files-by-behaviour.test.ts).
+tests/surfaces/c31-keys-panel-stale-set-refused.test.tsx
+tests/surfaces/c31-keys-panel-write-denial-drops-the-list.test.tsx
+
+# Sol's OW-008, OW-028 and OW-070 proofs (SOLOW-D D3), byte-for-byte as the review patches held
+# them apart from their titles, which name what they prove (tests/docs/test-files-by-behaviour.test.ts).
+tests/review/ending-claim-per-row-proof.test.ts
+tests/identity/ending-claim-and-shared-recheck-proof.test.ts
+tests/authority/endings-backlog-counts-claimed-proof.test.ts
+tests/authority/endings-once-exit-and-settings-proof.test.ts
+# Sol's D3-FIX2 proofs, byte-for-byte apart from their titles, as above.
+tests/identity/ending-spares-live-agent-login-elsewhere-proof.test.ts
+tests/identity/login-subject-fixed-during-ban-proof.test.ts

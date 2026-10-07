@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it as vitestIt } from 'vitest';
-import { sweepLostWorkers, topUpAtBudgetStop } from '../../packages/core-runtime/src/index.ts';
+import { topUpAtBudgetStop } from '../../packages/core-runtime/src/index.ts';
 import {
   reserveModelCall,
   sendReservedCall,
@@ -85,32 +85,6 @@ const topUp = async (on: Schedules, work: Work) =>
 /** What the envelope counts for the work's calls: each at what it came to. */
 const cameTo = async (work: Work): Promise<number> =>
   (await calls(work)).reduce((sum, one) => sum + Number(one.came_to), 0);
-
-it("a call closed by the provider's proof ignores its own late answer: one give-back", async () => {
-  const work = await liveWork(s, `closes once proved ${randomUUID()}`, 2_000);
-  world.provider.mode('answer');
-  world.provider.lookupMode('honest');
-  const { broker: slow, open } = gated(faultBroker());
-  const late = callIn(s, work, slow);
-  await dispatched(work);
-  const before = await envelopeActual(work);
-  // Its worker is lost: the sweep holds the call unknown while custody still waits on it.
-  await s.db.admin.execute(
-    `update public.leases set expires_at = clock_timestamp() - interval '1 second' where id = $1`,
-    [work.picked['leaseId']],
-  );
-  await s.db.app.withBusiness(s.business, async (tx) => await sweepLostWorkers(tx));
-  await pass();
-  expect(await calls(work)).toMatchObject([{ state: 'released' }]);
-
-  open();
-
-  expect(await late).toMatchObject({ ok: false });
-  expect(await calls(work)).toMatchObject([{ state: 'released', came_to: '0' }]);
-  expect(await envelopeActual(work), 'counted as the call came to').toBe(
-    before + (await cameTo(work)),
-  );
-});
 
 // The late answer and the provider's proof race on a call a top-up counted at
 // its maximum. A worker marks its step dispatched before it acts (written

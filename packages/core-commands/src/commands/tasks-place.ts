@@ -25,6 +25,7 @@ import {
   readFieldDefinitions,
   checkAuthority,
   subjectsOf,
+  wayfinderFacts,
 } from '../../../core-records/src/index.ts';
 import { refuseOwnerTicketMove } from './wayfinder.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -39,6 +40,11 @@ const PARENT = slotOf(TASK_SPINE, 'parent');
 const BOARD = slotOf(TASK_SPINE, 'board');
 const BOARD_RANK = slotOf(TASK_SPINE, 'board_rank');
 const CLIENT = slotOf(TASK_SPINE, 'client');
+const WHOLE_TASKS = {
+  collection: 'task',
+  action: 'write',
+  scope: { kind: 'business', id: null },
+} as const;
 
 /**
  * The client a live parent carries, read under the parent's row lock. A
@@ -83,6 +89,21 @@ async function refuseUnreachedRecord(
 }
 
 /**
+ * A neighbour that is a ticket of the target's own map, under a write grant on
+ * that map (W12), never a nested map. The sibling read below asks again, in one
+ * statement, that it is still filed under that parent.
+ */
+async function reachedThroughMap(
+  tx: TenantQuery,
+  context: CommandContext,
+  id: string,
+  parent: string | null,
+): Promise<boolean> {
+  if (parent === null || (await wayfinderFacts(tx, id))?.mapId !== parent) return false;
+  return (await refuseUnreachedRecord(tx, context, parent)) === undefined;
+}
+
+/**
  * A subtask's board is its parent's (specification 14.2 point 2; 0006's note
  * on `uuid_5`), so a task that changes board takes its whole live subtree with
  * it, or a board read would list subtasks whose root has left and miss the
@@ -91,9 +112,16 @@ async function refuseUnreachedRecord(
  * The descendants are found by the walk trash uses, and each is asked the
  * envelope's question at its own record scope, as trash asks it: the target's
  * grant does not reach them. The first uncovered one refuses the whole move.
- * They are locked in one statement and rewritten in a later one, so a child
- * created under one of them meanwhile is either seen by the rewrite or waits
- * and inherits the new board.
+ *
+ * The walk locks what it finds, and is run again until it finds nothing it
+ * has not already locked and asked about. A creation holds its parent `for
+ * share` until it commits, so a walk parked on that parent sees the new child
+ * only on the next pass: the child is asked about then, or refuses the move.
+ * Once every row is locked no child can be added under one, so the rewrite
+ * touches exactly the rows asked about, and a later creation waits and
+ * inherits the new board. A row a trash committed while a pass waited on it
+ * is still in that list (the lock re-checks the row, not the walk), so the
+ * rewrite skips trashed rows as the walk does.
  */
 async function carryBoardToDescendants(
   tx: TenantQuery,
@@ -108,37 +136,40 @@ async function carryBoardToDescendants(
        select child.id from records child join down on child.${PARENT} = down.id
         where child.business_id = $1 and child.record_type_id = $2 and child.deleted_at is null
      ) cycle id set looped using path`;
-  const found = await tx.query<{ readonly id: string }>(
-    `${walk}
-     select r.id from records r
-      where r.business_id = $1 and r.id in (select id from down where not looped and id <> $3)
-      for update of r`,
-    [tx.businessId, context.spine.taskTypeId, rootId],
-  );
-  if (found.length === 0) return undefined;
-
-  const whole = await checkAuthority(tx, subjectsOf(context.session), {
-    collection: 'task',
-    action: 'write',
-    scope: { kind: 'business', id: null },
-  });
-  if (!whole.ok) {
-    for (const { id } of found) {
-      // Sequential, stopping at the first: the answer is the same whichever.
-      // eslint-disable-next-line no-await-in-loop
-      const refusal = await refuseUnreachedRecord(tx, context, id);
-      if (refusal !== undefined) return refusal;
+  const asked: string[] = [];
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop -- each pass sees what the last one waited on
+    const found = await tx.query<{ readonly id: string }>(
+      `${walk}
+       select r.id from records r
+        where r.business_id = $1 and r.id in (select id from down where not looped and id <> $3)
+        for update of r`,
+      [tx.businessId, context.spine.taskTypeId, rootId],
+    );
+    const fresh = found.filter(({ id }) => !asked.includes(id));
+    if (fresh.length === 0) break;
+    // Asked again on each pass: a grant can lapse while a pass waits.
+    // eslint-disable-next-line no-await-in-loop
+    const whole = await checkAuthority(tx, subjectsOf(context.session), WHOLE_TASKS);
+    if (!whole.ok) {
+      for (const { id } of fresh) {
+        // Sequential, stopping at the first: the answer is the same whichever.
+        // eslint-disable-next-line no-await-in-loop
+        const refusal = await refuseUnreachedRecord(tx, context, id);
+        if (refusal !== undefined) return refusal;
+      }
     }
+    asked.push(...fresh.map(({ id }) => id));
   }
+  if (asked.length === 0) return undefined;
 
   await tx.query(
-    `${walk}
-     update records
-        set data = case when $4::text is null then data - 'board'
-                        else jsonb_set(data, '{board}', to_jsonb($4::text)) end
-      where business_id = $1 and id in (select id from down where not looped and id <> $3)
-        and (data ->> 'board') is distinct from $4::text`,
-    [tx.businessId, context.spine.taskTypeId, rootId, board],
+    `update records
+        set data = case when $3::text is null then data - 'board'
+                        else jsonb_set(data, '{board}', to_jsonb($3::text)) end
+      where business_id = $1 and id = any($2::uuid[]) and deleted_at is null
+        and (data ->> 'board') is distinct from $3::text`,
+    [tx.businessId, asked, board],
   );
   return undefined;
 }
@@ -420,16 +451,30 @@ export async function rankTask(
       ),
     );
   }
+  const parent = (target.data['parent'] as string | undefined) ?? null;
   const given = [afterId, beforeId].filter((id) => id !== null);
+  // Unreached at its own scope, the target was admitted by its map's grant (W12).
+  let viaMap = await refuseUnreachedRecord(tx, context, target.id);
   for (const id of given) {
     // eslint-disable-next-line no-await-in-loop
     const unreached = await refuseUnreachedRecord(tx, context, id);
-    if (unreached !== undefined) return refused(unreached);
+    if (unreached === undefined) continue;
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await reachedThroughMap(tx, context, id, parent))) return refused(unreached);
+    viaMap ??= unreached;
   }
 
-  const parent = (target.data['parent'] as string | undefined) ?? null;
   const board = parent === null ? ((target.data['board'] as string | undefined) ?? null) : null;
   await lockSiblings(tx, parent, board);
+  // A target or neighbour admitted by the map's grant: the parent is held and read again,
+  // so a retype that committed meanwhile is refused and none commits before the rank.
+  if (
+    viaMap !== undefined &&
+    parent !== null &&
+    (await wayfinderFacts(tx, parent, true))?.type !== 'map'
+  ) {
+    return refused(viaMap);
+  }
 
   const neighbours = await tx.query<{ readonly id: string; readonly rank: string | null }>(
     `select id, ${BOARD_RANK}::text as rank from records

@@ -21,6 +21,7 @@ import {
 import { lockedInstant } from './clock.ts';
 import { fourEyesBandMinor, minorDigits } from './four-eyes.ts';
 import { acquire } from './locks.ts';
+import { AffectedSetChanged } from './rediscovery.ts';
 import { checkAuthorityAt, holdCoveringGrants } from './recovery/classifier.ts';
 import { refuse, type RuntimeRefusalCode } from './refusals.ts';
 
@@ -75,6 +76,8 @@ export interface Locked extends Found {
   readonly held_minor: string;
   readonly version_id: string;
   readonly currency: string;
+  /** The run's task is out of the trash, read under the task lock: a top-up needs it, an end does not. */
+  readonly task_live: boolean;
 }
 
 export interface Opened {
@@ -136,11 +139,11 @@ export async function openAnswer(
     { lockClass: 'lineage', id: found.lineage_id },
     { lockClass: 'reservation', id: found.reservation_id },
   ]);
-  const lockedAt = await lockedInstant(tx);
+  const lockedAt = await lockedInstant(tx, ['four_eyes_threshold']);
   if (!(await checkAuthorityAt(tx, request.subjects, scope, lockedAt)).ok) {
     return notGranted(collection);
   }
-  const locked = await readLocked(tx, request.runId, found);
+  const locked = await readLocked(tx, request, found);
   if (locked === undefined || !waitsOn(locked, request.askId)) {
     return refuse(
       'TRANSITION_NOT_PERMITTED',
@@ -157,13 +160,15 @@ function waitsOn(locked: Locked, askId: string | undefined): boolean {
   return open && (askId === undefined || askId === locked.ask_id);
 }
 
-/** The run's task, lineage, and the reservation, envelope and cap its latest ask stopped. */
+/**
+ * The run's task, lineage, and the reservation, envelope and cap its latest
+ * ask stopped. A trashed task is found: its hold is still counted, and the end
+ * is how it is given back. The top-up refuses it under the task lock.
+ */
 async function discover(tx: TenantQuery, runId: string): Promise<Found | undefined> {
   const [found] = await tx.query<Found>(
     `select run.task_id, run.lineage_id, k.reservation_id, res.envelope_id, e.cap_id
        from public.planned_runs run
-       join public.records t
-         on t.business_id = run.business_id and t.id = run.task_id and t.deleted_at is null
        join lateral (select reservation_id from public.budget_asks
                       where business_id = run.business_id and run_id = run.id
                       order by ask_number desc limit 1) k on true
@@ -175,20 +180,29 @@ async function discover(tx: TenantQuery, runId: string): Promise<Found | undefin
   return found;
 }
 
+/**
+ * The facts again, under the locks. The open ask's hold is the one discovery
+ * locked, or the run stopped again in between: answering that ask with the
+ * earlier hold locked would leave its own hold counted, so it rolls back and
+ * the entry's retry discovers again. A stale askId is refused, not retried.
+ */
 async function readLocked(
   tx: TenantQuery,
-  runId: string,
+  request: BudgetAnswerRequest,
   found: Found,
 ): Promise<Locked | undefined> {
-  const [locked] = await tx.query<Omit<Locked, keyof Found>>(
-    `select run.state as run_state, k.id as ask_id,
+  const [row] = await tx.query<Omit<Locked, keyof Found> & { readonly ask_hold: string }>(
+    `select run.state as run_state, k.id as ask_id, k.reservation_id as ask_hold,
             exists (select 1 from public.budget_answers a
                      where a.business_id = k.business_id and a.ask_id = k.id) as answered,
             lin.state as lineage_state, (ver.superseded_at is not null) as superseded,
             res.state as reservation_state, res.held_minor::text as held_minor,
-            res.version_id, e.currency
+            res.version_id, e.currency,
+            exists (select 1 from public.records t
+                     where t.business_id = run.business_id and t.id = run.task_id
+                       and t.deleted_at is null) as task_live
        from public.planned_runs run
-       join lateral (select id, business_id from public.budget_asks
+       join lateral (select id, business_id, reservation_id from public.budget_asks
                       where business_id = run.business_id and run_id = run.id
                       order by ask_number desc limit 1) k on true
        join public.proposal_lineages lin on lin.business_id = run.business_id and lin.id = run.lineage_id
@@ -196,9 +210,15 @@ async function readLocked(
        join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
        join public.task_envelopes e on e.business_id = res.business_id and e.id = res.envelope_id
       where run.business_id = $1 and run.id = $2`,
-    [tx.businessId, runId, found.reservation_id],
+    [tx.businessId, request.runId, found.reservation_id],
   );
-  return locked === undefined ? undefined : { ...found, ...locked };
+  if (row === undefined) return undefined;
+  const { ask_hold: askHold, ...locked } = row;
+  const answering = request.askId === undefined || request.askId === locked.ask_id;
+  if (answering && askHold !== found.reservation_id) {
+    throw new AffectedSetChanged('budget answer: the run stopped again since its hold was found');
+  }
+  return { ...found, ...locked };
 }
 
 /** `decide` on the collection, asked of the run's own task. */

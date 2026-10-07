@@ -42,6 +42,7 @@
 // path here reads a permission the delegation stored.
 
 import { createHash, randomUUID } from 'node:crypto';
+import { raiseAssignment } from '../inbox/raise.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
@@ -472,8 +473,11 @@ export const DELEGATION_STANDS_AT_CHECK: string = standsAt('clock_timestamp()');
 
 /**
  * A child's parent as it stands in this transaction (the U6 fallback: the row,
- * never a token's claims). Precedence as `resolveDelegation`'s: settled, then
- * expired, then the recorded revocation cause. The holder presented a live
+ * never a token's claims), its expiry judged on the statement's clock, as
+ * `resolveDelegation` judges the child's: a call that waited on a lock sees a
+ * parent that expired during the wait as expired. Precedence as
+ * `resolveDelegation`'s: settled, then expired, then the recorded revocation
+ * cause. The holder presented a live
  * child credential, so the parent's state is named, not folded into
  * `DELEGATION_NOT_LIVE`; a parent this business cannot see is that.
  */
@@ -491,7 +495,7 @@ async function parentStanding(
     }
   >(
     `select ${delegationColumns()}, settled_at is not null as settled,
-            expires_at <= now() as expired, revoked_at is not null as revoked,
+            expires_at <= clock_timestamp() as expired, revoked_at is not null as revoked,
             revocation_cause as cause
        from public.delegations where business_id = $1 and id = $2 ${lock}`,
     [tx.businessId, parentId],
@@ -541,6 +545,10 @@ async function parentStanding(
  * the row this business, this authenticated agent and this credential digest
  * already bind, and it permits nothing: the refusal is all it changes.
  *
+ * Expiry is judged on the clock as this statement runs, not the
+ * transaction's start: a caller that resolves again after a lock wait sees a
+ * delegation that expired during the wait as expired (#443).
+ *
  * Precedence when more than one terminal fact holds: settled, then expired,
  * then the recorded revocation cause. A settled or naturally expired
  * credential is `DELEGATION_NOT_LIVE` whatever else happened to it, and so is
@@ -556,8 +564,8 @@ export async function resolveDelegation(
     DelegationRow & { readonly live: boolean; readonly narrowed: boolean }
   >(
     `select ${delegationColumns()},
-            (revoked_at is null and settled_at is null and expires_at > now()) as live,
-            (revoked_at is not null and settled_at is null and expires_at > now()
+            (revoked_at is null and settled_at is null and expires_at > clock_timestamp()) as live,
+            (revoked_at is not null and settled_at is null and expires_at > clock_timestamp()
              and revocation_cause = 'authority_lost') as narrowed
        from public.delegations
       where business_id = $1 and agent_actor_id = $2 and credential_hash = $3`,
@@ -598,7 +606,12 @@ export async function resolveDelegation(
  * `refusal` is the code `resolveDelegation` answered, and the row has to be
  * the one that answer came from. `DELEGATION_NARROWED` here is only R-B's
  * durable cause: revoked for `authority_lost`, unsettled and unexpired,
- * exactly the `narrowed` predicate above. A live delegation whose person has
+ * exactly the `narrowed` predicate above. Each test reads the clock that can
+ * only agree with the answer `resolveDelegation` gave earlier in this
+ * transaction: unexpired on the transaction's start, which is no later than
+ * that answer, and expired on the statement's clock, which is no earlier, so
+ * an expiry the caller waited across, or one passing between the two
+ * statements, never loses the report. A live delegation whose person has
  * since lost a grant, by expiry as much as by revocation, answers the same
  * code from `checkDelegatedAuthority`; it is still live, so it is not
  * historical, nothing is returned for it here, and `resolveNarrowedDelegation`
@@ -614,7 +627,7 @@ export async function resolveHistoricalDelegation(
     refusal === 'DELEGATION_NARROWED'
       ? `revoked_at is not null and settled_at is null and expires_at > now()
          and revocation_cause = 'authority_lost'`
-      : `(revoked_at is not null or settled_at is not null or expires_at <= now())`;
+      : `(revoked_at is not null or settled_at is not null or expires_at <= clock_timestamp())`;
   const rows = await tx.query<{ readonly id: string }>(
     `select id from public.delegations
       where business_id = $1 and agent_actor_id = $2 and credential_hash = $3 and ${ended}`,
@@ -820,7 +833,10 @@ export type RevocationCause = 'authority_lost' | 'delegation_revoked' | 'work_re
  * (`delegation.revoke`, `grant.revoke`, `access.end`, `task.cancel`,
  * `task.propose`'s supersession, `budget.record_outcome`). A caller naming
  * none gets the agent's own actor: the recovery pass and the restart replay,
- * which no person ran.
+ * which no person ran. An explicit revocation reconciles each task it cleared
+ * as an unassignment (`raiseAssignment`), so the person whose agent held it
+ * decides its gate again. The other causes do not: a revoked grant or ended
+ * access writes no inbox item, and retired work ends or replaces the gate.
  */
 export async function revokeDelegation(
   tx: TenantQuery,
@@ -830,17 +846,21 @@ export async function revokeDelegation(
   cause: RevocationCause = 'delegation_revoked',
   actorId: string | null = null,
 ): Promise<Date | null> {
-  const rows = await tx.query<{ readonly revoked_at: Date; readonly agent_actor_id: string }>(
+  const rows = await tx.query<{
+    readonly revoked_at: Date;
+    readonly agent_actor_id: string;
+    readonly delegate_person_id: string;
+  }>(
     // No earlier than the delegation itself, as `revokeGrant` stamps a grant:
     // a revocation that waited on a lock behind it began before it existed.
     `update public.delegations set revoked_at = greatest(now(), granted_at), revocation_cause = $3
       where business_id = $1 and id = $2 and revoked_at is null and settled_at is null
-      returning revoked_at, agent_actor_id`,
+      returning revoked_at, agent_actor_id, delegate_person_id`,
     [tx.businessId, delegationId, cause],
   );
   const revoked = rows[0];
   if (revoked === undefined) return null;
-  await tx.query(
+  const cleared = await tx.query<{ readonly id: string }>(
     `with cleared as (
        update public.records r set data = r.data - 'agent', revision = r.revision + 1
          from public.record_types t
@@ -854,9 +874,15 @@ export async function revokeDelegation(
               'recordId', cleared.id, 'fields', jsonb_build_object('agent', null),
               'delegationId', $2::text, 'cause', $4::text)::text, 'UTF8')), 'hex'),
             1, repeat('0', 64)
-       from cleared`,
+       from cleared
+     returning subject_record_id::text as id`,
     [tx.businessId, delegationId.toLowerCase(), actorId ?? revoked.agent_actor_id, cause],
   );
+  if (cause !== 'delegation_revoked') return revoked.revoked_at;
+  for (const task of cleared) {
+    // oxlint-disable-next-line no-await-in-loop
+    await raiseAssignment(tx, { taskId: task.id, assignee: null, by: revoked.delegate_person_id });
+  }
   return revoked.revoked_at;
 }
 

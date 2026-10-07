@@ -153,16 +153,29 @@ it('AW-13 two exporters at once: a slower export that read an older batch never 
   await drain(s);
   await liveWork(s, `aw13-race-a-${randomUUID()}`, 1_000);
   await awaitDue(s);
-  // The slow export reads its batch, then waits at the target while another
-  // export delivers the same batch and a newer one.
+  // The slow export reads its batch, then waits at the target past its lease
+  // (#963) while another export takes over and delivers the same batch and a
+  // newer one.
+  let reached!: () => void;
+  const atTarget = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
   const slow = exportOnce(t.alpha.db.app, s.business, TRACE_KEY, async (body) => {
+    reached();
     await held;
     return await t.target.deliver(body);
   });
+  await atTarget;
+  await rows(
+    s,
+    `update public.trace_export_cursors set lease_until = clock_timestamp() - interval '1 second'
+      where business_id = $1`,
+    [s.business],
+  );
   await drain(s);
   await liveWork(s, `aw13-race-b-${randomUUID()}`, 1_000);
   await drain(s);

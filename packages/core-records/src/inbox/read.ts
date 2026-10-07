@@ -8,8 +8,8 @@
 // own, bounded: neither read grows with a person's history. Raising and
 // recording are `items.ts`.
 
-import { REACH, type InboxAccess } from './access.ts';
-import { wayfinderCondition } from '../tasks/wayfinder.ts';
+import { inConversation, IS_CONVERSATION, REACH, type InboxAccess } from './access.ts';
+import { mapTicketCondition, wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { Disclosed, InboxAlert, InboxItem, InboxItemAxes } from './items.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
@@ -36,7 +36,10 @@ type ItemRow = InboxItemAxes &
     readonly alertAt: Date | null;
   };
 
-/** A recipient shown the client view reads no map or map ticket (WF-1), as `taskAccess`. */
+/**
+ * A reader shown the client view reads no map or map ticket (WF-1), as
+ * `taskAccess`: on the row `r`, for the person `reach` was walked for.
+ */
 const CLIENT_SAFE = `((select internal from reach) or not ${wayfinderCondition('r')})`;
 
 /**
@@ -44,18 +47,25 @@ const CLIENT_SAFE = `((select internal from reach) or not ${wayfinderCondition('
  * never a nested map, as `task.read` admits them. Read with the row, so the
  * placement and the name come from one snapshot.
  */
-const MAP_TICKET = `(coalesce(r.data ->> 'type', 'task') <> 'map'
-         and r.uuid_4 = any((select records from reach)::uuid[])
-         and exists (select 1 from public.records mp
-                      where mp.business_id = r.business_id and mp.id = r.uuid_4
-                        and mp.record_type_id = r.record_type_id and mp.data ->> 'type' = 'map'))`;
+const MAP_TICKET = `(r.uuid_4 = any((select records from reach)::uuid[]) and ${mapTicketCondition('r')})`;
 
 /**
  * Whether the recipient reads the row's task now, from the statement's own
- * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every row.
+ * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every
+ * row. Item `i`, task `r`; the unattended list asks it of its viewer.
  */
-const HELD = `(((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
+export const HELD: string = `(((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
          or r.uuid_7 = any((select parties from reach)::uuid[]) or ${MAP_TICKET}) and ${CLIENT_SAFE})`;
+
+/**
+ * `HELD`, but a conversation's item (C71) is held by its current members
+ * alone, each from their latest join: an item raised before a re-join is
+ * withheld. Without `chats`, an agent key that does not tick `chat:comment`
+ * (API-2), none is.
+ */
+const heldOf = (chats: boolean): string => `(case when ${IS_CONVERSATION}
+         then ${chats ? inConversation('$2', 'i.raised_at') : 'false'}
+         else ${HELD} end)`;
 
 /** An item's own columns, as `shown` carries them before trashed and held. */
 const COLUMNS = `i.id, i.business_id, i.recipient_person_id, i.subject_record_id, i.reason,
@@ -65,11 +75,15 @@ const COLUMNS = `i.id, i.business_id, i.recipient_person_id, i.subject_record_id
 /**
  * The task's name and client, from the row whose access the same statement
  * derives, so no retype or rename committed after the check reaches the answer.
+ * A team conversation (C71) is named by its kind and a group's name.
  */
-const NAMES = `r.txt_1 as task_key, r.txt_4 as task_title, r.uuid_7 as client_id`;
+const NAMES = `r.txt_1 as task_key,
+       case when ${IS_CONVERSATION} then r.txt_2 else r.txt_4 end as task_title,
+       r.uuid_7 as client_id, ${IS_CONVERSATION} as conversation`;
 
 /** Every open item, access derived per row. */
-const OPEN = `select ${COLUMNS}, ${NAMES}, r.deleted_at is not null as trashed, ${HELD} as held
+const openOf = (chats: boolean): string => `select ${COLUMNS}, ${NAMES},
+              r.deleted_at is not null as trashed, ${heldOf(chats)} as held
          from public.inbox_items i
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
         where i.business_id = $1 and i.recipient_person_id = $2 and i.work_state = 'open'`;
@@ -81,13 +95,15 @@ const OPEN = `select ${COLUMNS}, ${NAMES}, r.deleted_at is not null as trashed, 
  * its client, gives at most $3 of its newest items on the subject history
  * index (0044), and the newest $3 of those are the page. A closed item about
  * a task the recipient cannot read is never looked at, so it takes no place.
+ * A conversation's item (C71, a mention) is never closed on this head; were
+ * one, a business-wide reader in it would find it here.
  */
-const PAGE = `select * from (
+const pageOf = (chats: boolean): string => `select * from (
          (select ${COLUMNS}, ${NAMES}, r.deleted_at is not null as trashed, true as held
             from public.inbox_items i
             join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
            where (select business from reach) and i.business_id = $1 and i.recipient_person_id = $2
-             and i.work_state <> 'open' and ${CLIENT_SAFE}
+             and i.work_state <> 'open' and ${heldOf(chats)}
            order by i.closed_at desc, i.id desc
            limit $3)
          union all
@@ -114,9 +130,9 @@ const PAGE = `select * from (
  * ($3, `-infinity` while the page is not full), among the newest $4 closed
  * items on the history index (0044), which the scan starts and stops on.
  */
-const WITHHELD = `shown as (${REACH}
+const withheldOf = (chats: boolean): string => `shown as (${REACH}
        select ${COLUMNS}, null::text as task_key, null::text as task_title, null::uuid as client_id,
-              r.deleted_at is not null as trashed, false as held
+              false as conversation, r.deleted_at is not null as trashed, false as held
          from (select ${COLUMNS}
                  from public.inbox_items i
                 where i.business_id = $1 and i.recipient_person_id = $2
@@ -124,7 +140,7 @@ const WITHHELD = `shown as (${REACH}
                 order by i.closed_at desc, i.id desc
                 limit $4) i
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
-        where not ${HELD}
+        where not ${heldOf(chats)}
      )`;
 
 /**
@@ -137,6 +153,7 @@ const listing = (ctes: string): string => `with ${ctes}
             s.fact_id as "factId", s.owed, s.work_state as "workState", s.raised_at as "raisedAt",
             s.closed_at as "closedAt", s.closed_by_person_id as "closedByPersonId",
             s.task_key as "taskKey", s.task_title as "taskTitle", s.client_id as "clientId",
+            s.conversation,
             a.seen_at as "seenAt",
             (select d.state from public.inbox_delivery_attempts d
               where d.business_id = s.business_id and d.item_id = s.id
@@ -162,7 +179,10 @@ const listing = (ctes: string): string => `with ${ctes}
       order by s.raised_at, s.id`;
 
 /** Every open item and the page. */
-const ITEMS = listing(`shown as (${REACH}\n       ${OPEN}\n       union all\n       ${PAGE})`);
+const itemsOf = (chats: boolean): string =>
+  listing(
+    `shown as (${REACH}\n       ${openOf(chats)}\n       union all\n       ${pageOf(chats)})`,
+  );
 
 /**
  * What one recipient can be shown, each axis read separately and access derived
@@ -184,8 +204,9 @@ const ITEMS = listing(`shown as (${REACH}\n       ${OPEN}\n       union all\n   
 export async function readInboxItems(
   tx: TenantQuery,
   recipientPersonId: string,
+  chats = true,
 ): Promise<readonly InboxItem[]> {
-  const shown = await tx.query<ItemRow>(ITEMS, [
+  const shown = await tx.query<ItemRow>(itemsOf(chats), [
     tx.businessId,
     recipientPersonId,
     INBOX_HISTORY_PAGE,
@@ -194,7 +215,7 @@ export async function readInboxItems(
   // As text: the driver writes a timestamp parameter through `Date`, which has no infinity.
   const edge =
     page.length < INBOX_HISTORY_PAGE ? '-infinity' : new Date(Math.min(...page)).toISOString();
-  const withheld = await tx.query<ItemRow>(listing(WITHHELD), [
+  const withheld = await tx.query<ItemRow>(listing(withheldOf(chats)), [
     tx.businessId,
     recipientPersonId,
     edge,
@@ -215,7 +236,8 @@ const byRaised = (a: ItemRow, b: ItemRow): number =>
 /** One row as the recipient may be shown it: pointers and the alert only while readable. */
 function itemOf(row: ItemRow): InboxItem {
   const { trashed, held, subjectRecordId, factId, closedByPersonId, clientId, ...rest } = row;
-  const { alertId, alertKind, alertReason, alertAt, taskKey, taskTitle, ...axes } = rest;
+  const { alertId, alertKind, alertReason, alertAt, taskKey, taskTitle, conversation, ...axes } =
+    rest;
   const access: InboxAccess = held ? (trashed ? 'gone' : 'readable') : 'withheld';
   if (access !== 'readable') return { ...axes, access };
   const alert: InboxAlert | null =
@@ -228,7 +250,8 @@ function itemOf(row: ItemRow): InboxItem {
           raisedAt: alertAt.toISOString(),
         };
   const task = { key: taskKey ?? '', title: taskTitle };
-  return { ...axes, access, subjectRecordId, factId, closedByPersonId, task, clientId, alert };
+  const named = { task, clientId, conversation };
+  return { ...axes, access, subjectRecordId, factId, closedByPersonId, ...named, alert };
 }
 
 /**
@@ -236,14 +259,18 @@ function itemOf(row: ItemRow): InboxItem {
  * a task the recipient reads now that is not trashed. Every open item is on the
  * list, so this equals the list's counted entries.
  */
-export async function countOwedItems(tx: TenantQuery, recipientPersonId: string): Promise<number> {
+export async function countOwedItems(
+  tx: TenantQuery,
+  recipientPersonId: string,
+  chats = true,
+): Promise<number> {
   const rows = await tx.query<{ readonly owed: number }>(
     `${REACH}
      select count(*)::int as owed
        from public.inbox_items i
        join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
       where i.business_id = $1 and i.recipient_person_id = $2
-        and i.work_state = 'open' and i.owed and r.deleted_at is null and ${HELD}`,
+        and i.work_state = 'open' and i.owed and r.deleted_at is null and ${heldOf(chats)}`,
     [tx.businessId, recipientPersonId],
   );
   return rows[0]?.owed ?? 0;

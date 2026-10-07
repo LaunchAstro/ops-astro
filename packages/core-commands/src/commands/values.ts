@@ -163,3 +163,135 @@ export function refuseWrongValueType(
     'A link field takes the identifier of a record, not a label a person reads.',
   ]);
 }
+
+/** A run of code points, first and last inclusive. */
+type Span = readonly [number, number];
+
+// READABLE: the code points a name or a sentence a person reads may hold,
+// listed: printable ASCII and every later code point but the C1 controls, the
+// line and paragraph separators (U+2028-2029), the bidi marks and overrides
+// (U+061C, U+200E-200F, U+202A-202E, U+2066-2069) and the surrogates. So no
+// control character, line break or escape, and no text that reorders what an
+// admin reads; the joiners emoji need stay. A lone surrogate is one code point
+// outside every span, so it is refused too.
+const READABLE: readonly Span[] = [
+  [0x20, 0x7e],
+  [0xa0, 0x6_1b],
+  [0x6_1d, 0x20_0d],
+  [0x20_10, 0x20_27],
+  [0x20_2f, 0x20_65],
+  [0x20_6a, 0xd7_ff],
+  [0xe0_00, 0x10_ff_ff],
+];
+
+// What a label also leaves out of READABLE: the default-ignorable code points
+// (Unicode's DerivedCoreProperties), which draw as nothing, the interlinear
+// annotation and hieroglyph format controls, every variation selector but
+// U+FE0E-FE0F, the tag characters, and so the non-joiner: all can carry text no
+// one sees. Also every space but U+0020, and the characters that draw blank
+// (U+2800, U+13441-13442, U+16FE4, U+1D159), which pass for a space or for
+// nothing. The joiner (U+200D) and U+FE0E-FE0F stay, only where `labelText`
+// places them.
+const UNSEEN: readonly Span[] = [
+  [0xa0, 0xa0],
+  [0xad, 0xad],
+  [0x3_4f, 0x3_4f],
+  [0x11_5f, 0x11_60],
+  [0x16_80, 0x16_80],
+  [0x17_b4, 0x17_b5],
+  [0x18_0b, 0x18_0f],
+  [0x20_00, 0x20_0c],
+  [0x20_2f, 0x20_2f],
+  [0x20_5f, 0x20_6f],
+  [0x28_00, 0x28_00],
+  [0x30_00, 0x30_00],
+  [0x31_64, 0x31_64],
+  [0xfe_00, 0xfe_0d],
+  [0xfe_ff, 0xfe_ff],
+  [0xff_a0, 0xff_a0],
+  [0xff_f0, 0xff_fb],
+  [0x1_34_30, 0x1_34_3f],
+  [0x1_34_41, 0x1_34_42],
+  [0x1_6f_e4, 0x1_6f_e4],
+  [0x1_bc_a0, 0x1_bc_a3],
+  [0x1_d1_59, 0x1_d1_59],
+  [0x1_d1_73, 0x1_d1_7a],
+  [0xe_00_00, 0xe_0f_ff],
+];
+
+/** The spans of `spans` with every code point of `holes` taken out. */
+function without(spans: readonly Span[], holes: readonly Span[]): readonly Span[] {
+  return holes.reduce<readonly Span[]>(
+    (kept, [from, to]) =>
+      kept.flatMap(([first, last]): Span[] => {
+        if (to < first || from > last) return [[first, last]];
+        const parts: Span[] = [];
+        if (first < from) parts.push([first, from - 1]);
+        if (to < last) parts.push([to + 1, last]);
+        return parts;
+      }),
+    spans,
+  );
+}
+
+const LABEL: readonly Span[] = without(READABLE, UNSEEN);
+
+const within = (spans: readonly Span[], value: string): boolean =>
+  [...value].every((one) => {
+    const code = one.codePointAt(0) ?? -1;
+    return spans.some(([first, last]) => code >= first && code <= last);
+  });
+
+/**
+ * Text a person reads as sent: every code point is on the READABLE list, so
+ * it holds no control, line break, escape or bidi control. The one definition;
+ * an automation's name and inputs and a mandate's label read it.
+ */
+export function readableText(value: string): boolean {
+  return within(READABLE, value);
+}
+
+// A letter, a number, punctuation or a symbol: something that draws.
+const DRAWS = /^[\p{L}\p{N}\p{P}\p{S}]$/u;
+// Unassigned, private-use and noncharacter code points draw as the same box.
+const NO_GLYPH = /^[\p{Cn}\p{Co}]$/u;
+const MARK = /^\p{M}$/u;
+const MOST_MARKS = 4;
+const PICTOGRAPH = /^\p{Extended_Pictographic}$/u;
+// The joiner only inside an emoji sequence: after a pictograph, a skin tone or
+// U+FE0F, and before a pictograph.
+const BEFORE_JOINER = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}\u{FE0F}]$/u;
+
+/** U+FE0E or U+FE0F straight after a pictograph, or a keycap's: a digit, # or * then U+20E3. */
+const presents = (before: string, after: string): boolean =>
+  PICTOGRAPH.test(before) || (/^[\d#*]$/u.test(before) && after === '\u{20E3}');
+
+/**
+ * A label a person reads beside an approval, read one code point at a time:
+ * readable text with nothing that draws as nothing or as a blank (UNSEEN) and
+ * no code point without a glyph of its own; U+FE0E-FE0F only on a pictograph or
+ * a keycap, the joiner only inside an emoji sequence, at most four combining
+ * marks on one character and none before the first, and at least one character
+ * that draws. So what another person is shown is the whole statement filed.
+ */
+export function labelText(value: string): boolean {
+  const points = [...value];
+  if (!within(LABEL, value) || !points.some((one) => DRAWS.test(one))) return false;
+  // Combining marks on the current character; -1 before the first character.
+  let marks = -1;
+  for (const [at, one] of points.entries()) {
+    const [before, after] = [points[at - 1] ?? '', points[at + 1] ?? ''];
+    if (NO_GLYPH.test(one)) return false;
+    if (one === '\u{200D}') {
+      if (!BEFORE_JOINER.test(before) || !PICTOGRAPH.test(after)) return false;
+      marks = -1;
+    } else if (MARK.test(one)) {
+      if (marks < 0 || marks >= MOST_MARKS) return false;
+      if ((one === '\u{FE0E}' || one === '\u{FE0F}') && (marks > 0 || !presents(before, after))) {
+        return false;
+      }
+      marks += 1;
+    } else marks = 0;
+  }
+  return true;
+}

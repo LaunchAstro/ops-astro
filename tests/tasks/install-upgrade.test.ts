@@ -16,7 +16,7 @@
 // the current code writes and removes only the thing Base never wrote.
 //
 // Three assertions carry the finding. The upgrade adds the comment type with
-// its eight fields. The task and state type ids, their field rows and the task
+// its ten fields. The task and state type ids, their field rows and the task
 // records are untouched by it. A second call changes nothing at all.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -39,7 +39,11 @@ const COMMENT_FIELDS = [
   'author',
   'body',
   'comment_type',
+  // A team conversation's message is anchored here in place of a task (C71-D).
+  'conversation',
   'edited_at',
+  // The person an agent wrote it for (OW-036.1).
+  'on_behalf_of',
   // A reply's message (MP-4-5, R42).
   'parent',
   'posted_at',
@@ -96,6 +100,16 @@ describe.skipIf(serverUrl === undefined)('installTaskSpine upgrades a Base-shape
         [business, taskId, first.taskTypeId, { title: 'a task that predates comments' }],
       );
 
+      // The team conversation type (C71-D) is newer still, so it goes too.
+      await tx.query(
+        `delete from field_defs where record_type_id in (
+           select id from record_types where business_id = $1 and key = 'team_conversation')`,
+        [business],
+      );
+      await tx.query(
+        `delete from record_types where business_id = $1 and key = 'team_conversation'`,
+        [business],
+      );
       await tx.query(`delete from field_defs where record_type_id = $1`, [first.taskCommentTypeId]);
       await tx.query(`delete from record_types where business_id = $1 and id = $2`, [
         business,
@@ -115,6 +129,7 @@ describe.skipIf(serverUrl === undefined)('installTaskSpine upgrades a Base-shape
       expect(upgraded.installed).toBe(false);
       expect(upgraded.taskCommentTypeId).not.toBe(first.taskCommentTypeId);
 
+      expect((await typesOf(tx, business)).map((row) => row.key)).toContain('team_conversation');
       const commentType = (await typesOf(tx, business)).find((row) => row.key === COMMENT_TYPE_KEY);
       expect(commentType?.id).toBe(upgraded.taskCommentTypeId);
       expect(await fieldKeysOf(tx, upgraded.taskCommentTypeId)).toStrictEqual(COMMENT_FIELDS);

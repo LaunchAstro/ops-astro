@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// `connection.graduation` (MP-14-10a): the per-client region of Connections &
+// signal. Every client the caller's `connection:read` scopes reach comes back
+// at once, with its graduation rows, its not-revoked mandates and the scope
+// list a new mandate picks from, so the scope bar is view state and asks the
+// server nothing.
+//
+// All three lists are filtered by those scopes inside their statements
+// (`listGraduation`); a caller holding the key nowhere is refused rather than
+// shown an empty region. The scopes are `heldScopes`', the grant check's own
+// walk, as the fleet read takes them. Each row's state is derived by
+// `deriveGraduation`, from the same words and liveness core's effect check
+// reads (`classMatches`, judged on the database's clock).
+
+import {
+  deriveGraduation,
+  heldScopes,
+  listGraduation,
+  scopeChoices,
+  subjectsOf,
+  type Derived,
+  type GraduationClassRow,
+  type MandateRow,
+  type Session,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
+import type {
+  ConnectionGraduationResult,
+  GraduationRowView,
+  MandateView,
+} from '../../../core-wire/src/index.ts';
+import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
+import type { ReadResult } from './requests.ts';
+
+const rowView = (row: GraduationClassRow, derived: Derived): GraduationRowView => ({
+  id: row.id,
+  clientId: row.clientId,
+  actionClass: row.actionClass,
+  classLabel: row.classLabel,
+  clearance: row.clearance,
+  state: derived.state,
+  heldBy: derived.heldBy,
+  neverWhy: row.neverWhy,
+  promotedAt: derived.promotedBy?.createdAt.toISOString() ?? null,
+  approved: row.approved,
+  edited: row.edited,
+  rejected: row.rejected,
+  since: row.since,
+  note: row.note,
+  revision: row.revision,
+});
+
+const mandateView = (one: MandateRow): MandateView => ({
+  id: one.id,
+  clientId: one.clientId,
+  classes: one.classes,
+  refuses: one.refuses,
+  ceiling:
+    one.ceilingMinor === null || one.currency === null
+      ? null
+      : { amountMinor: one.ceilingMinor, currency: one.currency },
+  expiresAt: one.expiresAt.toISOString(),
+  expired: !one.live,
+  label: one.label,
+  graduationClass: one.graduationClass,
+  authoredBy: one.authoredBy,
+  createdAt: one.createdAt.toISOString(),
+  revision: one.revision,
+});
+
+/**
+ * Every client the scopes reach, in name order, each with the scope list its
+ * own classes give: a client with no graduation row still offers the
+ * whole-account word, so a mandate filed for it has a client to show.
+ */
+function clientsOf(
+  reached: readonly { readonly id: string; readonly label: string }[],
+  classes: readonly GraduationClassRow[],
+): ConnectionGraduationResult['clients'] {
+  return reached.map((client) => ({
+    id: client.id,
+    label: client.label,
+    scopes: scopeChoices(
+      classes.filter((row) => row.clientId === client.id).map((row) => row.actionClass),
+    ),
+  }));
+}
+
+export async function readConnectionGraduation(
+  tx: TenantQuery,
+  session: Session,
+): Promise<ReadResult | CommandRefusal> {
+  const scopes = await heldScopes(tx, subjectsOf(session), {
+    collection: 'connection',
+    action: 'read',
+  });
+  if (scopes.length === 0) {
+    return refuseCommand(
+      'SCOPE_NOT_GRANTED',
+      ['connection:read'],
+      ['no live grant covers it', 'ask a holder who may delegate'],
+    );
+  }
+  const { clients, classes, mandates } = await listGraduation(tx, scopes);
+  return {
+    ok: true,
+    clients: clientsOf(clients, classes),
+    rows: classes.map((row) => rowView(row, deriveGraduation(row, mandates))),
+    mandates: mandates.map((one) => mandateView(one)),
+  };
+}

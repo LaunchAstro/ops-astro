@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a batch keeps each ending claimed until its provider calls finish, and business separation survives a login linked after the shared check"
+}

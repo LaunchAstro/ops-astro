@@ -208,6 +208,19 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
      select business_id, gen_random_uuid(), 'restricted calls seed', id
        from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C41-A: no journey starts an onboarding, so one on that client, and one
+  // step on a record of the business, so a copy of the row meets its keys.
+  'public.onboardings': `insert into public.onboardings
+       (business_id, id, client_id, template_key, template_version, started_by_actor_id)
+     select business_id, gen_random_uuid(), id, 'restricted-calls', 1, created_by_actor_id
+       from public.clients where business_id = $1 order by id limit 1 returning 1`,
+  'public.onboarding_steps': `insert into public.onboarding_steps
+       (business_id, onboarding_id, step_key, task_id, position, phase, kind, state)
+     select o.business_id, o.id, 'restricted-calls',
+            coalesce((select r.id from public.records r where r.business_id = $1
+                       order by r.id limit 1), gen_random_uuid()),
+            0, 'restricted calls', 'agent', 'ready'
+       from public.onboardings o where o.business_id = $1 order by o.id limit 1 returning 1`,
   // C60: no journey records a client's written request, so one is written here.
   'public.client_model_requests': `insert into public.client_model_requests
        (business_id, id, client_id, requested_by, requested_on, request_link, providers, outcome,
@@ -215,11 +228,31 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select business_id, gen_random_uuid(), id, 'restricted calls seed', current_date,
             'https://files.example.test/seed.pdf', array['replay'], 'applied', created_by_actor_id
        from public.clients where business_id = $1 order by id limit 1 returning 1`,
+  // 20261006080000 (MP-14-10a): no journey graduates a class or files a
+  // mandate, so one of each is written here, on the business's seeded client,
+  // the mandate a live refusal by the client's author, so its own insert meets its keys.
+  'public.graduation_classes': `insert into public.graduation_classes
+       (business_id, id, client_id, action_class, class_label, earned)
+     select business_id, gen_random_uuid(), id, 'social.post', 'Social posts', 'none'
+       from public.clients where business_id = $1 order by id limit 1 returning 1`,
+  'public.standing_mandates': `insert into public.standing_mandates
+       (business_id, id, client_id, classes, refuses, expires_at, label, authored_by_actor_id)
+     select business_id, gen_random_uuid(), id, array['social.post'], true,
+            now() + interval '1 day', 'restricted calls seed', created_by_actor_id
+       from public.clients where business_id = $1 order by id limit 1 returning 1`,
   // C58: no journey ends a person's access, so an ending is written here for a
   // person's own login, as `access.end` writes one.
   'public.access_endings': `insert into public.access_endings
        (business_id, person_id, login_id, ended_by_actor_id)
      select pl.business_id, pl.person_id, pl.login_id, a.id
+       from public.person_logins pl
+       join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
+      where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
+  // C59: no journey resets a factor, so a reset is written here for a person's
+  // own login, as `access.reset_factor` writes one.
+  'public.factor_resets': `insert into public.factor_resets
+       (business_id, person_id, login_id, reset_by_actor_id, provider_factor_id)
+     select pl.business_id, pl.person_id, pl.login_id, a.id, 'restricted-calls-seed'
        from public.person_logins pl
        join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
       where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
@@ -235,6 +268,41 @@ const UNREACHED: Readonly<Record<string, string>> = {
        join public.records b on b.business_id = a.business_id and b.id > a.id
       where a.business_id = $1 order by a.id, b.id limit 1 returning 1`,
   // T3e2: the journey drops nothing, so one report and one of its runs.
+  // A cleared secret: the row with no sealed value, which is a whole row (C31).
+  'public.custody_secrets': `insert into public.custody_secrets
+       (business_id, id, name, scope_kind, scope_id)
+     values ($1, gen_random_uuid(), 'restricted-calls.seed', 'business', null) returning 1`,
+  // The connector fleet (MP-14-7a): nothing the journey does writes a
+  // connection, so each of the three is written here, foreign keys off. The
+  // repair names the business's own connection, at its revision, and its
+  // first actor, so a copy of the row meets its keys in the own insert.
+  'public.connections': `insert into public.connections
+       (business_id, id, connector_key, label, status)
+     values ($1, gen_random_uuid(), 'restricted-calls', 'restricted calls', 'active') returning 1`,
+  'public.connection_clients': `insert into public.connection_clients
+       (business_id, connection_id, client_id)
+     values ($1, gen_random_uuid(), gen_random_uuid()) returning 1`,
+  'public.connection_repairs': `insert into public.connection_repairs
+       (business_id, id, connection_id, connection_revision, started_by_actor_id)
+     select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), coalesce(c.revision, 1),
+            coalesce(a.id, gen_random_uuid())
+       from (select 1) one
+       left join lateral (
+         select id, revision from public.connections
+          where business_id = $1 order by id limit 1) c on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
+  // Tripwires and the night round (MP-14-8): nothing the journey does writes
+  // one, so each is written here.
+  'public.tripwires': `insert into public.tripwires
+       (business_id, id, what, rule, watching, state)
+     values ($1, gen_random_uuid(), 'restricted calls', 'restricted calls', 'restricted calls',
+             'armed') returning 1`,
+  'public.night_round_steps': `insert into public.night_round_steps
+       (business_id, id, round_on, at, tone, what, who, say)
+     values ($1, gen_random_uuid(), '2026-09-29', '2026-09-28T23:00:00Z', 'plain',
+             'restricted calls', 'restricted calls', 'restricted calls') returning 1`,
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
   // C80's two tables: the journey requests no live correction. The receipt
@@ -390,6 +458,9 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.trace_expiry_batches': `insert into public.trace_expiry_batches
        (business_id, id, window_days, runs, expired_run_ids)
      values ($1, gen_random_uuid(), 30, 1, array[gen_random_uuid()]) returning 1`,
+  'public.trace_expiry_asks': `insert into public.trace_expiry_asks
+       (business_id, id, run_id, after_tx, after_id)
+     values ($1, gen_random_uuid(), gen_random_uuid(), '1', gen_random_uuid()) returning 1`,
   'public.bootstrap_bytes': `insert into public.bootstrap_bytes
        (business_id, content_digest, content_size, bytes)
      values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,
@@ -403,6 +474,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, person_id, state, reason)
      select business_id, id, 'away', 'restricted calls seed'
        from public.people where business_id = $1 order by id limit 1 returning 1`,
+  // 20261006074341: nothing in the journey opens a team conversation (C71-D); the member
+  // row names a record and a person of the business.
+  'public.team_conversation_members': `insert into public.team_conversation_members
+       (business_id, conversation_id, person_id)
+     select r.business_id, r.id, p.id
+       from public.records r join public.people p on p.business_id = r.business_id
+      where r.business_id = $1 order by r.id, p.id limit 1 returning 1`,
   // Nothing in the journey raises an inbox item yet (INB-1b does), so one item,
   // its recipient's attention row and one attempt are written here, in order.
   'public.inbox_items': `insert into public.inbox_items
@@ -417,6 +495,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, item_id, channel, state)
      select business_id, gen_random_uuid(), id, 'in_app', 'asked' from public.inbox_items
       where business_id = $1 order by id limit 1 returning 1`,
+  // C40B: nothing on the journey asks for a password reset, so one token for the
+  // business's first login is written here.
+  'public.password_reset_tokens': `insert into public.password_reset_tokens
+       (business_id, id, login_id, token_hash, expires_at)
+     select business_id, gen_random_uuid(), id, encode(sha256(id::text::bytea), 'hex'),
+            now() + interval '30 minutes'
+       from public.logins where business_id = $1 order by id limit 1 returning 1`,
   // Automations (C33): the journey releases and fires none. Each row is made
   // from the one before, so the order here is the order of the chain.
   'public.automation_definitions': `insert into public.automation_definitions
@@ -438,6 +523,39 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, activation_id, version_id, due_at, outcome)
      select a.business_id, gen_random_uuid(), a.id, a.version_id, now(), 'activation_off'
        from public.activations a where a.business_id = $1 limit 1 returning 1`,
+  // Standing approvals (C52-A): the journey adopts, revokes and dispatches none.
+  'public.standing_approvals': `insert into public.standing_approvals
+       (business_id, id, activation_id, definition_id, version_id, previous_version_id, act, sequence,
+        decided_by_actor_id)
+     select a.business_id, gen_random_uuid(), a.id, a.definition_id, a.version_id, a.version_id,
+            'adopted', a.revision + 1, a.changed_by_actor_id
+       from public.activations a where a.business_id = $1 limit 1 returning 1`,
+  'public.standing_approval_revocations': `insert into public.standing_approval_revocations
+       (business_id, id, approval_id, revoked_by_actor_id)
+     select s.business_id, gen_random_uuid(), s.id, s.decided_by_actor_id
+       from public.standing_approvals s where s.business_id = $1 limit 1 returning 1`,
+  'public.occurrence_dispatches': `insert into public.occurrence_dispatches
+       (business_id, id, occurrence_id, outcome)
+     select o.business_id, gen_random_uuid(), o.id, 'activation_off'
+       from public.activation_occurrences o where o.business_id = $1 limit 1 returning 1`,
+  // C39-T: nothing on the journey invites anyone, so one invitation, the token
+  // its send minted and that send's attempt are written here, in order. The
+  // invitation names the business's first person and actor.
+  'public.invitations': `insert into public.invitations
+       (business_id, id, person_id, role_key, address, expires_at, created_by_actor_id)
+     select $1, gen_random_uuid(),
+            (select id from public.people where business_id = $1 order by id limit 1),
+            'member', 'invitee@example.test', now() + interval '7 days',
+            (select id from public.actors where business_id = $1 order by id limit 1)
+     returning 1`,
+  'public.enrolment_tokens': `insert into public.enrolment_tokens
+       (business_id, id, invitation_id, token_hash, expires_at)
+     select business_id, gen_random_uuid(), id, encode(sha256(id::text::bytea), 'hex'), expires_at
+       from public.invitations where business_id = $1 order by id limit 1 returning 1`,
+  'public.invitation_delivery_attempts': `insert into public.invitation_delivery_attempts
+       (business_id, id, invitation_id, token_id, state)
+     select business_id, gen_random_uuid(), invitation_id, id, 'asked'
+       from public.enrolment_tokens where business_id = $1 order by id limit 1 returning 1`,
 };
 
 /**
@@ -524,6 +642,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
                  when r.rolname = 'ops_astro_upkeep' then 'upkeep'
                  when r.rolname = 'ops_astro_lease_path' then 'lease path'
+                 when r.rolname = 'ops_astro_map_path' then 'map path'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -541,6 +660,7 @@ async function roleClasses(
  * the application only reads them.
  */
 const DEFINERS: readonly string[] = [
+  'factor_login_live_elsewhere(uuid)',
   'handback_reports_append_only()',
   'map_summary_on_link()',
   'map_summary_on_map_part()',
@@ -550,6 +670,7 @@ const DEFINERS: readonly string[] = [
   'ops.ended_subject_sessions_at_commit()',
   'ops.expire_second_factor_codes()',
   'ops.record_tested_restore()',
+  'password_reset_token_find(text)',
   'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
 ];
 
@@ -637,6 +758,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // 20261004040200: the pickup path's role owns public.take_lease and inserts leases under row security,
     // proved in tests/db/take-lease-path.test.ts.
     expect(classes['lease path']).toStrictEqual(['ops_astro_lease_path']);
+    // 20261006181500: the map read models' role owns their four writers and writes the summary and
+    // frontier under row security, proved in tests/db/click-through-seed-map.test.ts.
+    expect(classes['map path']).toStrictEqual(['ops_astro_map_path']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -764,7 +888,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
         outcome = error instanceof RolledBack ? { kind: 'rows', n: error.n } : classify(error);
       } finally {
         // oxlint-disable-next-line no-await-in-loop
-        await asOwner(copyStatement(table), row);
+        await asOwner(copyStatement(table, true), row);
       }
       // oxlint-disable-next-line no-await-in-loop
       const after = await fingerprint(world.db.admin, table.qualified);
@@ -781,7 +905,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted four run', async () => {
+  it('calls every function as every caller, and only the granted six run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -802,7 +926,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Ten, each for a named reason. The map read models' four (WF-1) and the
+  // Twelve, each for a named reason. The map read models' four (WF-1) and the
   // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
@@ -813,14 +937,18 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
   // upkeep identity runs it. The ending's commit time (20261004181806) is a
   // trigger on the subject-wide endings that only moves a new row's time later.
-  // The pickup path (SL11-30, 20261004040200) is the one way a lease is
-  // written, in the caller's own business (tests/db/take-lease-path.test.ts).
+  // The reset token lookup (20261005144947, C40B) is the reset's one read
+  // across businesses, made with no business: two ids for a hash exactly one business holds,
+  // nulls otherwise, and only the application group runs it. The pickup path (SL11-30,
+  // 20261004040200) is the one way a lease is written, in the caller's own business
+  // (tests/db/take-lease-path.test.ts). The live-elsewhere check (C59) answers one boolean
+  // for a login of the caller's own business, never a subject.
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly ten, each with its search path pinned', () => {
+    it('are exactly twelve, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -892,6 +1020,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     });
   });
 
+  it('the reset token lookup is a definer taking the hash alone, pinned to read every business', () => {
+    const lookup = functions.find((fn) => fn.signature === 'password_reset_token_find(text)');
+    expect(lookup?.definer).toBe(true);
+    expect(lookup?.trigger).toBe(false);
+    expect(lookup?.argumentTypes).toStrictEqual(['text']);
+    expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
+    expect(lookup?.firedBy).toStrictEqual([]);
+  });
+
   describe('the sixth security definer function', () => {
     it('is the pickup path, fired by nothing and under row security', () => {
       const fn = functions.find(
@@ -901,6 +1038,21 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       );
       expect(fn?.trigger).toBe(false);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, pg_temp']);
+      expect(fn?.firedBy).toStrictEqual([]);
+    });
+  });
+
+  describe('the live-elsewhere definer (20261005235557, C59)', () => {
+    // The sixth definer: one boolean for a login of the caller's own business,
+    // never a subject; the application's group may execute it
+    // (c59-factor-reset-settle).
+    it('takes a login id, fired by nothing and pinned to read every business', () => {
+      const fn = functions.find(
+        (each) => each.definer && each.signature === 'factor_login_live_elsewhere(uuid)',
+      );
+      expect(fn?.trigger).toBe(false);
+      expect(fn?.argumentTypes).toStrictEqual(['uuid']);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
       expect(fn?.firedBy).toStrictEqual([]);
     });
   });

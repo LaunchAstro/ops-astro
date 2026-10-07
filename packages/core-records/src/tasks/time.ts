@@ -86,14 +86,20 @@ export function parseDuration(text: string): number | undefined {
   return minutes >= 1 && minutes <= MAX_MINUTES ? minutes : undefined;
 }
 
-/** The live task's Ad hoc mark, or undefined when no live task of this business has the id. */
+/**
+ * The live task's Ad hoc mark, or undefined when no live task of this business
+ * has the id. The row is held `for share` to the end of the transaction, so a
+ * trash or purge holding it makes this wait and then read it deleted, and no
+ * entry lands on a task that is gone.
+ */
 async function taskAdHoc(tx: TenantQuery, taskId: string): Promise<boolean | undefined> {
   // Never cast what is not an identifier: it names no task, like a foreign one.
   if (!isUuid(taskId)) return undefined;
   const rows = await tx.query<{ readonly ad_hoc: boolean | null }>(
     `select r.bool_2 as ad_hoc from public.records r
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-      where r.business_id = $1 and r.id = $2::uuid and r.deleted_at is null and t.key = 'task'`,
+      where r.business_id = $1 and r.id = $2::uuid and r.deleted_at is null and t.key = 'task'
+      for share of r`,
     [tx.businessId, taskId],
   );
   const row = rows[0];

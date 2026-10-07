@@ -20,8 +20,17 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { queue } from '../../../core-runtime/src/index.ts';
 import type { QueuedWork } from '../../../core-wire/src/index.ts';
 
-export async function readQueue(tx: TenantQuery): Promise<readonly QueuedWork[]> {
-  const entries = await queue(tx);
+/**
+ * `agentActorId` is an agent's own read, narrowed under its live delegations
+ * (`queue`). The proposer is named only on the reader's own proposals: work
+ * another actor proposed shows as ids, purpose and amount, never who proposed
+ * it, and a person's read names no proposer at all.
+ */
+export async function readQueue(
+  tx: TenantQuery,
+  agentActorId?: string,
+): Promise<readonly QueuedWork[]> {
+  const entries = await queue(tx, agentActorId);
   return entries.map((entry) => ({
     reservationId: entry.reservationId,
     taskId: entry.taskId,
@@ -30,5 +39,9 @@ export async function readQueue(tx: TenantQuery): Promise<readonly QueuedWork[]>
     lineageId: entry.lineageId,
     purpose: entry.purpose,
     heldMinor: entry.heldMinor,
+    proposedByActorId:
+      agentActorId !== undefined && entry.proposedByActorId === agentActorId
+        ? entry.proposedByActorId
+        : null,
   }));
 }

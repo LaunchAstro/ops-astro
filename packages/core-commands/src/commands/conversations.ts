@@ -17,8 +17,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import { checkAuthorityAt, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
+import { markRefusedForPage, waitsFirst, type PageRefusal } from './conversation-context.ts';
+import { keepModel } from './conversation-model.ts';
 import { isIdentifier } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
@@ -30,6 +33,32 @@ export const DEFAULT_TITLE = 'New conversation';
 
 /** The conversation's address: the page C36 draws, and the API's read of it. */
 export const conversationAddress = (conversationId: string): string => `/agent/${conversationId}`;
+
+/** `conversation:write` across the business: the owner's key to their own conversations. */
+export const OWN_WRITE = {
+  collection: 'conversation',
+  action: 'write',
+  scope: { kind: 'business', id: null },
+} as const;
+
+/**
+ * Whether the caller still holds their own conversations: a member holding
+ * `conversation:write`, which `conversation.read` and `conversation.list` ask
+ * of the owner and the exchange asks before it reads or keeps a reply. A
+ * writer passes what it holds: the instant read once its locks are held (a
+ * grant that ends at or before it no longer counts) and the grant ids it holds
+ * for share (a check resting on none of them does not count).
+ */
+export async function holdsOwnConversations(
+  tx: TenantQuery,
+  session: Session,
+  under?: { readonly at: string; readonly held: ReadonlySet<string> },
+): Promise<boolean> {
+  if (session.roleKey === null) return false;
+  if (under === undefined) return (await checkAuthority(tx, subjectsOf(session), OWN_WRITE)).ok;
+  const own = await checkAuthorityAt(tx, subjectsOf(session), OWN_WRITE, under.at);
+  return own.ok && own.value.some((grant) => under.held.has(grant.id));
+}
 
 export const bounded = (value: unknown, limit: number): value is string =>
   typeof value === 'string' && value.trim() !== '' && value.length <= limit;
@@ -55,26 +84,72 @@ export interface StartFields {
   readonly title?: unknown;
   readonly subject?: unknown;
   readonly scope?: unknown;
+  /** The model chosen before the first message (CS-7.30): an offered one, or absent for the default. */
+  readonly model?: unknown;
 }
 
 /**
- * The cited task, if the caller may read it. A task that is not there, is in
- * the trash, or is not the caller's to read is one answer, `NOT_FOUND`, so
- * citing a task tells the caller nothing they could not already read.
+ * The cited task, if the caller may read it, and the instant read once its row
+ * is locked. A task that is not there, is in the trash, or is not the caller's
+ * to read is one answer, `NOT_FOUND`, so citing a task tells the caller nothing
+ * they could not already read. Read is asked before the row is taken, so a
+ * caller who cannot read it waits on no task write and holds no lock on it.
+ * Then the row is read `for share`, the page's client with it, which covers
+ * the `for key share` the scope's foreign key takes, and both grants are
+ * asked again at the instant after that wait and the audit chain's
+ * (`waitsFirst`, #444): one that lapsed or was ended in either wait no longer
+ * counts.
  */
-async function citable(tx: TenantQuery, context: CommandContext, scope: Scope): Promise<boolean> {
-  const rows = await tx.query<{ readonly id: string }>(
-    `select id from records
-      where business_id = $1 and id = $2 and record_type_id = $3 and deleted_at is null`,
-    [tx.businessId, scope.id, context.spine.taskTypeId],
-  );
-  if (rows.length === 0) return false;
-  const readable = await checkAuthority(tx, subjectsOf(context.session), {
+async function citable(
+  tx: TenantQuery,
+  context: CommandContext,
+  scope: Scope,
+): Promise<{ readonly at: string; readonly pageRefused: PageRefusal | null } | CommandRefusal> {
+  const subjects = subjectsOf(context.session);
+  const read = {
     collection: 'task',
     action: 'read',
     scope: { kind: 'record', id: scope.id },
-  });
-  return readable.ok;
+  } as const;
+  const live = (lock: '' | 'for key share') =>
+    tx.query<{ readonly id: string }>(
+      `select id from records
+        where business_id = $1 and id = $2 and record_type_id = $3 and deleted_at is null
+        ${lock}`,
+      [tx.businessId, scope.id, context.spine.taskTypeId],
+    );
+  if ((await live('')).length === 0) return refuseNotFound(['scope']);
+  if (!(await checkAuthorityAt(tx, subjects, read, await lockedInstant(tx))).ok) {
+    return refuseNotFound(['scope']);
+  }
+  const pageRefused = await waitsFirst(tx, context.session, scope.id);
+  // Refused here, so no row lock is waited on once the chain is held (SEC2-2).
+  if (pageRefused === 'SCOPE_NOT_GRANTED' || pageRefused === 'NOT_FOUND') {
+    return refuseNotFound(['scope']);
+  }
+  if ((await live('for key share')).length === 0) return refuseNotFound(['scope']);
+  const at = await lockedInstant(tx);
+  // The door's grant first, as the door asked it.
+  const own = await checkAuthorityAt(tx, subjects, OWN_WRITE, at);
+  if (!own.ok) return own.refusal;
+  const reads = (await checkAuthorityAt(tx, subjects, read, at)).ok;
+  return reads ? { at, pageRefused } : refuseNotFound(['scope']);
+}
+
+/**
+ * The start's waits, then its grants asked after them: a cited task's through
+ * `citable`; with none, the audit chain alone (SEC2-1).
+ */
+async function startAdmitted(
+  tx: TenantQuery,
+  context: CommandContext,
+  scope: Scope | null,
+): Promise<{ readonly pageRefused: PageRefusal | null } | CommandRefusal> {
+  if (scope !== null) return await citable(tx, context, scope);
+  await waitsFirst(tx, context.session, null);
+  const subjects = subjectsOf(context.session);
+  const own = await checkAuthorityAt(tx, subjects, OWN_WRITE, await lockedInstant(tx));
+  return own.ok ? { pageRefused: null } : own.refusal;
 }
 
 /** The first message's fields, refused by name; undefined when they will do. */
@@ -102,7 +177,9 @@ export async function startConversation(
   const scope = scopeOf(fields.scope);
   const invalid = startRefusal(fields, scope);
   if (invalid !== undefined) return refused(invalid);
-  if (scope && !(await citable(tx, context, scope))) return refused(refuseNotFound(['scope']));
+  const admitted = await startAdmitted(tx, context, scope ?? null);
+  if (!('pageRefused' in admitted)) return refused(admitted);
+  const { pageRefused } = admitted;
   const { session } = context;
   const subject = typeof fields.subject === 'string' ? fields.subject.trim() : null;
   const title = typeof fields.title === 'string' ? fields.title.trim() : (subject ?? DEFAULT_TITLE);
@@ -124,17 +201,20 @@ export async function startConversation(
       scope?.id ?? null,
     ],
   );
+  // CS-7.30: kept before the commit, so the first exchange asks for it; refused, nothing kept.
+  const chosen = fields.model ?? null;
+  const notKept =
+    chosen === null ? undefined : await keepModel(tx, session, conversationId, chosen);
+  if (notKept !== undefined) return refused(notKept);
   await tx.query(
     `insert into conversation_messages
        (business_id, id, conversation_id, role, author_actor_id, body)
      values ($1, $2, $3, 'person', $4, $5)`,
     [tx.businessId, messageId, conversationId, session.actorId, fields.body],
   );
-  return applied(null, null, {
-    conversationId,
-    messageId,
-    address: conversationAddress(conversationId),
-  });
+  const asked = { conversationId, messageId };
+  if (pageRefused !== null) await markRefusedForPage(tx, session, asked, pageRefused);
+  return applied(null, null, { ...asked, address: conversationAddress(conversationId) });
 }
 
 export interface MessageFields {
@@ -160,28 +240,27 @@ export const PURGED: CommandRefusal = refuseCommand(
   ],
 );
 
+const BODY_INVALID: CommandRefusal = refuseCommand(
+  'FIELD_VALUE_INVALID',
+  ['body'],
+  [`Send the message as body, 1 to ${BODY_LIMIT} characters.`],
+);
+
 export async function messageConversation(
   tx: TenantQuery,
   context: CommandContext,
   fields: MessageFields,
 ): Promise<HandlerOutcome> {
-  if (!bounded(fields.body, BODY_LIMIT)) {
-    return refused(
-      refuseCommand(
-        'FIELD_VALUE_INVALID',
-        ['body'],
-        [`Send the message as body, 1 to ${BODY_LIMIT} characters.`],
-      ),
-    );
-  }
+  if (!bounded(fields.body, BODY_LIMIT)) return refused(BODY_INVALID);
   if (!isIdentifier(fields.conversationId)) return refused(refuseNotFound());
   // The row lock orders this message against the wrap-up and the purge, which
   // take the same lock: a message never lands in a body being purged.
   const rows = await tx.query<{
     readonly owner_actor_id: string;
     readonly body_purged_at: Date | null;
+    readonly scope_record_id: string | null;
   }>(
-    `select owner_actor_id, body_purged_at from conversations
+    `select owner_actor_id, body_purged_at, scope_record_id from conversations
       where business_id = $1 and id = $2
       for update`,
     [tx.businessId, fields.conversationId],
@@ -190,18 +269,27 @@ export async function messageConversation(
   if (conversation === undefined) return refused(refuseNotFound());
   if (conversation.owner_actor_id !== context.session.actorId) return refused(NOT_YOURS);
   if (conversation.body_purged_at !== null) return refused(PURGED);
+  const pageRefused = await waitsFirst(tx, context.session, conversation.scope_record_id);
   const messageId = randomUUID();
+  // Stamped after the row lock, so messages list in the order kept (#444).
+  // The grant the door asked is asked again at that clock: one that lapsed
+  // while this waited for the row no longer counts.
+  const at = await lockedInstant(tx);
+  const still = await checkAuthorityAt(tx, subjectsOf(context.session), OWN_WRITE, at);
+  if (!still.ok) return refused(still.refusal);
   await tx.query(
     `insert into conversation_messages
-       (business_id, id, conversation_id, role, author_actor_id, body)
-     values ($1, $2, $3, 'person', $4, $5)`,
-    [tx.businessId, messageId, fields.conversationId, context.session.actorId, fields.body],
+       (business_id, id, conversation_id, role, author_actor_id, body, created_at)
+     values ($1, $2, $3, 'person', $4, $5, $6::text::timestamptz)`,
+    [tx.businessId, messageId, fields.conversationId, context.session.actorId, fields.body, at],
   );
   await tx.query(
-    `update conversations set last_activity_at = greatest(now(), last_activity_at)
+    `update conversations set last_activity_at = greatest($3::text::timestamptz, last_activity_at)
       where business_id = $1 and id = $2`,
-    [tx.businessId, fields.conversationId],
+    [tx.businessId, fields.conversationId, at],
   );
+  const asked = { conversationId: fields.conversationId, messageId };
+  if (pageRefused !== null) await markRefusedForPage(tx, context.session, asked, pageRefused);
   return applied(null, null, {
     conversationId: fields.conversationId,
     messageId,

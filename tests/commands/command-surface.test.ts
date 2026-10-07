@@ -10,10 +10,9 @@
 // installed model and not a list in a module — which is the whole reason T1e
 // put the classification in the data.
 //
-// It is also what settles the count. The contract names nine commands and the
-// split is titled after them; the seeded task type names ten owning
-// operations. Nine is not enough for the model that landed, and this is where
-// that stops being an argument and becomes a failing test.
+// It is also what settles the count. The contract names nine commands and the split is titled
+// after them; the seeded task type names ten owning operations. Nine is not enough for the model
+// that landed, and this is where that stops being an argument and becomes a failing test.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -41,7 +40,7 @@ if (serverUrl === undefined) {
 
 /** Every path is a collection and an operation; the collections are named in the case below. */
 const PATH_SHAPE =
-  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|preference|access|operations|privacy|legal|credential|client|inbox|notifications|map)\/[a-z_]+$/u;
+  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|chat|preference|access|operations|privacy|legal|credential|client|inbox|notifications|secret|map|connection|connector|automation|activation|approval|invitation|record|onboarding|mandate|graduation|live_correction|finance)\/[a-z_]+$/u;
 
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
@@ -71,25 +70,22 @@ describe('the surface as a table', () => {
   it('gives every command a path nothing else has', () => {
     const paths = COMMAND_SURFACE.map((command) => pathOf(command.name));
     expect(new Set(paths).size).toBe(paths.length);
-    // Every path is a collection and an operation. `person.list` was the first
-    // row whose collection is not `task` and there are now five prefixes, so
-    // the shape is what is asserted rather than the one prefix that happened
-    // to be true of the writes. `session` is the fifth and the odd one: it is
-    // the only collection nothing is stored in, because the read under it is
-    // about the caller rather than about the business's records. `grant` and
-    // `delegation` are the revocation controls': the path names the row a
-    // revocation writes, and the authority it asks is still on tasks. `gate`
-    // is the awaiting-review read's (MP-6-1): the gates waiting on a decision,
-    // asked with `decide` on tasks. `conversation` is a person's conversation
-    // with the agent (AW-03), its writes and its read at its address. `model`
-    // is AW-01's call through the broker, asked of the lease's task. `run` is
-    // AW-05's budget stop answers; `definition`, AW-04's attribution; `trace`, AW-13's readers;
-    // `harness`, AW-12's result. `operations`
-    // and `privacy` are C55's view and its incident record, and `legal` is C81's
-    // documents, asked of `privacy`. `credential` is API-2's agent credential.
-    // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
-    // `tag` is MP-4-11's: the business's tag vocabulary.
-    // `map` is the wayfinder's (WF-1): a map is a task of type `map`.
+    // Every path is a collection and an operation. `person.list` was the first row whose collection
+    // is not `task` and there are now five prefixes, so the shape is what is asserted rather than
+    // the one prefix that happened to be true of the writes. `session` is the fifth and the odd
+    // one: it is the only collection nothing is stored in, because the read under it is about the
+    // caller rather than about the business's records. `grant` and `delegation` are the revocation
+    // controls': the path names the row a revocation writes, and the authority it asks is still on
+    // tasks. `gate` is the awaiting-review read's (MP-6-1): the gates waiting on a decision, asked
+    // with `decide` on tasks. `conversation` is a person's conversation with the agent (AW-03), its
+    // writes and its read at its address. `model` is AW-01's call through the broker, asked of the
+    // lease's task. `run` is AW-05's budget stop answers; `definition`, AW-04's attribution;
+    // `trace`, AW-13's readers; `harness`, AW-12's result. `operations` and `privacy` are C55's
+    // view and its incident record, and `legal` is C81's documents, asked of `privacy`.
+    // `credential` is API-2's agent credential. `time` is MP-4-6's (time entries, rows beside a
+    // task); `mandate`, `graduation` MP-14-10a. By piece: `tag` MP-4-11; `chat` C71-D; `invitation`
+    // C39-T; `map` WF-1; `automation`, `activation` C33; `approval` C52-A; `record`, `onboarding`
+    // C41-A; `live_correction` C80; `finance` MP-14-9 and MP-14-6.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
@@ -97,21 +93,34 @@ describe('the surface as a table', () => {
 /** The reads the surface declares, sorted. */
 const DECLARED_READS = [
   'access.read',
+  'automation.registry',
+  'chat.conversations',
+  'chat.messages',
   'client.list',
+  'connection.fleet',
+  'connection.graduation',
+  'connection.signal',
   'conversation.allowance',
   'conversation.list',
+  'conversation.models',
   'conversation.read',
   'definition.attribution',
+  'finance.agent_costs',
+  'finance.skill_costs',
   'gate.pending',
   'harness.read',
   'inbox.count',
   'inbox.read',
   'inbox.unattended',
+  'live_correction.read',
+  'map.frontier',
+  'map.view',
   'operations.read',
   'person.list',
   'preference.read',
   'preset.plan',
   'privacy.draft_breach_notices',
+  'secret.list',
   'session.capabilities',
   'session.person',
   'settings.read',
@@ -129,7 +138,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the thirty reads as reads, and everything else as a write', () => {
+  it('declares the forty-two reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
@@ -252,13 +261,14 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
     expect(missing).toStrictEqual([]);
   });
 
-  it('finds fifteen of them, which is what makes nine commands too few', () => {
+  it('finds sixteen of them, which is what makes nine commands too few', () => {
     expect(named).toStrictEqual([
       'task.assign',
       'task.complete',
       'task.move',
       'task.reopen',
       'task.reparent',
+      'task.resolve',
       'task.set_adhoc',
       'task.set_audience',
       'task.set_category',
@@ -270,10 +280,9 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
       'task.start',
       'task.triage',
     ]);
-    // Fifteen names, and only two of them — complete and reopen — are among
-    // the contract's nine commands. The other thirteen are why this part declares
-    // more than nine, and `task.rank` is a fifteenth operation the mechanics
-    // need that neither list carries.
+    // Sixteen names, and only two of them — complete and reopen — are among the contract's nine
+    // commands. The other fourteen are why this part declares more than nine, and `task.rank` is
+    // a seventeenth operation the mechanics need that neither list carries.
     expect(named.filter((name) => CONTRACT_NINE.includes(name as CommandName))).toStrictEqual([
       'task.complete',
       'task.reopen',

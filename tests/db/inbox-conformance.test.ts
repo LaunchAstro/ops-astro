@@ -151,7 +151,11 @@ describe.skipIf(serverUrl === undefined)('INB-1g queue-and-delivery conformance 
             { kind: 'person', id: w.reviewer.personId },
           ])
         ).filter((e) => e.counted);
-        return (await reads.countOwed(tx, w.reviewer.personId)) === listed.length;
+        return (
+          (await reads.countOwed(tx, w.reviewer.personId, [
+            { kind: 'person', id: w.reviewer.personId },
+          ])) === listed.length
+        );
       });
     });
   });

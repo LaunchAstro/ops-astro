@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The scheduled backup's dump (ticket S0-3, line C1; backup.mjs): pg_dump of
-// the product's schemas and `auth` in a throwaway container of staging's own
+// the product's schemas and `auth` (not on hosted Supabase) in a throwaway container of staging's own
 // pinned Postgres image, handed on as it prints, so the job never holds a dump
 // whole (REV158S criterion 5).
 
@@ -14,6 +14,19 @@ const BACKUP_ROLE = 'ops_astro_backup';
 // and staging's made-up guard, whose functions the guarded tables' triggers call.
 // A database without the guard has no such schema, and pg_dump skips it.
 export const SCHEMAS = ['public', 'ops', 'auth', 'ops_astro_made_up'];
+// On hosted Supabase `auth` is the platform's: our owner may use it but not
+// grant on it, and no platform role is granted to the backup identity (#999,
+// migrations/20261006140500_backup_reach_checked.sql). The hosted dump leaves it
+// out; its sign-ins stay in Supabase's own project backup, and staging's
+// made-up cast gets them back from the reset's sign-in step (staging-reset.mjs).
+// The job reaches staging only by the pooler (backup.mjs, OPS_EGRESS_POOLER_*),
+// so the pooler's name is the sign.
+const HOSTED = /^[a-z0-9-]+\.pooler\.supabase\.com$/u;
+
+/** The schemas dumped from `host`, as the URL parser reads it. */
+export function schemasFrom(host) {
+  return HOSTED.test(host.toLowerCase()) ? SCHEMAS.filter((schema) => schema !== 'auth') : SCHEMAS;
+}
 
 const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -29,13 +42,30 @@ const staging = JSON.parse(
  * prints nothing fails.
  */
 export function pgDump(sourceUrl) {
-  const run = runContainer('backup', staging.networks.staging.name, reachEnv(sourceUrl), [
+  plainDatabase(sourceUrl);
+  const login = reachEnv(sourceUrl);
+  const run = runContainer('backup', staging.networks.staging.name, login, [
     'pg_dump',
     '--format=custom',
     `--role=${BACKUP_ROLE}`,
-    ...SCHEMAS.map((schema) => `--schema=${schema}`),
+    ...schemasFrom(login.PGHOST).map((schema) => `--schema=${schema}`),
   ]);
   return printed(run);
+}
+
+/**
+ * Refuses a dump whose database name is not a plain identifier: pg_dump reads
+ * a name holding `=` or a URI as a connection of its own, whose host wins
+ * (#999). An address the parser cannot read is left to `reachEnv`'s refusal.
+ */
+function plainDatabase(sourceUrl) {
+  let name;
+  try {
+    name = decodeURIComponent(new URL(sourceUrl).pathname.slice(1));
+  } catch {
+    return;
+  }
+  if (!/^[A-Za-z0-9_]{1,63}$/u.test(name)) throw new Error('not a plain database name');
 }
 
 /**

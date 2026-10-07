@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { checkDelegatedAuthority, resolveLiveById } from '../authority/delegations.ts';
 import type { Delegation } from '../authority/delegations.ts';
+import { holdOwnWrite, ownWriteStands, type OwnHeld } from './covering.ts';
 import {
   lockCorrectionForSystem,
   type CorrectionState,
@@ -79,19 +80,17 @@ type Refused = { readonly ok: false; readonly code: ObservedRefusal };
 type OwnedLease = { readonly task_id: string; readonly delegation_id: string | null };
 
 /**
- * The correction locked, and a live worker lease on its task at the fence the
- * worker holds, or the refusal: no such lease of the caller's is
- * `LEASE_NOT_OWNED` whatever the id; a correction absent or on another task,
- * `NOT_FOUND`. The lease and then its delegation are locked
- * `for share` (`core-runtime/src/locks.ts`'s order), so neither can end or be
- * revoked until this transaction does; then the clock is read once, after the
- * locks, and both expiries are judged at it (`core-runtime/src/clock.ts`), so a
- * write that waited on the correction past an expiry sees it expired. The lease
- * is the caller's own, and its delegation, where it has one, is not revoked,
- * settled or expired: the check `core-runtime/src/lease-ownership.ts` makes.
- * A delegated lease then stands on its person's grants (`delegatedWriteStands`),
- * share-locked after the correction and before the lease (`holdPersonWrites`)
- * for the delegation the locked lease still names.
+ * The correction locked, and a live worker lease on its task at the fence the worker holds,
+ * or the refusal: no such lease of the caller's is `LEASE_NOT_OWNED` whatever the id; a
+ * correction absent or on another task, `NOT_FOUND`. The lease and then its delegation are
+ * locked `for share` (`core-runtime/src/locks.ts`'s order), so neither can end or be revoked
+ * until this transaction does; then the clock is read once, after the locks, and both
+ * expiries are judged at it (`core-runtime/src/clock.ts`). The lease is the caller's own, and
+ * its delegation, where it has one, is not revoked, settled or expired (the check
+ * `core-runtime/src/lease-ownership.ts` makes). The lease then stands on its person's grants,
+ * share-locked after the correction and before the lease: a delegated one on the delegating
+ * person's (`holdPersonWrites`, `delegatedWriteStands`), a person's own on their own task
+ * write (`holdOwnWrite`, `ownWriteStands`).
  */
 async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
   // The lease the caller holds names the one task it may reach, asked before any correction:
@@ -104,10 +103,7 @@ async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
   if (owned === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const correction = await lockCorrectionForSystem(tx, at.correctionId, owned.task_id);
   if (correction === undefined) return { ok: false, code: 'NOT_FOUND' };
-  const person =
-    owned.delegation_id === null
-      ? null
-      : await holdPersonWrites(tx, at.actorId, owned.delegation_id);
+  const person = await holdPersonWrites(tx, at.actorId, owned);
   if (person === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const [lease] = await tx.query<{ readonly delegation_id: string | null }>(
     `select l.delegation_id from public.leases l
@@ -137,10 +133,8 @@ async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
   );
   const [instant] = live;
   if (instant === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
-  if (person !== null) {
-    const stands = await delegatedWriteStands(tx, person, instant.at);
-    if (!stands.ok) return stands;
-  }
+  const stands = await delegatedWriteStands(tx, person, instant.at);
+  if (!stands.ok) return stands;
   return { ok: true, correction };
 }
 
@@ -162,9 +156,10 @@ interface PersonHeld {
 async function holdPersonWrites(
   tx: TenantQuery,
   actorId: string,
-  delegationId: string,
-): Promise<PersonHeld | undefined> {
-  const delegation = await resolveLiveById(tx, actorId, delegationId);
+  lease: OwnedLease,
+): Promise<PersonHeld | OwnHeld | undefined> {
+  if (lease.delegation_id === null) return await holdOwnWrite(tx, actorId, lease.task_id);
+  const delegation = await resolveLiveById(tx, actorId, lease.delegation_id);
   if (delegation === undefined) return undefined;
   const rows = await tx.query<{ readonly id: string }>(
     `with recursive chain as (
@@ -206,9 +201,11 @@ async function holdPersonWrites(
  */
 async function delegatedWriteStands(
   tx: TenantQuery,
-  { delegation, held }: PersonHeld,
+  person: PersonHeld | OwnHeld,
   at: string,
 ): Promise<{ readonly ok: true } | Refused> {
+  if ('own' in person) return await ownWriteStands(tx, person, at);
+  const { delegation, held } = person;
   for (const collection of delegation.collections) {
     // Sequential: one transaction, one connection.
     // oxlint-disable-next-line no-await-in-loop

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { readFileSync } from 'node:fs';
-import { configDefaults, defineConfig } from 'vitest/config';
+import { relative, sep } from 'node:path';
+import { configDefaults, defineConfig, type ViteUserConfig } from 'vitest/config';
+import { BaseSequencer, type TestSpecification } from 'vitest/node';
+import { localFileShards, readShardPlan } from './scripts/ci-shards.ts';
 
 // With a database, the database-bound suites run. Each file's fresh database
 // is a clone of one template the run migrates from empty once
@@ -29,7 +32,26 @@ const clusterRoleSuites = [
 ];
 const oneSuiteAtATime = process.env['SUITE_PART'] !== undefined;
 
-export default defineConfig({
+// `local checks` runs as shards (CI-SHARDS-2): `vitest run --shard i/n` runs
+// the test files scripts/ci-shards.ts gives shard i by measured time, where
+// vitest's own split counts files. A file's shard depends on its path and the
+// committed plan alone, so each file runs in exactly one (tests/ci/ci-shards.test.ts).
+class MeasuredShards extends BaseSequencer {
+  override shard(files: TestSpecification[]): Promise<TestSpecification[]> {
+    const { root, shard } = this.ctx.config;
+    if (shard === undefined) return Promise.resolve(files);
+    const path = (spec: TestSpecification) => relative(root, spec.moduleId).split(sep).join('/');
+    const split = localFileShards(
+      files.map((spec) => path(spec)),
+      readShardPlan(root),
+      shard.count,
+    );
+    const mine = new Set(split[shard.index - 1]);
+    return Promise.resolve(files.filter((spec) => mine.has(path(spec))));
+  }
+}
+
+const config: ViteUserConfig = defineConfig({
   test: {
     environment: 'node',
     globals: false,
@@ -48,6 +70,7 @@ export default defineConfig({
     // The capture chain's longer timeout, file by file (see the file); a second
     // project would label the `vitest list` lines scripts/db-conformance.mjs reads.
     setupFiles: ['tests/support/capture-chain-timeout.ts'],
+    sequence: { sequencer: MeasuredShards },
     // Hooks are where every database-bound file makes a fresh database
     // (`beforeAll`), a clone or a migration from empty, and drops it
     // (`afterAll`). That is legitimately slow work, and with many files and
@@ -70,26 +93,49 @@ export default defineConfig({
     // scan-login and backup revocation proofs), the OW-002 proofs written beside
     // them, Sol's two PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
     // c59-factor-routes-world (byte for byte but for one cookie-jar split CQ-11
-    // asks for), Sol's six F2 lost-answer retry proofs and Sol's two F3
-    // save-order proofs open their worlds with no skip, as do Sol's three
-    // template lock and clone catalogue proofs and the cases written beside
-    // them; without a database they are left out here, and the manifests run
-    // them where there is one.
+    // asks for), Sol's six F2 lost-answer retry proofs, Sol's two F3
+    // save-order proofs and Sol's OW-016 route proof open their worlds with no
+    // skip, as do Sol's three template lock and clone catalogue proofs and the
+    // cases written beside them, C31's Sol proof files, the Keys panel's DB
+    // proofs, and Sol's two ending-claim proofs and agent-login proof (SOLOW-D
+    // D3), and the two shared-login factor suites; without a database they
+    // are left out here, and the manifests run them where there is one. C31's
+    // corrupted audit chain fails by design: only the proof that spawns it from
+    // inside a test worker collects it.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
+      ...(process.env['VITEST_WORKER_ID'] === undefined
+        ? ['tests/custody/c31-audit-chain-corrupted.test.ts']
+        : []),
       ...(database
         ? []
         : [
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
+            'tests/api/server-entry-hosted-sign-in-key.test.ts',
+            'tests/review/forwarder-replay-time-order.test.ts',
             'tests/automations/c33-registry-snapshot-and-claim-races.test.ts',
+            'tests/custody/c31-audit-chain-test-catches-corruption.test.ts',
+            'tests/custody/c31-last-used-moves-forward.test.ts',
+            'tests/custody/c31-revoked-list-and-revision-range.test.ts',
+            'tests/custody/c31-secret-set-guards.test.ts',
+            'tests/custody/c31-two-setters-overlap.test.ts',
+            'tests/surfaces/c31-keys-panel-first-set-refused.test.tsx',
+            'tests/surfaces/c31-keys-panel-stale-clear-refused.test.tsx',
+            'tests/surfaces/c31-keys-panel-stale-set-refused.test.tsx',
             'tests/api/end-others-provider-clock-skew.test.ts',
             'tests/api/end-others-delayed-ending.test.ts',
             'tests/api/end-others-ended-session-leaves-live-list.test.ts',
+            'tests/api/end-others-leaves-session-list-in-every-business.test.ts',
+            'tests/identity/session-list-subject-wide-ending.test.ts',
             'tests/api/agent-credential-exports-counted.test.ts',
             'tests/review/role-repair-drops-inherited-access-proof.test.ts',
             'tests/review/staging-logins-*-proof.test.ts',
             'tests/operations/find-copies-values-only.proof.test.ts',
+            'tests/operations/find-copies-output-and-refusals.test.ts',
+            'tests/operations/find-copies-seeds-and-erasure.test.ts',
+            'tests/operations/find-copies-stored-names.test.ts',
+            'tests/operations/find-copies-long-values.test.ts',
             'tests/operations/scan-login-token-and-shared-login.proof.test.ts',
             'tests/operations/scan-login-cleanup-mapping-race.test.ts',
             'tests/review/backup-read-part-appointment-proof.test.ts',
@@ -101,10 +147,17 @@ export default defineConfig({
             'tests/operations/scan-login-cleanup-subject-race.proof.test.ts',
             'tests/api/function-outbox-before-response.test.ts',
             'tests/api/function-outbox-waits-for-own-events.test.ts',
+            'tests/api/conversation-retention-work.test.ts',
+            'tests/db/conversation-run-end-retention.test.ts',
+            'tests/db/run-end-stamped-after-lock-wait.test.ts',
+            'tests/db/run-supersede-stamped-after-lock-wait.test.ts',
             'tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts',
+            'tests/api/live-presence-remap-before-mark-recheck-applies-nothing.test.ts',
+            'tests/api/live-presence-remap-before-seat-shows-no-unadmitted-person.test.ts',
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
             'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
+            'tests/api/live-presence-revoked-before-seat-shows-no-unadmitted-reader.test.ts',
             'tests/commands/mention-refusal-replay-name.test.ts',
             'tests/commands/mention-refusal-staff-name.test.ts',
             'tests/broker/counted-call-closes-give-back-once.test.ts',
@@ -115,10 +168,16 @@ export default defineConfig({
             'tests/broker/model-call-concurrent-sends-dispatch-once.test.ts',
             'tests/broker/model-call-retried-send-sends-once.test.ts',
             'tests/broker/model-call-swept-hold-sends-nothing.test.ts',
+            'tests/broker/counted-call-release-races-top-up-and-end.test.ts',
             'tests/harness/reserved-model-call-retry-sends-once.test.ts',
             'tests/api/receipt-link-held-credentials-crossings.test.ts',
             'tests/api/receipt-link-keeps-no-credential.test.ts',
             'tests/api/receipt-link-literal-percent-and-held-digests.test.ts',
+            'tests/broker/reconcile-keeps-call-when-its-carrier-changes.test.ts',
+            'tests/broker/reconcile-uses-carrying-route.test.ts',
+            'tests/api/held-attempt-calls-provider-once.test.ts',
+            'tests/api/held-answer-sign-off.proof.test.ts',
+            'tests/api/applied-comment-settles-after-sign-off.proof.test.ts',
             'tests/web/authenticator-cancelled-enrol-lands-late.test.tsx',
             'tests/web/sign-in-code-after-enrolment.test.tsx',
             'tests/surfaces/incident-retry-once-and-task-draft-stays-with-business.test.tsx',
@@ -131,6 +190,16 @@ export default defineConfig({
             'tests/web/preferences-save-order-api.test.tsx',
             'tests/web/saved-flag-save-order.test.tsx',
             'tests/support/template-lock-and-clone-catalogue.test.ts',
+            'tests/acceptance/credential-comment-represented-person.test.ts',
+            'tests/commands/agent-comment-represented-person.test.ts',
+            'tests/commands/comment-change-revoked-before-write.test.ts',
+            'tests/commands/comment-change-agent-helper-revoke-order.test.ts',
+            'tests/commands/comment-change-revoked-while-waiting.test.ts',
+            'tests/review/ending-claim-per-row-proof.test.ts',
+            'tests/identity/ending-claim-and-shared-recheck-proof.test.ts',
+            'tests/identity/ending-spares-live-agent-login-elsewhere-proof.test.ts',
+            'tests/identity/a-factor-belongs-to-its-login-not-every-login-of-the-person.test.ts',
+            'tests/web/a-shared-login-completes-its-code-in-another-business.test.tsx',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
@@ -139,3 +208,5 @@ export default defineConfig({
     ],
   },
 });
+
+export default config;

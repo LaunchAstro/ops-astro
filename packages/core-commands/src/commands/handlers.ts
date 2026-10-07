@@ -2,18 +2,17 @@
 //
 // What the envelope hands a command, and which command it hands it to.
 //
-// A table keyed by the command name, beside the `COMMAND_SURFACE` row of the
-// same name. It is not on that row because the web client imports the surface
-// and must not import the handlers, which import the database. The switch it
-// replaces was chosen over a table because a table keyed by name "would have
-// been a lookup that returns undefined at runtime"; a mapped type over the
-// request union answers that the same way the switch did, since a write added
-// to the union with no entry here is a type error.
+// A table keyed by the command name, beside the `COMMAND_SURFACE` row of the same name. It is not
+// on that row because the web client imports the surface and must not import the handlers, which
+// import the database. The switch it replaces was chosen over a table because a table keyed by name
+// "would have been a lookup that returns undefined at runtime"; a mapped type over the request
+// union answers that the same way the switch did, since a write added to the union with no entry
+// here is a type error.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
-import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
+import type { Handler, RequestOf, WriteName } from './handler-types.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
@@ -27,7 +26,11 @@ import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
-import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
+import { setNotificationChannel } from './settings-write.ts';
+import { setting } from './handlers-setting.ts';
+import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
+import { startConnectorRepair } from './connector-repair.ts';
+import { demoteClass, fileMandate, promoteClass, revokeStandingMandate } from './mandates.ts';
 import { recordIncident } from './privacy-write.ts';
 import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { issueCredential, revokeCredential } from './credential-write.ts';
@@ -35,8 +38,11 @@ import { setService } from './overseas-write.ts';
 import { setClass } from './data-class-write.ts';
 import { changeInstallationMode, recordGateItem } from './gate-write.ts';
 import { createClientRecord, grantOnAccess } from './access-write.ts';
+import { recordStepResult, startOnboarding } from './onboarding.ts';
+import { createRecord } from './record-create.ts';
 import { setClientPrivacy } from './client-privacy-write.ts';
 import { endAccessOnSettings } from './access-end.ts';
+import { resetFactorOnSettings } from './factor-reset.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { acceptPlanOnGate } from './plan-accept.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
@@ -57,7 +63,7 @@ import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
 import { setPlanningCap } from './budget-planning-cap.ts';
 import { messageConversation, startConversation } from './conversations.ts';
-import { renameConversation, setConversationScope } from './conversation-tabs.ts';
+import { renameConversation, setConversationScope, setModel } from './conversation-tabs.ts';
 import { refuseChildWorkAsPerson } from './child-work-person.ts';
 import { refuseModelCallAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
@@ -66,21 +72,18 @@ import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './
 import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts';
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
+import { decideLiveCorrection, requestLiveCorrection, setApprover } from './live-corrections.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
-import { scopeMap, setTaskType } from './wayfinder.ts';
-
-/**
- * Each write's request, by name. An intersection rather than `Extract`, so the
- * one union member that five owning operations share narrows to each of them.
- */
-type WriteName = CommandRequest['command'];
-type RequestOf<K extends WriteName> = CommandRequest & { readonly command: K };
-
-type Handler<K extends WriteName> = (
-  tx: TenantQuery,
-  context: CommandContext,
-  request: RequestOf<K>,
-) => Promise<HandlerOutcome>;
+import { CHAT_HANDLERS } from './chat-handlers.ts';
+import { invitationAct } from './invitations.ts';
+import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
+import {
+  adoptActivationVersion,
+  revokeStandingApproval,
+  rollBackActivation,
+  turnOffActivationAsPerson,
+} from './automation-approvals.ts';
+import { WAYFINDER_HANDLERS } from './handlers-wayfinder.ts';
 
 const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.create': createTask,
@@ -125,20 +128,33 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.mentions,
     ),
   'task.edit_comment': (tx, context, request) =>
-    editTaskComment(tx, changeFrom(context), request.commentId, request.body),
+    editTaskComment(
+      tx,
+      changeFrom(context),
+      request.commentId,
+      request.body,
+      request.expectedEditedAt,
+    ),
   'task.delete_comment': (tx, context, request) =>
     deleteTaskComment(tx, changeFrom(context), request.commentId),
 
-  // The revision travels with the rest of the envelope rather than as a
-  // field of the settings payload, and goes to the settings write as sent,
-  // so a settings body naming one is answered instead of silently dropped:
-  // a mistyped one by the write's own `FIELD_VALUE_INVALID` (its row says
-  // `any`).
+  // The revision travels with the rest of the envelope rather than as a field of the settings
+  // payload, and goes to the settings write as sent, so a settings body naming one is answered
+  // instead of silently dropped: a mistyped one by the write's own `FIELD_VALUE_INVALID` (its row
+  // says `any`).
   'settings.set_four_eyes_threshold': setting,
   'settings.set_client_sign_off': setting,
   'settings.set_money_step_up': setting,
   'settings.set_conversation_window': setting,
   'settings.set_retention_window': setting,
+
+  'secret.set': (tx, context, request) => setCustodySecret(tx, context, request),
+  'secret.clear': (tx, context, request) => clearCustodySecret(tx, context, request),
+  'connector.repair': (tx, context, request) => startConnectorRepair(tx, context, request),
+  'mandate.file': (tx, context, request) => fileMandate(tx, context, request),
+  'mandate.revoke': (tx, context, request) => revokeStandingMandate(tx, context, request),
+  'graduation.promote': (tx, context, request) => promoteClass(tx, context, request),
+  'graduation.demote': (tx, context, request) => demoteClass(tx, context, request),
 
   'privacy.record_incident': recordIncident,
   'legal.draft_version': draftVersion,
@@ -157,20 +173,26 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.accept_plan': acceptPlanOnGate,
 
   'client.create': createClientRecord,
+  'record.create': (tx, context, request) => createRecord(tx, context, request),
+  'onboarding.start': (tx, context, request) => startOnboarding(tx, context, request),
+  'onboarding.step_result': (tx, context, request) => recordStepResult(tx, context, request),
   'client.set_privacy': setClientPrivacy,
   'access.grant': grantOnAccess,
   'access.revoke': (tx, context, request) => revokeGrantOnAccess(tx, context, request.grantId),
   'access.end': endAccessOnSettings,
+  'access.reset_factor': resetFactorOnSettings,
   'grant.revoke': (tx, context, request) => revokeGrantAsManager(tx, context, request.grantId),
   'delegation.revoke': (tx, context, request) =>
     revokeDelegationAsManager(tx, context, request.delegationId),
   'task.cancel': cancelOnTask,
   'task.restart': restartOnTask,
+  'live_correction.request': requestLiveCorrection,
+  'live_correction.decide': decideLiveCorrection,
+  'settings.set_live_correction_approver': setApprover,
 
-  // EX-01. A person picks up, renews and hands back as themselves, on a
-  // lease that carries no delegation; the agent does the same on its own
-  // entry point in `agent-envelope.ts`, with the delegation its pickup
-  // minted. Neither reaches the other's lease: the runtime compares the
+  // EX-01. A person picks up, renews and hands back as themselves, on a lease that carries no
+  // delegation; the agent does the same on its own entry point in `agent-envelope.ts`, with the
+  // delegation its pickup minted. Neither reaches the other's lease: the runtime compares the
   // lease's holder and delegation under its locks.
   'task.pickup': pickupAsPerson,
   'task.heartbeat': heartbeatOwnLease,
@@ -187,24 +209,23 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
 
-  'task.set_type': setTaskType,
-  'map.scope': scopeMap,
+  // Wayfinder (WF-1, WF-2), in their own file.
+  ...WAYFINDER_HANDLERS,
   // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
   'budget.set_planning_cap': setPlanningCap,
   // AW-03: the conversation's first message mints it; later ones are its owner's.
   'conversation.start': startConversation,
   'conversation.message': messageConversation,
-  // MP-7-11: the tab row's title and the page it is about, the owner's alone.
+  // MP-7-11, CS-7.30: the tab row's title, the page it is about and its model, the owner's alone.
   'conversation.rename': renameConversation,
   'conversation.set_scope': setConversationScope,
+  'conversation.set_model': setModel,
   // AW-01: the run's worker's, through the broker, on the agent prefix only.
   'model.call': refuseModelCallAsPerson,
-
   // AW-05: a person's answers to a run waiting at its approved ceiling.
   'run.top_up': topUpOnRun,
   'run.end_at_budget_stop': endOnRun,
-  // MP-6-2: a run's state revised, a person's under run:write; the agent's is
-  // served on its own prefix (`agent-operations.ts`).
+  // MP-6-2: a run's state revised, a person's under run:write; an agent's in `agent-operations.ts`.
   'run.revise_state': reviseStateOnRun,
   // AW-11: the parent's and the helper's, on the agent prefix only.
   'run.delegate_child': refuseChildWorkAsPerson,
@@ -231,6 +252,20 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
+  // C71-D and C71-G: team chat, in `chat-handlers.ts` (moved whole for the line cap).
+  ...CHAT_HANDLERS,
+  // C39-T: a person's acts on a team invitation, under `access:share`.
+  'invitation.create': invitationAct,
+  'invitation.resend': invitationAct,
+  'invitation.revoke': invitationAct,
+  // Settings ▸ Workflow triggers (C33), in `automations.ts`.
+  'activation.change': changeActivationAsPerson,
+  'definition.release': releaseDefinitionVersion,
+  // Standing approvals (C52-A), in `automation-approvals.ts`.
+  'activation.adopt': adoptActivationVersion,
+  'activation.roll_back': rollBackActivation,
+  'activation.turn_off': turnOffActivationAsPerson,
+  'approval.revoke': revokeStandingApproval,
 };
 
 function writeOwned(
@@ -239,20 +274,6 @@ function writeOwned(
   request: RequestOf<'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_audience'>,
 ): Promise<HandlerOutcome> {
   return writeOwnedFields(tx, context, request.command, request.fields);
-}
-
-function setting(
-  tx: TenantQuery,
-  context: CommandContext,
-  request: RequestOf<
-    | 'settings.set_four_eyes_threshold'
-    | 'settings.set_client_sign_off'
-    | 'settings.set_money_step_up'
-    | 'settings.set_conversation_window'
-    | 'settings.set_retention_window'
-  >,
-): Promise<HandlerOutcome> {
-  return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);
 }
 
 export async function handleCommand<K extends WriteName>(

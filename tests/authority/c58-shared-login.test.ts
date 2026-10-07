@@ -9,10 +9,14 @@
 //
 // The first case is the Opus interim reviewer's proof, applied unchanged.
 
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { loginLiveElsewhere } from '../../packages/core-records/src/identity/shared-login.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import {
   insertActor,
+  insertAgentActor,
+  insertAgentMapping,
   insertLogin,
   insertMapping,
   insertMembership,
@@ -93,7 +97,7 @@ describe.skipIf(serverUrl === undefined)('C58 a login shared with another busine
     expect(outcome(await end(api, person.personId))).toEqual({ status: 200, code: 'ok' });
     expect(calls).toEqual([]);
     expect(await reasonOf(person.personId)).toEqual(['shared']);
-    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_NO_MEMBERSHIP' });
+    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_ACCESS_ENDED' });
   });
 
   it('C58 isolation: once no other business holds the login live, ending it bans at the provider', async () => {
@@ -115,5 +119,18 @@ describe.skipIf(serverUrl === undefined)('C58 a login shared with another busine
       { step: 'deactivate', subject },
     ]);
     expect(await reasonOf(person.personId)).toEqual([null]);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C58 a login shared with an agent elsewhere', () => {
+  it("C58 isolation: a subject live only as bravo's agent login is live elsewhere for alpha", async () => {
+    const subject = randomUUID();
+    await harness.world.db.app.withBusiness(harness.world.bravo, async (tx) => {
+      const agent = await insertAgentActor(tx);
+      await insertAgentMapping(tx, await insertLogin(tx, subject), agent, agent);
+    });
+    const { admin } = harness.world.db;
+    expect(await loginLiveElsewhere(admin, subject, harness.world.alpha)).toBe(true);
+    expect(await loginLiveElsewhere(admin, subject, harness.world.bravo)).toBe(false);
   });
 });

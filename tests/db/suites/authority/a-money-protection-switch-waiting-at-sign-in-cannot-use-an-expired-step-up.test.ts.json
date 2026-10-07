@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a money protection switch waiting at sign-in cannot use a step-up that expired during the wait"
+}

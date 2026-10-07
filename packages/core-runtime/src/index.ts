@@ -237,6 +237,7 @@ export {
 } from './refusals.ts';
 export {
   delegationCredentialKeys,
+  custodySealingKey,
   gateSigningKey,
   readBusinessCapId,
   runtimeKeys,
@@ -264,16 +265,15 @@ export {
   exportOnce,
   readTaskTrace,
   type ReadSpan,
-  type Deliver,
-  type Delivered,
   type ExportOutcome,
-  type GapCode,
   type TraceDatabase,
 } from './trace-export.ts';
+export { type Deliver, type Delivered, type GapCode } from './trace-delivery.ts';
 export {
   EXPIRY_PAGE,
   expireOnce,
   type ExpiryCode,
-  type ExpiryPorts,
   type RetentionBatch,
 } from './trace-retention.ts';
+export { type ExpiryPorts } from './trace-store.ts';
+export { standingMandateVerdict, type MandateQuestion, type MandateVerdict } from './mandates.ts';

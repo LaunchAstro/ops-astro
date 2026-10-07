@@ -100,13 +100,17 @@ a task page. With nothing remembered it goes to `/projects/`.
 **Ended access is the third way a session ends (C58).** Ending a person's access
 deactivates their login and ends their memberships, but their bearer still
 verifies until its hour is up, so the API answers their next call 403
-`AUTH_NO_MEMBERSHIP`. A login that was never a member gets the same answer, and
-for it that is a denial to draw (the browser's N2 row). So the client remembers
+`AUTH_ACCESS_ENDED` (#641). That code is only ever an ended login's: a login
+that was never a member still gets `AUTH_NO_MEMBERSHIP`, a denial to draw (the
+browser's N2 row). So two rules end the session, with the same notice. The
+client ends it on exactly 403 with `AUTH_ACCESS_ENDED`, on its first answer too,
+so a reload signs the person out as the open tab does. Standing can also go with no ending written (a last share revoked or
+expired), answered 403 `AUTH_NO_MEMBERSHIP`. So each client also remembers
 whether its bearer has had an answer only a member gets: a success (a live
-call's counts as a read's), or a refusal
-decided past login resolution such as `SCOPE_NOT_GRANTED` (a 401 or a door
-refusal proves nothing). Only a bearer that has ends its session on that
-refusal, with the same notice. A person who signs out in the tab
+call's counts as a read's), or a refusal decided past login resolution such as
+`SCOPE_NOT_GRANTED` (a 401 or a door refusal proves nothing). A bearer that has
+ends its session on `AUTH_NO_MEMBERSHIP` too; a fresh client's first one is
+still a denial to draw. A person who signs out in the tab
 lands on `/sign-in` with a notice of its own (`data-reason="signed-out"`) saying
 that any edit they had not saved was not saved. In every ending the draft lived
 only in the screen's state, so it goes with the screen: no browser storage holds
@@ -209,15 +213,16 @@ and starts the set-up again once the new sign-in's client is in hand.
 
 ## Addresses
 
-| Address                | What it draws                                                                                                                                                                                                                                                                                                                     |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/sign-in`             | Credentials and the business selector                                                                                                                                                                                                                                                                                             |
-| `/projects/`           | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening; its search words live in the address as `?q=` (L-01); its section tip (MP-9-1) reads `preference.read` and dismisses through `preference.dismiss_tip` |
-| `/task/:key`           | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                                                                                                                                                                  |
-| `/task/`               | No task named: says so and offers the board (MP-4-1), and reads nothing                                                                                                                                                                                                                                                           |
-| `/settings`            | Settings General: You and Notifications (the person's own preferences) and This business (the two operation-classified settings, from `settings.read` and `session.capabilities`)                                                                                                                                                 |
-| `/inbox/`              | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count, grouped by the client each entry names; a live re-read keeps the list and its chosen tab drawn                                                                                     |
-| `/agent/:conversation` | `conversation.read` by the id the address carries: the transcript while the body lives, only the wrap-up after it purges (C36); a started drawer tab links here                                                                                                                                                                   |
+| Address                | What it draws                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`             | Credentials and the business selector                                                                                                                                                                                                                                                                                                                               |
+| `/projects/`           | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening; its search words live in the address as `?q=` (L-01); its section tip (MP-9-1) reads `preference.read` and dismisses through `preference.dismiss_tip`                                   |
+| `/task/:key`           | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                                                                                                                                                                                                    |
+| `/task/`               | No task named: says so and offers the board (MP-4-1), and reads nothing                                                                                                                                                                                                                                                                                             |
+| `/settings`            | Settings General: You and Notifications (the person's own preferences) and This business (the two operation-classified settings, from `settings.read` and `session.capabilities`)                                                                                                                                                                                   |
+| `/inbox/`              | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count, grouped by the client each entry names; a live re-read keeps the list and its chosen tab drawn                                                                                                                       |
+| `/agent/:conversation` | `conversation.read` by the id the address carries: the transcript while the body lives, only the wrap-up after it purges (C36); a started drawer tab links here                                                                                                                                                                                                     |
+| `/connections/`        | Connections & signal (MP-14-7a): `connection.fleet` draws the banner, tiles, facets and connector table; a broken row's Repair sends `connector.repair`, one attempt per connection and revision; facets, sort, expansion and paging send nothing; sections 006 to 008 (MP-14-8) draw `connection.signal`, read apart: grants, tripwires and the latest night round |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
@@ -320,7 +325,7 @@ panel's task read so a reread keeps it.
 The Notifications tab carries INB-1's owed figure from the first frame on every
 agency screen (MP-7-3 bell count at load): `inbox.count`, read in the frame's
 load and again on the `board` topic, with no badge at zero and none when the
-count is refused or fails (`apps/web/src/data/owed-count.ts`, handed to the
+count is refused or fails (`apps/web/src/data/dock-counts.ts`, handed to the
 tab's count chip by `useDockShell` in `apps/web/src/dock/dock-props.tsx`).
 The dock's Projects tab (`todos` in `PANELS`) opens the reader's own to-dos
 (MP-7-1, `screens/todos/Todos.tsx`) in its panel, whose door is `/todos`. The
@@ -368,13 +373,21 @@ editable fields; the subtasks and time without their doors; the conversation
 on the tab the reply door named; and the folded trail. The Agent tab says it
 is not connected until the assistant is. Its head names the task, links to
 its page and opens a new-task draft (MP-4-13, `screens/task/DraftPanel.tsx`)
-in the same panel: name, due, estimate, tags, subtasks, time spent and a note,
-kept in this browser under the business and the person until Create or Cancel
-(X and Escape keep it). Create sends `task.create`, then the client from the
-page's scope (none from the panel yet: the task's client is not on the wire),
+in the same panel: name, due, estimate, category, the owner the page named,
+tags, subtasks, time spent and a note, kept in this browser under the business
+and the person until Create or Cancel (X and Escape keep it). The Projects
+(to-dos) panel's head New opens a draft filed from the page (DP-02); the rail
+keeps the registry's doors, and the Task tab shows only while the panel holds
+something. Any `[data-new-task]` control opens one prefilled from the door
+(`screens/task/task-prefill.ts`: category from the door, its board or Admin,
+the category's usual estimate, due in 7 days or 3 when urgent, client and
+owner only when named), with one sentence saying what was guessed. Create
+sends `task.create`, then the client from the page's scope (none from the
+panel yet: the task's client is not on the wire), the category, the owner,
 the note, the tags, the subtasks and the time, each by its own command
-(`screens/task/task-draft.ts`); a part refused after the task exists is named,
-never retried as a second task. Closing the panel, or opening another task or
+(`screens/task/draft-parts.ts`); a part refused after the task exists is named,
+never retried as a second task. The task open in the panel is kept in the
+tab's storage under its owner and opens again after a reload. Closing the panel, or opening another task or
 a draft, while the reader's timer runs on the task stops it through
 `time.stop`, also when the panel closes before its reread lands or while a
 reread has failed: the panel holds the running timer's stop and its unsent
@@ -526,7 +539,7 @@ reply, a tab or Cancel is chosen, so posting the unchanged box to the same
 reply again is that attempt. A draft's Create gives each part the id
 `<create id>.<index>`, and a new tag's `tag.create` the id `<part id>.tag`, so
 every run of one attempt sends the same ids (`record-incident.tsx`, `client-seam.ts`, `Subtasks.tsx`, `Time.tsx`,
-`Comments.tsx`, `task-draft.ts`).
+`Comments.tsx`, `draft-parts.ts`).
 
 The settings screen's writes go through `useCommand` too. `use-settings.ts`
 keeps only what settings does with each kind, and its memory of the last

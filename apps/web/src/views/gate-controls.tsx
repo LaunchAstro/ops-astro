@@ -216,6 +216,14 @@ export function closedNote(
 }
 
 /**
+ * An escalation refused for its recipient: `SCOPE_NOT_GRANTED` naming
+ * `recipientPersonId` is about the person chosen, not the decider, so it
+ * closes nothing. The decider may choose again, approve or reject.
+ */
+export const refusesRecipient = (settlement: Settlement): boolean =>
+  settlement.kind === 'closed' && settlement.refusal.names.includes('recipientPersonId');
+
+/**
  * A held closure gives way only to another closure. The views decide
  * independently, so an older request can settle after the refusal, and its
  * answer says nothing about this reader's authority now.

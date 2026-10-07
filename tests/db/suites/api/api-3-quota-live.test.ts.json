@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a live stream holds its caller's concurrent slot until it ends, and the presence routes are charged to the request quotas like every other admitted request"
+}

@@ -221,11 +221,13 @@ code on this head, and where that is shown.
 | ---------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                                                                                                                                                                                                     |
 | `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                                                                                                                                                                                                        |
+| `QUOTA_EXCEEDED`                                                             | 429    | yes, on both prefixes, after login resolution (`identity/quota.ts`, API-3)                                                                                                                                                                                                                              |
 | `AUTH_SECOND_FACTOR_REQUIRED`                                                | 401    | yes, on the person prefix, for a login with a verified second factor, in any business, below `aal2` (C59)                                                                                                                                                                                               |
 | `STEP_UP_REQUIRED`                                                           | 403    | yes, on `budget.top_up`, `budget.record_outcome`, `budget.write_off`, `budget.set_planning_cap` and `run.top_up` (billing:decide), `settings.set_four_eyes_threshold` (spend:decide) and `settings.set_money_step_up` when switching it off, past 60 minutes; an absent setting reads as on (C59, S0-5) |
 | `FRESH_SIGN_IN_REQUIRED`                                                     | 403    | yes, on `/account/factor/enrol` (C59)                                                                                                                                                                                                                                                                   |
 | `FACTOR_ALREADY_ENROLLED`                                                    | 409    | yes, on `/account/factor/enrol` (C59)                                                                                                                                                                                                                                                                   |
 | `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                                                                                                                                                                    |
+| `FACTOR_RESET_REFUSED`                                                       | 409    | yes, on `access.reset_factor`: own person, a member holding more, not one login, or live elsewhere (C59)                                                                                                                                                                                                |
 | `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                                                                                                                                                                    |
 | `SECOND_FACTOR_LOCKED`                                                       | 429    | yes, after five wrong codes in fifteen minutes (C59)                                                                                                                                                                                                                                                    |
 | `AGENT_QUOTA_EXCEEDED`                                                       | 429    | yes, an agent credential past a limit a minute or at once (API-2)                                                                                                                                                                                                                                       |
@@ -274,7 +276,16 @@ over every declaration. It is off `UNPRODUCED_CODES` (`core-records/src/register
 
 It is also the answer to an agent call that presents no delegation credential,
 which is an agent before any pickup (`authorise`). Such a call reaches
-`task.queue` and `task.pickup` (`BEFORE_PICKUP`) and nothing else. `task.decide`
+`task.queue` and `task.pickup` (`BEFORE_PICKUP`) and nothing else. While the
+agent holds a live delegation, credential presented or not, its `task.queue`
+shows only the work of that task's client (#169, `queue` in
+`core-runtime/src/pickup.ts`): the queue never shows it another client's
+reservation, purpose slug or held amount, and a repeated read is served again
+rather than replayed. The narrowing is the queue's alone: `task.pickup` of a
+reservation the agent already knows is not narrowed. A helper delegation
+(AW-11) narrows its helper's queue to the parent's client while it stands, so
+a parent that names another agent as its helper narrows that agent's queue
+while the child stands (at most until the child's expiry). `task.decide`
 without a credential is `DELEGATION_EXCLUDES_DECISION`, so a decision is still
 named as one. `session.capabilities` is in `AGENT_SURFACE` but not in
 `BEFORE_PICKUP`, so before a pickup it is refused the same way. After a pickup
@@ -296,7 +307,7 @@ answers `DELEGATION_EXCLUDES_OPERATION` without receipt content, and a presented
 credential that is not live stays `DELEGATION_NOT_LIVE` (`replaySettledHandback`,
 reached through `releaseReplay` in `commands/agent-replay.ts`). A capabilities
 replay is authorised as a fresh call and projected again for the credential
-presented now (`replayCapabilities`, same file), so a replay under another
+presented now (`serveAgain`, same file), so a replay under another
 delegation never releases the first delegation's `purposeScope`. A pickup replay
 is the one exception to "no credential, no call"
 ([RUNTIME.md, "The delegation credential key"](RUNTIME.md#the-delegation-credential-key)).
@@ -306,7 +317,10 @@ is the one exception to "no credential, no call"
 `AGENT_OPERATIONS`), and the matrix's case (i) asserts the saved comment
 identity. The agent may write in the `internal` audience only
 (`AGENT_AUDIENCES`). A `client` comment is `AUDIENCE_NOT_PERMITTED` 422, which
-the same case asserts. Internal-only is Nathan's ruling (OWNER-CARD section 6),
+the same case asserts. An agent credential (API-2) runs the person handlers as
+its agent and is held the same way: internal comments, the agent's update
+fields and the assignee only (`updateTask`, `assignTask` and `commentOnTask`,
+#420). Internal-only is Nathan's ruling (OWNER-CARD section 6),
 and `tests/acceptance/comment-rulings.test.ts` holds it over HTTP.
 
 **`DELEGATION_ALREADY_LIVE`** is produced by `mintDelegation`
@@ -474,11 +488,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:740-766`, run at `:899-907`). It gets a login and an acting identity,
-  and no membership and no business grant (`:158-161`, `:311-313`). The seed
+  user (`:764-790`, run at `:923-931`). It gets a login and an acting identity,
+  and no membership and no business grant (`:182-185`, `:335-337`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:760-789`, `:928-938`).
+  (`:792-821`, `:960-969`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -562,6 +576,88 @@ trash and restore need it. `writeTaskComment` (`commands/tasks-comment.ts`),
 which both entries call, answers a trashed task `NOT_FOUND` in the same bytes
 as a missing one and writes nothing (Nathan's ruling, OWNER-CARD section 6;
 `tests/acceptance/comment-rulings.test.ts`).
+
+### Team conversations (C71-D)
+
+A direct message is a `task_comment` record with the audience `direct`,
+anchored by its `conversation` field to a `team_conversation` record instead of
+a task. No other table holds its body (RA-12). `chat.send_direct` writes it
+through the same comment writer as `task.comment` (`writeComment`) under
+`chat:comment`, the catalogue key the agency's members hold, and a delegated
+agent never: the surface row is `agent: never`. A person with no membership is
+refused at the door, and a teammate who is not staff here (a client's person,
+the sender, another business's person) is `NOT_FOUND`, so a client is never a
+member. The audit event records that a message was sent and never what it says.
+
+Within a conversation, its members only. Every conversation read
+(`chat.conversations`, `chat.messages`) filters by the reader's own member row
+inside the query (`core-records/src/team/conversations.ts`), so the owner and
+administrators read only their own. A member reads nothing written before they
+joined or after they left. The same query asks again that the reader is staff
+holding `chat:comment`, so a revocation committed after the door serves nothing
+written or renamed since. The read marker (`chat.mark_read`) is the reader's
+own member row, self-scoped like `inbox.seen`, and not audited (CS-7.25). The
+client projection refuses a `direct` comment, as it refuses an internal note.
+`tests/api/c71-d-direct-messages.test.ts`, `tests/api/c71-d-isolation.test.ts` and
+`tests/api/c71-c-chat-messages-after-revocation.test.ts` hold it.
+
+### Group conversations (C71-G)
+
+A group conversation is a `team_conversation` record of kind `group`, with its
+name and its creator, and a member row for each person in it; its messages are
+`task_comment` records with the audience `group`. No new table or record type
+(`core-records/src/team/groups.ts`).
+
+- `chat.start_group` asks `chat:comment` at the door, as a direct message does.
+  Its teammates must be staff here: a client's person, an agent's actor or
+  another business's person is `NOT_FOUND`, so neither a client nor an agent is
+  ever a member.
+- `chat.send_group` asks `chat:comment`, then a current member row; to anyone
+  else the group is `NOT_FOUND`. It writes through `writeMessage`, the path a
+  direct message takes.
+- `chat.rename_group` and `chat.change_members` are `chat:manage`: a group's
+  creator, and the owner and administrators, who hold the key by install
+  default. The envelope cannot know who started a conversation, so the row is
+  `self` and the handler asks: the creator while a current member, then a live
+  `chat:manage` grant through `checkAuthority`, in the group or not. A member
+  who has neither is refused `SCOPE_NOT_GRANTED`; anyone else outside it gets
+  `NOT_FOUND`. Managing never lets the caller read a message: an administrator
+  not in a group renames it or changes who else is in it, never adds herself,
+  and never reads, lists or counts its messages. Changing members needs the
+  member list, so its answers (`FIELD_VALUE_INVALID` for adding a member,
+  `NOT_FOUND` for removing a non-member) tell a manager who is in it; that is
+  the grant's, by #649. Never an agent's.
+- `chat.leave` is the caller's own member row only, self-scoped.
+
+Every send, marker move, member change and leave takes the conversation's lock
+first. A member change cuts its window on a millisecond boundary no message
+shares (it reads the clock and waits that millisecond out before it commits):
+a removed or departed member reads nothing written after, an added member
+nothing written before, and a re-added member reads from the new join only.
+`tests/api/c71-g-group-conversations.test.ts`,
+`tests/api/c71-g-group-members.test.ts` and `tests/api/c71-g-isolation.test.ts`
+hold it.
+
+### Live delivery and mentions (C71, CS-7.42)
+
+Membership is the filter here too. A tab follows `conversation:<id>` on its one live stream only
+while it is staff holding `chat:comment` and a current member, asked at the join and again before
+every delivery (`reads/live-chat.ts`), membership and `chat:comment` in one statement, so a
+revocation committed mid-admission admits nothing, nor does a grant that lapses while the statement
+waits (its expiry read on `clock_timestamp()`); the board stream says a conversation moved only to
+its current members who may chat. A mention in a message is refused `MENTION_NOT_READABLE` unless
+the person named is a current member who may chat (staff holding `chat:comment`, as `chat.messages`
+asks), and its inbox item is held by such members alone: a member who leaves or is removed, loses
+`chat:comment` or whose access ends is no longer shown it, counted for it, let stamp it seen or
+emailed it (asked before the seen insert and again after it, the stamp undone if access has gone,
+and in the statement that reads the address, so access ended first stamps or sends nothing), and an
+operations viewer outside the conversation is never listed it as unattended. An agent key (API-2)
+that does not tick `chat:comment` is shown and counted none, as `chat.messages` refuses it. A
+mention is raised at its message's posted time, so a member who reads the message, a re-added one
+included, is shown and counted its mention. The owner and administrators hold no way round any of
+it. `tests/api/c71-live-conversations.test.ts`, `tests/api/c71-chat-mentions.test.ts`,
+`tests/api/c71-c-agent-key-without-chat.test.ts` and
+`tests/api/c71-c-chat-grant-expiry-during-admission.test.ts` hold it.
 
 ## preset.plan
 
@@ -766,12 +862,20 @@ names the person it acts for. Every grant check asks the key within the ticked
 ones and the person's grants as they are now (`subjectsOf`, `askedFor`); the
 credential has no sign-in assurance, so a money step-up is never met. It
 reaches the rows an agent may reach under a delegation that need no lease
-(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.comment`, `task.propose`
-and `session.capabilities`); anything else is `DELEGATION_EXCLUDES_OPERATION`,
+(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.update`, `task.assign`,
+`task.set_scores`, `task.set_adhoc`, `task.set_category`, `task.comment`,
+`task.edit_comment`, `task.delete_comment`, `task.propose`,
+`run.child_handback`, `onboarding.step_result` and `session.capabilities`), held
+to a delegated agent's limits where the handler has them (`updateTask`,
+`assignTask`, `commentOnTask`, and `onboarding.step_result`'s agent steps only);
+anything else is `DELEGATION_EXCLUDES_OPERATION`,
 `run.revise_state` included by name (`OUTSIDE_REACH`), though a run's delegation
 reaches it.
 A create asks the person's business-wide `task:write` within the ticked keys; it
 is audited against the agent and the task's `source` is `agent:api`.
+A step result is the agent's, so it records agent steps only: a person or
+client-wait step answers `DELEGATION_EXCLUDES_OPERATION` naming `kind`, and the
+step's comment has `source` `agent:api` (C41-A in API.md).
 `session.capabilities` answers the ticked keys the person's grants still cover,
 so a key the person holds and did not tick, or one revoked from them since, is
 not listed; `agentActorId` is the acting identity and `personId` the person it
@@ -797,6 +901,29 @@ active membership, over the whole business or over one client of it
 privacy settings (`client.set_privacy`, C60) is `privacy:manage`, asked at that
 client's party scope, never an agent's.
 
+Settings ▸ Workflow triggers (C33) reads the business's automations under
+`settings:read` (`automation.registry`), changes an activation under
+`settings:manage` (`activation.change`) and releases a definition version under
+`automation:manage` (`definition.release`), each asked of the whole business
+and none ever an agent's. A definition carries no client, so a grant at one
+client's scope reaches none of the three. Switching an activation to a
+schedule or an event starts nothing; a run waits on C52-A's standing approval.
+Adopting a version (`activation.adopt`), rolling back
+(`activation.roll_back`), turning an automation off (`activation.turn_off`)
+and revoking a standing approval (`approval.revoke`) are each
+`automation:manage`, asked of the whole business and never an agent's. Only
+an adoption grants an approval; `settings:manage` can end one (a change of
+the pin, mode, schedule or event, or a switch off), never give one. Each of
+the four holds the caller's `automation` grants for share before any
+automation row, so a revocation of one waits for the change, and asks the key
+again after it has locked the activation, at the clock after that wait: a
+grant that ran out while it waited refuses it. Once its rows are written it
+takes the audit chain's lock, its last wait, and asks again at that clock,
+refusing too if the session that sent it was signed out meanwhile. An
+automation that is off is
+never approved, so switching one on under `settings:manage` carries no
+approval.
+
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a
 grant revoked on either route, ending a person's access (C58), and an agent
@@ -816,6 +943,12 @@ issued in that business with its agent actor, and ends the membership and the
 person's acting identity. The delegations lose their ceiling with the grants and are
 revoked with the cause `authority_lost`. Nobody ends the last business-wide
 `access:manage` of a person who can sign in.
+
+Resetting a member's lost authenticator (`access.reset_factor`, C59) is
+`settings:manage`, never an agent's, behind the caller's own fresh step-up. It
+is refused `FACTOR_RESET_REFUSED` unless the caller holds every business-wide
+grant the member holds (ORCH66-FACTORM2): no reset upward, owner to owner
+allowed. [The API](API.md#resetting-a-members-authenticator-c59) has the rest.
 
 A party-scoped grant is checked at party scope. The task reads and writes ask
 record scope, so they do not yet resolve a grant over a client through the
@@ -1000,8 +1133,9 @@ labelled pre-review; see [API.md](API.md).
 ## Trace readers (AW-13)
 
 `trace.read` asks `operations:read` at the task's record scope, then the task's
-own `read` (`taskAccess`), so a reader whose task grant covers one client's
-task gets `NOT_FOUND` for another client's. The key is the catalogue's C55 row:
+own `read` in the statement that reads the events (`readableNow`), so a reader
+whose task grant covers one client's task gets `NOT_FOUND` for another client's,
+and one whose grant is revoked mid-read gets `NOT_FOUND` too. The key is the catalogue's C55 row:
 seeded to the owner and administrators, never a member, never an agent. The
 ticket's "the second owner after a timed restore rehearsal" is the trace
 target's Owner login (the Langfuse contract's recovery operator), an

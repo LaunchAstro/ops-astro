@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a chat revocation committed during live admission refuses both the thread and the board"
+}

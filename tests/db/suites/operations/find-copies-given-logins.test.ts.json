@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "The copy finder judges a login given back with --id by who holds it now and who held it (cases moved from c81-privacy-find-copies-links)."
+}

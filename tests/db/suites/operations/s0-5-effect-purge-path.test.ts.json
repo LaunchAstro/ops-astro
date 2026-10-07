@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "an aged purge writes only the record kinds task.purge declares"
+}

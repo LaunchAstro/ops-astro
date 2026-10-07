@@ -156,6 +156,7 @@ export const LAUNCH: GroupThread = {
   name: 'Meridian launch',
   members: ['p-remy', ME, 'p-cath'],
   canManage: true,
+  left: false,
   lastRead: '2026-09-28T10:00:00Z',
   messages: [
     message('g1', 'p-remy', '2026-09-28T09:50:00Z'),
@@ -169,6 +170,7 @@ export const STUDIO: GroupThread = {
   name: 'Studio',
   members: ['p-len', ME, 'p-remy'],
   canManage: false,
+  left: false,
   lastRead: '2026-09-28T09:00:00Z',
   messages: [message('s1', 'p-len', '2026-09-28T08:30:00Z')],
 };

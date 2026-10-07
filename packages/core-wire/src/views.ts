@@ -25,6 +25,7 @@ import type {
 } from '../../core-records/src/index.ts';
 import type { AttemptView, TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
+import type { InboxConversation } from './views-chat.ts';
 import type { ClientPrivacyView, ClientView } from './views-client.ts';
 
 export type { ClientListResult, ClientPrivacyView, ClientView } from './views-client.ts';
@@ -45,6 +46,7 @@ export type {
   ExecutionGraph,
   ExecutionNode,
   ReceiptResult,
+  LiveCorrectionReadResult,
 } from './views-run.ts';
 
 // The run ledger, conversation and awaiting-review views live in their own
@@ -526,6 +528,8 @@ export interface QueuedWork {
   readonly lineageId: string;
   readonly purpose: string;
   readonly heldMinor: number;
+  /** The reading agent when it proposed the version, else null: a worker takes only its own. */
+  readonly proposedByActorId: string | null;
 }
 
 /**
@@ -695,6 +699,13 @@ export interface BoardComments {
 export interface TodoView extends TaskSummary {
   readonly tags: readonly TagView[];
   readonly waitingComments: number;
+  /** The work label's id (CS-4.16), as `task.read` answers it; null for none. */
+  readonly category: string | null;
+  /**
+   * Whose move it is (DP-14), as the task page derives it: Review while a gate
+   * waits on a person, Agent while an agent holds a live lease, Team otherwise.
+   */
+  readonly whoseMove: 'Review' | 'Agent' | 'Team';
 }
 
 /** `task.todos`: the reader's own open tasks, whatever board they sit on. */
@@ -958,6 +969,8 @@ export interface InboxEntry {
   readonly closedByPersonId?: string | null;
   /** The task the item is about, for its link and its name. */
   readonly task?: { readonly key: string; readonly title: string | null };
+  /** The team conversation a mention is about (C71), in place of a task. */
+  readonly conversation?: InboxConversation;
   /** Who closed it, by name: a cleared decision names who decided. */
   readonly closedBy?: PersonView | null;
   /**

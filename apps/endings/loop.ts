@@ -7,12 +7,15 @@
 // login (for each business's settle, under tenancy), `GOTRUE_URL` and the
 // provider's admin key, `SUPABASE_SERVICE_KEY`. Every
 // `ACCESS_ENDING_RETRY_SECONDS` it asks the provider for the steps each access
-// ending still owes; `--once` runs one pass and exits 1 if that pass failed.
+// ending and each factor reset (C59) still owes; `--once` runs one pass and
+// exits 1 if that pass failed: it could not finish, or a step ended on a fault
+// (a provider fault, or an ending's login lock not taken in time) and is still
+// owed.
 // Nothing here prints a setting's value or a fault's words.
 
 import { connect, connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import { goTrueLogins } from '../api/auth/provider-logins.ts';
-import { ACCESS_ENDING_RETRY_SECONDS, endingsSettings, retryAccessEndings } from './pass.ts';
+import { ACCESS_ENDING_RETRY_SECONDS, endingsSettings, retryOwedSteps } from './pass.ts';
 
 export async function main(
   argv: readonly string[],
@@ -23,15 +26,26 @@ export async function main(
     process.stderr.write(`endings: ${settings.problem}\n`);
     return 2;
   }
-  const owner = connectAsAdmin(env['DATABASE_ADMIN_URL'] as string, { source: 'admin' });
-  const app = connect(env['DATABASE_URL'] as string, { source: 'runtime' });
+  let app, owner;
+  try {
+    owner = connectAsAdmin(env['DATABASE_ADMIN_URL'] as string, { source: 'admin' });
+    app = connect(env['DATABASE_URL'] as string, { source: 'runtime' });
+  } catch {
+    // What postgres.js threw may carry the string; only the setting names leave.
+    process.stderr.write('endings: DATABASE_URL or DATABASE_ADMIN_URL could not be opened\n');
+    return 2;
+  }
   const logins = goTrueLogins(settings.adminKey, env['GOTRUE_URL'] as string);
   try {
     for (;;) {
       try {
         // oxlint-disable-next-line no-await-in-loop -- one pass at a time, by design
-        const owed = await retryAccessEndings(owner, app, logins);
-        process.stdout.write(`${JSON.stringify({ owed })}\n`);
+        const pass = await retryOwedSteps(owner, app, logins);
+        process.stdout.write(`${JSON.stringify({ owed: pass.owed })}\n`);
+        if (pass.faults > 0 && argv.includes('--once')) {
+          process.stderr.write('endings: a step failed and is still owed\n');
+          return 1;
+        }
       } catch {
         if (argv.includes('--once')) {
           process.stderr.write('endings: the pass failed\n');

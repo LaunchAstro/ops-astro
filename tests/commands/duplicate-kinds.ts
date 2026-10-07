@@ -107,6 +107,14 @@ export const DECLARED: Readonly<
   // A retype and back (WF-1): the old task keeps `type` and its `type_history`, the shell
   // neither; it ends untyped, so the share planted below still applies.
   'task.set_type': { carry: 'not carried', plant: retypedAndBack },
+  'map.revise': { carry: 'not carried', plant: 'revises a map; the duplicated task is none' },
+  // WF-2: the shell is a new task, so none of a ticket's chart, claim, blocking or close.
+  'map.chart': { carry: 'not carried', plant: 'charts a new map; the duplicated task is none' },
+  'map.graduate': { carry: 'not carried', plant: 'graduates a map’s fog; the task is no map' },
+  'task.claim': { carry: 'not carried', plant: 'the assignee, planted by task.assign' },
+  'task.set_blocking': { carry: 'not carried', plant: 'blocks links: needs a second task' },
+  'task.resolve': { carry: 'not carried', plant: 'ends the old task; task.start plants state' },
+  'task.close_out_of_scope': { carry: 'not carried', plant: 'a ticket of a map only' },
   'task.start': {
     carry: 'not carried',
     plant: async (taskId) =>
@@ -163,10 +171,19 @@ export const DECLARED: Readonly<
   'access.grant': { carry: 'not carried', plant: 'authority, not task content' },
   'access.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'access.end': { carry: 'not carried', plant: 'authority, not task content' },
+  'access.reset_factor': { carry: 'not carried', plant: 'a sign-in factor, not task content' },
+  'invitation.create': { carry: 'not carried', plant: 'a team invitation, not task content' },
+  'invitation.resend': { carry: 'not carried', plant: 'a team invitation, not task content' },
+  'invitation.revoke': { carry: 'not carried', plant: 'a team invitation, not task content' },
   'credential.issue': { carry: 'not carried', plant: 'authority, not task content' },
   'credential.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'session.end': { carry: 'not carried', plant: 'a sign-in, not task content' },
   'client.create': { carry: 'not carried', plant: 'a client of the business, not task content' },
+  // C41-A: a client and its onboarding are not task content; a step's result is
+  // a system comment on the step's own task, which a duplicate leaves behind.
+  'record.create': { carry: 'not carried', plant: 'a client of the business, not task content' },
+  'onboarding.start': { carry: 'not carried', plant: 'lays new tasks out, not task content' },
+  'onboarding.step_result': { carry: 'not carried', plant: 'needs an onboarding step task' },
   'client.set_privacy': { carry: 'not carried', plant: "a client's settings, not task content" },
   'preference.save': { carry: 'not carried', plant: 'a person’s setting' },
   'preference.dismiss_tip': { carry: 'not carried', plant: 'a person’s setting' },
@@ -186,6 +203,7 @@ export const DECLARED: Readonly<
   'conversation.message': { carry: 'not carried', plant: 'needs a conversation' },
   'conversation.rename': { carry: 'not carried', plant: 'needs a conversation' },
   'conversation.set_scope': { carry: 'not carried', plant: 'needs a conversation' },
+  'conversation.set_model': { carry: 'not carried', plant: 'needs a conversation' },
   'task.check': { carry: 'not carried', plant: 'needs a lease' },
   'model.call': { carry: 'not carried', plant: 'needs a lease' },
   'run.top_up': { carry: 'not carried', plant: 'needs a run at its budget stop' },
@@ -195,6 +213,35 @@ export const DECLARED: Readonly<
   'budget.set_planning_cap': { carry: 'not carried', plant: 'a business setting' },
   'run.delegate_child': { carry: 'not carried', plant: 'needs a lease' },
   'run.child_handback': { carry: 'not carried', plant: 'needs a child run' },
+  'chat.send_direct': { carry: 'not carried', plant: 'a team conversation’s, never on a task' },
+  'chat.mark_read': { carry: 'not carried', plant: 'the reader’s own marker, not the task' },
+  'chat.start_group': { carry: 'not carried', plant: 'a team group and its members, no task' },
+  'chat.send_group': { carry: 'not carried', plant: 'a team group’s message, never on a task' },
+  'chat.rename_group': { carry: 'not carried', plant: 'a team group’s own name' },
+  'chat.change_members': { carry: 'not carried', plant: 'a team group’s member rows' },
+  'chat.leave': { carry: 'not carried', plant: 'the caller’s own member row' },
+  // C33: an automation of the business, carrying no task.
+  'activation.change': { carry: 'not carried', plant: 'an automation, not task content' },
+  'definition.release': { carry: 'not carried', plant: 'an automation, not task content' },
+  // C31: a business's custody key, never task content.
+  'secret.set': { carry: 'not carried', plant: 'a business key, not task content' },
+  'secret.clear': { carry: 'not carried', plant: 'a business key, not task content' },
+  // C52-A: an activation's standing approval, carrying no task.
+  'activation.adopt': { carry: 'not carried', plant: 'an automation, not task content' },
+  'activation.roll_back': { carry: 'not carried', plant: 'an automation, not task content' },
+  'activation.turn_off': { carry: 'not carried', plant: 'an automation, not task content' },
+  'approval.revoke': { carry: 'not carried', plant: 'an automation, not task content' },
+  // MP-14-7a: a repair names a connection, never task content.
+  'connector.repair': { carry: 'not carried', plant: 'a connection, not task content' },
+  // MP-14-10a: a standing mandate or a graduation row of a client, never task content.
+  'mandate.file': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  'mandate.revoke': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  'graduation.promote': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  'graduation.demote': { carry: 'not carried', plant: 'a client mandate, not task content' },
+  // C80: a live correction is the site's, decided by its approver; a duplicate carries none.
+  'live_correction.request': { carry: 'not carried', plant: 'needs a live site page' },
+  'live_correction.decide': { carry: 'not carried', plant: 'needs a requested correction' },
+  'settings.set_live_correction_approver': { carry: 'not carried', plant: 'a business setting' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

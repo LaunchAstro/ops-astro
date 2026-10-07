@@ -31,7 +31,7 @@
 // the agent's.
 
 import { randomUUID } from 'node:crypto';
-import { mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
+import { DELEGATION_STANDS, mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { leaseReason, personWriteLive } from './lease-ownership.ts';
@@ -52,15 +52,43 @@ export interface QueueEntry {
   readonly lineageId: string;
   readonly purpose: string;
   readonly heldMinor: number;
+  /** Who proposed the version, so a worker takes only work it proposed itself. */
+  readonly proposedByActorId: string;
 }
+
+/**
+ * The reading agent's reach over a queue row (`$2`, null for a person). While
+ * the agent holds a live delegation it is working for that task's client, so
+ * a row stays only when its task's client is a delegated task's client (#169).
+ * It keys on the delegations the agent holds, not on the credential it
+ * presents, so leaving the credential off does not widen it. With no live
+ * delegation the row stays, as it does for a person.
+ */
+const AGENT_REACH = `($2::uuid is null
+   or not exists (select 1 from public.delegations d
+                   where d.business_id = res.business_id and d.agent_actor_id = $2
+                     and ${DELEGATION_STANDS})
+   or exists (select 1 from public.delegations d
+                join public.records purpose on purpose.business_id = d.business_id
+                                           and purpose.id = d.purpose_scope_id
+               where d.business_id = res.business_id and d.agent_actor_id = $2
+                 and ${DELEGATION_STANDS}
+                 and purpose.uuid_7 is not distinct from task.uuid_7))`;
 
 /**
  * Approved, held, unpicked. A reservation bound to a lease is out, a terminal
  * lineage is out, and an attempt carrying a dispatch marker or an observation
  * is out — the last because T5 quarantines it with its hold retained, and a
  * quarantined attempt must not be handed to a worker as ordinary work.
+ *
+ * `agentActorId` is an agent's own read: under a live delegation its queue
+ * never shows another client's task, purpose slug or held amount
+ * (`AGENT_REACH`).
  */
-export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
+export async function queue(
+  tx: TenantQuery,
+  agentActorId?: string,
+): Promise<readonly QueueEntry[]> {
   const rows = await tx.query<{
     readonly reservation_id: string;
     readonly task_id: string;
@@ -69,9 +97,11 @@ export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
     readonly lineage_id: string;
     readonly purpose: string;
     readonly held_minor: string;
+    readonly proposed_by_actor_id: string;
   }>(
     `select res.id as reservation_id, run.task_id, run.id as run_id, res.version_id,
-            lin.id as lineage_id, ver.purpose, res.held_minor::text as held_minor
+            lin.id as lineage_id, ver.purpose, res.held_minor::text as held_minor,
+            ver.proposed_by_actor_id
        from public.reservations res
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
        join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
@@ -90,8 +120,9 @@ export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
         and att.state = 'reserved'
         and not att.dispatch_marker
         and not att.observed
+        and ${AGENT_REACH}
       order by res.created_at`,
-    [tx.businessId],
+    [tx.businessId, agentActorId ?? null],
   );
   return rows.map((row) => ({
     reservationId: row.reservation_id,
@@ -101,6 +132,7 @@ export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
     lineageId: row.lineage_id,
     purpose: row.purpose,
     heldMinor: Number(row.held_minor),
+    proposedByActorId: row.proposed_by_actor_id,
   }));
 }
 

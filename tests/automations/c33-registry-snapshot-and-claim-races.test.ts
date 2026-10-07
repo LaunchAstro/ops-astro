@@ -100,7 +100,7 @@ it('independent schedulers and event deliveries commit one occurrence per cause'
               businessId: tx.businessId,
               async query<Row>(sql: string, params?: readonly unknown[]): Promise<readonly Row[]> {
                 const rows = await tx.query<Row>(sql, params);
-                if (sql.endsWith('for share')) {
+                if (sql.includes("set_config('ops_astro.activation'")) {
                   selected += 1;
                   if (selected === 4) ready.resolve();
                   await ready.promise;
@@ -166,7 +166,7 @@ it('the occurrence race fixture permits claim transactions to overlap', async ()
       const rows = await w.db.admin.execute<{ n: number }>(
         `select count(*)::int as n from pg_stat_activity
           where datname = current_database() and usename = $1
-            and wait_event_type = 'Lock' and query like '%from public.activations%for share%'`,
+            and wait_event_type = 'Lock' and query like '%from public.activations%for update%'`,
         [w.db.loginRole],
       );
       maximumWaiting = Math.max(maximumWaiting, rows[0]?.n ?? 0);

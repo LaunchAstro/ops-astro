@@ -9,6 +9,12 @@
 // INB-1f adds the board's subscribers: a tab's one stream hears every task
 // topic of its business (each asked per event before it is said) and only its
 // own person's inbox topic, `business:inbox:person` (migration 0043).
+//
+// C71 (CS-7.42) adds a team conversation's topic, `business:conversation:id`
+// (migration 20261006235000): its own subscribers hear it as a task's hear theirs, and
+// every board of its business is handed it, to say to a current member alone
+// (`live-board.ts`). A task and a conversation are both records, so their ids
+// share one key space and a subscriber is filed by business and id alone.
 
 import type { Listener } from '../../packages/core-records/src/index.ts';
 
@@ -20,11 +26,16 @@ export type LiveSignal = 'invalidate' | 'resync';
 export const TOPIC: RegExp =
   /^task:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u;
 
+/** A tab's name for one team conversation's topic (C71), as the stream takes it. */
+export const CONVERSATION_TOPIC: RegExp =
+  /^conversation:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u;
+
 type Send = (signal: LiveSignal) => void;
 
-/** What a board stream hears: a task named, its own inbox, or a resync. */
+/** What a board stream hears: a task or a conversation named, its own inbox, or a resync. */
 export type BoardSignal =
   | { readonly kind: 'task'; readonly taskId: string }
+  | { readonly kind: 'conversation'; readonly conversationId: string }
   | { readonly kind: 'inbox' }
   | { readonly kind: 'resync' };
 
@@ -37,8 +48,8 @@ interface Board {
 type Stop = () => Promise<void>;
 
 export interface LiveTopics {
-  /** Hear `taskId` in `businessId`, `stop` ending the stream; the returned function stops hearing. */
-  subscribe(businessId: string, taskId: string, send: Send, stop?: Stop): () => void;
+  /** Hear a task or a conversation (`recordId`) in `businessId`, `stop` ending the stream; the returned function stops hearing. */
+  subscribe(businessId: string, recordId: string, send: Send, stop?: Stop): () => void;
   /** Hear every task in `businessId` and `personId`'s own inbox there (INB-1f); as above. */
   subscribeBoard(
     businessId: string,
@@ -73,8 +84,8 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
   );
 
   return {
-    subscribe(businessId, taskId, send, stop) {
-      const key = `${businessId}:${taskId}`;
+    subscribe(businessId, recordId, send, stop) {
+      const key = `${businessId}:${recordId}`;
       const sends = subscribers.get(key) ?? new Set<Send>();
       subscribers.set(key, sends.add(send));
       return holding(held, stop, () => {
@@ -96,7 +107,8 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
     },
     async close() {
       listening = false;
-      await closeAll(held, listener);
+      held.closing ??= closeAll(held, listener);
+      await held.closing;
     },
   };
 }
@@ -105,6 +117,8 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
 interface Held {
   readonly stops: Set<Stop>;
   stopping: Promise<void>[] | undefined;
+  /** The one shutdown, however many callers ask: each waits out every stream. */
+  closing?: Promise<void>;
 }
 
 /**
@@ -137,7 +151,7 @@ function holding(held: Held, stop: Stop | undefined, unsubscribe: () => void): (
   };
 }
 
-/** One `business:kind:topic` to its hearers: a task to its own and to its business's boards, an inbox to its person's boards. */
+/** One `business:kind:topic` to its hearers: a task or a conversation to its own and to its business's boards, an inbox to its person's boards. */
 function hand(
   payload: string,
   subscribers: ReadonlyMap<string, ReadonlySet<Send>>,
@@ -145,9 +159,11 @@ function hand(
 ): void {
   const [business, kind, topic, ...rest] = payload.split(':');
   if (business === undefined || topic === undefined || rest.length > 0) return;
-  if (kind === 'task') {
+  if (kind === 'task' || kind === 'conversation') {
     for (const send of subscribers.get(`${business}:${topic}`) ?? []) send('invalidate');
-    for (const board of boards.get(business) ?? []) board.send({ kind: 'task', taskId: topic });
+    const signal: BoardSignal =
+      kind === 'task' ? { kind, taskId: topic } : { kind, conversationId: topic };
+    for (const board of boards.get(business) ?? []) board.send(signal);
   } else if (kind === 'inbox') {
     for (const board of boards.get(business) ?? []) {
       if (board.personId === topic) board.send({ kind: 'inbox' });

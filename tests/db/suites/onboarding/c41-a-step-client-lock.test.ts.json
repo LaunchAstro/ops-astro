@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C41-A with S0-5: an onboarding step's task under the client lock (a step result racing its task's move to another client is refused NOT_FOUND under the task lock and writes nothing; the move racing an uncommitted result is CLIENT_LOCKED), a trashed step's task takes no result, and the step-actor rule on the delegated and API-2 agent paths"
+}

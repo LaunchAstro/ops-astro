@@ -58,7 +58,10 @@ function catalogueMatchesCode(): void {
     const { rows, failures } = real();
     expect(failures).toEqual([]);
     expect(rows.map((row) => row.command)).toEqual(COMMAND_SURFACE.map((one) => one.name));
-    const handlers = readFileSync('packages/core-commands/src/commands/handlers.ts', 'utf8');
+    // `handlers.ts` and the team chat and wayfinder blocks it spreads in.
+    const handlers = ['handlers.ts', 'chat-handlers.ts', 'handlers-wayfinder.ts']
+      .map((file) => readFileSync(`packages/core-commands/src/commands/${file}`, 'utf8'))
+      .join('\n');
     for (const row of rows.filter((one) => one.kind === 'write')) {
       expect(handlers).toContain(`'${row.command}':`);
     }
@@ -164,7 +167,7 @@ const CREATE_UI = [
   'agency:projects-board (screens/projects/CreateTask.tsx)',
   'agency:task-detail (screens/task/History.tsx)',
   'agency:task-detail (screens/task/Subtasks.tsx)',
-  'app shell (screens/task/task-draft.ts)',
+  'app shell (screens/task/draft-parts.ts)',
 ];
 const START_UI = [
   'agency:task-detail (screens/task/History.tsx)',

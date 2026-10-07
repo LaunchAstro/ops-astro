@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the agent CLI's real entry, run as a process, answers its verbs and refuses unknown ones with a fix"
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "an accepted plan's run and gate reach only their own conversation's work list and hold: never another business's, another person's conversation, or a reader without the client's task"
+}

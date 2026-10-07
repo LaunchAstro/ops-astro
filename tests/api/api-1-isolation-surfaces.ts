@@ -108,11 +108,12 @@ const revisionOf = (row: CatalogueRow, body: Record<string, unknown>) =>
     ? { expectedRevision: 1 }
     : {};
 
-/** One command as the agent under its delegation, through the CLI and the API's agent route. */
+/** One command as the agent under its delegation (the world's, or the one `presented`), through the CLI and the API's agent route. */
 export async function asAgent(
   row: CatalogueRow,
   businessKey: string,
   body: Record<string, unknown>,
+  presented: string = delegation,
 ): Promise<Heard[]> {
   const heard: Heard[] = [];
   const recording = async (path: string, init: RequestInit) => {
@@ -130,7 +131,7 @@ export async function asAgent(
     businessKey,
     credential: agentToken,
     entry: 'agent',
-    delegation,
+    delegation: presented,
     transport: async (path, sent, credential, held) =>
       await recording(path, {
         method: 'POST',
@@ -148,7 +149,7 @@ export async function asAgent(
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${agentToken}`,
-      'x-agent-delegation': delegation,
+      'x-agent-delegation': presented,
     },
     body: JSON.stringify(payload),
   });
