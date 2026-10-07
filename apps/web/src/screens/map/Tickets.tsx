@@ -9,14 +9,14 @@
 import { useState, type ReactElement } from 'react';
 import type { MapView } from '../../../../../packages/core-wire/src/index.ts';
 import { Section, ticketLink } from './ReadSections.tsx';
-import { passes, type Filters, type Send } from './model.ts';
+import { passes, type Filters, type Locked, type Send } from './model.ts';
 
 type Ticket = MapView['tickets'][number];
 
 export function TicketsView(props: {
   readonly map: MapView;
   readonly filters: Filters;
-  readonly busy: boolean;
+  readonly locked: Locked;
   readonly send: Send;
 }): ReactElement {
   const tickets = props.map.tickets;
@@ -29,16 +29,20 @@ export function TicketsView(props: {
     <Section name="tickets" label="Tickets">
       {shown.length === 0 ? <p>No ticket on this map passes the filters.</p> : null}
       <ul>
-        {shown.map((ticket) => (
-          <li key={ticket.id} data-ticket-row={ticket.id}>
-            {ticketLink(ticket.key, `${ticket.key ?? ''} ${ticket.title ?? ''}`.trim())}{' '}
-            <span className="sbact__meta">
-              {ticket.type} · {ticket.state ?? 'no state'}
-            </span>
-            <Blockers ticket={ticket} name={name} busy={props.busy} send={props.send} />
-            <BlockControl ticket={ticket} tickets={tickets} busy={props.busy} send={props.send} />
-          </li>
-        ))}
+        {shown.map((ticket) => {
+          // A refusal on one ticket closes that ticket's blocking, not the others'.
+          const busy = props.locked('task.set_blocking', ticket.id);
+          return (
+            <li key={ticket.id} data-ticket-row={ticket.id}>
+              {ticketLink(ticket.key, `${ticket.key ?? ''} ${ticket.title ?? ''}`.trim())}{' '}
+              <span className="sbact__meta">
+                {ticket.type} · {ticket.state ?? 'no state'}
+              </span>
+              <Blockers ticket={ticket} name={name} busy={busy} send={props.send} />
+              <BlockControl ticket={ticket} tickets={tickets} busy={busy} send={props.send} />
+            </li>
+          );
+        })}
       </ul>
     </Section>
   );
