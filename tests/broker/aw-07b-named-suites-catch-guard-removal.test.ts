@@ -97,7 +97,8 @@ mutationIt(
   async () => {
     await namedTestsCatch(
       {
-        file: 'packages/core-custody/src/email-class.ts',
+        // `fromVerifiedSender`'s check that the report says the sender is verified.
+        file: 'packages/core-custody/src/broker-email-route.ts',
         from: '    sender.verified &&\n',
         to: '',
       },
