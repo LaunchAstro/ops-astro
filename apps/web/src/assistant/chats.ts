@@ -42,6 +42,8 @@ export interface AssistantState {
   readonly scope: StandingScope;
   /** Each tab's questions still out, by key: a tab with one out is answering. */
   readonly answering: Readonly<Record<string, number>>;
+  /** A tab folded into another (`started`), by key: what still lands for it lands there. */
+  readonly folded: Readonly<Record<string, string>>;
 }
 
 export interface AskEntry {
@@ -75,6 +77,7 @@ export const initial = (): AssistantState => ({
   draft: '',
   scope: NO_SCOPE,
   answering: {},
+  folded: {},
 });
 
 export function fresh(state: AssistantState): AssistantState {
@@ -167,10 +170,18 @@ export const said = (
 ): AssistantState =>
   change(state, key, (chat) => ({ ...chat, messages: [...chat.messages, message] }));
 
+/** A line `conversation.read` gave a tab carries this before the server's id. */
+export const READ_LINE = 'kept-';
+
+/** The tab a line for `key` lands in: `key`, or the tab it was folded into. */
+export const keyIn = (state: AssistantState, key: string): string => state.folded[key] ?? key;
+
 /**
  * The tab's first question started its conversation. A tab the history
  * reopened for that same conversation while the start was out folds into it,
- * so it is never open twice.
+ * so it is never open twice. What its read gave is the start's own question,
+ * already here; what was asked and answered there since follows, and a line
+ * still on its way to it lands here.
  */
 export function started(
   state: AssistantState,
@@ -180,11 +191,22 @@ export function started(
   const twin = state.chats.find(
     (chat) => chat.key !== key && chat.conversationId === conversationId,
   );
+  const since = twin?.messages.filter((message) => !message.id.startsWith(READ_LINE)) ?? [];
   const single =
-    twin === undefined ? state : { ...state, chats: state.chats.filter((chat) => chat !== twin) };
+    twin === undefined
+      ? state
+      : {
+          ...state,
+          chats: state.chats.filter((chat) => chat !== twin),
+          folded: { ...state.folded, [twin.key]: key },
+        };
   const chosen =
     twin !== undefined && state.selected === twin.key ? selecting(single, key) : single;
-  return change(chosen, key, (chat) => ({ ...chat, conversationId }));
+  return change(chosen, key, (chat) => ({
+    ...chat,
+    conversationId,
+    messages: [...chat.messages, ...since],
+  }));
 }
 
 /** A question for tab `key` went out (+1) or came back (-1). */

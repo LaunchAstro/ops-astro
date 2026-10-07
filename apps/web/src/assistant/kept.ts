@@ -30,6 +30,7 @@ import { isRefusal, isUnavailable, type OperationsClient } from '../operations/c
 import { jsonSlot, tabStorage, type JsonSlot } from '../session/storage-slot.ts';
 import {
   initial,
+  READ_LINE,
   reopened,
   select,
   transcript,
@@ -100,7 +101,7 @@ const PURGED = 'This conversation’s messages have been cleared; its wrap-up is
 function linesOf(read: ConversationReadResult): AssistantMessage[] {
   if (read.messages === null) return [{ id: 'purged', role: 'note', body: PURGED, cites: [] }];
   return read.messages.map((one) => ({
-    id: `kept-${one.id}`,
+    id: `${READ_LINE}${one.id}`,
     role: one.role === 'person' ? 'user' : 'ai',
     body: one.body,
     cites: [],
