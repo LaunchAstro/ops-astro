@@ -8,6 +8,7 @@ import { createFreshDatabase, databaseUrlFromEnvironment } from '../support/fres
 import {
   applyMigrations,
   readMigrations,
+  type Migration,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import {
   createTask,
@@ -28,8 +29,8 @@ import {
 
 export { s, own, other };
 export const VERSION = '20261007053014_run_reference_scopes';
-export const ALL = readMigrations('migrations');
-export const noDatabase = databaseUrlFromEnvironment() === undefined;
+export const ALL: readonly Migration[] = readMigrations('migrations');
+export const noDatabase: boolean = databaseUrlFromEnvironment() === undefined;
 export const REFERENCES = [
   ['attempts', 'step_id'],
   ['attempts', 'lease_id'],
@@ -218,7 +219,7 @@ export async function hostileRow(table: string, column: string): Promise<Row> {
   return { ...rowFor(table), [column]: value };
 }
 
-export function conversationRow(id = ownConversation): Row {
+export function conversationRow(id: string = ownConversation): Row {
   return {
     conversation_id: id,
     operation_key: 'test.compose',
