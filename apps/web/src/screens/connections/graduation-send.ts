@@ -7,11 +7,14 @@
 // refusal under its operation too, so a resend after a fresh sign-in is a new
 // operation, unless the refused send was such a retry: that operation may have
 // applied, so it stays the one sent, and the one kept, until it is answered.
+// Refused for a fresh sign-in once stepped up, it is answered: the register
+// releases a success it holds to a stepped-up sign-in, so what it holds is that
+// refusal, and the write goes once more as a new operation.
 // `drop` withdraws a write held for that sign-in, and its refusal with it; a
 // promotion form drops only the write it sent.
 
 import { useRef } from 'react';
-import type { OperationsClient } from '../../operations/client.ts';
+import { isRefusal, type OperationsClient } from '../../operations/client.ts';
 import { useMoneyCommand } from '../../records/use-money-command.ts';
 
 type Change = 'mandate.file' | 'mandate.revoke' | 'graduation.promote' | 'graduation.demote';
@@ -41,18 +44,27 @@ export function useSend(client: OperationsClient, reload: () => void) {
   const send: Send = (name, body, revision, done) => {
     const key = JSON.stringify([name, body, revision ?? null]);
     const kept = unresolved.current;
-    const retry = kept?.key === key;
-    let id = retry ? kept.id : client.newOperationId();
+    const same = kept?.key === key ? kept : null;
+    let retry = same !== null;
+    let id = same?.id ?? client.newOperationId();
     let first = true;
-    const attempt = (to: OperationsClient): string => {
-      if (!first && !retry) id = to.newOperationId();
-      first = false;
-      return id;
-    };
     const expected = revision === undefined ? {} : { expectedRevision: revision };
+    const mutate = (to: OperationsClient) =>
+      to.mutate(name, body, { ...expected, operationId: id });
     owner.current = ownerOf(name, body);
     command.run(
-      (to) => to.mutate(name, body, { ...expected, operationId: attempt(to) }),
+      async (to) => {
+        const stepped = !first;
+        if (stepped && !retry) id = to.newOperationId();
+        first = false;
+        const result = await mutate(to);
+        if (!stepped || !retry || !isRefusal(result) || result.code !== 'STEP_UP_REQUIRED') {
+          return result;
+        }
+        retry = false;
+        id = to.newOperationId();
+        return await mutate(to);
+      },
       (settlement) => {
         // A retry refused may still have applied: only its answer settles it.
         const open = settlement.kind !== 'ok' && (retry || settlement.kind === 'unknown');
