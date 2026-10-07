@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "races: two Repeatable Read writers whose snapshots predate either mapping cannot map one login live as a person and as an agent"
+}
