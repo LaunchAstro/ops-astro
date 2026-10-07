@@ -305,6 +305,36 @@ at another service. Those two names are the one part of production's layout
 this repository holds, because a stop with no input has to name its services
 itself (`S0-1 gated stop`). The web app and sign-in are not on the machine.
 
+Production's link (`promote.mjs --current`) points at a copy of the staged
+artefact, beside the link under `served/`, named by its digest (#497), so a
+later write to the store does not change what is served. That holds inside one
+trust boundary: root and the user who runs the promotion. Whoever can write a
+folder on the path to the link can swap the folder under it, so the promotion
+checks every folder from the link's up to `/` and refuses unless each is a real
+folder (not a link), owned by root or the promoting user, with no group or
+other write and no sticky bit. Name the link by its real path, under folders
+only you and root can write: never under `/tmp`, a shared store or a folder
+reached through a link. The check reads owners and mode bits only, so it
+cannot see write granted another way: keep the path free of any ACL that
+grants write, and off network shares and volumes that ignore ownership, and
+set no file flag (`uchg`, `uappnd` or their system forms) on the link's
+folder, the link or `<link>.promoting`, or the swap fails after the
+migration.
+
+Each promotion copies the artefact afresh, folders 0755 and files 0644 whatever
+the promoter's umask, and replaces anything already at that digest's name, so
+an earlier copy's modes or files are never served. The services read the copy
+as another user: every folder from `/` down to the link's folder must let them
+search it. The promotion does not know the services' user, so it does not
+check that; a folder they cannot search fails at their start.
+
+`served/` itself is set to 0755 on every promotion, and the copies' files are
+0644, so every local user can read a release: keep secrets out of release
+outputs. Run one promotion at a time. Two at once can move each other's copy
+aside, and a copy that cannot take its name whose earlier copy then cannot go
+back loses that earlier copy; either way the services fail at their start,
+never serving bytes the promotion did not check.
+
 ## Alerts
 
 Nothing deploys before the alerts reach the owner (ticket S0-2). The watcher

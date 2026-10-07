@@ -4,7 +4,8 @@
 // `promotion.ts`; this file wires them to the machine. It reads the service
 // manager through S0-1a's service report (imported), migrates with
 // `scripts/db-migrate.mjs` (which reads DATABASE_ADMIN_URL from the environment
-// the runbook sets), and points production at the artefact by swapping one link.
+// the runbook sets), and points production by swapping one link at a copy of
+// the artefact beside the link, under `served/`, named by its digest (#497).
 //
 // Usage:
 //   node scripts/ops/promote.mjs --dry-run --version <id> --artefacts <store> --line "<text>"
