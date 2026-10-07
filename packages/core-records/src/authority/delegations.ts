@@ -833,10 +833,12 @@ export type RevocationCause = 'authority_lost' | 'delegation_revoked' | 'work_re
  * (`delegation.revoke`, `grant.revoke`, `access.end`, `task.cancel`,
  * `task.propose`'s supersession, `budget.record_outcome`). A caller naming
  * none gets the agent's own actor: the recovery pass and the restart replay,
- * which no person ran. An explicit revocation reconciles each task it cleared
+ * which no person ran. An explicit revocation, and a revoked grant or ended
+ * access that cost the agent its authority, reconcile each task they cleared
  * as an unassignment (`raiseAssignment`), so the person whose agent held it
- * decides its gate again. The other causes do not: a revoked grant or ended
- * access writes no inbox item, and retired work ends or replaces the gate.
+ * decides its gate again while decide's own grant still admits them; one whose
+ * decide went too is owed nothing. Retired work does not: it ends or replaces
+ * the gate.
  */
 export async function revokeDelegation(
   tx: TenantQuery,
@@ -878,7 +880,7 @@ export async function revokeDelegation(
      returning subject_record_id::text as id`,
     [tx.businessId, delegationId.toLowerCase(), actorId ?? revoked.agent_actor_id, cause],
   );
-  if (cause !== 'delegation_revoked') return revoked.revoked_at;
+  if (cause === 'work_retired') return revoked.revoked_at;
   for (const task of cleared) {
     // oxlint-disable-next-line no-await-in-loop
     await raiseAssignment(tx, { taskId: task.id, assignee: null, by: revoked.delegate_person_id });
