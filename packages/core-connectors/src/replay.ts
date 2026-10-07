@@ -1,18 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The replay model provider: a stand-in that answers on loopback like a model
-// vendor would, so the whole broker case set runs with no vendor account, key
-// or hosted service (AW-01). Its hostile modes are the answers a real provider
-// can give: an oversized body, a redirect to an unlisted host, a malformed
-// schema, a reply past the timeout, and an instruction planted in the content.
-// AW-10 adds the faults a provider really has: down (503), rate limited
-// (429), and a connection cut after the request arrived. It also answers a
-// lookup of one operation (`replay-lookup.ts`), honestly or with a hostile answer.
+// The replay model provider: a stand-in that answers on loopback like a model vendor would, so the
+// whole broker case set runs with no vendor account, key or hosted service (AW-01). Its hostile
+// modes are the answers a real provider can give: an oversized body, a redirect to an unlisted
+// host, a malformed schema, a reply past the timeout, and an instruction planted in the content.
+// AW-10 adds the faults a provider really has: down (503), rate limited (429), and a connection cut
+// after the request arrived. It also answers a lookup of one operation (`replay-lookup.ts`),
+// honestly or with a hostile answer.
 //
-// The adapter half (`replayAdapter`, `readReplayAnswer`) is what runs in the
-// broker's process: it builds a request with no origin and no credential, and
-// reads the answer against its schema. The server half runs wherever the test
-// or the stand-in staging stack starts it; it is never loaded by custody.
+// The adapter half (`replayAdapter`, `readReplayAnswer`) is what runs in the broker's process: it
+// builds a request with no origin and no credential, and reads the answer against its schema. The
+// server half runs where the test or the stand-in staging stack starts it; custody never loads it.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -105,10 +103,9 @@ export const REPLAY_COMPOSE: ModelOperationDeclaration = {
 };
 
 /**
- * A person's question in their own conversation (AW-03's exchange), over the
- * replay provider until a real local provider lands (AW-RP). The question is a
- * person's own words, so it is free text: it reaches only a local route, and
- * the conversation seam takes no other.
+ * A person's question in their own conversation (AW-03's exchange), over the replay provider until
+ * a real local provider lands (AW-RP). The question is a person's own words, so it is free text: it
+ * reaches only a local route, and the conversation seam takes no other.
  */
 export const CONVERSATION_ANSWER: ModelOperationDeclaration = {
   ...REPLAY_COMPOSE,
@@ -255,7 +252,6 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
   let lookup: ReplayLookupMode = 'honest';
   const seen: SeenRequest[] = [];
   const processed = new Set<string>();
-  // Received and refused before any work began: the only calls a lookup proves unbegun.
   const refused = new Set<string>();
   const timers = new Set<NodeJS.Timeout>();
   const server: Server = createServer((request, response) => {
