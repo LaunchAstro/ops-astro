@@ -84,6 +84,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 the exchange', () => {
       answered: true,
       messageId: expect.any(String) as string,
       body: 'Drafted.',
+      cites: [],
     } satisfies ConversationReply);
     const conversationId = String(detail(opened)['conversationId']);
     expect(model.provider.seen.at(-1)?.body).toContain('What is on this week?');

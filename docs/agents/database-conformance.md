@@ -50,13 +50,38 @@ product.
 ## Claiming product conformance
 
 `database conformance` runs `pnpm run db:conformance` against Postgres
-service containers, reading the named-suite manifest through
-`scripts/named-suites.ts`: `tests/db/named-suites.json`, or once it is split,
-`tests/db/named-suites/`, which holds `_history.json` (the comment lines) and
-one `<area>.json` per area, the area being `areaOf` (`scripts/ci-areas.ts`) of
-each suite it names. A suite goes in its own area's file; the reader refuses a
-suite in the wrong file, a path named twice and an area file naming nothing.
-`node scripts/named-suites.ts split --check` proves the split loses nothing.
+service containers, reading the named suites through
+`scripts/named-suites.ts`. Each named suite has a file of its own (MERGE-PLAN
+item 5, so two pull requests that add suites never edit the same file): the
+suite `tests/<path>` is named by `tests/db/suites/<path>.json`, holding
+`"kind"` (`"invariant"` or `"conformance"`), `"isolation"` (`true` when
+`isolation tests` runs it too) and `"why"` (what it proves). To name a suite,
+add its file; to stop naming one, delete its test file with it. The reader
+refuses a file with another key, a missing or empty reason, a name that is
+not a test file's plus `.json`, a symlink, or the old lists
+(`tests/db/named-suites/`, `tests/db/isolation-suites.json`) beside the
+folder, and names the file. The old lists' comment lines are kept, unchanged,
+in `tests/db/suites-history.json`.
+
+Deleting one of those files would drop a suite with no list diff to show it,
+so `database conformance gate` runs `node scripts/named-suites.ts kept
+<base>` on every event. On a pull request or a merge group it runs through
+`scripts/merge-group.mjs each`, once per pull request the check judges: on a
+pull request the base is the pull request's base. On a group it is the base
+branch's tip as merge-group.mjs fetches it, which is why the job checks out
+the full history, and every run compares the whole checked-out group with
+it, so one pull request's drop fails each run. On a push the base is the
+push's `before`. It reads the manifest at the base from git in whichever
+layout the base has (the single file, the per-area folder or one file per
+suite), and fails naming each suite the base named, or marked isolation,
+that the head does not, unless the change deleted its test file.
+A renamed test file (git's rename detection, a change of case included) takes
+its suite with it: the new path must be named with the same kind, and marked
+isolation when the old one was, or the step fails naming both paths. A rename
+git does not detect (a file moved and much rewritten) counts as a deletion, so
+it shows in the change as a deleted test file. A base
+it cannot read, an id that is not 40 or 64 hex, an all-zero base or a failed
+git command fails the step.
 
 Run one after another the named suites took 40 to 50 minutes, so the hosted
 job is a matrix of shards (`database conformance shard <i>`), each running
@@ -88,6 +113,12 @@ part's cases (`inPart`), so each case runs once, in one part.
 `tests/acceptance/d06-generated.test.ts`, about 15 minutes whole, runs in six.
 `tests/ci/db-shards.test.ts` proves every item lands in exactly one shard and
 every case of a split suite in exactly one part.
+`isolation tests` runs the same way in two shards (`isolation tests shard
+<i>`), and `local checks` in three, split by measured time
+(`scripts/ci-shards.ts`, `tests/ci/ci-shard-plan.json`); each required name is
+an aggregate that passes only when every shard succeeded, and
+`tests/ci/ci-shards*.test.ts` prove every suite, step and test file runs in
+exactly one shard.
 
 Since CI-SPEED (the owner, 4 October 2026) there are 16 shards, and
 `node scripts/db-census.ts` lists every run item's tests with vitest and shows
@@ -215,7 +246,7 @@ The order:
    and `database conformance gate` as required contexts on ruleset
    `23396133`. That is owner-only, and nothing in this file authorises it.
 3. The first port head carries its real named invariant and conformance suites
-   in `tests/db/named-suites.json`, and must pass `database conformance` on
+   in `tests/db/suites/`, and must pass `database conformance` on
    its own head.
 
 ### What the job's result means now

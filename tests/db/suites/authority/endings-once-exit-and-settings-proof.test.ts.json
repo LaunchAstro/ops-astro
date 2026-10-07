@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "malformed database settings never print their password, and endings --once exits 1 when a provider failure leaves a step owed"
+}

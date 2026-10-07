@@ -19,11 +19,16 @@
 import { randomUUID } from 'node:crypto';
 import { grantTo } from '../commands/fixture.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
-import type { CommandName } from '../../packages/core-wire/src/surface.ts';
-import { pathOf } from '../../packages/core-wire/src/surface.ts';
-import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
+import { DELEGATION_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
-import { bravoRecords } from './ident-audit-bravo-rows.ts';
+import {
+  bravoAutomation,
+  bravoRecords,
+  type BravoAutomation,
+  type WithMandateRows,
+} from './ident-audit-bravo-rows.ts';
+import { bravoStepTask } from './ident-audit-onboarding.ts';
+import type { AgentCall, Body, PersonCall, RawAnswer } from './ident-audit-calls.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import {
@@ -36,7 +41,7 @@ import {
 } from './world.ts';
 import { logTime } from '../../packages/core-records/src/tasks/time.ts';
 
-export type Body = Readonly<Record<string, unknown>>;
+export type { Body, RawAnswer } from './ident-audit-calls.ts';
 
 /** A pickup's answer: the handles an agent operand names. */
 export type Picked = Readonly<
@@ -50,29 +55,10 @@ export type Proposed = Readonly<
   Record<'gateId' | 'versionId' | 'lineageId', string> & { task: Task }
 >;
 
-/** An answer and the exact bytes it arrived as (root ruling 2 compares those). */
-export interface RawAnswer extends Answer {
-  readonly text: string;
-}
-
-type PersonCall = (
-  caller: { readonly token: string },
-  name: CommandName,
-  body: Body,
-  businessKey?: string,
-) => Promise<RawAnswer>;
-type AgentCall = (
-  identity: AgentIdentity,
-  name: CommandName,
-  body: Body,
-  credential?: string,
-  businessKey?: string,
-) => Promise<RawAnswer>;
-
 export interface IdentWorld {
   readonly h: Harness;
   /** What bravo owns that an alpha caller could be handed the identifier of. */
-  readonly foreign: Readonly<{
+  readonly foreign: WithMandateRows<{
     admin: Caller;
     task: Task;
     proposal: Proposed;
@@ -84,9 +70,13 @@ export interface IdentWorld {
     legalVersionId: string;
     credentialId: string;
     clientId: string;
+    stepTaskId: string;
     /** A custody key of bravo's (C31). */
     secretId: string;
-  }>;
+    /** A broken connection of bravo's, owner-written (MP-14-7a). */
+    connectionId: string;
+  }> &
+    BravoAutomation;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
   /** A member of alpha holding task grants on `rheaTask` and nothing else. */
@@ -139,7 +129,6 @@ async function callRaw(
 export async function createIdentWorld(part: string): Promise<IdentWorld> {
   const h = await createHarness(part);
   const { world } = h;
-
   const person: PersonCall = async (caller, name, body, businessKey = 'alpha') =>
     await callRaw(world.api, personPath(businessKey, pathOf(name)), body, bearer(caller.token));
 
@@ -250,7 +239,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
   );
 
   // bravo's own legal version, agent credential and client (C81, API-2, C32).
-  const bravoRows = await bravoRecords(world);
+  const bravoRows = { ...(await bravoRecords(world)), ...(await bravoAutomation(world)) };
 
   // alpha's second agent, with a live lease of its own.
   const secondAgent = await enrolAgent(world.db, world.alpha, world.ada.actorId as string);
@@ -282,6 +271,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       grantId: String(bravoGrants[0]?.id),
       entryId: bravoEntry.entryId,
       ...bravoRows,
+      ...(await bravoStepTask(person, bravoAdmin, bravoRows.clientId)),
     },
     otherPicked,
     rhea,

@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { READ_NAMES } from '../../apps/web/src/operations/read-names.ts';
-import { pathOf, PREFIX } from '../../packages/core-wire/src/index.ts';
+import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import {
+  pathOf,
+  PREFIX,
+  type ChatConversationsResult,
+  type ChatMessagesResult,
+} from '../../packages/core-wire/src/index.ts';
 import { MADE_UP_READS, madeUpAnswer, MOCKUP_TASK_KEY, TASKS } from './made-up-api.ts';
 
 // Reads no screen draws at the harness's addresses: the preset plan is the
 // command line's, the unattended list is the operations view's. No screen asks
 // the breach notice drafts (the command line's drill), nor an instruction
-// file's attribution yet (the command line and pre-review do). Each is drawn
-// "could not be read" if asked. The task page's run has a receipt, so
+// file's attribution yet (the command line and pre-review do), and the drawer
+// reads no correction's decision while it keeps the made-up desk (C80). Each
+// is drawn "could not be read" if asked. The task page's run has a receipt, so
 // `task.receipt` is drawn here, and the task's client field asks the client list.
 const NOT_DRAWN = new Set([
   'preset.plan',
@@ -19,9 +26,10 @@ const NOT_DRAWN = new Set([
   // AW-12: no screen draws the harness result in this piece.
   'harness.read',
   'privacy.draft_breach_notices',
-  // C31: the Keys panel that draws custody's list is P01b's.
-  'secret.list',
+  'live_correction.read',
 ]);
+
+const at = (name: ReadName): string => `${PREFIX.person}alpha${pathOf(name)}`;
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers a read at the path the app asks it on, with the made-up rows', () => {
@@ -51,6 +59,24 @@ describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers every read a screen draws, so a new read is a decision here', () => {
     const drawn = READ_NAMES.filter((name) => !NOT_DRAWN.has(name));
     expect([...MADE_UP_READS].toSorted()).toEqual([...drawn].toSorted());
+  });
+
+  it("answers each conversation's messages by its id, unread as the panel derives it", () => {
+    const list = (madeUpAnswer(at('chat.conversations')) as { json: ChatConversationsResult }).json;
+    expect(list.conversations.map((view) => view.kind).toSorted()).toEqual(['direct', 'group']);
+    for (const view of list.conversations) {
+      const { conversationId } = view;
+      const read = madeUpAnswer(at('chat.messages'), {}, { conversationId });
+      const held = (read as { json: ChatMessagesResult }).json;
+      expect(held.conversationId).toBe(conversationId);
+      expect(held.lastRead).toBe(view.lastRead);
+      expect(held.messages.at(-1)?.at).toBe(view.lastMessageAt);
+      const unread = held.messages.filter(
+        (m) => m.authorId !== 'p-nathan' && m.at > (view.lastRead ?? ''),
+      );
+      expect(unread).toHaveLength(view.unread);
+    }
+    expect(madeUpAnswer(at('chat.messages'), {}, { conversationId: 'cv-none' })).toBeUndefined();
   });
 });
 

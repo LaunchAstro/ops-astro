@@ -79,8 +79,8 @@ async function u14CliAccessEndApplies(stays: Teammate): Promise<Teammate> {
 
   // Each ended person's next call is refused, alike on both surfaces.
   const next = async (token: string) => await both(world.api, 'session.capabilities', {}, token);
-  refusedAlike(await next(viaCli.token), 403, 'AUTH_NO_MEMBERSHIP');
-  refusedAlike(await next(viaApi.token), 403, 'AUTH_NO_MEMBERSHIP');
+  refusedAlike(await next(viaCli.token), 403, 'AUTH_ACCESS_ENDED');
+  refusedAlike(await next(viaApi.token), 403, 'AUTH_ACCESS_ENDED');
   // The teammate who stays still reads.
   expect((await next(stays.token)).cli.status).toBe(200);
   return viaCli;

@@ -25,6 +25,9 @@ import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
  * kept in step by hand.
  */
 export const READ_NAMES = [
+  // Wayfinder (WF-1, WF-2): the map's sections, its frontier and its fog.
+  'map.view',
+  'map.frontier',
   'task.read',
   'task.board',
   'person.list',
@@ -43,6 +46,15 @@ export const READ_NAMES = [
   'task.receipt',
   // Custody's rows as set or not set (C31).
   'secret.list',
+  // Connections & signal: the fleet (MP-14-7a), then grants, tripwires and
+  // the night round (MP-14-8).
+  'connection.fleet',
+  'connection.signal',
+  // The per-client graduation region on the same page (MP-14-10a).
+  'connection.graduation',
+  // What agent runs cost: skill costing (MP-14-9) and the agents' cost log (MP-14-6).
+  'finance.skill_costs',
+  'finance.agent_costs',
   // The gates waiting on the caller's decision (MP-6-1).
   'gate.pending',
   // A conversation at its address (AW-03).
@@ -51,6 +63,8 @@ export const READ_NAMES = [
   'conversation.list',
   // The drawer's planning allowance line (AW-04, U10).
   'conversation.allowance',
+  // The models the drawer's picker offers (CS-7.30).
+  'conversation.models',
   // Which runs read an instruction file, by digest: pre-review (AW-04).
   'definition.attribution',
   // The business's tag vocabulary, which the tag field suggests from (MP-4-11).
@@ -76,6 +90,10 @@ export const READ_NAMES = [
   // the command line serve; the working minimum draws them in INB-1g.
   'inbox.read',
   'inbox.count',
+  // The caller's team conversations and one conversation's messages (C71-D),
+  // membership-filtered on the server; the Team panel draws them in C71's web piece.
+  'chat.conversations',
+  'chat.messages',
   // Items no path reaches (INB-1e), for `operations:read`; the operations view
   // (C55) draws them.
   'inbox.unattended',
@@ -83,6 +101,10 @@ export const READ_NAMES = [
   'trace.read',
   // The harness test's result on one run (AW-12); no screen draws it yet.
   'harness.read',
+  // One live correction's decision, read again for its card (C80).
+  'live_correction.read',
+  // The Workflow triggers registry (C33), under `settings:read` on the server.
+  'automation.registry',
 ] as const;
 
 /**

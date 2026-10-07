@@ -44,7 +44,8 @@ const held = (role: string): readonly string[] =>
  * the read-any grant `conversation:read`, which no role holds on install), so
  * its declared pair is deliberately seeded to nobody; `conversation.list`
  * asks its own rule too (`conversation:write`, the caller's own only), and so
- * does `conversation.allowance` (AW-04), the team's only;
+ * does `conversation.allowance` (AW-04), the team's only, and `conversation.models`
+ * (CS-7.30), the owner's own;
  * nor does `client.list` (C32), which answers the clients the caller's grants reach.
  */
 const NOT_SEEDED = new Set([
@@ -52,6 +53,7 @@ const NOT_SEEDED = new Set([
   'conversation.read',
   'conversation.list',
   'conversation.allowance',
+  'conversation.models',
 ]);
 const ASKS_NOTHING: ReadonlySet<string> = new Set(['session.capabilities', 'client.list']);
 // A `self` row (the inbox) asks no grant either: it answers about the caller's own rows.
@@ -84,6 +86,7 @@ describe('the seeded roles', () => {
 
   it('gives the seeded member exactly what docs/local/PROOFS.md says it holds', () => {
     expect(held('member')).toStrictEqual([
+      'chat:comment',
       'person:read',
       'settings:read',
       'task:assign',
@@ -101,10 +104,11 @@ describe('the seeded roles', () => {
 describe('the acceptance cast against the seed', () => {
   // cast.ts names the difference and PROOFS.md records it; this pins it, so
   // the next difference is a red case rather than a sentence nobody reread.
-  it('differs from the seeded member only by task:comment added and the two reads left out', () => {
+  it('differs from the seeded member only by task:comment added and chat:comment and the two reads left out', () => {
     const cast = MEMBER_ACTIONS.map((action) => `task:${action}`).toSorted();
     expect(cast.filter((pair) => !held('member').includes(pair))).toStrictEqual(['task:comment']);
     expect(held('member').filter((pair) => !cast.includes(pair))).toStrictEqual([
+      'chat:comment',
       'person:read',
       'settings:read',
     ]);

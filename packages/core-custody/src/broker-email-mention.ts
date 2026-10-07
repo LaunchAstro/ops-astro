@@ -3,8 +3,10 @@
 // A client named in a client-visible comment is told by email (AW-07b
 // mention). The comment's own transaction raised their `client_comment`
 // item (`raiseMentions`); once it has committed, each such item goes through
-// the broker's one send, `sendInboxEmail`, which rechecks that the client can
-// read the task now and that they hold a confirmed address. A mention of
+// the timing path's `emailAtOnce`, which reads the client's choice for client
+// comments: instant sends now (the broker's one send, which rechecks that the
+// client can read the task and holds a confirmed address), the daily batch
+// leaves it for the worker's daily pass, and off never mails it. A mention of
 // someone who cannot read the comment never gets this far: the comment is
 // refused at compose time and nothing is raised (`writeTaskComment`).
 //
@@ -13,17 +15,17 @@
 // worker's own timing, and nothing of another comment or business is sent.
 
 import type { BusinessId, Database } from '../../core-records/src/index.ts';
-import type { Broker } from './broker-types.ts';
-import { sendInboxEmail, type EmailResult, type MailSettings } from './broker-email.ts';
+import { emailAtOnce, type EmailTiming } from './email-timing.ts';
 
-/** Email each client a committed comment named. One result per client item, in raised order. */
+type AtOnceResult = Awaited<ReturnType<typeof emailAtOnce>>;
+
+/** Tell each client a committed comment named, on their timing; one result per item, in raised order. */
 export async function tellCommentClients(
   database: Database,
   businessId: BusinessId,
   commentId: string,
-  broker: Broker,
-  mail: MailSettings,
-): Promise<readonly EmailResult[]> {
+  timing: EmailTiming,
+): Promise<readonly AtOnceResult[]> {
   const items = await database.withBusiness(
     businessId,
     async (tx) =>
@@ -35,10 +37,10 @@ export async function tellCommentClients(
         [tx.businessId, commentId],
       ),
   );
-  const results: EmailResult[] = [];
+  const results: AtOnceResult[] = [];
   for (const item of items) {
     // oxlint-disable-next-line no-await-in-loop -- one send at a time, each its own attempt
-    results.push(await sendInboxEmail(database, businessId, item.id, broker, mail));
+    results.push(await emailAtOnce(database, businessId, item.id, timing));
   }
   return results;
 }

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "inbox.seen admitted before its client read grant was revoked during the attention wait is refused, and stamps nothing"
+}

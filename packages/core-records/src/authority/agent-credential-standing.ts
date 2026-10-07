@@ -9,6 +9,7 @@
 import { recordAuthenticationAttempt, subjectDigest } from '../identity/authentication-attempts.ts';
 import { NO_ASSURANCE, type VerifiedSubject } from '../identity/verified-subject.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { lockAccess } from './access.ts';
 import { digestOf } from './delegations.ts';
 
 /**
@@ -33,20 +34,32 @@ export interface CredentialStanding {
 export type CredentialNotLive = 'not-live';
 
 /**
- * The credential a secret is, in this business, if it is live at `now`: not
+ * The credential a secret is, in this business, if it is live at `now`, or at
+ * the database's instant once its row is held when that is later: not
  * revoked, not past its expiry, its agent actor active and its issuer still
  * a member. Found by its digest, so the secret itself is never compared or
  * kept. The row is locked `for share` for the rest of the call, so a
  * revocation (`lockAgentCredential`, `for update`) either commits first and
  * this call finds it, or waits for this call to finish.
+ * The business's access lock is taken first, shared, as every holder of both takes it.
  */
 export async function resolveAgentCredential(
   tx: TenantQuery,
   secret: string,
   now: Date,
 ): Promise<CredentialStanding | CredentialNotLive> {
+  // A secret not live holds nothing (#784): screened unlocked, then resolved under the locks.
+  if (!(await isAgentCredentialLive(tx, secret, now))) return 'not-live';
+  await lockAccess(tx, 'shared');
   const row = await standingRow(tx, secret, 'for share of c');
-  if (row === undefined || !liveAt(row, now)) return 'not-live';
+  if (row === undefined) return 'not-live';
+  // Judged once the row is held, on the database's clock read after the wait
+  // as well as the caller's instant: a credential that expired while this
+  // waited for the row is not served (#444).
+  const [clock] = await tx.query<{ readonly at: Date }>('select clock_timestamp() as at');
+  if (clock === undefined) throw new Error('resolveAgentCredential: no database clock');
+  const at = clock.at < now ? now : clock.at;
+  if (!liveAt(row, at)) return 'not-live';
   return {
     credentialId: row.id,
     agentActorId: row.agent_actor_id,

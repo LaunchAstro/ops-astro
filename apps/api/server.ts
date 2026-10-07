@@ -44,15 +44,18 @@ import {
   connect,
   connectAsAdmin,
   connectListener,
+  createQuotaGate,
   loginLiveElsewhere,
   isBusinessId,
   KEY_FILE_VARIABLE,
   readEnvFile,
+  withQuotaScope,
 } from '../../packages/core-records/src/index.ts';
 import type {
   AdminConnection,
   BusinessId,
   Database,
+  QuotaOptions,
 } from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
@@ -88,9 +91,13 @@ import {
 import { startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
+import { mountAuthEmailHook, type AuthEmailHookOptions } from './auth-email-hook.ts';
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
+import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
+import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
+import { startConversationSweeper } from './conversation-sweeper.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -139,6 +146,9 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
   };
 }
 
+/** The business lookup identity (0046) the resolver takes by name. */
+export const LOOKUP_ROLE = 'ops_astro_lookup';
+
 /**
  * The business key to its identifier, cached after the first answer.
  *
@@ -166,7 +176,7 @@ export function createBusinessResolver(
 
     // As the lookup identity (0046), which reads id and key and nothing else.
     const rows = await admin.transaction(async (execute) => {
-      await execute('set local role ops_astro_lookup');
+      await execute(`set local role ${LOOKUP_ROLE}`);
       return await execute<{ id: string }>(
         'select id from public.businesses where key = $1 limit 2',
         [businessKey],
@@ -222,6 +232,10 @@ export interface ApiConfig {
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
   /** The email provider's delivery hook (AW-07b); absent, the hook route is not mounted. */
   readonly mailHook?: MailHookOptions;
+  /** The login provider's Send Email hook (C39-T); absent, the hook route is not mounted. */
+  readonly authEmailHook?: AuthEmailHookOptions;
+  /** C40's `POST /api/password/set` over these businesses and broker; absent, not mounted. */
+  readonly passwordSet?: PasswordSetOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -230,6 +244,8 @@ export interface ApiConfig {
   readonly alerts?: Alerts;
   /** The agent credential's limits in this process (API-2); absent, the defaults. */
   readonly agentLimits?: AgentLimits;
+  /** The quota table and clock; absent means `QUOTAS` and the wall clock. */
+  readonly quota?: QuotaOptions;
 }
 
 export interface ComposedApi {
@@ -264,6 +280,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
   });
   // This app's keys, for this request only: no other composition can replace them.
   server.use(async (_context, next) => await withRuntimeKeys(config.keys, next));
+  // Each request charged once to its quotas, after login resolution admits it.
+  const quota = createQuotaGate(config.quota);
+  server.use(async (_context, next) => await withQuotaScope(quota, next));
 
   // Measured, not assumed. `reachable` is the result of a statement that ran
   // on the runtime login (G2): the lookup answering proves nothing about it.
@@ -322,6 +341,12 @@ export function composeApi(config: ApiConfig): ComposedApi {
   // AW-07b: the provider's delivery and bounce events, verified by signature,
   // as system work with no sign-in (`mail-hook.ts`).
   if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);
+  // C39-T: the login provider's Auth mail, handed to the broker's send (`auth-email-hook.ts`).
+  if (config.authEmailHook !== undefined) {
+    mountAuthEmailHook(server, database, config.authEmailHook);
+  }
+  // C40: a reset token's password set, mounted when given; `main()` does not yet.
+  if (config.passwordSet !== undefined) mountPasswordSet(server, database, config.passwordSet);
 
   server.route(
     '/',
@@ -393,6 +418,48 @@ export function composeApi(config: ApiConfig): ComposedApi {
   });
 
   return { app: server, logins, resolveBusiness };
+}
+
+/** One part of the server to stop, or none where that part is off. */
+type Stopping = (() => Promise<unknown>) | undefined;
+
+/**
+ * The server's shutdown in two stages: the work that may be mid-pass first
+ * (the live streams, the mail worker's running pass), then the pools and
+ * processes that work uses. The second stage starts only once every part of
+ * the first has settled, so a question or a send ends before its pool does.
+ */
+export async function shutDown(
+  working: readonly Stopping[],
+  pools: readonly Stopping[],
+): Promise<void> {
+  await Promise.allSettled(working.map(async (stop) => await stop?.()));
+  await Promise.allSettled(pools.map(async (stop) => await stop?.()));
+}
+
+/** What `main` stops, each a part's stop or none where that part is off. */
+export interface ServerParts {
+  readonly topics: Stopping;
+  readonly mail: Stopping;
+  /** R7: the conversation sweep's running pass. */
+  readonly conversations: Stopping;
+  readonly database: Stopping;
+  readonly admin: Stopping;
+  readonly broker: Stopping;
+  readonly tracer: Stopping;
+}
+
+/**
+ * The two stages `main` hands `shutDown`: the live streams, the mail worker's and the
+ * conversation sweep's running passes first, then the pools and processes they use.
+ */
+export function shutdownStages(
+  parts: ServerParts,
+): readonly [readonly Stopping[], readonly Stopping[]] {
+  return [
+    [parts.topics, parts.mail, parts.conversations],
+    [parts.database, parts.admin, parts.broker, parts.tracer],
+  ];
 }
 
 async function main(): Promise<void> {
@@ -482,6 +549,13 @@ async function main(): Promise<void> {
     console.error(`api: ${traceConfig.problem}`);
     process.exit(1);
   }
+  // AW-07b: the delivery worker, off unless `MAIL_DELIVERY=mock` (no provider
+  // account yet); mock with a setting missing or malformed stops the server here.
+  const mailConfig = mailDeliverySettings(environment);
+  if (mailConfig.kind === 'invalid') {
+    console.error(`api: ${mailConfig.problem}`);
+    process.exit(1);
+  }
   const broker =
     brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
   console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
@@ -507,8 +581,9 @@ async function main(): Promise<void> {
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
   // keys through the same resolver the requests will.
+  const identity = readIdentity(ROOT);
   const { app, resolveBusiness } = composeApi({
-    identity: readIdentity(ROOT),
+    identity,
     database,
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
@@ -563,6 +638,16 @@ async function main(): Promise<void> {
       ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))
       : undefined;
   console.log(`api: trace export ${tracer === undefined ? 'off' : 'on'}`);
+  // AW-07b: the mail worker over the same businesses, started the same way.
+  const mail =
+    mailConfig.kind === 'mock'
+      ? await startMailDelivery(mailConfig, database, async () => await Promise.resolve(traced))
+      : undefined;
+  console.log(
+    mail === undefined
+      ? 'api: mail delivery off'
+      : 'api: mail delivery mock (fake provider, made-up sender check and email choices)',
+  );
 
   serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info) => {
     console.log(`api: listening on http://127.0.0.1:${info.port}`);
@@ -586,22 +671,27 @@ async function main(): Promise<void> {
       }),
   );
 
+  // R7: the conversation sweep (AW-03) over the same businesses, hourly, as
+  // system work once the port is bound; each wrap-up names this commit.
+  const conversations = startConversationSweeper(database, {
+    businesses: async () => await Promise.resolve(traced),
+    codeRevision: identity.commit,
+  });
+
   // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
   const stop = (): void => {
     sweeper.stop();
-    // The live streams first: a question one has in flight ends before its pool does.
-    void Promise.allSettled([topics.close()])
-      .then(
-        async () =>
-          await Promise.allSettled([
-            database.close(),
-            admin.close(),
-            broker?.stop(),
-            tracer?.stop(),
-          ]),
-      )
-      .then(() => process.exit(0));
+    const stages = shutdownStages({
+      topics: async () => await topics.close(),
+      mail: mail?.stop,
+      conversations: conversations.stop,
+      database: async () => await database.close(),
+      admin: async () => await admin.close(),
+      broker: broker?.stop,
+      tracer: tracer?.stop,
+    });
+    void shutDown(...stages).then(() => process.exit(0));
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);

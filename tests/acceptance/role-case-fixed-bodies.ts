@@ -38,10 +38,15 @@ const EMPTY: readonly CommandName[] = [
   'inbox.unattended',
   // The reader's own to-dos (MP-7-1): no operand.
   'task.todos',
+  // The reader's own team conversations (C71-D): no operand.
+  'chat.conversations',
+  // Skill costing (MP-14-9): `finance:read`, no operand.
+  'finance.skill_costs',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
   ...Object.fromEntries(EMPTY.map((name) => [name, {}])),
+  'task.create': { fields: { title: 'the admin creates a task' } },
   'task.board': { board: null },
   'task.ledger': { timeZone: 'UTC' },
   'preference.save': { preference: 'appearance', value: 'dark' },
@@ -61,6 +66,8 @@ export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
   // retention window never below the conversation window.
   'settings.set_conversation_window': { value: 14 },
   'settings.set_retention_window': { value: 90 },
+  // The agents' cost log (MP-14-6) takes its period.
+  'finance.agent_costs': { from: '2026-01-01T00:00:00.000Z', to: '2100-01-01T00:00:00.000Z' },
 };
 
 /** The reads' own operands, which the probe body sends as the positive body does. */
@@ -70,6 +77,7 @@ const READ_OPERANDS: ReadonlySet<CommandName> = new Set<CommandName>([
   'task.ledger',
   'preset.plan',
   'definition.attribution',
+  'finance.agent_costs',
 ]);
 
 /**
@@ -80,6 +88,7 @@ export function probeOperands(name: CommandName): Body {
   if (READ_OPERANDS.has(name)) return FIXED_BODIES[name] ?? {};
   if (name === 'task.receipt') return { attemptId: randomUUID() };
   if (name === 'harness.read') return { runId: randomUUID() };
+  if (name === 'live_correction.read') return { correctionId: randomUUID() };
   if (name === 'task.set_state') return { stateId: randomUUID() };
   if (name === 'task.duplicate') return { client: null, title: 'a copy', stepNames: [] };
   // Well formed, so what answers is authority: the call's operands are read
@@ -91,6 +100,7 @@ export function probeOperands(name: CommandName): Body {
     return { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) };
   }
   if (name === 'run.child_handback') return { outcome: 'completed' };
+  if (name === 'chat.messages') return { conversationId: randomUUID() };
   if (name === 'privacy.draft_breach_notices') return breachDrillBody();
   return {};
 }

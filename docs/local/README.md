@@ -3,7 +3,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 How to start the task slice on your own machine, how to check it, and what it
-does not do. Seven companion files describe the parts:
+does not do. Eight companion files describe the parts:
 
 - [DATA.md](DATA.md): the Postgres, the migrations, the fixed slots, the seed.
 - [API.md](API.md): the HTTP boundary, its routes, its envelope and its refusals.
@@ -13,6 +13,8 @@ does not do. Seven companion files describe the parts:
 - [PROOFS.md](PROOFS.md): the assembled acceptance proofs in `tests/acceptance/`,
   how to run them, and the proofs that could not be written.
 - [CLI.md](CLI.md): the command line, which calls the same API as the app.
+- [LOCAL-AGENT.md](LOCAL-AGENT.md): the agent side panel on GPT through the owner's
+  ChatGPT plan, on the laptop only (`local-gpt`).
 
 If you are new, read [Pickup and debugging](#pickup-and-debugging). It covers
 how a request travels, what to check before restarting anything, which command
@@ -27,7 +29,7 @@ If you are new to this checkout, read this section first.
   `docs/current-decisions.md` and `docs/adr/`. Demonstrated failures that have
   no executable check yet: `docs/TRAPS.md`. The proofs:
   `tests/acceptance/`, described in [PROOFS.md](PROOFS.md). The database suites
-  that conformance must run: `tests/db/named-suites.json`.
+  that conformance must run: one file each under `tests/db/suites/`.
 - **Where state does not live.** Run status, reviews and acceptance records are
   kept with the build run's evidence, outside the tree. A checkout may carry an
   ignored `.local/run-context.json` that points there ([below](#the-optional-local-run-pointer)).

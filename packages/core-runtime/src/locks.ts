@@ -31,11 +31,15 @@
 // C59's login-wide keys, `second-factor-codes:<digest>` and
 // `second-factor-subject:<digest>`, are command-layer locks too, and the only
 // installation-wide ones: each names a sign-in login, not a business, and is
-// taken first in its transaction, before any row or chain lock.
+// taken first in its transaction, before any row or chain lock. The Send
+// Email hook's message claim (`ops.auth_hook_messages`, C39-T) is the one
+// other wait across businesses: a unique key, taken last, after the
+// invitation's row and the business's email limit.
 // The grant rows an operation's authority rests on are the other class outside
-// the list, also taken first: decide, pickup and cancellation hold theirs `for
-// share` (`holdCoveringGrants`) and `grant.revoke` its own `for update`, before
-// `acquire`. A handler that re-reads a row this set already holds, as
+// the list, also taken first: decide, pickup, cancellation and an onboarding
+// step result (a person's own, or a delegated agent's delegating person's)
+// hold theirs `for share` (`holdCoveringGrants`) and `grant.revoke` its own
+// `for update`, before `acquire`. A handler that re-reads a row this set already holds, as
 // `task.propose` re-reads its task `for update` to compare the revision,
 // takes no new lock.
 // A model call (AW-01) takes none of these: its run's task `for share` (the
@@ -62,6 +66,18 @@
 // taken first of all of them; before it a call holds only key-share locks
 // from its login's attempt row and a credential's row `for share`, which no
 // same-identity call updates.
+// A standing mandate check (MP-14-10a, `standingMandateVerdict`) takes its
+// client's row `for share`, then the class's graduation row `for share`, then
+// the client's not-revoked mandates `for share` (`lockMandateQuestion`): after
+// the command-layer locks and grant rows, and before any audit write. An
+// effect that will also write that client's row or that class's graduation
+// row takes it `for no key update` before the check (two effects that each
+// took it for share and then wrote it would deadlock). A mandate writer takes
+// the client's row `for no key update` first (every mandate's insert takes it
+// too, `standing_mandates_lock_client`), then the graduation row, then the
+// mandate; any transaction writing `graduation_classes` takes the client's row
+// `for no key update` first, and work over several clients takes their rows in
+// id order.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements

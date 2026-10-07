@@ -17,6 +17,7 @@ import {
 } from '../../packages/core-records/src/records/business-settings.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
+import { instantOf } from '../support/lock-wait-race.ts';
 import {
   authorised,
   BUSINESS_KEY,
@@ -57,6 +58,7 @@ const WRITES = new Set([
   'conversation.message',
   'conversation.rename',
   'conversation.set_scope',
+  'conversation.set_model',
   'task.create',
 ]);
 
@@ -166,4 +168,33 @@ export async function setConversationWindow(tx: TenantQuery, days: number): Prom
     value: days,
   });
   if (written === undefined || 'refused' in written) throw new Error('window not written');
+}
+
+/**
+ * The person's only covering `collection:action` grant, set to end in three
+ * seconds: its id and its expiry as the database states it.
+ */
+export async function expiringSoon(
+  w: ConversationWorld,
+  personId: string,
+  collection: string,
+  action: string,
+): Promise<{ readonly id: string; readonly expiry: string }> {
+  const db = w.fixture.db;
+  const grants = await db.admin.execute<{ readonly id: string }>(
+    `update public.grants set expires_at = clock_timestamp() + interval '3 seconds'
+      where subject_id = $1 and collection = $2 and action = $3 and revoked_at is null
+      returning id`,
+    [personId, collection, action],
+  );
+  const id = grants[0]?.id;
+  if (grants.length !== 1 || id === undefined) {
+    throw new Error(`expected one covering ${collection}:${action} grant, found ${grants.length}`);
+  }
+  const expiry = await instantOf(
+    db,
+    'select expires_at::text as at from public.grants where id = $1',
+    [id],
+  );
+  return { id, expiry };
 }

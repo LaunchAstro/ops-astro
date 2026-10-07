@@ -9,6 +9,16 @@
 // unattended run, a run for someone else, or a call for another installation's
 // tenant is refused by name. A Claude.ai or ChatGPT session token is refused
 // at load, whatever kind it is filed under.
+//
+// LA-1's carve-out (#859, owner 1 October 2026; GPT in Claude's place, owner
+// 7 October): on the owner's laptop, with the `local-gpt` provider, a
+// subscription may carry unattended work (a scheduled job, a task's agent run)
+// for the owner's own testing on made-up data. The broker sets
+// `localOwnerTesting` only when the API's composition root accepted
+// `OPS_AGENT_PROVIDER=local-gpt`, which it does only under
+// `OPS_ENVIRONMENT=local`, and only for a route whose provider is
+// `local_gpt`. Another installation's tenant stays refused under it, and so
+// does an attended call for someone else's work. Everywhere else, unchanged.
 
 export type CredentialKind = 'subscription' | 'api_key' | 'cloud_credential' | 'replay';
 
@@ -183,10 +193,27 @@ export interface CarryContext {
   /** The installation the call's tenant belongs to, and the credential's own. */
   readonly tenantInstallation: string;
   readonly credentialInstallation: string;
+  /** LA-1's local carve-out: true only on the laptop, on a `local_gpt` route. */
+  readonly localOwnerTesting?: boolean;
 }
 
 export type CarryRefusal =
   'SUBSCRIPTION_UNATTENDED' | 'SUBSCRIPTION_OTHER_TENANT' | 'SUBSCRIPTION_NOT_OWN_WORK';
+
+/**
+ * The local session's provider key (`LOCAL_GPT_PROVIDER` in core-connectors).
+ * Written out here because custody's process loads this file and no connector
+ * code (AW-01 custody 9); a test holds the two equal.
+ */
+export const LOCAL_SESSION_PROVIDER = 'local_gpt';
+
+/** LA-1's carve-out applies: the broker carries it, and the route is the local session's. */
+export function carriesLocally(
+  broker: { readonly localOwnerTesting?: boolean },
+  route: { readonly provider: string },
+): boolean {
+  return broker.localOwnerTesting === true && route.provider === LOCAL_SESSION_PROVIDER;
+}
 
 /** A subscription carries only a person's own attended work in their own installation. */
 export function mayCarry(
@@ -197,11 +224,31 @@ export function mayCarry(
   if (context.tenantInstallation !== context.credentialInstallation) {
     return { ok: false, code: 'SUBSCRIPTION_OTHER_TENANT' };
   }
-  if (context.unattended || context.sessionPersonId === null) {
-    return { ok: false, code: 'SUBSCRIPTION_UNATTENDED' };
+  const unattended = context.unattended || context.sessionPersonId === null;
+  // Under the carve-out an unattended call has no session to compare its work with.
+  if (unattended) {
+    return context.localOwnerTesting === true
+      ? { ok: true }
+      : { ok: false, code: 'SUBSCRIPTION_UNATTENDED' };
   }
   if (context.workForPersonId !== context.sessionPersonId) {
     return { ok: false, code: 'SUBSCRIPTION_NOT_OWN_WORK' };
   }
   return { ok: true };
+}
+
+/**
+ * Custody's answer to a describe: the kind and account of the credential it
+ * holds for `destination`, never its value, which the broker records before a
+ * send (catalogue #439); refused when it holds no such credential there,
+ * exactly as a dispatch would be.
+ */
+export function described(
+  credential: StoredCredential | undefined,
+  destination: unknown,
+): Record<string, unknown> {
+  if (credential === undefined || credential.destination !== destination) {
+    return { type: 'refused', code: 'CUSTODY_CREDENTIAL_UNKNOWN' };
+  }
+  return { type: 'described', kind: credential.kind, account: credential.account };
 }

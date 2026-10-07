@@ -29,6 +29,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import {
+  deny,
   invalid,
   NOT_WAITING_FIX,
   openAnswer,
@@ -38,7 +39,8 @@ import {
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
-import { spentOn } from './budget-stop.ts';
+import { observedRefusal, recordedRefusal, releaseUnstarted, spentOn } from './budget-stop.ts';
+import { giveBackReleased } from '../../core-custody/src/index.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
 
@@ -110,12 +112,22 @@ export async function topUpAtBudgetStop(
   return { ok: true, value: { state: 'applied', answerId, heldMinor } };
 }
 
-/** The plan still live, a hold to raise, the currency the envelope's, and room in the cap. */
+/**
+ * The task out of the trash, the plan still live, a hold to raise, the
+ * currency the envelope's, and room in the cap.
+ */
 async function topUpRefusal(
   tx: TenantQuery,
   request: BudgetStopTopUpRequest,
   { locked }: Opened,
 ): Promise<BudgetAnswerResult<never> | null> {
+  if (!locked.task_live) {
+    return deny(
+      'NOT_FOUND',
+      'the task this run works on is in the trash, and a trashed task takes no top-up',
+      'Restore the task to top it up, or end the work.',
+    );
+  }
   if (locked.lineage_state !== 'live' || locked.superseded) {
     return refuse(
       'LINEAGE_TERMINAL',
@@ -130,6 +142,8 @@ async function topUpRefusal(
       NOT_WAITING_FIX,
     );
   }
+  const recorded = await recordedRefusal(tx, locked);
+  if (recorded !== null) return recorded;
   if (request.currency !== locked.currency) {
     return refuse(
       'CAP_BINDING_MISMATCH',
@@ -176,8 +190,8 @@ async function raiseHold(
   { locked }: Opened,
 ): Promise<number> {
   if (locked.reservation_state === 'actual') return await holdTopUp(tx, request, locked);
-  const spent = await spentOn(tx, locked.reservation_id);
-  const heldMinor = Number(locked.held_minor) + request.amountMinor - spent;
+  const { spent, unsent } = await spentOn(tx, locked.reservation_id);
+  let heldMinor = Number(locked.held_minor) + request.amountMinor - spent;
   await tx.query(
     `update public.reservations set held_minor = $3 where business_id = $1 and id = $2`,
     [tx.businessId, locked.reservation_id, heldMinor],
@@ -189,6 +203,8 @@ async function raiseHold(
       where business_id = $1 and id = $2`,
     [tx.businessId, locked.envelope_id, request.amountMinor, spent],
   );
+  // A call the sweep released since the count read it went back onto this hold.
+  heldMinor += await giveBackReleased(tx, unsent);
   await tx.query(
     `update public.planned_runs set state = 'planned' where business_id = $1 and id = $2`,
     [tx.businessId, request.runId],
@@ -242,6 +258,8 @@ export async function endAtBudgetStop(
   const opened = await openAnswer(tx, request, 'gate');
   if (!opened.ok) return opened;
   const { person, locked } = opened.value;
+  const refused = await observedRefusal(tx, locked.reservation_state, locked.reservation_id);
+  if (refused !== null) return refused;
   const answerId = randomUUID();
   await tx.query(
     `insert into public.budget_answers (business_id, id, ask_id, run_id, kind, first_person_id)
@@ -252,7 +270,8 @@ export async function endAtBudgetStop(
   let releasedMinor = 0;
   let spentMinor = 0;
   if (locked.reservation_state === 'held') {
-    spentMinor = await spentOn(tx, locked.reservation_id);
+    const counted = await spentOn(tx, locked.reservation_id);
+    spentMinor = counted.spent;
     releasedMinor = Number(locked.held_minor) - spentMinor;
     await tx.query(
       `update public.reservations
@@ -267,7 +286,12 @@ export async function endAtBudgetStop(
         where business_id = $1 and id = $2`,
       [tx.businessId, locked.envelope_id, locked.held_minor, spentMinor],
     );
+    // A call the sweep released since the count read it is spent no longer.
+    const back = await giveBackReleased(tx, counted.unsent);
+    spentMinor -= back;
+    releasedMinor += back;
   }
+  releasedMinor += await releaseUnstarted(tx, request.runId, locked, answerId);
   await tx.query(
     `update public.planned_runs set state = 'cancelled' where business_id = $1 and id = $2`,
     [tx.businessId, request.runId],

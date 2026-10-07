@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What a caller sends. One discriminated union, so a surface cannot grow a
-// shape of its own (minimum contract 4.2: "one shape, so that no surface can
-// grow its own").
+// What a caller sends. One discriminated union, so a surface cannot grow a shape of its own
+// (minimum contract 4.2: "one shape, so that no surface can grow its own").
 //
 // Two things are deliberately *not* in the type.
-//
 // The actor, the business and the entry point are absent. All three are
 // constructed by the server — the first two from trusted authentication, the
 // third from which surface the call arrived on — so there is no field here for
@@ -29,12 +27,14 @@ import type { ConversationRequest } from './requests-conversation.ts';
 import type { RunRequest } from './requests-run.ts';
 import type { Envelope, Targeted } from './request-envelope.ts';
 import type { WayfinderRequest } from './requests-wayfinder.ts';
-import type { CommentRequest } from './requests-comments.ts';
+import type { CommentOrChatRequest } from './requests-comments.ts';
 import type { DuplicateRequest } from './requests-duplicate.ts';
+import type { OnboardingRequest } from './requests-onboarding.ts';
 import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
 import type { PrivacyRequest } from './requests-privacy.ts';
 import type { SelfRequest } from './requests-self.ts';
+import type { AutomationRequest } from './automation-requests.ts';
 import type { ConnectionsRequest } from './requests-connections.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
@@ -82,10 +82,11 @@ export type CommandRequest =
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)
   | ({ readonly command: 'task.start' } & Targeted)
   | ({ readonly command: 'task.set_state'; readonly stateId: string } & Targeted)
-  // Duplicate without contents (MP-4-8), in `requests-duplicate.ts`.
+  // In requests-*.ts files: duplicate (MP-4-8), comments (MP-4-5), onboarding (C41-A).
   | DuplicateRequest<Envelope>
-  // A comment, its edit and its deletion (MP-4-5), in `requests-comments.ts`.
-  | CommentRequest<Targeted>
+  // Comments (MP-4-5) and team chat (C71-D), in `requests-comments.ts`.
+  | CommentOrChatRequest<Targeted, Envelope>
+  | OnboardingRequest<Envelope>
   // A proposal is a record beside the task and targets it, so it names the
   // revision it was written against like every other targeted command. What it
   // does *not* carry is who is proposing, what they may spend it against or
@@ -261,6 +262,7 @@ export type CommandRequest =
       readonly lineageId: string;
       readonly expiresInSeconds?: number;
     } & Envelope)
+  | import('./live-correction-requests.ts').LiveCorrectionRequest
   | ({
       readonly command: 'task.heartbeat';
       readonly leaseId: string;
@@ -294,4 +296,5 @@ export type CommandRequest =
   | ConnectionsRequest<Envelope>
   // Time tracking (MP-4-6) and tags (MP-4-11), in `requests-time.ts` and `requests-tags.ts`.
   | TimeRequest<Envelope>
-  | TagRequest<Envelope>;
+  | TagRequest<Envelope>
+  | AutomationRequest<Envelope>;

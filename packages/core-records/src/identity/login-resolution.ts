@@ -22,20 +22,15 @@
 // leak that makes a wrong-business read return NOT_FOUND. One refusal, one message, one shape.
 
 import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
-import { refuseCommand, type CommandRefusal } from '../register.ts';
-import type { IdentityRefusalCode } from './refusals.ts';
-
-type Refusal = CommandRefusal<IdentityRefusalCode>;
-
-/** Identity names nothing: which of several reasons applied is itself an inference. */
-const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
-  refuseCommand(code, [], fixes);
+import { refuse, noMembership, NO_MEMBERSHIP_FIXES, type Refusal } from './access-ended.ts';
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
+import { admitQuota, type QuotaRefusal } from './quota.ts';
 import { loginHasVerifiedFactor } from './second-factor.ts';
-import { sessionEnded } from './sessions.ts';
+import { sessionEnded, sessionEndedHeld } from './sessions.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
+export { NO_MEMBERSHIP_FIXES };
 
 /** What a resolved call runs as. The business is the server's value, not the caller's. */
 export interface Session {
@@ -58,6 +53,8 @@ export interface Session {
   /** Agent credential calls only (API-2): its ticked `collection:action` keys, which every
    *  grant check also asks within (`subjectsOf`); `actorId` is the agent, `personId` its person. */
   readonly credentialScope?: readonly string[];
+  /** The verified token a person's session was resolved from (C58), for `sessionEndedSince`. */
+  readonly presented?: VerifiedSubject;
 }
 
 /**
@@ -73,19 +70,12 @@ interface ResolutionRow {
   readonly membership_id: string | null;
   readonly role_key: string | null;
   readonly actor_id: string | null;
-  /** 'true' once the person has a verified second factor; null before 0049. */
-  readonly second_factor_verified: string | null;
-  /** Whether the login's factors are kept by subject (0064), so every business reads them. */
+  /** Whether the login's factors are kept (0064); an installation stopped before it holds none. */
   readonly by_subject: boolean;
 }
 
-export const NO_MEMBERSHIP_FIXES = [
-  'ask an administrator of this business to link this login to a person',
-  'check that the business named in the request is the intended one',
-] as const;
-
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
-const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
+export const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
 const SECOND_FACTOR_FIXES = [
   'enter the code from your authenticator app to finish signing in',
 ] as const;
@@ -100,9 +90,6 @@ const RESOLUTION = `
          m.id as membership_id,
          m.role_key,
          a.id as actor_id,
-         -- Read through the row's json so this one query serves a database
-         -- from before 0049, which has no such column and so no factor.
-         to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified,
          to_regclass('ops.second_factor_subjects') is not null as by_subject
     from public.logins l
     left join public.person_logins pl
@@ -112,8 +99,6 @@ const RESOLUTION = `
     left join public.actors a
       on a.business_id = pl.business_id and a.person_id = pl.person_id
      and a.kind = 'person' and a.active
-    left join public.people p
-      on p.business_id = pl.business_id and p.id = pl.person_id
    where l.provider = $1 and l.subject = $2`;
 
 /**
@@ -121,7 +106,8 @@ const RESOLUTION = `
  *
  * Order matters and is the contract's: membership before actor. A login with
  * no active mapping, or a mapping to a person who is no longer a member, is
- * `AUTH_NO_MEMBERSHIP` — a refusal, not an empty projection. The one mapped
+ * `AUTH_NO_MEMBERSHIP` — a refusal, not an empty projection — or, for a login
+ * whose access here was ended (C58), `AUTH_ACCESS_ENDED`. The one mapped
  * non-member who is not refused there is an external party standing on a live
  * share and holding no business grant, whose `roleKey` is null. A person with
  * standing but no active acting identity is `ACTOR_INACTIVE`, which says more
@@ -147,11 +133,10 @@ export async function standingOf(
   const rows = await tx.query<ResolutionRow>(RESOLUTION, [presented.provider, presented.subject]);
   const found = rows[0];
 
-  if (found === undefined || found.person_id === null) {
-    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
-  }
+  if (found === undefined) return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
+  if (found.person_id === null) return await noMembership(tx, found.login_id);
   if (found.membership_id === null && !(await standsOnShares(tx, found.person_id))) {
-    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
+    return await noMembership(tx, found.login_id);
   }
   if (found.actor_id === null) return refuse('ACTOR_INACTIVE', INACTIVE_FIXES);
 
@@ -165,10 +150,13 @@ export async function standingOf(
 
   // After the person is known and active, and before anything is served: a
   // sign-in that stopped at the password is not yet a sign-in for a login
-  // that verified a second factor, in any business (C59, LF-4).
+  // that verified a second factor, in any business (C59, LF-4). The factor is
+  // this login's: another login mapped to the same person holds none of it at
+  // the provider, so is never asked for its code.
   const assurance = presented.assurance ?? NO_ASSURANCE;
   const short = assurance.level !== 'aal2';
-  if (rule === 'required' && short && (await factorHeld(tx, presented.subject, found))) {
+  const asked = rule === 'required' && short && found.by_subject;
+  if (asked && (await loginHasVerifiedFactor(tx, presented.subject))) {
     return refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES);
   }
 
@@ -179,13 +167,19 @@ export async function standingOf(
     actorId: found.actor_id,
     roleKey: found.role_key,
     assurance,
+    presented,
   };
 }
 
-/** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */
-async function factorHeld(tx: TenantQuery, subject: string, found: ResolutionRow) {
-  if (found.second_factor_verified === 'true') return true;
-  return found.by_subject && (await loginHasVerifiedFactor(tx, subject));
+/**
+ * Whether the person's session has ended since it was resolved (C58), asked
+ * by a write after its last wait, the business's audit chain held: an ending
+ * committed meanwhile is seen here, as the door would see it on the next call,
+ * and one not yet committed waits for the write (`sessionEndedHeld`). An agent
+ * credential's session, which no person's token resolved, has none to end.
+ */
+export async function sessionEndedSince(tx: TenantQuery, session: Session): Promise<boolean> {
+  return session.presented !== undefined && (await sessionEndedHeld(tx, session.presented));
 }
 
 /**
@@ -266,10 +260,16 @@ export async function withSession<T>(
   presented: VerifiedSubject,
   run: (tx: TenantQuery, session: Session) => Promise<T>,
   rule: SecondFactorRule = 'required',
-): Promise<T | Refusal> {
+): Promise<T | Refusal | QuotaRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const resolved = await resolveLogin(tx, presented, rule);
     if ('refused' in resolved) return resolved;
+    // Charged only now, once the caller is admitted (`quota.ts`).
+    const overQuota = await admitQuota(tx, 'person_login', presented, {
+      credential: resolved.loginId,
+      person: resolved.personId,
+    });
+    if (overQuota !== undefined) return overQuota;
     return await run(tx, resolved);
   });
 }

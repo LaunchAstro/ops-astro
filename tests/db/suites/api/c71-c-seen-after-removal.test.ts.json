@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a seen stamp under way when the recipient is removed from the conversation writes no attention"
+}

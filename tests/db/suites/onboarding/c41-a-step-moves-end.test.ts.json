@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C41-A owner rule at its ends: an onboarding's stop withdraws every open step move, and a person step that opened while its task was in the trash is parked with its owner on restore"
+}

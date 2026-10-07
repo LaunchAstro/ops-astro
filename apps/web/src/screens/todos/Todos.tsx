@@ -8,8 +8,11 @@
 // teammate or a client by the switch or by the door that opened it
 // (`todo-scope.ts`, `TodoScopeSwitch.tsx`).
 //
-// **Reading writes nothing.** Search, the today scope, the comment-count
-// scope and the sort are view state and send nothing; only the tick writes.
+// **Reading writes nothing.** Search, its chips, the comment-count scope and
+// the sort are view state and send nothing; only the tick writes. They are
+// kept across a reread (a tick, or a write in the task panel): the last
+// answer stays drawn while the next is in flight, so the list under them is
+// never remounted.
 //
 // **The sort is kept for the session.** Remembering it for the person
 // (CS-7.24, `preference saved`) leans on the preference store (MP-2-11a),
@@ -24,7 +27,8 @@ import { useRead } from '../../data/use-read.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { todayOn } from '../task/due-dates.ts';
-import { readingOf, scopeOf, scoped, sorted, type SortKey } from './todo-list.ts';
+import { useRereadOn } from '../task/reread-on.ts';
+import { readingOf, scopeOf, scoped, sorted, type Chip, type SortKey } from './todo-list.ts';
 import { TodoRow, type TodoRowProps } from './TodoRow.tsx';
 import { TodoTools } from './TodoTools.tsx';
 import { TodoScopeSwitch } from './TodoScopeSwitch.tsx';
@@ -75,10 +79,11 @@ function ScopedTodos(props: TodosScreenProps & { readonly scope: TodoScope }): R
   const { state, reload } = useRead<TaskTodosResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskTodosResult>('task.todos', bodyOf(scope)),
-    deps: [props.changes ?? 0],
+    deps: [],
   });
+  useRereadOn(props.changes ?? 0, reload);
   return (
-    <RecordState state={state} subject="to-dos" onRetry={reload}>
+    <RecordState state={state} subject="to-dos" onRetry={reload} keep>
       {(value) => (
         <>
           <WaitingCount scope={scope} waiting={waitingOf(value.todos)} />
@@ -101,15 +106,24 @@ function WaitingCount(props: { readonly scope: TodoScope; readonly waiting: numb
 
 const realTime = (): Date => new Date();
 
-/** The tick: `task.complete` at the row's revision; a landed one reads the list again. */
+/**
+ * The tick: `task.complete` at the row's revision; a landed one reads the list
+ * again. The completed row stays drawn while that reread is in flight, so its
+ * revision is spent: a second tick on it sends nothing.
+ */
 function useTick(client: OperationsClient, reload: () => void) {
   const { because, run } = useCommand();
+  const [spent, setSpent] = useState<ReadonlySet<string>>(() => new Set());
   const tick = (todo: TodoView): void => {
+    const at = `${todo.id}@${String(todo.revision)}`;
+    if (spent.has(at)) return;
     run(
       () =>
         client.mutate('task.complete', { recordId: todo.id }, { expectedRevision: todo.revision }),
       (settlement) => {
-        if (settlement.kind === 'ok') reload();
+        if (settlement.kind !== 'ok') return;
+        setSpent((was) => new Set(was).add(at));
+        reload();
       },
     );
   };
@@ -120,21 +134,31 @@ function TodoList(
   props: TodosScreenProps & { readonly todos: readonly TodoView[]; readonly reload: () => void },
 ): ReactElement {
   const [query, setQuery] = useState('');
+  const [chips, setChips] = useState<readonly Chip[]>([]);
   const [by, setBy] = useState<SortKey>('due');
   const [focus, setFocus] = useState<string | null>(null);
   const { because, tick } = useTick(props.client, props.reload);
   const today = todayOn((props.now ?? realTime)());
-  const scope = scopeOf(query);
+  const scope = [...chips, ...scopeOf(query)];
   return (
     <div className="dp__list">
       <TodoTools
         query={query}
         onQuery={setQuery}
+        chips={chips}
+        onCommit={() => {
+          setChips(scope);
+          setQuery('');
+        }}
+        onRemove={(index) => {
+          setChips(chips.filter((_, at) => at !== index));
+        }}
         by={by}
         onSort={setBy}
         reading={readingOf(scope, focus)}
         onClear={() => {
           setQuery('');
+          setChips([]);
           setFocus(null);
         }}
       />

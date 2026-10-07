@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a login mapping in another business waits while an ending bans its subject"
+}

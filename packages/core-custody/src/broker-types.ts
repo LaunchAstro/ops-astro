@@ -25,6 +25,8 @@ export interface ProviderAdapter {
   readonly build: (
     values: Readonly<Record<string, string>>,
     operationId?: string,
+    /** The exact model to ask for (CS-7.30); absent, the provider's default. */
+    model?: string,
   ) => AdapterRequest;
   readonly price: (answer: ModelAnswer) => number;
   readonly lookup?: (operationId: string) => AdapterRequest;
@@ -77,6 +79,12 @@ export interface Broker {
   readonly providers: ReadonlyMap<string, ProviderAdapter>;
   readonly routes: readonly BrokerRoute[];
   readonly installation: string;
+  /**
+   * LA-1's local carve-out (#859): set by the API's composition root only
+   * where it accepted `OPS_AGENT_PROVIDER=local-gpt` under
+   * `OPS_ENVIRONMENT=local`. It reaches `mayCarry` only for a `local_gpt` route.
+   */
+  readonly localOwnerTesting?: boolean;
   /** Written by the command layer inside the settling transaction. */
   readonly audit: (tx: TenantQuery, note: AuditNote) => Promise<void>;
 }

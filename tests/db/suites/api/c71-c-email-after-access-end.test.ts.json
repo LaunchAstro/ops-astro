@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a mention email under way when the recipient loses business access is not dispatched"
+}

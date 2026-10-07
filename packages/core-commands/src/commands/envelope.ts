@@ -28,7 +28,7 @@
 // the transport above it.
 
 import { createHash } from 'node:crypto';
-import { advisoryLock, withSession } from '../../../core-records/src/index.ts';
+import { advisoryLock, standingOf, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -154,6 +154,8 @@ export async function runCommand(
   session: Session,
   entryPoint: EntryPoint,
   request: UncheckedRequest,
+  /** The person's sign-in, asked again once the handler has done its work. */
+  presented?: VerifiedSubject,
 ): Promise<CommandResult> {
   const declaration = declarationOf(request.command);
   return await enter(tx, session, request, {
@@ -164,7 +166,7 @@ export async function runCommand(
         const refusal = refuseCommand('EXPECTED_REVISION_REQUIRED', [], REVISION_FIXES);
         return await settle(tx, session, identified, digest, refusal);
       }
-      return await attempt(tx, session, entryPoint, identified, digest, declaration);
+      return await attempt(tx, session, entryPoint, identified, digest, declaration, presented);
     },
   });
 }
@@ -262,7 +264,7 @@ async function callOnce(
     database,
     businessId,
     presented,
-    async (tx, session) => await runCommand(tx, session, entryPoint, request),
+    async (tx, session) => await runCommand(tx, session, entryPoint, request, presented),
   );
   // An unresolved login has no actor to attribute an audit event to, and
   // `audit_events.actor_id` is not null. The refusal is returned as it is; the
@@ -376,7 +378,7 @@ async function replay(
 
   // The original result, returned exactly. A caller cannot tell a replay from
   // the first call, which is the point; the chain can, which is also the point.
-  const stored = seen.result as unknown as CommandResult;
+  const { stored, subject } = keptApart(seen.result);
   // A stored refusal carries nothing protected (`Refused.kept`: a refusal
   // naming what only the caller's rights then could see is kept without it,
   // so its replay names less than the first answer). A stored success is released
@@ -399,10 +401,21 @@ async function replay(
     operationId: request.operationId,
     outcome: 'replayed',
     refusalCode: isCommandRefusal(stored) ? stored.code : null,
-    subjectRecordId: isCommandRefusal(stored) ? null : stored.recordId,
+    subjectRecordId: subject,
     payloadDigest: digest,
   });
   return released ?? stored;
+}
+
+/** A success as the register keeps it: the answer, and beside it what its audit event names. */
+type KeptHandle = CommandHandle & { readonly auditSubjectId?: string };
+
+/** The stored answer, and the record its audit event named (null for a refusal). */
+function keptApart(result: unknown): { stored: CommandResult; subject: string | null } {
+  const kept = result as CommandRefusal | KeptHandle;
+  if (isCommandRefusal(kept)) return { stored: kept, subject: null };
+  const { auditSubjectId, ...stored } = kept;
+  return { stored, subject: auditSubjectId ?? stored.recordId };
 }
 
 /**
@@ -412,7 +425,8 @@ async function replay(
  * The same preparation a fresh call takes, with the target's revision left
  * out: the scope, the R4 rule and the grant decision are the ones the first
  * call answered to, and the revision is the one thing the first call itself
- * moved. Nothing is locked and the handler does not run.
+ * moved. Nothing is locked but a map-admitted create's parent, held `for share`
+ * as a fresh create holds it, and the access lock in the command's mode; the handler does not run.
  *
  * An agent credential's issue (API-2) goes out with its secret derived again
  * while the credential is the caller's and live (`replayIssue`).
@@ -464,40 +478,29 @@ async function attempt(
   request: IdentifiedRequest,
   digest: string,
   declaration: CommandDeclaration,
+  presented: VerifiedSubject | undefined,
 ): Promise<CommandResult> {
   await tx.query('savepoint command_attempt');
   try {
     const outcome = await attemptWork(tx, session, entryPoint, request, declaration);
-    if (isRefused(outcome)) {
-      // The register stores what the caller was **shown**, not the refusal the
-      // operation produced. A replay returns the stored result verbatim, so
-      // storing the untranslated one would hand a second caller an audit-only
-      // code the first caller never saw — the one mechanism the visibility
-      // column exists for, defeated on the replay path. A review found this.
-      const kept = outcome.kept ?? outcome.refusal;
-      await register(tx, session, request, digest, asCallerVisible(kept), null);
-      const { refusal, attempted } = outcome;
-      return await settle(tx, session, request, digest, refusal, 'registered', attempted);
+    const answer = await answerOf(tx, session, request, digest, declaration, outcome);
+    // The handler and the audit chain can wait on locks after the door let the
+    // call in, and the session can end in that wait. Writes re-check at commit
+    // (OWNER-3 A): after the last wait, a session ended by then keeps nothing,
+    // and its refusal holds no operation id, so signing in again can retry it.
+    const standing =
+      presented === undefined || (isRefused(outcome) && outcome.retains !== true)
+        ? undefined
+        : await standingOf(tx, presented, 'required');
+    if (
+      standing === undefined ||
+      !('refused' in standing) ||
+      standing.code !== 'AUTH_SESSION_EXPIRED'
+    ) {
+      return answer;
     }
-    const handle: CommandHandle = {
-      command: request.command,
-      recordId: outcome.recordId,
-      revision: outcome.revision,
-      detail: outcome.detail,
-    };
-    await register(tx, session, request, digest, withoutSecret(handle), outcome.recordId);
-    await tx.query('release savepoint command_attempt');
-    if (!declaration.audited) return handle;
-    await writeAuditEvent(tx, {
-      actorId: session.actorId,
-      command: request.command,
-      operationId: request.operationId,
-      outcome: 'applied',
-      subjectRecordId: outcome.recordId,
-      payloadDigest: digest,
-      originConversationId: outcome.originConversationId ?? null,
-    });
-    return handle;
+    await tx.query('rollback to savepoint command_attempt');
+    return await settle(tx, session, request, digest, standing, 'none');
   } catch (cause) {
     // The savepoint is rolled back so the statement log reads honestly, and
     // then the fault leaves: this driver has already condemned the
@@ -506,6 +509,58 @@ async function attempt(
     await tx.query('rollback to savepoint command_attempt').catch(() => undefined);
     throw cause;
   }
+}
+
+/** The attempt's answer: a refusal registered and settled, or the applied row and its audit. */
+async function answerOf(
+  tx: TenantQuery,
+  session: Session,
+  request: IdentifiedRequest,
+  digest: string,
+  declaration: CommandDeclaration,
+  outcome: Applied | Refused,
+): Promise<CommandResult> {
+  if (isRefused(outcome)) {
+    const { refusal, attempted } = outcome;
+    // A step-up refusal (C59) applied nothing and holds no operation id: the
+    // same operation sent again once stepped up is judged afresh (`unheld`).
+    if (refusal.code === 'STEP_UP_REQUIRED') {
+      return await settle(tx, session, request, digest, refusal, 'unheld', attempted);
+    }
+    // The register stores what the caller was **shown**, not the refusal the
+    // operation produced. A replay returns the stored result verbatim, so
+    // storing the untranslated one would hand a second caller an audit-only
+    // code the first caller never saw — the one mechanism the visibility
+    // column exists for, defeated on the replay path. A review found this.
+    const kept = outcome.kept ?? outcome.refusal;
+    await register(tx, session, request, digest, asCallerVisible(kept), null);
+    return await settle(tx, session, request, digest, refusal, 'registered', attempted);
+  }
+  const handle: CommandHandle = {
+    command: request.command,
+    recordId: outcome.recordId,
+    revision: outcome.revision,
+    detail: outcome.detail,
+  };
+  // A promote's or demote's audit names the mandate (`auditSubjectId`); the
+  // register keeps that beside the answer, so its replay names the same one.
+  const { auditSubjectId } = outcome;
+  const kept: KeptHandle =
+    auditSubjectId === undefined
+      ? withoutSecret(handle)
+      : { ...withoutSecret(handle), auditSubjectId };
+  await register(tx, session, request, digest, kept, outcome.recordId);
+  if (!declaration.audited) return handle;
+  await writeAuditEvent(tx, {
+    actorId: session.actorId,
+    command: request.command,
+    operationId: request.operationId,
+    outcome: 'applied',
+    subjectRecordId: outcome.auditSubjectId ?? outcome.recordId,
+    payloadDigest: digest,
+    originConversationId: outcome.originConversationId ?? null,
+  });
+  return handle;
 }
 
 /**
@@ -593,10 +648,16 @@ export async function register(
 
 /**
  * Where a refusal's identity stands: `register` writes the register row,
- * `registered` means the register already holds this identity, and `none`
- * that the request carried no usable identity to hold.
+ * `registered` means the register already holds this identity, `unheld` that
+ * the audit names it and the register keeps nothing for it, and `none` that
+ * the request carried no usable identity to hold.
+ *
+ * A step-up refusal is `unheld`. Held, it would answer its operation with the
+ * refusal for good, even once stepped up, and a caller retrying a lost answer
+ * could not tell it from a stored success the same check withholds, which a
+ * new operation would apply twice.
  */
-export type IdentityStanding = 'register' | 'registered' | 'none';
+export type IdentityStanding = 'register' | 'registered' | 'unheld' | 'none';
 
 /** A body that carries a secret (C31): no refusal puts any of its values in the audit. */
 const SEALED_BODIES: ReadonlySet<string> = new Set(['secret.set']);

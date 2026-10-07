@@ -7,10 +7,13 @@
 //
 // A path is one recipient of the obligation who can sign in (the three facts
 // login resolution asks: an active login, standing as a member or on a share,
-// and an active acting identity), can read the task, and for a decision still
-// holds `task:decide` on it, since a decider without authority is no path to
-// the decision. An escalated gate is decided only with decide across the
-// business (T3a), so for its decision that is the grant asked. In-app is the
+// and an active acting identity), can read the task, and for a decision is one
+// `task.decide` would admit: holding `task:decide` on the task itself or across
+// the business (decide asks no client-scoped grant), and not someone the task
+// is assigned to, an agent's delegating person included (four eyes), since a
+// decider the gate refuses is no path to the decision. An escalated gate is
+// decided only with decide across the business (T3a), so for its decision that
+// is the grant asked. In-app is the
 // only channel on this head and it is always on, so a recipient who signs in
 // and reads is reached; an email path joins with AW-07b. A decision or an
 // incident is one obligation shared by everyone raised an item on it, and any
@@ -26,10 +29,26 @@
 // read raises nothing for anyone, and it writes no item, grant or decision.
 // The list is the operations view's (C55) and the API's and the command
 // line's `inbox.unattended`, both behind `operations:read`.
+//
+// An item about a team conversation (C71, a mention in it) is listed only to
+// a viewer who is a current member of it, as only its members read it; its
+// path is a recipient who signs in and is a current member. Both since before
+// the item was raised: a re-added member reads from the new join only.
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { holdsAcrossBusiness, holdsOnTask, REACH } from './access.ts';
+import {
+  holdsAcrossBusiness,
+  holdsOnTask,
+  inConversation,
+  INTERNAL_ROLE_KEYS,
+  IS_CONVERSATION,
+  REACH,
+  readsThroughMap,
+} from './access.ts';
+import { HELD } from './read.ts';
+import { assignedTo } from '../tasks/assignee.ts';
+import { mapTicketCondition, wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { InboxFactKind, InboxReason } from './items.ts';
 
 export interface UnattendedItem {
@@ -45,9 +64,20 @@ export interface UnattendedItem {
 /** The reasons whose obligation any one of its recipients discharges. */
 const SHARED: ReadonlySet<InboxReason> = new Set(['decision', 'incident']);
 
+/** A row's `inside`, membership since the item was raised, as `HELD` in read.ts asks it. */
+const INSIDE = `case when ${IS_CONVERSATION}
+  then ${inConversation('i.recipient_person_id', 'i.raised_at')} end`;
+
 type OpenRow = UnattendedItem & {
   readonly clientId: string | null;
-  readonly member: boolean;
+  /** Null unless the item is about a conversation; then whether its recipient was in it since. */
+  readonly inside: boolean | null;
+  /** The task's map when it was a map's ticket at the list's read (W12), else null. */
+  readonly mapId: string | null;
+  /** A map or map ticket, which the client view never reaches (WF-1). */
+  readonly wayfinder: boolean;
+  /** Null without an active membership, else whether its role reads as staff. */
+  readonly internal: boolean | null;
   readonly loginAndActor: boolean;
   readonly escalated: boolean;
 };
@@ -57,6 +87,8 @@ type OpenRow = UnattendedItem & {
  * The viewer's read scopes, walked in the same statement (`REACH`), filter it,
  * so no row of a task they cannot read (another client's) is ever returned to
  * this read: that is the client separation, and the business's is the tenancy every query runs under.
+ * The inbox's own rule (`HELD`) decides it: a map grant covers its tickets, and a viewer shown
+ * the client view is returned no map or map ticket (WF-1), as their `task.read`.
  */
 export async function readUnattended(
   tx: TenantQuery,
@@ -67,9 +99,12 @@ export async function readUnattended(
      select i.id, i.recipient_person_id as "recipientPersonId",
             i.subject_record_id as "subjectRecordId", i.reason, i.fact_kind as "factKind",
             i.fact_id as "factId", i.raised_at as "raisedAt", r.uuid_7 as "clientId",
-            exists (select 1 from public.memberships m
-                     where m.business_id = i.business_id and m.person_id = i.recipient_person_id
-                       and m.active) as member,
+            ${INSIDE} as inside,
+            case when ${mapTicketCondition('r')} then r.uuid_4 end as "mapId",
+            ${wayfinderCondition('r')} as wayfinder,
+            (select bool_or(m.role_key = any($3::text[])) from public.memberships m
+              where m.business_id = i.business_id and m.person_id = i.recipient_person_id
+                and m.active) as internal,
             exists (select 1 from public.person_logins pl
                      where pl.business_id = i.business_id and pl.person_id = i.recipient_person_id
                        and pl.active)
@@ -86,10 +121,9 @@ export async function readUnattended(
        join public.records r
          on r.business_id = i.business_id and r.id = i.subject_record_id and r.deleted_at is null
       where i.business_id = $1 and i.work_state = 'open'
-        and ((select business from reach) or r.id = any((select records from reach)::uuid[])
-             or r.uuid_7 = any((select parties from reach)::uuid[]))
+        and (case when ${IS_CONVERSATION} then ${inConversation('$2', 'i.raised_at')} else ${HELD} end)
       order by i.raised_at, i.id`,
-    [tx.businessId, viewerPersonId],
+    [tx.businessId, viewerPersonId, INTERNAL_ROLE_KEYS],
   );
   const attended = new Set<string>();
   for (const row of rows) {
@@ -114,16 +148,27 @@ function obligationOf(item: UnattendedItem): string {
 }
 
 /**
- * One recipient's path: they sign in, read the task, and decide a decision,
- * an escalated gate's across the business.
+ * One recipient's path: they sign in, read the task, and decide a decision as
+ * `task.decide` would let them, an escalated gate's across the business. A recipient shown the client view
+ * reads no map or map ticket (WF-1), so their inbox withholds it, as `taskAccess`.
  */
 async function reaches(tx: TenantQuery, row: OpenRow): Promise<boolean> {
   if (!row.loginAndActor) return false;
-  if (!row.member && !(await standsOnShares(tx, row.recipientPersonId))) return false;
+  if (row.internal === null && !(await standsOnShares(tx, row.recipientPersonId))) return false;
+  if (row.inside !== null) return row.inside;
+  if (row.wayfinder && row.internal !== true) return false;
   const task = { id: row.subjectRecordId, clientId: row.clientId };
-  if (!(await holdsOnTask(tx, row.recipientPersonId, task, 'read'))) return false;
+  if (
+    !(await holdsOnTask(tx, row.recipientPersonId, task, 'read')) &&
+    !(row.mapId !== null && (await readsThroughMap(tx, row.recipientPersonId, task.id)))
+  ) {
+    return false;
+  }
   if (row.reason !== 'decision') return true;
+  if (await assignedTo(tx, task.id, row.recipientPersonId)) return false;
+  // task.decide is authorised on the task itself (GATE_TASK), so neither its
+  // map's decide grant nor its client's is a path.
   return row.escalated
     ? await holdsAcrossBusiness(tx, row.recipientPersonId, 'decide')
-    : await holdsOnTask(tx, row.recipientPersonId, task, 'decide');
+    : await holdsOnTask(tx, row.recipientPersonId, { id: task.id, clientId: null }, 'decide');
 }

@@ -29,6 +29,11 @@ async function refusedNothingSent(froms: readonly string[], base = MAIL): Promis
   expect(seen).toEqual(froms.map((from) => ({ from, sent: refused, reached: 0, attempts: [] })));
 }
 
+/** A subdomain of 141 + n octets in labels of at most 63, under the published-safe example.test. */
+function long(n: number): string {
+  return `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(n)}.example.test`;
+}
+
 /** The mail settings send: the provider accepts it. */
 async function sends(mail: MailSettings): Promise<void> {
   w.provider.mode('accept');
@@ -83,4 +88,23 @@ it('AW-07b sender: a verified report that does not say it is not mock is refused
   expect(sender).toMatchObject({ verified: true });
   expect('mock' in sender).toBe(false);
   await refusedNothingSent([MAIL.from], { ...MAIL, sender });
+});
+
+it('AW-07b sender: a from over 64 octets of local part or 254 octets in all is refused, nothing sent; exactly 64 and 254 send', async () => {
+  // RFC 5321 4.5.3.1: a local part is at most 64 octets, a whole address at most 254. The gate
+  // already takes ASCII only, so each character here is one octet.
+  const subdomain = MAIL.sender.subdomain;
+  const local65 = `${'a'.repeat(65)}@${subdomain}`;
+  const local64 = `${'a'.repeat(64)}@${subdomain}`;
+  await refusedNothingSent([local65]);
+  await sends({ ...MAIL, from: local64 });
+
+  // A verified subdomain long enough to reach the whole-address limit with a 64-octet local part.
+  const over = { ...MAIL.sender, subdomain: long(49) };
+  const at = { ...MAIL.sender, subdomain: long(48) };
+  const address255 = `${'a'.repeat(64)}@${over.subdomain}`;
+  const address254 = `${'a'.repeat(64)}@${at.subdomain}`;
+  expect([address255.length, address254.length]).toEqual([255, 254]);
+  await refusedNothingSent([address255], { ...MAIL, sender: over });
+  await sends({ ...MAIL, sender: at, from: address254 });
 });

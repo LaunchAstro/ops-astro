@@ -253,6 +253,8 @@ describe('test files named by what they prove', () => {
 });
 
 describe('test files named by what they prove', () => {
+  // Reads every test file's titles: 2.0 to 4.1 s on the hosted runner in October
+  // 2026, against vitest's 5 s default, so it names its own.
   it('no test file name contains final-r, review-fixes or a round number, and no test title cites a review id', () => {
     const files = testFiles();
     expect(files.length).toBeGreaterThan(200);
@@ -268,7 +270,7 @@ describe('test files named by what they prove', () => {
     }
     expect(seen).toBeGreaterThan(2000);
     expect({ named, cited }).toEqual({ named: [], cited: [] });
-  });
+  }, 12_000);
 });
 
 /** Each workspace package's name, and the file its bare name resolves to. */
@@ -333,6 +335,10 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
   [
+    'apps/local-agent/stack.ts',
+    'the `pnpm local-agent` entry point (package.json); nothing imports an entry point but its tests',
+  ],
+  [
     'packages/core-commands/src/reads/task-conversation.ts',
     "MP-4-5's three detail levels of a task conversation, for the agent bundles (API-4) that call it",
   ],
@@ -374,6 +380,10 @@ const isCode = (file: string): boolean => /\.(?:ts|tsx|mts|mjs|js)$/u.test(file)
 const isTest = (file: string): boolean =>
   file.startsWith('tests/') || /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(file);
 
+// The last test below reads and parses every tracked code file: 4.6 to 5.1 s
+// on the hosted runner in October 2026, against vitest's 5 s default (#995).
+const TREE_SCAN = 30_000;
+
 describe('product source holds what the product uses', () => {
   it('counts an import only where the code makes one', () => {
     const source = [
@@ -399,7 +409,7 @@ describe('product source holds what the product uses', () => {
     ]);
   });
 
-  it('nothing in packages/ or apps/ is imported only by tests', () => {
+  it('nothing in packages/ or apps/ is imported only by tests', { timeout: TREE_SCAN }, () => {
     const product = tracked('packages', 'apps').filter((file) => isCode(file) && !isTest(file));
     const importers = new Map<string, { product: number; tests: number }>();
     const code = tracked('packages', 'apps', 'tests', 'scripts').filter((path) => isCode(path));
@@ -562,10 +572,10 @@ describe('the case count across the renames', () => {
 
 describe('test files for one task step, in one folder', () => {
   it('the test files for task pickup come back by name, from one folder', () => {
-    // tests/db/named-suites/ holds one manifest per test folder, named for it
-    // (tests-pickup.json lists tests/pickup's suites); it is an index, not a test file.
+    // tests/db/suites/ holds one file per named suite, named for its test file
+    // (pickup/pickup-receipt-binding.test.ts.json); it is an index, not a test file.
     const pickup = tracked('tests')
-      .filter((file) => !file.startsWith('tests/db/named-suites/'))
+      .filter((file) => !file.startsWith('tests/db/suites/'))
       .filter((file) => /pickup/u.test(file.split('/').pop() ?? ''));
     expect(pickup.filter((file) => file.endsWith('.test.ts')).length).toBeGreaterThanOrEqual(6);
     expect(pickup.filter((file) => !file.startsWith('tests/pickup/'))).toEqual([]);

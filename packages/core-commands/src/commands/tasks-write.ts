@@ -39,12 +39,12 @@ import {
   planTaskPlacement,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.ts';
-import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { isCommandRefusal, refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { isInProductLink } from '../../../core-wire/src/index.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { clientOf } from './tasks-party.ts';
-import { oneKind } from './tasks-agent.ts';
+import { AGENT_ASSIGN_FIELDS, oneKind, outsideAgentReach } from './tasks-agent.ts';
 import { writeOwnedFields, type FieldWriteContext } from './tasks-state.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
@@ -162,6 +162,9 @@ export async function createTask(
   });
   if (isRecordsRefusal(placement)) return refused(placement);
 
+  const wayfinder = await wayfinderDataOnCreate(tx, context, taskType, parentId);
+  if (isCommandRefusal(wayfinder)) return refused(wayfinder);
+
   const named =
     request.stateKey === undefined
       ? undefined
@@ -198,7 +201,7 @@ export async function createTask(
   const id = randomUUID();
   const data: Record<string, unknown> = {
     ...request.fields,
-    ...(await wayfinderDataOnCreate(tx, context, taskType, parentId)),
+    ...wayfinder,
     key: await nextTaskKey(tx, context.spine.taskTypeId),
     // An agent credential's create is the agent's (API-2), never its person's.
     source: deriveSource(
@@ -265,6 +268,22 @@ export async function originOf(
  * point 5), which is the clause T1e left this part to honour.
  */
 export async function updateTask(
+  tx: TenantQuery,
+  context: Pick<CommandContext, 'spine' | 'target'> & {
+    readonly session?: CommandContext['session'];
+  },
+  request: Pick<Extract<CommandRequest, { command: 'task.update' }>, 'fields'>,
+): Promise<HandlerOutcome> {
+  // An agent credential (API-2) reaches the person entry as its agent: it
+  // writes only what a delegated agent writes here (#420).
+  const outside =
+    context.session?.credentialScope === undefined
+      ? undefined
+      : outsideAgentReach(request.fields, AGENT_UPDATE_FIELDS);
+  return outside === undefined ? await writeUpdate(tx, context, request) : refused(outside);
+}
+
+async function writeUpdate(
   tx: TenantQuery,
   context: Pick<CommandContext, 'spine' | 'target'>,
   request: Pick<Extract<CommandRequest, { command: 'task.update' }>, 'fields'>,
@@ -379,9 +398,6 @@ export const AGENT_UPDATE_FIELDS: readonly string[] = [
   'title',
 ];
 
-/** What an agent's `task.assign` sets: the assignee (MP-4-8), not the delegate. */
-export const AGENT_ASSIGN_FIELDS: readonly string[] = ['assignee'];
-
 /**
  * `task.update` as an agent makes it, on its own delegated task: the fields
  * above and nothing else. A body naming any other field is refused whole,
@@ -406,19 +422,6 @@ export async function assignTaskAsAgent(
   const outside = outsideAgentReach(fields, AGENT_ASSIGN_FIELDS);
   if (outside !== undefined) return refused(outside);
   return await writeOwnedFields(tx, context, 'task.assign', oneKind(context, fields));
-}
-
-function outsideAgentReach(
-  fields: FieldValues,
-  reach: readonly string[],
-): CommandRefusal | undefined {
-  const outside = Object.keys(fields)
-    .filter((key) => !reach.includes(key))
-    .toSorted();
-  if (outside.length === 0) return undefined;
-  return refuseCommand('SCOPE_NOT_GRANTED', outside, [
-    `An agent writes only ${reach.join(', ')} through this command.`,
-  ]);
 }
 
 /**

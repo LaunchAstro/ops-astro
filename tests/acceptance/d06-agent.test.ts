@@ -42,6 +42,8 @@ import { createHarness, type Harness } from './role-case-harness.ts';
 import { agentHold } from './d06-agent-fixture.ts';
 import { revisedState } from './d06-run-state.ts';
 import { ownWriteBody, proposalBody } from './d06-agent-own-writes.ts';
+import { c80AgentBody, c80AgentPickup } from './c80-bodies.ts';
+import { stepResultBody } from './d06-agent-step.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
@@ -71,6 +73,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.update',
   // The assignee (MP-4-8), under a delegation that also holds assign.
   'task.assign',
+  'live_correction.request',
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
@@ -80,6 +83,8 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'run.child_handback',
   'task.pickup',
   'task.handback',
+  // An onboarding step's result (C41-A), on a step the agent picked up.
+  'onboarding.step_result',
 ];
 
 /** A business-internal field the replay operation may take to its cloud route. */
@@ -107,6 +112,8 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
   let durable: () => Promise<Durable>;
   const hold = agentHold(() => harness);
   const tally = new Tally();
+  /** The hold is C80's pickup, on a plan lease that fires nothing. */
+  let planOnly = false;
 
   beforeAll(async () => {
     harness = await createHarness('d06a');
@@ -124,12 +131,26 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     name: CommandName,
   ): Promise<{ body: Record<string, unknown>; credential?: string }> {
     const operationId = randomUUID();
+    if (name === 'live_correction.request') {
+      // A correction names its task's client (P26 low 4), so the agent picks
+      // up a task the admin put under one, and names that client.
+      await hold.release();
+      const { pickup, partyId } = await c80AgentPickup(harness);
+      expect(pickup.code, 'the pickup a correction is asked under').toBe('ok');
+      hold.track(pickup);
+      planOnly = true;
+      return c80AgentBody(operationId, await hold.ensureLive(), partyId);
+    }
+    // Every other cell holds a launched lease, so C80's pickup is given back first.
+    if (planOnly) await hold.release();
+    planOnly = false;
     if (name === 'task.queue') return { body: { operationId } };
     if (name === 'task.pickup') {
       await hold.release();
       return { body: { operationId, reservationId: await hold.reservation() } };
     }
     if (name === 'task.handback') await hold.release();
+    if (name === 'onboarding.step_result') return await stepResultBody(harness, hold, operationId);
     // A call holds 500 and spends 100 of the reservation's 3,000, so each gets
     // a lease of its own rather than draining one.
     if (name === 'model.call') await hold.release();

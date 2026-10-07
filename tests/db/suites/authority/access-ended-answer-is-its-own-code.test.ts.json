@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "a login this business ended answers AUTH_ACCESS_ENDED, so a fresh client signs the person out, while a login another business ended, or a member removed without an ending, still answers AUTH_NO_MEMBERSHIP here and the other business still serves them"
+}

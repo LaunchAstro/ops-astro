@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the side panel answers through the local GPT runner the launcher starts"
+}

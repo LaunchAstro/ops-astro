@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C80's publish and revert runner: only a correction a person other than its requester approved is dispatched, once, under the worker lease; another business, another task's lease, a stale fence and a narrowed delegation send nothing."
+}

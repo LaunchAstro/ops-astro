@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The to-dos list's own logic (MP-7-1): the due urgency, the scope typed into
-// the search, and the three sorts. Pure, so the words, the today scope and the
-// sort all read one derivation.
+// The to-dos list's own logic (MP-7-1): the due urgency, the filter chips read
+// from the search (XC 2-11), and the three sorts. Pure, so the words, the
+// chips and the sort all read one derivation.
 //
 // **One today.** A task is due today when its day is the business's day or
 // before it: the today scope and the Overdue and Today words both come from
 // `urgencyOf`, read on the business clock (`due-dates.ts`), never the
 // machine's UTC day.
 
-import type { TodoView } from '../../../../../packages/core-wire/src/index.ts';
+import { TASK_CATEGORIES, type TodoView } from '../../../../../packages/core-wire/src/index.ts';
 import { addDays } from '../task/due-dates.ts';
 
 export type Urgency = 'overdue' | 'today' | 'tomorrow' | 'week' | 'later' | 'none';
@@ -36,53 +36,133 @@ export function urgencyOf(due: string | null, today: string): Urgency {
 export const dueToday = (due: string | null, today: string): boolean =>
   ['overdue', 'today'].includes(urgencyOf(due, today));
 
-/** What the search holds: name words, tag names and the today scope, each lower-cased. */
-export interface Scope {
-  readonly words: readonly string[];
-  readonly tags: readonly string[];
-  readonly today: boolean;
+/**
+ * One filter chip (PJ-02, PJ-03): what a typed word was read as. A word that
+ * names an urgency, a waiting reply, whose move it is, a priority or a
+ * category (three letters or more of its label) is read as that; `tag:` names
+ * a tag; any other word without a colon is a name word.
+ */
+export type Chip =
+  | { readonly kind: 'due'; readonly value: 'today' | 'overdue' | 'soon' }
+  | { readonly kind: 'waiting' }
+  | { readonly kind: 'move'; readonly value: TodoView['whoseMove'] }
+  | { readonly kind: 'priority'; readonly value: number }
+  | { readonly kind: 'category'; readonly value: string }
+  | { readonly kind: 'tag' | 'words'; readonly value: string };
+
+// Maps, not object indexes: a typed word is looked up in these own keys only,
+// so `constructor` or `__proto__` is a name word, never an inherited property.
+const DUE_WORDS: ReadonlyMap<string, 'today' | 'overdue' | 'soon'> = new Map([
+  ['due:today', 'today'],
+  ['today', 'today'],
+  ['overdue', 'overdue'],
+  ['late', 'overdue'],
+  ['soon', 'soon'],
+]);
+const WAITING_WORDS = new Set(['waiting', 'comments', 'unread']);
+const MOVE_WORDS: ReadonlyMap<string, TodoView['whoseMove']> = new Map([
+  ['review', 'Review'],
+  ['agent', 'Agent'],
+  ['team', 'Team'],
+]);
+
+function chipOf(token: string): Chip | null {
+  const due = DUE_WORDS.get(token);
+  if (due !== undefined) return { kind: 'due', value: due };
+  if (WAITING_WORDS.has(token)) return { kind: 'waiting' };
+  const move = MOVE_WORDS.get(token);
+  if (move !== undefined) return { kind: 'move', value: move };
+  if (/^p[1-4]$/u.test(token)) return { kind: 'priority', value: Number(token.slice(1)) };
+  if (token.startsWith('tag:')) return { kind: 'tag', value: token.slice(4) };
+  if (token.includes(':')) return null;
+  const category =
+    token.length >= 3
+      ? TASK_CATEGORIES.list().find((one) => one.label.toLowerCase().startsWith(token))
+      : undefined;
+  return category === undefined
+    ? { kind: 'words', value: token }
+    : { kind: 'category', value: category.id };
 }
 
-export function scopeOf(query: string): Scope {
-  const tokens = query
+/** The chips typed words read as, lower-cased, in the order typed. */
+export function scopeOf(query: string): readonly Chip[] {
+  return query
     .toLowerCase()
     .split(/\s+/u)
-    .filter((token) => token !== '');
-  return {
-    words: tokens.filter((token) => !token.includes(':')),
-    tags: tokens.filter((token) => token.startsWith('tag:')).map((token) => token.slice(4)),
-    today: tokens.includes('due:today'),
-  };
+    .filter((token) => token !== '')
+    .map((token) => chipOf(token))
+    .filter((chip) => chip !== null);
+}
+
+/** A chip's overline kind and value (PJ-03), and how the reading line says it (PJ-04). */
+export function wordsOfChip(chip: Chip): {
+  readonly kind: string;
+  readonly value: string;
+  readonly reading: string;
+} {
+  switch (chip.kind) {
+    case 'due':
+      return { kind: 'Due', value: chip.value, reading: `due ${chip.value}` };
+    case 'waiting':
+      return { kind: 'Only', value: 'waiting reply', reading: 'waiting on a reply' };
+    case 'move':
+      return { kind: 'Whose move', value: chip.value, reading: `whose move ${chip.value}` };
+    case 'priority':
+      return { kind: 'Priority', value: `P${chip.value}`, reading: `priority P${chip.value}` };
+    case 'category': {
+      const label = TASK_CATEGORIES.labelOf(chip.value);
+      return { kind: 'Category', value: label, reading: `category “${label}”` };
+    }
+    case 'tag':
+      return { kind: 'Tag', value: chip.value, reading: `tag “${chip.value}”` };
+    default:
+      return { kind: 'The words', value: chip.value, reading: `name “${chip.value}”` };
+  }
 }
 
 /** The scope read back, in the order a person reads it; null when nothing scopes the list. */
-export function readingOf(scope: Scope, focus: string | null): string | null {
+export function readingOf(scope: readonly Chip[], focus: string | null): string | null {
   const parts = [
     ...(focus === null ? [] : [`waiting comments on ${focus}`]),
-    ...scope.tags.map((tag) => `tag “${tag}”`),
-    ...(scope.today ? ['due today'] : []),
-    ...scope.words.map((word) => `name “${word}”`),
+    ...scope.map((chip) => wordsOfChip(chip).reading),
   ];
   return parts.length === 0 ? null : `Reading this as: ${parts.join(', ')}`;
 }
 
-/** The rows the scope keeps; `focus` is the one task whose comment count was pressed. */
+function keeps(chip: Chip, todo: TodoView, today: string): boolean {
+  switch (chip.kind) {
+    case 'due': {
+      if (chip.value === 'today') return dueToday(todo.due, today);
+      const urgency = urgencyOf(todo.due, today);
+      if (chip.value === 'overdue') return urgency === 'overdue';
+      return urgency === 'tomorrow' || urgency === 'week';
+    }
+    case 'waiting':
+      return todo.waitingComments > 0;
+    case 'move':
+      return todo.whoseMove === chip.value;
+    case 'priority':
+      return todo.priority === chip.value;
+    case 'category':
+      return todo.category === chip.value;
+    case 'tag':
+      return todo.tags.some((tag) => tag.name.toLowerCase() === chip.value);
+    default:
+      return (todo.title ?? '').toLowerCase().includes(chip.value);
+  }
+}
+
+/** The rows every chip keeps; `focus` is the one task whose comment count was pressed. */
 export function scoped(
   todos: readonly TodoView[],
-  scope: Scope,
+  scope: readonly Chip[],
   focus: string | null,
   today: string,
 ): readonly TodoView[] {
-  return todos.filter((todo) => {
-    const name = (todo.title ?? '').toLowerCase();
-    const tags = new Set(todo.tags.map((tag) => tag.name.toLowerCase()));
-    return (
-      (focus === null || todo.key === focus) &&
-      scope.words.every((word) => name.includes(word)) &&
-      scope.tags.every((tag) => tags.has(tag)) &&
-      (!scope.today || dueToday(todo.due, today))
-    );
-  });
+  return todos.filter(
+    (todo) =>
+      (focus === null || todo.key === focus) && scope.every((chip) => keeps(chip, todo, today)),
+  );
 }
 
 export type SortKey = 'due' | 'task' | 'priority';

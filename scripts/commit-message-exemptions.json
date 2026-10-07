@@ -59,6 +59,14 @@
     {
       "sha": "b8b5ee6211ca58963390b1eb33e59e4c1d3dc0db",
       "reason": "SL11's paused AW-08's part (b): a 'wip' type commitlint refuses, pushed at the seat trim; kept in history because b0/SL11 and batch 3b hold it (BATCH3-INTEG-10, 2 Oct 2026)"
+    },
+    {
+      "sha": "f4b3d87e3bece45ac9717b5aa7332769ccb4314e",
+      "reason": "SL10's 1 Oct batch/2d prep merge on the C71 branch: a 'merge' type commitlint refuses; kept in history because C71-G (#354) and the c71c PRs stacked on it hold it (SL10-32, 3 Oct 2026)"
+    },
+    {
+      "sha": "8f7e6325d9be1f519786641d35fd0815f6f0c94c",
+      "reason": "SL10's 1 Oct security-wording (0eb81e8) merge on the C71 branch: a 'merge' type commitlint refuses; kept in history because C71-G (#354) and the c71c PRs stacked on it hold it (SL10-32, 3 Oct 2026)"
     }
   ]
 }

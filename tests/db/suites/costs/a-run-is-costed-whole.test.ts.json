@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "Agent cost reads cost a run whole: a helper's calls are its own, an open call started or not leaves the whole run unpriced in every row, a run's first start places it in one period, only an accepted handback finishes it, and an impossible date is refused"
+}

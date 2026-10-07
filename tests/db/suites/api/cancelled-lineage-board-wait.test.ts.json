@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a cancelled proposal leaves no approval wait on the board or in gate.pending"
+}

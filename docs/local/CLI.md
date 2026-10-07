@@ -183,3 +183,31 @@ replaced by where it was saved.
 - It has no test-only path. The process proof (`tests/cli/cli-process.test.ts`)
   hands it a bearer through `OPS_ASTRO_TOKEN`, the same way a person does after
   `login`.
+
+## The agent verbs (API-3)
+
+Verbs for people and delegated agents, each one request to its owning operation
+(`apps/cli/verbs.ts`); the CLI adds no rule, and a refusal is one line naming
+the missing key.
+
+```
+pnpm cli help
+pnpm cli task get <id> [--detail brief|standard|full] [--fields a,b] [--json]
+pnpm cli task list [--board <id>] [--limit n] [--page <next>] [--detail ...]
+pnpm cli task create --title <t> [--description <d>] [--parent <id>] [--board <id>] [--type <type>]
+pnpm cli task update <id> --revision n [--title <t>] [--description <d>]
+pnpm cli task comment <id> --revision n --text <t> [--audience internal|client]
+pnpm cli map view|frontier <id>
+```
+
+- Connection flags, environment and exit codes are an operation's. A write
+  prints `ok <operation> <id> r<revision>`; on no answer or a fault it prints
+  its `operationId`, and the same line with `--operation <id>` replays it.
+- `brief` is id, title and state; `standard` (default) adds the summary,
+  description, blockers and latest five comments; `full` is everything. An
+  external party gets the same levels of its shared view. Unreadable blockers
+  are never listed: an agent gets their count, a record-grant member none.
+- `task list` pages by `QUOTAS.pageSize` (20, at most 100). `next: <token>`
+  goes back as `--page`; a list reordered before the token, or missing a task
+  it showed, refuses it (`FIELD_VALUE_INVALID` on `page`): list again.
+- The API takes `detail`, `limit` and `page` on `task.read` and `task.board`.

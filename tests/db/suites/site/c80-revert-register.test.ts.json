@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C80's revert on the effect register: a revert whose answer never reached the register is never sent blind again, and an entry another business holds under the same identity is never this correction's effect."
+}

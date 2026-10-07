@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "C80: an agent requests a live correction only under the delegation its pickup minted, inside that task, business and the delegating person's client parties, and the delegating person, recorded as requester, cannot approve it."
+}

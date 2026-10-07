@@ -14,13 +14,14 @@ import { drawScreen, type ScreenContext } from '../screen-registry.tsx';
 import { closeAll, close, isOwnAddress, press, ranked, visit } from './open-set.ts';
 import type { Session, StorageLike } from '../session/token.ts';
 import type { OperationsClient } from '../operations/client.ts';
-import { useOwedCount } from '../data/owed-count.ts';
+import { useOwedCount, useTeamUnread } from '../data/dock-counts.ts';
 import { useLayoutStore } from '../shell/layout-store.ts';
 import { railFrom, useRail, type RailModel } from '../shell/use-rail.ts';
 import { useDock, type DockModel } from './use-dock.ts';
 import { useDockLayout, type DockLayoutModel } from './use-layout.ts';
 import { taskPanelOf, useTaskDock, withTaskTab, type TaskDock } from './task-dock.ts';
 import { agentPanelOf, withAgentTab } from './agent-dock.ts';
+import { pageName } from '../screens/task/task-prefill.ts';
 
 /** The person's dock, rail and the layout they make together, for one signed-in tab. */
 interface DockShell {
@@ -30,7 +31,7 @@ interface DockShell {
   readonly layout: DockLayoutModel;
   /** The task panel (MP-4-8), drawn as the dock's `task` panel; null where there is none. */
   readonly task: TaskDock | null;
-  /** Each tab's count chip: the Notifications tab's owed figure (MP-7-3). */
+  /** Each tab's count chip: Notifications' owed figure (MP-7-3), Team's unread (C71). */
   readonly counts: PanelCounts;
 }
 
@@ -61,9 +62,14 @@ export function useDockShell(
   );
   const layout = useDockLayout(dock, registry, nav.drawn, store);
   useTaskDock(dock, task);
-  // The bell's figure with the first frame (MP-7-3), read on the agency face only.
+  // The bell's and the Team tab's figures with the first frame, on the agency face only.
   const owed = useOwedCount(client, session, agency);
-  return { registry, dock, nav, layout, task, counts: owed === null ? {} : { notifs: owed } };
+  const unread = useTeamUnread(client, session, agency);
+  const counts: PanelCounts = {
+    ...(owed === null ? {} : { notifs: owed }),
+    ...(unread === null ? {} : { team: unread }),
+  };
+  return { registry, dock, nav, layout, task, counts };
 }
 
 type ShellDock = Pick<
@@ -149,6 +155,13 @@ export function dockProps(input: DockInput): DockProps {
   };
 }
 
+/** The To-dos panel's head New (DP-02): a new-task draft filed from the page (MP-4-13). */
+const newTaskOn = (id: PanelId, task: TaskDock | null): Pick<DockPanel, 'onNew'> => {
+  const file = task?.file ?? null;
+  if (id !== 'todos' || file === null) return {};
+  return { onNew: { label: 'New task', press: () => file({ from: pageName() }) } };
+};
+
 function dockPanels(input: DockInput): readonly DockPanel[] {
   const { registry, dock, layout } = input;
   const agent = input.agent ?? null;
@@ -180,6 +193,7 @@ function dockPanels(input: DockInput): readonly DockPanel[] {
         door,
         icon: panel.icon,
         ...walked,
+        ...newTaskOn(id, input.task),
         body:
           view === null
             ? null

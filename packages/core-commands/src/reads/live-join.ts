@@ -12,7 +12,13 @@
 // change the caller cannot read moves nothing they are shown, and says nothing.
 
 import { createHash } from 'node:crypto';
-import { readScopes, subjectsOf, withSession } from '../../../core-records/src/index.ts';
+import {
+  mapTicketCondition,
+  REACH,
+  readScopes,
+  subjectsOf,
+  withSession,
+} from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
 import {
   asCallerVisible,
@@ -61,10 +67,16 @@ export async function shownInbox(
 
 /**
  * A digest of the tasks `personId` reads now, as `inbox.read` and `taskAccess`
- * ask their read scopes, with each one's activity: its own row and the rows
- * about it (comments), its planned runs and their events. Any change the
- * reader can see moves it, and so does a task revoked, trashed or moved to
- * another client; undefined unless the bearer still resolves to that person.
+ * ask their read scopes (a map's grant covering its tickets, W12), with each
+ * one's activity: its own row and the rows about it (comments), its planned
+ * runs and their events, and what its board row derives from other rows: the
+ * state and assignee it names, its Actual total (`readActualMinutes`) and the
+ * gates it waits at (`awaitingApproval`), as of now, so a deadline passing
+ * moves it with no write. Of the state and the assignee it takes only what the
+ * row shows, so a write to the rest of their rows (a second factor verified on
+ * the person) tells a reader of the board nothing. Any change the reader can
+ * see moves it, and so does a task revoked, trashed or moved to another
+ * client; undefined unless the bearer still resolves to that person.
  */
 export async function boardReach(
   database: Database,
@@ -79,6 +91,7 @@ export async function boardReach(
     const { business, records, parties } = await readScopes(tx, personId);
     const rows = await tx.query<{ readonly seen: string }>(SEEN, [
       tx.businessId,
+      personId,
       (await readTaskSpine(tx)).taskTypeId,
       business,
       records,
@@ -89,16 +102,42 @@ export async function boardReach(
   return typeof outcome === 'string' ? outcome : undefined;
 }
 
-const SEEN = `with seen as (
-         select id from public.records
-          where business_id = $1 and record_type_id = $2 and deleted_at is null
-            and ($3::boolean or id = any($4::uuid[]) or uuid_7 = any($5::uuid[])))
+/** A map's tickets by its grants walked here (`REACH`), so a revoked map grant moves nothing. */
+const SEEN = `${REACH},
+       seen as (
+         select t.id, t.uuid_1 as state, t.uuid_2 as assignee from public.records t
+          where t.business_id = $1 and t.record_type_id = $3 and t.deleted_at is null
+            and ($4::boolean or t.id = any($5::uuid[]) or t.uuid_7 = any($6::uuid[])
+                 or (t.uuid_4 = any((select records from reach)::uuid[])
+                     and ${mapTicketCondition('t')})))
        select encode(sha256(convert_to(coalesce(string_agg(part, ',' order by part), ''),
                 'UTF8')), 'hex') as seen
          from (select r.id::text || ':' || r.revision::text from public.records r
                 where r.business_id = $1 and r.deleted_at is null
                   and (r.id in (select id from seen)
                        or r.data ->> 'task' in (select id::text from seen))
+               union all
+               select 's' || s.id::text || ':' || jsonb_build_array(s.data ->> 'key',
+                        s.data ->> 'label', s.data ->> 'machine_category', s.data ->> 'position')::text
+                 from public.records s
+                where s.business_id = $1 and s.deleted_at is null
+                  and s.id in (select state from seen)
+               union all
+               select 'a' || p.id::text || ':' || to_jsonb(p.display_name)::text from public.people p
+                where p.business_id = $1 and p.id in (select assignee from seen)
+               union all
+               select 'm' || m.task_id::text || ':' || sum(m.minutes)::text from public.time_entries m
+                where m.business_id = $1 and m.task_id in (select id from seen)
+                  and m.deleted_at is null
+                group by m.task_id
+               union all
+               select 'g' || g.id::text || ':' || g.xmin::text from public.gates g
+                 join public.planned_runs run on run.business_id = g.business_id and run.id = g.run_id
+                 join public.proposal_versions ver
+                   on ver.business_id = g.business_id and ver.id = g.version_id
+                where g.business_id = $1 and run.task_id in (select id from seen)
+                  and g.state = 'pending' and g.expires_at > statement_timestamp()
+                  and ver.superseded_at is null
                union all
                select 'p' || p.id::text || ':' || p.xmin::text from public.planned_runs p
                 where p.business_id = $1 and p.task_id in (select id from seen)

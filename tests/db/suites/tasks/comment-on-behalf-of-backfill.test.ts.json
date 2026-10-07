@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "the comment on_behalf_of migration gives an older comment type the field row installTaskSpine writes now, and leaves a type that has it alone (catalogue #414)"
+}

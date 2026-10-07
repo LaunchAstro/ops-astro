@@ -26,9 +26,12 @@
 
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type { BreachNoticeOperands } from './operations.ts';
+import type { CostPeriodOperands } from './agent-costs.ts';
 import type {
   AttributionResult,
   AccessReadResult,
+  ChatConversationsResult,
+  ChatMessagesResult,
   BreachNoticesResult,
   ClientListResult,
   CapabilitiesResult,
@@ -36,6 +39,7 @@ import type {
   OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
+  LiveCorrectionReadResult,
   PersonListResult,
   TagListResult,
   TaskTodosResult,
@@ -45,18 +49,28 @@ import type {
   AwaitingReviewResult,
   ConversationListResult,
   AllowanceResult,
+  ConversationModelsResult,
   ConversationReadResult,
   SettingsReadResult,
   SecretListResult,
+  ConnectionFleetResult,
+  ConnectionSignalResult,
+  ConnectionGraduationResult,
+  AgentCostsResult,
+  SkillCostsResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
   UnattendedView,
   TaskSearchResult,
   TaskLedgerResult,
+  AutomationRegistryResult,
+  MapViewResult,
+  MapFrontierResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
+import type { BoardPage, Leveled, Paging } from './detail.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -77,9 +91,9 @@ export type {
  * uses is a field its `parse` checked.
  */
 export interface ReadOperands {
-  readonly 'task.read': { readonly recordId: string };
+  readonly 'task.read': { readonly recordId: string } & Paging;
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
-  readonly 'task.board': { readonly board: string | null };
+  readonly 'task.board': { readonly board: string | null } & Paging;
   /**
    * The activity ledger's page: the newest days with events before `before`
    * (a `YYYY-MM-DD` in `timeZone`), or the newest days of all when it is
@@ -141,6 +155,16 @@ export interface ReadOperands {
   readonly 'settings.read': NoOperands;
   /** Custody's rows at the scopes the caller holds `custody:manage` (C31). */
   readonly 'secret.list': NoOperands;
+  /** The connections at the scopes the caller holds `connection:read` (MP-14-7a). */
+  readonly 'connection.fleet': NoOperands;
+  /** Grants, tripwires and the night round at the same scopes (MP-14-8). */
+  readonly 'connection.signal': NoOperands;
+  /** The graduation region of the clients `connection:read` reaches (MP-14-10a). */
+  readonly 'connection.graduation': NoOperands;
+  /** Skill costing at the scopes the caller holds `finance:read` (MP-14-9). */
+  readonly 'finance.skill_costs': NoOperands;
+  /** The agents' cost log for a period, same scopes (MP-14-6). */
+  readonly 'finance.agent_costs': CostPeriodOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -149,6 +173,10 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /** A map's sections, tickets and versions (WF-1). */
+  readonly 'map.view': { readonly recordId: string };
+  /** A map's frontier and fog, from their read models (WF-2). */
+  readonly 'map.frontier': { readonly recordId: string };
   /**
    * A conversation at its address (AW-03): the owner's, or a holder of the
    * read-any grant's. After the body purges it answers the wrap-up.
@@ -158,6 +186,8 @@ export interface ReadOperands {
   readonly 'conversation.list': NoOperands;
   /** The drawer's planning allowance, and the caller's own conversation's spend (AW-04). */
   readonly 'conversation.allowance': { readonly conversationId: unknown };
+  /** The models the caller's conversation may run on, or the empty drawer's (CS-7.30). */
+  readonly 'conversation.models': { readonly conversationId: unknown };
   /** The runs that read one file, by its digest: pre-review (AW-04). */
   readonly 'definition.attribution': { readonly digest: string };
   /** Who is signed in: the caller's own name (C23). It takes no grant either. */
@@ -180,10 +210,18 @@ export interface ReadOperands {
   readonly 'inbox.count': NoOperands;
   /** The business's items no path reaches, for `operations:read` (INB-1e). */
   readonly 'inbox.unattended': NoOperands;
+  /** The reader's team conversations, each with its unread (C71-D). */
+  readonly 'chat.conversations': NoOperands;
+  /** One conversation's messages, the reader's own member row the filter. */
+  readonly 'chat.messages': { readonly conversationId: string };
   /** The task whose runs' trace is read (AW-13 readers). */
   readonly 'trace.read': { readonly recordId: string };
   /** The run whose harness test result is read (AW-12). */
   readonly 'harness.read': { readonly runId: string };
+  /** One live correction's decision, read again for its card (C80). */
+  readonly 'live_correction.read': { readonly correctionId: string };
+  /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
+  readonly 'automation.registry': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -201,6 +239,9 @@ export interface ReadRequest {
 
 export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
+  /** A task or a page at a named detail level (API-3, `detail.ts`). */
+  | ({ readonly ok: true } & Leveled)
+  | BoardPage
   | SharedTaskRead
   | TaskBoardResult
   | TaskSearchResult
@@ -214,6 +255,11 @@ export type ReadResult =
   | PresetPlanResult
   | SettingsReadResult
   | SecretListResult
+  | ConnectionFleetResult
+  | ConnectionSignalResult
+  | ConnectionGraduationResult
+  | SkillCostsResult
+  | AgentCostsResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
@@ -226,10 +272,16 @@ export type ReadResult =
   | OperationsReadResult
   | BreachNoticesResult
   | AllowanceResult
+  | ConversationModelsResult
   | AttributionResult
   | InboxReadResult
   | InboxCountResult
+  | LiveCorrectionReadResult
+  | MapViewResult
+  | MapFrontierResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
+  | ChatConversationsResult
+  | ChatMessagesResult
   | {
       readonly ok: true;
       readonly trace: {
@@ -238,4 +290,5 @@ export type ReadResult =
         readonly complete: boolean;
       };
     }
-  | { readonly ok: true; readonly harness: TriggerReading };
+  | { readonly ok: true; readonly harness: TriggerReading }
+  | AutomationRegistryResult;

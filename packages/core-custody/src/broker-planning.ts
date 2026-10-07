@@ -31,6 +31,7 @@ import {
   WAIT_SECONDS,
   type ReservedCall,
 } from './broker-reserve.ts';
+import { sendingAccount } from './broker-carrier.ts';
 import { hold, release, settlementOf, settlePriced } from './broker-settle.ts';
 import type {
   Broker,
@@ -105,15 +106,16 @@ export async function readPlanningCap(tx: TenantQuery): Promise<PlanningCapView>
     : { limitMinor: Number(cap.limit_minor), currency: cap.currency, set: true };
 }
 
+/** What is committed in business `$1` under the cap `capId` names, as one value. */
+const committedUnderSql = (capId: string): string =>
+  `(select coalesce(sum(${COMMITTED}), 0) from public.model_calls m
+      join public.planning_envelopes e
+        on e.business_id = m.business_id and e.id = m.planning_envelope_id
+     where m.business_id = $1 and e.cap_id = ${capId})::text`;
+
 async function committedUnder(tx: TenantQuery, capId: string): Promise<number> {
-  const [row] = await tx.query<{ committed: string }>(
-    `select coalesce(sum(${COMMITTED}), 0)::text as committed
-       from public.model_calls m
-       join public.planning_envelopes e
-         on e.business_id = m.business_id and e.id = m.planning_envelope_id
-      where m.business_id = $1 and e.cap_id = $2`,
-    [tx.businessId, capId],
-  );
+  const sql = `select ${committedUnderSql('$2')} as committed`;
+  const [row] = await tx.query<{ committed: string }>(sql, [tx.businessId, capId]);
   return Number(row?.committed ?? 0);
 }
 
@@ -148,6 +150,7 @@ async function holdPlanning(
   request: ConversationCallRequest,
   operation: ModelOperation,
   route: BrokerRoute,
+  account: string | null,
 ): Promise<Held> {
   const cap = await lockedOrDefault(tx);
   if (await atCeiling(tx, operation, route)) {
@@ -162,8 +165,9 @@ async function holdPlanning(
   await tx.query(
     `insert into public.model_calls
        (business_id, id, conversation_id, planning_envelope_id, operation_key, state,
-        reserved_minor, route_key, route_reach, credential_kind, started_at)
-     values ($1, $2, $3, $4, $5, 'dispatched', $6, $7, $8, $9, clock_timestamp())`,
+        reserved_minor, route_key, route_reach, credential_kind, provider, credential_ref,
+        account, started_at)
+     values ($1, $2, $3, $4, $5, 'dispatched', $6, $7, $8, $9, $10, $11, $12, clock_timestamp())`,
     [
       tx.businessId,
       callId,
@@ -174,6 +178,9 @@ async function holdPlanning(
       route.key,
       route.reach,
       route.credentialKind,
+      route.provider,
+      route.credentialRef,
+      account,
     ],
   );
   await registerPromptCopy(tx, callId);
@@ -246,9 +253,11 @@ export async function callModelForPlanning(
   const fields = outsideFields(request.fields);
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
+  const { route } = chosen;
+  const account = await sendingAccount(broker, route, operation.destination);
   const held = await database.withBusiness(
     businessId,
-    async (tx) => await holdPlanning(tx, request, operation, chosen.route),
+    async (tx) => await holdPlanning(tx, request, operation, route, account),
   );
   if (!('reserved' in held)) return held;
   return await sendPlanning(database, businessId, held.reserved, fields, broker);
@@ -259,31 +268,33 @@ export async function callModelForPlanning(
  * business's; the spend is the person's own conversation only, filtered by its
  * owner inside the query, so another person's conversation reads as none, and
  * so does no conversation at all (the empty drawer, before the first message).
+ * One statement, one snapshot: a hold or settlement committed meanwhile is in all or none.
  */
 export async function readPlanningAllowance(
   tx: TenantQuery,
   personId: string,
   conversationId: string | null,
 ): Promise<PlanningAllowance> {
-  const cap = await planningCap(tx, false);
-  const [own] = await tx.query<{ spent: string; held: string }>(
-    `select coalesce(sum(case when m.state = 'settled' then m.actual_minor else 0 end), 0)::text
-              as spent,
-            coalesce(sum(case when m.state in ('reserved', 'dispatched', 'liability_unknown')
-                              then m.reserved_minor else 0 end), 0)::text as held
-       from public.planning_envelopes e
-       join public.model_calls m
-         on m.business_id = e.business_id and m.planning_envelope_id = e.id
-      where e.business_id = $1 and e.conversation_id = $2 and e.owner_person_id = $3`,
+  const [row] = await tx.query<Record<keyof Cap | 'committed' | 'spent' | 'held', string | null>>(
+    `select c.id, c.limit_minor::text, c.currency, ${committedUnderSql('c.id')} as committed, own.*
+       from (select coalesce(sum(m.actual_minor) filter (where m.state = 'settled'), 0)::text
+                      as spent,
+                    coalesce(sum(m.reserved_minor) filter (where m.state in
+                      ('reserved', 'dispatched', 'liability_unknown')), 0)::text as held
+               from public.planning_envelopes e
+               join public.model_calls m
+                 on m.business_id = e.business_id and m.planning_envelope_id = e.id
+              where e.business_id = $1 and e.conversation_id = $2 and e.owner_person_id = $3) own
+       left join public.budget_caps c on c.business_id = $1 and c.key = 'planning'`,
     [tx.businessId, conversationId, personId],
   );
-  const conversation = { spentMinor: Number(own?.spent ?? 0), heldMinor: Number(own?.held ?? 0) };
-  // No row: nothing has been held against it, so all of the default is left.
-  if (cap === undefined) {
+  const conversation = { spentMinor: Number(row?.spent ?? 0), heldMinor: Number(row?.held ?? 0) };
+  // No cap row, its columns null: nothing has been held against it, so all the default is left.
+  if (!row?.limit_minor || !row.currency) {
     const { limitMinor, currency } = PLANNING_CAP_DEFAULT;
     return { set: false, currency, limitMinor, leftMinor: limitMinor, conversation };
   }
-  const limitMinor = Number(cap.limit_minor);
-  const leftMinor = Math.max(0, limitMinor - (await committedUnder(tx, cap.id)));
-  return { set: true, currency: cap.currency, limitMinor, leftMinor, conversation };
+  const limitMinor = Number(row.limit_minor);
+  const leftMinor = Math.max(0, limitMinor - Number(row.committed));
+  return { set: true, currency: row.currency, limitMinor, leftMinor, conversation };
 }

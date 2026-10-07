@@ -39,7 +39,11 @@ import type {
   ConversationReadResult,
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
-import { conversationAddress, DEFAULT_TITLE } from '../commands/conversations.ts';
+import {
+  conversationAddress,
+  DEFAULT_TITLE,
+  holdsOwnConversations,
+} from '../commands/conversations.ts';
 import {
   addressReader,
   wrapUpView,
@@ -175,6 +179,8 @@ async function served(
   session: Session,
   conversationId: string,
 ): Promise<ConversationReadResult> {
+  // Before the row: a purge committing between them reads as purged, not as an empty body.
+  const body = await messagesOf(tx, conversationId);
   const rows = await tx.query<ConversationRow>(
     `${EFFECTIVE_GRANTS}
      select id, ${TITLE}, case when ${SHOWN} then subject end as subject,
@@ -186,7 +192,7 @@ async function served(
   );
   const row = rows[0];
   if (row === undefined) throw new Error('conversation.read: the conversation went between reads');
-  const messages = row.body_purged_at === null ? await messagesOf(tx, conversationId) : null;
+  const messages = row.body_purged_at === null ? body : null;
   const wrapUps = await tx.query<WrapUpRow>(
     `select version, created_at, written_by_operation, code_revision, definition_version,
             request_quotation, items, left_open
@@ -270,12 +276,7 @@ export async function listConversations(
   tx: TenantQuery,
   session: Session,
 ): Promise<ConversationListResult | CommandRefusal> {
-  const own = await checkAuthority(tx, subjectsOf(session), {
-    collection: COLLECTION,
-    action: 'write',
-    scope: { kind: 'business', id: null },
-  });
-  if (session.roleKey === null || !own.ok) return HOLDS_NOTHING;
+  if (!(await holdsOwnConversations(tx, session))) return HOLDS_NOTHING;
   const rows = await tx.query<
     Pick<ConversationRow, 'id' | 'title' | 'last_activity_at' | 'body_purged_at'>
   >(
