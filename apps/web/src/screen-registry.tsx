@@ -108,8 +108,14 @@ export const SCREENS: {
       rollup={tabRollupFloor()}
     />
   ),
+  // Executive is an agency-wide rollup as well (CS-1.2): it re-reads on the same floor.
   'agency:executive': (context) => (
-    <ExecutiveScreen key={context.grantKey} client={context.client} grantKey={context.grantKey} />
+    <ExecutiveScreen
+      key={context.grantKey}
+      client={context.client}
+      grantKey={context.grantKey}
+      rollup={tabRollupFloor()}
+    />
   ),
   'agency:gallery': () => <Gallery />,
   'agency:onboarding': (context) => <OnboardingScreen client={context.client} />,

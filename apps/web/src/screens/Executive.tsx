@@ -8,12 +8,14 @@
 import type { ReactElement } from 'react';
 import { InDevelopment } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
+import type { RollupFloor } from '../data/rollup-floor.ts';
 import { AgentCostSection } from './executive/agent-costs.tsx';
 
 export function ExecutiveScreen(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly now?: () => number;
+  readonly rollup?: RollupFloor;
 }): ReactElement {
   return (
     <div className="secs" data-screen="executive">
@@ -22,6 +24,7 @@ export function ExecutiveScreen(props: {
         client={props.client}
         grantKey={props.grantKey}
         now={props.now ?? Date.now}
+        {...(props.rollup === undefined ? {} : { rollup: props.rollup })}
       />
     </div>
   );

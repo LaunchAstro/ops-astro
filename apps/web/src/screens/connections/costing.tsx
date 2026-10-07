@@ -7,11 +7,13 @@
 // on the rollup floor.
 //
 // The section is not drawn when nothing the caller may see has run, nor for a
-// caller the read refuses. A skill's figure has three branches: a mean with its
-// spread, one run's figure in words, or a sentence when no run used the skill
-// alone; never a zero. Money arrives as minor units in text and is only
-// formatted here, never summed. Nothing here acts: the skill name is the door
-// to its process document, drawn unavailable with its reason until Docs exists.
+// caller the read refuses. A skill's figure has three branches, by how many of
+// the runs that used it alone are priced: a mean with its spread, one run's
+// figure in words, or a sentence when none is; never a zero. The words say
+// which of its own runs the figure rests on, since some may have no price yet.
+// Money arrives as minor units in text and is only formatted here, never
+// summed. Nothing here acts: the skill name is the door to its process
+// document, drawn unavailable with its reason until Docs exists.
 
 import type { ReactElement } from 'react';
 import { SectionHead } from '@launchastro/ui';
@@ -36,8 +38,23 @@ const costingOf = (value: SkillCostsResult): Costing | null =>
 const cost = (minor: string, currency: string): string => money(Number(minor), currency);
 const units = (count: string): string => Number(count).toLocaleString('en-AU');
 
+/** A figure from one priced run or none, said against the runs that used the skill alone. */
+function restsOn(kind: 'one' | 'none', solo: number): string {
+  if (kind === 'one') {
+    return solo <= 1
+      ? 'Not an average: this process has run on its own once.'
+      : `Not an average: 1 of its ${String(solo)} runs on its own has a known cost.`;
+  }
+  if (solo === 0) {
+    return 'No run has used this process on its own, so nothing here can be costed from it.';
+  }
+  return solo === 1
+    ? 'Its one run on its own has no known cost yet, so nothing here can be costed from it.'
+    : `None of its ${String(solo)} runs on its own has a known cost yet, so nothing here can be costed from them.`;
+}
+
 function Figure(props: { readonly row: SkillCostView }): ReactElement {
-  const { figure, currency, usage } = props.row;
+  const { figure, currency, usage, soloRuns } = props.row;
   if (figure.kind === 'mean') {
     return (
       <div className="skc__fig" data-figure="mean">
@@ -66,15 +83,13 @@ function Figure(props: { readonly row: SkillCostView }): ReactElement {
           <span className="skc__n">{cost(figure.amount, currency)}</span>{' '}
           <span className="skc__u">one run</span>
         </span>{' '}
-        <span className="skc__say">Not an average: this process has run once.</span>
+        <span className="skc__say">{restsOn('one', soloRuns)}</span>
       </div>
     );
   }
   return (
     <div className="skc__fig skc__fig--none" data-figure="none">
-      <span className="skc__say">
-        No run has used this process on its own, so nothing here can be costed from it.
-      </span>
+      <span className="skc__say">{restsOn('none', soloRuns)}</span>
     </div>
   );
 }

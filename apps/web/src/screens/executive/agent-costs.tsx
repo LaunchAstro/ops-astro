@@ -2,10 +2,12 @@
 //
 // Executive section 005, what our agents cost us (MP-14-6, CS-14.10; mockup
 // `/agency/executive/` #agentcost). One read, `finance.agent_costs`, for the
-// last thirty days, through `useRead` keyed on the grant: the tiles, the cost
-// log and the two roll-ups beside it are all drawn from its answer, so they
-// cannot disagree. Every amount is the server's, minor units in text: the page
-// formats them and adds none up, so it has no grand total of its own.
+// last thirty days, through `useRead` keyed on the grant and re-read on the
+// rollup floor: the tiles, the cost log and the two roll-ups beside it are all
+// drawn from its answer, so they cannot disagree. The log has a row per run,
+// agent and currency, so the tiles count distinct runs and agents. Every amount
+// is the server's, minor units in text: the page formats them and adds none
+// up, so it has no grand total of its own.
 //
 // Internal only: it is cost to us, never an amount a client is billed, and the
 // section says so in its own markup (`data-view="agency"`). A run with no
@@ -20,6 +22,7 @@ import type {
   CostAttachment,
 } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
+import type { RollupFloor } from '../../data/rollup-floor.ts';
 import { useRead } from '../../data/use-read.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { money } from '../../views/proposal-record.tsx';
@@ -41,6 +44,11 @@ const agentName = (id: string | null): string =>
   id === null ? 'An unnamed agent' : `Agent ${id.slice(0, 8)}`;
 const plural = (count: number, word: string): string =>
   `${String(count)} ${word}${count === 1 ? '' : 's'}`;
+const distinct = (
+  rows: readonly AgentCostRowView[],
+  of: (row: AgentCostRowView) => unknown,
+): number => new Set(rows.map((row) => of(row))).size;
+const runCount = (costs: AgentCostsResult): number => distinct(costs.runs, (row) => row.runId);
 
 function Who(props: { readonly attachment: CostAttachment }): ReactElement {
   const { attachment } = props;
@@ -144,17 +152,20 @@ function largestOf(lines: readonly Line[]): ReadonlyMap<string, number> {
 
 function Tiles(props: { readonly costs: AgentCostsResult }): ReactElement {
   const { costs } = props;
-  const unpriced = costs.runs.filter((row) => row.cost === null).length;
+  const unpriced = distinct(
+    costs.runs.filter((row) => row.cost === null),
+    (row) => row.runId,
+  );
   return (
     <StatRow columns={3}>
       <div data-cost-kpi="runs">
-        <Stat label="Runs" term={TIP} value={costs.runs.length} />
+        <Stat label="Runs" term={TIP} value={runCount(costs)} />
       </div>
       <div data-cost-kpi="unpriced">
         <Stat label="With no price yet" value={unpriced} />
       </div>
       <div data-cost-kpi="agents">
-        <Stat label="Agents" value={costs.byAgent.length} />
+        <Stat label="Agents" value={distinct(costs.runs, (row) => row.agentActorId)} />
       </div>
     </StatRow>
   );
@@ -251,6 +262,7 @@ export function AgentCostSection(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly now: () => number;
+  readonly rollup?: RollupFloor;
 }): ReactElement | null {
   const { client } = props;
   // The period is fixed when the section opens: the last thirty days to then.
@@ -261,6 +273,7 @@ export function AgentCostSection(props: {
   const { state, reload } = useRead<AgentCostsResult>({
     grantKey: props.grantKey,
     run: () => client.read<AgentCostsResult>('finance.agent_costs', period),
+    ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
     deps: [],
   });
   // A caller who may not see costs is shown no section at all.
@@ -271,7 +284,7 @@ export function AgentCostSection(props: {
       <SectionHead
         index="005"
         title="What our agents cost us"
-        right={`${shown === null ? 'Runs' : plural(shown.runs.length, 'run')} · API-equivalent`}
+        right={`${shown === null ? 'Runs' : plural(runCount(shown), 'run')} · API-equivalent`}
       />
       <RecordState state={state} subject="agent costs" onRetry={reload}>
         {(costs) => <Shown costs={costs} />}
