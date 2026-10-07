@@ -148,7 +148,8 @@ export function SidebarCorrections(props: {
   const corrections = useCorrections(props.client, props.propose, props.grantKey);
   return (
     <div data-assistant="corrections">
-      <Door corrections={corrections} />
+      {/* A draft is its grant's: a change of business, person or session starts a blank door. */}
+      <Door key={`${props.client.businessKey}|${props.grantKey ?? ''}`} corrections={corrections} />
       {desksOf(corrections.list).map((desk) => (
         <section key={desk.key} data-correction-desk={desk.key} aria-label={desk.title}>
           <span className="aip__plan-k">{desk.title}</span>

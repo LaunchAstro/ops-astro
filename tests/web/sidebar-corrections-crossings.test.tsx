@@ -144,4 +144,20 @@ describe('a business switch while an answer is out', () => {
     expect(card(view)?.dataset['correctionState']).toBe('requested');
     expect(alpha.sent('/live_correction/read')).toHaveLength(1);
   });
+
+  it('a draft typed in Alpha is not in Bravo’s door, and is never sent as Bravo’s request', async () => {
+    const alpha = separated('alpha', { s: [CLIENT_A] }, {});
+    const bravo = separated('bravo', { s: [CLIENT_A] }, {});
+    const view = await mount(sidebar(alpha.as('s')));
+    await view.type('[data-correction-door] [name="word"]', 'AlphaOnlyWord');
+    await view.render(sidebar(bravo.as('s')));
+    await tick();
+    const values = view
+      .all('[data-correction-door] input')
+      .map((input) => (input as HTMLInputElement).value);
+    expect(values).toStrictEqual(['', '', '']);
+    await view.click('[data-correction-ask]');
+    await tick();
+    expect(JSON.stringify(bravo.sent('/live_correction/request'))).not.toContain('AlphaOnlyWord');
+  });
 });
