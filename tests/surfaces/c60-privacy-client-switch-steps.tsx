@@ -24,9 +24,7 @@ export async function privacyCard(
   result: AccessReadResult,
   onSet: (body: Body) => void,
 ): Promise<Mounted> {
-  return await mount(
-    <ClientPrivacy result={result} busy={false} onSet={(body) => onSet(body)} />,
-  );
+  return await mount(<ClientPrivacy result={result} busy={false} onSet={(body) => onSet(body)} />);
 }
 
 const modelUse = '[data-privacy-setting="model"] button[role="switch"]';

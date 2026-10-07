@@ -19,7 +19,13 @@ import {
   switchClientsMidRequest,
   type Body,
 } from '../surfaces/c60-privacy-client-switch-steps.tsx';
-import { as, newClient, requestsOf, setPrivacy, useClientsWorld } from './c60-client-privacy-world.ts';
+import {
+  as,
+  newClient,
+  requestsOf,
+  setPrivacy,
+  useClientsWorld,
+} from './c60-client-privacy-world.ts';
 
 useClientsWorld();
 
@@ -47,8 +53,8 @@ describe.skipIf(serverUrl === undefined)('C60 a written request stays with its c
     const recorded = await requestsOf(second);
     expect(recorded.map((each) => each.requestedBy)).not.toContain(FIRST_REQUEST.requestedBy);
     expect(recorded.map((each) => each.requestLink)).not.toContain(FIRST_REQUEST.requestLink);
-    expect(recorded).toStrictEqual([]);
-    expect(await requestsOf(first)).toStrictEqual([]);
+    expect(recorded).toHaveLength(0);
+    expect(await requestsOf(first)).toHaveLength(0);
     await page.unmount();
   });
 });
