@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A new client's onboarding, laid out as tasks in phases (C41-A, CS-15.2 and
-// CS-15.4). It draws no mockup surface: it is built from the kit alone. Each
-// step says whether an agent runs it, it needs a person or it waits on the
-// client, what it waits for, and what it wrote onto its task. A step parked
-// at a gate names whose move it is.
+// CS-15.4). It draws no mockup surface: it is built from the kit alone, and
+// the top bar names it, as it names every page. Each step says whether an
+// agent runs it, it needs a person or it waits on the client, what it waits
+// for, and what it wrote onto its task. A step parked at a gate names whose
+// move it is.
 //
 // There is no onboarding read yet (`onboarding.start` and
 // `onboarding.step_result` are commands), so every value below is made up and
@@ -92,10 +93,7 @@ function Phases(props: { readonly onboarding: OnboardingView }): ReactElement {
 export function OnboardingScreen(_props: { readonly client: OperationsClient }): ReactElement {
   return (
     <section className="page" data-screen="onboarding" data-onboarding>
-      <header className="page__head">
-        <h1 className="t-title">Onboarding</h1>
-        <p className="t-2">Start one from the command palette or the CLI.</p>
-      </header>
+      <p className="t-2">Start one from the command palette or the CLI.</p>
       <SourceRegion provenance="mock">
         <Phases onboarding={MADE_UP_ONBOARDING} />
       </SourceRegion>
