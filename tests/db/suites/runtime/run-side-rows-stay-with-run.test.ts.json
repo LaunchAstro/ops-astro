@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Application inserts keep bootstrap reads, run checks and model calls on their own run; upgrades preserve valid rows and refuse cross-run or orphaned history before changing keys."
+}

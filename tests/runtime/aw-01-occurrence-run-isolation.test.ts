@@ -13,7 +13,7 @@ import { executeRead, isCommandRefusal } from '../../packages/core-commands/src/
 import { queue } from '../../packages/core-runtime/src/index.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { cq8World } from './cq-8-world.ts';
-import { asAgent, codeOf as commandCode, rows } from './schedules-harness.ts';
+import { asAgent, codeOf as commandCode, createTask, propose, rows } from './schedules-harness.ts';
 import {
   authorityFor,
   codeOf,
@@ -122,15 +122,22 @@ it('AW-01 occurrence run: pickup can never reach one', async () => {
   // occurrence run has none, and the database refuses one naming it.
   const listed = await w.s.db.app.withBusiness(w.s.business, async (tx) => await queue(tx));
   expect(listed.map((entry) => entry.runId)).not.toContain(started.value.runId);
-  const [held] = await rows<{ readonly id: string }>(
-    w.s,
-    `select id from public.reservations where business_id = $1 limit 1`,
-    [w.s.business],
-  );
+  const task = await createTask(w.s, 'occurrence reservation crossing');
+  const proposal = await propose(w.s, task, { maximumMinor: 2_000 });
+  const reservation = randomUUID();
+  await w.s.db.app.withBusiness(w.s.business, async (tx) => {
+    await tx.query(
+      `insert into public.reservations
+         (business_id, id, envelope_id, version_id, run_id, held_minor)
+       select $1, $2, envelope_id, $3, $4, 2_000
+         from public.reservations where business_id = $1 limit 1`,
+      [w.s.business, reservation, proposal['versionId'], proposal['runId']],
+    );
+  });
   await expect(
     w.s.db.admin.execute(
       `update public.reservations set run_id = $3 where business_id = $1 and id = $2`,
-      [w.s.business, held?.id, started.value.runId] as never,
+      [w.s.business, reservation, started.value.runId] as never,
     ),
   ).rejects.toThrow(/reservations_run_in_same_version/u);
 });

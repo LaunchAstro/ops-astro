@@ -23,7 +23,7 @@ it('reconciliation uses the eligible route that carried the call when route keys
   // ineligible for planning's outside fields, so planning uses the local API key.
   const twin = { ...route, reach: 'cloud' as const, credentialKind: 'subscription' as const };
   const base: Broker = { ...faultBroker(), routes: [twin, route], audit: local(on).audit };
-  const request = ask(on);
+  const request = await ask(on);
   world.provider.mode('cut');
   expect(
     await callModelForPlanning(on.db.app, on.business, ownerOf(on), request, base),

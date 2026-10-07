@@ -25,7 +25,7 @@ it('reconciliation asks only through the credential that carried the call when t
   // Same key, reach, provider and credential kind; a credential custody does not hold.
   const other = { ...route, credentialRef: `${route.credentialRef}_other` };
   const carried: Broker = { ...faultBroker(), routes: [route], audit: local(on).audit };
-  const request = ask(on);
+  const request = await ask(on);
   world.provider.mode('cut');
   expect(
     await callModelForPlanning(on.db.app, on.business, ownerOf(on), request, carried),

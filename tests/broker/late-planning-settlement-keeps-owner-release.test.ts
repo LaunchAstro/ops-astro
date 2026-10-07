@@ -89,7 +89,7 @@ it('a delayed planning settlement cannot spend a hold already released by its ow
   await openBilling(on);
   await setCap(on, 500);
   world.provider.mode('answer');
-  const request = ask(on);
+  const request = await ask(on);
   const { delayed, readyPromise, resume } = delayedSecondTransaction(on);
   const first = callModelForPlanning(delayed, on.business, ownerOf(on), request, local(on));
   await readyPromise;
@@ -97,7 +97,7 @@ it('a delayed planning settlement cannot spend a hold already released by its ow
   expect(original).toMatchObject({ state: 'dispatched' });
   await releaseByOwner(on, request.conversation.id, original?.['id']);
   // Another reply takes the released room, and remains in flight at its maximum.
-  const secondRequest = ask(on);
+  const secondRequest = await ask(on);
   const slow = gated(local(on));
   const second = callModelForPlanning(
     on.db.app,

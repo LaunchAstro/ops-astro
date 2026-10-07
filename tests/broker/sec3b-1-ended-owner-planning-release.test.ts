@@ -65,9 +65,9 @@ async function endAccess(personId: string): Promise<void> {
 it("SEC3B-1: an ended owner's planning reply is released in their name, and the pass goes on", async () => {
   // The owner, a person of alpha, and bravo's owner each have a reply held unknown.
   const owner = await enrol(s.db.app, s.business, 'sec3b1-owner');
-  const asked = ask(s);
+  const asked = await ask(s);
   const mine = { ...asked, conversation: { ...asked.conversation, ownerPersonId: owner.personId } };
-  const theirs = ask(p.bravo);
+  const theirs = await ask(p.bravo);
   await heldReply(
     s,
     { actorId: owner.actorId, delegationId: null, attendedByPersonId: owner.personId },

@@ -15,6 +15,7 @@ import {
   localGptCostMinor,
 } from '../../packages/core-connectors/src/index.ts';
 import { callModelInConversation } from '../../packages/core-custody/src/index.ts';
+import { seedConversation } from './conversation-fixture.ts';
 import { broker, noDatabase, s, useBrokerWorld } from './broker-world.ts';
 import { LOCAL_REPLY, startStubRunner, type StubRunner } from './local-gpt-stub.ts';
 
@@ -44,7 +45,7 @@ it('LA-1 side panel: the page and the earlier messages go with the message under
     s.business,
     { actorId: s.decider.actorId, delegationId: null, attendedByPersonId: s.decider.personId },
     {
-      conversation: { id: randomUUID(), businessId: s.business, ownerPersonId: s.decider.personId },
+      conversation: await seedConversation(s),
       operation: LOCAL_GPT_CONVERSATION.key,
       fields: [
         { name: 'page', source: 'outside', value: page },

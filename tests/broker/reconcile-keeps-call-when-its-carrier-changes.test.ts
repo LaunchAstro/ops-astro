@@ -85,7 +85,7 @@ it.each(['route reference', 'credential account'])(
     try {
       const route = { ...LOCAL, key: 'carrying_route', credentialRef: 'sol944_account_a' };
       const base: Broker = { ...faultBroker(), custody, routes: [route], audit: local(on).audit };
-      const request = ask(on);
+      const request = await ask(on);
       const result = await callModelForPlanning(on.db.app, on.business, ownerOf(on), request, base);
       expect(result).toMatchObject({ code: 'LIABILITY_UNKNOWN', heldMinor: 500 });
       if (result.callId === null) throw new Error('no held call');
@@ -178,7 +178,7 @@ it('changing an operation provider cannot release an already processed call', as
       routes: [route, twin],
       audit: local(on).audit,
     };
-    const request = ask(on);
+    const request = await ask(on);
     world.provider.mode('slow');
     const result = await callModelForPlanning(on.db.app, on.business, ownerOf(on), request, base);
     expect(result).toMatchObject({ code: 'LIABILITY_UNKNOWN', heldMinor: 500 });

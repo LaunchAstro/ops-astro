@@ -125,7 +125,7 @@ async function heldInCustody(
     on.db.app,
     on.business,
     ownerOf(on),
-    ask(on, conversationId),
+    await ask(on, conversationId),
     gated,
   );
   // Custody is only reached once the hold's own transaction has committed.

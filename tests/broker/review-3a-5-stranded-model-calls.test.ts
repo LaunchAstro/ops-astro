@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { sweepDeployment } from '../../apps/api/recovery-entry.ts';
 import { liveWork } from '../runtime/schedules-harness.ts';
+import { seedConversation } from './conversation-fixture.ts';
 import { noDatabase, rowsOf, s, stepOf, useBrokerWorld } from './broker-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -76,16 +77,17 @@ it('REVIEW-3A-5: the deployment sweep holds a sent call that got no answer as dr
   // A conversation call has no lease and no worker to lose: past ten minutes
   // started with no answer, the model-call half holds it.
   const unanswered = randomUUID();
+  const conversation = await seedConversation(s);
   await s.db.app.withBusiness(s.business, async (tx) => {
     await tx.query(
       `insert into public.model_calls
          (business_id, id, conversation_id, operation_key, state, reserved_minor,
           route_key, route_reach, credential_kind, accepted_at, started_at)
-       values ($1, $2, gen_random_uuid(), 'model.replay_compose', 'dispatched', 0,
+       values ($1, $2, $3, 'model.replay_compose', 'dispatched', 0,
                'on_premises', 'local', 'api_key',
                clock_timestamp() - interval '11 minutes',
                clock_timestamp() - interval '11 minutes')`,
-      [tx.businessId, unanswered],
+      [tx.businessId, unanswered, conversation.id],
     );
   });
 

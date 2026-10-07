@@ -162,7 +162,9 @@ async function happenedBegunBefore<T>(
   const held = racer(s);
   try {
     return await held.withBusiness(s.business, async (tx) => {
-      const [now] = await tx.query<{ began: Date }>('select now() as began');
+      const [now] = await tx.query<{ began: string }>(
+        'select (extract(epoch from now()) * 1000000)::bigint::text as began',
+      );
       const stopped = await stop();
       const body = {
         command: 'budget.record_outcome',
@@ -191,11 +193,12 @@ it('a top-up is refused when the happened was recorded in a transaction begun be
   expect(recorded.code).toBe('applied');
   const { runId, askId } = recorded;
   const ask = { recordId: w.taskId, runId, askId };
-  const { raised } = await one<{ raised: Date }>(
-    `select raised_at as raised from public.budget_asks where id = $1`,
+  const { raised } = await one<{ raised: string }>(
+    `select (extract(epoch from raised_at) * 1000000)::bigint::text as raised
+       from public.budget_asks where id = $1`,
     [askId],
   );
-  expect(recorded.began?.getTime()).toBeLessThan(raised.getTime());
+  expect(Number(recorded.began)).toBeLessThan(Number(raised));
   const before = { ...(await stateOf(runId, w.attemptId)), holds: await holdsOf(runId) };
   expect(before).toMatchObject({ run: 'waiting_budget', reservation: 'actual', answers: 0 });
   const topUp = { command: 'run.top_up', ...ask, amountMinor: 1_000, currency: 'AUD' };

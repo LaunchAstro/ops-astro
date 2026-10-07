@@ -48,7 +48,7 @@ const outcomeBody = (conversationId: string, callId: unknown, outcome: string) =
 });
 
 it('PLANFIX-3B-1: a planning reply whose operation declares a lookup is released by the pass alone', async () => {
-  const request = ask(s);
+  const request = await ask(s);
   const before = await allowance(s, s.decider.personId, request.conversation.id);
   world.provider.mode('cut');
   world.provider.lookupMode('honest');
@@ -74,7 +74,7 @@ it('PLANFIX-3B-1: a planning reply whose operation declares a lookup is released
 });
 
 it("PLANFIX-3B-1: only the conversation's owner records a planning reply's outcome, once", async () => {
-  const request = ask(s);
+  const request = await ask(s);
   world.provider.mode('cut');
   const failed = await plan(s, ownerOf(s), request);
   world.provider.mode('answer');

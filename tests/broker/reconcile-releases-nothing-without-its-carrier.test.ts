@@ -24,7 +24,7 @@ useBrokerWorld('reconcilecarrier');
 const cutCall = async (label: string) => {
   const on = await seedSchedules(s.db, label, 1_000_000);
   const base: Broker = { ...faultBroker(), routes: [LOCAL], audit: local(on).audit };
-  const request = ask(on);
+  const request = await ask(on);
   world.provider.mode('cut');
   expect(
     await callModelForPlanning(on.db.app, on.business, ownerOf(on), request, base),

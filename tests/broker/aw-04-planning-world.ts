@@ -6,6 +6,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll } from 'vitest';
+import { seedConversation } from './conversation-fixture.ts';
 import { writeAuditEvent } from '../../packages/core-commands/src/commands/audit.ts';
 import {
   callModelForPlanning,
@@ -51,8 +52,11 @@ export const ownerOf = (on: Schedules): ModelCaller => ({
   attendedByPersonId: on.decider.personId,
 });
 
-export const ask = (on: Schedules, id: string = randomUUID()): ConversationCallRequest => ({
-  conversation: { id, businessId: on.business, ownerPersonId: on.decider.personId },
+export const ask = async (
+  on: Schedules,
+  id: string = randomUUID(),
+): Promise<ConversationCallRequest> => ({
+  conversation: await seedConversation(on, id),
   operation: 'model.replay_compose',
   fields: [{ name: 'message', source: 'outside', value: PLANTED_PROMPT }],
 });
