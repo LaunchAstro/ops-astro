@@ -48,7 +48,12 @@ export interface Outcome {
 
 const SIGN_IN_FAILED = new Set(['AUTH_UNKNOWN_LOGIN', 'ACTOR_INACTIVE']);
 // A caller refused outside its scope: a person or an agent at a business it is not in, or a grant it lacks.
-const CROSS_SCOPE = new Set(['AUTH_NO_MEMBERSHIP', 'AUTH_NO_AGENT_IDENTITY', 'SCOPE_NOT_GRANTED']);
+const CROSS_SCOPE = new Set([
+  'AUTH_NO_MEMBERSHIP',
+  'AUTH_ACCESS_ENDED',
+  'AUTH_NO_AGENT_IDENTITY',
+  'SCOPE_NOT_GRANTED',
+]);
 // Who may act on what changed: a grant given, revoked or ended, or a delegation revoked.
 const AUTHORITY = new Set([
   'grant.revoke',

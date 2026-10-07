@@ -3373,7 +3373,8 @@ naming `holderId`; a malformed id is `FIELD_VALUE_INVALID` 422. Ending the last
 business-wide `access:manage` of a person who can sign in is
 `ACCESS_LAST_MANAGER` 409.
 
-From the commit the person's next call is `AUTH_NO_MEMBERSHIP` 403, whatever
+From the commit the person's next call is `AUTH_ACCESS_ENDED` 403 (a login
+this business ended; a login it never knew stays `AUTH_NO_MEMBERSHIP`), whatever
 the sign-in provider has done. Each ending owes the provider two steps, never
 taken inside a transaction: end every session of the login, then deactivate
 the login. Both are a 100-year ban through GoTrue's admin API
