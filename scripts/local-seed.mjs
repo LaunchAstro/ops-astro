@@ -113,6 +113,8 @@ const GRANTS_BY_ROLE = {
     ['custody', 'manage'],
     // The connector fleet on Connections & signal (MP-14-7a).
     ['connection', 'read'],
+    // What agent runs cost (MP-14-9, MP-14-6): the key catalogue's `finance:read`.
+    ['finance', 'read'],
     // Standing mandates and graduation (MP-14-10a): filing, revoking,
     // promoting and demoting are `mandate:manage`, the owner's and
     // administrators' and never an agent's; a money key, so C59's step-up.

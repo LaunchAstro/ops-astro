@@ -52,6 +52,9 @@ export const READ_NAMES = [
   'connection.signal',
   // The per-client graduation region on the same page (MP-14-10a).
   'connection.graduation',
+  // What agent runs cost: skill costing (MP-14-9) and the agents' cost log (MP-14-6).
+  'finance.skill_costs',
+  'finance.agent_costs',
   // The gates waiting on the caller's decision (MP-6-1).
   'gate.pending',
   // A conversation at its address (AW-03).

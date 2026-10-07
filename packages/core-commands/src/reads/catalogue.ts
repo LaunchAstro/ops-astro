@@ -46,6 +46,8 @@ import { listCustodySecrets } from './custody.ts';
 import { readConnectionFleet } from './connections.ts';
 import { readConnectionSignal } from './signal.ts';
 import { readConnectionGraduation } from './graduation.ts';
+import { parseCostPeriod, readAgentCosts } from './agent-costs.ts';
+import { parseNoCostOperands, readSkillCosts } from './costs.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
@@ -674,6 +676,26 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'holds-any-grant',
     outsiderNotFound: false,
     serve: async (tx, session) => await readConnectionGraduation(tx, session),
+  },
+  // What agent runs cost, asked per row by the scopes the caller holds
+  // `finance:read` at, as `connection.fleet` is by `connection:read`: a caller
+  // holding it nowhere, or sending a key the read does not take, is refused
+  // inside the read.
+  'finance.skill_costs': {
+    identifiers: [],
+    parse: parseNoCostOperands,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, operands) => await readSkillCosts(tx, session, operands),
+  },
+  'finance.agent_costs': {
+    identifiers: [],
+    parse: parseCostPeriod,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, period) => await readAgentCosts(tx, session, period),
   },
   // No subject record, for the reason `task.queue` gives: the settings are
   // the business's own configuration rather than one record, and there is no

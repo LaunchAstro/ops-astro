@@ -29,6 +29,9 @@ const NOT_DRAWN = new Set([
   'live_correction.read',
   // MP-14-10a: the graduation data lands before the screens that draw it (P06).
   'connection.graduation',
+  // MP-14-9, MP-14-6: the cost data lands before the screens that draw it.
+  'finance.skill_costs',
+  'finance.agent_costs',
 ]);
 
 const at = (name: ReadName): string => `${PREFIX.person}alpha${pathOf(name)}`;

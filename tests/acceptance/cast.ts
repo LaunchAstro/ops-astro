@@ -146,6 +146,8 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   ['automation', 'manage'],
   // MP-14-10a: standing mandates and graduation, as the seed's admin holds it.
   ['mandate', 'manage'],
+  // MP-14-9, MP-14-6: what agent runs cost, the key catalogue's `finance:read`.
+  ['finance', 'read'],
 ];
 
 export async function tokenFor(

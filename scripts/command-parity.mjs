@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
-// The command parity check and report (API-1), from source files only.
-// `--check` exits 1 on any failure; `--json` prints the catalogue.
+// The command parity check and report (API-1), from sources: `--check` exits 1; `--json` prints it.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -189,6 +188,7 @@ const OPERANDS = {
     steps: 's',
   },
   'chat.messages': { conversationId: '00000000-0000-4000-8000-000000000000' },
+  'finance.agent_costs': { from: '2026-01-01T00:00:00Z', to: '2026-02-01T00:00:00Z' },
 };
 
 // The grants a read really asks: the real read path on a transaction that holds none.
