@@ -783,7 +783,13 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       operands: recordIdOperand(() => refuseNotFound()),
       serve: serveCommentChange(
         async (tx, on, request) =>
-          await editTaskComment(tx, on, request['commentId'], request['body']),
+          await editTaskComment(
+            tx,
+            on,
+            request['commentId'],
+            request['body'],
+            request['expectedEditedAt'],
+          ),
       ),
     }),
   ],

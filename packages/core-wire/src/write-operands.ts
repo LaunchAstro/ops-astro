@@ -60,7 +60,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     parentId: 'any',
     mentions: 'any',
   },
-  'task.edit_comment': { ...TARGET, commentId: 'any', body: 'any' },
+  'task.edit_comment': { ...TARGET, commentId: 'any', body: 'any', expectedEditedAt: 'any' },
   'task.delete_comment': { ...TARGET, commentId: 'any' },
   'task.propose': {
     ...TARGET,

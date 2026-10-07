@@ -22,6 +22,8 @@ export type CommentRequest<Targeted> =
       readonly command: 'task.edit_comment';
       readonly commentId: string;
       readonly body: string;
+      /** The `edited_at` the words were typed against; null for never edited. */
+      readonly expectedEditedAt?: unknown;
     } & Targeted)
   | ({ readonly command: 'task.delete_comment'; readonly commentId: string } & Targeted);
 

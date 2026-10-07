@@ -128,7 +128,13 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.mentions,
     ),
   'task.edit_comment': (tx, context, request) =>
-    editTaskComment(tx, changeFrom(context), request.commentId, request.body),
+    editTaskComment(
+      tx,
+      changeFrom(context),
+      request.commentId,
+      request.body,
+      request.expectedEditedAt,
+    ),
   'task.delete_comment': (tx, context, request) =>
     deleteTaskComment(tx, changeFrom(context), request.commentId),
 
