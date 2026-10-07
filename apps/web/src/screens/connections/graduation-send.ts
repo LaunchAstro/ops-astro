@@ -1,20 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The graduation region's one write at a time (MP-14-10a), through
-// `useMoneyCommand` since mandate:manage needs a fresh sign-in (C59). An answer
-// lost on the way back (`unknown`) keeps its operation, so pressing again with
-// the same body is the same attempt and files once. The server stores a
-// refusal under its operation too, so a resend after a fresh sign-in is a new
-// operation, unless the refused send was such a retry: that operation may have
-// applied, so it stays the one sent, and the one kept, until it is answered.
-// Refused for a fresh sign-in once stepped up, it is answered: the register
-// releases a success it holds to a stepped-up sign-in, so what it holds is that
-// refusal, and the write goes once more as a new operation.
+// `useMoneyCommand` since mandate:manage needs a fresh sign-in (C59). One press
+// is one operation, kept through the step-up's resend: the server holds no
+// operation for a step-up refusal, so the same one is judged afresh once
+// stepped up. An answer lost on the way back (`unknown`) keeps its operation,
+// so pressing again with the same body is the same attempt and files once. A
+// retry refused stays kept: a stored success the server withholds from a sign-in
+// it does not yet find fresh is refused too, and only its answer settles it.
 // `drop` withdraws a write held for that sign-in, and its refusal with it; a
 // promotion form drops only the write it sent.
 
 import { useRef } from 'react';
-import { isRefusal, type OperationsClient } from '../../operations/client.ts';
+import type { OperationsClient } from '../../operations/client.ts';
 import { useMoneyCommand } from '../../records/use-money-command.ts';
 
 type Change = 'mandate.file' | 'mandate.revoke' | 'graduation.promote' | 'graduation.demote';
@@ -45,26 +43,12 @@ export function useSend(client: OperationsClient, reload: () => void) {
     const key = JSON.stringify([name, body, revision ?? null]);
     const kept = unresolved.current;
     const same = kept?.key === key ? kept : null;
-    let retry = same !== null;
-    let id = same?.id ?? client.newOperationId();
-    let first = true;
+    const retry = same !== null;
+    const id = same?.id ?? client.newOperationId();
     const expected = revision === undefined ? {} : { expectedRevision: revision };
-    const mutate = (to: OperationsClient) =>
-      to.mutate(name, body, { ...expected, operationId: id });
     owner.current = ownerOf(name, body);
     command.run(
-      async (to) => {
-        const stepped = !first;
-        if (stepped && !retry) id = to.newOperationId();
-        first = false;
-        const result = await mutate(to);
-        if (!stepped || !retry || !isRefusal(result) || result.code !== 'STEP_UP_REQUIRED') {
-          return result;
-        }
-        retry = false;
-        id = to.newOperationId();
-        return await mutate(to);
-      },
+      async (to) => await to.mutate(name, body, { ...expected, operationId: id }),
       (settlement) => {
         // A retry refused may still have applied: only its answer settles it.
         const open = settlement.kind !== 'ok' && (retry || settlement.kind === 'unknown');

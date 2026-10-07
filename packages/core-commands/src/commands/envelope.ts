@@ -521,6 +521,12 @@ async function answerOf(
   outcome: Applied | Refused,
 ): Promise<CommandResult> {
   if (isRefused(outcome)) {
+    const { refusal, attempted } = outcome;
+    // A step-up refusal (C59) applied nothing and holds no operation id: the
+    // same operation sent again once stepped up is judged afresh (`unheld`).
+    if (refusal.code === 'STEP_UP_REQUIRED') {
+      return await settle(tx, session, request, digest, refusal, 'unheld', attempted);
+    }
     // The register stores what the caller was **shown**, not the refusal the
     // operation produced. A replay returns the stored result verbatim, so
     // storing the untranslated one would hand a second caller an audit-only
@@ -528,7 +534,6 @@ async function answerOf(
     // column exists for, defeated on the replay path. A review found this.
     const kept = outcome.kept ?? outcome.refusal;
     await register(tx, session, request, digest, asCallerVisible(kept), null);
-    const { refusal, attempted } = outcome;
     return await settle(tx, session, request, digest, refusal, 'registered', attempted);
   }
   const handle: CommandHandle = {
@@ -643,10 +648,16 @@ export async function register(
 
 /**
  * Where a refusal's identity stands: `register` writes the register row,
- * `registered` means the register already holds this identity, and `none`
- * that the request carried no usable identity to hold.
+ * `registered` means the register already holds this identity, `unheld` that
+ * the audit names it and the register keeps nothing for it, and `none` that
+ * the request carried no usable identity to hold.
+ *
+ * A step-up refusal is `unheld`. Held, it would answer its operation with the
+ * refusal for good, even once stepped up, and a caller retrying a lost answer
+ * could not tell it from a stored success the same check withholds, which a
+ * new operation would apply twice.
  */
-export type IdentityStanding = 'register' | 'registered' | 'none';
+export type IdentityStanding = 'register' | 'registered' | 'unheld' | 'none';
 
 /** A body that carries a secret (C31): no refusal puts any of its values in the audit. */
 const SEALED_BODIES: ReadonlySet<string> = new Set(['secret.set']);

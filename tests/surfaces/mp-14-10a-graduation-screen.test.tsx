@@ -125,12 +125,21 @@ interface Opening {
   /** The first matching command is stored, then its answer is lost on the way back. */
   readonly lose?: RegExp;
   /**
-   * Matching commands go through the operation register as `envelope.ts`'s
-   * `replay` keeps it: each operation keeps its first answer, a stored refusal
-   * answers again as it is, and a stored success only to a stepped-up sign-in.
-   * Until the step-up, a new operation is refused STEP_UP_REQUIRED, and stored.
+   * Matching commands go through the operation register as `envelope.ts`
+   * keeps it: each operation keeps its first answer, a stored refusal answers
+   * again as it is, and a stored success only to a stepped-up sign-in. Until
+   * the step-up, an operation is refused STEP_UP_REQUIRED, and nothing is
+   * stored for it (`unheld`).
    */
   readonly register?: RegExp;
+  /** The sign-in is fresh for the first registered command, and ages past the window after it. */
+  readonly ages?: true;
+  /**
+   * Stepped-up commands a stored success is still withheld from: the new
+   * factor's time ahead of the database clock past its skew, until the clock
+   * catches up.
+   */
+  readonly ahead?: number;
 }
 
 const STEP_UP = { refused: true, code: 'STEP_UP_REQUIRED', names: [], fixes: [] };
@@ -206,21 +215,20 @@ function registerStub(
 } {
   const registered = new Map<string, { readonly status: number; readonly body: unknown }>();
   const asked = opening.stepUp ?? null;
-  let stepped = false;
+  let stepped = opening.ages === true;
+  let ahead = opening.ahead ?? 0;
   return {
     answer: async (at, call) => {
       if (opening.register?.test(at) !== true) return;
       const operation = String(bodyOf(call)['operationId']);
       const kept = registered.get(operation);
-      // A stored success is withheld from a sign-in not stepped up; nothing new is stored.
-      if (kept?.status === 200 && !stepped) return json(STEP_UP, 403);
+      // A stored success is withheld from a sign-in not fresh; nothing is stored.
+      if (kept?.status === 200 && (!stepped || ahead-- > 0)) return json(STEP_UP, 403);
       if (kept !== undefined) return json(kept.body, kept.status);
-      if (!stepped) {
-        registered.set(operation, { status: 403, body: STEP_UP });
-        return json(STEP_UP, 403);
-      }
+      if (!stepped) return json(STEP_UP, 403);
       const reply = answer(at, () => false, 'VERSION_STALE', region());
       registered.set(operation, { status: reply.status, body: await reply.clone().json() });
+      if (opening.ages === true && registered.size === 1) stepped = false;
       return reply;
     },
     stepUp:
@@ -809,7 +817,7 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect(page.find('[data-mandate="m-new-1"]')).toBeNull();
   });
 
-  it('a fresh filing refused for a fresh sign-in goes again under a new operation once stepped up', async () => {
+  it('a fresh filing refused for a fresh sign-in goes again under its operation once stepped up', async () => {
     const { page, sent, signInAgain } = await open(/\/mandate\/file$/u, {
       code: 'STEP_UP_REQUIRED',
       once: true,
@@ -822,7 +830,7 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     await signInAgain();
     const operations = operationsTo(sent, '/mandate/file');
     expect(operations).toHaveLength(2);
-    expect(operations[1]).not.toBe(operations[0]);
+    expect(operations[1]).toBe(operations[0]);
     expect(page.find('[data-mandate="m-new"]')?.textContent).toContain('Approve posts');
   });
 
@@ -850,7 +858,7 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     expect(page.find('[data-mandate="m-yes"]')).toBeNull();
   });
 
-  it('a lost revoke refused for a fresh sign-in on its retry revokes under a new operation once stepped up (SC2-F1)', async () => {
+  it('a lost revoke refused for a fresh sign-in on its retry revokes under its operation once stepped up (SC2-F1)', async () => {
     const { page, sent, signInAgain } = await open(undefined, {
       register: /\/mandate\/revoke$/u,
       lose: /\/mandate\/revoke$/u,
@@ -868,10 +876,38 @@ describe('Connections & signal: client scope bar, graduation and standing approv
     await signInAgain();
     await tick();
     const operations = operationsTo(sent, '/mandate/revoke');
-    expect(operations).toHaveLength(4);
-    expect(new Set(operations.slice(0, 3)).size).toBe(1);
-    expect(operations[3]).not.toBe(operations[0]);
+    expect(operations).toHaveLength(3);
+    expect(new Set(operations).size).toBe(1);
     expect(page.find('[data-mandate="m-yes"]')).toBeNull();
     expect(page.find('[data-step-up="prompt"]')).toBeNull();
+  });
+
+  it('a lost filing still withheld once stepped up, its new factor ahead of the database clock, keeps its operation and files once (SC3-F1)', async () => {
+    const { page, sent, signInAgain } = await open(undefined, {
+      register: /\/mandate\/file$/u,
+      ages: true,
+      ahead: 1,
+      lose: /\/mandate\/file$/u,
+      stepUp: steppedUp,
+    });
+    await fillApproval(page);
+    await page.click('[data-mandate-add]');
+    await tick();
+    expect(page.find('[data-mandate="m-new"]')).not.toBeNull();
+    await page.click('[data-mandate-add]');
+    await tick();
+    expect(page.find('[data-step-up="prompt"]')).not.toBeNull();
+    await stepUpWith(page);
+    await signInAgain();
+    await tick();
+    expect(page.find('[data-mandate="m-new-1"]')).toBeNull();
+    expect(page.find('[data-region-said]')?.textContent).toContain('STEP_UP_REQUIRED');
+    await page.click('[data-mandate-add]');
+    await tick();
+    const operations = operationsTo(sent, '/mandate/file');
+    expect(operations).toHaveLength(4);
+    expect(new Set(operations).size).toBe(1);
+    expect(page.find('[data-mandate="m-new-1"]')).toBeNull();
+    expect((page.find('[data-mandate-label]') as HTMLInputElement | null)?.value).toBe('');
   });
 });
