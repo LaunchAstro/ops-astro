@@ -32,11 +32,14 @@
 //
 // **Access ended is the third way a session ends (C58).** Ending a person's access deactivates
 // their login and ends their memberships, but the bearer in the tab still verifies until its hour
-// is up, so the API answers their next call 403 `AUTH_NO_MEMBERSHIP`. A login that was never a
-// member gets the same answer on its first call, and that one is a denial to draw, not a session
-// to end. So the client remembers whether its bearer has been answered as a member, by a success
-// (a live call's too) or by a refusal decided past login resolution (a scope not granted), and only
-// a bearer that has been ends its session on it.
+// is up, so the API answers their calls 403 `AUTH_ACCESS_ENDED`, its own code for this login and
+// business. That one answer ends the session, whichever client hears it: one built after a reload
+// has heard nothing before it and needs nothing. Standing can also go with no ending written (a
+// last share revoked or expired), and that is answered 403 `AUTH_NO_MEMBERSHIP`, as a login that
+// was never a member is on its first call, a denial to draw. So the client also remembers whether
+// its bearer has been answered as a member, by a success (a live call's too) or by a refusal
+// decided past login resolution (a scope not granted), and a bearer that has ends its session on
+// `AUTH_NO_MEMBERSHIP` too.
 //
 // The wire spells the envelope `operationId` and `expectedRevision`, camelCase,
 // matching `commands/requests.ts`, though the slice contract's prose writes
@@ -51,6 +54,7 @@ import {
 } from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
 import type { AccountRoute, NotARead, ReadName } from './read-names.ts';
+import { ACCESS_ENDED, BEFORE_LOGIN, SESSION_ENDED } from './session-endings.ts';
 import type {
   CallResult,
   CommandOutcome,
@@ -61,6 +65,7 @@ import type {
 } from './results.ts';
 
 export { READ_NAMES } from './read-names.ts';
+export { ACCESS_ENDED } from './session-endings.ts';
 export type { AccountRoute, NotARead, ReadName } from './read-names.ts';
 export { isRefusal, isUnavailable } from './results.ts';
 export type {
@@ -261,34 +266,13 @@ export class OperationsClient {
   }
 
   #heard(status: number, refusal: WireRefusal): void {
-    const revoked = status === 403 && refusal.code === 'AUTH_NO_MEMBERSHIP' && this.#answered;
-    const ends = status === 401 ? SESSION_ENDED.has(refusal.code) : revoked;
+    const lost =
+      refusal.code === ACCESS_ENDED || (refusal.code === 'AUTH_NO_MEMBERSHIP' && this.#answered);
+    const ends = status === 401 ? SESSION_ENDED.has(refusal.code) : status === 403 && lost;
     if (ends && this.#options.signedIn) this.#options.onSessionEnded?.(refusal);
     if (status !== 401 && !BEFORE_LOGIN.has(refusal.code)) this.#answered = true;
   }
 }
-
-/**
- * The two codes that mean the bearer is no longer a credential.
- *
- * Paired with the 401 rather than trusted alone: the code names the decision
- * and the status names the boundary that made it, and a 403 carrying either of
- * these would be a different answer than the one this rule is about.
- *
- * They are two because the API tells them apart on purpose (`AUTH_UNKNOWN_LOGIN`
- * says nothing of which guess was closer; `AUTH_SESSION_EXPIRED` goes only to a
- * bearer this deployment signed). The difference is for the reader, not this client.
- */
-const SESSION_ENDED = new Set(['AUTH_UNKNOWN_LOGIN', 'AUTH_SESSION_EXPIRED']);
-
-/** Refusals besides the 401s that can come before login resolution places a member. */
-const BEFORE_LOGIN = new Set([
-  'AUTH_NO_MEMBERSHIP',
-  'ACTOR_INACTIVE',
-  'AUTH_CROSS_SITE',
-  'AUTH_SESSION_MISMATCH',
-  'COMMAND_BODY_INVALID',
-]);
 
 function isWireRefusal(value: unknown): value is WireRefusal {
   if (typeof value !== 'object' || value === null) return false;

@@ -18,10 +18,11 @@
 // their conversation locks and read the sender's or reader's membership, the
 // grant and the recipient's staff membership again under it. A revocation or
 // an ended access takes it exclusively first (`lockAccess`), so it committed
-// before this read, which then refuses with the door's own code, or waits for
-// this write to commit. Lock order: pair, conversation, access; nothing that
-// holds the access lock takes a conversation's. A conversation the send has
-// just started goes with the refusal (the envelope's savepoint).
+// before this read, which then refuses with the door's own code
+// (`AUTH_ACCESS_ENDED` for an ended access), or waits for this write to commit.
+// Lock order: pair, conversation, access; nothing that holds the access lock
+// takes a conversation's. A conversation the send has just started goes with
+// the refusal (the envelope's savepoint).
 //
 // `chat.mark_read`: the reader's own marker on a conversation they are in,
 // moved to the newest message they saw and never back. Their own member row
@@ -35,7 +36,7 @@ import {
   lockConversation,
   moveReadMarker,
   readPositionOf,
-  NO_MEMBERSHIP_FIXES,
+  noMembership,
   readConversationTypes,
   shareAccessLock,
   subjectsOf,
@@ -158,7 +159,8 @@ export async function standsNow(
   const { session, declaration } = context;
   await shareAccessLock(tx);
   if (!(await isStaff(tx, session.personId))) {
-    return refuseCommand('AUTH_NO_MEMBERSHIP', [], NO_MEMBERSHIP_FIXES);
+    // The door's own answer from here on: access ended where it was (C58).
+    return await noMembership(tx, session.loginId);
   }
   if (declaration.authorisedOn !== 'self') {
     const granted = await checkAuthority(tx, subjectsOf(session), {

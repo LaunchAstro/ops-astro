@@ -18,6 +18,13 @@ export type Send = (
   slot?: string,
 ) => void;
 
+/**
+ * Whether a control that would send `command` to `recordId` is disabled: a
+ * write is in flight, or the server has refused this reader that key on that
+ * record. A refusal on one record leaves the others open.
+ */
+export type Locked = (command: MapCommand, recordId: string) => boolean;
+
 /** One line of the graduate form: a ticket's title and type. */
 export interface Line {
   readonly title: string;
