@@ -62,6 +62,40 @@ const editAgainst = async (
 const editedAtOf = async (recordId: string, commentId: string): Promise<unknown> =>
   (await thread(who.decider, recordId)).find((row) => row['id'] === commentId)?.['edited_at'];
 
+/** An edit's answer, and whether any statement it ran was handed the comment's id. */
+const touches = async (
+  recordId: string,
+  commentId: string,
+  expectedEditedAt: unknown,
+): Promise<[string, boolean]> => {
+  let named = false;
+  const expectedRevision = await revision(recordId);
+  const answer = await withSession(
+    who.world.db.app,
+    who.world.business,
+    who.decider.presented,
+    async (tx, session) => {
+      const watched: TenantQuery = {
+        businessId: tx.businessId,
+        query: async (text, parameters) => {
+          if (parameters?.includes(commentId) === true) named = true;
+          return await tx.query(text, parameters);
+        },
+      };
+      return await runCommand(watched, session, 'api', {
+        command: 'task.edit_comment',
+        operationId: randomUUID(),
+        recordId,
+        expectedRevision,
+        commentId,
+        body: 'changed',
+        expectedEditedAt,
+      } as never);
+    },
+  );
+  return [codeOf(answer as never), named];
+};
+
 describe.skipIf(serverUrl === undefined)('a comment edit names what it was typed against', () => {
   it('two edits from one read: the first applies, the second is refused stale', async () => {
     const recordId = ids['a'] ?? '';
@@ -87,11 +121,30 @@ describe.skipIf(serverUrl === undefined)('a comment edit names what it was typed
     expect((await stored(commentId))?.body).toBe('from tab two, reread');
   });
 
+  it('an expectedEditedAt that is no instant is refused before the comment is read', async () => {
+    const recordId = ids['a'] ?? '';
+    const commentId = commentIdOf(await post(who.decider, recordId, 'internal', 'kept words'));
+    for (const bad of [5, 'not a time', {}]) {
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await touches(recordId, commentId, bad)).toEqual(['FIELD_VALUE_INVALID', false]);
+    }
+    expect((await stored(commentId))?.body).toBe('kept words');
+    // The same request with a stamp that is an instant does look the comment up.
+    expect(await touches(recordId, commentId, null)).toEqual(['not-a-refusal', true]);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('an edit moves the stamp it is checked against', () => {
   it('two replacements from one read inside one transaction: the second is refused stale', async () => {
     const recordId = ids['a'] ?? '';
     const commentId = commentIdOf(await post(who.decider, recordId, 'internal', 'posted words'));
     const expectedRevision = await revision(recordId);
-    const replace = async (tx: TenantQuery, session: Session, body: string, expectedEditedAt?: string) =>
+    const replace = async (
+      tx: TenantQuery,
+      session: Session,
+      body: string,
+      expectedEditedAt?: string,
+    ) =>
       codeOf(
         await runCommand(tx, session, 'api', {
           command: 'task.edit_comment',
@@ -126,47 +179,5 @@ describe.skipIf(serverUrl === undefined)('a comment edit names what it was typed
     );
     expect(codes).toEqual(['not-a-refusal', 'not-a-refusal', 'VERSION_STALE']);
     expect((await stored(commentId))?.body).toBe('first replacement');
-  });
-
-  it('an expectedEditedAt that is no instant is refused before the comment is read', async () => {
-    const recordId = ids['a'] ?? '';
-    const commentId = commentIdOf(await post(who.decider, recordId, 'internal', 'kept words'));
-    const expectedRevision = await revision(recordId);
-    // Every statement the command runs, and whether any was handed the comment's id.
-    const touches = async (expectedEditedAt: unknown): Promise<[string, boolean]> => {
-      let named = false;
-      const answer = await withSession(
-        who.world.db.app,
-        who.world.business,
-        who.decider.presented,
-        async (tx, session) => {
-          const watched: TenantQuery = {
-            businessId: tx.businessId,
-            query: async (text, parameters) => {
-              if (parameters?.includes(commentId) === true) named = true;
-              return await tx.query(text, parameters);
-            },
-          };
-          return await runCommand(watched, session, 'api', {
-            command: 'task.edit_comment',
-            operationId: randomUUID(),
-            recordId,
-            expectedRevision,
-            commentId,
-            body: 'changed',
-            expectedEditedAt,
-          } as never);
-        },
-      );
-      return [codeOf(answer as never), named];
-    };
-
-    for (const bad of [5, 'not a time', {}]) {
-      // oxlint-disable-next-line no-await-in-loop
-      expect(await touches(bad)).toEqual(['FIELD_VALUE_INVALID', false]);
-    }
-    expect((await stored(commentId))?.body).toBe('kept words');
-    // The same request with a stamp that is an instant does look the comment up.
-    expect(await touches(null)).toEqual(['not-a-refusal', true]);
   });
 });
