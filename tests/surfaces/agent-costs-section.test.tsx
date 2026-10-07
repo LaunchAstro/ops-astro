@@ -23,6 +23,7 @@ import { mount, type Mounted } from './mount.tsx';
 
 const NOW = Date.parse('2026-09-30T12:00:00Z');
 const LONG_ID = 'claude-opus-5-5-20260901-extended-context';
+const HAIKU = 'claude-haiku-4-5-20251001';
 const UNPRICED = 'A call’s cost is not known yet: it is still running or its liability is unknown.';
 const MERIDIAN: CostAttachment = { kind: 'client', id: 'c-1', name: 'Meridian Dental' };
 
@@ -56,7 +57,7 @@ function run(index: number, extra: Partial<AgentCostRowView> = {}): AgentCostRow
 }
 
 const RUNS: readonly AgentCostRowView[] = [
-  run(1, { cost: '1234', models: { ids: [LONG_ID], unnamedCalls: 0 } }),
+  run(1, { cost: '1234', models: { ids: [LONG_ID, HAIKU], unnamedCalls: 0 } }),
   run(2, { attachment: { kind: 'agency' }, cost: null, unpriced: UNPRICED }),
   ...Array.from({ length: 9 }, (_unused, index) =>
     run(index + 3, { agentActorId: 'a-2222bbbb-0000' }),
@@ -141,10 +142,10 @@ describe('Executive: what our agents cost us', () => {
     expect(text(page, '[data-cost-kpi="runs"]')).toContain('11');
   });
 
-  it('exact model ids wrap and never truncate', async () => {
+  it('exact model ids: every one drawn, wrapping, never truncated', async () => {
     const { page } = await open(COSTS);
-    const id = logRow(page, 'r-1')?.querySelector('.skc__model');
-    expect(id?.textContent).toBe(LONG_ID);
+    const ids = [...(logRow(page, 'r-1')?.querySelectorAll('.skc__model') ?? [])];
+    expect(ids.map((id) => id.textContent)).toStrictEqual([LONG_ID, HAIKU]);
     expect(page.text()).not.toContain('…');
     const css = readFileSync('packages/ui/src/styles/7-connections-costing.css', 'utf8');
     const rule = /\.skc__model\s*\{([^}]*)\}/u.exec(css)?.[1] ?? '';
