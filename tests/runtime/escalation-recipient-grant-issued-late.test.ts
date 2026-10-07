@@ -123,11 +123,18 @@ async function escalate(database: Database, version: Detail, recipient: Member, 
   return decided.ok ? 'applied' : decided.refusal.code;
 }
 
-/** The last of the recipient checks under the locks: whether the task is theirs. */
-const assignmentRead =
-  (personId: string): Stop['at'] =>
-  (sql, parameters) =>
-    sql.includes('d.delegate_person_id = $3') && parameters?.[2] === personId;
+/**
+ * The last of the recipient checks under the locks: whether the task is theirs,
+ * the first assignee read (`assignedPeople`, which names no person) after the
+ * recipient's actor read.
+ */
+function assignmentRead(personId: string): Stop['at'] {
+  let actorRead = false;
+  return (sql, parameters) => {
+    if (sql.includes('from public.actors') && parameters?.[1] === personId) actorRead = true;
+    return actorRead && sql.includes('join public.delegations d');
+  };
+}
 
 /** A command on a backend of its own, closed once it settles. */
 async function elsewhere(body: Body): Promise<Detail> {

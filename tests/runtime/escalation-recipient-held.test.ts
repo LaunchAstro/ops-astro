@@ -85,12 +85,16 @@ async function recipientWithDecide(): Promise<{ member: Member; grantId: string 
 /**
  * The last of escalate's reads of its recipient under the locks
  * (`recheckRecipient`: actor, grant, then assignment), after both the actor
- * and the grant were checked.
+ * and the grant were checked: the first assignee read (`assignedPeople`, which
+ * names no person) after the recipient's actor read.
  */
-const recipientRead = (sql: string, parameters: readonly unknown[] | undefined, personId: string) =>
-  sql.includes('from public.records r') &&
-  sql.includes('d.delegate_person_id = $3') &&
-  parameters?.[2] === personId;
+function recipientRead(personId: string) {
+  let actorRead = false;
+  return (sql: string, parameters: readonly unknown[] | undefined): boolean => {
+    if (sql.includes('from public.actors') && parameters?.[1] === personId) actorRead = true;
+    return actorRead && sql.includes('join public.delegations d');
+  };
+}
 
 /** Escalate the gate to `recipient` in one transaction, paused just after its recipient checks. */
 async function escalatePaused(
@@ -101,12 +105,13 @@ async function escalatePaused(
   const signingKey = gateSigningKey();
   if (signingKey === undefined) throw new Error('no signing key in the fixture');
   let paused = false;
+  const atRecipientRead = recipientRead(recipient.personId);
   return await s.db.app.withBusiness(s.business, async (tx) => {
     const intercepted: TenantQuery = {
       businessId: tx.businessId,
       query: async <Row>(sql: string, parameters?: readonly unknown[]) => {
         const answer = await tx.query<Row>(sql, parameters);
-        if (!paused && recipientRead(sql, parameters, recipient.personId)) {
+        if (!paused && atRecipientRead(sql, parameters)) {
           paused = true;
           pause.reached();
           await pause.held;
