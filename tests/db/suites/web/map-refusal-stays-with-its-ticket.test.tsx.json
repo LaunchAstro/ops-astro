@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the map page over the composed API: a SCOPE_NOT_GRANTED on one ticket leaves the person's authorised blocking of another ticket open on the page and directly, and a blocking cycle's TRANSITION_NOT_PERMITTED never names a key the writer already holds"
+}
