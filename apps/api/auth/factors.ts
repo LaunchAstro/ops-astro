@@ -34,6 +34,10 @@ export interface GoTrueFactorOptions {
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_BYTES = 16 * 1024;
+// GoTrue's user carries the login's metadata beside its factors, and that
+// metadata is the person's own and may be large; one megabyte bounds it
+// without refusing an ordinary login. Only `GET /user` reads to this bound.
+const USER_MAX_BYTES = 1024 * 1024;
 
 type Json = Readonly<Record<string, unknown>>;
 
@@ -66,8 +70,9 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
   };
   const request = requestGoTrue(options, limits.timeoutMs);
   const call = callGoTrue(request, limits);
+  const readUser = callGoTrue(request, { ...limits, maxBytes: USER_MAX_BYTES });
   return {
-    verifiedFactors: (accessToken) => verifiedFactors(call, accessToken),
+    verifiedFactors: (accessToken) => verifiedFactors(readUser, accessToken),
     enrol: (accessToken) => enrol(call, accessToken),
     verify: (accessToken, factorId, code) => verify(call, accessToken, factorId, code),
     remove: (accessToken, factorId) => remove(call, accessToken, factorId),
