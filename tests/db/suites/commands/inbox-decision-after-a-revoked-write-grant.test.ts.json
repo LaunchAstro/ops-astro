@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a revoked grant that takes a task's agent gives its person, while they may decide, the pending decision back"
+}
