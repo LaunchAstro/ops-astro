@@ -14,6 +14,7 @@ import {
   backupStoreHooks,
   operatorLogin,
   read,
+  serverUrl,
   store,
 } from './backup-identity.fixture.ts';
 import { call, passed } from './backup-drill-records.fixture.ts';
@@ -36,7 +37,7 @@ async function refusals(): Promise<{ control: string; targetMajor: string; table
   }
 }
 
-describe('a passed drill names its restore', () => {
+describe.skipIf(serverUrl === undefined)('a passed drill names its restore', () => {
   backupStoreHooks();
 
   it('the store refuses a pass with no target major or no table count', async () => {
