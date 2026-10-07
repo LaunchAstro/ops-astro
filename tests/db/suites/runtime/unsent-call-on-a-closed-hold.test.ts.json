@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a call reserved and never sent on a hold its lease ended is never counted: the version room leaves room for it, and a top-up on a closed hold's stop releases it uncounted, so the sweep gives nothing back"
+}

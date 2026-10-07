@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a replacement hold never takes a version past its approved ceiling, even when a historical replacement's timestamp sorts before its predecessor's"
+}

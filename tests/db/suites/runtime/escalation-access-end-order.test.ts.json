@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an escalation and access.end on its recipient lock in one order and close no deadlock cycle"
+}

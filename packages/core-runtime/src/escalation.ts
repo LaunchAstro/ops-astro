@@ -11,7 +11,8 @@
 
 import { assignedTo, refuseCommand } from '../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../core-records/src/index.ts';
-import { checkAuthorityAt } from './recovery.ts';
+import { checkAuthorityAt, holdCoveringGrants } from './recovery.ts';
+import { AffectedSetChanged } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** What the escalation checks read from a decision request (`DecideRequest`). */
@@ -23,6 +24,12 @@ export interface EscalationAsk {
   readonly decidedByActorId: string;
   /** Escalate's recipient: a person who must hold decide at business scope. */
   readonly recipientPersonId?: string;
+}
+
+/** The gate's task, and the grant ids `holdDecideAuthority` held before the locks. */
+export interface HeldDiscovery {
+  readonly task_id: string;
+  readonly held_grants: readonly string[];
 }
 
 /** An escalation's answer: not the gate's decision, so no signed row and no hash. */
@@ -67,7 +74,7 @@ export async function escalatedDecider(
 export async function recheckEscalation(
   tx: TenantQuery,
   request: EscalationAsk,
-  taskId: string,
+  found: HeldDiscovery,
   lockedAt: string,
   atBound: () => Promise<boolean>,
 ): Promise<RuntimeResult<null>> {
@@ -79,7 +86,51 @@ export async function recheckEscalation(
       'Approve, reject or request changes; escalate at the bound.',
     );
   }
-  return await recheckRecipient(tx, request, taskId, lockedAt);
+  return await recheckRecipient(tx, request, found, lockedAt);
+}
+
+/**
+ * Before the runtime set, in the grant class (`locks.ts`): the decider's
+ * covering grants `for share`, and for an escalation the recipient's grants,
+ * the rows `recheckRecipient` rests on. A revocation that locked first is seen
+ * by that re-check; one that comes second waits for this decision to commit.
+ * One statement holds them all in one id order, the order `access.end` locks
+ * a person's live grants in, so the two never wait on each other's grants
+ * crosswise.
+ *
+ * The recipient's actor is not held. The only writer that deactivates a
+ * person actor is `access.end`, and it locks every live grant of that person
+ * `for update` first, so the recipient's decide grant held here already
+ * serialises it; with no such grant the re-check refuses anyway. Holding the
+ * actor too would take it before the runtime set, where `access.end` updates
+ * it after its own, and the two orders could close a cycle.
+ *
+ * Returns the held ids: a grant issued after this statement is not held, so
+ * `recheckRecipient` rests only on these.
+ */
+export async function holdDecideAuthority(
+  tx: TenantQuery,
+  request: EscalationAsk,
+): Promise<readonly string[]> {
+  const recipient = request.decision === 'escalate' ? request.recipientPersonId : undefined;
+  if (recipient === undefined) {
+    return await holdCoveringGrants(tx, request.subjects, request.collection);
+  }
+  // Every person actor of theirs, active or not: a superset of what the
+  // re-check counts, so no grant it reads is left unheld.
+  const actors = await tx.query<{ readonly id: string }>(
+    `select id from public.actors where business_id = $1 and person_id = $2 and kind = 'person'`,
+    [tx.businessId, recipient],
+  );
+  return await holdCoveringGrants(
+    tx,
+    [
+      ...request.subjects,
+      { kind: 'person', id: recipient },
+      ...actors.map((actor) => ({ kind: 'actor' as const, id: actor.id })),
+    ],
+    request.collection,
+  );
 }
 
 /** Four eyes' one reading of the assignee, read under the caller's task lock. */
@@ -87,7 +138,7 @@ export { assignedTo };
 
 /**
  * The recipient holds the escalation role at the locked instant: decide at
- * business scope, through the person or any of their actors, and is not the
+ * business scope, through the person or their active person actor, and is not the
  * task's assignee, whom four eyes keeps from deciding. Anyone else, or nobody,
  * fails closed and the gate stays as it was, approve and reject still open.
  * The answer names the field and never echoes the presented id.
@@ -95,7 +146,7 @@ export { assignedTo };
 async function recheckRecipient(
   tx: TenantQuery,
   request: EscalationAsk,
-  taskId: string,
+  found: HeldDiscovery,
   lockedAt: string,
 ): Promise<RuntimeResult<null>> {
   const ineligible = {
@@ -111,8 +162,11 @@ async function recheckRecipient(
   };
   const recipient = request.recipientPersonId;
   if (recipient === undefined) return ineligible;
+  // Their sign-in acts only through their one active person actor (0002), so a
+  // grant left on a deactivated actor of theirs decides nothing for them.
   const actors = await tx.query<{ readonly id: string }>(
-    `select id from public.actors where business_id = $1 and person_id = $2`,
+    `select id from public.actors
+      where business_id = $1 and person_id = $2 and kind = 'person' and active`,
     [tx.businessId, recipient],
   );
   if (actors.length === 0) return ineligible;
@@ -125,7 +179,13 @@ async function recheckRecipient(
     { collection: request.collection, action: 'decide', scope: { kind: 'business', id: null } },
     lockedAt,
   );
-  if (!held.ok || (await assignedTo(tx, taskId, recipient))) return ineligible;
+  if (!held.ok) return ineligible;
+  // A covering grant issued after the hold is not held, so its revocation would
+  // not wait for this write: roll back, and the retry holds it.
+  if (held.value.some((grant) => !found.held_grants.includes(grant.id))) {
+    throw new AffectedSetChanged('escalate: a recipient grant appeared after the grant hold');
+  }
+  if (await assignedTo(tx, found.task_id, recipient)) return ineligible;
   return { ok: true, value: null };
 }
 
