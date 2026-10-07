@@ -93,7 +93,7 @@ describe.skipIf(serverUrl === undefined)('C58 a login shared with another busine
     expect(outcome(await end(api, person.personId))).toEqual({ status: 200, code: 'ok' });
     expect(calls).toEqual([]);
     expect(await reasonOf(person.personId)).toEqual(['shared']);
-    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_NO_MEMBERSHIP' });
+    expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_ACCESS_ENDED' });
   });
 
   it('C58 isolation: once no other business holds the login live, ending it bans at the provider', async () => {

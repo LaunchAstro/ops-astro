@@ -10,7 +10,7 @@
 // agent credential they issued here is revoked with its agent actor, and one
 // access ending is written per login mapped to them, owing the provider two
 // steps. From that commit login resolution refuses the person
-// (`AUTH_NO_MEMBERSHIP`), whatever the provider has or has not done
+// (`AUTH_ACCESS_ENDED`), whatever the provider has or has not done
 // (TR-SEC5-4).
 //
 // The provider steps are never taken inside a database transaction. They are
@@ -18,7 +18,9 @@
 // done (`settleAccessEndings`): end every session, which revokes their refresh
 // tokens, then deactivate the login. A step done is stamped once and never
 // asked again. An answer the adapter does not accept, a throw or a timeout is
-// a fault by its kind alone, and the step stays owed.
+// a fault by its kind alone, and the step stays owed. A provider whose user
+// is already gone answers the step done (the adapter's call, on that exact
+// answer only): it is stamped like any other, final, and never owed again.
 
 import {
   isUuid,
