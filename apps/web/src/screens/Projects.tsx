@@ -46,7 +46,7 @@ import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 import { TABS, pageAddress, tabInAddress, writeTab } from './projects/tab-address.ts';
-import { NO_CLIENTS, clientNamesOf } from './projects/client-names.ts';
+import { NO_CLIENTS, clientNamesOf, listedOrFailed } from './projects/client-names.ts';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
@@ -156,11 +156,15 @@ function ProjectBoard(
     grantKey: props.grantKey,
     run: async () =>
       named
-        ? await client.read<ClientListResult>('client.list', {})
+        ? listedOrFailed(await client.read<ClientListResult>('client.list', {}))
         : { ok: true as const, value: { ok: true as const, clients: [] } },
     deps: [named],
   });
-  const clients = useMemo(() => clientNamesOf(reached.state, query), [reached.state, query]);
+  // An answer to the last address's read is not this one's: wait, as for one in flight.
+  const clients = useMemo(
+    () => (reached.own ? clientNamesOf(reached.state, query) : null),
+    [reached.own, reached.state, query],
+  );
   // INB-1f: one stream for the tab, shared by the board and the inbox panels.
   const followInbox = useBoardLive(client, props.grantKey, reload);
 

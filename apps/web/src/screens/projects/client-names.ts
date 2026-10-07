@@ -7,6 +7,7 @@
 
 import type { ClientListResult } from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
+import type { CallResult } from '../../operations/results.ts';
 
 export const NO_CLIENTS: readonly string[] = [];
 
@@ -22,10 +23,16 @@ export function clientNamesOf(
   if (state.outcome === 'loading') return null;
   if (state.outcome === 'denied' || state.outcome === 'unavailable') return requestedIn(query);
   const answered = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
-  // An answer without its list offers none, rather than breaking the board.
-  return Array.isArray(answered?.clients) && answered.clients.length > 0
-    ? answered.clients.map((one) => one.name)
-    : NO_CLIENTS;
+  // An answer without its list reached none: the address's filters hold.
+  if (!Array.isArray(answered?.clients)) return requestedIn(query);
+  return answered.clients.length > 0 ? answered.clients.map((one) => one.name) : NO_CLIENTS;
+}
+
+/** A client list answered without its list is a failed read, reported the way an outage is. */
+export function listedOrFailed(result: CallResult<ClientListResult>): CallResult<ClientListResult> {
+  return 'value' in result && !Array.isArray(result.value.clients)
+    ? { unavailable: true, because: 'The API answered with something this screen could not read.' }
+    : result;
 }
 
 /** The client names an address's filters ask for (`client:"<name>"`, the facet id's escapes undone). */

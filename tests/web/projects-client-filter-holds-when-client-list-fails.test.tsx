@@ -10,6 +10,8 @@
 import { describe, expect, it } from 'vitest';
 import { Projects } from '../../apps/web/src/screens/Projects.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { clientNamesOf } from '../../apps/web/src/screens/projects/client-names.ts';
+import type { ClientListResult } from '../../packages/core-wire/src/index.ts';
 import { facetId } from '../../packages/ui/src/board/project-facets.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
 import { json, refused, tick } from './work-log-stand-in.tsx';
@@ -140,6 +142,18 @@ describe('Projects at a client filter when client.list answers late or without i
     expect(filters(view)).toContain('Quiet Clinic');
     expect(view.find('[data-outcome="unavailable"]')?.textContent).toContain('could not be read');
     await view.unmount();
+  });
+
+  it('a ready state with no client list keeps the address’s client filters, never none', () => {
+    const listless = { ok: true } as unknown as ClientListResult;
+    const ready = {
+      outcome: 'ready',
+      value: listless,
+      refusal: null,
+      because: null,
+      grantKey: 'alpha:owner',
+    } as const;
+    expect(clientNamesOf(ready, QUIET_BOARD.slice('/projects/?'.length))).toEqual([QUIET.name]);
   });
 
   it('a panel walked to a quiet client never commits another client’s work, while client.list is out or after it fails', async () => {
