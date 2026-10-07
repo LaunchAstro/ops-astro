@@ -52,10 +52,12 @@ export const TRACE_READ_LIMIT = 1_000;
 export type ReadSpan = TraceCells & { readonly runId: string; readonly exported: boolean };
 
 /**
- * One task's trace as an operator reads it (AW-13, `trace.read`): each run event as the export
- * sends it, less the two ids only the exporter's key derives, and whether it is behind the cursor.
- * `operations:read` is asked before, by the read's row; the task's own read is asked here, in the
- * statement reading the events (`readableNow`), and null answers a task `personId` cannot read now.
+ * One task's trace as an operator reads it (AW-13 readers, `trace.read`): each
+ * event of its runs as the export sends it, less the two ids only the
+ * exporter's key derives, and whether it is behind the cursor. `operations:read`
+ * is asked before this, by the read's row; the task's own read is asked here,
+ * in the statement that reads the events (`readableNow`), and null answers a
+ * task `personId` does not read now.
  */
 export async function readTaskTrace(
   tx: TenantQuery,

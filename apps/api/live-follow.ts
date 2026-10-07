@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C4's one stream per tab, from join to end, and C2's presence on it: the topics a tab names,
-// and the loop that re-asks before every delivery. Moved out of app.ts unchanged in what it
-// sends, with presence added. A team conversation (C71, CS-7.42) is a topic as a task is,
-// asked about as its members' alone, and carries no presence.
+// C4's one stream per tab, from join to end, and C2's presence on it: the
+// topics a tab names, and the loop that re-asks before every delivery. Moved
+// out of app.ts unchanged in what it sends, with presence added. A team
+// conversation (C71, CS-7.42) is a topic as a task is, asked about as its
+// members' alone, and carries no presence.
 
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
