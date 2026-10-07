@@ -219,7 +219,7 @@ describe.skipIf(serverUrl === undefined)('C58 ending access and agent credential
       await settledOrWaiting(ended);
       paused.go.open();
       expect(codeOf(await ended)).toBe('ok');
-      expect(['ok', 'CREDENTIAL_SCOPE_WIDENS', 'AUTH_NO_MEMBERSHIP']).toContain(
+      expect(['ok', 'CREDENTIAL_SCOPE_WIDENS', 'AUTH_ACCESS_ENDED']).toContain(
         codeOf(await issued),
       );
       const live = await liveIssuedBy(person.personId);
