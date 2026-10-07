@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "an open board's live stream resyncs when a time entry, a gate's expiry or a name its rows show changes without a task write"
+}

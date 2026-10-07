@@ -28,6 +28,8 @@
 export type IdentityRefusalCode =
   | 'AUTH_UNKNOWN_LOGIN'
   | 'AUTH_NO_MEMBERSHIP'
+  // C58: a login whose access here was ended; the person is signed out.
+  | 'AUTH_ACCESS_ENDED'
   | 'ACTOR_INACTIVE'
   // C59: a person with a verified second factor signed in without it.
   | 'AUTH_SECOND_FACTOR_REQUIRED'

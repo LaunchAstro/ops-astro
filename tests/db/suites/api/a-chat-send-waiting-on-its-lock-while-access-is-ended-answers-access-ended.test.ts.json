@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a chat send that waits on its lock while the sender's access is ended is refused AUTH_ACCESS_ENDED, the door's answer to that person from then on, and stores nothing"
+}

@@ -8,7 +8,10 @@
 // Both are GoTrue's `PUT /admin/users/<id>` with a ban of 100 years, under the
 // admin API's key (`SUPABASE_SERVICE_KEY`, sent as the bearer and as
 // `apikey`). Done is the user named back with a ban ending at least a year from
-// now. GoTrue has no admin call that ends a user's sessions: its sign-out
+// now, or GoTrue's 404 naming the user gone (`user_not_found`): a user deleted
+// can never sign in again, so the ban's purpose holds and the step is final,
+// never owed again. Any other 404 is doubt, and the step stays owed.
+// GoTrue has no admin call that ends a user's sessions: its sign-out
 // needs a bearer naming the user. A banned user's every refresh and sign-in is
 // refused, so the ban is the session end (ORCH46); what access token is left
 // runs out within the hour, and the API refuses it from the ending's commit.
@@ -49,7 +52,7 @@ const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 type Sent =
   | { readonly status: number; readonly text: string }
-  | { readonly fault: ProviderFault; readonly factorGone?: true };
+  | { readonly fault: ProviderFault; readonly gone?: 'user' | 'factor' };
 
 interface Destination {
   readonly base: URL;
@@ -71,7 +74,12 @@ export function createGoTrueLogins(options: GoTrueLoginOptions): LoginProvider {
     const sent = await call(to, 'PUT', `/admin/users/${subject}`, await options.adminKey(), {
       ban_duration: BAN_DURATION,
     });
-    if ('fault' in sent) return { ok: false, fault: sent.fault };
+    // A 404 naming the user gone: nothing is left to ban, the step is done.
+    if ('fault' in sent) {
+      return sent.gone === 'user'
+        ? { ok: true, value: undefined }
+        : { ok: false, fault: sent.fault };
+    }
     return bannedAnswer(sent.text, subject);
   };
   // C59 (ORCH65-Q3): an owner's reset of a lost factor. Done is the factor named back.
@@ -81,7 +89,7 @@ export function createGoTrueLogins(options: GoTrueLoginOptions): LoginProvider {
     const sent = await call(to, 'DELETE', path, await options.adminKey());
     // A 404 naming the factor gone is a removal already done (an answer lost before).
     if ('fault' in sent) {
-      return sent.factorGone === true
+      return sent.gone === 'factor'
         ? { ok: true, value: undefined }
         : { ok: false, fault: sent.fault };
     }
@@ -131,8 +139,9 @@ async function call(
   }
   const read = await readBounded(response, to.maxBytes, to.timeoutMs);
   if ('fault' in read) return { fault: read.fault };
-  if (response.status === 404 && factorNotFound(read.text)) {
-    return { fault: 'refused', factorGone: true };
+  if (response.status === 404) {
+    const gone = notFound(read.text);
+    if (gone !== undefined) return { fault: 'refused', gone };
   }
   if (response.status >= 400 && response.status < 500) return { fault: 'refused' };
   if (!response.ok) return { fault: 'unreachable' };
@@ -172,17 +181,21 @@ function namedBack(text: string, factorId: string): ProviderAnswer<void> {
   return named === factorId ? { ok: true, value: undefined } : { ok: false, fault: 'malformed' };
 }
 
-/** GoTrue's answer that the user holds no such factor, and nothing looser. */
-function factorNotFound(text: string): boolean {
+/** GoTrue's error codes for a 404 that names what is gone, and nothing looser. */
+const GONE: Readonly<Record<string, 'user' | 'factor'>> = {
+  user_not_found: 'user',
+  mfa_factor_not_found: 'factor',
+};
+
+/** What a 404's body names gone: the user or the factor, by its exact code; else nothing. */
+function notFound(text: string): 'user' | 'factor' | undefined {
   try {
     const parsed: unknown = JSON.parse(text);
-    return (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      (parsed as Readonly<Record<string, unknown>>)['error_code'] === 'mfa_factor_not_found'
-    );
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+    const code = (parsed as Readonly<Record<string, unknown>>)['error_code'];
+    return typeof code === 'string' && Object.hasOwn(GONE, code) ? GONE[code] : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
