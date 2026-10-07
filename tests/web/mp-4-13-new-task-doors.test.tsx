@@ -7,6 +7,7 @@
 // gesture law, prefilled from the door; and the task open in the panel comes
 // back after a reload (S1, `aa-task-open`).
 
+import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
@@ -63,12 +64,14 @@ const fetch = ((url: string | URL, init?: RequestInit) => {
     return Promise.resolve(new Response(null, { status: 404 }));
   }
   if (where.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: task() }));
+  if (where.endsWith('/inbox/read')) return Promise.resolve(json({ ok: true, inbox: [] }));
+  if (where.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: 0 }));
   if (where.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [] }));
   return Promise.resolve(json({ ok: false }));
 }) as unknown as typeof globalThis.fetch;
 
-async function app(storage: Storage, path = `/task/${KEY}`) {
-  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1100 });
+async function app(storage: Storage, path = `/task/${KEY}`, width = 1100) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1000 });
   const view = await mount(
     <App
@@ -192,6 +195,28 @@ describe('MP-4-13 the open task comes back after a reload (S1)', () => {
     expect(again.find(`${TASK} [data-task-panel] [data-panel-title]`)?.textContent).toBe(
       'Budget pacing fix',
     );
+  });
+
+  it('the task comes back beside the panels open with it, and the kept dock keeps them all', async () => {
+    const storage = store();
+    const first = await app(storage, `/task/${KEY}`, 1700);
+    await first.click(DOOR);
+    await tick();
+    const notifs = first.find('.dock__tab[data-panel="notifs"]');
+    await act(async () => {
+      notifs?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
+      await Promise.resolve();
+    });
+    await tick();
+    expect(first.find('.dpanel[data-panel-id="notifs"]')).not.toBeNull();
+    expect(first.find(TASK)).not.toBeNull();
+    await first.unmount();
+    const again = await app(storage, '/projects/', 1700);
+    await tick();
+    expect(again.find(`${TASK} [data-task-panel]`)).not.toBeNull();
+    expect(again.find('.dpanel[data-panel-id="notifs"]')).not.toBeNull();
+    const kept = JSON.parse(storage.getItem('ops-astro.dock.alpha') ?? '{}') as { open?: unknown };
+    expect(kept.open).toEqual(expect.arrayContaining(['task', 'notifs']));
   });
 
   it('a task closed before the reload stays closed', async () => {
