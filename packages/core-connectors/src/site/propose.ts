@@ -1,0 +1,110 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// `site.source.propose`, composed: the branch named by the correction's seam
+// (`site.source.propose.branch`), the one file written on it
+// (`site.source.propose`, the contents write), and the request opened from
+// it (`site.source.propose.request`). Each is a guarded call through
+// `callConnector`, in that order, each only after the one before answered.
+//
+// Only the first write can prove nothing happened: a refused branch (one that
+// already exists included) is that refusal, with nothing else sent. Once the
+// branch is made, any later step that does not answer leaves a partial
+// proposal, so the composition is `unknown`, read back by the branch name it
+// named before dispatch, never `failed`. Nothing here merges: the proposal is
+// reversible by deleting its branch. It is made only on the correction's own
+// party's site (`partySiteRefuses`, as the binding is): another party's site,
+// or a page and file that site does not hold, sends nothing.
+
+import { callConnector, type CallDependencies, type ProviderResult } from '../call.ts';
+import { partySiteRefuses, type BoundCorrection, type PartySite } from './binding.ts';
+import { siteOperation } from './operations.ts';
+
+export interface ProposeInput {
+  /** The correction's party's site: its repository and default branch, and the pages it holds. */
+  readonly site: PartySite;
+  /** The correction as stored: its party, page, file and seam (the branch, named before dispatch). */
+  readonly correction: BoundCorrection;
+  /** The commit the pre-image was pinned at; the branch starts here. */
+  readonly baseRevision: string;
+  /** The site file's blob at that commit, as `site.source.read` answered it. */
+  readonly blob: string;
+  /** The approved bytes. */
+  readonly after: string;
+  /** The version those bytes are; the proposal carries it to the publish. */
+  readonly versionDigest: string;
+}
+
+export type Proposed = ProviderResult<{
+  readonly request: string;
+  readonly head: string;
+  readonly versionDigest: string;
+}>;
+
+const HEX = '0123456789abcdef';
+const UUID_DASHES = new Set([8, 13, 18, 23]);
+
+/** The seam's one shape (`live-corrections.ts`): `seam-` and a lowercase UUID, nothing else. */
+function isSeamBranch(name: string): boolean {
+  const prefix = 'seam-';
+  if (!name.startsWith(prefix) || name.length !== prefix.length + 36) return false;
+  const id = name.slice(prefix.length);
+  for (let at = 0; at < id.length; at += 1) {
+    const char = id.charAt(at);
+    if (UUID_DASHES.has(at) ? char !== '-' : !HEX.includes(char)) return false;
+  }
+  return true;
+}
+
+function incomplete(code: string, deps: CallDependencies): Proposed {
+  deps.record('PROPOSAL_INCOMPLETE');
+  return { kind: 'unknown', code };
+}
+
+/** Branch, commit, request: the three guarded writes of one proposal. */
+export async function proposeSource(
+  input: ProposeInput,
+  deps: CallDependencies,
+): Promise<Proposed> {
+  const { repository, defaultBranch } = input.site;
+  const { targetPath: path, seam: branch } = input.correction;
+  const code = isSeamBranch(branch)
+    ? partySiteRefuses(input.site, input.correction)
+    : 'SEAM_INVALID';
+  if (code !== undefined) {
+    deps.record(code);
+    return { kind: 'refused', code };
+  }
+  const made = await callConnector(
+    siteOperation('site.source.propose.branch'),
+    { repository, ref: `refs/heads/${branch}`, sha: input.baseRevision },
+    deps,
+  );
+  if (made.kind !== 'ok') return made;
+  const committed = await callConnector(
+    siteOperation('site.source.propose'),
+    {
+      repository,
+      path,
+      message: `Live correction ${branch}`,
+      content: Buffer.from(input.after, 'utf8').toString('base64'),
+      sha: input.blob,
+      branch,
+    },
+    deps,
+  );
+  if (committed.kind !== 'ok') return incomplete(committed.code, deps);
+  const opened = await callConnector(
+    siteOperation('site.source.propose.request'),
+    { repository, title: `Live correction ${branch}`, head: branch, base: defaultBranch },
+    deps,
+  );
+  if (opened.kind !== 'ok') return incomplete(opened.code, deps);
+  return {
+    kind: 'ok',
+    value: {
+      request: String(opened.value['number']),
+      head: String(committed.value['commit.sha']),
+      versionDigest: input.versionDigest,
+    },
+  };
+}

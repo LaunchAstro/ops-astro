@@ -281,7 +281,7 @@ it('a resend refused because a late landing beat it records landed, not failed',
     revertInput,
     revertPorts([], { revert: revert.send, readBack: revert.readBack }),
   );
-  const publish = raced(PUBLISHED, 'not_mergeable');
+  const publish = raced(PUBLISHED, 'sha_mismatch');
   const published = await publishCorrection(
     approvedJob(),
     publishPorts([], { publish: publish.send, readBack: publish.readBack }),

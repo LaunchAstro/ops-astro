@@ -10,10 +10,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { BEFORE, PAGE, c80World, type C80World } from './c80-world.ts';
+import { ABOUT, AFTER, BEFORE, PAGE, c80World, type C80World } from './c80-world.ts';
 import { PROVIDER_URL, doubles } from './c80-runner-doubles.ts';
 import { runLivePublish, type RunnerPorts } from '../../packages/core-commands/src/index.ts';
-import { dispatchToken } from '../../packages/core-connectors/src/index.ts';
+import { contentDigest, dispatchToken } from '../../packages/core-connectors/src/index.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C80 runner: DATABASE_URL is unset, so nothing ran.');
@@ -92,6 +92,11 @@ describe.skipIf(serverUrl === undefined)('C80 publish runner', () => {
         seam: expect.any(String),
         dispatchToken: dispatchToken('site.publish', version),
         versionDigest: version,
+        target: { path: ABOUT, word: 'friendly', replacement: 'welcoming' },
+        change: { files: [{ path: ABOUT, before: BEFORE, after: AFTER }] },
+        preImageDigest: contentDigest(BEFORE),
+        baseRevision: 'rev-1',
+        pageUrl: PAGE,
       },
     ]);
     // The dispatch taken under the lease, then the observed result.
