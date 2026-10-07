@@ -528,6 +528,8 @@ export interface QueuedWork {
   readonly lineageId: string;
   readonly purpose: string;
   readonly heldMinor: number;
+  /** The reading agent when it proposed the version, else null: a worker takes only its own. */
+  readonly proposedByActorId: string | null;
 }
 
 /**
