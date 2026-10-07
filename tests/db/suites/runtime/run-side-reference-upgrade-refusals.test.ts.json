@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "Run references stay within their run and business; upgrades preserve valid history and refuse inconsistent rows atomically."
+}
