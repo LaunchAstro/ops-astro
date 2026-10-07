@@ -107,4 +107,50 @@ describe('MP-7-11 kept and reopened tabs against work in flight', () => {
       },
     ]);
   });
+
+  it('R08 closing the starting tab keeps its reopened conversation selected when the start lands', async () => {
+    const stored: Stored = {
+      [MADE]: { title: 'Reopened conversation', messages: [message('m1', 'person', 'Hi')] },
+    };
+    let finish: (() => void) | undefined;
+    const { client } = serving(
+      stored,
+      () =>
+        new Promise((resolve) => {
+          finish = () =>
+            resolve({
+              ok: true,
+              value: { recordId: MADE, revision: 1, detail: { conversationId: MADE } },
+            });
+        }),
+    );
+    const page = await drawerFor(client);
+    const original = page.find('[data-chat]')?.getAttribute('data-chat');
+    await page.click('.aip__chip');
+    expect(finish).toBeTypeOf('function');
+    await page.click('[data-assistant="history"]');
+    await settle();
+    await page.click(`[data-past="${MADE}"]`);
+    await settle();
+    const reopenedKey = page.find('[data-chat][aria-selected="true"]')?.getAttribute('data-chat');
+    expect(reopenedKey).toBeTruthy();
+    expect(reopenedKey).not.toBe(original);
+    await page.click(`[data-chat-close="${original}"]`);
+    finish?.();
+    await settle();
+    await settle();
+    expect(page.find('[data-chat][aria-selected="true"]')?.getAttribute('data-chat')).toBe(
+      reopenedKey,
+    );
+    expect(tabTitles(page)).toStrictEqual(['Reopened conversation']);
+    expect(bodies(page)).toStrictEqual(['user: Hi']);
+    expect(page.find('[data-assistant="address"]')?.getAttribute('href')).toBe(`/agent/${MADE}`);
+    expect(page.find('[data-assistant="answering"]')).toBeNull();
+    expect(
+      JSON.parse(sessionStorage.getItem('ops-astro:drawer-tabs:alpha:ana') ?? 'null'),
+    ).toStrictEqual({
+      selected: MADE,
+      tabs: [MADE],
+    });
+  });
 });

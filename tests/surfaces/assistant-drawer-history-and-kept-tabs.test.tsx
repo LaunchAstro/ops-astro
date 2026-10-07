@@ -12,6 +12,8 @@
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name, as the drawer's own tests do */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { pathOf } from '../../packages/core-wire/src/index.ts';
 import { settle } from './mount.tsx';
 import { unmountAll } from './mp-7-11-drawer-fixtures.tsx';
 import {
@@ -29,8 +31,78 @@ import {
 
 afterEach(unmountAll);
 
+function heldResponse() {
+  let release: ((response: Response) => void) | undefined;
+  const sent = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  return { sent, release: (response: Response) => release?.(response) };
+}
+
+const historyResponse = (ids: readonly string[]): Response =>
+  Response.json({
+    ok: true,
+    conversations: ids.map((id) => ({
+      id,
+      address: `/agent/${id}`,
+      title: id === ONE ? 'First conversation' : 'New conversation',
+      lastActivityAt: '2026-10-06T10:00:00.000Z',
+      bodyPurged: false,
+    })),
+  });
+
 // eslint-disable-next-line max-lines-per-function -- one drawer, its history and kept tabs
 describe('MP-7-11 CS-7.33 drawer history', () => {
+  it.each(['success', 'unavailable', 'refusal'])(
+    'R10 the latest shown history survives an older %s response',
+    async (older) => {
+      const first = heldResponse();
+      const second = heldResponse();
+      let lists = 0;
+      const client = new OperationsClient({
+        origin: '',
+        businessKey: 'alpha',
+        signedIn: true,
+        fetch: (url) => {
+          if (!String(url).endsWith(pathOf('conversation.list'))) {
+            return Promise.resolve(Response.json({}, { status: 503 }));
+          }
+          lists += 1;
+          return lists === 1 ? first.sent : second.sent;
+        },
+      });
+      const page = await drawerFor(client);
+      await page.click('[data-assistant="history"]');
+      await page.click('[data-assistant="history"]');
+      await page.click('[data-assistant="history"]');
+      expect(lists).toBe(2);
+      second.release(historyResponse([TWO, ONE]));
+      await settle();
+      await settle();
+      expect(page.all('[data-past]').map((row) => row.getAttribute('data-past'))).toStrictEqual([
+        TWO,
+        ONE,
+      ]);
+      first.release(
+        older === 'success'
+          ? historyResponse([ONE])
+          : older === 'refusal'
+            ? Response.json(
+                { refused: true, code: 'NOT_FOUND', names: [], fixes: ['Earlier list refused.'] },
+                { status: 403 },
+              )
+            : Response.json({}, { status: 503 }),
+      );
+      await settle();
+      await settle();
+      expect(page.all('[data-past]').map((row) => row.getAttribute('data-past'))).toStrictEqual([
+        TWO,
+        ONE,
+      ]);
+      expect(page.find('[data-assistant="history"]')?.getAttribute('aria-expanded')).toBe('true');
+    },
+  );
+
   it('CS-7.33 lists my past conversations and reopens one as a tab with its transcript', async () => {
     const { client, calls } = serving(STORED);
     const page = await drawerFor(client);

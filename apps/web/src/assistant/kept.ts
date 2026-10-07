@@ -159,11 +159,14 @@ export function useKeptStore(client: OperationsClient, grantKey: string | undefi
 export function useHistoryList(client: OperationsClient, store: Store): AssistantHistory {
   const [past, setPast] = useState<readonly AssistantPast[] | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  const generation = useRef(0);
   const onShow = (): void => {
+    const request = ++generation.current;
     setPast(null);
     setSaid(null);
     void (async () => {
       const answer = await client.read<ConversationListResult>('conversation.list', {});
+      if (request !== generation.current) return;
       if (isUnavailable(answer)) setSaid(answer.because);
       else if (isRefusal(answer)) setSaid(answer.fixes[0] ?? answer.code);
       else setPast(answer.value.conversations);
