@@ -200,13 +200,12 @@ export async function keptRefused(
 }
 
 /**
- * A keep's waits, made before it asks its grants (Sol PRV-oa-1088-SC1,
- * SEC1-1): the page task judged under its share lock, then the audit chain's
- * lock, which its own audit events and the envelope's would otherwise wait on
- * after the check, so a grant a chain holder ended is seen. The chain key is
- * the trigger's, `business_id::text`, which is lower case. The page read is
- * asked once more after the chain. Answers why the page refuses the question,
- * if it does.
+ * A keep's waits, made before it asks its grants: the page task judged under
+ * its share lock, then the audit chain's lock, which its own audit events and
+ * the envelope's would otherwise wait on after the check, so a grant a chain
+ * holder ended is seen. The chain key is the trigger's, `business_id::text`,
+ * which is lower case. The page read is asked once more after the chain.
+ * Answers why the page refuses the question, if it does.
  */
 export async function waitsFirst(
   tx: TenantQuery,
