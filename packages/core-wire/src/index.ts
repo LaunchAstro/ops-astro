@@ -209,3 +209,16 @@ export * from './catalogue.ts';
 export * from './data-effects.ts';
 // the operations whose value is visual, and the command line's hand-off to them (AW-09)
 export { handoffAddress, handoffOf, VISUAL_HANDOFFS, type VisualHandoff } from './handoff.ts';
+// What agent runs cost: skill costing and the agents' cost log (MP-14-9, MP-14-6)
+export type {
+  AgentCostRowView,
+  AgentCostsResult,
+  AttributionSplitView,
+  CostAttachment,
+  ModelsView,
+  SkillCostsResult,
+  SkillCostView,
+  SkillFigure,
+  SkillUsageView,
+  Unavailable,
+} from './cost-views.ts';

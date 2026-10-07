@@ -29,13 +29,14 @@ export const CHAT_HANDLERS: {
   ) => Promise<HandlerOutcome>;
 } = {
   // C71-D: the sender and reader are the session's; a body names only the teammate or conversation.
-  'chat.send_direct': (tx, context, chat) => sendDirect(tx, context, chat.teammateId, chat.body),
+  'chat.send_direct': (tx, context, chat) =>
+    sendDirect(tx, context, chat.teammateId, chat.body, ...mentioning(chat)),
   'chat.mark_read': (tx, context, chat) => markOwnRead(tx, context, chat.conversationId, chat.upTo),
   // C71-G. The creator, the sender and the leaver are the session's.
   'chat.start_group': (tx, context, request) =>
     startGroupConversation(tx, context, request.name, request.members),
   'chat.send_group': (tx, context, request) =>
-    sendGroupMessage(tx, context, request.conversationId, request.body),
+    sendGroupMessage(tx, context, request.conversationId, request.body, ...mentioning(request)),
   'chat.rename_group': (tx, context, request) =>
     renameGroupConversation(tx, context, request.conversationId, request.name),
   'chat.change_members': (tx, context, request) =>
@@ -43,3 +44,8 @@ export const CHAT_HANDLERS: {
   'chat.leave': (tx, context, request) =>
     leaveGroupConversation(tx, context, request.conversationId),
 };
+
+/** CS-7.42: a message's mentions, handed on only when it names any. */
+function mentioning(request: { readonly mentions?: unknown }): readonly unknown[] {
+  return request.mentions === undefined ? [] : [request.mentions];
+}

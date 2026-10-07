@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an inbox read under way when task read is revoked does not name the task by a title given after"
+}

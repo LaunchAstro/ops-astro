@@ -30,11 +30,10 @@ export const CASE = {
 } as const;
 
 /**
- * The fifty-four operations that name no identifier, each with a minimal valid body.
- * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
- * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
- * 113, root ruling 3). There is no foreign target to compare with a fabricated
- * one, so their matrix row is "not applicable" with that reason.
+ * The fifty-seven operations that name no identifier, each with a minimal valid body.
+ * A positive request moves and shows nothing of bravo's, and a `recordId` aimed at bravo is
+ * refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line 113, root ruling 3). There is no
+ * foreign target to compare with a fabricated one, so their matrix row is "not applicable".
  */
 export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['task.create', { fields: { title: 'a task made while bravo is watched' } }],
@@ -68,11 +67,12 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   // Custody (C31): the list and a set of a business-wide key name no row.
   ['secret.list', {}],
   ['secret.set', { name: 'target-free.key', value: 'target-free-value' }],
-  // The connector fleet (MP-14-7a) names no row.
+  // Connections (MP-14-7a, MP-14-10a) and agent run costs (MP-14-9, MP-14-6) name no row.
   ['connection.fleet', {}],
   ['connection.signal', {}],
-  // The graduation region (MP-14-10a) names no row either.
   ['connection.graduation', {}],
+  ['finance.skill_costs', {}],
+  ['finance.agent_costs', { from: '2026-01-01T00:00:00.000Z', to: '2100-01-01T00:00:00.000Z' }],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
   // AW-04: a digest names a file's bytes, not a record of any business.

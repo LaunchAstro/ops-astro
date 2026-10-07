@@ -13,7 +13,8 @@
 // leaves the draft. Putting it back mounts the draft again, and the draft
 // finds its Create still out and waits for it (`DraftPanel.tsx`). The dock's
 // own storage and history never bring the id back; the task panel's host
-// keeps the open task and opens it again after a reload (S1).
+// keeps the open task and opens it again after a reload (S1), beside the rest
+// of the dock the person left.
 //
 // **New task on every page (DOCK T-17, DP-02).** The To-dos panel's head New
 // (`dock-props.tsx`) opens a draft filed from the page; the rail keeps the
@@ -35,6 +36,8 @@ export interface TaskDock {
   readonly body: ReactNode;
   /** The open task's own page, or the board for a draft. */
   readonly door: string;
+  /** Opened by Shift: beside the open panels, not alone (CS-7.29). */
+  readonly beside?: boolean;
   /** The task panel's own close; false, closing nothing, while the draft's Create is out. */
   readonly close: () => boolean;
   /** A draft filed from the page or a door; null signed out. */
@@ -46,13 +49,17 @@ const LABEL = 'Task';
 /** Keeps `task` in the dock's open set exactly while the task panel holds something. */
 export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
   const open = task?.open ?? false;
+  // A task opened by Shift (CS-7.29) sits beside what is open, as a door's shift press does.
+  const taskBeside = task?.beside ?? false;
   const docked = dock.state.open.includes('task');
   const last = useRef({ open: false, docked: false });
   const { change } = dock;
   const closeTask = task?.close;
   const file = task?.file ?? null;
-  // A door's shift press opens the panel beside what is open.
-  const beside = useRef(false);
+  // A door's shift press opens the panel beside what is open. A task open from
+  // the first frame is the one kept across a reload: it comes back beside the
+  // panels the dock kept, never in their place.
+  const beside = useRef(open);
   const openNow = useRef(open);
   openNow.current = open;
   useEffect(() => {
@@ -76,8 +83,8 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
     const was = last.current;
     last.current = { open, docked };
     if (open && !was.open) {
-      // A row or a door opened a task: the gesture law's plain open.
-      const shift = beside.current;
+      // A row or a door opened a task: plain alone, Shift beside (the gesture law).
+      const shift = beside.current || taskBeside;
       beside.current = false;
       if (!docked) change((state) => openByGesture(state, 'task', shift));
     } else if (!open && docked) {
@@ -88,7 +95,7 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
       const closed = closeTask?.() ?? true;
       if (!closed) change((state) => openByGesture(state, 'task', true));
     }
-  }, [open, docked, change, closeTask, file]);
+  }, [open, docked, taskBeside, change, closeTask, file]);
 }
 
 const rank = (id: string): number => PANEL_RANK.indexOf(id as PanelId);

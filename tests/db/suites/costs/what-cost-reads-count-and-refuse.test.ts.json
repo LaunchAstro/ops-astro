@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "Agent cost reads: a released call is a known zero, a client-scoped reader sees that client's runs as the client view shows its tasks, and a record scope, an unknown key and a zoneless period are refused"
+}

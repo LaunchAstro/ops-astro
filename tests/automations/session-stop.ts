@@ -21,6 +21,7 @@ import type { RegistryWorld } from './registry-world.ts';
 /** A provider that confirms every sign-out and is asked for nothing else. */
 const done = Promise.resolve({ ok: true, value: undefined } as const);
 export const provider: FactorProvider = {
+  verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
   enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
   verify: () => Promise.resolve({ ok: false, fault: 'refused' }),
   remove: () => done,

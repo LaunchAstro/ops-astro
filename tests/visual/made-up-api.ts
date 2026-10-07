@@ -23,7 +23,6 @@ import type {
   InternalTaskRead,
   PersonListResult,
   QueueResult,
-  SecretListResult,
   SessionPersonResult,
   SettingsReadResult,
   TagListResult,
@@ -37,9 +36,12 @@ import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 import { AGENT_READS } from './made-up-agent.ts';
 import { AUTOMATION_REGISTRY } from './made-up-automations.ts';
-import { FLEET_READ, SIGNAL_READ } from './made-up-connections.ts';
+import { CONVERSATIONS, DIRECT_MESSAGES, messagesOf } from './made-up-chat.ts';
+import { CONNECTION_READS } from './made-up-connections.ts';
+import { COST_READS } from './made-up-costs.ts';
 import { EXECUTION, RECEIPT } from './made-up-data.ts';
 import { DETAIL, LEDGER, STATE, TAGS, TASKS, TODOS } from './made-up-rows.ts';
+import { SECRET_LIST } from './made-up-secrets.ts';
 import { WAYFINDER_READS } from './made-up-wayfinder.ts';
 
 export { TASKS } from './made-up-rows.ts';
@@ -177,35 +179,15 @@ const READS = {
   // The business's clients (C32), as the task's client field and the to-dos'
   // client scope ask them.
   'client.list': { ok: true, clients: [HARBOUR, MERIDIAN] } satisfies ClientListResult,
+  'chat.conversations': CONVERSATIONS,
+  // Answered by the conversation asked for (below); this is the direct one's.
+  'chat.messages': DIRECT_MESSAGES,
   // Custody's keys (C31) for Settings: one set, one not, never a value.
-  'secret.list': {
-    ok: true,
-    canChange: true,
-    secrets: [
-      {
-        id: 'S-1',
-        name: 'xero.client-secret',
-        clientId: null,
-        state: 'set',
-        setAt: '2026-09-30T00:00:00Z',
-        lastUsedAt: null,
-        revision: 1,
-      },
-      {
-        id: 'S-2',
-        name: 'ads.token',
-        clientId: null,
-        state: 'not set',
-        setAt: null,
-        lastUsedAt: null,
-        revision: 2,
-      },
-    ],
-  } satisfies SecretListResult,
+  'secret.list': SECRET_LIST,
   // Settings ▸ Workflow triggers (C33).
   'automation.registry': AUTOMATION_REGISTRY,
-  'connection.fleet': FLEET_READ,
-  'connection.signal': SIGNAL_READ,
+  ...CONNECTION_READS,
+  ...COST_READS,
   ...WAYFINDER_READS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
@@ -257,7 +239,7 @@ const UNRANKED_READ = {
 export function madeUpAnswer(
   pathname: string,
   variant: MadeUpVariant = {},
-  body: { readonly recordId?: unknown } = {},
+  body: { readonly recordId?: unknown; readonly conversationId?: unknown } = {},
 ): MadeUpAnswer | undefined {
   const match = /^\/api\/b\/[^/]+\/(.+)$/u.exec(pathname);
   if (match === null) return undefined;
@@ -271,6 +253,10 @@ export function madeUpAnswer(
   if (named(variant.empty)) return { status: 200, json: EMPTY[name as keyof typeof EMPTY] };
   if (name === 'task.read' && body.recordId === MOCKUP_TASK_KEY) {
     return { status: 200, json: UNRANKED_READ };
+  }
+  if (name === 'chat.messages') {
+    const read = messagesOf(body.conversationId);
+    return read === undefined ? undefined : { status: 200, json: read };
   }
   if (name in READS) return { status: 200, json: READS[name as keyof typeof READS] };
   return undefined;

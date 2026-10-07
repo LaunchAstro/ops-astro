@@ -45,9 +45,15 @@ describe('S0-3 completion bound', () => {
     const completion = lines.filter((line) => line.includes('complete_archive'));
     expect(completion).toHaveLength(1);
     const [statement = '', values = ''] = (completion[0] ?? '').split(' \\bind ');
-    expect(statement).toBe('select backups.complete_archive($1::bigint, $2::text)');
-    const digest = /'([0-9a-f]{64})'/u.exec(values)?.[1] ?? '';
+    expect(statement).toBe(
+      "select backups.complete_archive(nullif(convert_from(decode($1, 'hex'), 'UTF8'), '')::bigint, " +
+        "nullif(convert_from(decode($2, 'hex'), 'UTF8'), '')::text)",
+    );
+    // Each bound value goes as the hex of its text.
+    const bound = /'([0-9a-f]{128})'/u.exec(values)?.[1] ?? '';
+    const digest = Buffer.from(bound, 'hex').toString('utf8');
     expect(digest).toMatch(/^[0-9a-f]{64}$/u);
+    expect(lines.map((line) => line.split(' \\bind ')[0] ?? '').join('\n')).not.toContain(bound);
     // The digest is in the bound values alone: no statement text holds it.
     const statements = lines.map((line) => line.split(' \\bind ')[0] ?? '');
     expect(statements.join('\n')).not.toContain(digest);

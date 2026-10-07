@@ -96,10 +96,12 @@ const config: ViteUserConfig = defineConfig({
     // asks for), Sol's six F2 lost-answer retry proofs, Sol's two F3
     // save-order proofs and Sol's OW-016 route proof open their worlds with no
     // skip, as do Sol's three template lock and clone catalogue proofs and the
-    // cases written beside them, C31's Sol proof files and the Keys panel's DB
-    // proofs; without a database they are left out here, and the manifests run
-    // them where there is one. C31's corrupted audit chain fails by design: only
-    // the proof that spawns it from inside a test worker collects it.
+    // cases written beside them, C31's Sol proof files, the Keys panel's DB
+    // proofs, and Sol's two ending-claim proofs and agent-login proof (SOLOW-D
+    // D3), and the two shared-login factor suites; without a database they
+    // are left out here, and the manifests run them where there is one. C31's
+    // corrupted audit chain fails by design: only the proof that spawns it from
+    // inside a test worker collects it.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
@@ -193,6 +195,11 @@ const config: ViteUserConfig = defineConfig({
             'tests/commands/comment-change-revoked-before-write.test.ts',
             'tests/commands/comment-change-agent-helper-revoke-order.test.ts',
             'tests/commands/comment-change-revoked-while-waiting.test.ts',
+            'tests/review/ending-claim-per-row-proof.test.ts',
+            'tests/identity/ending-claim-and-shared-recheck-proof.test.ts',
+            'tests/identity/ending-spares-live-agent-login-elsewhere-proof.test.ts',
+            'tests/identity/a-factor-belongs-to-its-login-not-every-login-of-the-person.test.ts',
+            'tests/web/a-shared-login-completes-its-code-in-another-business.test.tsx',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.

@@ -25,19 +25,14 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
-import { parentOf, threadOf } from './thread-shape.ts';
+import { editOf, parentOf, threadOf, type RowEdit } from './thread-shape.ts';
 
-/** The row being edited: its words as typed, and why they were refused. */
-export interface RowEdit {
-  readonly commentId: string;
-  readonly body: string;
-  readonly because: string | null;
-}
+export type { RowEdit };
 
 /** What a row can ask of the conversation around it. */
 export interface RowActions {
   readonly onReply: (commentId: string) => void;
-  readonly onEdit: (commentId: string, body: string) => void;
+  readonly onEdit: (comment: InternalCommentView, body: string) => void;
   readonly onDelete: (commentId: string) => void;
   /** The edit open on a row, or null; opened, and closed without a write, here. */
   readonly editing: RowEdit | null;
@@ -111,7 +106,7 @@ function Row(props: {
           onText={(body) => actions.onEditing({ ...edit, body })}
           onDone={(next) => {
             if (next === null) actions.onEditing(null);
-            else actions.onEdit(comment.id, next);
+            else actions.onEdit(comment, next);
           }}
         />
       )}
@@ -121,7 +116,7 @@ function Row(props: {
         editing={edit !== null}
         actions={actions}
         onEditing={() => {
-          actions.onEditing({ commentId: comment.id, body: comment.body, because: null });
+          actions.onEditing(editOf(comment));
         }}
       />
       {props.children}

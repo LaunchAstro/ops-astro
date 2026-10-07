@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "two edits of one comment from the same read: the first applies, the second is refused stale and the first edit's words stay"
+}

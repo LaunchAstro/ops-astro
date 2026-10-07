@@ -195,6 +195,7 @@ export {
   wouldCloseParentLoop,
   type EntryPoint,
 } from './tasks/placement.ts';
+export { assignedPeople, assignedTo } from './tasks/assignee.ts';
 export { readTaskFamily, type FamilyRow, type TaskFamily } from './tasks/family.ts';
 export { changesSince, type ChangesSince, type TaskChange } from './tasks/changes.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';
@@ -238,6 +239,8 @@ export { factorLoginLiveElsewhere } from './identity/factor-elsewhere.ts';
 export * from './connections/fleet.ts';
 // Grants, tripwires and the night round on the same page (MP-14-8).
 export * from './connections/signal.ts';
+// What agent runs cost, per run from the broker's settled calls (MP-14-9, MP-14-6).
+export { listRunCosts, type CostPeriod, type RunCostRow } from './costs/run-costs.ts';
 // Graduation and standing mandates (MP-14-10a): the region's rows and core's check.
 export * from './mandates/mandates.ts';
 export * from './mandates/question.ts';

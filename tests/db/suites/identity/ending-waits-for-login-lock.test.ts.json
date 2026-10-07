@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "an ending waits for its login lock: a lapsed claim never asks a step again, a lock it cannot take in time leaves it owed, and endings --once exits 1 then"
+}

@@ -5,7 +5,8 @@
 // the call, never answered, and the lease ran out). Each says which drop,
 // whose fault and where the work got to, stops rather than redo work that may
 // have happened, joins one report per outage, and comes back by itself only
-// on the provider's declared proof that nothing happened. Failures that are
+// on the provider's declared proof that nothing happened. A call the provider
+// never received may still arrive, so its lookup proves nothing. Failures that are
 // no drop carry a fault from the evidence, `undetermined` where it cannot say.
 
 import { expect, it as vitestIt } from 'vitest';
@@ -24,6 +25,7 @@ import {
   workerLost,
   world,
 } from './aw-10-world.ts';
+import { REPLAY_PATH } from '../../packages/core-connectors/src/index.ts';
 import { liveWork } from '../runtime/schedules-harness.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -93,12 +95,17 @@ it('AW-10 three drops: provider down, connection cut and worker lost each say wh
   expect(new Set(seen.map((one) => one.fault)).size).toBe(3);
 });
 
-it('AW-10 three drops: each comes back by itself on the provider proving nothing happened, with a person told', async () => {
+it('AW-10 three drops: a call the provider refused comes back by itself, with a person told; a call it never received stays held', async () => {
   world.provider.lookupMode('honest');
   const runs = [await dropped('unavailable'), await dropped('cut')];
   const lost = await workerLost();
   await pass();
-  for (const work of [...runs.map((one) => one.work), lost]) {
+  // The lost call never reached the provider and may still arrive: nothing comes back.
+  expect(await attemptsOf(s, lost)).toMatchObject([{ state: 'liability_unknown', held: 'held' }]);
+  expect(await callsOf(s, lost)).toMatchObject([{ state: 'liability_unknown' }]);
+  // A hold that never ends by itself is not silent: the task's people are told of it.
+  expect(await toldOf(s, lost)).toMatchObject([{ reactivated: false }]);
+  for (const work of runs.map((one) => one.work)) {
     // eslint-disable-next-line no-await-in-loop
     const [first, second] = await attemptsOf(s, work);
     expect(first).toMatchObject({ state: 'liability_unknown', held: 'held' });
@@ -151,11 +158,25 @@ it("AW-10 fault from evidence: a timeout is undetermined, a hostile answer the p
   }
 });
 
+/**
+ * The silent call's request reaches the provider while it is down, which refuses it before any
+ * work began: the honest lookup's declared proof, so the pass releases the call.
+ */
+const refusedBeforeWork = async (work: Awaited<ReturnType<typeof workerLost>>): Promise<void> => {
+  world.provider.mode('unavailable');
+  const [call] = await callsOf(s, work);
+  await fetch(`${world.provider.origin}${REPLAY_PATH}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ operation_id: String(call?.['id']) }),
+  }).then(async (response) => await response.text());
+};
+
 it("AW-10 a heartbeat provider start is not cleared by a call's absence proof: the step's own provider may have acted, so the pass leaves it unanswered and the hold whole", async () => {
   world.provider.lookupMode('honest');
   const work = await workerLost(s, true);
+  await refusedBeforeWork(work);
   const swept = await pass();
-  // The positive proof released the silent call, and that proves nothing about the step's provider.
   expect(await callsOf(s, work)).toMatchObject([{ state: 'released', outcome: null }]);
   const reconciled = swept.ok ? (swept.businesses[0]?.reconciled ?? []) : [];
   expect(reconciled.filter((one) => one.attemptId === work.picked['attemptId'])).toMatchObject([

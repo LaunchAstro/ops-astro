@@ -20,6 +20,11 @@
 // frame for the new one. The join is asked after each digest and before its
 // frame, so a digest taken for a person the bearer has left is never said.
 //
+// C71 (CS-7.42): a conversation heard is not digested. Membership, the join, then membership
+// again: a member alone is told `conversation` (naming none), so the Team tab's chip re-reads
+// `chat.conversations`; anyone else, one removed mid-join included, is told nothing. A
+// reconnect (`resync`) may have lost a signal, so it asks of any conversation, says it once.
+//
 // Stopping the stream (the tab leaving, or the topics closing) ends its
 // recheck, and the stream lets go only once no question it asked is in
 // flight, so none reaches a pool that closes after it.
@@ -34,6 +39,11 @@ export interface BoardQuestions {
   readonly reach: (personId: string) => Promise<string | undefined>;
   /** A digest of what `inbox.read` shows `personId` now; undefined when refused. */
   readonly shown: (personId: string) => Promise<string | undefined>;
+  /** Whether `personId` is a current member of any of these (`any`: of any) now; absent, never. */
+  readonly hears?: (
+    personId: string,
+    conversationIds: readonly string[] | 'any',
+  ) => Promise<boolean>;
 }
 
 /** The stream, or the board topic's share of C4's one stream. */
@@ -107,16 +117,21 @@ function batch(
   bound: Bound,
   bind: (personId: string) => void,
 ): (signal: BoardSignal | 'check') => void {
-  const pending = { heard: false, check: false };
+  const pending = { heard: false, check: false, any: false, chats: new Set<string>() };
   const drain = async (): Promise<void> => {
-    while (!stream.aborted && (pending.heard || pending.check)) {
-      const { check } = pending;
-      pending.heard = pending.check = false;
+    while (!stream.aborted && (pending.heard || pending.check || pending.chats.size > 0)) {
+      const { heard, check } = pending;
+      const chats = pending.any ? 'any' : [...pending.chats];
+      pending.heard = pending.check = pending.any = false;
+      pending.chats.clear();
       // eslint-disable-next-line no-await-in-loop -- one run before the next.
-      const joined = await rule(stream, ask, bound, bind, check);
+      const joined = heard || check ? await rule(stream, ask, bound, bind, check) : 'same';
       if (joined === 'closed') return;
       // A rebind the recheck found is told by that recheck, from the new person's reads.
       if (joined === 'rebound' && check) pending.check = true;
+      const toTell = chats === 'any' || chats.length > 0;
+      // eslint-disable-next-line no-await-in-loop -- one run before the next.
+      if (toTell && (await told(stream, ask, bound, bind, chats)) === 'closed') return;
     }
   };
   let queued = false;
@@ -132,7 +147,12 @@ function batch(
   };
   return (signal) => {
     if (signal === 'check') pending.check = true;
-    else pending.heard = true;
+    else if (signal.kind === 'conversation') pending.chats.add(signal.conversationId);
+    else {
+      pending.heard = true;
+      // A reconnect may have lost a conversation's signal: ask of every one.
+      pending.any ||= signal.kind === 'resync';
+    }
     wake();
   };
 }
@@ -164,6 +184,26 @@ async function rule(
   if (seen === bound.seen) return joined;
   bound.seen = seen;
   await send(stream, 'resync');
+  return joined;
+}
+
+/**
+ * `conversation` said to a current member whose bearer is still that person, already told;
+ * asked again after the join, so one removed while it was asked is told nothing.
+ */
+async function told(
+  stream: BoardStream,
+  ask: BoardQuestions,
+  bound: Bound,
+  bind: (personId: string) => void,
+  chats: readonly string[] | 'any',
+): Promise<'closed' | 'rebound' | 'same'> {
+  const hears = async (): Promise<boolean> => (await ask.hears?.(bound.personId, chats)) ?? false;
+  const member = await hears();
+  const joined = await rejoin(stream, ask, bound, bind);
+  if (joined === 'same' && member && !bound.owed && (await hears())) {
+    await send(stream, 'conversation');
+  }
   return joined;
 }
 

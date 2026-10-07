@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a chat grant expiring before the live membership statement refuses the thread and board"
+}

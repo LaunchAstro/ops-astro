@@ -30,6 +30,7 @@ import {
 /** A provider that answers every call as done, and records each factor it removes. */
 export function provider(removed: string[]): FactorProvider {
   return {
+    verifiedFactors: () => Promise.resolve({ ok: true, value: [] }),
     enrol: () =>
       Promise.resolve({
         ok: true,

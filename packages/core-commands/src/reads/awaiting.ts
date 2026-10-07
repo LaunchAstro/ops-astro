@@ -4,10 +4,10 @@
 // wait main's run lifecycle stores (MP-5-11's waiting reason, `needs_approval`),
 // and the rows the Review mode draws and counts (MP-5-12, CS-5.12).
 //
-// A task waits at a gate when a gate on its live proposal version is pending
-// and has not expired (judged at the statement's start, as `gate.pending` is,
-// not the transaction's, #444); one decided, expired or superseded waits on
-// nobody. The question is asked only of the tasks the board already serves, so
+// A task waits at a gate when a gate on a live lineage's current version is
+// pending and has not expired (judged at the statement's start, as `gate.pending` is,
+// not the transaction's, #444); one decided, expired, superseded or left on a
+// cancelled lineage waits on nobody. The question is asked only of the tasks the board already serves, so
 // it never names, counts or reads a gate on a task the caller cannot read.
 // Whether the wait is the caller's to end is `awaitingTheReader`'s question,
 // answered by `task.decide`'s own rules.
@@ -35,9 +35,11 @@ export async function awaitingApproval(
          on run.business_id = g.business_id and run.id = g.run_id
        join public.proposal_versions ver
          on ver.business_id = g.business_id and ver.id = g.version_id
+       join public.proposal_lineages l
+         on l.business_id = g.business_id and l.id = g.lineage_id
       where g.business_id = $1
         and g.state = 'pending' and g.expires_at > statement_timestamp()
-        and ver.superseded_at is null
+        and l.state = 'live' and ver.superseded_at is null
         and run.task_id = any($2::uuid[])
       group by run.task_id`,
     [tx.businessId, taskIds],

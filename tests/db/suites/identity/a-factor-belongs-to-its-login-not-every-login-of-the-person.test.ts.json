@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a second factor verified on one login asks no code of another login mapped to the same person"
+}

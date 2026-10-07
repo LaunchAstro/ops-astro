@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "an agent key that does not tick chat:comment is shown and counted no conversation mention"
+}

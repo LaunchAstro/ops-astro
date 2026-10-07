@@ -566,6 +566,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'definition.attribution',
   'definition.release',
   'delegation.revoke',
+  'finance.agent_costs',
+  'finance.skill_costs',
   'gate.pending',
   'graduation.demote',
   'graduation.promote',
@@ -713,6 +715,7 @@ const REQUESTS: readonly CommandRequest[] = [
     recordId: 'r',
     commentId: 'c-edit',
     body: 'b-edit',
+    expectedEditedAt: 'e-edit',
   },
   { command: 'task.delete_comment', operationId: 'op', recordId: 'r', commentId: 'c-delete' },
   {
@@ -1020,7 +1023,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
     'p-comment',
     'm-comment',
   ],
-  'task.edit_comment': ['editTaskComment', 'c-edit', 'b-edit'],
+  'task.edit_comment': ['editTaskComment', 'c-edit', 'b-edit', 'e-edit'],
   'task.delete_comment': ['deleteTaskComment', 'c-delete'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
@@ -1210,7 +1213,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and thirty-four from an expected revision', () => {
+  it('exempts the same one hundred and thirty-six from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

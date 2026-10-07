@@ -73,6 +73,11 @@ export const GOOD: Readonly<Record<string, Reply>> = {
     expires_in: 3600,
   }),
   'DELETE /factors/factor-one': json(200, { id: 'factor-one' }),
+  // The login's factors, as GoTrue lists them on its user.
+  'GET /user': json(200, {
+    id: 'user-one',
+    factors: [{ id: 'factor-one', factor_type: 'totp', status: 'verified' }],
+  }),
   // C58: a factor change ends the person's other sessions at the provider.
   'POST /logout?scope=others': (_request, response) => {
     response.writeHead(204);

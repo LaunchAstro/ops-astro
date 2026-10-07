@@ -5,9 +5,10 @@
 // per sign-in login, so clearing a factor that login holds would clear it in
 // every business it reaches; a reset is refused while another business holds
 // the login live. The meaning is C58's `loginLiveElsewhere`
-// (`shared-login.ts`), answered by a definer function in 20261004091551 that takes this
-// business's login id, never a subject, and says yes or no alone: no
-// business, person or count. An id that is not a login here answers yes.
+// (`shared-login.ts`), answered by a definer function (20261005235557, its
+// body now 20261006213100) that takes this business's login id, never a
+// subject, and says yes or no alone: no business, person or count. An id that
+// is not a login here answers yes.
 
 import type { TenantQuery } from '../tenancy/database.ts';
 

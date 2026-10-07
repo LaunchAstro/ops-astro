@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import type { Transport } from '../cli/client.ts';
 import { agentCall, type Unanswered } from './agent-call.ts';
+import { proposeStep, selfOf, type Proposer } from './proposal.ts';
 import { handedBackFrom, reviewBody, type HandedBack } from './review.ts';
 import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
 
@@ -100,13 +101,14 @@ async function applyOnce(
   options: WorkerOptions,
   kept: Map<string, Held | Asked>,
   taskId: string,
+  self: () => Promise<string | Unanswered>,
 ): Promise<WorkerOutcome> {
   const known = kept.get(taskId);
   let work: Held;
   if (known !== undefined && 'credential' in known) {
     work = known;
   } else {
-    const asked = known ?? (await ask(options, taskId));
+    const asked = known ?? (await ask(options, taskId, self));
     if (!('operationId' in asked)) return asked;
     kept.set(taskId, asked);
     const picked = await pickUp(options, asked);
@@ -128,12 +130,28 @@ async function applyOnce(
   return outcome;
 }
 
-/** The queued work on `taskId`, read before any delegation (`agent-envelope.ts`). */
-async function ask(options: WorkerOptions, taskId: string): Promise<Asked | WorkerOutcome> {
+/**
+ * The queued work on `taskId` that this agent proposed, read before any
+ * delegation (`agent-envelope.ts`). Work another actor proposed on the same
+ * task is theirs: a person's approval of it never runs this worker's step.
+ */
+async function ask(
+  options: WorkerOptions,
+  taskId: string,
+  self: () => Promise<string | Unanswered>,
+): Promise<Asked | WorkerOutcome> {
+  const actorId = await self();
+  if (typeof actorId !== 'string') return actorId;
   const queued = await agentCall(options)('task.queue', {});
   if (!('body' in queued)) return queued;
   const entries = (queued.detail['queue'] ?? []) as readonly Record<string, unknown>[];
-  const work = entries.find((entry) => entry['taskId'] === taskId);
+  // Its own proposal of its own step: an approval of any other step never runs this one.
+  const work = entries.find(
+    (entry) =>
+      entry['taskId'] === taskId &&
+      entry['proposedByActorId'] === actorId &&
+      entry['purpose'] === SYNTHETIC_STEP.kind,
+  );
   if (work === undefined) return { idle: { taskId } };
   return { reservationId: work['reservationId'], operationId: randomUUID() };
 }
@@ -256,6 +274,8 @@ export function createWorker(options: WorkerOptions): {
 } {
   const call = agentCall(options, options.delegation);
   const kept = new Map<string, Held | Asked>();
+  const mine: Proposer = {};
+  const self = async (): Promise<string | Unanswered> => await selfOf(call, mine);
   // A pass on a task already being applied joins that pass: two at once would
   // resume one held attempt twice, and call its provider twice.
   const running = new Map<string, Promise<WorkerOutcome>>();
@@ -263,37 +283,10 @@ export function createWorker(options: WorkerOptions): {
     applyOnce: async (taskId) => {
       const pass =
         running.get(taskId) ??
-        applyOnce(options, kept, taskId).finally(() => running.delete(taskId));
+        applyOnce(options, kept, taskId, self).finally(() => running.delete(taskId));
       running.set(taskId, pass);
       return await pass;
     },
-    proposeOnce: async () => {
-      const capabilities = await call('session.capabilities', {});
-      if (!('body' in capabilities)) return capabilities;
-      const scope = capabilities.body['purposeScope'] as { id?: unknown } | null | undefined;
-      const recordId = String(scope?.id ?? '');
-      const read = await call('task.read', { recordId });
-      if (!('body' in read)) return read;
-      const task = read.detail['task'] as { revision?: unknown } | undefined;
-      const proposed = await call('task.propose', {
-        recordId,
-        expectedRevision: task?.revision,
-        purpose: SYNTHETIC_STEP.kind,
-        maximumMinor: options.reporter.estimate(SYNTHETIC_STEP),
-        currency: 'AUD',
-        payload: {
-          change: 'a team-only comment; this demonstration changes nothing outside the app',
-        },
-        step: SYNTHETIC_STEP,
-      });
-      if (!('body' in proposed)) return proposed;
-      return {
-        proposed: {
-          taskId: recordId,
-          version: Number(proposed.detail['version']),
-          gateId: String(proposed.detail['gateId']),
-        },
-      };
-    },
+    proposeOnce: async () => await proposeStep(call, mine, SYNTHETIC_STEP, options.reporter),
   };
 }

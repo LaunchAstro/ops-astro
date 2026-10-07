@@ -53,6 +53,12 @@ export interface BoardMachineProps<Row> {
   readonly name: (row: Row) => string;
   readonly noun: string;
   readonly empty: { readonly title: string; readonly description: string };
+  /**
+   * Drawn in place of the whole board while it has no rows and no filter or
+   * word on: the page's own empty state. A board kept drawn through an empty
+   * reread then shows a filter still on, and the page's words when none is (#902).
+   */
+  readonly nothing?: ReactNode;
   /** The address's query the board opens on (B-06, C6). */
   readonly address?: string;
   /** Told the new query whenever the view changes. */

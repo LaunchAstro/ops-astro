@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "removing a member while the board rejoin is in flight prevents the pending conversation frame"
+}

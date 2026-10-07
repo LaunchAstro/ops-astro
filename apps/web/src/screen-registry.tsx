@@ -28,6 +28,8 @@ import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
 import { MapScreen } from './screens/Map.tsx';
+import { ExecutiveScreen } from './screens/Executive.tsx';
+import { OnboardingScreen } from './screens/Onboarding.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
@@ -39,13 +41,9 @@ import { TodosScreen } from './screens/todos/Todos.tsx';
 import { TeamScreen } from './screens/Team.tsx';
 import { TelemetryScreen } from './screens/Telemetry.tsx';
 import type { ConversationTab, PanelDoor } from './screens/task/Perspectives.tsx';
+import type { TaskPanelHost } from './screens/task/panel-host.ts';
 
-/** The dock task panel as a screen reaches it (MP-4-8): open it, and read its change count. */
-export interface TaskPanelHost {
-  readonly open: (taskKey: string, door: PanelDoor, tab?: ConversationTab) => void;
-  /** Changes made in the panel so far: a screen showing the task reads it again on a new one. */
-  readonly changes: number;
-}
+export type { TaskPanelHost };
 
 /** What the application hands whichever screen the address resolves to. */
 export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRouteId> {
@@ -110,7 +108,17 @@ export const SCREENS: {
       rollup={tabRollupFloor()}
     />
   ),
+  // Executive is an agency-wide rollup as well (CS-1.2): it re-reads on the same floor.
+  'agency:executive': (context) => (
+    <ExecutiveScreen
+      key={context.grantKey}
+      client={context.client}
+      grantKey={context.grantKey}
+      rollup={tabRollupFloor()}
+    />
+  ),
   'agency:gallery': () => <Gallery />,
+  'agency:onboarding': (context) => <OnboardingScreen client={context.client} />,
   // Settings ▸ General, then the person's own sessions (C58) and authenticator app (C59),
   // which post to their own account routes rather than to the settings commands.
   'agency:settings': (context) => (
@@ -130,6 +138,7 @@ export const SCREENS: {
       grantKey={context.grantKey}
       navigate={context.navigate}
       {...(context.openPanel === undefined ? {} : { openPanel: context.openPanel })}
+      {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
     />
   ),
   'agency:clients': (context) => (

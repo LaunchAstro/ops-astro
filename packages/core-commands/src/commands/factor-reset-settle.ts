@@ -66,6 +66,7 @@ export async function settleFactorResets(
     attempted: tried.length,
     settled,
     owed: await stillOwed(database, businessId, options.only),
+    faults: tried.length - settled,
   };
 }
 
