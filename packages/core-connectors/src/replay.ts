@@ -1,18 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The replay model provider: a stand-in that answers on loopback like a model
-// vendor would, so the whole broker case set runs with no vendor account, key
-// or hosted service (AW-01). Its hostile modes are the answers a real provider
-// can give: an oversized body, a redirect to an unlisted host, a malformed
-// schema, a reply past the timeout, and an instruction planted in the content.
-// AW-10 adds the faults a provider really has: down (503), rate limited
-// (429), and a connection cut after the request arrived. It also answers a
-// lookup of one operation (`replay-lookup.ts`), honestly or with a hostile answer.
+// The replay model provider: a stand-in that answers on loopback like a model vendor would, so the
+// whole broker case set runs with no vendor account, key or hosted service (AW-01). Its hostile
+// modes are the answers a real provider can give: an oversized body, a redirect to an unlisted
+// host, a malformed schema, a reply past the timeout, and an instruction planted in the content.
+// AW-10 adds the faults a provider really has: down (503), rate limited (429), and a connection cut
+// after the request arrived. It also answers a lookup of one operation (`replay-lookup.ts`),
+// honestly or with a hostile answer.
 //
-// The adapter half (`replayAdapter`, `readReplayAnswer`) is what runs in the
-// broker's process: it builds a request with no origin and no credential, and
-// reads the answer against its schema. The server half runs wherever the test
-// or the stand-in staging stack starts it; it is never loaded by custody.
+// The adapter half (`replayAdapter`, `readReplayAnswer`) is what runs in the broker's process: it
+// builds a request with no origin and no credential, and reads the answer against its schema. The
+// server half runs where the test or the stand-in staging stack starts it; custody never loads it.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -25,6 +23,8 @@ import {
 import {
   lookupBody,
   operationOf,
+  lookupStateOf,
+  type LookupState,
   REPLAY_LOOKUP_PATH,
   type ReplayLookupMode,
 } from './replay-lookup.ts';
@@ -103,10 +103,9 @@ export const REPLAY_COMPOSE: ModelOperationDeclaration = {
 };
 
 /**
- * A person's question in their own conversation (AW-03's exchange), over the
- * replay provider until a real local provider lands (AW-RP). The question is a
- * person's own words, so it is free text: it reaches only a local route, and
- * the conversation seam takes no other.
+ * A person's question in their own conversation (AW-03's exchange), over the replay provider until
+ * a real local provider lands (AW-RP). The question is a person's own words, so it is free text: it
+ * reaches only a local route, and the conversation seam takes no other.
  */
 export const CONVERSATION_ANSWER: ModelOperationDeclaration = {
   ...REPLAY_COMPOSE,
@@ -239,12 +238,12 @@ function respond(
 /** A lookup's answer in each mode: the truth, or something that must never count as proof. */
 function lookedUp(
   mode: ReplayLookupMode,
-  begun: boolean,
+  state: LookupState,
   response: ServerResponse,
   timers: Set<NodeJS.Timeout>,
 ): void {
   if (mode === 'honest' || mode === 'claims_success') {
-    answer(response, lookupBody(mode, begun));
+    answer(response, lookupBody(mode, state));
   } else if (mode === 'unreachable') {
     response.socket?.destroy();
   } else {
@@ -258,6 +257,7 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
   let lookup: ReplayLookupMode = 'honest';
   const seen: SeenRequest[] = [];
   const processed = new Set<string>();
+  const refused = new Set<string>();
   const timers = new Set<NodeJS.Timeout>();
   const server: Server = createServer((request, response) => {
     void (async (): Promise<void> => {
@@ -266,10 +266,10 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
       seen.push({ path: request.url ?? '', authorization, body });
       const operation = operationOf(body);
       if (request.url === REPLAY_LOOKUP_PATH) {
-        lookedUp(lookup, operation !== null && processed.has(operation), response, timers);
+        lookedUp(lookup, lookupStateOf(processed, refused, operation), response, timers);
         return;
       }
-      if (operation !== null && !NOT_BEGUN.has(current)) processed.add(operation);
+      if (operation !== null) (NOT_BEGUN.has(current) ? refused : processed).add(operation);
       // An honest answer names the model it was asked for, as a provider's does (CS-7.30).
       if (current === 'answer') answer(response, answered(askedOf(body)));
       else respond(current, response, authorization, timers);

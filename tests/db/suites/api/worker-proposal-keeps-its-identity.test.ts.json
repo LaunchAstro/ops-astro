@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a worker's committed proposal keeps its operation identity across a replay refused while authority lapsed, and two overlapping proposal passes share one proposal: one lineage, one gate"
+}
