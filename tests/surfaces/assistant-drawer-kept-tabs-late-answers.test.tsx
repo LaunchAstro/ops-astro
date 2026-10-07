@@ -30,7 +30,7 @@ const ANA = { businessKey: 'alpha', email: 'ana@example.test' };
 
 /** `client`, with its first `conversation.read` answered as the server had it then, once `release` is called. */
 function holdingFirstRead(client: OperationsClient) {
-  let release = (): void => {};
+  let release: (() => void) | undefined;
   let first = true;
   const read = (name: string, body: Readonly<Record<string, unknown>>) => {
     const answer = (client.read as (n: string, b: unknown) => Promise<unknown>)(name, body);
@@ -42,7 +42,7 @@ function holdingFirstRead(client: OperationsClient) {
       };
     });
   };
-  return { client: { ...client, read } as unknown as OperationsClient, release: () => release() };
+  return { client: { ...client, read } as unknown as OperationsClient, release: () => release?.() };
 }
 
 const keep = (id: string): void => {
@@ -114,7 +114,7 @@ describe('MP-7-11 kept and reopened tabs against answers that land late', () => 
     const stored: Stored = {
       [MADE]: { title: 'Chat 1', messages: [message('m1', 'person', 'First question?')] },
     };
-    let finish = (): void => {};
+    let finish: (() => void) | undefined;
     const { client } = serving(stored, ({ name }) => {
       if (name === 'conversation.message') return replying('Second answer.');
       if (name !== 'conversation.start')
@@ -137,7 +137,7 @@ describe('MP-7-11 kept and reopened tabs against answers that land late', () => 
     await ask(page, 'First question?');
     await reopen(page, MADE);
     await ask(page, 'Second question?');
-    finish();
+    finish?.();
     await settle();
     await settle();
     expect(tabTitles(page)).toHaveLength(1);
