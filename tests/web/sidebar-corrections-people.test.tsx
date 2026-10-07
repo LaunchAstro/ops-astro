@@ -14,7 +14,7 @@ import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { mount, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
 import { ABOUT, aboutPage, askFor } from './sidebar-corrections-support.tsx';
-import { CLIENT_A, separated } from './sidebar-corrections-server.tsx';
+import { CLIENT_A, CLIENT_B, separated } from './sidebar-corrections-server.tsx';
 
 afterEach(unmountAll);
 
@@ -111,5 +111,27 @@ describe('person to person on App’s path: the drawer keyed on the grant', () =
     await alpha.release();
     expect(cards(view)).toBe(0);
     expect(view.text()).not.toContain('alongside');
+  });
+});
+
+describe('person to person on the same drawer: an unsent draft stays with its grant', () => {
+  it('the first person’s unsent draft is neither shown to nor sent by the next person', async () => {
+    const alpha = separated('alpha', { 'session-p1': [CLIENT_A], 'session-p2': [CLIENT_B] }, {});
+    const p1 = { client: alpha.as('session-p1'), grantKey: 'alpha:p1@example.test:0' };
+    const p2 = { client: alpha.as('session-p2'), grantKey: 'alpha:p2@example.test:0' };
+    const view = await mount(drawer(p1));
+    await tick();
+    await view.type('[data-correction-door] [name="page"]', 'About');
+    await view.type('[data-correction-door] [name="word"]', 'PrivateClientAWord');
+    await view.type('[data-correction-door] [name="replacement"]', 'PrivateClientAReplacement');
+    await view.render(drawer(p2));
+    await tick();
+    const values = view
+      .all('[data-correction-door] input')
+      .map((input) => (input as HTMLInputElement).value);
+    expect(values).toStrictEqual(['', '', '']);
+    await view.click('[data-correction-ask]');
+    await tick();
+    expect(JSON.stringify(alpha.sent('/live_correction/request'))).not.toContain('PrivateClientA');
   });
 });
