@@ -27,8 +27,6 @@ const NOT_DRAWN = new Set([
   'harness.read',
   'privacy.draft_breach_notices',
   'live_correction.read',
-  // MP-14-10a: the graduation data lands before the screens that draw it (P06).
-  'connection.graduation',
 ]);
 
 const at = (name: ReadName): string => `${PREFIX.person}alpha${pathOf(name)}`;

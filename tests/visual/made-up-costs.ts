@@ -6,11 +6,8 @@
 // which serves them. Figures are minor units of AUD written as the server
 // writes them; every client, skill and agent is made up.
 
-import { FLEET_READ, SIGNAL_READ } from './made-up-connections.ts';
 import type {
   AgentCostsResult,
-  ConnectionFleetResult,
-  ConnectionSignalResult,
   SkillCostsResult,
   SkillCostView,
 } from '../../packages/core-wire/src/index.ts';
@@ -130,15 +127,11 @@ export const AGENT_COSTS: AgentCostsResult = {
   ],
 };
 
-/** The Connections page's reads and the cost log, as the harness answers them. */
-export const CONNECTION_READS: {
-  readonly 'connection.fleet': ConnectionFleetResult;
-  readonly 'connection.signal': ConnectionSignalResult;
+/** Skill costing and the cost log, as the harness answers them. */
+export const COST_READS: {
   readonly 'finance.skill_costs': SkillCostsResult;
   readonly 'finance.agent_costs': AgentCostsResult;
 } = {
-  'connection.fleet': FLEET_READ,
-  'connection.signal': SIGNAL_READ,
   'finance.skill_costs': SKILL_COSTS,
   'finance.agent_costs': AGENT_COSTS,
 };

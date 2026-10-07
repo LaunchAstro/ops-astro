@@ -37,7 +37,8 @@ import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-ac
 import { AGENT_READS } from './made-up-agent.ts';
 import { AUTOMATION_REGISTRY } from './made-up-automations.ts';
 import { CONVERSATIONS, DIRECT_MESSAGES, messagesOf } from './made-up-chat.ts';
-import { CONNECTION_READS } from './made-up-costs.ts';
+import { CONNECTION_READS } from './made-up-connections.ts';
+import { COST_READS } from './made-up-costs.ts';
 import { EXECUTION, RECEIPT } from './made-up-data.ts';
 import { DETAIL, LEDGER, STATE, TAGS, TASKS, TODOS } from './made-up-rows.ts';
 import { SECRET_LIST } from './made-up-secrets.ts';
@@ -186,6 +187,7 @@ const READS = {
   // Settings ▸ Workflow triggers (C33).
   'automation.registry': AUTOMATION_REGISTRY,
   ...CONNECTION_READS,
+  ...COST_READS,
   ...WAYFINDER_READS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 

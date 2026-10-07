@@ -190,6 +190,26 @@
         "color": "rgba(248,248,248,255)"
       }
     },
+    "worklog.clear": {
+      "1480-light": {
+        "box.height": "38"
+      },
+      "1480-dark": {
+        "box.height": "38"
+      },
+      "900-light": {
+        "box.height": "38"
+      },
+      "900-dark": {
+        "box.height": "38"
+      },
+      "390-light": {
+        "box.height": "38"
+      },
+      "390-dark": {
+        "box.height": "38"
+      }
+    },
     "worklog.who": {
       "1480-light": {
         "font-family": "Funnel Sans",
