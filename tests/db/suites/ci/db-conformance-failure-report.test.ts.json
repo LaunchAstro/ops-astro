@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "Child assertions read seeded SQL fixtures in disposable harness databases; failure detail and conformance admission guards remain checked."
+}
