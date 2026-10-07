@@ -4,7 +4,8 @@
 // MP-7-11 CS-7.33 and C36, the drawer's kept and reopened tabs against answers
 // that land late: a reload after the tab's session was signed in again, a start
 // landing after its conversation was reopened and asked in, and a restored
-// tab's first read landing after a rename or after the tab was closed.
+// tab's first read landing after a rename (to any title) or after the tab was
+// closed.
 
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name, as the drawer's own tests do */
 
@@ -169,6 +170,33 @@ describe('MP-7-11 kept and reopened tabs against answers that land late', () => 
     await settle();
     expect(tabTitles(page)).toHaveLength(1);
     expect(tabTitles(page)[0]).toContain('New');
+    expect(bodies(page)).toStrictEqual(['user: Is pacing on track?', 'ai: Yes, 4% under.']);
+  });
+
+  it('C36 a restored tab renamed to the reading title before its read lands keeps that title', async () => {
+    keep(ONE);
+    const stored: Stored = { [ONE]: { title: 'Old', messages: [...STORED[ONE]!.messages] } };
+    const base = serving(stored, ({ name, body }) => {
+      if (name === 'conversation.rename') stored[ONE]!.title = String(body['title']);
+      return Promise.resolve({ ok: true, value: { recordId: ONE, revision: 2 } });
+    });
+    const { client, release } = holdingFirstRead(base.client);
+    const page = await drawerFor(client);
+    const key = page.find('[data-chat]')?.getAttribute('data-chat') ?? '';
+    for (const title of ['New', 'Reading…']) {
+      await doubleClick(page, `[data-chat="${key}"]`);
+      await page.type(`[data-chat-rename="${key}"]`, title);
+      await press(page, `[data-chat-rename="${key}"]`, 'Enter');
+      await settle();
+      expect(stored[ONE]!.title).toBe(title);
+    }
+    expect(base.calls.filter((call) => call.name === 'conversation.rename')).toHaveLength(2);
+    release();
+    await settle();
+    await settle();
+    expect(tabTitles(page)).toHaveLength(1);
+    expect(tabTitles(page)[0]).toContain('Reading…');
+    expect(tabTitles(page)[0]).not.toContain('Old');
     expect(bodies(page)).toStrictEqual(['user: Is pacing on track?', 'ai: Yes, 4% under.']);
   });
 
