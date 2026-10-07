@@ -24,6 +24,19 @@ const around = (hoursAgo: number) => ({
   to: new Date(Date.now() - (hoursAgo - 1) * HOUR).toISOString(),
 });
 
+/** A run's rows as [agent, cost], in agent order: one run's rows share their start. */
+const rowsOf = (result: AgentCostsResult, runId: string) =>
+  result.runs
+    .filter((one) => one.runId === runId)
+    .map((one) => [one.agentActorId, one.cost])
+    .toSorted((a, b) => String(a[0]).localeCompare(String(b[0])));
+const sorted = (pairs: readonly (readonly [string, string | null])[]) =>
+  pairs.toSorted((a, b) => a[0].localeCompare(b[0]));
+const totalOf = (result: AgentCostsResult, client: string) =>
+  result.byAttachment.find(
+    (one) => one.attachment.kind === 'client' && one.attachment.id === client,
+  );
+
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('a run is costed whole', () => {
   let w: CostWorld;
@@ -39,18 +52,6 @@ describe.skipIf(serverUrl === undefined)('a run is costed whole', () => {
     const costing = (answer.body as unknown as SkillCostsResult).costing;
     return costing?.skills.find((one) => one.skillId === skillId);
   };
-  /** A run's rows as [agent, cost], in agent order: one run's rows share their start. */
-  const rowsOf = (result: AgentCostsResult, runId: string) =>
-    result.runs
-      .filter((one) => one.runId === runId)
-      .map((one) => [one.agentActorId, one.cost])
-      .toSorted((a, b) => String(a[0]).localeCompare(String(b[0])));
-  const sorted = (pairs: readonly (readonly [string, string | null])[]) =>
-    pairs.toSorted((a, b) => a[0].localeCompare(b[0]));
-  const totalOf = (result: AgentCostsResult, client: string) =>
-    result.byAttachment.find(
-      (one) => one.attachment.kind === 'client' && one.attachment.id === client,
-    );
 
   beforeAll(async () => {
     w = await createCostWorld('costwhole');
