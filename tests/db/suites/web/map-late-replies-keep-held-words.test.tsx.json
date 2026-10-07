@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "the map page over the composed API: words dropped while a stale save is on its way draw no conflict when its reply lands, and until the reread after a write lands no control sends against the old map or opens a graduate form over one kept to copy"
+}
