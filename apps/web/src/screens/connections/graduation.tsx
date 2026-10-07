@@ -15,7 +15,10 @@
 // 13); demoting sends one command, and revoking waits on a confirmation
 // first. Every command goes through `useMoneyCommand`, since mandate:manage
 // needs a fresh sign-in (C59), says its refusal in the server's words, and
-// reads the region again; a form clears only once its write succeeds.
+// reads the region again; a form clears only once its write succeeds. A write
+// held for that sign-in is withdrawn when the scope bar moves or the form that
+// sent it is cancelled, and one whose answer was lost goes again under its
+// operation.
 
 import { useState, type ReactElement } from 'react';
 import { Empty, SectionHead } from '@launchastro/ui';
@@ -27,20 +30,14 @@ import type {
 import type { OperationsClient } from '../../operations/client.ts';
 import type { RollupFloor } from '../../data/rollup-floor.ts';
 import { useRead } from '../../data/use-read.ts';
-import { useMoneyCommand, type StepUpAsk } from '../../records/use-money-command.ts';
+import type { StepUpAsk } from '../../records/use-money-command.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { StepUpPrompt } from '../../views/step-up-prompt.tsx';
 import { ChannelsMock, ExceptionsMock } from './client-mock.tsx';
 import { MandateForm, type MandateFiling } from './graduation-forms.tsx';
 import { ConfirmRevokeMandate, GraduationRow, Mandate } from './graduation-rows.tsx';
+import { promotionOf, useSend, type Drop, type Send } from './graduation-send.ts';
 
-type Change = 'mandate.file' | 'mandate.revoke' | 'graduation.promote' | 'graduation.demote';
-type Send = (
-  name: Change,
-  body: Readonly<Record<string, unknown>>,
-  revision?: number,
-  done?: () => void,
-) => void;
 type Client = ConnectionGraduationResult['clients'][number];
 
 function ScopeBar(props: {
@@ -94,6 +91,7 @@ function StandingApprovals(props: {
           mandate={revoking}
           holds={props.rows.filter((row) => row.heldBy === revoking.id)}
           onKeep={() => setRevoking(null)}
+          locked={locked}
           onRevoke={() => {
             setRevoking(null);
             send('mandate.revoke', { mandateId: revoking.id }, revoking.revision);
@@ -122,6 +120,7 @@ function Graduation(props: {
   readonly client: Client;
   readonly rows: readonly GraduationRowView[];
   readonly send: Send;
+  readonly drop: Drop;
   readonly locked: boolean;
 }): ReactElement {
   const { client, send } = props;
@@ -146,7 +145,10 @@ function Graduation(props: {
                 setPromoting(null),
               );
             }}
-            cancel={() => setPromoting(null)}
+            cancel={() => {
+              props.drop(promotionOf(row.id));
+              setPromoting(null);
+            }}
           />
         ))}
       </div>
@@ -154,9 +156,43 @@ function Graduation(props: {
   );
 }
 
+/** The last refusal, in the server's words, and the prompt for a fresh sign-in. */
+function Notices(props: {
+  readonly said: string | null;
+  readonly stepUp: StepUpAsk | null;
+}): ReactElement {
+  return (
+    <>
+      {props.said === null ? null : (
+        <p role="alert" data-region-said>
+          {props.said}
+        </p>
+      )}
+      {props.stepUp === null ? null : <StepUpPrompt ask={props.stepUp} />}
+    </>
+  );
+}
+
+/** 011 and 012 for the chosen client: made-up rows under the mock label. */
+function ClientMocks(props: { readonly scoped: ReactElement }): ReactElement {
+  return (
+    <>
+      <section className="gradsec" data-section="011" data-mock="channels">
+        <SectionHead index="011" title="Channels" right={props.scoped} />
+        <ChannelsMock />
+      </section>
+      <section className="gradsec" data-section="012" data-mock="exceptions">
+        <SectionHead index="012" title="Exceptions" right={props.scoped} />
+        <ExceptionsMock />
+      </section>
+    </>
+  );
+}
+
 function Shown(props: {
   readonly region: ConnectionGraduationResult;
   readonly send: Send;
+  readonly drop: Drop;
   readonly said: string | null;
   readonly locked: boolean;
   readonly stepUp: StepUpAsk | null;
@@ -169,16 +205,25 @@ function Shown(props: {
   const scoped = <span data-scope-client>{client.label}</span>;
   return (
     <>
-      <ScopeBar clients={region.clients} chosen={client.id} choose={choose} />
+      <ScopeBar
+        clients={region.clients}
+        chosen={client.id}
+        choose={(id) => {
+          props.drop();
+          choose(id);
+        }}
+      />
       <section className="gradsec" data-section="010" id="graduation">
         <SectionHead index="010" title="Graduation" right={scoped} />
-        {props.said === null ? null : (
-          <p role="alert" data-region-said>
-            {props.said}
-          </p>
-        )}
-        {props.stepUp === null ? null : <StepUpPrompt ask={props.stepUp} />}
-        <Graduation key={client.id} client={client} rows={rows} send={send} locked={locked} />
+        <Notices said={props.said} stepUp={props.stepUp} />
+        <Graduation
+          key={client.id}
+          client={client}
+          rows={rows}
+          send={send}
+          drop={props.drop}
+          locked={locked}
+        />
         <StandingApprovals
           key={`approvals-${client.id}`}
           client={client}
@@ -188,14 +233,7 @@ function Shown(props: {
           locked={locked}
         />
       </section>
-      <section className="gradsec" data-section="011" data-mock="channels">
-        <SectionHead index="011" title="Channels" right={scoped} />
-        <ChannelsMock />
-      </section>
-      <section className="gradsec" data-section="012" data-mock="exceptions">
-        <SectionHead index="012" title="Exceptions" right={scoped} />
-        <ExceptionsMock />
-      </section>
+      <ClientMocks scoped={scoped} />
     </>
   );
 }
@@ -213,16 +251,7 @@ export function GraduationRegion(props: {
     ...(props.rollup === undefined ? {} : { rollup: props.rollup }),
     deps: [],
   });
-  const command = useMoneyCommand(client);
-  const send: Send = (name, body, revision, done) => {
-    command.run(
-      (to) => to.mutate(name, body, revision === undefined ? {} : { expectedRevision: revision }),
-      (settlement) => {
-        if (settlement.kind === 'ok') done?.();
-        reload();
-      },
-    );
-  };
+  const { command, send, drop } = useSend(client, reload);
   return (
     <div className="secs" data-graduation>
       <RecordState
@@ -241,6 +270,7 @@ export function GraduationRegion(props: {
           <Shown
             region={region}
             send={send}
+            drop={drop}
             said={command.because}
             locked={command.locked}
             stepUp={command.stepUp}

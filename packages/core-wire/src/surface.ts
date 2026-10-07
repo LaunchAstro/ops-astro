@@ -287,6 +287,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['conversationId'],
   }),
+  // CS-7.30: the drawer's model picker, under the list's rule (the owner's own, holding
+  // `conversation:write`; API-1 names that grant). Only its own audit event; no agent entry.
+  read('conversation.models', CONVERSATION_COLLECTION, { authority: ['conversation:write'] }),
+  declare('conversation.set_model', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
@@ -468,6 +476,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The per-client graduation region (MP-14-10a): the same page's key, asked per client by the
   // scopes the caller holds it at, never an agent.
   read('connection.graduation', 'connection'),
+  // What agent runs cost (MP-14-9, MP-14-6): skill costing and the agents' cost log for a
+  // period, each asked per row by the scopes the caller holds `finance:read` at, never an agent.
+  read('finance.skill_costs', 'finance'),
+  read('finance.agent_costs', 'finance'),
   declare('connector.repair', 'manage', {
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,

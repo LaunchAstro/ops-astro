@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "revoking or ending chat access withholds conversation mentions, new names and email delivery"
+}

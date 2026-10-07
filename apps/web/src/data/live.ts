@@ -16,11 +16,13 @@
 // one that is down is no seat.
 // The board (INB-1f) is the `board` topic: every task of the business and the
 // caller's own inbox; its `inbox` signal reaches its pages as `inbox`, so an
-// inbox panel re-reads without the board (C4 notifications live).
+// inbox panel re-reads without the board (C4 notifications live). Its
+// `conversation` signal (C71) reaches them as a change, so the Team panel's
+// list and the Team tab's unread chip re-read.
 
 export const FLOOR_MS = 30_000;
 const REJOIN_MS = 2_000;
-const EVENT = /^event: (invalidate|resync|closed|seat|presence|inbox)\ndata: (.*)$/mu;
+const EVENT = /^event: (invalidate|resync|closed|seat|presence|inbox|conversation)\ndata: (.*)$/mu;
 
 /** `inbox`: the caller's own inbox changed (the `board` topic only). */
 export type LiveChange = 'changed' | 'closed' | 'inbox';
@@ -189,9 +191,15 @@ class TabStream implements LiveHub {
     this.#status(null);
   }
 
-  #down(refused: boolean): void {
+  /** No stream open: the floor rereads until a join opens, even one that stalls; one interval only. */
+  #floorOn(): void {
+    this.#floor ??= setInterval(this.#refresh, FLOOR_MS);
+  }
+
+  /** Refused, unreachable or lost. */
+  #down(): void {
     this.#status(this.#downSince ?? this.#now());
-    if (refused) this.#floor ??= setInterval(this.#refresh, FLOOR_MS);
+    this.#floorOn();
   }
 
   #wanted(): string[] {
@@ -215,17 +223,19 @@ class TabStream implements LiveHub {
   };
 
   async #run(abort: AbortController): Promise<void> {
+    // Every join in flight, the first and each after a topic change too, until #up.
+    this.#floorOn();
     const topics = this.#wanted();
     const body =
       topics.length === 0 ? null : await this.#open(topics, abort.signal).catch(() => null);
     if (abort.signal.aborted) return;
-    if (body === null) this.#down(true);
+    if (body === null) this.#down();
     else {
       this.#up();
       await readEvents(body, this.#onEvent, abort.signal).catch(() => {});
       if (abort.signal.aborted) return;
       this.#reseat(null);
-      this.#down(false);
+      this.#down();
     }
     await wait(body === null ? FLOOR_MS : REJOIN_MS, abort.signal);
     if (!abort.signal.aborted) await this.#run(abort);

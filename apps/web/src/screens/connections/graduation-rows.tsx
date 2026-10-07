@@ -207,6 +207,8 @@ export function ConfirmRevokeMandate(props: {
   readonly holds: readonly GraduationRowView[];
   readonly onRevoke: () => void;
   readonly onKeep: () => void;
+  /** Another write is in flight: Revoke waits for it rather than being lost. */
+  readonly locked: boolean;
 }): ReactElement {
   const { mandate, holds } = props;
   const freed = holds.map((row) => row.classLabel).join(', ');
@@ -221,7 +223,7 @@ export function ConfirmRevokeMandate(props: {
     <div data-confirm="revoke-mandate">
       <Card title={`Revoke "${mandate.label}"?`} sub={sub}>
         <span data-act="revoke">
-          <Button variant="primary" onClick={props.onRevoke}>
+          <Button variant="primary" disabled={props.locked} onClick={props.onRevoke}>
             Revoke
           </Button>
         </span>

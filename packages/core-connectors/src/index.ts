@@ -184,6 +184,7 @@ export {
   type ReceiptLObservations,
 } from './site/receipts.ts';
 export {
+  LOCAL_GPT_BODY_LIMIT,
   LOCAL_GPT_COMPOSE,
   LOCAL_GPT_CONVERSATION,
   LOCAL_GPT_DEFAULT_MODEL,
@@ -194,3 +195,9 @@ export {
   localGptCostMinor,
   readLocalGptAnswer,
 } from './local-gpt.ts';
+export {
+  CONVERSATION_MODELS,
+  conversationModelsOf,
+  conversationProviderOf,
+  type ConversationModel,
+} from './conversation-models.ts';

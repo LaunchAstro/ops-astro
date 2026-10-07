@@ -1,26 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C58 (CS-2.25): end a person's access in one act, the tracked action
-// `access ended (person: login, sessions, grants)` under `access:manage`,
-// never an agent's.
+// `access ended (person: login, sessions, grants)` under `access:manage`, never an agent's.
 //
-// The act is local first. One transaction, under the business's access lock:
-// the person's membership and acting identity end, every live grant they hold
-// and every delegation they gave are revoked (`endPersonAuthority`), every
-// agent credential they issued here is revoked with its agent actor, and one
-// access ending is written per login mapped to them, owing the provider two
-// steps. From that commit login resolution refuses the person
-// (`AUTH_NO_MEMBERSHIP`), whatever the provider has or has not done
-// (TR-SEC5-4).
+// The act is local first. One transaction, under the business's access lock: the person's
+// membership and acting identity end, every live grant they hold and every delegation they gave are
+// revoked (`endPersonAuthority`), every agent credential they issued here is revoked with its agent
+// actor, and one access ending is written per login mapped to them, owing the provider two steps.
+// From that commit login resolution refuses the person (`AUTH_ACCESS_ENDED`), whatever the provider
+// has or has not done (TR-SEC5-4).
 //
-// The provider steps are never taken inside a database transaction. They are
-// tried as soon as the act commits and retried by the API server until each is
-// done (`settleAccessEndings`): end every session, which revokes their refresh
-// tokens, then deactivate the login. A step done is stamped once and never
-// asked again. An answer the adapter does not accept, a throw or a timeout is
-// a fault by its kind alone, and the step stays owed.
+// The provider steps are never taken inside the act's transaction. They are tried as soon as the
+// act commits and retried by the endings loop until each is done (`settleAccessEndings`): end every
+// session, which revokes their refresh tokens, then deactivate the login. A step done is stamped
+// once and never asked again. An answer the adapter does not accept, a throw or a timeout is a
+// fault by its kind alone, and the step stays owed. A provider whose user is already gone answers
+// the step done (the adapter's call, on that exact answer only): it is stamped like any other,
+// final, and never owed again.
 
 import {
+  factorLoginLiveElsewhere,
   isUuid,
   lastManager,
   lockAgentCredential,
@@ -28,6 +27,7 @@ import {
   revokeAgentCredential,
 } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, TenantQuery } from '../../../core-records/src/index.ts';
+import { claimNextEnding, endingsOwed, lockEnding, type OwedEnding } from './access-end-claim.ts';
 import type { ProviderAnswer, ProviderFault } from './account-factor-provider.ts';
 import { endPersonAuthority, lockAccessAsManager } from './authority-controls.ts';
 import type { CommandContext } from './context.ts';
@@ -52,17 +52,24 @@ export interface LoginProvider {
   deleteFactor?(subject: string, factorId: string): Promise<ProviderAnswer<void>>;
 }
 
-/** What one pass over a business's owed endings did, by count only. */
+/**
+ * What one pass over a business's owed endings (or C59's resets) did, by
+ * count only: `owed` is every one still owing a step after it, one another
+ * retry holds included, and `faults` the ones this pass left owed on a fault
+ * (for an ending, its login's lock not taken in time included).
+ */
 export interface SettleReport {
   readonly attempted: number;
   readonly settled: number;
   readonly owed: number;
+  readonly faults: number;
 }
 
 /**
- * How long a retry's claim on an ending lasts. Longer than both provider
- * calls can take (two time limits of 5 seconds), so a second retry never
- * calls the provider for an ending the first is still working on.
+ * How long a retry's claim on one ending lasts. Each ending is claimed just
+ * before its own calls, and this is longer than the wait for the login's lock
+ * and both calls can take, so a second retry never calls the provider for an
+ * ending the first is still working on.
  */
 export const ACCESS_ENDING_CLAIM_SECONDS = 30;
 
@@ -162,23 +169,22 @@ async function endStanding(
   );
 }
 
-interface Owed {
-  readonly id: string;
-  readonly subject: string;
-  readonly sessions_done: boolean;
-  readonly login_done: boolean;
-}
-
 /**
- * One pass over this business's endings with a provider step owed.
+ * One pass over this business's endings with a provider step owed, claimed
+ * one row at a time (`claimNextEnding`) just before its calls, so a pass of
+ * slow calls never lets a claim lapse on a row still waiting its turn.
  *
- * The claim is one statement: each row it returns is one no other retry has
- * claimed inside `claimSeconds`, and a second retry waiting on the row lock
- * re-reads the claim and passes over it. The provider is then called outside
- * any transaction, sessions before the login (a provider may refuse to sign
- * out a login it has already deactivated), stopping at the first fault, and
- * what was done is stamped in a second transaction. `coalesce` keeps a step's
- * first stamp, so a step done is never undone or re-dated.
+ * The shared-login check is asked first, before any lock: it goes out on
+ * another connection, and a mapping it leads to must not wait on this ending.
+ * Each claimed ending is then worked in one transaction that takes the login's
+ * subject lock first and reads its stamps again (`lockEnding`), and writes
+ * nothing until its calls are done: the shared-login check, asked again under
+ * the lock, then the provider, sessions before the login (a provider may
+ * refuse to sign out a login it has already deactivated), stopping at the
+ * first fault, then the stamp. A login another business maps is either seen by
+ * the second check or its mapping waits on the lock for the stamp
+ * (20261006213000). `coalesce` keeps a step's first stamp, so a step done is
+ * never undone or re-dated.
  */
 export async function settleAccessEndings(
   database: Database,
@@ -192,60 +198,58 @@ export async function settleAccessEndings(
      */
     readonly sharedElsewhere: (subject: string) => Promise<boolean>;
     readonly claimSeconds?: number;
+    readonly lockWaitMs?: number;
     /** Only these endings: the ones an act has just written. All owed ones otherwise. */
     readonly only?: readonly string[];
   },
 ): Promise<SettleReport> {
   const claimSeconds = options.claimSeconds ?? ACCESS_ENDING_CLAIM_SECONDS;
-  const claimed = await database.withBusiness(
-    businessId,
-    async (tx) =>
-      await tx.query<Owed>(
-        `update public.access_endings e
-            set attempts = e.attempts + 1, attempt_started_at = now()
-           from public.logins l
-          where e.business_id = $1 and l.business_id = e.business_id and l.id = e.login_id
-            and (e.sessions_ended_at is null or e.login_deactivated_at is null)
-            and (e.attempt_started_at is null
-                 or e.attempt_started_at <= now() - make_interval(secs => $2))
-            and ($3::uuid[] is null or e.id = any($3::uuid[]))
-          returning e.id, l.subject,
-                    e.sessions_ended_at is not null as sessions_done,
-                    e.login_deactivated_at is not null as login_done`,
-        [businessId, claimSeconds, options.only ?? null],
-      ),
-  );
+  const only = options.only ?? null;
+  const tried: string[] = [];
   let settled = 0;
-  for (const row of claimed) {
-    // eslint-disable-next-line no-await-in-loop -- one ending at a time, each its own provider calls
-    const done = await attempt(provider, row, options.sharedElsewhere);
-    // eslint-disable-next-line no-await-in-loop -- its stamp, before the next ending is asked
-    await stamp(database, businessId, row.id, done);
+  let faults = 0;
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop -- one ending at a time, each claimed before its calls
+    const row = await claimNextEnding(database, businessId, claimSeconds, only, tried);
+    if (row === undefined) break;
+    tried.push(row.id);
+    // eslint-disable-next-line no-await-in-loop -- before its lock; null when it could not be asked
+    const first = await options.sharedElsewhere(row.subject).catch(() => null);
+    let done: Attempted;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- its calls and stamp, before the next is claimed
+      done = await database.withBusiness(businessId, async (tx) => {
+        const now = await lockEnding(tx, row, options.lockWaitMs);
+        const answer = await attempt(tx, provider, now, first);
+        await stamp(tx, row.id, answer);
+        return answer;
+      });
+    } catch (cause) {
+      // A lock not taken in time rolls back unstamped: the ending stays owed, a fault.
+      if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
+      faults += 1;
+      continue;
+    }
     if (done.sessions && done.login) settled += 1;
+    if (done.fault !== null) faults += 1;
   }
-  return { attempted: claimed.length, settled, owed: claimed.length - settled };
+  const owed = await endingsOwed(database, businessId, only);
+  return { attempted: tried.length, settled, owed, faults };
 }
 
 /** What was done, stamped once: `coalesce` keeps each step's first stamp. */
-async function stamp(
-  database: Database,
-  businessId: BusinessId,
-  id: string,
-  done: Attempted,
-): Promise<void> {
-  await database.withBusiness(businessId, async (tx) => {
-    await tx.query(
-      `update public.access_endings
-          set sessions_ended_at = case when $3 then coalesce(sessions_ended_at, now())
-                                       else sessions_ended_at end,
-              login_deactivated_at = case when $4 then coalesce(login_deactivated_at, now())
-                                          else login_deactivated_at end,
-              last_fault = $5,
-              provider_steps_skipped = coalesce(provider_steps_skipped, $6)
-        where business_id = $1 and id = $2`,
-      [businessId, id, done.sessions, done.login, done.fault, done.skipped],
-    );
-  });
+async function stamp(tx: TenantQuery, id: string, done: Attempted): Promise<void> {
+  await tx.query(
+    `update public.access_endings
+        set sessions_ended_at = case when $3 then coalesce(sessions_ended_at, now())
+                                     else sessions_ended_at end,
+            login_deactivated_at = case when $4 then coalesce(login_deactivated_at, now())
+                                        else login_deactivated_at end,
+            last_fault = $5,
+            provider_steps_skipped = coalesce(provider_steps_skipped, $6)
+      where business_id = $1 and id = $2`,
+    [tx.businessId, id, done.sessions, done.login, done.fault, done.skipped],
+  );
 }
 
 interface Attempted {
@@ -256,19 +260,20 @@ interface Attempted {
 }
 
 async function attempt(
+  tx: TenantQuery,
   provider: LoginProvider,
-  row: Owed,
-  sharedElsewhere: (subject: string) => Promise<boolean>,
+  row: OwedEnding,
+  first: boolean | null,
 ): Promise<Attempted> {
   let sessions = row.sessions_done;
   let login = row.login_done;
-  // Asked before any call; a failure to ask is a fault, and the steps stay owed.
-  let shared: boolean;
-  try {
-    shared = await sharedElsewhere(row.subject);
-  } catch {
-    return { sessions, login, fault: 'unreachable', skipped: null };
-  }
+  // Both stamped by another retry while this one waited: nothing is sent.
+  if (sessions && login) return { sessions, login, fault: null, skipped: null };
+  // A failure to ask first is a fault, and the steps stay owed.
+  if (first === null) return { sessions, login, fault: 'unreachable', skipped: null };
+  // Asked again under the subject lock, so a login mapped after the first
+  // answer is seen. An answer of doubt is a yes: nothing is sent.
+  const shared = first || (await factorLoginLiveElsewhere(tx, row.login_id));
   if (shared) return { sessions: true, login: true, fault: null, skipped: 'shared' };
   if (!sessions) {
     const answer = await asked(async () => await provider.endSessions(row.subject));

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's runner captures only through the C18-1 fence: a stored page outside the catalogue stops the run before anything is read, sent or fetched."
+}

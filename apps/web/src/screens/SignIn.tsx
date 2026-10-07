@@ -21,8 +21,8 @@
 // session has ended, this is the word the server used, and anything unsaved is
 // gone. The code is printed because a refusal a person cannot quote is a refusal
 // they cannot get help with -- the same rule the read states follow. Ended
-// access (C58) is the third ending and arrives as 403 `AUTH_NO_MEMBERSHIP` to a
-// bearer that had been a member's; it takes the same notice. A person who
+// access (C58) is the third ending and arrives as 403 `AUTH_ACCESS_ENDED`; it
+// takes the same notice. A person who
 // signs out here is told the same about their unsaved edit, without a code.
 //
 // **A failed sign-in is paired with the password control and announced.** The

@@ -162,6 +162,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'connection.fleet': READ,
   'connection.graduation': READ,
   'connection.signal': READ,
+  'finance.skill_costs': READ,
+  'finance.agent_costs': READ,
   'connector.repair': writing(business('connection_repairs')),
   'mandate.file': writing(client('standing_mandates')),
   'mandate.revoke': writing(client('standing_mandates', 'graduation_classes')),
@@ -179,6 +181,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'conversation.message': writing(client('conversations', 'conversation_messages')),
   'conversation.rename': writing(client('conversations')),
   'conversation.set_scope': writing(client('conversations')),
+  'conversation.set_model': writing(client('conversations')),
   // AW-01: the broker's hold on the lease's run and its prompt copy's registration. At the approved
   // ceiling the refusal commits the stop instead (AW-05): the ask, the lease released, the
   // delegation retired, the run waiting. The provider call goes through the credential broker; a
@@ -206,6 +209,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap, AW-13's trace read,
   // AW-12's harness result, AW-11's child work, and the accepted plan.
   'conversation.allowance': READ,
+  'conversation.models': READ,
   'definition.attribution': READ,
   'trace.read': READ,
   'harness.read': READ,
@@ -216,9 +220,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
   'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
   'run.child_handback': writing([...client('run_events'), ...business('delegations')]),
+  // Accepted in a conversation, it moves the conversation's last activity (PRV-oa-1136).
   'task.accept_plan': writing([
-    ...client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'plan_records'),
-    ...client('reservations', 'run_definition_pins', 'run_events', 'task_envelopes'),
+    ...client('attempts', 'conversations', 'gate_decisions', 'gates', 'inbox_items'),
+    ...client('plan_records', 'reservations', 'run_definition_pins', 'run_events'),
+    ...client('task_envelopes'),
   ]),
   'access.grant': GRANTS,
   'access.revoke': GRANTS,

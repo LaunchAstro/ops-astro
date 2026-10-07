@@ -109,7 +109,7 @@ async function claimedResetCountedOwed(): Promise<void> {
   const skipped = factorFake();
   const remaining = await retryFactorResets(db.admin, db.app, skipped.provider);
   expect(skipped.calls.filter((call) => call.factorId === owed.factorId)).toHaveLength(0);
-  expect(remaining).toBe(1);
+  expect(remaining).toEqual({ owed: 1, faults: 0 });
 }
 
 async function sessionDuringResetExpired(): Promise<void> {

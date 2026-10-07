@@ -88,6 +88,14 @@ const ROWS_HEAD = [
     meaning: 'The actor row is deactivated',
     source: 'contract 4.4',
   },
+  // C58: a login whose access here was ended, told so on every call, so a client
+  // that never saw it served (a reload) can still sign the person out.
+  {
+    code: 'AUTH_ACCESS_ENDED',
+    status: 403,
+    meaning: 'Verified login whose access to this business was ended',
+    source: 'C58 #641',
+  },
 
   // Authority, T1c. Signed in, and not allowed. Also one of the runtime's own.
   {

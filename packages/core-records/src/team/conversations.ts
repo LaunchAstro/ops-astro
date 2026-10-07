@@ -13,13 +13,15 @@
 // **Membership is the filter, inside every query.** A conversation is read,
 // listed and counted only through the reader's own member row, so another
 // person's conversation, or another business's, is not there to be answered.
-// A member reads nothing written before they joined or after they left. The
+// A member reads nothing written before they joined or after they left, and
+// nothing once they may no longer chat (`chatsNow`, asked in the same query). The
 // owner and administrators hold no way round it: a conversation is private to
 // its members (CAPABILITY-SLICES, team chat's audience, 27 September 2026).
 
 import { randomUUID } from 'node:crypto';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
+import { chatsNow } from '../inbox/access.ts';
 import type { SpineField } from '../tasks/spine.ts';
 import { shownAt, type ReadPosition } from './read-position.ts';
 
@@ -176,6 +178,8 @@ export interface ConversationSummary {
   readonly name: string | null;
   /** Every current member's person id, the reader included; none to one who has left. */
   readonly members: readonly string[];
+  /** When the reader's own current membership began; null once they have left. */
+  readonly joinedAt: string | null;
   readonly lastRead: string | null;
   readonly lastMessageAt: string | null;
   /** Others' messages after the reader's marker. */
@@ -193,12 +197,14 @@ export async function listConversations(
     readonly kind: ConversationKind;
     readonly name: string | null;
     readonly members: readonly string[];
+    readonly joined_at: Date | null;
     readonly last_read_at: Date | null;
     readonly last_message_at: Date | null;
     readonly unread: string;
   }>(
     `select m.conversation_id as id, r.txt_1 as kind, m.last_read_at,
             case when m.left_at is null then r.txt_2 end as name,
+            case when m.left_at is null then m.joined_at end as joined_at,
             case when m.left_at is null then array(
               select o.person_id::text from public.team_conversation_members o
                where o.business_id = m.business_id and o.conversation_id = m.conversation_id
@@ -212,7 +218,7 @@ export async function listConversations(
        from public.team_conversation_members m
        join public.records r on r.business_id = m.business_id and r.id = m.conversation_id
         and r.record_type_id = $3 and r.deleted_at is null
-      where m.business_id = $1 and m.person_id = $4
+      where m.business_id = $1 and m.person_id = $4 and ${chatsNow('m.person_id')}
       order by last_message_at desc nulls last, m.conversation_id`,
     [tx.businessId, types.commentTypeId, types.conversationTypeId, personId],
   );
@@ -221,6 +227,7 @@ export async function listConversations(
     kind: row.kind,
     name: row.name,
     members: row.members,
+    joinedAt: row.joined_at?.toISOString() ?? null,
     lastRead: row.last_read_at?.toISOString() ?? null,
     lastMessageAt: row.last_message_at?.toISOString() ?? null,
     unread: Number(row.unread),
@@ -237,6 +244,12 @@ export interface ConversationMessage {
   readonly body: string;
 }
 
+/** The reader's member row with each message, or none: one statement, so a revocation serves neither. */
+type MemberMessage = { readonly last_read_at: Date | null } & (
+  | { readonly id: null }
+  | (Omit<ConversationMessage, 'at'> & { readonly at: Date; readonly tied: string })
+);
+
 /**
  * One conversation's messages, oldest first, and the reader's marker; or undefined when the
  * reader is not a member of it, which is every other person's conversation and business's.
@@ -251,40 +264,36 @@ export async function readConversation(
   | undefined
 > {
   if (!isUuid(conversationId)) return undefined;
-  const member = await tx.query<{ readonly last_read_at: Date | null }>(
-    `select m.last_read_at from public.team_conversation_members m
-       join public.records r on r.business_id = m.business_id and r.id = m.conversation_id
-        and r.record_type_id = $3 and r.deleted_at is null
-      where m.business_id = $1 and m.conversation_id = $2 and m.person_id = $4`,
-    [tx.businessId, conversationId, types.conversationTypeId, personId],
-  );
-  if (member[0] === undefined) return undefined;
-  const rows = await tx.query<{
-    readonly id: string;
-    readonly author_id: string;
-    readonly author: string;
-    readonly at: Date;
-    readonly tied: string;
-    readonly body: string;
-  }>(
-    `select c.id, p.id as author_id, p.display_name as author, c.ts_1 as at,
+  const rows = await tx.query<MemberMessage>(
+    `select m.last_read_at, c.id, p.id as "authorId", p.display_name as author, c.ts_1 as at,
             count(*) over (partition by c.ts_1) as tied, c.data ->> 'body' as body
        from public.team_conversation_members m
-       join public.records c on ${MEMBER_READS}
-       join public.actors a on a.business_id = c.business_id and a.id = c.uuid_2
-       join public.people p on p.business_id = a.business_id and p.id = a.person_id
+       join public.records r on r.business_id = m.business_id and r.id = m.conversation_id
+        and r.record_type_id = $5 and r.deleted_at is null
+       left join (public.records c
+         join public.actors a on a.business_id = c.business_id and a.id = c.uuid_2
+         join public.people p on p.business_id = a.business_id and p.id = a.person_id)
+         on ${MEMBER_READS}
       where m.business_id = $1 and m.conversation_id = $3 and m.person_id = $4
+        and ${chatsNow('m.person_id')}
       order by c.ts_1, c.created_at, c.id`,
-    [tx.businessId, types.commentTypeId, conversationId, personId],
+    [tx.businessId, types.commentTypeId, conversationId, personId, types.conversationTypeId],
   );
+  if (rows[0] === undefined) return undefined;
   return {
-    lastRead: member[0].last_read_at?.toISOString() ?? null,
-    messages: rows.map((row) => ({
-      id: row.id,
-      authorId: row.author_id,
-      author: row.author,
-      at: shownAt(row.at, Number(row.tied)),
-      body: row.body,
-    })),
+    lastRead: rows[0].last_read_at?.toISOString() ?? null,
+    messages: rows.flatMap((row) =>
+      row.id === null
+        ? []
+        : [
+            {
+              id: row.id,
+              authorId: row.authorId,
+              author: row.author,
+              at: shownAt(row.at, Number(row.tied)),
+              body: row.body,
+            },
+          ],
+    ),
   };
 }

@@ -258,7 +258,7 @@ export function ConnectionsScreen(props: {
       </RecordState>
       <NotConnected />
       <SignalSections client={client} grantKey={grantKey} clock={clock} {...rollup} />
-      <GraduationRegion client={client} grantKey={grantKey} {...rollup} />
+      <GraduationRegion key={grantKey} client={client} grantKey={grantKey} {...rollup} />
     </div>
   );
 }

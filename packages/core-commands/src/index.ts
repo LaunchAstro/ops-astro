@@ -24,6 +24,13 @@ export {
   type QuotaSlot,
 } from './commands/credential-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
+export { runLiveRevert } from './commands/live-correction-revert.ts';
+export {
+  runLivePublish,
+  type CorrectionRun,
+  type RunnerPorts,
+  type RunResult,
+} from './commands/live-correction-runner.ts';
 export { setOwnAvailability } from './commands/availability.ts';
 export {
   callerAudit,
@@ -64,6 +71,7 @@ export {
   type Viewer,
 } from './reads/execute.ts';
 export { boardReach, joinLiveBoard, shownInbox } from './reads/live-join.ts';
+export { admitConversations, hearsConversation } from './reads/live-chat.ts';
 export { isReadName } from './reads/catalogue.ts';
 export { readHarnessTrigger } from './reads/harness-trigger.ts';
 export {

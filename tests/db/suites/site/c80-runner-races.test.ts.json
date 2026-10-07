@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "C80's runner when two runs of one job overlap: one runner takes an unregistered revert for dispatch, and concurrent retries of an unknown publish raise one task."
+}

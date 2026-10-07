@@ -488,11 +488,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:762-788`, run at `:921-929`). It gets a login and an acting identity,
-  and no membership and no business grant (`:180-183`, `:333-335`). The seed
+  user (`:764-790`, run at `:923-931`). It gets a login and an acting identity,
+  and no membership and no business grant (`:182-185`, `:335-337`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:790-819`, `:958-967`).
+  (`:792-821`, `:960-969`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -593,11 +593,13 @@ Within a conversation, its members only. Every conversation read
 (`chat.conversations`, `chat.messages`) filters by the reader's own member row
 inside the query (`core-records/src/team/conversations.ts`), so the owner and
 administrators read only their own. A member reads nothing written before they
-joined or after they left. The read marker (`chat.mark_read`) is the reader's
+joined or after they left. The same query asks again that the reader is staff
+holding `chat:comment`, so a revocation committed after the door serves nothing
+written or renamed since. The read marker (`chat.mark_read`) is the reader's
 own member row, self-scoped like `inbox.seen`, and not audited (CS-7.25). The
 client projection refuses a `direct` comment, as it refuses an internal note.
-`tests/api/c71-d-direct-messages.test.ts` and `tests/api/c71-d-isolation.test.ts`
-hold it.
+`tests/api/c71-d-direct-messages.test.ts`, `tests/api/c71-d-isolation.test.ts` and
+`tests/api/c71-c-chat-messages-after-revocation.test.ts` hold it.
 
 ### Group conversations (C71-G)
 
@@ -635,6 +637,27 @@ nothing written before, and a re-added member reads from the new join only.
 `tests/api/c71-g-group-conversations.test.ts`,
 `tests/api/c71-g-group-members.test.ts` and `tests/api/c71-g-isolation.test.ts`
 hold it.
+
+### Live delivery and mentions (C71, CS-7.42)
+
+Membership is the filter here too. A tab follows `conversation:<id>` on its one live stream only
+while it is staff holding `chat:comment` and a current member, asked at the join and again before
+every delivery (`reads/live-chat.ts`), membership and `chat:comment` in one statement, so a
+revocation committed mid-admission admits nothing, nor does a grant that lapses while the statement
+waits (its expiry read on `clock_timestamp()`); the board stream says a conversation moved only to
+its current members who may chat. A mention in a message is refused `MENTION_NOT_READABLE` unless
+the person named is a current member who may chat (staff holding `chat:comment`, as `chat.messages`
+asks), and its inbox item is held by such members alone: a member who leaves or is removed, loses
+`chat:comment` or whose access ends is no longer shown it, counted for it, let stamp it seen or
+emailed it (asked before the seen insert and again after it, the stamp undone if access has gone,
+and in the statement that reads the address, so access ended first stamps or sends nothing), and an
+operations viewer outside the conversation is never listed it as unattended. An agent key (API-2)
+that does not tick `chat:comment` is shown and counted none, as `chat.messages` refuses it. A
+mention is raised at its message's posted time, so a member who reads the message, a re-added one
+included, is shown and counted its mention. The owner and administrators hold no way round any of
+it. `tests/api/c71-live-conversations.test.ts`, `tests/api/c71-chat-mentions.test.ts`,
+`tests/api/c71-c-agent-key-without-chat.test.ts` and
+`tests/api/c71-c-chat-grant-expiry-during-admission.test.ts` hold it.
 
 ## preset.plan
 
@@ -1110,8 +1133,9 @@ labelled pre-review; see [API.md](API.md).
 ## Trace readers (AW-13)
 
 `trace.read` asks `operations:read` at the task's record scope, then the task's
-own `read` (`taskAccess`), so a reader whose task grant covers one client's
-task gets `NOT_FOUND` for another client's. The key is the catalogue's C55 row:
+own `read` in the statement that reads the events (`readableNow`), so a reader
+whose task grant covers one client's task gets `NOT_FOUND` for another client's,
+and one whose grant is revoked mid-read gets `NOT_FOUND` too. The key is the catalogue's C55 row:
 seeded to the owner and administrators, never a member, never an agent. The
 ticket's "the second owner after a timed restore rehearsal" is the trace
 target's Owner login (the Langfuse contract's recovery operator), an

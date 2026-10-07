@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a trace read under way when task read is revoked serves no trace"
+}

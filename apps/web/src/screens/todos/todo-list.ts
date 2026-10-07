@@ -50,25 +50,27 @@ export type Chip =
   | { readonly kind: 'category'; readonly value: string }
   | { readonly kind: 'tag' | 'words'; readonly value: string };
 
-const DUE_WORDS: Readonly<Record<string, 'today' | 'overdue' | 'soon'>> = {
-  'due:today': 'today',
-  today: 'today',
-  overdue: 'overdue',
-  late: 'overdue',
-  soon: 'soon',
-};
+// Maps, not object indexes: a typed word is looked up in these own keys only,
+// so `constructor` or `__proto__` is a name word, never an inherited property.
+const DUE_WORDS: ReadonlyMap<string, 'today' | 'overdue' | 'soon'> = new Map([
+  ['due:today', 'today'],
+  ['today', 'today'],
+  ['overdue', 'overdue'],
+  ['late', 'overdue'],
+  ['soon', 'soon'],
+]);
 const WAITING_WORDS = new Set(['waiting', 'comments', 'unread']);
-const MOVE_WORDS: Readonly<Record<string, TodoView['whoseMove']>> = {
-  review: 'Review',
-  agent: 'Agent',
-  team: 'Team',
-};
+const MOVE_WORDS: ReadonlyMap<string, TodoView['whoseMove']> = new Map([
+  ['review', 'Review'],
+  ['agent', 'Agent'],
+  ['team', 'Team'],
+]);
 
 function chipOf(token: string): Chip | null {
-  const due = DUE_WORDS[token];
+  const due = DUE_WORDS.get(token);
   if (due !== undefined) return { kind: 'due', value: due };
   if (WAITING_WORDS.has(token)) return { kind: 'waiting' };
-  const move = MOVE_WORDS[token];
+  const move = MOVE_WORDS.get(token);
   if (move !== undefined) return { kind: 'move', value: move };
   if (/^p[1-4]$/u.test(token)) return { kind: 'priority', value: Number(token.slice(1)) };
   if (token.startsWith('tag:')) return { kind: 'tag', value: token.slice(4) };

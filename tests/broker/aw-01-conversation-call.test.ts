@@ -126,6 +126,23 @@ it('AW-01 conversation call: a priced answer is above a hold of nothing, so it i
   expect(Number(row?.['observed_minor'])).toBeGreaterThan(0);
 });
 
+it('CS-7.30 conversation call: the chosen model is handed to the adapter and sent, not the default', async () => {
+  const handed: (string | undefined)[] = [];
+  const build: typeof replayAdapter = (values, id, model) => {
+    handed.push(model);
+    return replayAdapter(values, id, model);
+  };
+  const sent = world.provider.seen.length;
+  const capturing: Broker = {
+    ...local(),
+    providers: new Map([['replay', { build, price: () => 0 }]]),
+  };
+  await inConversation(person(), { ...ask(), model: 'replay-chosen' }, capturing);
+  expect(handed).toStrictEqual(['replay-chosen']);
+  const asked = world.provider.seen.slice(sent).map((seen) => JSON.parse(seen.body) as object);
+  expect(asked).toMatchObject([{ model: 'replay-chosen' }]);
+});
+
 it('AW-01 conversation egress off: a cloud route from a conversation is refused before any row or request', async () => {
   const request = ask();
   const before = await callCount();
