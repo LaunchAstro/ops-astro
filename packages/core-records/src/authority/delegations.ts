@@ -42,6 +42,7 @@
 // path here reads a permission the delegation stored.
 
 import { createHash, randomUUID } from 'node:crypto';
+import { raiseAssignment } from '../inbox/raise.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
@@ -832,7 +833,8 @@ export type RevocationCause = 'authority_lost' | 'delegation_revoked' | 'work_re
  * (`delegation.revoke`, `grant.revoke`, `access.end`, `task.cancel`,
  * `task.propose`'s supersession, `budget.record_outcome`). A caller naming
  * none gets the agent's own actor: the recovery pass and the restart replay,
- * which no person ran.
+ * which no person ran. Each task it cleared is reconciled as an unassignment
+ * (`raiseAssignment`), so the person whose agent held it decides its gate again.
  */
 export async function revokeDelegation(
   tx: TenantQuery,
@@ -852,7 +854,7 @@ export async function revokeDelegation(
   );
   const revoked = rows[0];
   if (revoked === undefined) return null;
-  await tx.query(
+  const cleared = await tx.query<{ readonly id: string }>(
     `with cleared as (
        update public.records r set data = r.data - 'agent', revision = r.revision + 1
          from public.record_types t
@@ -866,9 +868,18 @@ export async function revokeDelegation(
               'recordId', cleared.id, 'fields', jsonb_build_object('agent', null),
               'delegationId', $2::text, 'cause', $4::text)::text, 'UTF8')), 'hex'),
             1, repeat('0', 64)
-       from cleared`,
+       from cleared
+     returning subject_record_id::text as id`,
     [tx.businessId, delegationId.toLowerCase(), actorId ?? revoked.agent_actor_id, cause],
   );
+  for (const task of cleared) {
+    // oxlint-disable-next-line no-await-in-loop
+    await raiseAssignment(tx, {
+      taskId: task.id,
+      assignee: null,
+      by: actorId ?? revoked.agent_actor_id,
+    });
+  }
   return revoked.revoked_at;
 }
 

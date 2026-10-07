@@ -15,7 +15,15 @@ import { readUnattended } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf } from './agent-fixture.ts';
 import { addClient, grantTo } from './fixture.ts';
-import { aiWorld, assign, created, minted, revisionOf, type AiWorld } from './ai-assign-world.ts';
+import {
+  aiWorld,
+  assign,
+  created,
+  holder as heldBy,
+  minted,
+  revisionOf,
+  type AiWorld,
+} from './ai-assign-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('inbox-decision-who-decides: DATABASE_URL is unset.');
@@ -121,6 +129,47 @@ describe.skipIf(serverUrl === undefined)('decision items: an agent assignee is i
     const recipients = (await openItems(gate)).map((item) => item.person);
     expect(recipients).toContain(w.q.personId);
     expect(recipients).not.toContain(w.p.personId);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('decision items: the agent removed', () => {
+  /** A pending gate whose task P's agent holds, P's decision item withdrawn by it. */
+  async function heldByAgent(title: string): Promise<{ task: string; gate: Gate; agent: string }> {
+    const task = await created(w, w.p, title);
+    const gate = await proposed(task);
+    expect((await openItems(gate)).map((item) => item.person)).toContain(w.p.personId);
+    const agent = await minted(w, w.p, task);
+    expect(codeOf(await assign(w, w.p, task, { agent }))).toBe('not-a-refusal');
+    expect((await openItems(gate)).map((item) => item.person)).not.toContain(w.p.personId);
+    return { task, gate, agent };
+  }
+
+  /** P is owed the gate again once nothing holds the task, and P's decision applies. */
+  async function owedAgain(task: string, gate: Gate): Promise<void> {
+    expect(await heldBy(w, task)).toStrictEqual({ agent: null, person: null });
+    const mine = (await openItems(gate)).filter((item) => item.person === w.p.personId);
+    expect(mine).toHaveLength(1);
+    const answer = await w.world.asPerson(w.p, {
+      command: 'task.decide',
+      operationId: randomUUID(),
+      gateId: gate.gateId,
+      versionId: gate.versionId,
+      decision: 'reject',
+      note: 'decided once the agent left',
+    });
+    expect(codeOf(answer)).toBe('not-a-refusal');
+  }
+
+  it('unassigning the agent alone gives its person the decision back', async () => {
+    const { task, gate } = await heldByAgent('The agent unassigned');
+    expect(codeOf(await assign(w, w.q, task, { agent: null }))).toBe('not-a-refusal');
+    await owedAgain(task, gate);
+  });
+
+  it('revoking the agent gives its person the decision back', async () => {
+    const { task, gate, agent } = await heldByAgent('The agent revoked');
+    await w.world.revokeDelegation(agent);
+    await owedAgain(task, gate);
   });
 });
 
