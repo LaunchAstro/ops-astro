@@ -62,6 +62,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import pg from 'pg';
 import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
 import { ISOLATION_STEPS, isolationShards, readShardPlan } from './ci-shards.ts';
@@ -218,6 +219,19 @@ try {
 let ran = { total: 0, passed: 0, failed: 0, skipped: 0, todo: 0 };
 
 const vitestBin = join(repoRoot, 'node_modules/vitest/vitest.mjs');
+let failureDetailRemaining = 16 * 1024;
+const diagnosticSecrets = Object.entries(process.env)
+  .filter(([key, value]) => /PASSWORD|TOKEN|SECRET|KEY/iu.test(key) && value)
+  .map(([, value]) => value);
+for (const connectionString of [url, process.env['DATABASE_ADMIN_URL']]) {
+  if (!connectionString) continue;
+  try {
+    const password = new URL(connectionString).password;
+    if (password) diagnosticSecrets.push(password, decodeURIComponent(password));
+  } catch {
+    // Connection validation stays with the database client.
+  }
+}
 
 // A literal path as a glob, so an exclusion names that file and no other.
 const literal = (path) => path.replace(/[*?[\]{}()!+@\\]/gu, '\\$&');
@@ -241,6 +255,58 @@ const siblingsOf = (suite) => {
     .map((line) => line.trim())
     .filter((line) => line !== '' && resolve(repoRoot, line) !== resolve(repoRoot, suite))
     .map((line) => literal(relative(repoRoot, resolve(repoRoot, line))));
+};
+
+/** Redact assertion text before it reaches stderr. */
+const redactDetail = (detail) => {
+  detail = stripVTControlCharacters(detail)
+    .replaceAll(`file://${repoRoot}/`, '')
+    .replaceAll(`${repoRoot}/`, '');
+  for (const secret of diagnosticSecrets) detail = detail.replaceAll(secret, '[redacted]');
+  detail = detail
+    .replaceAll(/([a-z][a-z\d+.-]*:\/\/)[^\s/]+@/giu, '$1[redacted]@')
+    .replaceAll(
+      /(Bearer\s+|(?:password|token|secret|api[_-]?key)["']?\s*[:=]\s*["']?)[^\s"',;]+/giu,
+      '$1[redacted]',
+    )
+    .replaceAll(
+      /(?<![\w./])(?:file:\/\/)?(?:[A-Za-z]:[\\/]|\/)[^\s"'<>()[\],]+/gu,
+      '[private path]',
+    );
+  return detail;
+};
+
+/** Print failed assertions within the per-assertion and whole-run detail limits. */
+const printFailedAssertions = (report, suite, part) => {
+  for (const file of report.testResults ?? []) {
+    for (const assertion of file.assertionResults ?? []) {
+      if (assertion.status !== 'failed' || failureDetailRemaining === 0) continue;
+      let detail =
+        `db-conformance: failed assertion in ${suite}${part ? ` [${part}]` : ''}\n` +
+        `  ${String(assertion.fullName ?? assertion.title ?? 'unnamed test')}\n` +
+        (assertion.failureMessages ?? []).map(String).join('\n');
+      detail = redactDetail(detail);
+      const bounded = detail.slice(0, Math.min(4000, failureDetailRemaining));
+      console.error(bounded);
+      failureDetailRemaining -= bounded.length;
+      if (bounded.length < detail.length)
+        console.error('db-conformance: assertion detail truncated.');
+    }
+  }
+};
+
+/** Read and diagnose the report before removing its temporary directory. */
+const readReport = (reportPath, suite, part) => {
+  let report;
+  try {
+    report = JSON.parse(readFileSync(reportPath, 'utf8'));
+    printFailedAssertions(report, suite, part);
+  } catch {
+    report = undefined;
+  } finally {
+    rmSync(join(reportPath, '..'), { recursive: true, force: true });
+  }
+  return report;
 };
 
 /**
@@ -289,14 +355,7 @@ const runSuite = async (suite, part) => {
       readError = error;
     }
   }
-  let report;
-  try {
-    report = JSON.parse(readFileSync(reportPath, 'utf8'));
-  } catch {
-    report = undefined;
-  } finally {
-    rmSync(join(reportPath, '..'), { recursive: true, force: true });
-  }
+  const report = readReport(reportPath, suite, part);
   return { suite, run, report, moved: after - before, readError };
 };
 
@@ -376,7 +435,7 @@ if (failures.length === 0) {
 
   // 6. Ordinary failures.
   if (ran.failed > 0) {
-    failures.push(`${String(ran.failed)} database test(s) failed. Their output is above.`);
+    failures.push(`${String(ran.failed)} database test(s) failed. See the assertion detail above.`);
   }
 
   // 8. Bind each named suite to its entry in its own report. Counting tests in
