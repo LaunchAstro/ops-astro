@@ -266,22 +266,22 @@ describe.skipIf(serverUrl === undefined)('MP-14-10a mandate commands', () => {
     expect(await w.snapshot()).toBe(before);
   });
 
-  it('MP-14-10a SC2-F1: a stale sign-in refusal replays to a fresh one, so only a new operation revokes; a stored filing is withheld from a stale sign-in, then released once', async () => {
+  it('MP-14-10a SC3-F1: a stale sign-in refusal holds no operation, so the same one revokes once stepped up; a stored filing is withheld from a stale or ahead-of-clock factor, then released once', async () => {
     const mandateId = String(detail(await w.file(w.admin, {}))['mandateId']);
     const refused = { mandateId, expectedRevision: 1, operationId: randomUUID() };
     const first = await w.as(w.admin, 'mandate.revoke', refused, 'alpha', 'stale-factor');
     const again = await w.as(w.admin, 'mandate.revoke', refused, 'alpha', 'fresh');
-    const fresh = await w.as(w.admin, 'mandate.revoke', { mandateId, expectedRevision: 1 });
-    const codes = [first, again, fresh].map((one) => one.body['code'] ?? one.status);
-    expect(codes).toStrictEqual(['STEP_UP_REQUIRED', 'STEP_UP_REQUIRED', 200]);
+    expect(await mandateRow(mandateId)).toMatchObject({ revoked_by_actor_id: w.admin.actorId });
     const filing = { operationId: randomUUID(), clientId: w.clientA, classes: ['social.post'] };
     const body = { ...filing, ceiling: AUD(50_000), expiresAt: inDays(30), label: 'Lost once' };
     const once = await w.as(w.admin, 'mandate.file', body);
     const count = await w.mandateRows();
-    const gated = await w.as(w.admin, 'mandate.file', body, 'alpha', 'stale-factor');
+    const stale = await w.as(w.admin, 'mandate.file', body, 'alpha', 'stale-factor');
+    const ahead = await w.as(w.admin, 'mandate.file', body, 'alpha', 'ahead-factor');
     const released = await w.as(w.admin, 'mandate.file', body);
+    const codes = [first, again, stale, ahead].map((one) => one.body['code'] ?? one.status);
+    expect(codes).toStrictEqual(['STEP_UP_REQUIRED', 200, 'STEP_UP_REQUIRED', 'STEP_UP_REQUIRED']);
     const ids = [detail(once)['mandateId'], detail(released)['mandateId']];
-    expect(gated.body['code']).toBe('STEP_UP_REQUIRED');
     expect([once.status, ids[1]]).toStrictEqual([200, ids[0]]);
     expect(await w.mandateRows()).toBe(count);
   });
