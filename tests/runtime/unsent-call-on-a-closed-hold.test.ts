@@ -20,6 +20,7 @@ import {
   asBeforeHoldState,
   holdStateOf,
   holdsOf,
+  moneyOf,
   roomyWork,
   spend,
   stampBefore,
@@ -183,9 +184,11 @@ describe.skipIf(serverUrl === undefined)('a pickup after a top-up on a causeless
 describe.skipIf(serverUrl === undefined)(
   'a pickup after an upgrade from before the hold state',
   () => {
-    it('counts a hold closed before a top-up written before the hold state once, as the upgrade records it', async () => {
-      // As above, but the top-up predates the column: the upgrade finds the step's
-      // fresh hold made in the answer's transaction and records the hold closed.
+    it('reads a top-up on a closed hold written before the hold state as held, so the replacement stops at its budget, moving no money', async () => {
+      // As above, but the top-up predates the column. No earlier row says the
+      // hold was closed when it answered, so the upgrade records it held (money
+      // fix b): the first hold counts its 300 twice, the version has no room
+      // left, and the run stops and asks rather than spending past 600.
       const { work, versionId, first } = await roomyWork(s);
       await spend(s, first, 300);
       await unsentCall(s, first, 200);
@@ -201,13 +204,20 @@ describe.skipIf(serverUrl === undefined)(
       const third = await pickup(s, fresh?.id);
       await spend(s, third['reservationId'], 40);
       await stopWorker(s, third);
+      const before = await moneyOf(s, work, versionId);
 
       const again = await claim(fresh?.id);
       expect({
         code: codeOf(again),
         live: await liveOf(versionId),
         recorded: await holdStateOf(s, first),
-      }).toEqual({ code: 'applied', live: ['60'], recorded: [{ hold_state: 'actual' }] });
+        money: await moneyOf(s, work, versionId),
+      }).toEqual({
+        code: 'BUDGET_UNAVAILABLE',
+        live: [],
+        recorded: [{ hold_state: 'held' }],
+        money: before,
+      });
     });
   },
 );
