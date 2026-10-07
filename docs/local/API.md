@@ -2947,7 +2947,12 @@ minutes, or it is refused `STEP_UP_REQUIRED` 403. A client's refusal names
 `sign_in` and its first fix is "Sign in again with your password, then
 retry."; a team member's names nothing and asks for the code from the
 authenticator app. The web app asks the client for their password and signs
-in again (`WEB.md`). While the business setting
+in again (`WEB.md`). The refusal applies nothing and the register keeps nothing
+for its `operationId` (`unheld` in `commands/envelope.ts`), so the same
+operation sent again once stepped up is judged afresh; a stored success the
+same check withholds from a stale sign-in, or from a factor time ahead of the
+database clock past its 60-second skew, is released under its own operation
+once the check passes, and never applied again. While the business setting
 `money_step_up_required` is `false` a live session is enough; only
 `settings:manage` switches it, through `settings.set_money_step_up`, which is
 judged the same way when switching it off, whatever the setting holds, so a
