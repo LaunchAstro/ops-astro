@@ -149,11 +149,13 @@ describe.skipIf(serverUrl === undefined)('decision items: a revoked grant takes 
   it('a person assignee stays owed nothing while the agent’s person is owed it back', async () => {
     const { person, task, second, agent } = await leasedAndHeld('Write revoked, Q assigned');
     expect(codeOf(await assign(w, person, task, { assignee: w.q.personId }))).toBe('not-a-refusal');
+    // A person write replaces the agent (`oneKind`): no task holds both, so the
+    // revoke clears no task here, and Q keeps their one open assignment item.
+    expect(await holder(w, task)).toStrictEqual({ agent: null, person: w.q.personId });
     expect(await assignmentsOf(task, w.q.personId)).toBe(1);
     await w.world.revokeGrant(person.grants.write);
     expect(await causeOf(agent)).toBe('authority_lost');
     expect(await holder(w, task)).toStrictEqual({ agent: null, person: w.q.personId });
-    // Only the agent went: Q's assignment, and its one open item, stay.
     expect(await assignmentsOf(task, w.q.personId)).toBe(1);
     expect(await itemsOf(second, person.personId)).toBe(1);
     expect(await itemsOf(second, w.q.personId)).toBe(0);
