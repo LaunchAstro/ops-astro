@@ -11,7 +11,12 @@
 // read with the words typed, so a reread that remounts the thread, a stale
 // refusal's among them, still finds the box open with them and the server's
 // reason under it. Only a stored edit closes the box.
+//
+// **An edit names what it was typed against.** It sends the row's `edited_at`
+// from when the box opened, so an edit made meanwhile elsewhere (another tab)
+// is refused stale instead of silently replaced.
 
+import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand, type Settlement } from '../../records/use-command.ts';
 import type { RowActions, RowEdit } from './Thread.tsx';
@@ -26,6 +31,21 @@ export interface RowWrites {
   readonly editing: RowEdit | null;
   readonly onEditing: (next: RowEdit | null) => void;
 }
+
+/**
+ * The `edited_at` an edit is sent against: the one its box opened on, or, once
+ * a stale refusal has been shown and the row read again, the row's as it now
+ * reads. A lost answer moves nothing: its reread may carry an edit from
+ * elsewhere the person has not seen, which the resend must still be refused over.
+ */
+const againstOf = (held: RowEdit | null, comment: InternalCommentView): string | null =>
+  held?.commentId === comment.id && !held.stale ? held.editedAt : comment.edited_at;
+
+/** The edit as its answer leaves it: closed once stored, else held with why. */
+const heldAfter = (sent: RowEdit, settlement: Settlement): RowEdit | null =>
+  settlement.kind === 'ok'
+    ? null
+    : { ...sent, because: settlement.because, stale: settlement.kind === 'stale' };
 
 /** Any answer but a plain refusal may have changed the task, so it is read again. */
 const rereads = (settlement: Settlement): boolean =>
@@ -62,12 +82,13 @@ export function useRowActions(
       editing: props.editing,
       onEditing: props.onEditing,
       onReply,
-      onEdit: (commentId, body) => {
-        props.onEditing({ commentId, body, because: null });
-        send('task.edit_comment', { commentId, body }, (settlement) => {
-          props.onEditing(
-            settlement.kind === 'ok' ? null : { commentId, body, because: settlement.because },
-          );
+      onEdit: (comment, body) => {
+        const commentId = comment.id;
+        const editedAt = againstOf(props.editing, comment);
+        const sent: RowEdit = { commentId, body, editedAt, because: null, stale: false };
+        props.onEditing(sent);
+        send('task.edit_comment', { commentId, body, expectedEditedAt: editedAt }, (settlement) => {
+          props.onEditing(heldAfter(sent, settlement));
         });
       },
       onDelete: (commentId) => {

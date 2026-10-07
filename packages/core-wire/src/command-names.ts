@@ -195,6 +195,9 @@ export type CommandName =
   | 'conversation.allowance'
   | 'conversation.rename'
   | 'conversation.set_scope'
+  // CS-7.30: the models a conversation may run on, and the one it runs on.
+  | 'conversation.models'
+  | 'conversation.set_model'
   // One priced model call, made by the lease holder through the credential
   // broker (AW-01). The grant is the run's delegation, one of the six facts
   // the broker verifies from rows; no person grant carries it.
@@ -282,5 +285,9 @@ export type CommandName =
   | 'activation.roll_back'
   | 'activation.turn_off'
   | 'approval.revoke'
+  // What agent runs cost: skill costing (MP-14-9) and the agents' cost log
+  // (MP-14-6), each one read by `finance:read`, a person's only.
+  | 'finance.skill_costs'
+  | 'finance.agent_costs'
   // Setup's operations (C31 on), in `surface-setup.ts`.
   | SetupCommandName;

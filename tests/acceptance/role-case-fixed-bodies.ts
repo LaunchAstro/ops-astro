@@ -40,6 +40,8 @@ const EMPTY: readonly CommandName[] = [
   'task.todos',
   // The reader's own team conversations (C71-D): no operand.
   'chat.conversations',
+  // Skill costing (MP-14-9): `finance:read`, no operand.
+  'finance.skill_costs',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
@@ -64,6 +66,8 @@ export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
   // retention window never below the conversation window.
   'settings.set_conversation_window': { value: 14 },
   'settings.set_retention_window': { value: 90 },
+  // The agents' cost log (MP-14-6) takes its period.
+  'finance.agent_costs': { from: '2026-01-01T00:00:00.000Z', to: '2100-01-01T00:00:00.000Z' },
 };
 
 /** The reads' own operands, which the probe body sends as the positive body does. */
@@ -73,6 +77,7 @@ const READ_OPERANDS: ReadonlySet<CommandName> = new Set<CommandName>([
   'task.ledger',
   'preset.plan',
   'definition.attribution',
+  'finance.agent_costs',
 ]);
 
 /**

@@ -46,8 +46,6 @@ import {
   audienceNotPermitted,
   raiseMentions,
   readMentions,
-  seenBy,
-  type Mentioned,
   writeComment,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -58,9 +56,11 @@ import type {
 } from '../../../core-records/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
-import { isIdentifier } from './operands.ts';
-import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
+import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { mentionsOf, unreadableMentions } from './tasks-comment-mentions.ts';
+
+export { mentionsOf, unreadableMentions } from './tasks-comment-mentions.ts';
 import { refuseUnstorable, storableText } from './values.ts';
 import { replyParent } from './tasks-comment-reply.ts';
 import { effectRefusal } from './tasks-comment-effect.ts';
@@ -88,10 +88,6 @@ const BODY_FIXES: readonly string[] = ['Send a body with something in it.'];
 export const NO_COMMENT_TYPE_FIXES: readonly string[] = [
   'This business has no comment record type installed, so it cannot hold a comment.',
   'It is not a permission problem and retrying will not change it.',
-];
-
-const MENTIONS_FIXES: readonly string[] = [
-  'Send mentions as a list of person ids, or leave it out.',
 ];
 
 /**
@@ -176,36 +172,6 @@ export interface CommentTarget {
 }
 
 /**
- * The refusal of mentions that cannot read the comment. It names each person
- * only to an author who could already see them (`seenBy`), and otherwise gives
- * back the identifier exactly as sent: its stored letter case would say it exists.
- * The register keeps the identifiers-only form, so a replay names nobody the
- * author may no longer see.
- */
-async function unreadableMentions(
-  tx: TenantQuery,
-  on: CommentTarget,
-  named: readonly string[],
-  unreadable: readonly Mentioned[],
-): Promise<Refused> {
-  const ids = unreadable.map((person) => person.personId);
-  const seen = await seenBy(tx, on.authorActorId, ids);
-  const sent = new Map(named.map((id) => [id.toLowerCase(), id] as const));
-  const asSent = (person: Mentioned): string =>
-    sent.get(person.personId.toLowerCase()) ?? person.personId;
-  const refusal = (shown: (person: Mentioned) => string): CommandRefusal =>
-    refuseCommand(
-      'MENTION_NOT_READABLE',
-      ['mentions'],
-      unreadable.map((person) => `${shown(person)} cannot read this comment: remove the mention.`),
-    );
-  return {
-    refusal: refusal((person) => (seen.has(person.personId) ? person.label : asSent(person))),
-    kept: refusal(asSent),
-  };
-}
-
-/**
  * A comment's body, or its refusal: words in it, and storable. Shared by every
  * comment writer, a team conversation's message (C71) among them.
  */
@@ -266,17 +232,15 @@ export async function writeTaskComment(
   if (commentType !== undefined && (typeof commentType !== 'string' || !TYPES.has(commentType))) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['comment_type'], TYPE_FIXES));
   }
-  const named = mentions ?? [];
-  if (!Array.isArray(named) || !named.every((id): id is string => isIdentifier(id))) {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTIONS_FIXES));
-  }
+  const named = mentionsOf(mentions);
+  if (!Array.isArray(named)) return named as HandlerOutcome;
   // INB-1: a mention of someone who cannot read the comment is refused before
   // it saves, rather than raising an item they could never open.
   const task = { taskId: on.target.id, audience };
   const mentioned = await readMentions(tx, task, named);
   const unreadable = mentioned.filter((person) => !person.readable);
   if (unreadable.length > 0) {
-    return await unreadableMentions(tx, on, named, unreadable);
+    return await unreadableMentions(tx, on.authorActorId, named, unreadable);
   }
 
   const effect = await effectRefusal(tx, on, audience);

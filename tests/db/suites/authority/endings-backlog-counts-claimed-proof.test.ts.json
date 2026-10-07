@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a claimed ending is still counted in the owed backlog"
+}

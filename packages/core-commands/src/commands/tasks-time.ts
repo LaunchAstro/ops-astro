@@ -3,8 +3,9 @@
 // Time tracking (MP-4-6, CS-4.1, CS-4.28 to CS-4.30): the five `time.*`
 // commands over the time entry store (`core-records/src/tasks/time.ts`).
 //
-// The envelope has asked `time:write` of the business. Each handler asks the
-// rest here, before the store is touched:
+// The envelope has asked `time:write` of the business; start and log ask it
+// again once the task's row is held. Each handler asks the rest here, before
+// the store is touched:
 //
 // - **The task.** Start, stop and log name a task, and a person times only a
 //   task they may read: `task:read` at that task's record scope. A task the
@@ -41,6 +42,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import type { CommandContext } from './context.ts';
+import { heldThenAskedAgain } from './prepare.ts';
 
 type TimeContext = Pick<CommandContext, 'session'>;
 
@@ -74,6 +76,20 @@ async function refuseUnreadable(
   return reach.ok ? undefined : NO_TASK;
 }
 
+/**
+ * Start and log hold the task's row before the store writes against it, so
+ * `time:write` and `task:read` are asked once it is held: a grant that ran out
+ * while this waited for the row refuses the write.
+ */
+async function heldAndReadable(
+  tx: TenantQuery,
+  context: CommandContext,
+  taskId: string,
+): Promise<Refused | undefined> {
+  const lost = await heldThenAskedAgain(tx, context, taskId);
+  return lost ?? (await refuseUnreadable(tx, context, taskId));
+}
+
 function noteOf(note: unknown): string | Refused {
   if (note === undefined) return '';
   if (typeof note === 'string' && note.length <= NOTE_LIMIT) return note;
@@ -89,10 +105,10 @@ function noteOf(note: unknown): string | Refused {
 /** `time.start`: the person's one running timer, on this task. */
 export async function startTime(
   tx: TenantQuery,
-  context: TimeContext,
+  context: CommandContext,
   taskId: string,
 ): Promise<HandlerOutcome> {
-  const unreadable = await refuseUnreadable(tx, context, taskId);
+  const unreadable = await heldAndReadable(tx, context, taskId);
   if (unreadable !== undefined) return unreadable;
   const started = await startTimer(tx, { taskId, ...person(context) });
   if (started.kind === 'no-task') return NO_TASK;
@@ -131,7 +147,7 @@ export async function stopTime(
 /** `time.log`: a finished entry typed by hand, ending now. */
 export async function logTimeEntry(
   tx: TenantQuery,
-  context: TimeContext,
+  context: CommandContext,
   taskId: string,
   duration: unknown,
   note: unknown,
@@ -148,7 +164,7 @@ export async function logTimeEntry(
   }
   const text = noteOf(note);
   if (typeof text !== 'string') return text;
-  const unreadable = await refuseUnreadable(tx, context, taskId);
+  const unreadable = await heldAndReadable(tx, context, taskId);
   if (unreadable !== undefined) return unreadable;
   const logged = await logTime(tx, { taskId, ...person(context), minutes, note: text });
   if (logged.kind === 'no-task') return NO_TASK;

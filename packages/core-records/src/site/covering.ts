@@ -6,7 +6,7 @@
 // share lock that keeps the grants a covered write rests on in place until it
 // commits.
 
-import { EFFECTIVE, askedFor, type Subject } from '../authority/grants.ts';
+import { EFFECTIVE, askedFor, checkAuthority, type Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /**
@@ -52,8 +52,11 @@ export const coveringParameters = (covering: Covering): readonly unknown[] => {
  * revocation that committed first is seen by the caller's next statement; one
  * that comes later waits for the caller's write to commit.
  */
-export async function holdCoveringGrants(tx: TenantQuery, covering: Covering): Promise<void> {
-  await tx.query(
+export async function holdCoveringGrants(
+  tx: TenantQuery,
+  covering: Covering,
+): Promise<readonly string[]> {
+  const held = await tx.query<{ readonly id: string }>(
     `with recursive chain as (
        select g.id, g.parent_grant_id from public.grants g
         where g.business_id = $1 and g.collection = $2 and g.action = $3
@@ -70,6 +73,7 @@ export async function holdCoveringGrants(tx: TenantQuery, covering: Covering): P
       for share`,
     [tx.businessId, ...coveringParameters(covering)],
   );
+  return held.map((row) => row.id);
 }
 
 /**
@@ -89,4 +93,57 @@ export async function coveredAt(
     [tx.businessId, ...coveringParameters(covering), partyId],
   );
   return rows.length > 0;
+}
+
+/** A person's own lease (no delegation): its holder's identities, their task writes held. */
+export interface OwnHeld {
+  readonly own: readonly Subject[];
+  readonly taskId: string;
+  /** The grants its hold locked: only these carry the write, as the delegated branch's. */
+  readonly held: readonly string[];
+}
+
+/**
+ * The holder of a person's own lease, as the subjects a grant may name, with their task writes
+ * share-locked where `holdPersonWrites` holds a delegation's (the lock order is the same).
+ */
+export async function holdOwnWrite(
+  tx: TenantQuery,
+  actorId: string,
+  taskId: string,
+): Promise<OwnHeld> {
+  const [actor] = await tx.query<{ readonly person_id: string | null }>(
+    'select person_id from public.actors where business_id = $1 and id = $2',
+    [tx.businessId, actorId],
+  );
+  const person = actor?.person_id;
+  const own: Subject[] = [{ kind: 'actor', id: actorId }];
+  if (typeof person === 'string') own.push({ kind: 'person', id: person });
+  const held = await holdCoveringGrants(tx, { subjects: own, collection: 'task', action: 'write' });
+  return { own, taskId, held };
+}
+
+/**
+ * A person's own lease stands on its holder's own live write on the task at `at`, the instant
+ * read after the locks: the record layer's `personWriteLive` (`core-runtime/src/
+ * lease-ownership.ts`, which records may not import). A pickup is not standing permission.
+ */
+export async function ownWriteStands(
+  tx: TenantQuery,
+  { own, taskId, held }: OwnHeld,
+  at: string,
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly code: 'LEASE_NOT_OWNED' }> {
+  const scope = { kind: 'record', id: taskId } as const;
+  const reach = await checkAuthority(tx, own, { collection: 'task', action: 'write', scope });
+  const live = await tx.query<{ readonly id: string }>(
+    `select id from public.grants
+      where business_id = $1 and id = any($2::uuid[])
+        and (expires_at is null or expires_at > $3::timestamptz)`,
+    [
+      tx.businessId,
+      reach.ok ? reach.value.map((grant) => grant.id).filter((id) => held.includes(id)) : [],
+      at,
+    ],
+  );
+  return live.length > 0 ? { ok: true } : { ok: false, code: 'LEASE_NOT_OWNED' };
 }

@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a question kept on a page task neither reads nor locks a task its sender may not read, and asks its conversation:write grant after the page task's share lock wait (Sol PRV-oa-1088-SC1)"
+}

@@ -26,6 +26,7 @@
 
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type { BreachNoticeOperands } from './operations.ts';
+import type { CostPeriodOperands } from './agent-costs.ts';
 import type {
   AttributionResult,
   AccessReadResult,
@@ -48,12 +49,15 @@ import type {
   AwaitingReviewResult,
   ConversationListResult,
   AllowanceResult,
+  ConversationModelsResult,
   ConversationReadResult,
   SettingsReadResult,
   SecretListResult,
   ConnectionFleetResult,
   ConnectionSignalResult,
   ConnectionGraduationResult,
+  AgentCostsResult,
+  SkillCostsResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
@@ -157,6 +161,10 @@ export interface ReadOperands {
   readonly 'connection.signal': NoOperands;
   /** The graduation region of the clients `connection:read` reaches (MP-14-10a). */
   readonly 'connection.graduation': NoOperands;
+  /** Skill costing at the scopes the caller holds `finance:read` (MP-14-9). */
+  readonly 'finance.skill_costs': NoOperands;
+  /** The agents' cost log for a period, same scopes (MP-14-6). */
+  readonly 'finance.agent_costs': CostPeriodOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -178,6 +186,8 @@ export interface ReadOperands {
   readonly 'conversation.list': NoOperands;
   /** The drawer's planning allowance, and the caller's own conversation's spend (AW-04). */
   readonly 'conversation.allowance': { readonly conversationId: unknown };
+  /** The models the caller's conversation may run on, or the empty drawer's (CS-7.30). */
+  readonly 'conversation.models': { readonly conversationId: unknown };
   /** The runs that read one file, by its digest: pre-review (AW-04). */
   readonly 'definition.attribution': { readonly digest: string };
   /** Who is signed in: the caller's own name (C23). It takes no grant either. */
@@ -248,6 +258,8 @@ export type ReadResult =
   | ConnectionFleetResult
   | ConnectionSignalResult
   | ConnectionGraduationResult
+  | SkillCostsResult
+  | AgentCostsResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
@@ -260,6 +272,7 @@ export type ReadResult =
   | OperationsReadResult
   | BreachNoticesResult
   | AllowanceResult
+  | ConversationModelsResult
   | AttributionResult
   | InboxReadResult
   | InboxCountResult

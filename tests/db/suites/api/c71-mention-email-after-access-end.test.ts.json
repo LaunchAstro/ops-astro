@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a mention email paused after its access-and-address statement while access.end commits for the recipient is refused ITEM_WITHHELD and never reaches custody"
+}

@@ -59,6 +59,9 @@ function server(answer: () => Response) {
       return Promise.resolve(json({ ok: true, preferences: {} }));
     // The dock bell's owed count (MP-7-3) and its board topic are the frame's too.
     if (String(url).endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: 0 }));
+    // As is the Team tab's unread (C71).
+    if (String(url).endsWith('/chat/conversations'))
+      return Promise.resolve(json({ ok: true, conversations: [] }));
     if (String(url).includes('/live?')) return Promise.resolve(new Response(null, { status: 503 }));
     urls.push(String(url));
     return Promise.resolve(answer());

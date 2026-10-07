@@ -20,6 +20,7 @@ import type {
   AssistantCitation,
   AssistantMessage,
   AssistantPage,
+  PlanCardState,
 } from '@launchastro/ui';
 import type { ScopeInput } from './subject.ts';
 
@@ -29,6 +30,8 @@ export interface Chat extends AssistantChat {
   readonly conversationId: string | null;
   /** The scope this conversation was asked under: selecting it brings it back. */
   readonly scope: StandingScope;
+  /** A kept tab whose first read is out and whose title the person has not set. */
+  readonly reading?: boolean;
 }
 
 export interface AssistantState {
@@ -42,6 +45,8 @@ export interface AssistantState {
   readonly scope: StandingScope;
   /** Each tab's questions still out, by key: a tab with one out is answering. */
   readonly answering: Readonly<Record<string, number>>;
+  /** A tab folded into another (`started`), by key: what still lands for it lands there. */
+  readonly folded: Readonly<Record<string, string>>;
 }
 
 export interface AskEntry {
@@ -75,6 +80,7 @@ export const initial = (): AssistantState => ({
   draft: '',
   scope: NO_SCOPE,
   answering: {},
+  folded: {},
 });
 
 export function fresh(state: AssistantState): AssistantState {
@@ -98,10 +104,16 @@ function change(state: AssistantState, key: string, edit: (chat: Chat) => Chat):
   return { ...state, chats: state.chats.map((chat) => (chat.key === key ? edit(chat) : chat)) };
 }
 
-/** The tab `key` selected, with the scope its conversation was asked under. */
+/**
+ * The tab `key` selected, with the scope its conversation was asked under. A
+ * drafted question and its citation belong to the tab they were drafted in, so
+ * another tab starts with neither: a client's words never reach a tab of
+ * another scope.
+ */
 function selecting(state: AssistantState, key: string): AssistantState {
   const scope = state.chats.find((chat) => chat.key === key)?.scope ?? NO_SCOPE;
-  return { ...state, selected: key, scope };
+  if (key === state.selected) return { ...state, scope };
+  return { ...state, selected: key, scope, draft: '', citation: null };
 }
 
 export const select = (state: AssistantState, key: string): AssistantState =>
@@ -110,7 +122,7 @@ export const select = (state: AssistantState, key: string): AssistantState =>
 export function rename(state: AssistantState, key: string, title: string): AssistantState {
   const trimmed = title.trim().slice(0, TAB_TITLE_LIMIT);
   if (trimmed === '') return state;
-  return change(state, key, (chat) => ({ ...chat, title: trimmed }));
+  return change(state, key, (chat) => ({ ...chat, title: trimmed, reading: false }));
 }
 
 export function takeOut(state: AssistantState, key: string): AssistantState {
@@ -167,10 +179,33 @@ export const said = (
 ): AssistantState =>
   change(state, key, (chat) => ({ ...chat, messages: [...chat.messages, message] }));
 
+/** A line `conversation.read` gave a tab carries this before the server's id. */
+export const READ_LINE = 'kept-';
+
+/** The tab a line for `key` lands in: `key`, or the tab it was folded into. */
+export const keyIn = (state: AssistantState, key: string): string => state.folded[key] ?? key;
+
+const staled = (plan: NonNullable<AssistantMessage['plan']>): PlanCardState =>
+  plan.state === 'unknown' ? 'unknown' : 'stale';
+
+/** The cards plan version `version` replaces: every one not approved. */
+export const replaced = (
+  messages: readonly AssistantMessage[],
+  version: number,
+): AssistantMessage[] =>
+  messages.map((each) =>
+    each.plan !== undefined && each.plan.state !== 'approved'
+      ? { ...each, plan: { ...each.plan, state: staled(each.plan), replacedBy: version } }
+      : each,
+  );
+
 /**
  * The tab's first question started its conversation. A tab the history
  * reopened for that same conversation while the start was out folds into it,
- * so it is never open twice.
+ * so it is never open twice. What its read gave is the start's own question,
+ * already here; what was asked and answered there since follows, each plan
+ * version there replacing the older ones here; its questions still out are
+ * this tab's, and a line still on its way to it lands here.
  */
 export function started(
   state: AssistantState,
@@ -180,24 +215,50 @@ export function started(
   const twin = state.chats.find(
     (chat) => chat.key !== key && chat.conversationId === conversationId,
   );
+  const since = twin?.messages.filter((message) => !message.id.startsWith(READ_LINE)) ?? [];
   const single =
-    twin === undefined ? state : { ...state, chats: state.chats.filter((chat) => chat !== twin) };
+    twin === undefined
+      ? state
+      : {
+          ...state,
+          chats: state.chats.filter((chat) => chat !== twin),
+          folded: { ...state.folded, [twin.key]: key },
+          answering: {
+            ...state.answering,
+            [twin.key]: 0,
+            [key]: (state.answering[key] ?? 0) + (state.answering[twin.key] ?? 0),
+          },
+        };
   const chosen =
     twin !== undefined && state.selected === twin.key ? selecting(single, key) : single;
-  return change(chosen, key, (chat) => ({ ...chat, conversationId }));
+  return change(chosen, key, (chat) => ({
+    ...chat,
+    conversationId,
+    messages: since.reduce<readonly AssistantMessage[]>(
+      (lines, line) => [
+        ...(line.plan === undefined ? lines : replaced(lines, line.plan.version)),
+        line,
+      ],
+      chat.messages,
+    ),
+  }));
 }
 
-/** A question for tab `key` went out (+1) or came back (-1). */
-export const asking = (state: AssistantState, key: string, by: 1 | -1): AssistantState => ({
-  ...state,
-  answering: { ...state.answering, [key]: Math.max(0, (state.answering[key] ?? 0) + by) },
-});
+/** A question for tab `key` (or the tab it was folded into) went out (+1) or came back (-1). */
+export function asking(state: AssistantState, key: string, by: 1 | -1): AssistantState {
+  const into = keyIn(state, key);
+  return {
+    ...state,
+    answering: { ...state.answering, [into]: Math.max(0, (state.answering[into] ?? 0) + by) },
+  };
+}
 
-/** A conversation as `conversation.read` gave it: its id, title and transcript. */
+/** A conversation as `conversation.read` gave it, or `reading` while its read is out. */
 export interface Reopened {
   readonly conversationId: string;
   readonly title: string;
   readonly messages: Chat['messages'];
+  readonly reading?: boolean;
 }
 
 /**
@@ -222,14 +283,18 @@ export function reopened(
   return next;
 }
 
-/** A kept tab's transcript and title, as its conversation's read gave them. */
+/**
+ * Kept tab `key`'s read, ahead of any line added since; its title only while the
+ * tab is `reading`, so a rename made meanwhile stands. A closed tab takes nothing.
+ */
 export const transcript = (
   state: AssistantState,
-  conversationId: string,
+  key: string,
   read: Pick<Chat, 'messages'> & { readonly title?: string },
-): AssistantState => ({
-  ...state,
-  chats: state.chats.map((chat) =>
-    chat.conversationId === conversationId ? { ...chat, ...read } : chat,
-  ),
-});
+): AssistantState =>
+  change(state, key, (chat) => ({
+    ...chat,
+    title: chat.reading === true ? (read.title ?? chat.title) : chat.title,
+    reading: false,
+    messages: [...read.messages, ...chat.messages],
+  }));

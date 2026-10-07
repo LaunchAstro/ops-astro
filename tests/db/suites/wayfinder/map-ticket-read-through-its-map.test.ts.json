@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a map read grant reaches its ticket in the inbox email check and trace.read, and a client reader is still withheld a map ticket"
+}

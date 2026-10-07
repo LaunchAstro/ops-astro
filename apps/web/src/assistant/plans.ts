@@ -17,7 +17,7 @@ import { useRef } from 'react';
 import type { AssistantPlan, PlanCardState } from '@launchastro/ui';
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import { pathTo } from '../routes.ts';
-import type { AssistantState, Chat } from './chats.ts';
+import { keyIn, replaced, type AssistantState, type Chat } from './chats.ts';
 
 function change(state: AssistantState, key: string, edit: (chat: Chat) => Chat): AssistantState {
   return { ...state, chats: state.chats.map((chat) => (chat.key === key ? edit(chat) : chat)) };
@@ -43,9 +43,6 @@ export function cardOf(offer: PlanOffer): AssistantPlan {
   };
 }
 
-const staled = (plan: AssistantPlan): PlanCardState =>
-  plan.state === 'unknown' ? 'unknown' : 'stale';
-
 /** A planning reply's plan, as the tab's newest card; older offered cards go stale. */
 export function offerPlan(
   state: AssistantState,
@@ -56,11 +53,7 @@ export function offerPlan(
   return change(state, key, (chat) => ({
     ...chat,
     messages: [
-      ...chat.messages.map((each) =>
-        each.plan !== undefined && each.plan.state !== 'approved'
-          ? { ...each, plan: { ...each.plan, state: staled(each.plan), replacedBy: card.version } }
-          : each,
-      ),
+      ...replaced(chat.messages, card.version),
       { id: message.id, role: 'plan', body: message.body, cites: [], plan: card },
     ],
   }));
@@ -70,14 +63,14 @@ export function offerPlan(
 const kept = (plan: AssistantPlan, state: PlanCardState): PlanCardState =>
   plan.replacedBy !== null && state === 'offered' ? 'stale' : state;
 
-/** One card's click, in flight or answered. */
+/** One card's click, in flight or answered, in tab `key` or the tab it was folded into. */
 export function settlePlan(
   state: AssistantState,
   key: string,
   id: string,
   settled: { readonly state: PlanCardState; readonly refusal: string | null },
 ): AssistantState {
-  return change(state, key, (chat) => ({
+  return change(state, keyIn(state, key), (chat) => ({
     ...chat,
     messages: chat.messages.map((each) =>
       each.id === id &&

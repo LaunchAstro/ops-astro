@@ -26,6 +26,7 @@ export {
   type Session,
   type VerifiedSubject,
 } from './login-resolution.ts';
+export { noMembership } from './access-ended.ts';
 export { withStanding } from './standing.ts';
 export {
   NO_ASSURANCE,
@@ -35,9 +36,11 @@ export {
   type AssuranceLevel,
 } from './verified-subject.ts';
 export {
+  factorDigest,
   liveFactor,
   lockLoginFactors,
   loginHasVerifiedFactor,
+  loginVerifiedFactors,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,

@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": false,
+  "why": "a live mapping holds the same subject lock key lockLoginFactors names, for a subject outside ASCII"
+}

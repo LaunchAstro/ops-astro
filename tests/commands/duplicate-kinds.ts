@@ -203,6 +203,7 @@ export const DECLARED: Readonly<
   'conversation.message': { carry: 'not carried', plant: 'needs a conversation' },
   'conversation.rename': { carry: 'not carried', plant: 'needs a conversation' },
   'conversation.set_scope': { carry: 'not carried', plant: 'needs a conversation' },
+  'conversation.set_model': { carry: 'not carried', plant: 'needs a conversation' },
   'task.check': { carry: 'not carried', plant: 'needs a lease' },
   'model.call': { carry: 'not carried', plant: 'needs a lease' },
   'run.top_up': { carry: 'not carried', plant: 'needs a run at its budget stop' },

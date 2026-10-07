@@ -102,6 +102,7 @@ vi.mock('../../packages/core-commands/src/commands/conversation-tabs.ts', async 
   ...(await original<object>()),
   renameConversation: recorder('renameConversation'),
   setConversationScope: recorder('setConversationScope'),
+  setModel: recorder('setModel'),
 }));
 vi.mock('../../packages/core-commands/src/commands/session-end.ts', async (original) => ({
   ...(await original<object>()),
@@ -443,6 +444,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'client.set_privacy': ['clientId'],
   'conversation.message': ['conversationId'],
   'conversation.rename': ['conversationId'],
+  'conversation.set_model': ['conversationId'],
   'conversation.set_scope': ['conversationId'],
   'conversation.start': [],
   'delegation.revoke': [],
@@ -553,8 +555,10 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'conversation.allowance',
   'conversation.list',
   'conversation.message',
+  'conversation.models',
   'conversation.read',
   'conversation.rename',
+  'conversation.set_model',
   'conversation.set_scope',
   'conversation.start',
   'credential.issue',
@@ -562,6 +566,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'definition.attribution',
   'definition.release',
   'delegation.revoke',
+  'finance.agent_costs',
+  'finance.skill_costs',
   'gate.pending',
   'graduation.demote',
   'graduation.promote',
@@ -709,6 +715,7 @@ const REQUESTS: readonly CommandRequest[] = [
     recordId: 'r',
     commentId: 'c-edit',
     body: 'b-edit',
+    expectedEditedAt: 'e-edit',
   },
   { command: 'task.delete_comment', operationId: 'op', recordId: 'r', commentId: 'c-delete' },
   {
@@ -941,6 +948,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'conversation.message', operationId: 'op', conversationId: 'c', body: 'again' },
   { command: 'conversation.rename', operationId: 'op', conversationId: 'c', title: 'Renamed' },
   { command: 'conversation.set_scope', operationId: 'op', conversationId: 'c', page: null },
+  { command: 'conversation.set_model', operationId: 'op', conversationId: 'c', model: null },
   { command: 'model.call', operationId: 'op' },
   {
     command: 'run.top_up',
@@ -1015,7 +1023,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
     'p-comment',
     'm-comment',
   ],
-  'task.edit_comment': ['editTaskComment', 'c-edit', 'b-edit'],
+  'task.edit_comment': ['editTaskComment', 'c-edit', 'b-edit', 'e-edit'],
   'task.delete_comment': ['deleteTaskComment', 'c-delete'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
@@ -1136,6 +1144,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'conversation.message': ['messageConversation', 'request'],
   'conversation.rename': ['renameConversation', 'request'],
   'conversation.set_scope': ['setConversationScope', 'request'],
+  'conversation.set_model': ['setModel', 'request'],
   'model.call': ['refuseModelCallAsPerson', 'request'],
   'run.top_up': ['topUpOnRun', 'request'],
   'run.end_at_budget_stop': ['endOnRun', 'request'],
@@ -1204,7 +1213,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same one hundred and thirty-four from an expected revision', () => {
+  it('exempts the same one hundred and thirty-six from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

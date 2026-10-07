@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a tag add or remove, timer start or logged entry refuses a grant that expires while it waits for the task row, and writes nothing"
+}

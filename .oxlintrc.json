@@ -44,6 +44,10 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
+      "files": ["tests/api/c71-mention-email-after-access-end.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
       "files": [
         "tests/web/settings-late-step-up-refusal-stays-with-its-business.test.tsx",
         "tests/web/settings-lost-save-intent-stays-with-its-business.test.tsx",
@@ -210,7 +214,10 @@
       "files": [
         "tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts",
         "tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts",
-        "tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts"
+        "tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts",
+        "tests/api/live-presence-remap-before-seat-shows-no-unadmitted-person.test.ts",
+        "tests/api/live-presence-remap-before-mark-recheck-applies-nothing.test.ts",
+        "tests/api/live-presence-revoked-before-seat-shows-no-unadmitted-reader.test.ts"
       ],
       "rules": {
         "max-lines-per-function": "off",
@@ -343,6 +350,17 @@
         "unicorn/escape-case": "off",
         "unicorn/no-hex-escape": "off"
       }
+    },
+    {
+      "files": [
+        "tests/review/ending-claim-per-row-proof.test.ts",
+        "tests/identity/ending-claim-and-shared-recheck-proof.test.ts",
+        "tests/authority/endings-once-exit-and-settings-proof.test.ts",
+        "tests/identity/mapping-waits-while-ending-bans-subject-proof.test.ts",
+        "tests/identity/ending-spares-live-agent-login-elsewhere-proof.test.ts",
+        "tests/identity/login-subject-fixed-during-ban-proof.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off", "require-await": "off" }
     }
   ]
 }

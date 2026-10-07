@@ -47,7 +47,7 @@ import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { conversationTypesFor, standsNow, writeMessage } from './chat.ts';
-import { commentBodyOf } from './tasks-comment.ts';
+import { commentBodyOf, mentionsOf } from './tasks-comment.ts';
 
 /** More people than a team conversation is for; past it, the list is refused. */
 const MEMBER_LIMIT = 100;
@@ -158,15 +158,18 @@ export async function sendGroupMessage(
   context: CommandContext,
   conversationId: string,
   body: unknown,
+  mentions?: unknown,
 ): Promise<HandlerOutcome> {
   if (!isInternalReader(context.session.roleKey)) return refused(refuseNotFound());
   const words = commentBodyOf(body);
   if (typeof words !== 'string') return words;
+  const named = mentionsOf(mentions);
+  if (!Array.isArray(named)) return named as HandlerOutcome;
   const own = await ownGroup(tx, context, conversationId);
   if ('refusal' in own) return own.refusal;
   const lost = await standsNow(tx, context, null);
   if (lost !== undefined) return refused(lost);
-  return await writeMessage(tx, context, own.types, conversationId, 'group', words);
+  return await writeMessage(tx, context, own.types, conversationId, 'group', words, named);
 }
 
 export async function renameGroupConversation(

@@ -14,7 +14,14 @@ import type { OperationsClient } from '../../operations/client.ts';
 import { MapSections } from './Sections.tsx';
 import { TicketsView } from './Tickets.tsx';
 import { FogView, FrontierView } from './Frontier.tsx';
-import { TICKET_TYPES, type Drafts, type Filters, type MapViewName, type Send } from './model.ts';
+import {
+  TICKET_TYPES,
+  type Drafts,
+  type Filters,
+  type Locked,
+  type MapViewName,
+  type Send,
+} from './model.ts';
 
 const TABS = [
   { id: 'map', label: 'Map' },
@@ -31,13 +38,14 @@ export interface MapViewsProps {
   readonly onView: (view: MapViewName) => void;
   readonly filters: Filters;
   readonly onFilters: (filters: Filters) => void;
-  readonly busy: boolean;
+  readonly locked: Locked;
   readonly send: Send;
   readonly drafts: Drafts;
 }
 
 export function MapViews(props: MapViewsProps): ReactElement {
   const { map, view } = props;
+  const fogLocked = props.locked('map.graduate', map.id);
   const panel = (tab: MapViewName, body: () => ReactElement): ReactElement => (
     <TabPanel name="map" tab={tab} selected={view}>
       {view === tab ? body() : null}
@@ -59,7 +67,7 @@ export function MapViews(props: MapViewsProps): ReactElement {
       {panel('map', () => (
         <MapSections
           map={map}
-          busy={props.busy}
+          busy={props.locked('map.revise', map.id)}
           drafts={props.drafts}
           onRevise={(body, slot) => {
             props.send('map.revise', map.id, map.revision, body, slot);
@@ -67,7 +75,7 @@ export function MapViews(props: MapViewsProps): ReactElement {
         />
       ))}
       {panel('tickets', () => (
-        <TicketsView map={map} filters={props.filters} busy={props.busy} send={props.send} />
+        <TicketsView map={map} filters={props.filters} locked={props.locked} send={props.send} />
       ))}
       {panel('frontier', () => (
         <FrontierView
@@ -78,7 +86,7 @@ export function MapViews(props: MapViewsProps): ReactElement {
         />
       ))}
       {panel('fog', () => (
-        <FogView map={map} busy={props.busy} send={props.send} drafts={props.drafts} />
+        <FogView map={map} busy={fogLocked} send={props.send} drafts={props.drafts} />
       ))}
     </div>
   );

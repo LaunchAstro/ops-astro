@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": false,
+  "why": "a question kept on a client's task stays refused, though no exchange ran then"
+}

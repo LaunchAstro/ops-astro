@@ -30,6 +30,7 @@ import { isRefusal, isUnavailable, type OperationsClient } from '../operations/c
 import { jsonSlot, tabStorage, type JsonSlot } from '../session/storage-slot.ts';
 import {
   initial,
+  READ_LINE,
   reopened,
   select,
   transcript,
@@ -76,7 +77,12 @@ function keptState(grantKey: string | undefined): AssistantState {
   const empty: AssistantState = { ...initial(), chats: [], selected: '', next: 1 };
   const tabs = reopened(
     empty,
-    kept.tabs.map((conversationId) => ({ conversationId, title: READING, messages: [] })),
+    kept.tabs.map((conversationId) => ({
+      conversationId,
+      title: READING,
+      messages: [],
+      reading: true,
+    })),
   );
   const chosen = tabs.chats.find((chat) => chat.conversationId === kept.selected);
   return chosen === undefined ? tabs : select(tabs, chosen.key);
@@ -100,7 +106,7 @@ const PURGED = 'This conversation’s messages have been cleared; its wrap-up is
 function linesOf(read: ConversationReadResult): AssistantMessage[] {
   if (read.messages === null) return [{ id: 'purged', role: 'note', body: PURGED, cites: [] }];
   return read.messages.map((one) => ({
-    id: `kept-${one.id}`,
+    id: `${READ_LINE}${one.id}`,
     role: one.role === 'person' ? 'user' : 'ai',
     body: one.body,
     cites: [],
@@ -136,7 +142,7 @@ export function useKeptStore(client: OperationsClient, grantKey: string | undefi
         const read = await readOne(client, id);
         const failed = { id: `kept-failed-${id}`, role: 'failed' as const, body: '', cites: [] };
         const into = typeof read === 'string' ? { messages: [{ ...failed, body: read }] } : read;
-        store.update((current) => transcript(current, id, into));
+        store.update((current) => transcript(current, chat.key, into));
       })();
       reads.current.set(chat.key, landed);
     }

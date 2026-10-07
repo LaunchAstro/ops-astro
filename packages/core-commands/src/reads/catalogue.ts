@@ -22,7 +22,6 @@ import {
   listTags,
   readPreferences,
   subjectsOf,
-  taskAccess,
 } from '../../../core-records/src/index.ts';
 import { readAlerts, readOutages, readTaskTrace } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
@@ -47,9 +46,12 @@ import { listCustodySecrets } from './custody.ts';
 import { readConnectionFleet } from './connections.ts';
 import { readConnectionSignal } from './signal.ts';
 import { readConnectionGraduation } from './graduation.ts';
+import { parseCostPeriod, readAgentCosts } from './agent-costs.ts';
+import { parseNoCostOperands, readSkillCosts } from './costs.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
+import { readConversationModels } from './conversation-models.ts';
 import { readAllowance } from './allowance.ts';
 import { DIGEST, readAttribution } from './attribution.ts';
 import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
@@ -257,6 +259,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     serve: async (tx, session, { conversationId }) =>
       await readAllowance(tx, session, conversationId),
   },
+  // CS-7.30: the drawer's model picker. The rule is the read's own, as the
+  // allowance's is; the conversation is optional and must be the caller's own.
+  'conversation.models': {
+    identifiers: ['conversationId'],
+    parse: ({ conversationId }) => parsed({ conversationId }),
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, { conversationId }) =>
+      await readConversationModels(tx, session, conversationId),
+  },
   'task.read': {
     identifiers: ['recordId'],
     parse: (body) =>
@@ -368,7 +381,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const { board: _board, ...paging } = operands;
       const page = boardPage(tasks, paging);
       if (page !== undefined) return page;
-      const [viewer, owed] = [session.personId, await countOwed(tx, session.personId)];
+      const viewer = session.personId;
+      const owed = await countOwed(tx, viewer, subjectsOf(session));
       return scope.business
         ? { ok: true, tasks, changedAt, viewer, owed, withheld: 0 }
         : { ok: true, tasks, changedAt, viewer, owed };
@@ -663,6 +677,26 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session) => await readConnectionGraduation(tx, session),
   },
+  // What agent runs cost, asked per row by the scopes the caller holds
+  // `finance:read` at, as `connection.fleet` is by `connection:read`: a caller
+  // holding it nowhere, or sending a key the read does not take, is refused
+  // inside the read.
+  'finance.skill_costs': {
+    identifiers: [],
+    parse: parseNoCostOperands,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, operands) => await readSkillCosts(tx, session, operands),
+  },
+  'finance.agent_costs': {
+    identifiers: [],
+    parse: parseCostPeriod,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, period) => await readAgentCosts(tx, session, period),
+  },
   // No subject record, for the reason `task.queue` gives: the settings are
   // the business's own configuration rather than one record, and there is no
   // `settings` row in `records` to name in the column even if there were.
@@ -816,7 +850,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session) =>
       (await holdsAnyGrant(tx, session))
-        ? { ok: true, owed: await countOwed(tx, session.personId) }
+        ? { ok: true, owed: await countOwed(tx, session.personId, subjectsOf(session)) }
         : NO_GRANT_AT_ALL,
   },
   // Every path to a person broken (INB-1e): `operations:read` on the business,
@@ -872,12 +906,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (
         recordId === undefined ||
         !isInternalReader(session.roleKey) ||
-        !(await liveTask(tx, spine.taskTypeId, recordId)) ||
-        (await taskAccess(tx, session.personId, recordId)) !== 'readable'
+        !(await liveTask(tx, spine.taskTypeId, recordId))
       ) {
         return refuseNotFound();
       }
-      return { ok: true, trace: { taskId: recordId, ...(await readTaskTrace(tx, recordId)) } };
+      const trace = await readTaskTrace(tx, recordId, session.personId);
+      return trace === null
+        ? refuseNotFound()
+        : { ok: true, trace: { taskId: recordId, ...trace } };
     },
   },
   // AW-12: the harness test's result on one run. No subject record and no

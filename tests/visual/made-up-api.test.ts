@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { READ_NAMES } from '../../apps/web/src/operations/read-names.ts';
-import { pathOf, PREFIX } from '../../packages/core-wire/src/index.ts';
+import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import {
+  pathOf,
+  PREFIX,
+  type ChatConversationsResult,
+  type ChatMessagesResult,
+} from '../../packages/core-wire/src/index.ts';
 import { MADE_UP_READS, madeUpAnswer, MOCKUP_TASK_KEY, TASKS } from './made-up-api.ts';
 
 // Reads no screen draws at the harness's addresses: the preset plan is the
@@ -21,13 +27,14 @@ const NOT_DRAWN = new Set([
   'harness.read',
   'privacy.draft_breach_notices',
   'live_correction.read',
-  // C71-D: the web client can reach team conversations, but no screen draws
-  // them yet; the Team panel arrives in a later piece.
-  'chat.conversations',
-  'chat.messages',
   // MP-14-10a: the graduation data lands before the screens that draw it (P06).
   'connection.graduation',
+  // MP-14-9, MP-14-6: the cost data lands before the screens that draw it.
+  'finance.skill_costs',
+  'finance.agent_costs',
 ]);
+
+const at = (name: ReadName): string => `${PREFIX.person}alpha${pathOf(name)}`;
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers a read at the path the app asks it on, with the made-up rows', () => {
@@ -57,6 +64,24 @@ describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers every read a screen draws, so a new read is a decision here', () => {
     const drawn = READ_NAMES.filter((name) => !NOT_DRAWN.has(name));
     expect([...MADE_UP_READS].toSorted()).toEqual([...drawn].toSorted());
+  });
+
+  it("answers each conversation's messages by its id, unread as the panel derives it", () => {
+    const list = (madeUpAnswer(at('chat.conversations')) as { json: ChatConversationsResult }).json;
+    expect(list.conversations.map((view) => view.kind).toSorted()).toEqual(['direct', 'group']);
+    for (const view of list.conversations) {
+      const { conversationId } = view;
+      const read = madeUpAnswer(at('chat.messages'), {}, { conversationId });
+      const held = (read as { json: ChatMessagesResult }).json;
+      expect(held.conversationId).toBe(conversationId);
+      expect(held.lastRead).toBe(view.lastRead);
+      expect(held.messages.at(-1)?.at).toBe(view.lastMessageAt);
+      const unread = held.messages.filter(
+        (m) => m.authorId !== 'p-nathan' && m.at > (view.lastRead ?? ''),
+      );
+      expect(unread).toHaveLength(view.unread);
+    }
+    expect(madeUpAnswer(at('chat.messages'), {}, { conversationId: 'cv-none' })).toBeUndefined();
   });
 });
 

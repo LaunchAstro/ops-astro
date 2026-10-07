@@ -611,6 +611,33 @@ export async function askedAgain(
 }
 
 /**
+ * A write whose store checks the task is live under a `for share` hold of its
+ * row (tags, time) holds that row first, then asks its grant again where
+ * `prepareCommand` asked it, the task or the business: a grant that ran out,
+ * or was revoked, while this waited for the row refuses the write (#443).
+ */
+export async function heldThenAskedAgain(
+  tx: TenantQuery,
+  context: CommandContext,
+  taskId: string,
+): Promise<Refused | undefined> {
+  // Never cast what is not an identifier: the store answers it as no task.
+  if (!isUuid(taskId)) return undefined;
+  await tx.query(
+    `select 1 from public.records where business_id = $1 and id = $2::uuid for share`,
+    [tx.businessId, taskId],
+  );
+  const { declaration } = context;
+  if (declaration.authorisedOn === 'record') return await askedAgain(tx, context, taskId);
+  const still = await checkAuthority(tx, subjectsOf(context.session), {
+    collection: declaration.collection,
+    action: declaration.action,
+    scope: BUSINESS,
+  });
+  return still.ok ? undefined : refused(still.refusal);
+}
+
+/**
  * The map whose record-scoped grant also covers this request: the map a
  * targeted ticket belongs to, or the map a new task is filed under. Only a
  * task collection command, and never the record itself (its own scope was

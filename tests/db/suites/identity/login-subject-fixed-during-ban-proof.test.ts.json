@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a live login's subject cannot be changed to slip past an in-flight ending"
+}

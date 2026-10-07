@@ -18,7 +18,7 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { setImmediate as nextTurn } from 'node:timers/promises';
-import { LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
+import { LOCAL_GPT_BODY_LIMIT, LOCAL_GPT_PATH } from '../../packages/core-connectors/src/index.ts';
 import { promptOf, runCodex, UNKNOWN, type CodexResult } from './codex.ts';
 import { callNeed, DEFAULT_MODEL, decide, REFUSAL_MESSAGES, type CallRefusal } from './gate.ts';
 import { holdHome } from './home-lock.ts';
@@ -27,7 +27,7 @@ import type { RunnerSettings } from './settings.ts';
 
 /** A model name the runner passes on: no spaces, no flags, nothing to split. */
 const MODEL_NAME = /^[a-z0-9][a-z0-9.-]{0,63}$/u;
-const MAX_BODY_BYTES = 64 * 1024;
+const MAX_BODY_BYTES = LOCAL_GPT_BODY_LIMIT;
 /** A call whose turn comes with under this share of its time left (5 s of 100 s) is not started. */
 const MIN_RUN_SHARE = 1 / 20;
 

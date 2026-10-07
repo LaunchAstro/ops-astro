@@ -34,6 +34,9 @@ export const LOCAL_GPT_PATH = '/v1/local-gpt/complete';
 /** The model Codex runs on the owner's laptop, unless the owner approves another; the runner's gate holds that. */
 export const LOCAL_GPT_DEFAULT_MODEL = 'gpt-6.1-sol';
 
+/** The most bytes the runner takes in one request body; a larger one is refused 413. */
+export const LOCAL_GPT_BODY_LIMIT: number = 64 * 1024;
+
 /** The runner's refusals, each answered with nothing kept. */
 export const LOCAL_GPT_NOTHING_HAPPENED: readonly string[] = [
   'LOCAL_CAP_REACHED',
@@ -48,12 +51,16 @@ export const LOCAL_GPT_NOTHING_HAPPENED: readonly string[] = [
   'http_413',
 ];
 
-/** The adapter: fields in, a request for the default model with neither origin nor credential out. */
-export function localGptAdapter(values: Readonly<Record<string, string>>): AdapterRequest {
+/** The adapter: fields in, a request for the model asked for (the default unless named), with neither origin nor credential out. */
+export function localGptAdapter(
+  values: Readonly<Record<string, string>>,
+  _operationId?: string,
+  model: string = LOCAL_GPT_DEFAULT_MODEL,
+): AdapterRequest {
   return {
     path: LOCAL_GPT_PATH,
     method: 'POST',
-    body: JSON.stringify({ model: LOCAL_GPT_DEFAULT_MODEL, fields: values }),
+    body: JSON.stringify({ model, fields: values }),
   };
 }
 
