@@ -6,7 +6,7 @@ import { expect, it } from 'vitest';
 import { buildOutputProblems, outputDigest, stampOutput } from '../../scripts/ops/build-output.ts';
 import { artefactName, storedArtefact } from '../../scripts/ops/promotion.ts';
 
-it('Sol proof, criterion 1: changing release files cannot retain its recorded digest', () => {
+it('changing release files cannot retain its recorded digest', () => {
   const store = mkdtempSync(join(tmpdir(), 'sol-ow063-digest-'));
   try {
     const version = '0123456789ab';

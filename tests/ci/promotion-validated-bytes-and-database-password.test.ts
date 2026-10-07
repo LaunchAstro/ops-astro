@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* eslint-disable max-lines-per-function -- Sol's proofs, kept as written */
-// Criterion 5's preview proof (#496) goes with #496's own pull request.
+/* eslint-disable max-lines-per-function -- keep each regression's setup and assertions together */
+// Concurrent preview behaviour is covered separately with #496.
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,7 +10,7 @@ import { artefactName, promote } from '../../scripts/ops/promotion.ts';
 import { trustedTemp } from './promotion.fixture.ts';
 import { serveTestKeySetApart, signBearer, TEST_ISSUER } from '../support/sign-in.ts';
 
-it('Sol proof, criterion 3: a malformed database address never prints its password', async () => {
+it('a malformed database address never prints its password', async () => {
   const keys = await serveTestKeySetApart();
   const password = 'sol-ow065-synthetic-password-canary';
   try {
@@ -40,7 +40,7 @@ it('Sol proof, criterion 3: a malformed database address never prints its passwo
   }
 });
 
-it('Sol proof, criterion 5: promotion serves the validated bytes despite a store write during migration', () => {
+it('promotion serves the validated bytes despite a store write during migration', () => {
   // Moved under a folder the promotion's trust walk accepts (OPS497TRUST).
   const store = trustedTemp('sol-ow065-store-');
   try {
