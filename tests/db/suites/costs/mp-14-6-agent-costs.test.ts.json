@@ -1,0 +1,5 @@
+{
+  "kind": "conformance",
+  "isolation": true,
+  "why": "MP-14-6 the agents' cost log: runs and totals stay inside one business and one client's reach"
+}

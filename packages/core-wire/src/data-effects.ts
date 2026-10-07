@@ -162,6 +162,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'connection.fleet': READ,
   'connection.graduation': READ,
   'connection.signal': READ,
+  'finance.skill_costs': READ,
+  'finance.agent_costs': READ,
   'connector.repair': writing(business('connection_repairs')),
   'mandate.file': writing(client('standing_mandates')),
   'mandate.revoke': writing(client('standing_mandates', 'graduation_classes')),
