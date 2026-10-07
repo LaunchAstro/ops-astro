@@ -480,9 +480,10 @@ export async function writeOwnedFields(
   if (written === undefined) {
     return refuse('NOT_FOUND', [], ['No live task carries that identifier here.']);
   }
-  // INB-1: the assignment is raised by the write that makes it (CS-16.8).
-  if ('assignee' in links) {
-    const assignee = typeof links['assignee'] === 'string' ? links['assignee'] : null;
+  // INB-1: the assignment is raised by the write that makes it (CS-16.8), an
+  // agent's removal alone among them: its person decides the task's gate again.
+  if ('assignee' in links || 'agent' in links) {
+    const assignee = typeof merged['assignee'] === 'string' ? merged['assignee'] : null;
     await raiseAssignment(tx, { taskId: target.id, assignee, by: context.session.personId });
   }
   // C41-A: an onboarding step's move follows its assignee and its client.

@@ -70,9 +70,7 @@ interface ResolutionRow {
   readonly membership_id: string | null;
   readonly role_key: string | null;
   readonly actor_id: string | null;
-  /** 'true' once the person has a verified second factor; null before 0049. */
-  readonly second_factor_verified: string | null;
-  /** Whether the login's factors are kept by subject (0064), so every business reads them. */
+  /** Whether the login's factors are kept (0064); an installation stopped before it holds none. */
   readonly by_subject: boolean;
 }
 
@@ -92,9 +90,6 @@ const RESOLUTION = `
          m.id as membership_id,
          m.role_key,
          a.id as actor_id,
-         -- Read through the row's json so this one query serves a database
-         -- from before 0049, which has no such column and so no factor.
-         to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified,
          to_regclass('ops.second_factor_subjects') is not null as by_subject
     from public.logins l
     left join public.person_logins pl
@@ -104,8 +99,6 @@ const RESOLUTION = `
     left join public.actors a
       on a.business_id = pl.business_id and a.person_id = pl.person_id
      and a.kind = 'person' and a.active
-    left join public.people p
-      on p.business_id = pl.business_id and p.id = pl.person_id
    where l.provider = $1 and l.subject = $2`;
 
 /**
@@ -157,10 +150,13 @@ export async function standingOf(
 
   // After the person is known and active, and before anything is served: a
   // sign-in that stopped at the password is not yet a sign-in for a login
-  // that verified a second factor, in any business (C59, LF-4).
+  // that verified a second factor, in any business (C59, LF-4). The factor is
+  // this login's: another login mapped to the same person holds none of it at
+  // the provider, so is never asked for its code.
   const assurance = presented.assurance ?? NO_ASSURANCE;
   const short = assurance.level !== 'aal2';
-  if (rule === 'required' && short && (await factorHeld(tx, presented.subject, found))) {
+  const asked = rule === 'required' && short && found.by_subject;
+  if (asked && (await loginHasVerifiedFactor(tx, presented.subject))) {
     return refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES);
   }
 
@@ -184,12 +180,6 @@ export async function standingOf(
  */
 export async function sessionEndedSince(tx: TenantQuery, session: Session): Promise<boolean> {
   return session.presented !== undefined && (await sessionEndedHeld(tx, session.presented));
-}
-
-/** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */
-async function factorHeld(tx: TenantQuery, subject: string, found: ResolutionRow) {
-  if (found.second_factor_verified === 'true') return true;
-  return found.by_subject && (await loginHasVerifiedFactor(tx, subject));
 }
 
 /**

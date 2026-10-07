@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C59's checks before a second-factor call (`account-factor.ts`): the wrong-code
-// lockout, a fresh sign-in for a first enrolment, and the code's own shape.
+// lockout, a fresh sign-in for a first enrolment, the code's own shape, and
+// which factor a code is checked against.
 // Split from `account-factor.ts` to keep that file under the line limit.
 
 import { createHash } from 'node:crypto';
-import { advisoryLock, STEP_UP_WINDOW_SECONDS } from '../../../core-records/src/index.ts';
-import type { Session, TenantQuery, VerifiedSubject } from '../../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  liveFactor,
+  loginHasVerifiedFactor,
+  loginVerifiedFactors,
+  STEP_UP_WINDOW_SECONDS,
+} from '../../../core-records/src/index.ts';
+import type {
+  SecondFactor,
+  Session,
+  TenantQuery,
+  VerifiedSubject,
+} from '../../../core-records/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
@@ -22,6 +34,12 @@ const FAILED_CODE_WINDOW_MINUTES = 15;
 const LOCKED_FIXES: readonly string[] = [
   'Too many wrong codes. Wait 15 minutes, then try again with the code your app shows.',
 ];
+
+export const ENROLLED_FIXES: readonly string[] = [
+  'You already have an authenticator app. To replace it, remove it with a code from it first.',
+];
+export const NOT_ENROLLED_FIXES: readonly string[] = ['Set up an authenticator app first.'];
+export const BODY_FIXES: readonly string[] = ['Send only { "code": "<the six digits>" }.'];
 
 /** The event that a code is on its way to the provider; the act's own event names its answer. */
 const CODE_SENT = 'account.factor_code_sent';
@@ -122,4 +140,43 @@ export function codeOf(body: unknown): string | undefined {
   const code = (body as Readonly<Record<string, unknown>>)['code'];
   if (keys.length !== 1 || typeof code !== 'string' || !/^[0-9]{6}$/u.test(code)) return undefined;
   return code;
+}
+
+/** An unverified enrolment is refused while the login holds a verified factor anywhere (0064). */
+export const enrolledElsewhere = async (
+  tx: TenantQuery,
+  caller: { readonly presented: VerifiedSubject },
+  live: { readonly status: string },
+): Promise<CommandRefusal | undefined> =>
+  live.status !== 'verified' && (await loginHasVerifiedFactor(tx, caller.presented.subject))
+    ? refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES)
+    : undefined;
+
+/** What a verify's check found: this business's live factor, or the login's held elsewhere. */
+export interface CodeCheck {
+  factor?: SecondFactor | undefined;
+  held: readonly string[];
+}
+
+/**
+ * A verify's check before the provider call: the code's shape, the wrong-code
+ * lockout, then the live factor here or, with none, the digests of the
+ * factors the login holds verified through any business (0064).
+ */
+export async function checkCode(
+  tx: TenantQuery,
+  session: Session,
+  caller: { readonly presented: VerifiedSubject },
+  code: string | undefined,
+  seen: CodeCheck,
+): Promise<CommandRefusal | undefined> {
+  if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
+  const locked = await wrongCodeLock(tx, caller.presented.subject);
+  if (locked !== undefined) return locked;
+  seen.factor = await liveFactor(tx, session.personId);
+  if (seen.factor !== undefined) return await enrolledElsewhere(tx, caller, seen.factor);
+  seen.held = await loginVerifiedFactors(tx, caller.presented.subject);
+  return seen.held.length > 0
+    ? undefined
+    : refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
 }

@@ -195,6 +195,7 @@ export {
   wouldCloseParentLoop,
   type EntryPoint,
 } from './tasks/placement.ts';
+export { assignedPeople, assignedTo } from './tasks/assignee.ts';
 export { readTaskFamily, type FamilyRow, type TaskFamily } from './tasks/family.ts';
 export { changesSince, type ChangesSince, type TaskChange } from './tasks/changes.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';

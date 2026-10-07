@@ -1,0 +1,5 @@
+{
+  "kind": "invariant",
+  "isolation": true,
+  "why": "a code entered in a business holding no factor row is checked only against the factor the login verified elsewhere, and refused once that factor is removed"
+}
