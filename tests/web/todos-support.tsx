@@ -64,7 +64,8 @@ export interface Sent {
 /**
  * The reader's to-dos, every request recorded; the paths in `refuse` are
  * refused. A list read after the first waits for `held`, when given, so a
- * test can look at the screen while its reread is in flight.
+ * test can look at the screen while its reread is in flight. A record's first
+ * write moves it to revision 4, so a second write at the same record is stale.
  */
 export function serving(
   rows: readonly unknown[] = TODOS,
@@ -72,6 +73,7 @@ export function serving(
   held?: Promise<void>,
 ) {
   const sent: Sent[] = [];
+  const moved = new Set<unknown>();
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const to = String(url).replace(/^.*?(\/[a-z]+\/[a-z_]+)$/u, '$1');
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
@@ -86,6 +88,16 @@ export function serving(
       const refusal = { refused: true, code: 'SCOPE_NOT_GRANTED', names: ['task'], fixes: [] };
       return json(refusal, 403);
     }
+    if (moved.has(body['recordId'])) {
+      const stale = {
+        refused: true,
+        code: 'VERSION_STALE',
+        names: ['expectedRevision'],
+        fixes: [],
+      };
+      return json(stale, 409);
+    }
+    moved.add(body['recordId']);
     return json({ recordId: body['recordId'], revision: 4 });
   }) as unknown as typeof globalThis.fetch;
   return {

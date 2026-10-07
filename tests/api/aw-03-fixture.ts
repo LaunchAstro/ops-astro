@@ -58,6 +58,7 @@ const WRITES = new Set([
   'conversation.message',
   'conversation.rename',
   'conversation.set_scope',
+  'conversation.set_model',
   'task.create',
 ]);
 

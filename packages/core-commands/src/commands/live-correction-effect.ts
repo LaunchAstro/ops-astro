@@ -36,7 +36,7 @@ import {
   type Occurrence,
 } from '../../../core-connectors/src/index.ts';
 import { effectOperationId } from '../../../core-wire/src/index.ts';
-import { occurrenceFrom, seen } from './live-correction-observations.ts';
+import { observedIn, occurrenceFrom, seen } from './live-correction-observations.ts';
 
 export type EffectStep = 'publish' | 'revert';
 
@@ -219,4 +219,52 @@ export async function takeDispatch(
     return await recordObservedResult(tx, { ...run, ...result });
   });
   return taken.ok ? undefined : taken.code;
+}
+
+type Ask = { readonly step: EffectStep; readonly outcome: 'unknown' | 'accepted' };
+
+/**
+ * Whether this run is the one to ask a person about an outcome nothing registered. In one
+ * transaction under the correction's lock, the step's latest receipt read again: asked
+ * (`person`), or being asked under this run's own live lease (`asking`, a concurrent retry),
+ * answers no; otherwise `asking` is written under this lease and the answer is yes. An ask
+ * left by a lease no longer live (a worker lost while raising the task) is asked again. A
+ * lease refusal is its code.
+ */
+export async function askOnce(
+  db: Database,
+  run: UnderLease & { readonly business: string },
+  at: Ask,
+): Promise<boolean | string> {
+  const observations = { waits_on: seen('asking'), asked_under: seen(run.leaseId) };
+  return await db.withBusiness(run.business, async (tx) => {
+    const read = await readCorrectionForRun(tx, run);
+    if (!read.ok) return read.code;
+    const last =
+      at.step === 'publish'
+        ? read.lastPublish
+        : (await latestRevert(tx, run.correctionId))?.observations;
+    const asking = observedIn(last, 'waits_on');
+    if (asking === 'person') return false;
+    if (asking === 'asking' && observedIn(last, 'asked_under') === run.leaseId) return false;
+    const written = await recordObservedResult(tx, { ...run, ...at, observations });
+    return written.ok || written.code;
+  });
+}
+
+/**
+ * The ask settled under the lease: `person` once the task was raised, `none` when raising it
+ * failed, so the next retry asks again. A crash between the task and `person` leaves `asking`,
+ * and a later lease raises a second task: accepted noise, never a lost ask.
+ */
+export async function settleAsk(
+  db: Database,
+  run: UnderLease & { readonly business: string },
+  at: Ask,
+  waitsOn: 'person' | 'none',
+): Promise<void> {
+  const observations = { waits_on: seen(waitsOn) };
+  await db.withBusiness(run.business, (tx) =>
+    recordObservedResult(tx, { ...run, ...at, observations }),
+  );
 }

@@ -41,7 +41,6 @@ import {
 import {
   landedObservations,
   notAccepted,
-  observedIn,
   pinnedObservations,
   seen,
   targetOf,
@@ -50,9 +49,11 @@ import {
 import { capturePort, pageNotCatalogued } from './live-correction-capture.ts';
 import {
   acceptedOf,
+  askOnce,
   correctionEffectId,
   readCorrectionEffect,
   registerCorrectionEffect,
+  settleAsk,
   takeDispatch,
 } from './live-correction-effect.ts';
 
@@ -114,21 +115,23 @@ export async function leaseRefused(code: string, ports: RunnerPorts): Promise<Ru
 const approvedDigest = (correction: LiveCorrection): string | undefined =>
   correction.state === 'approved' ? (correction.decidedVersionDigest ?? undefined) : undefined;
 
-/**
- * An outcome nothing registered: it waits on a person, asked once. The task is raised first,
- * then a receipt (the state unchanged) keeps the ask, so a later run does not raise it again.
- */
+/** An outcome nothing registered: it waits on a person, asked once (`askOnce`). */
 export async function unknownWaits(
   db: Database,
   run: CorrectionRun,
-  at: Pick<ObservedResult, 'step' | 'outcome'>,
-  asked: boolean,
+  at: Parameters<typeof askOnce>[2],
   ports: RunnerPorts,
 ): Promise<RunResult> {
-  if (asked) return { kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' };
-  const waits = await waiting('OUTCOME_UNKNOWN', ports);
-  await record(db, run, { ...at, observations: { waits_on: seen('person') } }, ports);
-  return waits;
+  const asked = await askOnce(db, run, at);
+  if (typeof asked === 'string') return await leaseRefused(asked, ports);
+  if (asked) {
+    await ports.raiseTask('OUTCOME_UNKNOWN').catch(async (error: unknown) => {
+      await settleAsk(db, run, at, 'none');
+      throw error;
+    });
+    await settleAsk(db, run, at, 'person');
+  }
+  return { kind: 'refused', code: 'OUTCOME_UNKNOWN', waitsOn: 'person' };
 }
 
 /** Step 3: the observed result and its receipt, or a raised task when it cannot be written. */
@@ -285,14 +288,7 @@ export async function runLivePublish(
     return await observe(db, run, correction, accepted, ports);
   }
   if (correction.state === 'unknown' || correction.state === 'accepted') {
-    const asked = observedIn(held.lastPublish, 'waits_on') === 'person';
-    return await unknownWaits(
-      db,
-      run,
-      { step: 'publish', outcome: correction.state },
-      asked,
-      ports,
-    );
+    return await unknownWaits(db, run, { step: 'publish', outcome: correction.state }, ports);
   }
   const job = await rebuild(correction, ports);
   if (!isJob(job)) return job;
