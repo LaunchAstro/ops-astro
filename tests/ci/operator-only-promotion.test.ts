@@ -5,8 +5,8 @@
 // deploy and the operator's promotion. The fixtures are
 // operator-only.fixture.ts; the refused callers are in operator-only.test.ts.
 
-import { readFileSync, readlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { lstatSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   serverUrl,
@@ -17,7 +17,6 @@ import {
 } from './operator-only.fixture.ts';
 import {
   PROMOTE,
-  definition,
   STAGED,
   LINE,
   manager,
@@ -28,6 +27,8 @@ import {
 } from './operator-only-commands.fixture.ts';
 import type { FreshDatabase } from '../support/fresh-database.ts';
 import { markMadeUp } from '../../scripts/ops/made-up-only.ts';
+import { storedArtefact } from '../../scripts/ops/promotion.ts';
+import { outputDigest } from '../../scripts/ops/build-output.ts';
 
 let db: FreshDatabase;
 let operatorPerson = '';
@@ -107,6 +108,8 @@ function operatorOnlyCases7() {
     await db.admin.close();
     const signIn = await token(subjects.operator);
     const artefacts = store();
+    const selected = storedArtefact(STAGED, artefacts);
+    if (typeof selected === 'string') throw new Error(selected);
     const result = spawn(
       PROMOTE,
       [
@@ -126,9 +129,12 @@ function operatorOnlyCases7() {
       environment(at, fake.path, { OPS_ASTRO_TOKEN: signIn }),
     );
     expect(result.status, result.out).toBe(0);
-    expect(readlinkSync(at.current)).toBe(
-      join(artefacts, definition['x-ops-astro'].artefact.replace('{version}', STAGED)),
+    const served = readlinkSync(at.current);
+    expect(served).toBe(
+      join(dirname(at.current), 'served', selected.digest.slice('sha256:'.length)),
     );
+    expect(lstatSync(served).isDirectory()).toBe(true);
+    expect(outputDigest(served)).toBe(selected.digest);
     const records = readFileSync(join(at.records, 'deployments.jsonl'), 'utf8').trim().split('\n');
     expect(records).toHaveLength(1);
     expect(JSON.parse(records[0]!)).toMatchObject({
