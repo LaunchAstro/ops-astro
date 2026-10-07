@@ -7,6 +7,8 @@
 
 import type { ClientListResult } from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
+import type { OperationsClient } from '../../operations/client.ts';
+import type { CallResult } from '../../operations/results.ts';
 
 export const NO_CLIENTS: readonly string[] = [];
 
@@ -22,10 +24,25 @@ export function clientNamesOf(
   if (state.outcome === 'loading') return null;
   if (state.outcome === 'denied' || state.outcome === 'unavailable') return requestedIn(query);
   const answered = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
-  // An answer without its list offers none, rather than breaking the board.
-  return Array.isArray(answered?.clients) && answered.clients.length > 0
-    ? answered.clients.map((one) => one.name)
-    : NO_CLIENTS;
+  // An answer without its list reached none: the address's filters hold.
+  if (!Array.isArray(answered?.clients)) return requestedIn(query);
+  return answered.clients.length > 0 ? answered.clients.map((one) => one.name) : NO_CLIENTS;
+}
+
+/** The board's client list: read only at a client filter; at none, no client is asked for. */
+export async function readClients(
+  client: OperationsClient,
+  named: boolean,
+): Promise<CallResult<ClientListResult>> {
+  if (!named) return { ok: true, value: { ok: true, clients: [] } };
+  return listedOrFailed(await client.read<ClientListResult>('client.list', {}));
+}
+
+/** A client list answered without its list is a failed read, reported the way an outage is. */
+export function listedOrFailed(result: CallResult<ClientListResult>): CallResult<ClientListResult> {
+  return 'value' in result && !Array.isArray(result.value.clients)
+    ? { unavailable: true, because: 'The API answered with something this screen could not read.' }
+    : result;
 }
 
 /** The client names an address's filters ask for (`client:"<name>"`, the facet id's escapes undone). */
