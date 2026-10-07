@@ -16,11 +16,13 @@
 // one that is down is no seat.
 // The board (INB-1f) is the `board` topic: every task of the business and the
 // caller's own inbox; its `inbox` signal reaches its pages as `inbox`, so an
-// inbox panel re-reads without the board (C4 notifications live).
+// inbox panel re-reads without the board (C4 notifications live). Its
+// `conversation` signal (C71) reaches them as a change, so the Team panel's
+// list and the Team tab's unread chip re-read.
 
 export const FLOOR_MS = 30_000;
 const REJOIN_MS = 2_000;
-const EVENT = /^event: (invalidate|resync|closed|seat|presence|inbox)\ndata: (.*)$/mu;
+const EVENT = /^event: (invalidate|resync|closed|seat|presence|inbox|conversation)\ndata: (.*)$/mu;
 
 /** `inbox`: the caller's own inbox changed (the `board` topic only). */
 export type LiveChange = 'changed' | 'closed' | 'inbox';
