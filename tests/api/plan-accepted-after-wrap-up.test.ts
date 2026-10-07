@@ -19,6 +19,7 @@ import {
 import { createControls, detailOf, type Controls } from './controls-fixture.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { acceptBody, useInstructionRoot } from '../runtime/aw-04-world.ts';
+import { changed, fingerprint, undeclared } from '../operations/s0-5-effect-diff.ts';
 
 let w: ConversationWorld;
 let c: Controls;
@@ -96,4 +97,22 @@ it('a plan accepted after the quiet wrap-up reaches the next wrap-up, and the st
     outcome: await purge(conversationId),
     messages: await messages(conversationId),
   }).toMatchObject({ outcome: { ok: false, code: 'WORK_OPEN' }, messages: 1 });
+});
+
+it('an accept in a conversation declares the conversation it moves among its writes', async () => {
+  const conversationId = await started(w, w.owner, {
+    body: 'Plan it, and say what the accept writes',
+  });
+  const created = await c.createTask('existing task, its accept effect-proved');
+  const proposal = await c.propose(created.id, created.revision, 'accept_effects_declared');
+  const before = await fingerprint(w.fixture.db.admin);
+  const accepted = await c.asPerson(
+    'task.accept_plan',
+    acceptBody({ taskId: created.id, proposal }, { conversationId }),
+    w.owner,
+  );
+  expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+  const written = changed(before, await fingerprint(w.fixture.db.admin));
+  expect(written).toContain('conversations');
+  expect(undeclared('task.accept_plan', written)).toEqual([]);
 });
